@@ -128,6 +128,9 @@ Boot's `build-info` goal, `com.gorylenko.gradle-git-properties` and `springBoot 
 | `WEB-INF/lib/` | the runtime dependencies and workspace siblings; `provided` ones are left out |
 | `[node] webapp-root` of a node sibling (the root by default) | that node module's build output |
 
+A path two of these roots carry comes from the first listed (the `webapp` directory, then the node
+siblings in dependency order); the build warns about each copy it leaves out.
+
 The exploded tree is `target/<name>/` and the archive `target/<name>.war`. Its manifest is the
 `[manifest]` table, plus `Main-Class` when `[application] main` is set. `jk import` writes `[war]`
 for `<packaging>war</packaging>`, taking `<finalName>` or `<warName>` as `name` and
@@ -215,9 +218,10 @@ Fat and minified never share an action-cache key.
 
 ## Fat jar merge rules
 
-- Concatenate `META-INF/services/*`
-- Concatenate `META-INF/spring.handlers`, `spring.schemas`, `spring.factories`, and Boot
-  `AutoConfiguration.imports`
+- Concatenate `META-INF/services/*` and Boot's `AutoConfiguration.imports`
+- Merge `META-INF/spring.factories`, `spring.handlers` and `spring.schemas` as the `Properties`
+  files Spring reads them as: every jar's values for a key are kept (comma-joined, first seen
+  first), where concatenation would have let the last jar's line win
 - Project classes win on path conflict; dependency jars earlier in the graph win among themselves
 
 **Dropped:** signature files (`META-INF/*.SF` / `*.RSA` / `*.DSA` / `*.EC` / `SIG-*`) and

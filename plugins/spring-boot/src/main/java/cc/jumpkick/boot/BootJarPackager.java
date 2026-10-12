@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -192,6 +193,11 @@ public final class BootJarPackager {
         }
     }
 
+    /**
+     * Boot's launcher attributes in the order its plugins write them, then {@code [manifest]}
+     * entries by name: the request holds them in a per-JVM iteration order, and the order is part
+     * of the jar's bytes.
+     */
     private static Manifest buildManifest(BootJarRequest request) {
         Manifest manifest = new Manifest();
         Attributes attrs = manifest.getMainAttributes();
@@ -207,7 +213,7 @@ public final class BootJarPackager {
             attrs.put(new Attributes.Name("Sbom-Format"), "CycloneDX");
             attrs.put(new Attributes.Name("Sbom-Location"), SBOM_ENTRY);
         }
-        for (Map.Entry<String, String> e : request.attributes().entrySet()) {
+        for (Map.Entry<String, String> e : new TreeMap<>(request.attributes()).entrySet()) {
             if (e.getKey() == null || e.getKey().isBlank() || e.getValue() == null) continue;
             attrs.put(new Attributes.Name(e.getKey()), e.getValue());
         }

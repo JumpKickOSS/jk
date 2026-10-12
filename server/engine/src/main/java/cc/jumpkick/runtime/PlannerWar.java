@@ -94,7 +94,7 @@ final class PlannerWar {
                     }
                     ctx.label("package " + warFile.getFileName());
                     classes = stageClassesWithContributions(ctx, classes, contributed, layout);
-                    new WarPackager()
+                    WarPackager.War packaged = new WarPackager()
                             .packageWar(new WarPackager.WarRequest(
                                     classes,
                                     Files.isDirectory(webapp) ? webapp : null,
@@ -103,6 +103,12 @@ final class PlannerWar {
                                     warFile,
                                     manifest,
                                     webContent));
+                    for (WarPackager.Shadowed s : packaged.shadowed()) {
+                        ctx.warn(
+                                "web-content-shadowed",
+                                s.path() + " comes from " + s.winner() + "; the copy in " + s.loser()
+                                        + " is left out of the war");
+                    }
                     ctx.put(BUILD_OUTCOME, "built");
                     List<Path> outputs = new ArrayList<>(files(exploded));
                     outputs.add(warFile);

@@ -5,21 +5,22 @@ import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.DeterministicZip;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
+import java.util.stream.Stream;
 
 /**
  * The application jar the augment hands Quarkus as its model's main artifact, and from there into
  * the fast-jar. Raw-jar fingerprints key downstream action caches, so repeated augments over
- * unchanged classes must produce byte-identical jars: entries and manifest alike are pinned by
- * {@link DeterministicZip}, and the compile freshness stamps — whose bodies are a wall clock —
- * stay out.
+ * unchanged classes must produce byte-identical jars: entries are written in name order with their
+ * directories, entries and manifest alike are pinned by {@link DeterministicZip}, and the compile
+ * freshness stamps — whose bodies are a wall clock — stay out.
  */
 final class AppJar {
 
@@ -34,15 +35,23 @@ final class AppJar {
                 JarOutputStream jos = new JarOutputStream(fos)) {
             zip.writeManifest(jos, man);
             if (!Files.isDirectory(dir)) return;
-            Files.walkFileTree(dir, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                    String name = dir.relativize(file).toString().replace('\\', '/');
-                    if (BuildStamps.isStampFile(name)) return FileVisitResult.CONTINUE;
-                    zip.writeEntry(jos, name, file);
-                    return FileVisitResult.CONTINUE;
-                }
+            Set<String> dirs = new HashSet<>();
+            for (var entry : entries(dir).entrySet()) {
+                zip.writeParentDirs(jos, entry.getKey(), dirs);
+                zip.writeEntry(jos, entry.getKey(), entry.getValue());
+            }
+        }
+    }
+
+    /** Every regular file under {@code dir} by its jar entry name, sorted; the walk order is the filesystem's. */
+    private static TreeMap<String, Path> entries(Path dir) throws IOException {
+        TreeMap<String, Path> byName = new TreeMap<>();
+        try (Stream<Path> files = Files.find(dir, Integer.MAX_VALUE, (p, attrs) -> attrs.isRegularFile())) {
+            files.forEach(file -> {
+                String name = dir.relativize(file).toString().replace('\\', '/');
+                if (!BuildStamps.isStampFile(name)) byName.put(name, file);
             });
         }
+        return byName;
     }
 }

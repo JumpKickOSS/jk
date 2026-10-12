@@ -5,12 +5,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -106,12 +108,13 @@ class AssemblyPackagerTest {
         Path classes = tmp.resolve("classes");
         Files.createDirectories(classes.resolve("META-INF"));
         Files.createDirectories(classes.resolve("app"));
-        Files.writeString(classes.resolve("META-INF/spring.handlers"), "http://app=app.Ns");
+        // The namespace URL's colon is escaped, as Spring's own handler files write it.
+        Files.writeString(classes.resolve("META-INF/spring.handlers"), "http\\://app=app.Ns");
         Files.writeString(classes.resolve("app/Main.class"), "APP");
 
         Path dep = tmp.resolve("dep.jar");
         try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(dep))) {
-            putEntry(jos, "META-INF/spring.handlers", "http://lib=lib.Ns");
+            putEntry(jos, "META-INF/spring.handlers", "http\\://lib=lib.Ns");
             putEntry(jos, "module-info.class", "MODULE");
             putEntry(jos, "lib/Helper.class", "HELP");
         }
@@ -128,7 +131,52 @@ class AssemblyPackagerTest {
                     jf.getInputStream(jf.getJarEntry("META-INF/spring.handlers"))
                             .readAllBytes(),
                     StandardCharsets.UTF_8);
-            assertThat(handlers).contains("http://app=app.Ns").contains("http://lib=lib.Ns");
+            // Rendered as Properties would write it: sorted keys, the colon escaped.
+            assertThat(handlers).isEqualTo("http\\://app=app.Ns\nhttp\\://lib=lib.Ns\n");
+        }
+    }
+
+    @Test
+    void a_spring_factories_key_declared_by_two_jars_keeps_both_registrations(@TempDir Path tmp) throws IOException {
+        // Spring loads spring.factories as Properties, where a repeated key is last-wins: plain
+        // concatenation of the two jars' lines would drop one jar's registration.
+        Path classes = tmp.resolve("classes");
+        Files.createDirectories(classes.resolve("app"));
+        Files.writeString(classes.resolve("app/Main.class"), "APP");
+        String key = "org.springframework.boot.env.EnvironmentPostProcessor";
+
+        Path boot = tmp.resolve("spring-boot.jar");
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(boot))) {
+            putEntry(
+                    jos,
+                    "META-INF/spring.factories",
+                    "# comment\n" + key + "=\\\n  boot.ConfigDataEnvironmentPostProcessor,\\\n  boot.RandomValue\n"
+                            + "org.springframework.boot.diagnostics.FailureAnalyzer=boot.Analyzer\n");
+        }
+        Path autoconfigure = tmp.resolve("spring-boot-autoconfigure.jar");
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(autoconfigure))) {
+            putEntry(jos, "META-INF/spring.factories", key + "=auto.IntegrationPostProcessor,boot.RandomValue\n");
+        }
+
+        Path out = tmp.resolve("fat.jar");
+        new AssemblyPackager()
+                .packageAssembly(new AssemblyPackager.AssemblyRequest(
+                        classes, List.of(boot, autoconfigure), out, "app.Main", Map.of(), 0L));
+
+        try (JarFile jf = new JarFile(out.toFile())) {
+            String factories = new String(
+                    jf.getInputStream(jf.getJarEntry("META-INF/spring.factories"))
+                            .readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertThat(factories)
+                    .isEqualTo(
+                            "org.springframework.boot.diagnostics.FailureAnalyzer=boot.Analyzer\n" + key
+                                    + "=boot.ConfigDataEnvironmentPostProcessor,boot.RandomValue,auto.IntegrationPostProcessor\n");
+            Properties loaded = new Properties();
+            loaded.load(new StringReader(factories));
+            assertThat(loaded.getProperty(key))
+                    .isEqualTo(
+                            "boot.ConfigDataEnvironmentPostProcessor,boot.RandomValue,auto.IntegrationPostProcessor");
         }
     }
 

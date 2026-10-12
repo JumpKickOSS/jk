@@ -8,6 +8,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,10 +17,12 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.jar.JarEntry;
@@ -31,9 +34,10 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Fat/uber (assembly) jar: project classes first (win on conflict), custom manifest, drop
- * signatures and {@code module-info.class}, concat {@code META-INF/services/*} and common Spring
- * multi-entry META-INF files, packages moved under {@code [application] relocate}, sorted
- * fixed-timestamp entries for reproducibility.
+ * signatures and {@code module-info.class}, concat {@code META-INF/services/*} and Boot's
+ * {@code AutoConfiguration.imports}, union Spring's Properties-shaped META-INF files per key,
+ * packages moved under {@code [application] relocate}, sorted fixed-timestamp entries for
+ * reproducibility.
  *
  * <p>Enable with {@code [application] assembly = true} (or {@code jk assemble}). See
  * {@code docs/user/packaging.md}.
@@ -76,9 +80,9 @@ public final class AssemblyPackager {
             }
 
             // 3. Merged multi-entry META-INF files (services, Spring handlers, …).
-            for (Map.Entry<String, ByteArrayOutputStream> e : emitter.merged.entrySet()) {
+            for (Map.Entry<String, MergedFile> e : emitter.merged.entrySet()) {
                 zip.writeParentDirs(jos, e.getKey(), emitter.dirs);
-                zip.writeEntry(jos, e.getKey(), e.getValue().toByteArray());
+                zip.writeEntry(jos, e.getKey(), e.getValue().render());
                 emitter.written.add(e.getKey());
             }
 
@@ -111,7 +115,7 @@ public final class AssemblyPackager {
         /** Directory entries synthesized for SoftServiceLoader (Micronaut assembly). */
         final Set<String> dirs = new HashSet<>();
         /** Multi-entry META-INF files merged across inputs; TreeMap → deterministic. */
-        final Map<String, ByteArrayOutputStream> merged = new TreeMap<>();
+        final Map<String, MergedFile> merged = new TreeMap<>();
 
         Emitter(JarOutputStream jos, DeterministicZip zip, Relocations relocations) {
             this.jos = jos;
@@ -131,7 +135,8 @@ public final class AssemblyPackager {
                                 .relocateServices(new String(data, StandardCharsets.UTF_8))
                                 .getBytes(StandardCharsets.UTF_8);
                     }
-                    accumulate(merged, name, data);
+                    merged.computeIfAbsent(name, k -> MergedFile.of(originalName))
+                            .add(data);
                 }
                 return;
             }
@@ -150,23 +155,108 @@ public final class AssemblyPackager {
         }
     }
 
-    private static void accumulate(Map<String, ByteArrayOutputStream> sink, String name, byte[] data)
-            throws IOException {
-        ByteArrayOutputStream buf = sink.computeIfAbsent(name, k -> new ByteArrayOutputStream());
-        if (buf.size() > 0) buf.write('\n');
-        buf.write(data);
+    /** One merge file's content across every input that carries it. */
+    private sealed interface MergedFile {
+        void add(byte[] data) throws IOException;
+
+        byte[] render();
+
+        static MergedFile of(String name) {
+            return isPropertiesMergeFile(name) ? new PropertiesUnion() : new Concatenation();
+        }
+    }
+
+    /** Line-oriented files (SPI registrations, {@code AutoConfiguration.imports}): inputs joined by a newline. */
+    private static final class Concatenation implements MergedFile {
+        private final ByteArrayOutputStream buf = new ByteArrayOutputStream();
+
+        @Override
+        public void add(byte[] data) throws IOException {
+            if (buf.size() > 0) buf.write('\n');
+            buf.write(data);
+        }
+
+        @Override
+        public byte[] render() {
+            return buf.toByteArray();
+        }
     }
 
     /**
-     * Paths concatenated across project + dependency jars. SPI files plus common
-     * Spring multi-value META-INF entries that break when first-wins.
+     * {@code spring.factories}-shaped files, which Spring reads with {@link Properties}: a key
+     * repeated across jars would keep only the last jar's value, so each input is parsed and the
+     * comma-separated values are unioned per key, first seen first. Rendered as sorted
+     * {@code key=value} lines with Properties escaping, ASCII only.
+     */
+    private static final class PropertiesUnion implements MergedFile {
+        private final Map<String, Set<String>> values = new TreeMap<>();
+
+        @Override
+        public void add(byte[] data) throws IOException {
+            Properties props = new Properties();
+            props.load(new StringReader(new String(data, StandardCharsets.ISO_8859_1)));
+            for (String key : props.stringPropertyNames()) {
+                Set<String> union = values.computeIfAbsent(key, k -> new LinkedHashSet<>());
+                for (String value : props.getProperty(key).split(",")) {
+                    String trimmed = value.strip();
+                    if (!trimmed.isEmpty()) union.add(trimmed);
+                }
+            }
+        }
+
+        @Override
+        public byte[] render() {
+            StringBuilder out = new StringBuilder();
+            for (Map.Entry<String, Set<String>> e : values.entrySet()) {
+                out.append(escape(e.getKey(), true)).append('=');
+                boolean first = true;
+                for (String value : e.getValue()) {
+                    if (!first) out.append(',');
+                    out.append(escape(value, false));
+                    first = false;
+                }
+                out.append('\n');
+            }
+            return out.toString().getBytes(StandardCharsets.ISO_8859_1);
+        }
+
+        /** {@link Properties#store}'s escaping: separators and comment marks always, spaces in a key or leading. */
+        private static String escape(String s, boolean key) {
+            StringBuilder sb = new StringBuilder(s.length());
+            for (int i = 0; i < s.length(); i++) {
+                char c = s.charAt(i);
+                switch (c) {
+                    case ' ' -> sb.append(key || i == 0 ? "\\ " : " ");
+                    case '\t' -> sb.append("\\t");
+                    case '\n' -> sb.append("\\n");
+                    case '\r' -> sb.append("\\r");
+                    case '\f' -> sb.append("\\f");
+                    case '\\', '=', ':', '#', '!' -> sb.append('\\').append(c);
+                    default -> {
+                        if (c < 0x20 || c > 0x7e) sb.append(String.format("\\u%04X", (int) c));
+                        else sb.append(c);
+                    }
+                }
+            }
+            return sb.toString();
+        }
+    }
+
+    /**
+     * Paths merged across project + dependency jars rather than first-wins: SPI files, Boot's
+     * auto-configuration imports and Spring's Properties-shaped META-INF registries.
      */
     static boolean isMergeFile(String name) {
         if (name.startsWith("META-INF/services/") && !name.endsWith("/")) return true;
+        return isPropertiesMergeFile(name)
+                || name.equals("META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports");
+    }
+
+    /** The merge files Spring loads as {@link Properties}, where a duplicate key would be last-wins. */
+    static boolean isPropertiesMergeFile(String name) {
         return name.equals("META-INF/spring.handlers")
                 || name.equals("META-INF/spring.schemas")
-                || name.equals("META-INF/spring.factories")
-                || name.equals("META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports");
+                || name.equals("META-INF/spring.factories");
     }
 
     /**

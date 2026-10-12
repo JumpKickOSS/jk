@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.jar.JarFile;
@@ -73,6 +74,35 @@ class WarPackagerTest {
                         classes, null, List.of(), dir.resolve("b/web"), second, Map.of(), Map.of()));
 
         assertThat(Files.readAllBytes(first)).isEqualTo(Files.readAllBytes(second));
+    }
+
+    @Test
+    void a_path_two_web_roots_carry_comes_from_the_first_and_the_other_copy_is_reported(@TempDir Path dir)
+            throws IOException {
+        Path classes = write(dir.resolve("classes"), "com/acme/Hello.class", "class");
+        Path webapp = write(dir.resolve("webapp"), "index.html", "placeholder");
+        Path ui = write(dir.resolve("ui/dist"), "index.html", "built");
+        write(ui, "app.js", "js");
+        Path admin = write(dir.resolve("admin/dist"), "index.html", "admin");
+        Map<Path, String> webContent = new LinkedHashMap<>();
+        webContent.put(ui, "");
+        webContent.put(admin, "admin");
+        webContent.put(dir.resolve("late/dist"), "admin");
+        write(dir.resolve("late/dist"), "index.html", "late");
+
+        WarPackager.War war = new WarPackager()
+                .packageWar(new WarPackager.WarRequest(
+                        classes, webapp, List.of(), dir.resolve("web"), dir.resolve("web.war"), Map.of(), webContent));
+
+        Path exploded = dir.resolve("web");
+        assertThat(exploded.resolve("index.html")).hasContent("placeholder");
+        assertThat(exploded.resolve("app.js")).hasContent("js");
+        assertThat(exploded.resolve("admin/index.html")).hasContent("admin");
+        assertThat(war.file()).isEqualTo(dir.resolve("web.war"));
+        assertThat(war.shadowed())
+                .containsExactly(
+                        new WarPackager.Shadowed("index.html", webapp, ui),
+                        new WarPackager.Shadowed("admin/index.html", admin, dir.resolve("late/dist")));
     }
 
     @Test

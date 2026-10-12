@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.jar.Attributes;
@@ -373,6 +374,51 @@ class BootJarPackagerTest {
             // The archive's manifest is jk's own, not the loader's.
             assertThat(jar.getManifest().getMainAttributes().getValue("Start-Class"))
                     .isEqualTo("com.example.App");
+        }
+    }
+
+    @Test
+    void manifest_attributes_are_written_in_name_order_whatever_order_the_map_iterates(@TempDir Path tmp)
+            throws Exception {
+        // The attribute order is part of the jar's bytes, and the request's immutable copy iterates
+        // in a per-JVM order: Boot's own attributes come first, then [manifest] entries by name.
+        Path classes = Files.createDirectories(tmp.resolve("classes"));
+        Path loader = writeJar(
+                tmp.resolve("spring-boot-loader-4.0.0.jar"),
+                "org/springframework/boot/loader/launch/JarLauncher.class");
+        Map<String, String> scrambled = new LinkedHashMap<>();
+        scrambled.put("Implementation-Version", "1.0.0");
+        scrambled.put("Grails-Version", "7.0.0");
+        scrambled.put("Implementation-Title", "widget");
+
+        Path out = tmp.resolve("app.jar");
+        new BootJarPackager()
+                .packageBootJar(new BootJarPackager.BootJarRequest(
+                        classes,
+                        List.of(),
+                        loader,
+                        out,
+                        "com.example.App",
+                        "4.0.0",
+                        scrambled,
+                        new byte[0],
+                        List.of(),
+                        0L));
+
+        try (JarFile jar = new JarFile(out.toFile())) {
+            assertThat(entryText(jar, JarFile.MANIFEST_NAME))
+                    .isEqualTo("Manifest-Version: 1.0\r\n"
+                            + "Main-Class: org.springframework.boot.loader.launch.JarLauncher\r\n"
+                            + "Start-Class: com.example.App\r\n"
+                            + "Spring-Boot-Version: 4.0.0\r\n"
+                            + "Spring-Boot-Classes: BOOT-INF/classes/\r\n"
+                            + "Spring-Boot-Lib: BOOT-INF/lib/\r\n"
+                            + "Spring-Boot-Classpath-Index: BOOT-INF/classpath.idx\r\n"
+                            + "Spring-Boot-Layers-Index: BOOT-INF/layers.idx\r\n"
+                            + "Grails-Version: 7.0.0\r\n"
+                            + "Implementation-Title: widget\r\n"
+                            + "Implementation-Version: 1.0.0\r\n"
+                            + "\r\n");
         }
     }
 
