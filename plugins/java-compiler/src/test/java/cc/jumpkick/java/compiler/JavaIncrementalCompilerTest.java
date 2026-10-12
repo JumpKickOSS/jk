@@ -135,6 +135,42 @@ class JavaIncrementalCompilerTest {
         assertThat(out).contains("\"t\":\"result\",\"status\":\"OK\"");
     }
 
+    /**
+     * A sibling module's processor is on the processor path as its {@code target/classes}, so an
+     * edit to its codegen changes nothing Zinc records: the path string is the same and the
+     * consumer's sources are untouched. The next compile must still regenerate.
+     */
+    @Test
+    void an_in_place_edit_of_the_processor_regenerates_its_consumers(@TempDir Path dir) throws Exception {
+        Path procDir = dir.resolve("proc");
+        writeGenProcessor(procDir, "public int version() { return 1; }");
+
+        Path widget = dir.resolve("src/app/Widget.java");
+        Files.createDirectories(widget.getParent());
+        Files.writeString(widget, "package app; @gen.Gen public class Widget {}");
+
+        Path classOut = dir.resolve("classes");
+        Path genOut = dir.resolve("gen-src");
+        Path workdir = dir.resolve("zinc-work");
+        assertThat(compileBoth(dir, procDir, classOut, genOut, workdir, widget))
+                .as("first compile")
+                .isZero();
+        Path generated = genOut.resolve("app/WidgetGen.java");
+        assertThat(generated).content().contains("return 1;");
+
+        writeGenProcessor(procDir, "public int version() { return 2; }");
+
+        String out = captureCompile(dir, procDir, classOut, genOut, workdir, widget);
+        assertThat(out).contains("\"t\":\"result\",\"status\":\"OK\"");
+        assertThat(generated).content().contains("return 2;");
+        assertThat(classOut.resolve("app/WidgetGen.class")).isRegularFile();
+
+        // Nothing changed since: the analysis is kept and the compile stays incremental.
+        assertThat(captureCompile(dir, procDir, classOut, genOut, workdir, widget))
+                .contains("\"t\":\"result\",\"status\":\"OK\"");
+        assertThat(generated).content().contains("return 2;");
+    }
+
     @Test
     void zinc_compile_emits_compiled_source_list(@TempDir Path dir) throws Exception {
         Path src = dir.resolve("src/a/Hello.java");
@@ -291,6 +327,11 @@ class JavaIncrementalCompilerTest {
 
     /** The {@code gen.Gen} annotation + {@code gen.GenProc} processor, ServiceLoader-registered in {@code procDir}. */
     private static void writeGenProcessor(Path procDir) throws Exception {
+        writeGenProcessor(procDir, "");
+    }
+
+    /** As {@link #writeGenProcessor(Path)}, with {@code members} as the body of every generated class. */
+    private static void writeGenProcessor(Path procDir, String members) throws Exception {
         compile(procDir, Map.of("gen.Gen", """
                         package gen;
                         import java.lang.annotation.*;
@@ -315,14 +356,14 @@ class JavaIncrementalCompilerTest {
                                     try {
                                         JavaFileObject f = processingEnv.getFiler().createSourceFile(name, t);
                                         try (Writer w = f.openWriter()) {
-                                            w.write((pkg.isEmpty()?"":"package "+pkg+";\\n") + "public class " + t.getSimpleName() + "Gen {}\\n");
+                                            w.write((pkg.isEmpty()?"":"package "+pkg+";\\n") + "public class " + t.getSimpleName() + "Gen { MEMBERS }\\n");
                                         }
                                     } catch (IOException ex) { throw new UncheckedIOException(ex); }
                                 }
                                 return true;
                             }
                         }
-                        """));
+                        """.replace("MEMBERS", members)));
         Path services = procDir.resolve("META-INF/services/javax.annotation.processing.Processor");
         Files.createDirectories(services.getParent());
         Files.writeString(services, "gen.GenProc\n");

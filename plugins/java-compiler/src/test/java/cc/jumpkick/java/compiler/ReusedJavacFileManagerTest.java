@@ -73,6 +73,91 @@ class ReusedJavacFileManagerTest {
                 .isNotSameAs(modular);
     }
 
+    /**
+     * A source path set by one compile (a mixed-language module's stubs) must not resolve types for
+     * the next module, which would otherwise compile a stub body into its own output.
+     */
+    @Test
+    void a_source_path_the_next_compile_never_asked_for_replaces_the_manager(@TempDir Path dir) throws Exception {
+        StandardJavaFileManager stubbed =
+                ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of());
+        stubbed.setLocationFromPaths(
+                StandardLocation.SOURCE_PATH, List.of(Files.createDirectories(dir.resolve("stubs"))));
+
+        assertThat(ReusedJavacFileManager.acquire(
+                        JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of(StandardLocation.SOURCE_PATH)))
+                .isSameAs(stubbed);
+        assertThat(ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of()))
+                .isNotSameAs(stubbed);
+    }
+
+    /**
+     * A fresh manager already reports the system modules as set (the running JDK), so a declared
+     * {@code --system} is remembered from the compile that declared it rather than probed, and a
+     * manager that never saw one is kept.
+     */
+    @Test
+    void a_system_image_an_earlier_compile_declared_replaces_the_manager() {
+        StandardJavaFileManager plain =
+                ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of());
+        assertThat(ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of()))
+                .isSameAs(plain);
+
+        StandardJavaFileManager systemed = ReusedJavacFileManager.acquire(
+                JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of(StandardLocation.SYSTEM_MODULES));
+        assertThat(systemed).isSameAs(plain);
+        assertThat(ReusedJavacFileManager.acquire(
+                        JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of(StandardLocation.SYSTEM_MODULES)))
+                .isSameAs(systemed);
+        assertThat(ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of()))
+                .isNotSameAs(systemed);
+    }
+
+    /** Every javac option that sets a path location on the file manager is declared, in both spellings. */
+    @Test
+    void every_path_option_declares_its_location() {
+        assertThat(ProvenanceJavac.declaredLocations(new String[] {
+                    "-sourcepath",
+                    "a",
+                    "--module-source-path",
+                    "b",
+                    "-processorpath",
+                    "c",
+                    "--processor-module-path",
+                    "d",
+                    "-p",
+                    "e",
+                    "--upgrade-module-path",
+                    "f",
+                    "--patch-module",
+                    "m=g",
+                    "--system",
+                    "h",
+                    "-h",
+                    "i",
+                    "-d",
+                    "out",
+                    "-s",
+                    "gen"
+                }))
+                .containsExactlyInAnyOrder(
+                        StandardLocation.SOURCE_PATH,
+                        StandardLocation.MODULE_SOURCE_PATH,
+                        StandardLocation.ANNOTATION_PROCESSOR_PATH,
+                        StandardLocation.ANNOTATION_PROCESSOR_MODULE_PATH,
+                        StandardLocation.MODULE_PATH,
+                        StandardLocation.UPGRADE_MODULE_PATH,
+                        StandardLocation.PATCH_MODULE_PATH,
+                        StandardLocation.SYSTEM_MODULES,
+                        StandardLocation.NATIVE_HEADER_OUTPUT);
+        assertThat(ProvenanceJavac.declaredLocations(
+                        new String[] {"--source-path", "a", "--processor-path", "c", "--module-path", "e"}))
+                .containsExactlyInAnyOrder(
+                        StandardLocation.SOURCE_PATH,
+                        StandardLocation.ANNOTATION_PROCESSOR_PATH,
+                        StandardLocation.MODULE_PATH);
+    }
+
     /** Not thread-safe, so a second compile thread must get its own rather than share this one. */
     @Test
     void another_thread_gets_its_own_manager() throws Exception {

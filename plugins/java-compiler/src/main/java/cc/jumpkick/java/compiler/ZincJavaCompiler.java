@@ -233,11 +233,13 @@ public final class ZincJavaCompiler {
             if (sourceOutput != null) Files.createDirectories(sourceOutput);
             ZincWorkdir zinced = ZincWorkdir.of(workdir);
             zinced.discardAnalysisIfAggregating();
+            String processorDigest = ZincWorkdir.processorDigest(processorPath);
+            zinced.discardAnalysisIfProcessorsChanged(processorDigest);
 
             IncrementalCompiler zinc = ZincUtil.defaultIncrementalCompiler();
             FileConverter converter = PlainVirtualFileConverter.converter();
             ApProvenance provenance = new ApProvenance();
-            processors = processorsFor(processorPath);
+            processors = processorsFor(processorPath, processorDigest);
             phases.mark("processors");
             ConstantDeps constants = new ConstantDeps();
             javac = recordingJavac(converter, processors, provenance, constants, reporter);
@@ -337,6 +339,7 @@ public final class ZincJavaCompiler {
                         full, constants.edges(), producers, List.of(cpFiles), classOutput, stamper, converter);
             }
             zinced.persistAnalysis(store, AnalysisContents.create(analysis, compiled.setup()));
+            zinced.markProcessors(processorDigest);
             phases.mark("persist-analysis");
             phases.write(classOutput, sources.size());
             return new Result(true, reporter.diagnostics(), javac.compiledSources(), provenance.generated);
@@ -445,6 +448,10 @@ public final class ZincJavaCompiler {
                     true,
                     "aggregating annotation processors",
                     allSources(sources, "aggregating annotation processors"));
+        }
+        if (zinced.processorsChanged(processorPath)) {
+            return new Plan(
+                    true, "annotation processors changed", allSources(sources, "annotation processors changed"));
         }
         FileConverter converter = PlainVirtualFileConverter.converter();
         Optional<AnalysisContents> prev = zinced.readAnalysis(zinced.store());
@@ -702,30 +709,36 @@ public final class ZincJavaCompiler {
      * one module at a time today, but the protocol allows concurrent items and a classloader shared
      * by accident is worse than a lock nobody contends.
      */
-    private static final LinkedHashMap<List<Path>, ProcessorLoad> PROCESSOR_LOADERS =
+    private static final LinkedHashMap<List<Path>, LoadedProcessors> PROCESSOR_LOADERS =
             new LinkedHashMap<>(8, 0.75f, true) {
                 @Override
-                protected boolean removeEldestEntry(Map.Entry<List<Path>, ProcessorLoad> eldest) {
+                protected boolean removeEldestEntry(Map.Entry<List<Path>, LoadedProcessors> eldest) {
                     if (size() <= PROCESSOR_LOADER_CAP) return false;
-                    eldest.getValue().discard();
+                    eldest.getValue().load().discard();
                     return true;
                 }
             };
 
+    /** A cached loader with the {@link ZincWorkdir#processorDigest} of the path it loaded. */
+    private record LoadedProcessors(String digest, ProcessorLoad load) {}
+
     /**
-     * The loader for {@code processorPath}, built once per worker and reused after that.
+     * The loader for {@code processorPath}, built once per worker and reused while the path's
+     * contents still digest to {@code processorDigest}: a processor jar is read from the immutable
+     * dependency store, but a sibling module's classes directory is rewritten in place, and a loader
+     * over its previous classes would generate the previous code.
      *
      * <p>Reuse is bounded by the job: the worker's pull loop stays up across the modules of one job
-     * and exits on {@code DONE}, so no loader outlives the build that created it, and a processor jar
-     * is read from the immutable dependency store rather than rewritten under a running build.
+     * and exits on {@code DONE}, so no loader outlives the build that created it.
      */
-    static synchronized ProcessorLoad processorsFor(List<Path> processorPath) {
+    static synchronized ProcessorLoad processorsFor(List<Path> processorPath, String processorDigest) {
         if (processorPath == null || processorPath.isEmpty()) return ProcessorLoad.none();
         List<Path> key = List.copyOf(processorPath);
-        ProcessorLoad cached = PROCESSOR_LOADERS.get(key);
-        if (cached != null) return cached;
+        LoadedProcessors cached = PROCESSOR_LOADERS.get(key);
+        if (cached != null && cached.digest().equals(processorDigest)) return cached.load();
+        if (cached != null) cached.load().discard();
         ProcessorLoad load = loadProcessors(key);
-        PROCESSOR_LOADERS.put(key, load);
+        PROCESSOR_LOADERS.put(key, new LoadedProcessors(processorDigest, load));
         return load;
     }
 
