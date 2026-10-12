@@ -103,9 +103,15 @@ public final class BuildPlan {
     private final Set<CompletableFuture<TaskStatus>> outstanding = ConcurrentHashMap.newKeySet();
 
     private final Map<String, TaskStatus> statuses = new ConcurrentHashMap<>();
-    private final List<BuildPlanResult.Diagnostic> warnings = Collections.synchronizedList(new ArrayList<>());
-    private final List<BuildPlanResult.Diagnostic> errors = Collections.synchronizedList(new ArrayList<>());
-    private final List<BuildPlanResult.StepReport> reports = Collections.synchronizedList(new ArrayList<>());
+
+    /**
+     * Copy-on-write: steps append from their own threads while the failure path scans, so a scan
+     * must never see a concurrent append. Appends are rare next to scans.
+     */
+    private final List<BuildPlanResult.Diagnostic> warnings = new CopyOnWriteArrayList<>();
+
+    private final List<BuildPlanResult.Diagnostic> errors = new CopyOnWriteArrayList<>();
+    private final List<BuildPlanResult.StepReport> reports = new CopyOnWriteArrayList<>();
 
     /** Cross-step shared state — typed via {@link BuildPlanKey}. Reads happen via TaskContext. */
     private final ConcurrentHashMap<String, Object> state = new ConcurrentHashMap<>();
@@ -245,6 +251,9 @@ public final class BuildPlan {
         Set<CompletableFuture<TaskStatus>> bodies = ConcurrentHashMap.newKeySet();
         int running = 0;
         boolean failed = false;
+        // The plan thread was interrupted mid-run: cancel what is in flight, keep draining so every
+        // started step still reports, and hand the flag back once the plan has finished.
+        boolean interrupted = false;
         try {
             while (true) {
                 // Admit everything whose requires() are now satisfied. Re-scan after each
@@ -282,11 +291,17 @@ public final class BuildPlan {
                 if (running == 0) break; // nothing in flight and nothing admissible
                 Done done;
                 try {
-                    done = events.take();
+                    // Once interrupted the drain is bounded: a cancelled handle completes at once,
+                    // so its event is already queued or imminent.
+                    done = interrupted
+                            ? events.poll(CANCELLED_BODY_DRAIN.toMillis(), TimeUnit.MILLISECONDS)
+                            : events.take();
                 } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
+                    interrupted = true;
+                    cancelSiblings(outstanding);
+                    continue;
                 }
+                if (done == null) break; // a handle never completed; nothing more will arrive
                 running--;
                 outstanding.remove(done.future());
                 if (isOk(done.status())) completedOk.add(done.task().name());
@@ -339,6 +354,7 @@ public final class BuildPlan {
                 cancelled.get(),
                 userRequestedCancel.get());
         emit(l -> l.planFinish(result));
+        if (interrupted) Thread.currentThread().interrupt();
         return result;
     }
 

@@ -15,7 +15,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
@@ -712,5 +714,111 @@ class BuildPlanTest {
                 .extracting(BuildPlanResult.StepReport::duration)
                 .containsExactly(Duration.ofMillis(1_500));
         assertThat(result.duration()).isGreaterThanOrEqualTo(Duration.ofMillis(1_500));
+    }
+
+    /**
+     * A step appends diagnostics from several threads while a failing sibling's catch block scans
+     * the same list for what the step already reported. The scan must never throw, and both steps
+     * must still reach a report.
+     */
+    @Test
+    void concurrent_ctx_error_appends_during_a_sibling_failure_leave_every_step_reported() {
+        for (int round = 0; round < 20; round++) {
+            CountDownLatch appending = new CountDownLatch(1);
+            var plan = BuildPlan.builder("noisy-" + round)
+                    .addTask(Task.builder("noisy")
+                            .kind(TaskKind.IO)
+                            .execute(ctx -> {
+                                List<Thread> appenders = new ArrayList<>();
+                                for (int t = 0; t < 4; t++) {
+                                    Thread appender = Thread.ofVirtual().unstarted(() -> {
+                                        appending.countDown();
+                                        for (int i = 0; i < 500; i++) ctx.error("noise", "e" + i);
+                                    });
+                                    appenders.add(appender);
+                                    appender.start();
+                                }
+                                for (Thread appender : appenders) appender.join();
+                            })
+                            .build())
+                    .addTask(Task.builder("failing")
+                            .kind(TaskKind.IO)
+                            .execute(ctx -> {
+                                appending.await();
+                                throw new IllegalStateException("boom");
+                            })
+                            .build())
+                    .build();
+
+            BuildPlanResult result = plan.run();
+            assertThat(result.success()).isFalse();
+            assertThat(result.steps())
+                    .extracting(BuildPlanResult.StepReport::name)
+                    .containsExactlyInAnyOrder("noisy", "failing");
+            assertThat(result.steps())
+                    .extracting(BuildPlanResult.StepReport::status)
+                    .doesNotContain(TaskStatus.RUNNING, TaskStatus.PENDING);
+            assertThat(result.errors())
+                    .extracting(BuildPlanResult.Diagnostic::message)
+                    .noneMatch(m -> m != null && m.contains("ConcurrentModificationException"));
+            assertThat(result.errors())
+                    .filteredOn(d -> d.step().equals("noisy"))
+                    .hasSize(2_000);
+        }
+    }
+
+    /**
+     * Interrupting the plan thread mid-run cancels the steps in flight, waits for their bodies,
+     * reports every step, fires planFinish and leaves the thread's interrupt flag set.
+     */
+    @Test
+    void an_interrupted_plan_thread_cancels_running_steps_and_still_reports_every_step() throws InterruptedException {
+        CountDownLatch started = new CountDownLatch(2);
+        AtomicInteger bodiesRunning = new AtomicInteger();
+        // Backstop so a body that never sees the cancel cannot outlive the test.
+        AtomicBoolean release = new AtomicBoolean();
+        Task.Body body = ctx -> {
+            bodiesRunning.incrementAndGet();
+            try {
+                started.countDown();
+                Await.until(Duration.ofSeconds(30), () -> ctx.cancelled() || release.get());
+            } finally {
+                bodiesRunning.decrementAndGet();
+            }
+        };
+        RecordingListener listener = new RecordingListener();
+        var plan = BuildPlan.builder("interrupted")
+                .addListener(listener)
+                .addTask(Task.builder("io").kind(TaskKind.IO).execute(body).build())
+                .addTask(Task.builder("cpu").kind(TaskKind.CPU).execute(body).build())
+                .addTask(Task.builder("after").requires("io").execute(ctx -> {}).build())
+                .build();
+
+        AtomicReference<BuildPlanResult> result = new AtomicReference<>();
+        AtomicBoolean flagPreserved = new AtomicBoolean();
+        Thread runner = new Thread(() -> {
+            result.set(plan.run());
+            flagPreserved.set(Thread.currentThread().isInterrupted());
+        });
+        runner.start();
+        try {
+            assertThat(started.await(10, TimeUnit.SECONDS)).isTrue();
+            runner.interrupt();
+            assertThat(runner.join(Duration.ofSeconds(10))).isTrue();
+        } finally {
+            release.set(true);
+        }
+
+        BuildPlanResult r = result.get();
+        assertThat(r).isNotNull();
+        assertThat(r.cancelled()).isTrue();
+        assertThat(r.success()).isFalse();
+        assertThat(r.steps()).extracting(BuildPlanResult.StepReport::name).containsExactly("io", "cpu", "after");
+        assertThat(r.steps())
+                .extracting(BuildPlanResult.StepReport::status)
+                .doesNotContain(TaskStatus.RUNNING, TaskStatus.PENDING);
+        assertThat(bodiesRunning).hasValue(0);
+        assertThat(listener.finalResult).isSameAs(r);
+        assertThat(flagPreserved).isTrue();
     }
 }
