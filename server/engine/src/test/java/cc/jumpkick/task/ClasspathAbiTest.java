@@ -142,6 +142,27 @@ class ClasspathAbiTest {
         });
     }
 
+    /**
+     * The memo outlives the extractor: a token it holds from an earlier {@link ClassAbi} is keyed
+     * under that format, so the current extractor reads the bytes instead of serving it.
+     */
+    @Test
+    void a_token_memoized_under_another_extractor_format_is_not_served(@TempDir Path dir) throws Exception {
+        Path jar = jar(dir.resolve("a.jar"), "C.class", classWithReturn(1));
+        withCache(dir.resolve("cache"), () -> {
+            try {
+                String identity = ClasspathFingerprint.entry(jar);
+                AbiMemo.put(identity, "abi:stale");
+                AbiMemo.put("abi.0:" + identity, "abi:stale");
+                ClasspathAbi.resetStats();
+                assertThat(ClasspathAbi.token(jar)).isNotEqualTo("abi:stale");
+                assertThat(ClasspathAbi.extracts()).isEqualTo(1);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
     @Test
     void resource_only_dir_keeps_the_token(@TempDir Path dir) throws Exception {
         Path classes = dir.resolve("classes");

@@ -17,7 +17,9 @@ import org.jspecify.annotations.Nullable;
  * The lines one client stream holds on disk while its client reads slower than its job emits: one
  * line per JSONL line, appended by producers and read back in order by the stream's writer thread.
  * Named {@code stream-<pid>-<n>.jsonl}, so a later engine can sweep what a dead one left behind.
- * Not thread-safe: the stream appends under its monitor and only its writer thread reads.
+ * Only the stream's writer thread reads. {@link #append} and {@link #next} exclude each other:
+ * a reader that saw a line's bytes mid-write could end at a torn multibyte sequence, which the
+ * UTF-8 decoder reports as malformed input.
  */
 @NullMarked
 final class SpillFile implements AutoCloseable {
@@ -43,14 +45,14 @@ final class SpillFile implements AutoCloseable {
     }
 
     /** Append one line; it is on disk, readable by {@link #next}, when this returns. */
-    void append(String line) throws IOException {
+    synchronized void append(String line) throws IOException {
         out.write(line);
         out.write('\n');
         out.flush();
     }
 
     /** The next line appended and not read yet. The caller knows one is there. */
-    String next() throws IOException {
+    synchronized String next() throws IOException {
         BufferedReader reader = in;
         if (reader == null) in = reader = Files.newBufferedReader(path, StandardCharsets.UTF_8);
         String line = reader.readLine();
@@ -64,7 +66,7 @@ final class SpillFile implements AutoCloseable {
 
     /** Close and delete the file. */
     @Override
-    public void close() {
+    public synchronized void close() {
         try {
             out.close();
         } catch (IOException ignored) {

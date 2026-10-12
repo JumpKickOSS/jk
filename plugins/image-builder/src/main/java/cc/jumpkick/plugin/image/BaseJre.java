@@ -14,9 +14,12 @@ import com.google.cloud.tools.jib.api.RegistryException;
 import com.google.cloud.tools.jib.api.TarImage;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -24,6 +27,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.zip.GZIPInputStream;
@@ -254,23 +258,52 @@ final class BaseJre {
                     if (victim.startsWith(dest) && !victim.equals(dest)) whiteout(victim, own);
                     continue;
                 }
-                if (entry.isDirectory()) {
-                    Files.createDirectories(target);
-                    claim(own, target, dest);
-                    continue;
-                }
                 // A symlink entry carries no content: writing it as a file leaves a 0-byte stub
                 // that execs successfully and does nothing, which is worse than not having it.
-                if (entry.isSymbolicLink() || entry.isLink() || !entry.isFile()) continue;
-                Files.createDirectories(target.getParent());
+                if (!entry.isDirectory() && (entry.isSymbolicLink() || entry.isLink() || !entry.isFile())) continue;
                 try {
-                    Files.copy(tar, target, StandardCopyOption.REPLACE_EXISTING);
-                    if ((entry.getMode() & 0100) != 0) target.toFile().setExecutable(true, false);
+                    if (entry.isDirectory()) {
+                        directory(target, own, dest);
+                    } else {
+                        directory(Objects.requireNonNull(target.getParent()), own, dest);
+                        file(tar, target, own);
+                        if ((entry.getMode() & 0100) != 0) target.toFile().setExecutable(true, false);
+                    }
                     claim(own, target, dest);
                 } catch (IOException e) {
                     if (!tolerate) throw e;
                 }
             }
+        }
+    }
+
+    /**
+     * {@code dir} exists as a directory when this returns. A lower layer's file sitting where
+     * {@code dir} or one of its parents goes is replaced, the way a whiteout removes it; one this
+     * layer wrote stays, and the create fails.
+     */
+    private static void directory(Path dir, Set<Path> own, Path dest) throws IOException {
+        for (Path p = dir; p != null && p.startsWith(dest) && !p.equals(dest); p = p.getParent()) {
+            BasicFileAttributes attrs;
+            try {
+                attrs = Files.readAttributes(p, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            } catch (IOException absent) {
+                continue; // or below a file: the walk reaches that file next
+            }
+            if (!attrs.isDirectory() && !own.contains(p)) Files.delete(p);
+            break;
+        }
+        Files.createDirectories(dir);
+    }
+
+    /** Write the entry's bytes to {@code target}, replacing a lower layer's directory there; one this layer wrote stays. */
+    private static void file(InputStream bytes, Path target, Set<Path> own) throws IOException {
+        try {
+            Files.copy(bytes, target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (DirectoryNotEmptyException lower) {
+            if (own.contains(target)) throw lower;
+            PathUtil.deleteRecursivelyOrThrow(target);
+            Files.copy(bytes, target, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 

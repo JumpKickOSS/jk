@@ -28,6 +28,12 @@ public final class ClassAbi {
 
     static final String KOTLIN_METADATA = "Lkotlin/Metadata;";
 
+    /**
+     * Names the shape of {@link #apiLines}. Moves with any change to what a line carries or how
+     * it is rendered, so a token memoized under the earlier shape is never served again.
+     */
+    static final String FORMAT = "1";
+
     private ClassAbi() {}
 
     public record Fingerprint(String apiHex) {}

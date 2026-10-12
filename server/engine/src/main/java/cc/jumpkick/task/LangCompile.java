@@ -228,7 +228,7 @@ public final class LangCompile {
      * the key names bytes the worker may not have read — and {@code stateDir}, the incremental
      * state that would pair the earlier hash with the later classes, is dropped.
      */
-    private static Result forkAndStore(
+    static Result forkAndStore(
             String taskId,
             String key,
             Path outputDir,
@@ -248,12 +248,16 @@ public final class LangCompile {
         if (stateDir != null) ActionCachePrune.markInUse(stateDir);
         CasPrewriter prewriter = CasPrewriter.watching(cas, outputDir);
         CompileResult cr;
-        Map<String, String> outputs;
         try {
             cr = fork.get();
-        } finally {
-            outputs = MirroredOutputs.without(outputDir, prewriter.finish());
+        } catch (RuntimeException | Error compileFailure) {
+            // The failure is the result. finish() walks and hashes the output tree, and a walk
+            // over what a dying compiler left behind can throw too — from a finally block that
+            // throw would replace the compiler's own exception with a filesystem one.
+            prewriter.close();
+            throw compileFailure;
         }
+        Map<String, String> outputs = MirroredOutputs.without(outputDir, prewriter.finish());
         if (!cr.success()) {
             return new Result(false, "errors", key, cr.diagnostics(), List.of());
         }
@@ -278,13 +282,13 @@ public final class LangCompile {
 
     /** The inputs a stored record carries for {@code jk why-rebuilt}, taken before the worker reads a source. */
     @FunctionalInterface
-    private interface Inputs {
+    interface Inputs {
         Map<String, String> snapshot() throws IOException;
     }
 
     /** The sources whose bytes differ from a snapshot, asked once the worker has returned. */
     @FunctionalInterface
-    private interface Moved {
+    interface Moved {
         List<Path> since(Map<String, String> snapshot) throws IOException;
     }
 

@@ -608,7 +608,7 @@ public final class WireWriter {
                 }
                 String line;
                 try {
-                    // Only this thread reads the file; producers append under the monitor.
+                    // Only this thread reads the file; its lock keeps a producer's append whole.
                     line = p != null ? p.line() : Objects.requireNonNull(file).next();
                     write(line);
                 } catch (IOException e) {
