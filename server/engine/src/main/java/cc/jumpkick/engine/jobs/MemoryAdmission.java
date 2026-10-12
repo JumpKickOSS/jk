@@ -44,15 +44,15 @@ import org.jspecify.annotations.Nullable;
  * {@code OutOfMemoryError} exit that takes every other job with it; the refusal names the cap to
  * raise.
  *
- * <p>Two fairness rules keep one long job from holding the whole budget for hours. A <em>brief</em>
- * job — any kind that is not a build, test, compile, native or image run: format, guard, lock,
- * explain, import, tree, … — is judged by the ledger of estimates alone and by the host's free
- * memory, never by the heap a long job has committed, and it does not wait its turn behind queued
- * long jobs. And the head of the queue, whatever its kind, is admitted once it has waited {@link
- * Timing#fairWaitMs} as long as the host has {@link #HOST_HEADROOM_BYTES} beyond its estimate free,
- * even when the heap view says no. A job that has waited {@link Timing#queueWaitMs} gives up as
- * {@link Verdict#TIMED_OUT}; while it waits, its listener is told its position every {@link
- * Timing#reportMs}.
+ * <p>Two fairness rules keep one long job from holding the whole budget for hours; both read the
+ * ledger of estimates and the host's free memory, never the heap a long job has committed (mostly
+ * garbage a collection returns), and neither admits past the heap's ceiling — a JVM cannot grow
+ * past its {@code -Xmx} however much the host has free. A <em>brief</em> job — any kind that is
+ * not a build, test, compile, native or image run: format, guard, lock, explain, import, tree, … —
+ * is judged that way from the start and does not wait its turn behind queued long jobs. The head
+ * of the queue, whatever its kind, is judged that way once it has waited {@link Timing#fairWaitMs}.
+ * A job that has waited {@link Timing#queueWaitMs} gives up as {@link Verdict#TIMED_OUT}; while it
+ * waits, its listener is told its position every {@link Timing#reportMs}.
  */
 public final class MemoryAdmission {
 
@@ -127,7 +127,7 @@ public final class MemoryAdmission {
 
     /**
      * The gate's clocks, in milliseconds. {@code fairWaitMs}: how long the head of the queue waits
-     * before the host's free memory alone admits it. {@code queueWaitMs}: how long any job waits
+     * before the ledger of estimates alone judges it. {@code queueWaitMs}: how long any job waits
      * before it gives up ({@code 0} = without bound). {@code reportMs}: how often a waiting job's
      * listener hears its position.
      */
@@ -310,7 +310,7 @@ public final class MemoryAdmission {
         boolean head = isHead(jid);
         if ((head && fits(estimate))
                 || (brief && fitsBeside(estimate))
-                || (head && waited >= timing.fairWaitMs() && hostHasRoom(estimate))) {
+                || (head && waited >= timing.fairWaitMs() && fitsBeside(estimate))) {
             take(jid, estimate);
             return Verdict.ADMITTED;
         }
@@ -406,10 +406,11 @@ public final class MemoryAdmission {
     }
 
     /**
-     * The brief-job view: the ledger of estimates says the heap holds it beside the admitted jobs,
-     * and the host has room for it. The committed heap is not consulted — a long job's committed
-     * heap is mostly garbage that a collection returns, and waiting for one is what starved the
-     * queue.
+     * The fairness view, for a brief job and for the head past its fair wait: the ledger of
+     * estimates says the heap holds it beside the admitted jobs, and the host has room for it. The
+     * committed heap is not consulted — a long job's committed heap is mostly garbage that a
+     * collection returns, and waiting for one is what starved the queue. The ledger still is: an
+     * admission past it is how a heap of concurrent jobs ends in the {@code OutOfMemoryError} exit.
      */
     private boolean fitsBeside(long estimate) {
         if (admitted.isEmpty()) return true;

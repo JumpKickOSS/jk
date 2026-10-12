@@ -84,17 +84,20 @@ estimated to need 300 MiB of engine heap and the engine's cap is 256 MiB — set
 max-heap-mb in ~/.jk/config.toml (or JK_ENGINE_MAX_HEAP_MB) to at least 332, then jk engine stop`.
 The engine cannot grow its own heap; the next command starts one under the new cap.
 
-**Fairness.** One long job never holds the whole budget for hours. Two rules admit past the
-plain arithmetic, both only when the host itself has memory to spare (256 MiB beyond the job's
-estimate, read from the OS's available-memory figure):
+**Fairness.** One long job never holds the whole budget for hours. Two rules judge a job by
+the ledger of estimates alone — never by the heap a long job has committed, which is mostly
+garbage a collection returns — and only when the host itself has memory to spare (256 MiB
+beyond the job's estimate, read from the OS's available-memory figure). Neither admits a job
+the estimates say the heap cannot hold: the engine cannot grow past its cap however much the
+host has free, and admitting past it is how a heap full of concurrent jobs ends in the
+out-of-memory exit below.
 
 - A **brief job** — any kind other than `build`, `test`, `compile`, `native` and `image`:
-  `format`, `guard`, `lock`, `explain`, `import`, `tree`, `update`, … — is judged by the ledger
-  of estimates alone, never by the heap a long job has committed (mostly garbage a collection
-  returns), and does not wait its turn behind queued long jobs. `jk format --check` runs beside a
-  running `jk test`.
-- The **head of the queue**, whatever its kind, is admitted after **five minutes** of waiting,
-  even when the estimate says the heap is short.
+  `format`, `guard`, `lock`, `explain`, `import`, `tree`, `update`, … — is judged that way from
+  the start and does not wait its turn behind queued long jobs. `jk format --check` runs beside
+  a running `jk test`.
+- The **head of the queue**, whatever its kind, is judged that way after **five minutes** of
+  waiting, so a long job's committed heap alone never holds it back longer than that.
 
 A job that has waited `queue-wait-ms` (default one hour) without being admitted **gives up**
 with an error that names the jobs ahead of it and the live job holding the heap —

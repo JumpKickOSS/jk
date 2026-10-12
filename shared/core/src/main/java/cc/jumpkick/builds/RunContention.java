@@ -29,12 +29,16 @@ public final class RunContention {
 
     private RunContention() {}
 
-    /** {@code [startedAt, finishedAt]} of a finished run, or {@code null} when the record does not say. */
+    /**
+     * {@code [startedAt, finishedAt]} of a finished run, or {@code null} when the record does not
+     * say. Read from the record's head ({@link ProjectBuilds#recordHead}): the window sits among the
+     * scalar fields, and the harvest runs beside every live job on the engine's heap.
+     */
     static long @Nullable [] window(Path run) {
         Path record = run.resolve(ProjectBuilds.RECORD);
         if (!Files.isRegularFile(record)) return null;
         try {
-            String json = Files.readString(record, StandardCharsets.UTF_8);
+            String json = ProjectBuilds.recordHead(record);
             Matcher s = STARTED.matcher(json);
             Matcher f = FINISHED.matcher(json);
             if (!s.find() || !f.find()) return null;
