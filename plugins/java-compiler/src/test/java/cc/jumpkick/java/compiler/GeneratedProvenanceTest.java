@@ -62,7 +62,8 @@ class GeneratedProvenanceTest {
         Files.writeString(generated, "class AGen {}");
 
         GeneratedProvenance.of(workdir)
-                .reconcile(sourceOutput, classOutput, List.of(origin), Map.of(generated, Set.of(origin)));
+                .reconcile(
+                        sourceOutput, classOutput, List.of(origin), List.of(origin), Map.of(generated, Set.of(origin)));
 
         assertThat(Files.readString(workdir.resolve("provenance.tsv"))).contains("AGen.java");
     }
@@ -87,7 +88,8 @@ class GeneratedProvenanceTest {
                         + "\n");
 
         GeneratedProvenance.of(workdir)
-                .reconcile(sourceOutput, classOutput, List.of(origin), Map.of(generated, Set.of(origin)));
+                .reconcile(
+                        sourceOutput, classOutput, List.of(origin), List.of(origin), Map.of(generated, Set.of(origin)));
 
         String rewritten = Files.readString(workdir.resolve("provenance.tsv"));
         assertThat(rewritten).doesNotContain("Gone.java");
@@ -110,13 +112,13 @@ class GeneratedProvenanceTest {
 
         GeneratedProvenance prov = GeneratedProvenance.of(tmp);
         // Build 1: the processor generated WidgetGen.java from the tab-named origin.
-        prov.reconcile(srcOut, classOut, List.of(origin), Map.of(gen, Set.of(origin)));
+        prov.reconcile(srcOut, classOut, List.of(origin), List.of(origin), Map.of(gen, Set.of(origin)));
         assertThat(gen).exists();
 
         // Build 2: the origin recompiled, nothing regenerated → the generated file must be
         // pruned. With the record split on the raw tab, the row was malformed, silently
         // skipped, and the stale file survived forever.
-        prov.reconcile(srcOut, classOut, List.of(origin), Map.of());
+        prov.reconcile(srcOut, classOut, List.of(origin), List.of(origin), Map.of());
         assertThat(gen).as("the stale generated source is pruned").doesNotExist();
     }
 
@@ -142,12 +144,18 @@ class GeneratedProvenanceTest {
                 link.resolve("gen-src"),
                 link.resolve("classes"),
                 List.of(link.resolve("src/A.java"), link.resolve("src/B.java")),
+                List.of(link.resolve("src/A.java"), link.resolve("src/B.java")),
                 Map.of(
                         real.resolve("gen-src/AGen.java"), Set.of(real.resolve("src/A.java")),
                         real.resolve("gen-src/BGen.java"), Set.of(real.resolve("src/B.java"))));
 
         // Only A recompiled, and it generated nothing: AGen is pruned through either spelling, BGen kept.
-        prov.reconcile(link.resolve("gen-src"), link.resolve("classes"), List.of(link.resolve("src/A.java")), Map.of());
+        prov.reconcile(
+                link.resolve("gen-src"),
+                link.resolve("classes"),
+                List.of(link.resolve("src/A.java"), link.resolve("src/B.java")),
+                List.of(link.resolve("src/A.java")),
+                Map.of());
         assertThat(real.resolve("gen-src/AGen.java")).doesNotExist();
         assertThat(link.resolve("gen-src/AGen.java")).doesNotExist();
         assertThat(real.resolve("classes/AGen.class")).doesNotExist();
@@ -156,6 +164,82 @@ class GeneratedProvenanceTest {
         assertThat(Files.readString(workdir.resolve("provenance.tsv")))
                 .contains("BGen.java")
                 .doesNotContain("AGen.java");
+    }
+
+    @Test
+    void a_generated_file_whose_origin_was_deleted_is_pruned(@TempDir Path tmp) throws Exception {
+        Path srcOut = Files.createDirectories(tmp.resolve("gen-src"));
+        Path classOut = Files.createDirectories(tmp.resolve("classes"));
+        Path src = Files.createDirectories(tmp.resolve("src"));
+        Path widget = Files.writeString(src.resolve("Widget.java"), "class Widget {}");
+        Path other = Files.writeString(src.resolve("Other.java"), "class Other {}");
+        Path gen = Files.writeString(srcOut.resolve("WidgetGen.java"), "class WidgetGen {}");
+        Path genClass = Files.writeString(classOut.resolve("WidgetGen.class"), "");
+        Path genInner = Files.writeString(classOut.resolve("WidgetGen$Inner.class"), "");
+
+        GeneratedProvenance prov = GeneratedProvenance.of(tmp);
+        // Build 1: the processor generated WidgetGen.java from Widget.java.
+        prov.reconcile(srcOut, classOut, List.of(widget, other), List.of(widget, other), Map.of(gen, Set.of(widget)));
+        assertThat(gen).exists();
+
+        // Build 2: Widget.java is deleted, so javac compiled nothing and regenerated nothing. The
+        // origin was never recompiled, but it is gone — nothing vouches for WidgetGen any more.
+        Files.delete(widget);
+        prov.reconcile(srcOut, classOut, List.of(other), List.of(), Map.of());
+        assertThat(gen).as("the generated source is pruned").doesNotExist();
+        assertThat(genClass).as("its class file is pruned").doesNotExist();
+        assertThat(genInner).as("its nested class file is pruned").doesNotExist();
+        assertThat(Files.readString(tmp.resolve("provenance.tsv"))).doesNotContain("WidgetGen.java");
+    }
+
+    @Test
+    void a_generated_file_with_one_surviving_origin_is_kept_until_that_origin_recompiles(@TempDir Path tmp)
+            throws Exception {
+        Path srcOut = Files.createDirectories(tmp.resolve("gen-src"));
+        Path classOut = Files.createDirectories(tmp.resolve("classes"));
+        Path src = Files.createDirectories(tmp.resolve("src"));
+        Path a = Files.writeString(src.resolve("A.java"), "class A {}");
+        Path b = Files.writeString(src.resolve("B.java"), "class B {}");
+        Path gen = Files.writeString(srcOut.resolve("Both.java"), "class Both {}");
+        Path genClass = Files.writeString(classOut.resolve("Both.class"), "");
+
+        GeneratedProvenance prov = GeneratedProvenance.of(tmp);
+        prov.reconcile(srcOut, classOut, List.of(a, b), List.of(a, b), Map.of(gen, Set.of(a, b)));
+
+        // A is deleted and B untouched: B still vouches for Both, so it stays.
+        Files.delete(a);
+        prov.reconcile(srcOut, classOut, List.of(b), List.of(), Map.of());
+        assertThat(gen).exists();
+        assertThat(genClass).exists();
+        assertThat(Files.readString(tmp.resolve("provenance.tsv"))).contains("Both.java");
+
+        // B recompiles and generates nothing: no origin is left to vouch for Both.
+        prov.reconcile(srcOut, classOut, List.of(b), List.of(b), Map.of());
+        assertThat(gen).doesNotExist();
+        assertThat(genClass).doesNotExist();
+    }
+
+    @Test
+    void a_row_with_no_origins_is_dropped_from_the_map(@TempDir Path tmp) throws Exception {
+        Path workdir = Files.createDirectories(tmp.resolve("work"));
+        Path srcOut = Files.createDirectories(tmp.resolve("gen-src"));
+        Path classOut = Files.createDirectories(tmp.resolve("classes"));
+        Path origin =
+                Files.writeString(Files.createDirectories(tmp.resolve("src")).resolve("A.java"), "class A {}");
+        Path gen = Files.writeString(srcOut.resolve("AGen.java"), "class AGen {}");
+        Path orphan = Files.writeString(srcOut.resolve("Orphan.java"), "class Orphan {}");
+        Files.writeString(
+                workdir.resolve("provenance.tsv"),
+                GeneratedProvenance.escape(orphan.toString()) + "\t\n"
+                        + GeneratedProvenance.escape(gen.toString()) + "\t"
+                        + GeneratedProvenance.escape(origin.toString())
+                        + "\n");
+
+        GeneratedProvenance.of(workdir).reconcile(srcOut, classOut, List.of(origin), List.of(), Map.of());
+
+        String rewritten = Files.readString(workdir.resolve("provenance.tsv"));
+        assertThat(rewritten).contains("AGen.java").doesNotContain("Orphan.java");
+        assertThat(gen).exists();
     }
 
     @Test

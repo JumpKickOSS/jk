@@ -201,6 +201,40 @@ class JavaIncrementalCompilerTest {
     }
 
     @Test
+    void a_generated_file_whose_origin_was_deleted_is_pruned(@TempDir Path dir) throws Exception {
+        // Deleting Widget.java hands javac nothing to recompile: Zinc drops Widget.class, but
+        // WidgetGen's origin was never "recompiled", only removed. The prune must read a gone
+        // origin the way it reads a recompiled one, or WidgetGen.class ships in the jar.
+        Path procDir = dir.resolve("proc");
+        writeGenProcessor(procDir);
+
+        Path widget = dir.resolve("src/app/Widget.java");
+        Path other = dir.resolve("src/app/Other.java");
+        Files.createDirectories(widget.getParent());
+        Files.writeString(widget, "package app; @gen.Gen public class Widget {}");
+        Files.writeString(other, "package app; public class Other {}");
+
+        Path classOut = dir.resolve("classes");
+        Path genOut = dir.resolve("gen-src");
+        Path workdir = dir.resolve("zinc-work");
+
+        assertThat(compileBoth(dir, procDir, classOut, genOut, workdir, widget, other))
+                .as("first compile")
+                .isZero();
+        assertThat(classOut.resolve("app/WidgetGen.class")).isRegularFile();
+
+        Files.delete(widget);
+        assertThat(compileBoth(dir, procDir, classOut, genOut, workdir, other))
+                .as("second compile")
+                .isZero();
+
+        assertThat(classOut.resolve("app/Widget.class")).doesNotExist();
+        assertThat(genOut.resolve("app/WidgetGen.java")).doesNotExist();
+        assertThat(classOut.resolve("app/WidgetGen.class")).doesNotExist();
+        assertThat(classOut.resolve("app/Other.class")).isRegularFile();
+    }
+
+    @Test
     void a_generated_file_is_pruned_when_the_output_root_is_reached_through_a_symlink(@TempDir Path dir)
             throws Exception {
         // The same prune, with one link between the build's idea of the output root and the real
