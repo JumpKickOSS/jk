@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
@@ -72,9 +73,10 @@ public final class JkBuildParser {
      * grow without bound. Stores the <em>local</em> manifest only; workspace inheritance is applied
      * by {@link #parse(Path)} on top so it always sees a fresh root.
      *
-     * <p>The stamp is {@code (size, mtime)} except inside the settle window, so a hit does not
-     * re-read the file. {@code parse} fans out over every sibling; without that, a read-only
-     * {@code jk status} would re-read the same handful of manifests thousands of times.
+     * <p>The stamp is {@code (size, mtime)} of the manifest and of its catalog files, except inside
+     * the settle window, so a hit does not re-read the file. {@code parse} fans out over every
+     * sibling; without that, a read-only {@code jk status} would re-read the same handful of
+     * manifests thousands of times.
      */
     private static final StampedMemo<Path, ManifestStamp, JkBuild> PARSE_CACHE =
             StampedMemo.bounded(MANIFEST_MEMO_ENTRIES);
@@ -90,8 +92,9 @@ public final class JkBuildParser {
             StampedMemo.bounded(MANIFEST_MEMO_ENTRIES);
 
     /**
-     * Two-tier staleness stamp for a manifest: {@code (size, mtime)} normally, plus the file's bytes
-     * while its mtime is too fresh to trust.
+     * Staleness stamp for a manifest: {@code (size, mtime)} of {@code jk.toml}, plus its bytes while
+     * its mtime is too fresh to trust, plus the stamp of every catalog file its short names resolve
+     * through.
      *
      * <p>A same-length edit landing inside one filesystem mtime tick is invisible to
      * {@code (size, mtime)}, and on Windows the tick is coarse enough that an editor save followed
@@ -103,12 +106,19 @@ public final class JkBuildParser {
      * manifest settles recomputes once. That is one extra parse, in the safe direction: the rule can
      * only ever be too suspicious, never too trusting.
      *
+     * <p>The memoized {@link JkBuild} bakes in the {@code group:artifact} each short name resolved
+     * to, so the stamp carries {@link LibraryCatalog#stamp} for the module too: a rewrite of the
+     * project's {@code jk-libs.toml} or of the global layer, or one appearing or going, misses the
+     * memo even though {@code jk.toml} is untouched.
+     *
      * <p>Same reasoning, same constant, as {@code FileHashMemo}'s settle gate on the engine side.
      *
      * @param body the file's contents while its mtime is inside the settle window, else {@code null}
+     * @param catalog the catalog files {@link LibraryCatalog#forProject} reads for the module, each
+     *     with its own {@code (size, mtime)} or {@code null} when absent
      */
     private record ManifestStamp(
-            long size, FileTime modified, @Nullable String body) {
+            long size, FileTime modified, @Nullable String body, Map<Path, @Nullable FileStamp> catalog) {
 
         /** Distrust {@code (size, mtime)} for a file modified within this window. */
         private static final long SETTLE_MS = 2_000;
@@ -122,7 +132,11 @@ public final class JkBuildParser {
             }
             long mtime = attrs.lastModifiedTime().toMillis();
             boolean settled = System.currentTimeMillis() - mtime >= SETTLE_MS;
-            return new ManifestStamp(attrs.size(), attrs.lastModifiedTime(), settled ? null : read.read(file));
+            return new ManifestStamp(
+                    attrs.size(),
+                    attrs.lastModifiedTime(),
+                    settled ? null : read.read(file),
+                    LibraryCatalog.stamp(moduleDirOf(file)));
         }
     }
 
