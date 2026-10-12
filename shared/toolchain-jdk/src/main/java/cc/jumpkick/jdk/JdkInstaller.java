@@ -569,21 +569,22 @@ public final class JdkInstaller {
     private static void extractTar(Path archive, Path destDir, boolean gzipped) throws IOException {
         try (InputStream fis = new BufferedInputStream(Files.newInputStream(archive));
                 InputStream inflated = gzipped ? new GZIPInputStream(fis) : fis) {
-            MinimalTar.stream(inflated, (name, linkName, mode, isDir, isLink, data, size) -> {
+            MinimalTar.stream(inflated, (name, linkName, mode, kind, data, size) -> {
                 // Drop macOS AppleDouble sidecars (`._foo`) anywhere in the tree.
                 if (isAppleDoubleSidecar(name)) return;
                 Path out = destDir.resolve(name).normalize();
                 if (!out.startsWith(destDir)) {
                     throw new IOException("tar entry escapes destination: " + name);
                 }
-                if (isDir) {
-                    MinimalTar.createDirectoryInside(destDir, out);
-                } else if (isLink) {
-                    MinimalTar.createSymlinkInside(destDir, out, linkName);
-                } else {
-                    MinimalTar.requireParentInside(destDir, out);
-                    Files.copy(data, out);
-                    MinimalTar.applyMode(out, mode);
+                switch (kind) {
+                    case DIRECTORY -> MinimalTar.createDirectoryInside(destDir, out);
+                    case SYMLINK -> MinimalTar.createSymlinkInside(destDir, out, linkName);
+                    case HARD_LINK -> MinimalTar.createHardLinkInside(destDir, out, linkName);
+                    case FILE -> {
+                        MinimalTar.requireParentInside(destDir, out);
+                        Files.copy(data, out);
+                        MinimalTar.applyMode(out, mode);
+                    }
                 }
             });
         }

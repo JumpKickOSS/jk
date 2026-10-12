@@ -6,6 +6,8 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.repo.RepoTransport;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URI;
 import java.net.http.HttpResponse;
 import java.time.Instant;
@@ -134,6 +136,31 @@ public final class S3Transport implements RepoTransport {
         if (status == 404) return Optional.empty();
         if (status >= 400) throw new IOException("S3 HTTP " + status + " fetching " + object);
         return Optional.of(resp.body());
+    }
+
+    /** The object streamed, so an artifact in flight costs its connection and not its payload. */
+    @Override
+    public Optional<InputStream> fetchStream(URI uri, RepoCredential ignored) throws IOException, InterruptedException {
+        URI object = objectUri(uri);
+        String payloadHash = SigV4Signer.sha256Hex(new byte[0]);
+        HttpResponse<InputStream> resp = http.getStream(object, signedHeaders("GET", object, payloadHash));
+        int status = resp.statusCode();
+        if (status == 404) {
+            drain(resp.body());
+            return Optional.empty();
+        }
+        if (status >= 400) {
+            drain(resp.body());
+            throw new IOException("S3 HTTP " + status + " fetching " + object);
+        }
+        return Optional.of(resp.body());
+    }
+
+    /** Consume and discard a non-success body so the connection can be reused. */
+    private static void drain(InputStream body) throws IOException {
+        try (body) {
+            body.transferTo(OutputStream.nullOutputStream());
+        }
     }
 
     @Override

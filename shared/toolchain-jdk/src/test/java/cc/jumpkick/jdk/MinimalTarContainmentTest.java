@@ -139,6 +139,51 @@ class MinimalTarContainmentTest {
     }
 
     @Test
+    void a_hard_link_to_an_extracted_file_shares_its_bytes(@TempDir Path tmp) throws Exception {
+        Path dest = Files.createDirectories(tmp.resolve("jdk"));
+        Files.createDirectories(dest.resolve("lib"));
+        Files.writeString(dest.resolve("lib/libjli.so"), "launcher");
+
+        MinimalTar.createHardLinkInside(dest, dest.resolve("bin/libjli.so"), "lib/libjli.so");
+
+        assertThat(dest.resolve("bin/libjli.so")).isRegularFile().hasContent("launcher");
+        assertThat(Files.isSymbolicLink(dest.resolve("bin/libjli.so"))).isFalse();
+    }
+
+    @Test
+    void a_hard_link_target_outside_the_destination_is_refused(@TempDir Path tmp) throws Exception {
+        Path dest = Files.createDirectories(tmp.resolve("jdk"));
+        Files.writeString(tmp.resolve("secret"), "outside");
+
+        assertThatThrownBy(() -> MinimalTar.createHardLinkInside(dest, dest.resolve("bin/x"), "../secret"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("escapes destination");
+        assertThat(dest.resolve("bin/x")).doesNotExist();
+    }
+
+    @Test
+    void a_hard_link_target_through_a_planted_link_is_refused(@TempDir Path tmp) throws Exception {
+        Path dest = Files.createDirectories(tmp.resolve("jdk"));
+        Path outside = Files.createDirectories(tmp.resolve("outside"));
+        Files.writeString(outside.resolve("secret"), "outside");
+        Symlinks.create(dest.resolve("hop"), outside);
+
+        assertThatThrownBy(() -> MinimalTar.createHardLinkInside(dest, dest.resolve("bin/x"), "hop/secret"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("escapes destination");
+        assertThat(dest.resolve("bin/x")).doesNotExist();
+    }
+
+    @Test
+    void a_hard_link_to_an_entry_not_yet_written_is_refused(@TempDir Path tmp) throws Exception {
+        Path dest = Files.createDirectories(tmp.resolve("jdk"));
+
+        assertThatThrownBy(() -> MinimalTar.createHardLinkInside(dest, dest.resolve("bin/x"), "lib/later"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("not written");
+    }
+
+    @Test
     void nested_directories_are_created_and_reported_by_real_path(@TempDir Path tmp) throws Exception {
         Path dest = Files.createDirectories(tmp.resolve("jdk"));
         Path real = MinimalTar.createDirectoryInside(dest, dest.resolve("lib/security/policy"));

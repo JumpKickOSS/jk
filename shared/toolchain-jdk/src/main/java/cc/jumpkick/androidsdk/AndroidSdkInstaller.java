@@ -158,6 +158,9 @@ public final class AndroidSdkInstaller {
         MessageDigest sha1 = Hashing.newDigest("SHA-1");
         try (DigestInputStream in = new DigestInputStream(response.body(), sha1)) {
             Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException | RuntimeException e) {
+            Files.deleteIfExists(target); // a transfer that died leaves no partial zip in .downloads
+            throw e;
         }
         String actual = Hashing.hex(sha1.digest());
         if (!actual.equalsIgnoreCase(archive.sha1())) {
@@ -173,9 +176,18 @@ public final class AndroidSdkInstaller {
      * ({@code android-9/}, {@code platform-tools/}); its contents become the component dir —
      * matching sdkmanager's layout exactly.
      */
-    private static void extractZip(Path zip, Path dir) throws IOException {
+    static void extractZip(Path zip, Path dir) throws IOException {
         Path staging = Files.createTempDirectory(
                 dir.getParent() == null ? zip.getParent() : mkdirs(dir.getParent()), ".extract-");
+        try {
+            extractInto(zip, staging, dir);
+        } finally {
+            // Published, the staging holds at most an emptied shell; failed, a partial tree.
+            deleteRecursively(staging);
+        }
+    }
+
+    private static void extractInto(Path zip, Path staging, Path dir) throws IOException {
         try (ZipInputStream in = new ZipInputStream(Files.newInputStream(zip))) {
             for (ZipEntry entry = in.getNextEntry(); entry != null; entry = in.getNextEntry()) {
                 Path out = staging.resolve(entry.getName()).normalize();
@@ -200,7 +212,6 @@ public final class AndroidSdkInstaller {
         Path root = singleTopLevel(staging);
         Files.createDirectories(dir.getParent());
         publishOrAccept(root, dir);
-        deleteRecursively(staging);
     }
 
     /**

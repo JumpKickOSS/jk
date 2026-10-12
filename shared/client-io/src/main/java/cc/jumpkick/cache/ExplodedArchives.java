@@ -52,6 +52,22 @@ public final class ExplodedArchives {
     private static Path explodeAt(Path dir, Path archive) throws IOException {
         if (Files.isDirectory(dir)) return dir; // content-addressed: an existing dir is authoritative
         Path staging = Files.createTempDirectory(Files.createDirectories(dir.getParent()), ".exploding-");
+        try {
+            unzip(archive, staging);
+        } catch (IOException | RuntimeException e) {
+            PathUtil.deleteRecursively(staging); // a failed explode leaves nothing in the shard
+            throw e;
+        }
+        try {
+            AtomicWrites.publishDir(staging, dir);
+        } catch (IOException e) {
+            PathUtil.deleteRecursively(staging);
+            if (!Files.isDirectory(dir)) throw e; // lost a race — the winner's dir serves
+        }
+        return dir;
+    }
+
+    private static void unzip(Path archive, Path staging) throws IOException {
         try (ZipFile zip = new ZipFile(archive.toFile())) {
             Enumeration<? extends ZipEntry> entries = zip.entries();
             while (entries.hasMoreElements()) {
@@ -70,12 +86,5 @@ public final class ExplodedArchives {
                 }
             }
         }
-        try {
-            AtomicWrites.publishDir(staging, dir);
-        } catch (IOException e) {
-            if (!Files.isDirectory(dir)) throw e; // lost a race — the winner's dir serves
-            PathUtil.deleteRecursively(staging);
-        }
-        return dir;
     }
 }

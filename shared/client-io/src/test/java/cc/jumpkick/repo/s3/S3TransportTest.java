@@ -2,17 +2,20 @@
 package cc.jumpkick.repo.s3;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.ObjectStoreConfig;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -79,6 +82,49 @@ class S3TransportTest {
         });
         assertThat(signed().fetch(URI.create("s3://my-bucket/missing.jar"), RepoCredential.ANONYMOUS))
                 .isEmpty();
+    }
+
+    @Test
+    void fetchStream_streams_the_signed_object() throws Exception {
+        AtomicReference<String> auth = new AtomicReference<>();
+        byte[] big = new byte[256 * 1024];
+        Arrays.fill(big, (byte) 'j');
+        server.createContext("/my-bucket/maven/g/a/1/a-1.jar", ex -> {
+            auth.set(ex.getRequestHeaders().getFirst("Authorization"));
+            ex.sendResponseHeaders(200, big.length);
+            ex.getResponseBody().write(big);
+            ex.close();
+        });
+
+        Optional<InputStream> body =
+                signed().fetchStream(URI.create("s3://my-bucket/maven/g/a/1/a-1.jar"), RepoCredential.ANONYMOUS);
+
+        assertThat(body).isPresent();
+        try (InputStream in = body.get()) {
+            assertThat(in.readAllBytes()).isEqualTo(big);
+        }
+        assertThat(auth.get()).startsWith("AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/s3/aws4_request");
+    }
+
+    @Test
+    void fetchStream_of_a_missing_object_is_empty_and_an_error_status_throws() throws Exception {
+        server.createContext("/my-bucket/missing.jar", ex -> {
+            ex.sendResponseHeaders(404, -1);
+            ex.close();
+        });
+        server.createContext("/my-bucket/forbidden.jar", ex -> {
+            byte[] b = "<Error/>".getBytes(StandardCharsets.UTF_8);
+            ex.sendResponseHeaders(403, b.length);
+            ex.getResponseBody().write(b);
+            ex.close();
+        });
+
+        assertThat(signed().fetchStream(URI.create("s3://my-bucket/missing.jar"), RepoCredential.ANONYMOUS))
+                .isEmpty();
+        assertThatThrownBy(() ->
+                        signed().fetchStream(URI.create("s3://my-bucket/forbidden.jar"), RepoCredential.ANONYMOUS))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("403");
     }
 
     @Test

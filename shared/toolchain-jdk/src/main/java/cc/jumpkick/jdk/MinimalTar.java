@@ -5,9 +5,11 @@ import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.EnumSet;
 import java.util.Set;
@@ -21,28 +23,29 @@ public final class MinimalTar {
 
     private MinimalTar() {}
 
+    /** What an entry is. A hard link that carries data (some writers do) arrives as a {@link #FILE}. */
+    public enum Kind {
+        FILE,
+        DIRECTORY,
+        SYMLINK,
+        HARD_LINK
+    }
+
     @FunctionalInterface
     public interface EntryHandler {
         /**
          * Called for each entry.
          *
          * @param name entry path (may contain subdirs)
-         * @param linkName symlink target, or empty string for non-symlinks
+         * @param linkName the symlink target, or the archive-root-relative path of the entry a hard
+         *     link names; empty for the other kinds
          * @param mode POSIX permission bits (e.g. {@code 0755})
-         * @param isDir true when the entry is a directory
-         * @param isLink true when the entry is a symbolic link
-         * @param data stream positioned at entry data ({@code size} bytes available); {@code null} for
-         *     directories and symlinks
+         * @param kind what the entry is
+         * @param data stream positioned at entry data ({@code size} bytes available); {@code null}
+         *     unless {@code kind} is {@link Kind#FILE}
          * @param size uncompressed byte count of the entry data
          */
-        void handle(
-                String name,
-                String linkName,
-                int mode,
-                boolean isDir,
-                boolean isLink,
-                @Nullable InputStream data,
-                long size)
+        void handle(String name, String linkName, int mode, Kind kind, @Nullable InputStream data, long size)
                 throws IOException;
     }
 
@@ -115,20 +118,22 @@ public final class MinimalTar {
                     skipPadding(tar, dataBlocks, size);
                 }
                 case '5' -> {
-                    // Directory.
-                    handler.handle(name, linkName, mode, true, false, null, 0);
+                    handler.handle(name, linkName, mode, Kind.DIRECTORY, null, 0);
                     // Directories typically have zero data blocks.
                     skipBlocks(tar, dataBlocks);
                 }
                 case '2' -> {
-                    // Symbolic link.
-                    handler.handle(name, linkName, mode, false, true, null, 0);
+                    handler.handle(name, linkName, mode, Kind.SYMLINK, null, 0);
                     skipBlocks(tar, dataBlocks);
                 }
                 case '0', '\0', '1' -> {
-                    // Regular file or hard link — stream data bytes to handler.
+                    if (typeFlag == '1' && size == 0) {
+                        handler.handle(name, linkName, mode, Kind.HARD_LINK, null, 0);
+                        continue;
+                    }
+                    // Regular file (or a hard link stored with its bytes) — stream the data to the handler.
                     LimitedInputStream limited = new LimitedInputStream(tar, size);
-                    handler.handle(name, linkName, mode, false, false, limited, size);
+                    handler.handle(name, linkName, mode, Kind.FILE, limited, size);
                     // Drain any unread bytes + padding.
                     limited.skipRemaining();
                     skipPadding(tar, dataBlocks, size);
@@ -173,6 +178,44 @@ public final class MinimalTar {
         Path link = realParent.resolve(out.getFileName());
         Files.deleteIfExists(link);
         Files.createSymbolicLink(link, target);
+    }
+
+    /**
+     * Create the hard link {@code out} to the entry {@code linkName} names, refusing a target that
+     * leaves {@code destDir}. A tar hard link names an earlier entry by its archive-root-relative
+     * path, so the target is judged by where it really lies under {@code destDir}, through any link
+     * the archive planted before it, and must be a regular file already extracted. A filesystem
+     * that cannot link copies the target's bytes instead.
+     */
+    public static void createHardLinkInside(Path destDir, Path out, String linkName) throws IOException {
+        if (linkName == null || linkName.isBlank()) {
+            throw new IOException("tar hard link entry has no target: " + out.getFileName());
+        }
+        Path target = Path.of(linkName);
+        if (target.isAbsolute()) {
+            throw new IOException("tar hard link target is absolute: " + linkName);
+        }
+        Path named = destDir.resolve(target).normalize();
+        if (!named.startsWith(destDir)) {
+            throw new IOException("tar hard link escapes destination: " + out.getFileName() + " -> " + linkName);
+        }
+        Path existing;
+        try {
+            existing = named.toRealPath();
+        } catch (IOException missing) {
+            throw new IOException("tar hard link names an entry the archive has not written: " + linkName, missing);
+        }
+        if (!existing.startsWith(destDir.toRealPath()) || !Files.isRegularFile(existing)) {
+            throw new IOException("tar hard link escapes destination: " + out.getFileName() + " -> " + linkName);
+        }
+        Path parent = out.getParent() == null ? destDir : out.getParent();
+        Path link = createDirectoryInside(destDir, parent).resolve(out.getFileName());
+        Files.deleteIfExists(link);
+        try {
+            Files.createLink(link, existing);
+        } catch (UnsupportedOperationException | FileSystemException unsupported) {
+            Files.copy(existing, link, StandardCopyOption.COPY_ATTRIBUTES);
+        }
     }
 
     /**
@@ -311,9 +354,11 @@ public final class MinimalTar {
         }
     }
 
+    /** The entry's data as text, capped at 1 MiB; the rest of an oversized record is skipped so the next header is read whole. */
     private static String readString(InputStream in, long size) throws IOException {
-        byte[] buf = new byte[(int) Math.min(size, 1 << 20)]; // 1 MB cap
+        byte[] buf = new byte[(int) Math.min(size, 1 << 20)];
         readFully(in, buf, 0, buf.length);
+        if (size > buf.length) in.skipNBytes(size - buf.length);
         return new String(buf, StandardCharsets.UTF_8).trim();
     }
 
