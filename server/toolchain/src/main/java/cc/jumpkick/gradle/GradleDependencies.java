@@ -9,6 +9,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -119,13 +120,9 @@ final class GradleDependencies {
     /** The index of the {@code {} that opens {@code rest}'s closure: the first outside quotes and parentheses, or -1. */
     private static int closureStart(String rest) {
         int depth = 0;
-        char quote = 0;
-        for (int i = 0; i < rest.length(); i++) {
+        for (int i : outsideQuotes(rest)) {
             char c = rest.charAt(i);
-            if (quote != 0) {
-                if (c == quote) quote = 0;
-            } else if (c == '"' || c == '\'') quote = c;
-            else if (c == '(' || c == '[') depth++;
+            if (c == '(' || c == '[') depth++;
             else if (c == ')' || c == ']') depth--;
             else if (c == '{' && depth == 0) return i;
         }
@@ -134,25 +131,45 @@ final class GradleDependencies {
 
     /**
      * Collect a closure's body: {@code opening} is the text after its {@code {}, continued over
-     * {@code lines} from {@code from} until the brace closes. Returns the index after the closing line.
+     * {@code lines} from {@code from} until the brace closes. A brace inside a string literal
+     * ({@code because 'see {x}'}) is text, not nesting. Returns the index after the closing line.
      */
     private static int collectClosure(String opening, String[] lines, int from, StringBuilder into) {
         int depth = 1;
         int i = from;
         String line = opening;
         while (true) {
-            for (int c = 0; c < line.length(); c++) {
+            int close = -1;
+            for (int c : outsideQuotes(line)) {
                 if (line.charAt(c) == '{') depth++;
-                else if (line.charAt(c) == '}') depth--;
+                else if (line.charAt(c) == '}' && --depth <= 0) {
+                    close = c;
+                    break;
+                }
             }
-            if (depth <= 0) {
-                into.append(line, 0, Math.max(0, line.lastIndexOf('}'))).append('\n');
+            if (close >= 0) {
+                into.append(line, 0, close).append('\n');
                 return i;
             }
             into.append(line).append('\n');
             if (i >= lines.length) return i;
             line = lines[i++];
         }
+    }
+
+    /** The indices of {@code line}'s characters outside a single- or double-quoted literal, in order. */
+    private static int[] outsideQuotes(String line) {
+        int[] out = new int[line.length()];
+        int n = 0;
+        char quote = 0;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (quote != 0) {
+                if (c == quote) quote = 0;
+            } else if (c == '"' || c == '\'') quote = c;
+            else out[n++] = i;
+        }
+        return Arrays.copyOf(out, n);
     }
 
     private void parseEntry(String configuration, String rest, @Nullable String closure, boolean managed, String line) {

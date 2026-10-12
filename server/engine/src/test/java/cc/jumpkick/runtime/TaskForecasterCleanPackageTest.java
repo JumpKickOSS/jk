@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
@@ -11,6 +12,7 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.FreshnessStamp;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -126,6 +128,36 @@ class TaskForecasterCleanPackageTest {
         // the live build restores v1 and computes v1's package key, not v2's.
         String tok = PackagingKeys.classesTokenForPackage(module, true, layout, project, ac, "key-v1", null);
         assertThat(tok).isEqualTo(v1Live);
+    }
+
+    @Test
+    void a_partial_kotlin_only_tree_is_priced_from_the_stamped_compile_record(@TempDir Path tmp) throws Exception {
+        Path module = Files.createDirectories(tmp.resolve("mod"));
+        Path classes = Files.createDirectories(module.resolve("target/classes"));
+        Files.createDirectories(classes.resolve("t"));
+        Files.writeString(classes.resolve("t/A.class"), "A-bytecode");
+        Files.writeString(classes.resolve("t/B.class"), "B-bytecode");
+        String whole = ClasspathFingerprint.entry(classes);
+
+        Path cache = Files.createDirectories(tmp.resolve("cache"));
+        Cas cas = new Cas(cache.resolve("store"));
+        ActionCache ac = new ActionCache(cas, cache.resolve("actions"));
+        ac.store(ActionKey.qualifiedTaskId("compile-kotlin", classes), "key-kt", Map.of(), classes);
+        // The merged tree's Kotlin stamp names the compile whose outputs it holds; no javac ran.
+        FreshnessStamp.write(classes, BuildStamps.KOTLIN, "compile-kotlin", "key-kt", List.of(), List.of(), 25, "");
+        // A partial wipe leaves a non-empty tree that lacks an output the record owns.
+        Files.delete(classes.resolve("t/B.class"));
+        assertThat(ClasspathFingerprint.entry(classes)).isNotEqualTo(whole);
+
+        JkBuild project = JkBuild.builder(
+                        Project.builder("g", "lib", "1.0").jdkMajor(25).java(21).build())
+                .build();
+        BuildLayout layout = BuildLayout.of(module, project);
+        assertThat(layout.classesDir()).isEqualTo(classes.toAbsolutePath().normalize());
+
+        // The live build restores the whole tree before it packages: the token is the whole tree's.
+        String tok = PackagingKeys.classesTokenForPackage(module, true, layout, project, ac, null, null);
+        assertThat(tok).isEqualTo(whole);
     }
 
     @Test

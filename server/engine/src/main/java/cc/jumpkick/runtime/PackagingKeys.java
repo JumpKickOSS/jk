@@ -6,6 +6,7 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
@@ -28,6 +29,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -517,17 +519,18 @@ public final class PackagingKeys {
 
     /**
      * {@code classes:} fingerprint for package/assembly keys — live tree when present, else the
-     * record of the CURRENT compile key ({@code compileMainKey}) merged with current resource
-     * roots (post-{@code jk clean} restore path). Never {@code lastFor}: after an edit → build →
-     * revert → clean, the last record names the other edit's outputs while the live build would
-     * restore the reverted ones — reconstruction must match the live restore or the forecast
-     * flips to false CACHED/RUN.
+     * compile records merged with current resource roots (post-{@code jk clean} restore path):
+     * javac's under the CURRENT compile key ({@code compileMainKey}), Kotlin's and Groovy's under
+     * the keys the tree's own stamps name. Never {@code lastFor}: after an edit → build → revert →
+     * clean, the last record names the other edit's outputs while the live build would restore
+     * the reverted ones — reconstruction must match the live restore or the forecast flips to
+     * false CACHED/RUN.
      *
      * <p>When the live classes tree is present but main/extra resources have drifted, projects the
      * post-{@code copy-resources} tree (class files + source resource roots) so package CACHED/RUN
      * matches the live package step after the copy — not the stale pre-copy classes dir.
      *
-     * <p>A tree that lacks an output the compile record owns takes the record path as an empty
+     * <p>A tree that lacks an output one of those records owns takes the record path as an empty
      * tree does: the live build restores the whole tree before it packages, so the token of the
      * partial tree names a jar that build never produces.
      */
@@ -542,7 +545,8 @@ public final class PackagingKeys {
             throws IOException {
         Path classesDir = layout.classesDir();
         if (TaskForecaster.classesDirHasContent(classesDir)
-                && ModuleOutputs.compileOutputsOnDisk(actionCache, compileMainKey, classesDir)) {
+                && ModuleOutputs.compileOutputsOnDisk(actionCache, compileMainKey, classesDir)
+                && ModuleOutputs.compileOutputsOnDisk(actionCache, classesDir)) {
             // Reuse the forecast's single drift detection when it ran — a re-walk here
             // could disagree with it and project the token from a different tree state.
             boolean drifted = knownResourceDrift != null
@@ -553,18 +557,23 @@ public final class PackagingKeys {
             }
             return ClasspathFingerprint.entry(classesDir);
         }
-        Map<String, String> compileOut = compileMainKey == null
-                ? Map.of()
-                : actionCache
-                        .lookup(compileMainKey)
-                        .map(ActionCache.ActionRecord::outputs)
-                        .orElse(Map.of());
+        Map<String, String> compileOut = new LinkedHashMap<>(recordOutputs(actionCache, compileMainKey));
+        for (String stamp : List.of(BuildStamps.KOTLIN, BuildStamps.GROOVY)) {
+            compileOut.putAll(recordOutputs(
+                    actionCache, FreshnessStamp.stampedKey(classesDir, stamp).orElse(null)));
+        }
         List<Path> resRoots = packageResourceRoots(dir, compact);
         Map<String, String> copied = copiedPluginManifest(dir);
         if (compileOut.isEmpty() && resRoots.isEmpty() && copied.isEmpty()) {
             return ClasspathFingerprint.entry(classesDir); // missing:… — package key will miss
         }
         return ClasspathFingerprint.entryFromCompileAndResources(compileOut, resRoots, copied);
+    }
+
+    /** The outputs the compile record for {@code key} owns; empty for a null key or a pruned record. */
+    private static Map<String, String> recordOutputs(ActionCache actionCache, @Nullable String key) throws IOException {
+        if (key == null) return Map.of();
+        return actionCache.lookup(key).map(ActionCache.ActionRecord::outputs).orElse(Map.of());
     }
 
     /**
