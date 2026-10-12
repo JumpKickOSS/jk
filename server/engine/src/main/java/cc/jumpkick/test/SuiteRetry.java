@@ -163,29 +163,31 @@ final class SuiteRetry {
     }
 
     /**
-     * Drop {@code retried} classes' failures from {@code first} and fold in {@code second}. A class
-     * that passed on the retry is no longer a failure.
+     * {@code second}, the retried classes' run, replaces what {@code first} holds for them: their
+     * failure rows and a blank-class heap row go, {@code share} — the passes, skips and classes
+     * the launch's report recorded for them before the retry — comes off the counts, and their
+     * walls are the retry's.
      */
-    static TestSummary merge(TestSummary first, List<String> retried, TestSummary second) {
+    static TestSummary merge(
+            TestSummary first, List<String> retried, MarkdownTestReport.Tally share, TestSummary second) {
         Set<String> drop = Set.copyOf(retried);
         List<TestFailureInfo> kept = new ArrayList<>();
-        long removed = 0;
         for (TestFailureInfo failure : first.failures()) {
-            if (retryable(failure) && (failure.className().isBlank() || drop.contains(failure.className()))) {
-                removed++;
-                continue;
-            }
+            String cls = failure.className();
+            if (drop.contains(cls) || (cls.isBlank() && retryable(failure))) continue;
             kept.add(failure);
         }
+        long removed = first.failures().size() - kept.size();
         kept.addAll(second.failures());
         var walls = new LinkedHashMap<>(first.classWallMs());
+        walls.keySet().removeAll(drop);
         second.classWallMs().forEach((k, v) -> walls.merge(k, v, Long::sum));
         return new TestSummary(
-                Math.max(0, first.total() - removed) + second.total(),
-                first.succeeded() + second.succeeded(),
+                Math.max(0, first.total() - removed - share.passed() - share.skipped()) + second.total(),
+                Math.max(0, first.succeeded() - share.passed()) + second.succeeded(),
                 Math.max(0, first.failed() - removed) + second.failed(),
-                first.skipped() + second.skipped(),
-                first.classes() + second.classes(),
+                Math.max(0, first.skipped() - share.skipped()) + second.skipped(),
+                Math.max(0, first.classes() - share.classes()) + second.classes(),
                 kept,
                 walls,
                 Math.max(first.workers(), second.workers()));

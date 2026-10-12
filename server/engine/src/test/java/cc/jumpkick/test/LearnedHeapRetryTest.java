@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.journal.RunSnapshots;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
@@ -34,6 +35,7 @@ class LearnedHeapRetryTest {
     void reset() {
         HeapNotes.clear();
         SessionContext.reset();
+        RunResults.close();
     }
 
     @Test
@@ -114,9 +116,44 @@ class LearnedHeapRetryTest {
                 .withHeaps(new LearnedHeaps(dir.resolve("state"), 128L << 20));
         TestSummary first = launcher.run(home, classes, List.of(), cache, 1, Map.of(), TestProgressListener.noop());
         assertThat(first.failed()).isZero();
-        assertThat(first.succeeded()).isEqualTo(1);
+        assertThat(first.succeeded()).isEqualTo(2);
+        assertThat(first.total()).isEqualTo(2);
+        assertThat(first.classes()).isEqualTo(1);
         assertThat(HeapNotes.drain()).containsExactly("retried with 256 MiB heap after running out of 128 MiB");
         assertThat(Files.readString(home.resolve("heaps"))).contains("-Xmx128m", "-Xmx256m");
+        awaitPeaks(dir.resolve("state"), 2);
+    }
+
+    /**
+     * The results markdown and the run's test snapshot see the retry alone: not the dead attempt's
+     * failure, and not its passes a second time.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"escaped", "after"})
+    void the_published_report_carries_the_retry_s_results_only(String mode, @TempDir Path dir) throws Exception {
+        Path home = fakeJdk(dir, mode);
+        Path classes = Files.createDirectories(dir.resolve("classes"));
+        Path cache = Files.createDirectories(dir.resolve("cache"));
+        SessionContext.install(SessionContext.current().withWorkingDir(dir).withJvm(PluginTuning.NONE));
+        RunResults sink = new RunResults();
+        RunResults.open(sink);
+        JUnitLauncher launcher = new JUnitLauncher()
+                .withModuleLabel("g:app")
+                .withHeaps(new LearnedHeaps(dir.resolve("state"), 128L << 20));
+        TestSummary summary = launcher.run(home, classes, List.of(), cache, 1, Map.of(), TestProgressListener.noop());
+        assertThat(summary.failed()).isZero();
+
+        List<MarkdownTestReport.ModuleRun> runs = sink.takeTests();
+        assertThat(runs)
+                .singleElement()
+                .extracting(MarkdownTestReport.ModuleRun::label)
+                .isEqualTo("g:app");
+        List<MarkdownTestReport.Entry> entries = runs.getFirst().entries();
+        assertThat(entries).hasSize("escaped".equals(mode) ? 2 : 1).allMatch(MarkdownTestReport.Entry::isPass);
+        assertThat(entries).extracting(MarkdownTestReport.Entry::displayName).contains("alloc()");
+        assertThat(RunSnapshots.testOutcomes(runs))
+                .containsEntry("demo.Big#alloc()", RunSnapshots.PASS)
+                .doesNotContainValue(RunSnapshots.FAIL);
         awaitPeaks(dir.resolve("state"), 2);
     }
 
@@ -252,9 +289,9 @@ class LearnedHeapRetryTest {
     /**
      * {@code die} exits 3 before any test. {@code after} reports one success, then exits 3.
      * {@code always} does that at every heap. {@code big} dies as {@code die} does below 512 MiB.
-     * {@code escaped} reports the test failed with {@code java.lang.OutOfMemoryError: Java heap
-     * space} and exits 1, as a test JVM without exit-on-OOM does. A heap of 256 MiB or more passes,
-     * except {@code always} and {@code big}.
+     * {@code escaped} reports {@code warm()} passing and then {@code alloc()} failed with {@code
+     * java.lang.OutOfMemoryError: Java heap space}, exiting 1 as a test JVM without exit-on-OOM
+     * does. A heap of 256 MiB or more passes, except {@code always} and {@code big}.
      */
     private static Path fakeJdk(Path dir, String mode) throws Exception {
         assumeTrue(Files.isExecutable(Path.of("/bin/sh")), "POSIX shell required");
@@ -278,13 +315,16 @@ class LearnedHeapRetryTest {
                   -Xmx128m|-Xmx64m) small=1 ;;
                   -Xmx256m) [ "$mode" = "big" ] && small=1 ;;
                 esac
+                if [ "$mode" = "escaped" ]; then
+                  printf '%s\\n' '##JKT:{"event":"finished","type":"TEST","status":"SUCCESSFUL","uniqueId":"[engine:junit-jupiter]/[class:demo.Big]/[method:warm()]","testClass":"demo.Big","testMethod":"warm()","duration_ms":1}'
+                fi
                 if [ "$mode" = "escaped" ] && [ "$small" = 1 ]; then
                   printf '%s\\n' '##JKT:{"event":"finished","type":"TEST","status":"FAILED","uniqueId":"[engine:junit-jupiter]/[class:demo.Big]/[method:alloc()]","testClass":"demo.Big","testMethod":"alloc()","duration_ms":1,"throwable":{"class":"java.lang.OutOfMemoryError","message":"Java heap space","stack":""}}'
                   exit 1
                 fi
                 if [ "$mode" = "always" ] || [ "$small" = 1 ]; then
                   if [ "$mode" = "after" ] || [ "$mode" = "always" ]; then
-                    printf '%s\\n' '##JKT:{"event":"finished","type":"TEST","status":"SUCCESSFUL","id":"[engine:junit-jupiter]/[class:demo.Big]/[method:alloc()]","display":"alloc()","duration_ms":1}'
+                    printf '%s\\n' '##JKT:{"event":"finished","type":"TEST","status":"SUCCESSFUL","uniqueId":"[engine:junit-jupiter]/[class:demo.Big]/[method:alloc()]","testClass":"demo.Big","testMethod":"alloc()","duration_ms":1}'
                   fi
                   echo "Terminating due to java.lang.OutOfMemoryError: Java heap space"
                   exit 3
@@ -292,7 +332,7 @@ class LearnedHeapRetryTest {
                 if [ -n "$gc" ]; then
                   printf '%s\\n' '[0.2s][info][gc] GC(0) Pause Young (Normal) (G1 Evacuation Pause) 180M->20M(256M) 1.0ms' > "$gc"
                 fi
-                printf '%s\\n' '##JKT:{"event":"finished","type":"TEST","status":"SUCCESSFUL","id":"[engine:junit-jupiter]/[class:demo.Big]/[method:alloc()]","display":"alloc()","duration_ms":1}'
+                printf '%s\\n' '##JKT:{"event":"finished","type":"TEST","status":"SUCCESSFUL","uniqueId":"[engine:junit-jupiter]/[class:demo.Big]/[method:alloc()]","testClass":"demo.Big","testMethod":"alloc()","duration_ms":1}'
                 printf '%s\\n' '##JKT:{"event":"plan_finished","duration_ms":1,"failed":false}'
                 exit 0
                 """;
