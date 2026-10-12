@@ -527,8 +527,9 @@ public final class ActionCache {
      * it), so the caller falls through to a real run instead of building on wrong bytes.
      */
     public boolean restore(ActionRecord record, Path outputDir) throws IOException {
-        // Paths the resource mirror owns stay on disk and are not rewritten from this record:
-        // a compile that snapshotted them would otherwise delete or resurrect a resource.
+        // Paths the resource mirror or a language merge owns stay on disk and are not rewritten
+        // from this record: a compile that snapshotted them would otherwise delete or resurrect a
+        // resource, or lay a dropped Kotlin class back beside javac's output.
         Set<String> mirrored = MirroredOutputs.recorded(outputDir);
         Map<String, String> outputs = record.outputs();
         if (!mirrored.isEmpty()) {

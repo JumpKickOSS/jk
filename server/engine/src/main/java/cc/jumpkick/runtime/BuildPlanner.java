@@ -95,6 +95,12 @@ public final class BuildPlanner {
 
     public static final BuildPlanKey<String> ACTION_KEY = BuildPlanKey.scalar("action-key", String.class);
 
+    /** The Kotlin main compile's action key: what its stamp records, and what the merged tree is held against. */
+    public static final BuildPlanKey<String> KOTLIN_ACTION_KEY = BuildPlanKey.scalar("kotlin-action-key", String.class);
+
+    /** The Groovy main compile's action key, recorded by its stamp the same way. */
+    public static final BuildPlanKey<String> GROOVY_ACTION_KEY = BuildPlanKey.scalar("groovy-action-key", String.class);
+
     /** The javac test compile's action key — a run-tests stamp input, absent when no javac test sources exist. */
     public static final BuildPlanKey<String> COMPILE_TEST_ACTION_KEY =
             BuildPlanKey.scalar("compile-test-action-key", String.class);
@@ -203,6 +209,8 @@ public final class BuildPlanner {
             COMPILE_TEST_CP,
             TEST_RUNTIME_CP,
             ACTION_KEY,
+            KOTLIN_ACTION_KEY,
+            GROOVY_ACTION_KEY,
             COMPILE_TEST_ACTION_KEY,
             COMPILE_TEST_KOTLIN_ACTION_KEY,
             COMPILE_TEST_GROOVY_ACTION_KEY,

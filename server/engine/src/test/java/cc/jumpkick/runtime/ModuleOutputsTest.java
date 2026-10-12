@@ -82,6 +82,60 @@ class ModuleOutputsTest {
     }
 
     @Test
+    void a_merged_tree_is_held_against_the_records_its_kotlin_and_groovy_stamps_name(@TempDir Path dir)
+            throws Exception {
+        Cas cas = new Cas(dir.resolve("cas"));
+        ActionCache ac = new ActionCache(cas, dir.resolve("actions"));
+        String sha = cas.hashFromPath(cas.put("bytes".getBytes(StandardCharsets.UTF_8)))
+                .orElseThrow();
+        ac.storeWithOutputs("compile-kotlin@x", "key-k", Map.of(), Map.of("p/K.class", sha));
+        ac.storeWithOutputs("compile-groovy@x", "key-g", Map.of(), Map.of("p/G.class", sha));
+        Path classes = Files.createDirectories(dir.resolve("classes/main"));
+        Files.createDirectories(classes.resolve("p"));
+        Files.writeString(classes.resolve("p/K.class"), "bytes");
+        Files.writeString(classes.resolve("p/G.class"), "bytes");
+        FreshnessStamp.write(
+                classes,
+                BuildStamps.KOTLIN,
+                "compile-kotlin",
+                "key-k",
+                List.of(),
+                FreshnessStamp.ClasspathTokens.of(List.of()),
+                25,
+                "");
+        FreshnessStamp.write(
+                classes,
+                BuildStamps.GROOVY,
+                "compile-groovy",
+                "key-g",
+                List.of(),
+                FreshnessStamp.ClasspathTokens.of(List.of()),
+                25,
+                "");
+
+        assertThat(ModuleOutputs.compileOutputsOnDisk(ac, classes)).isTrue();
+        assertThat(ModuleOutputs.compileOutputsOnDisk(ac, classes, BuildStamps.KOTLIN))
+                .isTrue();
+
+        Files.delete(classes.resolve("p/K.class"));
+        assertThat(ModuleOutputs.compileOutputsOnDisk(ac, classes, BuildStamps.KOTLIN))
+                .as("the Kotlin stamp's record owns K.class")
+                .isFalse();
+        assertThat(ModuleOutputs.compileOutputsOnDisk(ac, classes, BuildStamps.GROOVY))
+                .isTrue();
+        assertThat(ModuleOutputs.compileOutputsOnDisk(ac, classes))
+                .as("a tree missing any merged compile's output is not whole")
+                .isFalse();
+
+        Files.writeString(classes.resolve("p/K.class"), "bytes");
+        Files.delete(classes.resolve("p/G.class"));
+        assertThat(ModuleOutputs.compileOutputsOnDisk(ac, classes)).isFalse();
+        assertThat(ModuleOutputs.compileOutputsOnDisk(ac, classes, BuildStamps.JAVA))
+                .as("no Java stamp: nothing to hold the tree against on javac's account")
+                .isTrue();
+    }
+
+    @Test
     void a_whole_verdict_holds_for_the_request_and_a_missing_one_never_does(@TempDir Path dir) throws Exception {
         Cas cas = new Cas(dir.resolve("cas"));
         ActionCache ac = new ActionCache(cas, dir.resolve("actions"));

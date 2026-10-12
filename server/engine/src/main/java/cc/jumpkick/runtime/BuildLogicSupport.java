@@ -21,6 +21,7 @@ import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.MirroredOutputs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -529,7 +530,8 @@ public final class BuildLogicSupport {
     private static void mergeIntoClasses(BuildLayout layout, String task, Path generated, @Nullable Path classesDir)
             throws IOException {
         if (classesDir == null) return;
-        Path ledger = layout.buildDir().resolve("incremental").resolve("merged-build-logic-" + task + ".txt");
+        Path ledger =
+                layout.buildDir().resolve("incremental").resolve(MirroredOutputs.mergedLedger("build-logic-" + task));
         ResourceMirror.sync(List.of(generated), classesDir, ledger);
     }
 

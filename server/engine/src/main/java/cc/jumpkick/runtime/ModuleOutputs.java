@@ -16,6 +16,7 @@ import cc.jumpkick.task.FreshnessStamp;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -148,16 +149,25 @@ public final class ModuleOutputs {
         }
     }
 
+    /** The stamps a merged classes tree carries, one per compile whose outputs it holds. */
+    private static final List<String> TREE_STAMPS = List.of(BuildStamps.JAVA, BuildStamps.KOTLIN, BuildStamps.GROOVY);
+
     /**
-     * {@link #compileOutputsOnDisk(ActionCache, String, Path)} against the key the tree's own
-     * Java freshness stamp names — the compile that produced it. A tree with no stamp, or a stamp
-     * that names no key (a Kotlin- or Groovy-only module), has nothing to be held against.
+     * {@link #compileOutputsOnDisk(ActionCache, String, Path)} against every key the tree's own
+     * freshness stamps name — the Java, Kotlin and Groovy compiles whose outputs are merged into
+     * it. A stamp that is absent, or names no key, holds the tree against nothing.
      */
     public static boolean compileOutputsOnDisk(ActionCache actionCache, Path classesDir) {
+        for (String stamp : TREE_STAMPS) {
+            if (!compileOutputsOnDisk(actionCache, classesDir, stamp)) return false;
+        }
+        return true;
+    }
+
+    /** As above, against the one compile record the stamp named {@code stamp} points at. */
+    public static boolean compileOutputsOnDisk(ActionCache actionCache, Path classesDir, String stamp) {
         return compileOutputsOnDisk(
-                actionCache,
-                FreshnessStamp.stampedKey(classesDir, BuildStamps.JAVA).orElse(null),
-                classesDir);
+                actionCache, FreshnessStamp.stampedKey(classesDir, stamp).orElse(null), classesDir);
     }
 
     /**
