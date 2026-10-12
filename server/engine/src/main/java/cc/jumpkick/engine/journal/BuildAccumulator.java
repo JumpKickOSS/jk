@@ -446,8 +446,7 @@ public final class BuildAccumulator {
      */
     public void noteForkOutput(String dir, String step, String line) {
         if (step == null || step.isBlank() || line == null) return;
-        ArrayDeque<String> tail =
-                forkTails.computeIfAbsent(stepKey(dir == null ? "" : dir, step), k -> new ArrayDeque<>());
+        ArrayDeque<String> tail = forkTails.computeIfAbsent(stepKey(dirKey(dir), step), k -> new ArrayDeque<>());
         synchronized (tail) {
             if (tail.size() == FORK_TAIL_LINES) tail.pollFirst();
             tail.addLast(line);

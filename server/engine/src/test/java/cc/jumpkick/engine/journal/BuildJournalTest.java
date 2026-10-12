@@ -331,6 +331,24 @@ class BuildJournalTest {
                 .isPresent();
     }
 
+    @Test
+    void an_append_over_a_live_run_dir_rewrites_its_record_in_place() throws Exception {
+        BuildJournal j = new BuildJournal(dir);
+        BuildRecord run = BuildRecord.running(3, "build", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "cli");
+        String locator = requireNonNull(j.begin(run));
+        Path runDir = j.runDir(locator).orElseThrow();
+        Path details = runDir.resolve(ProjectBuilds.DETAILS);
+        Files.writeString(details, "transcript\n");
+
+        BuildRecord done = record(1_700_000_000_100L, true, "g:a").withBuildNumber(3);
+        assertThat(j.append(done, BuildJournal.Snapshot.NONE)).isEqualTo(locator);
+
+        assertThat(details).hasContent("transcript\n");
+        assertThat(runDir.resolve("engine-owner.txt")).doesNotExist();
+        assertThat(j.get(locator).orElseThrow().running()).isFalse();
+        assertThat(j.get(locator).orElseThrow().success()).isTrue();
+    }
+
     /**
      * A row left {@code running} by an engine that died is closed out as a failure the user cannot
      * act on, NOT as a cancellation. Until it was stamped {@code cancelled=true} with exit

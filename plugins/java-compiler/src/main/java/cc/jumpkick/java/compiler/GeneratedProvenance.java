@@ -3,9 +3,11 @@ package cc.jumpkick.java.compiler;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -13,6 +15,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -274,9 +277,23 @@ final class GeneratedProvenance {
         }
         // The workdir is cache: a prune may have taken it while this compile ran, and the map this
         // compile built is still the right one to keep.
-        Path dir = file.getParent();
-        if (dir != null) Files.createDirectories(dir);
-        Files.write(file, lines, StandardCharsets.UTF_8);
+        Path dir = Objects.requireNonNull(file.getParent(), "provenance.tsv lives in the workdir");
+        Files.createDirectories(dir);
+        // Written beside and renamed over: a compile killed mid-write leaves last run's map, not
+        // a truncated one whose missing rows would read as classes nobody generated.
+        Path tmp = Files.createTempFile(dir, "." + file.getFileName() + "-", ".tmp");
+        boolean moved = false;
+        try {
+            Files.write(tmp, lines, StandardCharsets.UTF_8);
+            try {
+                Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+            }
+            moved = true;
+        } finally {
+            if (!moved) Files.deleteIfExists(tmp);
+        }
     }
 
     /**

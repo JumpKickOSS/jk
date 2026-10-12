@@ -23,14 +23,13 @@ import cc.jumpkick.test.CoverageResults;
 import cc.jumpkick.test.JkTestsAffectedMarkdown;
 import cc.jumpkick.test.MarkdownTestReport;
 import cc.jumpkick.test.RunResults;
-import cc.jumpkick.util.OwnerOnlyFiles;
+import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.TimelineEvent;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -251,12 +250,9 @@ public final class JournalWriter {
                         iteration.testOutcomes(),
                         iteration.sources());
                 String jid = a.journalId();
-                String locator;
-                if (jid != null && !jid.isBlank()) {
-                    locator = journal.complete(jid, record, snapshot) ? jid : journal.append(record, snapshot);
-                } else {
-                    locator = journal.append(record, snapshot);
-                }
+                String locator = jid != null && !jid.isBlank()
+                        ? completeInPlace(jid, record, snapshot)
+                        : journal.append(record, snapshot);
                 if (locator != null && !locator.isBlank()) {
                     runDir = journal.runDir(locator, record).orElse(null);
                 }
@@ -296,6 +292,23 @@ public final class JournalWriter {
         } catch (RuntimeException e) {
             log.accept("jk engine: build journal append failed: " + e);
         }
+    }
+
+    /** Attempts at rewriting a run's record in place before the run is left {@code running}. */
+    static final int COMPLETE_ATTEMPTS = 3;
+
+    /**
+     * Finish the in-flight entry {@code jid} began, retrying the rewrite in place. The entry is
+     * the run directory the client is still writing its transcript into, so a rewrite that fails
+     * leaves it as it is — never a fresh append, which would replace the directory — and the
+     * locator still names it so the reports land beside the transcript.
+     */
+    private String completeInPlace(String jid, BuildRecord record, BuildJournal.Snapshot snapshot) {
+        for (int attempt = 1; attempt <= COMPLETE_ATTEMPTS; attempt++) {
+            if (journal.complete(jid, record, snapshot)) return jid;
+        }
+        log.accept("jk engine: build journal record " + jid + " could not be rewritten; the run stays in flight");
+        return jid;
     }
 
     /** The in-flight stub {@code JobAdmit} began for a run that is not to be journaled after all. */
@@ -373,10 +386,10 @@ public final class JournalWriter {
             throws IOException {
         String body = text.endsWith("\n") ? text : text + "\n";
         if (runDir != null) {
-            OwnerOnlyFiles.writeString(runDir.resolve(name), body);
+            AtomicWrites.replace(runDir.resolve(name), body);
         }
         if (latestMarkdown != null && latestMarkdown.getParent() != null) {
-            Files.writeString(latestMarkdown.getParent().resolve(name), body, StandardCharsets.UTF_8);
+            AtomicWrites.replace(latestMarkdown.getParent().resolve(name), body);
         }
     }
 

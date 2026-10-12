@@ -82,6 +82,25 @@ class BuildAccumulatorCancelledStepTest {
     }
 
     @Test
+    void a_fork_tail_noted_under_a_backslash_dir_is_found_under_the_steps_row() {
+        // The step row and its fork's lines arrive with the module dir spelled two ways on
+        // Windows; both join the one forward-slash bucket.
+        BuildAccumulator a = new BuildAccumulator("test", "C:/ws", "g:ws", "cli");
+        a.noteTaskStart("C:/ws/lib", "run-tests", "test", STARTED);
+        a.noteForkOutput("C:\\ws\\lib", "run-tests", "expected: <1> but was: <2>");
+        a.markUserCancelled(true, "cancelled by the user");
+
+        BuildRecord r = a.toRecord(STARTED + 400, true, 400, "9.9", null);
+
+        BuildRecord.Diag d = r.diagnostics().stream()
+                .filter(x -> "error".equals(x.severity()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(d.message()).endsWith("the fork's last line:");
+        assertThat(d.stack()).isEqualTo("expected: <1> but was: <2>");
+    }
+
+    @Test
     void a_run_that_finished_keeps_its_running_rows_as_they_were() {
         BuildAccumulator a = new BuildAccumulator("build", "/proj", "g:a", "cli");
         a.noteTaskStart("", "run-tests", "test", STARTED);
