@@ -123,6 +123,73 @@ class GradleImporterConfigurationsTest {
                 .isFalse();
     }
 
+    @Test
+    void a_one_line_closure_keeps_the_dependency_and_reads_its_transitivity() {
+        GradleImporter.Result result = GradleImporter.importFromString("""
+                dependencies {
+                    implementation("org.springframework:spring-context:6.2.7") { isTransitive = false }
+                    testImplementation('org.testng:testng:6.10') { transitive = false }
+                    implementation("com.google.guava:guava:33.4.8-jre")
+                }
+                """, "app");
+        JkBuild build = result.jkBuild();
+
+        assertThat(build.dependencies().of(Scope.MAIN))
+                .extracting(Dependency::module)
+                .containsExactly("org.springframework:spring-context", "com.google.guava:guava");
+        assertThat(build.dependencies().of(Scope.MAIN).get(0).exclusions()).containsExactly("*:*");
+        assertThat(build.dependencies().of(Scope.MAIN).get(1).exclusions()).isEmpty();
+        assertThat(build.dependencies().of(Scope.TEST))
+                .extracting(Dependency::module)
+                .containsExactly("org.testng:testng");
+        assertThat(build.dependencies().of(Scope.TEST).get(0).exclusions()).containsExactly("*:*");
+        assertThat(result.report().hasErrors())
+                .as(messages(result.report()).toString())
+                .isFalse();
+    }
+
+    @Test
+    void a_one_line_closure_carries_its_exclude() {
+        GradleImporter.Result result = GradleImporter.importFromString("""
+                dependencies {
+                    implementation("org.springframework:spring-context:6.2.7") { exclude(group = "commons-logging", module = "commons-logging") }
+                    runtimeOnly('ch.qos.logback:logback-classic:1.5.18') { exclude group: 'org.slf4j' }
+                }
+                """, "app");
+        JkBuild build = result.jkBuild();
+
+        assertThat(build.dependencies().of(Scope.MAIN))
+                .extracting(Dependency::module)
+                .containsExactly("org.springframework:spring-context");
+        assertThat(build.dependencies().of(Scope.MAIN).get(0).exclusions())
+                .containsExactly("commons-logging:commons-logging");
+        assertThat(build.dependencies().of(Scope.RUNTIME).get(0).exclusions()).containsExactly("org.slf4j:*");
+        assertThat(result.report().hasErrors())
+                .as(messages(result.report()).toString())
+                .isFalse();
+    }
+
+    @Test
+    void a_closure_on_a_platform_configures_the_platform_entry_not_the_last_dependency() {
+        JkBuild build = GradleImporter.importFromString("""
+                        dependencies {
+                            implementation("com.google.guava:guava:33.4.8-jre")
+                            implementation(platform("org.springframework.boot:spring-boot-dependencies:3.5.6")) {
+                                exclude group: 'org.yaml', module: 'snakeyaml'
+                            }
+                        }
+                        """, "app").jkBuild();
+
+        assertThat(build.dependencies().of(Scope.MAIN))
+                .extracting(Dependency::module)
+                .containsExactly("com.google.guava:guava");
+        assertThat(build.dependencies().of(Scope.MAIN).get(0).exclusions()).isEmpty();
+        assertThat(build.dependencies().of(Scope.PLATFORM))
+                .extracting(Dependency::module)
+                .containsExactly("org.springframework.boot:spring-boot-dependencies");
+        assertThat(build.dependencies().of(Scope.PLATFORM).get(0).exclusions()).containsExactly("org.yaml:snakeyaml");
+    }
+
     /** mapstruct-on-gradle: one Groovy line declares two test dependencies. */
     @Test
     void comma_separated_coordinates_each_import() {

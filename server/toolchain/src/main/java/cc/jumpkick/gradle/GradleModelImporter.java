@@ -139,6 +139,7 @@ final class GradleModelImporter {
     private final GradleModel model;
     private final Path buildRoot;
     private final RefreshVersions refreshVersions;
+    private final CatalogShortNames shortNames = CatalogShortNames.layered();
     private final ImportReport.Builder report = ImportReport.builder();
     private final ModuleRows rows = new ModuleRows();
     private final Map<String, GradleImporter.PluginImportRule> importRules = GradleImporter.pluginImportRules();
@@ -470,7 +471,7 @@ final class GradleModelImporter {
      * Boot's BOM is written only without the Boot plugin, whose {@code [spring-boot]} table brings it.
      * A BOM whose version reads a property nothing defines is a row. Answers whether a BOM was written.
      */
-    private static boolean bomPlatforms(
+    private boolean bomPlatforms(
             GradleModel.Project p, Set<String> applied, Map<Scope, List<Dependency>> deps, ImportReport.Builder local) {
         List<String> boms = new ArrayList<>(p.importedBoms());
         if (boms.isEmpty() && p.springBootBom() != null) boms.add(p.springBootBom());
@@ -495,8 +496,8 @@ final class GradleModelImporter {
             String module = parts[0] + ":" + parts[1];
             written = true;
             if (platforms.stream().anyMatch(d -> d.module().equals(module))) continue;
-            platforms.add(Dependency.of(
-                    GradleDependencies.shortNameFor(module).orElse(parts[1]), module, VersionSelector.parse(parts[2])));
+            platforms.add(
+                    Dependency.of(shortNames.of(module).orElse(parts[1]), module, VersionSelector.parse(parts[2])));
         }
         return written;
     }
@@ -529,7 +530,7 @@ final class GradleModelImporter {
             String artifact = k.module().substring(k.module().indexOf(':') + 1);
             deps.computeIfAbsent(Scope.MANAGED, s -> new ArrayList<>())
                     .add(Dependency.of(
-                            GradleDependencies.shortNameFor(k.module()).orElse(artifact),
+                            shortNames.of(k.module()).orElse(artifact),
                             k.module(),
                             VersionSelector.parse(k.version())));
         }
@@ -607,7 +608,7 @@ final class GradleModelImporter {
         }
         Scope target = d.isPlatform() ? Scope.PLATFORM : scope;
         String module = d.module();
-        String shortName = GradleDependencies.shortNameFor(module).orElse(d.artifact());
+        String shortName = shortNames.of(module).orElse(d.artifact());
         String version = d.effectiveVersion();
         Dependency dep;
         if (version.isBlank()) {
