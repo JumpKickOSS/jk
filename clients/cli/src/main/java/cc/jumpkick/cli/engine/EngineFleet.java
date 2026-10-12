@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
@@ -83,6 +84,8 @@ public final class EngineFleet {
         KILLED,
         /** Left running deliberately: in-flight jobs and no {@code --now}. */
         DRAINING,
+        /** Left running deliberately: no {@code --now}, no reply, and life that a kill would cut short. */
+        LEFT_ALONE,
         /** Still alive after a kill — the only case a user may have to act on. */
         SURVIVED
     }
@@ -391,24 +394,47 @@ public final class EngineFleet {
      * caller means "regardless".
      */
     public static StopResult stop(Member member, boolean now) {
+        return stop(member, now, EngineProbe.Patience.DEFAULT, SilentPeer.Grace.DEFAULT);
+    }
+
+    /**
+     * As {@link #stop(Member, boolean)} with the silent engine's patience and grace explicit. A
+     * graceful stop never kills on silence alone: an engine that accepts connections and answers
+     * nothing through the patience, or one with no listener whose process shows life, is
+     * {@link Outcome#LEFT_ALONE}; only a lifeless holder with no listener is killed.
+     */
+    static StopResult stop(Member member, boolean now, EngineProbe.Patience patience, SilentPeer.Grace grace) {
         long pid = member.pid();
-        // Not answering: there is no clean path to ask for, so go straight to the kill. Asking a wedged
-        // engine politely and then reporting success is how one gets left behind.
-        if (!member.responsive()) {
+        if (now) {
+            if (member.responsive() && EngineProcessControl.forceStop(member.socket())) {
+                return new StopResult(member, settle(pid));
+            }
+            // Not answering, or no bye: there is no clean path to ask for, so go straight to the kill.
             EngineProcessControl.hardKill(pid);
             return new StopResult(member, waitGone(pid, EXIT_GRACE_MS) ? Outcome.KILLED : Outcome.SURVIVED);
         }
-        if (now) {
-            if (!EngineProcessControl.forceStop(member.socket())) {
-                EngineProcessControl.hardKill(pid);
-            }
-            return new StopResult(member, settle(member, pid, /* mayKill= */ true));
-        }
-        int jobs = EngineProcessControl.drain(member.socket());
-        if (jobs > 0) {
-            return new StopResult(member, Outcome.DRAINING);
-        }
-        return new StopResult(member, settle(member, pid, /* mayKill= */ true));
+        return new StopResult(
+                member,
+                switch (EngineProcessControl.drainPatiently(member.socket(), patience)) {
+                    case EngineProcessControl.GracefulStop.Draining d -> Outcome.DRAINING;
+                    case EngineProcessControl.GracefulStop.Exiting e -> settle(pid);
+                    case EngineProcessControl.GracefulStop.Silent s -> Outcome.LEFT_ALONE;
+                    case EngineProcessControl.GracefulStop.Unreachable u ->
+                        member.responsive() ? settle(pid) : stopHolder(pid, patience, grace);
+                });
+    }
+
+    /**
+     * No listener, and the member was never answering: the process holds engine state it will not
+     * serve. One that shows life is left alone — mid-build with its wire starved, or a recycled pid
+     * — and only a lifeless one is killed.
+     */
+    private static Outcome stopHolder(long pid, EngineProbe.Patience patience, SilentPeer.Grace grace) {
+        Optional<SilentPeer.Pulse> pulse = SilentPeer.Pulse.of(pid, Clock.SYSTEM, patience.backoff(), grace);
+        if (pulse.isEmpty()) return Outcome.STOPPED;
+        if (pulse.get().alive()) return Outcome.LEFT_ALONE;
+        EngineProcessControl.hardKill(pid);
+        return waitGone(pid, EXIT_GRACE_MS) ? Outcome.KILLED : Outcome.SURVIVED;
     }
 
     /**
@@ -454,9 +480,13 @@ public final class EngineFleet {
                 && !normalized.equals(currentHome.toAbsolutePath().normalize());
     }
 
+    /**
+     * A superseded-layout engine always goes: a drain, or a silent engine the graceful stop left
+     * alone, is given the exit grace and then killed.
+     */
     private static StopResult retire(Member member) {
         StopResult result = stop(member, false);
-        if (result.outcome() != Outcome.DRAINING) return result;
+        if (result.outcome() != Outcome.DRAINING && result.outcome() != Outcome.LEFT_ALONE) return result;
         if (waitForExit(member.pid())) return new StopResult(member, Outcome.STOPPED);
         EngineProcessControl.hardKill(member.pid());
         return new StopResult(member, waitForExit(member.pid()) ? Outcome.KILLED : Outcome.SURVIVED);
@@ -471,15 +501,14 @@ public final class EngineFleet {
     }
 
     /**
-     * Wait for the process to disappear, escalating once if it does not.
+     * Wait for an engine that should be exiting to disappear, escalating once if it does not.
      *
      * <p>Liveness is checked by pid rather than by socket: a wedged engine can keep a bound socket while
      * being unable to answer, and "the socket stopped responding" is exactly the state where a user would
      * otherwise be told to go find the process themselves.
      */
-    private static Outcome settle(Member member, long pid, boolean mayKill) {
+    private static Outcome settle(long pid) {
         if (waitGone(pid, EXIT_GRACE_MS)) return Outcome.STOPPED;
-        if (!mayKill) return Outcome.DRAINING;
         EngineProcessControl.hardKill(pid);
         return waitGone(pid, EXIT_GRACE_MS) ? Outcome.KILLED : Outcome.SURVIVED;
     }

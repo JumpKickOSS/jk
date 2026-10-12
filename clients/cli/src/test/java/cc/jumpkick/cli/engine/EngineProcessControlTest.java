@@ -7,6 +7,7 @@ import cc.jumpkick.testing.ShortTempDirs;
 import cc.jumpkick.testing.Sleepers;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
+import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.IOException;
 import java.net.StandardProtocolFamily;
@@ -26,6 +27,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * The four rules of engine process control whose failure modes are severe: the pid the CLI itself
  * runs as is never a kill target, a live pid that is not a JVM is not a holder, a Ctrl-C inside the
  * kill grace window escalates at once, and stop / drain report an unreachable engine as a no-op.
+ * And a drain's missing ack is not a missing engine: the status says whether it is draining.
  */
 class EngineProcessControlTest {
 
@@ -88,8 +90,8 @@ class EngineProcessControlTest {
                 .as("stopping nothing is success")
                 .isTrue();
         assertThat(EngineProcessControl.drain(nothing))
-                .as("-1: nothing to drain")
-                .isEqualTo(-1);
+                .as("nothing to drain")
+                .isEqualTo(new EngineProcessControl.Drain.Unreachable());
 
         // The stub listens on a Unix socket, so the client has to speak that transport whatever the
         // tier forces for the engines it spawns; the property outranks the environment for this JVM.
@@ -102,11 +104,72 @@ class EngineProcessControlTest {
             assertThat(EngineProcessControl.stop(socket))
                     .as("reachable but no bye is a real problem, not an already-stopped engine")
                     .isFalse();
-            assertThat(EngineProcessControl.drain(socket)).isEqualTo(-1);
+            assertThat(EngineProcessControl.drain(socket))
+                    .as("reachable but no bye is not a missing engine")
+                    .isEqualTo(new EngineProcessControl.Drain.NoAck());
             answering.interrupt();
         } finally {
             if (forced == null) System.clearProperty(EngineTransport.TRANSPORT_PROPERTY);
             else System.setProperty(EngineTransport.TRANSPORT_PROPERTY, forced);
+        }
+    }
+
+    /** Quick enough for a unit test; the shape (ask, back off, read the status, ask again) is what is under test. */
+    private static final EngineProbe.Patience QUICK = new EngineProbe.Patience(200, 2, Duration.ofMillis(20));
+
+    private static final String VERSION = "9.9.9";
+
+    @Test
+    void a_drain_unanswered_in_time_is_draining_once_the_status_reports_jobs() throws Exception {
+        Path socket = tempDirs.create().resolve("gen1.sock");
+        try (ScriptedEngine engine = new ScriptedEngine(socket, (type, connection) -> switch (type) {
+            case EngineProtocol.HELLO -> ScriptedEngine.helloAck(VERSION, 4242);
+            case EngineProtocol.STATUS -> ScriptedEngine.statusAck(VERSION, 4242, 2, false);
+            default -> null; // the bye lands after the watchdog: a GC pause mid-build
+        })) {
+            assertThat(EngineProcessControl.drainPatiently(socket, QUICK))
+                    .isEqualTo(new EngineProcessControl.GracefulStop.Draining(2));
+            assertThat(engine.received(EngineProtocol.SHUTDOWN))
+                    .as("the request is in the engine's buffer; it is not repeated at a busy engine")
+                    .isEqualTo(1);
+        }
+    }
+
+    @Test
+    void a_drain_unanswered_with_a_drain_already_underway_is_exiting() throws Exception {
+        Path socket = tempDirs.create().resolve("gen1.sock");
+        try (ScriptedEngine engine = new ScriptedEngine(socket, (type, connection) -> switch (type) {
+            case EngineProtocol.HELLO -> ScriptedEngine.helloAck(VERSION, 4242);
+            case EngineProtocol.STATUS -> ScriptedEngine.statusAck(VERSION, 4242, 0, true);
+            default -> null;
+        })) {
+            assertThat(EngineProcessControl.drainPatiently(socket, QUICK))
+                    .isEqualTo(new EngineProcessControl.GracefulStop.Exiting());
+        }
+    }
+
+    @Test
+    void an_idle_engine_that_never_saw_the_request_is_asked_again() throws Exception {
+        Path socket = tempDirs.create().resolve("gen1.sock");
+        try (ScriptedEngine engine = new ScriptedEngine(socket, (type, connection) -> switch (type) {
+            case EngineProtocol.HELLO -> ScriptedEngine.helloAck(VERSION, 4242);
+            case EngineProtocol.STATUS -> ScriptedEngine.statusAck(VERSION, 4242, 0, false);
+            case EngineProtocol.SHUTDOWN -> connection == 1 ? null : ProtoLifecycle.bye(0, true);
+            default -> null;
+        })) {
+            assertThat(EngineProcessControl.drainPatiently(socket, QUICK))
+                    .isEqualTo(new EngineProcessControl.GracefulStop.Exiting());
+            assertThat(engine.received(EngineProtocol.SHUTDOWN)).isEqualTo(2);
+        }
+    }
+
+    @Test
+    void an_engine_silent_through_every_round_is_reported_silent_not_absent() throws Exception {
+        Path socket = tempDirs.create().resolve("gen1.sock");
+        try (ScriptedEngine engine = ScriptedEngine.silent(socket)) {
+            assertThat(EngineProcessControl.drainPatiently(socket, QUICK))
+                    .isEqualTo(new EngineProcessControl.GracefulStop.Silent());
+            assertThat(engine.received(EngineProtocol.SHUTDOWN)).isEqualTo(QUICK.probes());
         }
     }
 

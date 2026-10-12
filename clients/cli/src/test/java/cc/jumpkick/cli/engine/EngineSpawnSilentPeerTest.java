@@ -4,7 +4,7 @@ package cc.jumpkick.cli.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.cli.engine.EngineSpawn.Patience;
+import cc.jumpkick.cli.engine.EngineProbe.Patience;
 import cc.jumpkick.cli.engine.EngineSpawn.Reachability;
 import cc.jumpkick.testing.ShortTempDirs;
 import cc.jumpkick.testing.Sleepers;

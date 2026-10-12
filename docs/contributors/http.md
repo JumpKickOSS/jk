@@ -96,9 +96,13 @@ resident engine this user owns. `jk engine stop` addresses the one this director
 `--all` stops **this home only** (nested tests must not kill the host engine running
 {@code jk build}), and `--pid <pid>` stops one by pid.
 
-Every form of stop escalates to a hard kill if the engine does not exit, and reports what actually
-happened. Reliably stopping an engine must never require the user to reach for `kill` or hunt through
-Task Manager.
+Every form of stop confirms the engine went and reports what actually happened; an engine that said
+it was exiting and did not is hard-killed. A graceful stop never kills for silence alone: a drain
+whose ack misses the watchdog is settled by the engine's status (jobs or a drain underway mean
+draining), an engine silent through every probe is refused by pid, and a process holding engine
+state with no listener is killed only when it shows no life (`SilentPeer`). `--now` is the override.
+Reliably stopping an engine must never require the user to reach for `kill` or hunt through Task
+Manager.
 
 ## Auth tiers
 

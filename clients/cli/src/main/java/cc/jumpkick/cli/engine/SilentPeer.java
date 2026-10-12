@@ -110,9 +110,35 @@ public final class SilentPeer {
      * first reading cannot show a CPU step, so no life is only ever called on the second.
      */
     static Verdict judge(@Nullable Life before, Life now, Duration waited, Grace grace) {
-        boolean busy = now.youngerThan(grace.startup()) || now.workers() > 0 || now.cpuAdvancedSince(before);
-        if (!busy) return before == null ? Verdict.KEEP_WAITING : Verdict.DISPLACE;
+        if (!showsLife(before, now, grace)) return before == null ? Verdict.KEEP_WAITING : Verdict.DISPLACE;
         return waited.compareTo(grace.patienceFor(now)) < 0 ? Verdict.KEEP_WAITING : Verdict.LEAVE_ALONE;
+    }
+
+    /** Life without a reply: younger than the startup grace, running workers, or a CPU step since {@code before}. */
+    static boolean showsLife(@Nullable Life before, Life now, Grace grace) {
+        return now.youngerThan(grace.startup()) || now.workers() > 0 || now.cpuAdvancedSince(before);
+    }
+
+    /**
+     * One judgement of a holder that is not waited out: whether it shows life, and the reading
+     * that says so. A young holder or one with workers is judged on one reading; any other is
+     * read again {@code apart} later, the window a CPU step needs.
+     */
+    public record Pulse(Life life, boolean alive) {
+
+        /** Judge the live process {@code pid}; empty once it is gone. */
+        public static Optional<Pulse> of(long pid, Clock clock, Duration apart, Grace grace) {
+            Optional<Life> first = Life.of(pid, clock);
+            if (first.isEmpty()) return Optional.empty();
+            if (showsLife(null, first.get(), grace)) return Optional.of(new Pulse(first.get(), true));
+            try {
+                Thread.sleep(apart);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return Optional.of(new Pulse(first.get(), true)); // an unfinished reading never licenses a kill
+            }
+            return Life.of(pid, clock).map(second -> new Pulse(second, showsLife(first.get(), second, grace)));
+        }
     }
 
     /** The refusal: who the peer is, what it holds, how long it was given, and the operator's outs. */

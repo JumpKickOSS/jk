@@ -78,12 +78,12 @@ public final class EngineSpawn {
     }
 
     static EngineProbe.Handshake ensure(EnginePaths.Paths paths, String clientVersion) throws IOException {
-        return ensure(paths, clientVersion, Patience.DEFAULT, SilentPeer.Grace.DEFAULT);
+        return ensure(paths, clientVersion, EngineProbe.Patience.DEFAULT, SilentPeer.Grace.DEFAULT);
     }
 
     /** As {@link #ensure(EnginePaths.Paths, String)} with the probe patience and the silent peer's grace explicit. */
     static EngineProbe.Handshake ensure(
-            EnginePaths.Paths paths, String clientVersion, Patience patience, SilentPeer.Grace grace)
+            EnginePaths.Paths paths, String clientVersion, EngineProbe.Patience patience, SilentPeer.Grace grace)
             throws IOException {
         Path socket = EnginePaths.activeSocket(paths);
         Reachability reach = probePatiently(socket, clientVersion, patience);
@@ -132,7 +132,11 @@ public final class EngineSpawn {
      * state is the stale-pid case, displaced as before over the socket.
      */
     static Reachability waitOutSilentPeer(
-            EnginePaths.Paths paths, Path socket, String clientVersion, Patience patience, SilentPeer.Grace grace)
+            EnginePaths.Paths paths,
+            Path socket,
+            String clientVersion,
+            EngineProbe.Patience patience,
+            SilentPeer.Grace grace)
             throws IOException {
         Clock clock = Clock.SYSTEM;
         long pid = EngineProcessControl.unresponsiveHolderPid(socket);
@@ -172,26 +176,8 @@ public final class EngineSpawn {
         }
     }
 
-    /**
-     * How long ensure tolerates a silent peer before believing the silence. The engine runs
-     * SerialGC under a user-sized heap, so a stop-the-world pause of several seconds in the middle
-     * of a large parallel build is an ordinary event, not a wedge — and a client arriving inside
-     * that pause must wait it out, because displacing the engine kills every other terminal's
-     * build with it. Each probe waits {@code replyTimeoutMillis} for the hello-ack; a silent one is
-     * repeated {@code reprobes} more times with {@code backoff} between them, and only a peer
-     * silent through all of them is displaced.
-     */
-    record Patience(int replyTimeoutMillis, int reprobes, Duration backoff) {
-        static final Patience DEFAULT = new Patience(EngineWire.SOCKET_TIMEOUT_MILLIS, 3, Duration.ofSeconds(2));
-
-        /** Every probe this patience allows, counting the first. */
-        int probes() {
-            return 1 + reprobes;
-        }
-    }
-
     /** Probe, and give a silent peer {@code patience} before reporting it silent. */
-    static Reachability probePatiently(Path socket, String clientVersion, Patience patience) {
+    static Reachability probePatiently(Path socket, String clientVersion, EngineProbe.Patience patience) {
         Reachability reach = probe(socket, clientVersion, patience.replyTimeoutMillis());
         for (int again = 0; again < patience.reprobes() && reach instanceof Reachability.Silent; again++) {
             sleepQuietly(patience.backoff().toMillis());
@@ -214,7 +200,7 @@ public final class EngineSpawn {
                 paths,
                 "displacing unresponsive engine"
                         + (pid > 0 ? " (pid " + pid + ")" : "")
-                        + " — handshake stayed silent through " + Patience.DEFAULT.probes() + " probes");
+                        + " — handshake stayed silent through " + EngineProbe.Patience.DEFAULT.probes() + " probes");
         if (pid > 0) {
             EngineProcessControl.hardKill(pid);
             EngineProcessControl.waitForDeathOrKill(pid, STOP_DEATH_WAIT);
@@ -763,7 +749,7 @@ public final class EngineSpawn {
     }
 
     /** Outcome of waiting for a freshly spawned engine — lets the ladder tell a crash from a slow boot. */
-    private record StartResult(Outcome outcome, EngineProbe.@Nullable Handshake handshake) {
+    record StartResult(Outcome outcome, EngineProbe.@Nullable Handshake handshake) {
         enum Outcome {
             UP,
             CHILD_EXITED,
@@ -789,25 +775,27 @@ public final class EngineSpawn {
      * handshake alone is not "up": only one that {@link #serves} this client is — the displaced or
      * draining engine's answer is waited through. Without that, the request that follows a takeover
      * (the install's re-shelving pass) would stream to the engine the home no longer names.
+     *
+     * <p>The child's exit is read by its code (setsid keeps the pid, so liveness is authoritative).
+     * A clean exit is an election lost to an engine still booting — the healthy loser, not a
+     * failure — so the wait goes on for that engine until the ceiling. Any other exit is a crash,
+     * reported at once.
      */
-    private static StartResult awaitStartup(
-            EnginePaths.Paths paths, String clientVersion, Duration timeout, Process spawned) {
+    static StartResult awaitStartup(
+            EnginePaths.Paths paths, String clientVersion, Duration timeout, @Nullable Process spawned) {
         long deadline = System.nanoTime() + timeout.toNanos();
         Optional<String> pointer = pointerSha(clientVersion);
+        boolean yielded = false;
         while (System.nanoTime() < deadline) {
             Optional<EngineProbe.Handshake> h = serving(paths, clientVersion, pointer);
             if (h.isPresent()) return StartResult.up(h.get());
-            if (spawned != null && !spawned.isAlive()) {
-                // The child died (setsid keeps the pid, so liveness is authoritative). One last
-                // handshake: a concurrent spawn may have won the election and be serving already
-                // our child exiting is then the healthy loser, not a failure.
-                return serving(paths, clientVersion, pointer)
-                        .map(StartResult::up)
-                        .orElseGet(StartResult::exited);
+            if (!yielded && spawned != null && !spawned.isAlive()) {
+                if (spawned.exitValue() != 0) return StartResult.exited();
+                yielded = true;
             }
             sleepQuietly(50);
         }
-        return StartResult.timedOut();
+        return yielded ? StartResult.exited() : StartResult.timedOut();
     }
 
     private static Optional<EngineProbe.Handshake> serving(

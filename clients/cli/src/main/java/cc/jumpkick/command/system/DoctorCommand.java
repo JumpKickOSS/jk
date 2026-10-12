@@ -9,6 +9,8 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineHeapDump;
 import cc.jumpkick.cli.engine.EngineProbe;
+import cc.jumpkick.cli.engine.EngineProcessControl;
+import cc.jumpkick.cli.engine.SilentPeer;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.command.interop.MavenSpyJar;
@@ -19,6 +21,7 @@ import cc.jumpkick.compat.InstalledTool;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.discovery.SymlinkProvisioner;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.lock.LockPaths;
@@ -467,27 +470,57 @@ public final class DoctorCommand implements CliCommand {
     }
 
     private static Check checkEngine() {
-        EnginePaths.Paths paths = EnginePaths.current();
-        Path socket = EnginePaths.activeSocket(paths);
-        Optional<EngineProbe.Status> st = EngineProbe.status(socket);
+        return checkEngine(
+                EnginePaths.activeSocket(EnginePaths.current()),
+                EngineProbe.Patience.DEFAULT,
+                SilentPeer.Grace.DEFAULT);
+    }
+
+    /**
+     * The engine row. A silent socket is given {@code patience} before it means anything, and then
+     * the process behind it is read under {@code grace}: one that shows life is busy, not wedged.
+     */
+    static Check checkEngine(Path socket, EngineProbe.Patience patience, SilentPeer.Grace grace) {
+        Optional<EngineProbe.Status> st = EngineProbe.statusPatiently(socket, patience);
         if (st.isEmpty()) {
-            // A socket that accepts connections but never answers status is a wedged engine, not
-            // an absent one — `jk build` would hang on it instead of lazy-starting a fresh one.
-            if (EngineProbe.reachable(socket)) {
-                return new Check(
-                        Status.FAIL,
-                        "engine",
-                        "listening but not answering status — likely wedged; try `jk engine stop`");
-            }
+            if (EngineProbe.reachable(socket)) return silentEngine(socket, patience, grace);
             return new Check(Status.WARN, "engine", "not running (lazy start on next build)");
         }
         EngineProbe.Status s = st.get();
         String detail = "running pid " + s.pid() + " · " + s.version() + " · up "
-                + formatUptime((System.currentTimeMillis() - s.startedAtMillis()) / 1000);
+                + formatUptime((Clock.SYSTEM.millis() - s.startedAtMillis()) / 1000);
+        if (s.draining()) {
+            detail += " · draining " + s.activeBuildPlans() + (s.activeBuildPlans() == 1 ? " job" : " jobs");
+        }
         if (s.httpError() != null && !s.httpError().isBlank()) {
             return new Check(Status.WARN, "engine", detail + " · http: " + s.httpError());
         }
         return new Check(Status.OK, "engine", detail);
+    }
+
+    /**
+     * A socket that accepts connections and answers no status through every probe. A coordinator
+     * mid-build answers late — its process shows life — and `jk build` waits it out the same way;
+     * one that shows none is wedged and would hang the next build instead of lazy-starting a
+     * fresh engine.
+     */
+    private static Check silentEngine(Path socket, EngineProbe.Patience patience, SilentPeer.Grace grace) {
+        long pid = EngineProcessControl.unresponsiveHolderPid(socket);
+        Optional<SilentPeer.Pulse> pulse =
+                pid > 0 ? SilentPeer.Pulse.of(pid, Clock.SYSTEM, patience.backoff(), grace) : Optional.empty();
+        String silence = "not answering status through " + patience.probes() + " probes";
+        if (pulse.isPresent() && pulse.get().alive()) {
+            return new Check(
+                    Status.WARN,
+                    "engine",
+                    "pid " + pid + " alive and busy (" + pulse.get().life().describe() + ") but " + silence
+                            + " — a coordinator mid-build answers late; retry in a moment, or `jk engine stop"
+                            + " --now` stops it regardless");
+        }
+        return new Check(
+                Status.FAIL,
+                "engine",
+                "listening but " + silence + " — likely wedged; `jk engine stop --now` stops it");
     }
 
     /**

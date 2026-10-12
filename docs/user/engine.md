@@ -163,6 +163,13 @@ across two readings — past its startup, no workers, no CPU — is displaced: h
 replaced, with `displacing unresponsive engine (pid N)` in the engine log. `jk engine status` says
 when the engine it cannot reach is alive and busy; `jk engine stop --now` stops it regardless.
 
+`jk engine stop` and `jk doctor` give a silent engine the same patience. A stop whose `bye` misses
+the two-second watchdog reads the engine's status instead: in-flight jobs, or a drain already
+underway, mean the engine is draining and is left to finish. An engine that stays silent through
+every probe is refused, naming its pid, not killed — and an engine with no listener at all is
+killed only when its process shows no life. `jk doctor` reports a silent engine whose process shows
+life as busy, and only a lifeless one as wedged.
+
 ## Configuration
 
 `[engine]` in `~/.jk/config.toml` is machine-scoped: not project-overridable. The **Read**

@@ -10,6 +10,7 @@ import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -24,6 +25,23 @@ import org.jspecify.annotations.Nullable;
 public final class EngineProbe {
 
     private EngineProbe() {}
+
+    /**
+     * How long a probe tolerates a silent engine before believing the silence. The engine runs
+     * SerialGC under a user-sized heap, so a stop-the-world pause of several seconds in the middle
+     * of a large parallel build is an ordinary event, not a wedge — and a client arriving inside
+     * that pause must wait it out, because acting on the silence kills every other terminal's
+     * build. Each probe waits {@code replyTimeoutMillis} for its reply; a silent one is repeated
+     * {@code reprobes} more times with {@code backoff} between them.
+     */
+    public record Patience(int replyTimeoutMillis, int reprobes, Duration backoff) {
+        public static final Patience DEFAULT = new Patience(EngineWire.SOCKET_TIMEOUT_MILLIS, 3, Duration.ofSeconds(2));
+
+        /** Every probe this patience allows, counting the first. */
+        public int probes() {
+            return 1 + reprobes;
+        }
+    }
 
     /** What a connection's {@code hello}/{@code hello-ack} handshake reveals about the engine. */
     public record Handshake(String version, long pid, long startedAtMillis, boolean draining, String buildId) {}
@@ -301,7 +319,7 @@ public final class EngineProbe {
      * handles it) apart from "something is listening but not answering" (a wedged engine, a FAIL).
      * {@link #status} alone cannot make that distinction: it returns empty for both.
      */
-    public static boolean reachable(Path socket) {
+    public static boolean reachable(@Nullable Path socket) {
         try (SocketChannel ch = EngineWire.connect(socket)) {
             return true;
         } catch (IOException e) {
@@ -309,12 +327,42 @@ public final class EngineProbe {
         }
     }
 
-    /** Connect and request a status snapshot; empty if no engine is reachable. */
-    public static Optional<Status> status(Path socket) {
+    /**
+     * {@link #status(Path)} with {@code patience} for a silent engine: an unanswered probe is
+     * repeated after the backoff while something still accepts the connection. Empty once nothing
+     * listens, or when every probe went unanswered.
+     */
+    public static Optional<Status> statusPatiently(@Nullable Path socket, Patience patience) {
+        Optional<Status> status = status(socket, patience.replyTimeoutMillis());
+        for (int again = 0; again < patience.reprobes() && status.isEmpty() && reachable(socket); again++) {
+            try {
+                Thread.sleep(patience.backoff());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return Optional.empty();
+            }
+            status = status(socket, patience.replyTimeoutMillis());
+        }
+        return status;
+    }
+
+    /** Connect and request a status snapshot; empty if no engine is reachable or none answers in time. */
+    public static Optional<Status> status(@Nullable Path socket) {
+        return status(socket, EngineWire.SOCKET_TIMEOUT_MILLIS);
+    }
+
+    /**
+     * {@link #status(Path)} waiting {@code replyTimeoutMillis} for each of the two replies. Still
+     * empty for both "nothing listening" and "listening but silent"; {@link #reachable} tells
+     * those apart, and {@link #statusPatiently} gives a silent engine time to answer.
+     */
+    public static Optional<Status> status(@Nullable Path socket, int replyTimeoutMillis) {
         try (SocketChannel ch = EngineWire.connect(socket)) {
             EngineWire.exchange(
-                    ch, ProtoLifecycle.hello(JkVersion.VERSION, "probe")); // handshake first, response discarded
-            String ack = EngineWire.exchange(ch, ProtoLifecycle.statusRequest());
+                    ch,
+                    ProtoLifecycle.hello(JkVersion.VERSION, "probe"),
+                    replyTimeoutMillis); // handshake first, response discarded
+            String ack = EngineWire.exchange(ch, ProtoLifecycle.statusRequest(), replyTimeoutMillis);
             if (!EngineProtocol.STATUS_ACK.equals(EngineProtocol.typeOf(ack))) return Optional.empty();
             String httpUrl = Jsonl.str(ack, "httpUrl");
             String mcpUrl = Jsonl.str(ack, "mcpUrl"); // null = MCP disabled

@@ -183,7 +183,8 @@ class EngineClientTest {
         Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
 
         assertThat(EngineProcessControl.drain(EnginePaths.activeSocket(p)))
-                .isZero(); // no in-flight jobs → immediate exit
+                .as("no in-flight jobs → immediate exit")
+                .isEqualTo(new EngineProcessControl.Drain.Acked(0));
         serverThread.join(5_000);
         assertThat(serverThread.isAlive()).isFalse();
     }
@@ -246,9 +247,10 @@ class EngineClientTest {
     }
 
     @Test
-    void drain_on_a_non_running_engine_is_minus_one() throws IOException {
+    void drain_on_a_non_running_engine_is_unreachable() throws IOException {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
-        assertThat(EngineProcessControl.drain(EnginePaths.activeSocket(p))).isEqualTo(-1);
+        assertThat(EngineProcessControl.drain(EnginePaths.activeSocket(p)))
+                .isEqualTo(new EngineProcessControl.Drain.Unreachable());
     }
 
     /**
