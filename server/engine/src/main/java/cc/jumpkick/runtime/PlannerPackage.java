@@ -296,12 +296,13 @@ public final class PlannerPackage {
                     Path classes = ctx.require(MAIN_CLASSES);
                     List<Path> freshInputs = new ArrayList<>(kotlinSources(ctx));
                     if (mixedWithJava) freshInputs.addAll(javaSources(ctx));
-                    // The classpath as the compile checked it: ABI token lines, never paths.
+                    // The classpath as the compile checked it: ABI token lines, never paths. The
+                    // key names the record the merged tree is held against on the next build.
                     FreshnessStamp.write(
                             classes,
                             BuildStamps.KOTLIN,
                             TaskNames.COMPILE_KOTLIN,
-                            "",
+                            ctx.get(KOTLIN_ACTION_KEY).orElse(""),
                             freshInputs,
                             FreshnessStamp.ClasspathTokens.of(ctx.require(KOTLIN_STAMP_TOKENS)),
                             ctx.require(RELEASE),
@@ -333,12 +334,13 @@ public final class PlannerPackage {
                     Path classes = ctx.require(MAIN_CLASSES);
                     List<Path> freshInputs = new ArrayList<>(groovySources(ctx));
                     if (mixedGroovy) freshInputs.addAll(javaSources(ctx));
-                    // The token lines compile-groovy checked — the ones its action key hashed.
+                    // The token lines compile-groovy checked — the ones its action key hashed —
+                    // and that key, for the next build's wholeness check of the merged tree.
                     FreshnessStamp.write(
                             classes,
                             BuildStamps.GROOVY,
                             TaskNames.COMPILE_GROOVY,
-                            "",
+                            ctx.get(GROOVY_ACTION_KEY).orElse(""),
                             freshInputs,
                             FreshnessStamp.ClasspathTokens.of(ctx.require(GROOVY_STAMP_TOKENS)),
                             ctx.require(RELEASE),

@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -13,24 +16,38 @@ import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Paths a resource mirror recorded into a classes tree. A compile stores every file it finds in
- * its output directory; these paths are not its outputs, and a restore of a record that contains
- * them lays a deleted resource back down.
+ * Paths another step laid into a classes tree: the resource mirror's copies and the classes each
+ * other compiler merged in. A compile stores every file it finds in its output directory; these
+ * paths are not its outputs, and a restore of a record that contains them lays a deleted resource
+ * or a dropped class back down.
  */
 public final class MirroredOutputs {
 
-    /** Ledger under {@code target/incremental/} for {@code target/classes}. */
+    /** Resource ledger under {@code target/incremental/} for {@code target/classes}. */
     public static final String MAIN_LEDGER = "copied-resources.txt";
 
-    /** Ledger under {@code target/incremental/} for {@code target/test-classes}. */
+    /** Resource ledger under {@code target/incremental/} for {@code target/test-classes}. */
     public static final String TEST_LEDGER = "copied-test-resources.txt";
+
+    private static final String MERGED_PREFIX = "merged-";
+    private static final String MERGED_SUFFIX = ".txt";
+    private static final String TEST_MERGE = "-test";
 
     private MirroredOutputs() {}
 
     /**
-     * {@code outputs} without the paths the ledger for {@code outputDir} records. {@code
+     * The ledger a compiler merge keeps under {@code target/incremental/}: {@code
+     * merged-<name>.txt}. A name ending in {@code -test} is a merge into {@code target/test-classes};
+     * every other name is a merge into {@code target/classes}.
+     */
+    public static String mergedLedger(String name) {
+        return MERGED_PREFIX + name + MERGED_SUFFIX;
+    }
+
+    /**
+     * {@code outputs} without the paths the ledgers for {@code outputDir} record. {@code
      * target/classes} and {@code target/test-classes} are the trees that share a directory with a
-     * mirror; any other directory is returned unchanged.
+     * mirror or a merge; any other directory is returned unchanged.
      */
     public static Map<String, String> without(Path outputDir, Map<String, String> outputs) throws IOException {
         Set<String> mirrored = recorded(outputDir);
@@ -85,19 +102,29 @@ public final class MirroredOutputs {
         cache.storeWithOutputs(task, key, record.inputs(), kept);
     }
 
+    /** Every path the resource ledger and the merge ledgers for {@code outputDir} record. */
     static Set<String> recorded(Path outputDir) throws IOException {
         Path name = outputDir.getFileName();
         if (name == null) return Set.of();
-        String ledgerName =
-                switch (name.toString()) {
-                    case "classes" -> MAIN_LEDGER;
-                    case "test-classes" -> TEST_LEDGER;
-                    default -> null;
-                };
-        if (ledgerName == null) return Set.of();
+        boolean test = name.toString().equals("test-classes");
+        if (!test && !name.toString().equals("classes")) return Set.of();
         Path target = outputDir.getParent();
         if (target == null || !BuildLayout.TARGET.equals(String.valueOf(target.getFileName()))) return Set.of();
-        return read(target.resolve("incremental").resolve(ledgerName));
+        Path incremental = target.resolve("incremental");
+        Set<String> out = new TreeSet<>(read(incremental.resolve(test ? TEST_LEDGER : MAIN_LEDGER)));
+        List<Path> merges = new ArrayList<>();
+        PathUtil.forEachChild(incremental, (file, attrs) -> {
+            String ledger = file.getFileName().toString();
+            if (attrs.isRegularFile()
+                    && ledger.startsWith(MERGED_PREFIX)
+                    && ledger.endsWith(MERGED_SUFFIX)
+                    && ledger.endsWith(TEST_MERGE + MERGED_SUFFIX) == test) {
+                merges.add(file);
+            }
+            return true;
+        });
+        for (Path merge : merges) out.addAll(read(merge));
+        return out;
     }
 
     private static Set<String> read(Path ledger) throws IOException {

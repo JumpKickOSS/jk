@@ -52,6 +52,7 @@ import cc.jumpkick.runtime.base.TestEnv;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.MirroredOutputs;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolIdentity;
 import cc.jumpkick.util.JkDirs;
@@ -276,7 +277,7 @@ public final class PlannerSupport {
      * tree through {@code FileHashMemo}, whose entries are keyed by size and mtime.
      */
     static void mergeLanguageOutput(Path langOut, Path classes, Path buildDir, String ledgerName) throws IOException {
-        Path ledger = buildDir.resolve("incremental").resolve("merged-" + ledgerName + ".txt");
+        Path ledger = buildDir.resolve("incremental").resolve(MirroredOutputs.mergedLedger(ledgerName));
         ResourceMirror.sync(List.of(langOut), classes, ledger);
     }
 

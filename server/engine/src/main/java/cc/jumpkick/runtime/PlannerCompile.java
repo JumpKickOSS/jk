@@ -836,6 +836,9 @@ public final class PlannerCompile {
                     ctx.put(KOTLIN_STAMP_DIGEST, optionsDigest);
                     List<String> stampTokens = PlannerLang.kotlinStampTokens(classpath, worker.snapshotter());
                     ctx.put(KOTLIN_STAMP_TOKENS, stampTokens);
+                    // A fresh stamp vouches for the inputs, not for the tree: the merged classes
+                    // must still hold every output the stamped compile's record owns, or a partly
+                    // wiped tree stays "up to date" and the jar lacks the same classes.
                     if (!rerun
                             && FreshnessStamp.isFresh(
                                     classes,
@@ -843,7 +846,8 @@ public final class PlannerCompile {
                                     freshInputs,
                                     FreshnessStamp.ClasspathTokens.of(stampTokens),
                                     ctx.require(RELEASE),
-                                    optionsDigest)) {
+                                    optionsDigest)
+                            && ModuleOutputs.compileOutputsOnDisk(actionCache, classes, BuildStamps.KOTLIN)) {
                         ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
                         ctx.label("up to date");
                         ctx.cached();
@@ -854,6 +858,7 @@ public final class PlannerCompile {
                     ctx.label("compiling " + ktSources.size() + " Kotlin sources");
                     ctx.put(KOTLIN_STAMP_CLOCK, FreshnessStamp.clockNow(classes));
                     LangCompile.Result kr = compileKotlinSources(ctx, in, actionCache, taskId, worker);
+                    ctx.put(KOTLIN_ACTION_KEY, kr.actionKey());
                     if (!kr.success()) {
                         PlannerSupport.forwardWorkerDiagnostics(
                                 ctx,
@@ -984,6 +989,7 @@ public final class PlannerCompile {
                     ctx.put(GROOVY_STAMP_DIGEST, optionsDigest);
                     List<String> stampTokens = ActionKey.groovycClasspathTokens(request);
                     ctx.put(GROOVY_STAMP_TOKENS, stampTokens);
+                    // As compile-kotlin: the stamp vouches for the inputs, the record for the tree.
                     if (!rerun
                             && FreshnessStamp.isFresh(
                                     classes,
@@ -991,7 +997,8 @@ public final class PlannerCompile {
                                     freshInputs,
                                     FreshnessStamp.ClasspathTokens.of(stampTokens),
                                     ctx.require(RELEASE),
-                                    optionsDigest)) {
+                                    optionsDigest)
+                            && ModuleOutputs.compileOutputsOnDisk(actionCache, classes, BuildStamps.GROOVY)) {
                         ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
                         ctx.label("up to date");
                         ctx.cached();
@@ -1003,6 +1010,7 @@ public final class PlannerCompile {
                     ctx.put(GROOVY_STAMP_CLOCK, FreshnessStamp.clockNow(classes));
                     String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_GROOVY, classes);
                     LangCompile.Result gr = compileGroovySources(ctx, in, actionCache, request, taskId);
+                    ctx.put(GROOVY_ACTION_KEY, gr.actionKey());
                     if (!gr.success()) {
                         PlannerSupport.forwardWorkerDiagnostics(
                                 ctx, "groovyc", gr.diagnostics(), "groovyc failed without diagnostics");

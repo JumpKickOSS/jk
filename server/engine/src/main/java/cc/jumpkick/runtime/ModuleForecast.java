@@ -482,6 +482,9 @@ final class ModuleForecast {
             ForecastLangArms.KotlinArm arm = arms.kotlinArm(prepared);
             boolean fresh = !compileDepDirty && !force && arms.kotlinStampFresh(prepared, arm);
             if (fresh) {
+                // The stamp names the compile whose record the merged tree is held against.
+                compileKotlinKey = FreshnessStamp.stampedKey(layout.compileStampDir(), BuildStamps.KOTLIN)
+                        .orElse(null);
                 steps.add(new TaskForecast.Task(TaskNames.COMPILE_KOTLIN, TaskForecast.Status.CACHED, "", null));
             } else {
                 // The stamp is gone (a wiped target/) or stale: price the step by the action key of
@@ -510,6 +513,11 @@ final class ModuleForecast {
             steps.add(step.task());
             if (step.task().cached()) {
                 restored.projectFromRecord(layout.groovyClassesDir(), compileGroovyKey = step.key());
+                // A fresh stamp answers without a key; the stamp still names the compile's record.
+                if (compileGroovyKey == null) {
+                    compileGroovyKey = FreshnessStamp.stampedKey(layout.compileStampDir(), BuildStamps.GROOVY)
+                            .orElse(null);
+                }
             } else {
                 compileDirty = true;
                 ownHint = SourceApiIndex.Hint.UNKNOWN;
@@ -1071,7 +1079,7 @@ final class ModuleForecast {
             boolean incomplete = false;
             if (producesJar) {
                 incomplete = TaskForecaster.classesDirHasContent(layout.classesDir())
-                        && !ModuleOutputs.compileOutputsOnDisk(actionCache, compileMainKey, layout.classesDir());
+                        && !compileOutputsOnDisk(layout.classesDir());
                 outputsAbsent = !Files.isRegularFile(layout.mainJar())
                         || !TaskForecaster.classesDirHasContent(layout.classesDir())
                         || incomplete
@@ -1107,8 +1115,14 @@ final class ModuleForecast {
      * repackage of the tree it happens to have.
      */
     private boolean classesTreeWhole(BuildLayout layout) throws IOException {
-        return TaskForecaster.classesDirHasContent(layout.classesDir())
-                && ModuleOutputs.compileOutputsOnDisk(actionCache, compileMainKey, layout.classesDir());
+        return TaskForecaster.classesDirHasContent(layout.classesDir()) && compileOutputsOnDisk(layout.classesDir());
+    }
+
+    /** The tree holds every output of every compile merged into it: javac's, Kotlin's and Groovy's. */
+    private boolean compileOutputsOnDisk(Path classesDir) {
+        return ModuleOutputs.compileOutputsOnDisk(actionCache, compileMainKey, classesDir)
+                && ModuleOutputs.compileOutputsOnDisk(actionCache, compileKotlinKey, classesDir)
+                && ModuleOutputs.compileOutputsOnDisk(actionCache, compileGroovyKey, classesDir);
     }
 
     private void orderAfter(Prepared prepared) throws Exception {
