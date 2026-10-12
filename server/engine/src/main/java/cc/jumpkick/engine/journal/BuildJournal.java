@@ -870,8 +870,9 @@ public final class BuildJournal {
             // Never reap a run that has not finished: the idle gate is checked before this call,
             // so a build admitted in between would otherwise have its `running` stub deleted out
             // from under it.
-            if (readRecord(dir).map(BuildRecord::running).orElse(false)) continue;
-            entries.add(new Entry(dir, entryMillis(dir, nowMillis), sizeOf(dir)));
+            Optional<BuildRecord> record = readRecord(dir);
+            if (record.map(BuildRecord::running).orElse(false)) continue;
+            entries.add(new Entry(dir, entryMillis(dir, record, nowMillis), sizeOf(dir)));
         }
         int removed = 0;
         long removedBytes = 0;
@@ -1027,8 +1028,8 @@ public final class BuildJournal {
         }
     }
 
-    private long entryMillis(Path dir, long fallback) {
-        Optional<BuildRecord> r = readRecord(dir);
+    /** When the run under {@code dir} happened, from its record {@code r} when it has one. */
+    private static long entryMillis(Path dir, Optional<BuildRecord> r, long fallback) {
         if (r.isPresent()) {
             long t = r.get().finishedAt() > 0 ? r.get().finishedAt() : r.get().startedAt();
             if (t > 0) return t;

@@ -12,6 +12,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
+import org.junit.platform.launcher.Launcher;
+import org.junit.platform.launcher.core.LauncherFactory;
 
 /**
  * {@code jk test} child JVM: argument parsing and the three run modes — one-shot, list-only
@@ -132,6 +134,7 @@ public final class TestRunner implements Plugin {
      */
     static int runPullMode(Args args, EventWriter writer, BufferedReader stdin) throws Exception {
         LauncherPath.emitReady(writer, args.workerId);
+        Launcher launcher = LauncherFactory.create();
         String line;
         while ((line = stdin.readLine()) != null) {
             if (line.equals("DONE")) return 0;
@@ -140,7 +143,8 @@ public final class TestRunner implements Plugin {
                 continue;
             }
             String className = line.substring(4).trim();
-            LauncherPath.runClass(className, args.methods, args.includeTags, args.excludeTags, args.workerId, writer);
+            LauncherPath.runClass(
+                    launcher, className, args.methods, args.includeTags, args.excludeTags, args.workerId, writer);
             LauncherPath.emitReady(writer, args.workerId);
         }
         System.err.println("jk-test-runner: stdin closed before DONE");

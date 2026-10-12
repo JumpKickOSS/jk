@@ -483,10 +483,11 @@ final class LauncherPath {
     }
 
     /**
-     * Pull-mode: run one class through the Launcher. Returns whether any test failed; the caller
-     * merges that into its session failure bit.
+     * Pull-mode: run one class through {@code launcher}, the worker's one. Returns whether any
+     * test failed; the caller merges that into its session failure bit.
      */
     static boolean runClass(
+            Launcher launcher,
             String className,
             List<MethodSelection> methods,
             List<String> includeTags,
@@ -498,7 +499,7 @@ final class LauncherPath {
                 LauncherDiscoveryRequestBuilder.request().selectors(DiscoverySelectors.selectClass(className));
         applyMethodFilter(b, methods);
         applyTagFilters(b, includeTags, excludeTags);
-        LauncherFactory.create().execute(b.build(), adapter);
+        launcher.execute(b.build(), adapter);
         return adapter.hasFailures();
     }
 

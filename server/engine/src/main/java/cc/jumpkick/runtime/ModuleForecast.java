@@ -387,10 +387,10 @@ final class ModuleForecast {
                     mixedGroovy,
                     groovyJar,
                     scalaSetup));
-            boolean stampFresh = false;
+            Optional<FreshnessStamp.Stamp> fresh = Optional.empty();
             if (!compileDepDirty && !force && !groovyJarUnavailable) {
                 try {
-                    stampFresh = FreshnessStamp.isFresh(
+                    fresh = FreshnessStamp.freshStamp(
                             out,
                             BuildStamps.JAVA,
                             mainSrc,
@@ -398,15 +398,17 @@ final class ModuleForecast {
                             release,
                             ActionKey.javacOptionsDigest(req));
                 } catch (IOException ignored) {
-                    stampFresh = false;
+                    fresh = Optional.empty();
                 }
             }
+            boolean stampFresh = fresh.isPresent();
             ForecastSteps.noteCompileMain(out, req, mainSrc.size(), release, stampFresh, compileDepDirty);
             if (stampFresh) {
                 // The stamp names the compile that produced this tree; that record is what the
                 // tree is held against below and what a wiped tree would be reconstructed from.
-                compileMainKey =
-                        FreshnessStamp.stampedKey(out, BuildStamps.JAVA).orElse(null);
+                compileMainKey = fresh.map(FreshnessStamp.Stamp::actionKey)
+                        .filter(k -> !k.isBlank())
+                        .orElse(null);
                 steps.add(new TaskForecast.Task(TaskNames.COMPILE_MAIN, TaskForecast.Status.CACHED, "", null));
                 ownHint = new SourceApiIndex.Hint(SourceApiIndex.Kind.BODY_ONLY, List.of());
             } else {

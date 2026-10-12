@@ -39,7 +39,8 @@ class MinifiedJarAuditTest {
         Path output =
                 jar(dir.resolve("out.jar"), Map.of("META-INF/micronaut/com.acme.Spi/com.acme.$Bean$Definition", ""));
 
-        assertThatThrownBy(() -> MinifiedJarPackager.auditByNameIndexes(List.of(input), output))
+        assertThatThrownBy(() -> MinifiedJarPackager.auditByNameIndexes(
+                        ByNameIndex.presentReferencedClasses(List.of(input)), output))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("com.acme.$Bean$Definition")
                 .hasMessageContaining("-keep class com.acme.$Bean$Definition { *; }");
@@ -56,7 +57,8 @@ class MinifiedJarAuditTest {
                 dir.resolve("out.jar"),
                 Map.of("META-INF/services/org.slf4j.spi.SLF4JServiceProvider", "com.acme.Provider\n"));
 
-        assertThatThrownBy(() -> MinifiedJarPackager.auditByNameIndexes(List.of(input), output))
+        assertThatThrownBy(() -> MinifiedJarPackager.auditByNameIndexes(
+                        ByNameIndex.presentReferencedClasses(List.of(input)), output))
                 .hasMessageContaining("com.acme.Provider");
     }
 
@@ -67,7 +69,8 @@ class MinifiedJarAuditTest {
                 "com/acme/Impl.class", "x");
 
         assertThatCode(() -> MinifiedJarPackager.auditByNameIndexes(
-                        List.of(jar(dir.resolve("in.jar"), both)), jar(dir.resolve("out.jar"), both)))
+                        ByNameIndex.presentReferencedClasses(List.of(jar(dir.resolve("in.jar"), both))),
+                        jar(dir.resolve("out.jar"), both)))
                 .doesNotThrowAnyException();
     }
 
@@ -78,7 +81,8 @@ class MinifiedJarAuditTest {
         Path input = jar(dir.resolve("in.jar"), Map.of("META-INF/services/com.acme.Spi", "com.optional.Missing\n"));
         Path output = jar(dir.resolve("out.jar"), Map.of("META-INF/services/com.acme.Spi", "com.optional.Missing\n"));
 
-        assertThatCode(() -> MinifiedJarPackager.auditByNameIndexes(List.of(input), output))
+        assertThatCode(() -> MinifiedJarPackager.auditByNameIndexes(
+                        ByNameIndex.presentReferencedClasses(List.of(input)), output))
                 .doesNotThrowAnyException();
     }
 
@@ -94,7 +98,8 @@ class MinifiedJarAuditTest {
         Path input = jar(dir.resolve("in.jar"), inputEntries);
         Path output = jar(dir.resolve("out.jar"), Map.of("META-INF/services/com.acme.Spi", serviceBody.toString()));
 
-        assertThatThrownBy(() -> MinifiedJarPackager.auditByNameIndexes(List.of(input), output))
+        assertThatThrownBy(() -> MinifiedJarPackager.auditByNameIndexes(
+                        ByNameIndex.presentReferencedClasses(List.of(input)), output))
                 .hasMessageContaining("R8 removed 25 classes")
                 .hasMessageContaining("… and 5 more");
     }

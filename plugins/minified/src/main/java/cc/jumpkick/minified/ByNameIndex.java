@@ -49,7 +49,7 @@ final class ByNameIndex {
         Set<String> out = new TreeSet<>();
         for (Path jar : jars) {
             if (!Files.isRegularFile(jar)) continue;
-            try (JarFile jf = new JarFile(jar.toFile())) {
+            try (JarFile jf = new JarFile(jar.toFile(), false)) {
                 Enumeration<JarEntry> entries = jf.entries();
                 while (entries.hasMoreElements()) {
                     JarEntry entry = entries.nextElement();
@@ -77,7 +77,7 @@ final class ByNameIndex {
         DynamicSurface surface = DynamicSurface.empty();
         for (Path jar : jars) {
             if (!Files.isRegularFile(jar)) continue;
-            try (JarFile jf = new JarFile(jar.toFile())) {
+            try (JarFile jf = new JarFile(jar.toFile(), false)) {
                 Enumeration<JarEntry> entries = jf.entries();
                 while (entries.hasMoreElements()) {
                     JarEntry entry = entries.nextElement();
@@ -93,12 +93,22 @@ final class ByNameIndex {
         return surface;
     }
 
+    /**
+     * The classes {@code jars} name by text that {@code jars} also carry, sorted. A name no input
+     * resolves belongs to an optional dependency nobody bundled and is left out.
+     */
+    static Set<String> presentReferencedClasses(Collection<Path> jars) throws IOException {
+        Set<String> named = referencedClasses(jars);
+        named.retainAll(classesIn(jars));
+        return named;
+    }
+
     /** Fully-qualified names of every class present in {@code jars}. */
     static Set<String> classesIn(Collection<Path> jars) throws IOException {
         Set<String> out = new LinkedHashSet<>();
         for (Path jar : jars) {
             if (!Files.isRegularFile(jar)) continue;
-            try (JarFile jf = new JarFile(jar.toFile())) {
+            try (JarFile jf = new JarFile(jar.toFile(), false)) {
                 Enumeration<JarEntry> entries = jf.entries();
                 while (entries.hasMoreElements()) {
                     JarEntry entry = entries.nextElement();

@@ -115,8 +115,7 @@ final class MinifiedJarPackager {
             // exactly, so deriving the rules beats any pattern a user could write: it covers
             // hand-written framework internals that match no naming convention, and it tracks
             // whatever the project actually depends on.
-            Set<String> derived = new TreeSet<>(ByNameIndex.referencedClasses(program));
-            derived.retainAll(ByNameIndex.classesIn(program));
+            Set<String> derived = ByNameIndex.presentReferencedClasses(program);
 
             // Libraries describe their own reflective surface in META-INF/native-image for
             // native-image, which reads it unaided. R8 has no equivalent, so the same facts reach
@@ -211,7 +210,7 @@ final class MinifiedJarPackager {
                         + " [minified] strict-warnings = true to fail on them");
             }
 
-            auditByNameIndexes(program, shrunk);
+            auditByNameIndexes(derived, shrunk);
             SignatureAudit signatures = auditGenericSignatures(program, shrunk);
             if (!signatures.degraded().isEmpty()) {
                 // A warning, never a failure (and deliberately outside strict-warnings): plenty of
@@ -236,13 +235,12 @@ final class MinifiedJarPackager {
      * logging that would report the damage. A build error naming the classes is the only place
      * this is cheap to catch.
      *
-     * <p>Scoped to classes the inputs actually carried: a name an input already failed to resolve
-     * belongs to an optional dependency nobody bundled, and is not R8's doing.
+     * <p>{@code named} is {@link ByNameIndex#presentReferencedClasses} over the inputs: a name an
+     * input already failed to resolve belongs to an optional dependency nobody bundled, and is not
+     * R8's doing.
      */
-    // Package-private for MinifiedJarAuditTest.
-    static void auditByNameIndexes(List<Path> program, Path shrunk) throws IOException {
-        Set<String> expected = new TreeSet<>(ByNameIndex.referencedClasses(program));
-        expected.retainAll(ByNameIndex.classesIn(program));
+    static void auditByNameIndexes(Set<String> named, Path shrunk) throws IOException {
+        Set<String> expected = new TreeSet<>(named);
         expected.removeAll(ByNameIndex.classesIn(List.of(shrunk)));
         if (expected.isEmpty()) return;
 
@@ -347,7 +345,7 @@ final class MinifiedJarPackager {
         Map<String, String> out = new HashMap<>();
         for (Path jar : jars) {
             if (!Files.isRegularFile(jar)) continue;
-            try (JarFile jf = new JarFile(jar.toFile())) {
+            try (JarFile jf = new JarFile(jar.toFile(), false)) {
                 Enumeration<JarEntry> entries = jf.entries();
                 while (entries.hasMoreElements()) {
                     JarEntry entry = entries.nextElement();
@@ -474,7 +472,7 @@ final class MinifiedJarPackager {
         if (mainClass != null && !mainClass.isBlank()) {
             manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS, mainClass);
         }
-        try (JarFile in = new JarFile(shrunk.toFile());
+        try (JarFile in = new JarFile(shrunk.toFile(), false);
                 OutputStream out = DeterministicZip.archiveStream(artifact);
                 JarOutputStream jos = new JarOutputStream(out)) {
             Set<String> dirs = new HashSet<>();

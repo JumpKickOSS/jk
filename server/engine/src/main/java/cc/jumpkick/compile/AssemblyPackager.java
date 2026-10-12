@@ -68,7 +68,7 @@ public final class AssemblyPackager {
             // 2. Dependency jars, in declared order (earlier wins).
             for (Path depJar : request.dependencyJars()) {
                 if (!Files.isRegularFile(depJar)) continue;
-                try (JarFile jf = new JarFile(depJar.toFile())) {
+                try (JarFile jf = new JarFile(depJar.toFile(), false)) {
                     List<JarEntry> entries = new ArrayList<>();
                     jf.stream().filter(e -> !e.isDirectory()).forEach(entries::add);
                     entries.sort(Comparator.comparing(JarEntry::getName));

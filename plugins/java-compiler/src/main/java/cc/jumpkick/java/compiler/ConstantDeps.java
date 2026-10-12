@@ -29,6 +29,7 @@ import xsbti.api.AnalyzedClass;
 import xsbti.api.DependencyContext;
 import xsbti.api.ExternalDependency;
 import xsbti.api.InternalDependency;
+import xsbti.compile.DefinesClass;
 import xsbti.compile.analysis.ReadStamps;
 import xsbti.compile.analysis.Stamp;
 
@@ -85,6 +86,7 @@ final class ConstantDeps {
         Stamps recorded = analysis.stamps();
         Relation<String, String> products = rel.productClassName();
         Map<String, Optional<VirtualFile>> libraries = new HashMap<>();
+        Map<VirtualFile, DefinesClass> definers = new HashMap<>();
         for (Map.Entry<String, Set<String>> edge : edges.entrySet()) {
             String fromBinary = edge.getKey();
             for (String fromClass : CollectionConverters.asJava(products.reverse(fromBinary))) {
@@ -115,8 +117,11 @@ final class ConstantDeps {
                                             DependencyContext.DependencyByMemberRef))));
                             continue;
                         }
+                        // The platform alone defines java.*: no classpath entry can, so no scan.
+                        if (onBinary.startsWith("java.")) continue;
                         VirtualFile library = libraries
-                                .computeIfAbsent(onBinary, b -> defining(b, classpath, classOutput, converter))
+                                .computeIfAbsent(
+                                        onBinary, b -> defining(b, classpath, classOutput, converter, definers))
                                 .orElse(null);
                         if (library == null) continue; // a platform class, or nothing on the classpath
                         Stamp stamp = stamps.library(library);
@@ -130,18 +135,31 @@ final class ConstantDeps {
         return analysis.copy(recorded, apis, rel, analysis.infos(), analysis.compilations());
     }
 
-    /** The first classpath entry, other than this compile's own output, that defines {@code binaryName}. */
+    /**
+     * The first classpath entry, other than this compile's own output, that defines {@code
+     * binaryName}. {@code definers} memoises each entry's index across owners: indexing a jar
+     * lists every entry in it.
+     */
     private static Optional<VirtualFile> defining(
-            String binaryName, List<VirtualFile> classpath, Path classOutput, FileConverter converter) {
+            String binaryName,
+            List<VirtualFile> classpath,
+            Path classOutput,
+            FileConverter converter,
+            Map<VirtualFile, DefinesClass> definers) {
         Path own = classOutput.toAbsolutePath().normalize();
         for (VirtualFile entry : classpath) {
             if (converter.toPath(entry).toAbsolutePath().normalize().equals(own)) continue;
-            try {
-                if (Locate.definesClass(entry).apply(binaryName)) return Optional.of(entry);
-            } catch (RuntimeException unreadable) {
-                // an entry that cannot be indexed defines nothing this compile can depend on
-            }
+            if (definers.computeIfAbsent(entry, ConstantDeps::index).apply(binaryName)) return Optional.of(entry);
         }
         return Optional.empty();
+    }
+
+    /** {@code entry}'s class index; an entry that cannot be indexed defines nothing this compile can depend on. */
+    private static DefinesClass index(VirtualFile entry) {
+        try {
+            return Locate.definesClass(entry);
+        } catch (RuntimeException unreadable) {
+            return name -> false;
+        }
     }
 }

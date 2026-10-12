@@ -140,10 +140,6 @@ public final class ActionCache {
         return p;
     }
 
-    private boolean hasBlob(String sha) {
-        return Files.isRegularFile(resolveBlob(sha));
-    }
-
     /**
      * The record for {@code actionKey}, or empty when there is none. Reads without a prior
      * existence check: another engine's {@link ActionCachePrune} can unlink the key between the two,
@@ -572,10 +568,10 @@ public final class ActionCache {
             // thrash described above. Digest while copying otherwise: the memo seed below asserts
             // these exact bytes, so a truncated/corrupt blob must surface as a miss here, not as
             // green tests over wrong classes downstream.
-            if (!identicalTo(target, entry.getValue())) {
+            Blob blob = Objects.requireNonNull(blobs.get(entry.getValue()));
+            if (!identicalTo(target, blob, entry.getValue())) {
                 Files.deleteIfExists(target);
-                var blob = blobs.get(entry.getValue());
-                if (blob == null || !copyVerified(blob.path(), target, entry.getValue())) {
+                if (!copyVerified(blob.path(), target, entry.getValue())) {
                     dropCorruptBlob(entry.getValue());
                     // The contract is an empty outputDir on failure, so a partial restore is wiped
                     // rather than pruned.
@@ -653,9 +649,9 @@ public final class ActionCache {
 
     private boolean restoreArtifacts(ActionRecord record, Path baseDir, boolean pruneRoots) throws IOException {
         if (record.outputs().isEmpty()) return false;
-        for (String sha : record.outputs().values()) {
-            if (!hasBlob(sha)) return false;
-        }
+        Optional<Map<String, Blob>> resolved = resolveAll(record.outputs());
+        if (resolved.isEmpty()) return false;
+        Map<String, Blob> blobs = resolved.get();
         // Clear the DIRECTORY roots this record owns before copyinga multi-file
         // layout (quarkus fast-jar lib/ app/ quarkus-app/) restored over a dirty target/
         // otherwise keeps stale extras beside the restored set — real packager runs clean
@@ -679,7 +675,7 @@ public final class ActionCache {
                 pruneUnowned(baseDir.resolve(root), owned);
             }
         }
-        meter(record.outputs(), false);
+        meter(blobs, record.outputs());
         for (Map.Entry<String, String> e : record.outputs().entrySet()) {
             Path target = baseDir.resolve(e.getKey());
             Files.createDirectories(target.getParent());
@@ -687,13 +683,14 @@ public final class ActionCache {
             // bumps the file's mtime, and FreshnessStamp compares classpath entries by mtime — so
             // restoring an unchanged sibling jar invalidated every downstream stamp and forced a
             // full KSP round (and Kotlin recompile) on every single build.
-            if (!identicalTo(target, e.getValue())) {
+            Blob blob = Objects.requireNonNull(blobs.get(e.getValue()));
+            if (!identicalTo(target, blob, e.getValue())) {
                 Files.deleteIfExists(target);
                 // COPY, never link: a packager may later rewrite the target in place, and a link
                 // would let that rewrite mutate the blob (see Cas.putFile). Digest while copying —
                 // the memo seed below asserts these exact bytes. Blobs may live in the store CAS
                 // after a release promote (Class-C).
-                if (!copyVerified(resolveBlob(e.getValue()), target, e.getValue())) {
+                if (!copyVerified(blob.path(), target, e.getValue())) {
                     dropCorruptBlob(e.getValue());
                     return false;
                 }
@@ -736,14 +733,13 @@ public final class ActionCache {
     }
 
     /**
-     * True when {@code target} already holds exactly the CAS blob {@code sha}. Size is checked
-     * first so the hash is only paid when it can actually match.
+     * True when {@code target} already holds exactly the CAS blob {@code sha}, whose size the
+     * caller's {@link #resolveAll} already read. One stat of the target answers presence and size,
+     * so the hash is only paid when it can actually match.
      */
-    private boolean identicalTo(Path target, String sha) throws IOException {
-        if (!Files.isRegularFile(target)) return false;
-        Path blob = resolveBlob(sha);
-        if (!Files.isRegularFile(blob)) return false;
-        if (Files.size(target) != Files.size(blob)) return false;
+    private static boolean identicalTo(Path target, Blob blob, String sha) throws IOException {
+        Blob existing = statBlob(target);
+        if (existing == null || existing.size() != blob.size()) return false;
         // The memo, not a full re-read: restoreArtifacts seeds this very file via rememberContent,
         // so the check that exists to avoid churning mtime costs a map lookup rather than re-reading
         // a fat jar on every warm build.

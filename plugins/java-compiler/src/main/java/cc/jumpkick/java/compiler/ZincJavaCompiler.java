@@ -92,6 +92,13 @@ public final class ZincJavaCompiler {
      */
     private static final Charset SOURCE_ENCODING = StandardCharsets.UTF_8;
 
+    /**
+     * One stamper for every compile in this worker. Zinc caches a jar's or class file's hash
+     * against its mtime in concurrent maps, so a module's unchanged dependencies are not re-hashed
+     * per compile and lanes may share it.
+     */
+    private static final ReadStamps STAMPER = Stamps.timeWrapBinaryStamps(PlainVirtualFileConverter.converter());
+
     private ZincJavaCompiler() {}
 
     public record Result(
@@ -259,8 +266,7 @@ public final class ZincJavaCompiler {
             String[] javacOpts = javacOptions(release, extraOptions, sourceOutput, processorPath, sources, classpath);
             // The analysis-off marker is keyed by the classpath: the entry whose supertype the
             // analysis could not load may have changed, and then the analysis is tried again.
-            String classpathDigest = ZincWorkdir.classpathDigest(classpath);
-            Optional<String> analysisOff = mixed == null ? zinced.analysisOff(classpathDigest) : Optional.empty();
+            Optional<String> analysisOff = mixed == null ? zinced.analysisOff(classpath) : Optional.empty();
             if (analysisOff.isPresent()) {
                 return AnalysisOffCompile.run(
                         javac, sourceFiles, javacOpts, cp, classOutput, reporter, analysisOff.get());
@@ -269,7 +275,7 @@ public final class ZincJavaCompiler {
             AnalysisStore store = zinced.store();
             // One stamper for the compile and for the classpath hash: both must see the same
             // (mtime-cached) hash of a jar or the two could disagree mid-compile.
-            ReadStamps stamper = Stamps.timeWrapBinaryStamps(converter);
+            ReadStamps stamper = STAMPER;
             // The same stamper judges a producer's analysis against its classes on disk.
             ClasspathAnalyses producers = ClasspathAnalyses.of(job.classpathAnalyses(), stamper);
             Setup setup = Setup.of(
@@ -316,7 +322,7 @@ public final class ZincJavaCompiler {
                 // javac alone cannot compile Scala sources, so a mixed compile has no fallback.
                 if (mixed != null) return mixedLinkageFailure(reporter, e);
                 String missing = AnalysisOffCompile.missingType(e);
-                zinced.markAnalysisOff(missing, classpathDigest);
+                zinced.markAnalysisOff(missing, classpath);
                 return AnalysisOffCompile.run(javac, sourceFiles, javacOpts, cp, classOutput, reporter, missing);
             }
             phases.mark("zinc-compile");
@@ -468,7 +474,7 @@ public final class ZincJavaCompiler {
             return new Plan(true, "no zinc analysis", allSources(sources, "no zinc analysis"));
         }
         ReadStamps previous = analysis.readStamps();
-        ReadStamps current = Stamps.timeWrapBinaryStamps(converter);
+        ReadStamps current = STAMPER;
         LinkedHashMap<Path, String> invalid = new LinkedHashMap<>();
 
         for (Path src : sources) {

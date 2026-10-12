@@ -180,7 +180,7 @@ public final class BootJarPackager {
      */
     private static void explodeLoader(
             JarOutputStream jos, Path loaderJar, DeterministicZip zip, Set<String> dirsWritten) throws IOException {
-        try (JarFile jf = new JarFile(loaderJar.toFile())) {
+        try (JarFile jf = new JarFile(loaderJar.toFile(), false)) {
             List<JarEntry> entries = new ArrayList<>();
             jf.stream().filter(e -> !e.isDirectory()).forEach(entries::add);
             entries.sort(Comparator.comparing(JarEntry::getName));
