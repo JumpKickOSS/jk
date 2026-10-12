@@ -4,12 +4,14 @@ package cc.jumpkick.command.system;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineProcessControl;
+import cc.jumpkick.cli.engine.SilentPeer;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.DrainView;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -55,36 +57,54 @@ public final class EngineStopCommand implements CliCommand {
         if (pidArg.isPresent()) {
             return stopByPid(pidArg.get(), in.isSet("now"));
         }
-        EnginePaths.Paths paths = EnginePaths.current();
         // This engine's own generation socket: a successor may take the endpoint while it drains.
-        Path socket = EnginePaths.activeSocket(paths);
-        Optional<EngineProbe.Status> before = EngineProbe.status(socket);
+        return stop(
+                EnginePaths.activeSocket(EnginePaths.current()),
+                in.isSet("now"),
+                EngineProbe.Patience.DEFAULT,
+                SilentPeer.Grace.DEFAULT);
+    }
+
+    /**
+     * Stop the engine behind {@code socket}. A graceful stop never kills an engine for silence: one
+     * that accepts connections and answers nothing through {@code patience} is refused, and a
+     * holder with no listener is killed only when its process shows no life under {@code grace}.
+     * {@code now} is the operator's override for both.
+     */
+    int stop(Path socket, boolean now, EngineProbe.Patience patience, SilentPeer.Grace grace) {
+        Optional<EngineProbe.Status> before = EngineProbe.statusPatiently(socket, patience);
         if (before.isEmpty()) {
-            return stopUnresponsiveHolder(paths);
+            if (EngineProbe.reachable(socket)) return stopSilent(socket, now);
+            return stopHolder(socket, now, patience, grace);
         }
+        long pid = before.get().pid();
         long started = before.get().startedAtMillis();
 
         // Force: stop now, then CONFIRM it went. Reporting "stopped" without checking is how a wedged
         // engine ends up being the user's problem to find and kill.
-        if (in.isSet("now")) {
-            if (!EngineProcessControl.forceStop(socket))
-                EngineProcessControl.hardKill(before.get().pid());
-            return confirmGone(before.get().pid(), started);
+        if (now) {
+            if (!EngineProcessControl.forceStop(socket)) EngineProcessControl.hardKill(pid);
+            return confirmGone(pid, started);
         }
 
-        // Graceful drain. The engine enters draining and reports the in-flight job count.
-        int jobs = EngineProcessControl.drain(socket);
-        if (jobs <= 0) {
-            // Idle (or already gone): the engine should exit immediately — verify, and escalate if not.
-            return confirmGone(before.get().pid(), started);
-        }
+        return switch (EngineProcessControl.drainPatiently(socket, patience)) {
+            case EngineProcessControl.GracefulStop.Draining(int jobs) -> draining(socket, jobs, started, pid);
+            // Acknowledged idle, or the listener closed behind a status answer: exiting on its own.
+            case EngineProcessControl.GracefulStop.Exiting e -> confirmGone(pid, started);
+            case EngineProcessControl.GracefulStop.Unreachable u -> confirmGone(pid, started);
+            case EngineProcessControl.GracefulStop.Silent s -> settle(Exit.FAILURE, silentRefusal(pid));
+        };
+    }
+
+    /** The engine entered its drain and reported {@code jobs} in flight: say so, or watch it on a TTY. */
+    private int draining(Path socket, int jobs, long started, long pid) {
         long deadline = EngineProbe.status(socket)
                 .map(EngineProbe.Status::drainDeadlineMillis)
                 .orElse(-1L);
         if (!BuildPlanConsole.isInteractiveTerminal()) {
             return settle(Exit.SUCCESS, drainingMessage(jobs, deadline));
         }
-        return drainOnTty(socket, jobs, started, before.get().pid());
+        return drainOnTty(socket, jobs, started, pid);
     }
 
     /**
@@ -110,16 +130,58 @@ public final class EngineStopCommand implements CliCommand {
     }
 
     /**
-     * No handshake does not mean no engine: a process can hold this directory's election state
-     * while never answering its socket — and then every fresh spawn loses the election to it and
-     * exits silently, so reporting "not running" leaves the user to find the JVM by hand. That
-     * wedge is exactly what stop exists to clear: kill it and confirm it went, on the graceful
-     * path too, because an engine with no working socket has nothing to drain.
+     * The engine accepts connections and answers nothing through every probe. On the graceful path
+     * that is a refusal, never a kill: a coordinator mid-build answers seconds or minutes late, and
+     * killing it abandons every other terminal's jobs. {@code --now} is the operator's override.
      */
-    private int stopUnresponsiveHolder(EnginePaths.Paths paths) {
-        long pid = EngineProcessControl.unresponsiveHolderPid(EnginePaths.activeSocket(paths));
+    private int stopSilent(Path socket, boolean now) {
+        long pid = EngineProcessControl.unresponsiveHolderPid(socket);
+        if (!now) return settle(Exit.FAILURE, silentRefusal(pid));
+        if (!EngineProcessControl.forceStop(socket)) EngineProcessControl.hardKill(pid);
+        if (pid <= 0 || EngineFleet.waitForExit(pid)) {
+            return settle(Exit.SUCCESS, "Engine stopped now; it had not been answering its socket.");
+        }
+        return settle(Exit.FAILURE, "Engine pid " + pid + " did NOT exit, even after a hard kill.");
+    }
+
+    /** Why a graceful stop leaves a silent engine alone, naming it, what it holds and the way out. */
+    static String silentRefusal(long pid) {
+        String life = pid > 0
+                ? SilentPeer.Life.of(pid, Clock.SYSTEM)
+                        .map(l -> " (" + l.describe() + ")")
+                        .orElse("")
+                : "";
+        return "Engine" + (pid > 0 ? " pid " + pid : "") + life
+                + " accepts connections but has not acknowledged the stop; it is not killed, since it may be"
+                + " mid-job for another terminal. Retry in a moment, or `jk engine stop --now` stops it"
+                + " regardless.";
+    }
+
+    /**
+     * No listener does not mean no engine: a process can hold this directory's election state
+     * while never binding its socket — and then every fresh spawn loses the election to it and
+     * exits silently, so reporting "not running" leaves the user to find the JVM by hand. That
+     * wedge is what stop exists to clear: kill it and confirm it went, on the graceful path too,
+     * because an engine with no listener has no job to drain. One whose process shows life is
+     * the exception — mid-build with its wire starved, still loading, or a pid recycled onto
+     * another JVM — and only {@code --now} kills it.
+     */
+    private int stopHolder(Path socket, boolean now, EngineProbe.Patience patience, SilentPeer.Grace grace) {
+        long pid = EngineProcessControl.unresponsiveHolderPid(socket);
         if (pid <= 0) {
             return settle(Exit.SUCCESS, "not running");
+        }
+        if (!now) {
+            Optional<SilentPeer.Pulse> pulse = SilentPeer.Pulse.of(pid, Clock.SYSTEM, patience.backoff(), grace);
+            if (pulse.isEmpty()) return settle(Exit.SUCCESS, "not running");
+            if (pulse.get().alive()) {
+                return settle(
+                        Exit.FAILURE,
+                        "Engine pid " + pid + " holds this directory's engine state without answering its socket"
+                                + " but shows life (" + pulse.get().life().describe()
+                                + ") — not killed, since it may be mid-job for another terminal. Retry in a"
+                                + " moment, or `jk engine stop --now` stops it regardless.");
+            }
         }
         EngineProcessControl.hardKill(pid);
         if (EngineFleet.waitForExit(pid)) {
@@ -180,9 +242,10 @@ public final class EngineStopCommand implements CliCommand {
     /**
      * Report what actually happened to each engine, rather than assuming a request was obeyed.
      *
-     * <p>A killed engine is called out because it means the clean path did not work, and a survivor is
-     * called out loudly because it is the one case a user may still have to act on — the whole point being
-     * that they should never have to guess.
+     * <p>A killed engine is called out because it means the clean path did not work; a survivor, and an
+     * engine left alone for the life it showed without a reply, are called out loudly because those are
+     * the cases a user may still have to act on — the whole point being that they should never have to
+     * guess.
      *
      * <p>Package-private: a synthetic {@link EngineFleet.StopResult} is the only way to exercise the
      * survivor settle without a wedged engine on the machine running the test.
@@ -194,12 +257,14 @@ public final class EngineStopCommand implements CliCommand {
         int stopped = 0;
         int killed = 0;
         int draining = 0;
+        List<Long> leftAlone = new ArrayList<>();
         List<Long> survived = new ArrayList<>();
         for (EngineFleet.StopResult r : results) {
             switch (r.outcome()) {
                 case STOPPED -> stopped++;
                 case KILLED -> killed++;
                 case DRAINING -> draining++;
+                case LEFT_ALONE -> leftAlone.add(r.member().pid());
                 case SURVIVED -> survived.add(r.member().pid());
             }
         }
@@ -213,13 +278,20 @@ public final class EngineStopCommand implements CliCommand {
                     .append(" draining (will exit once in-flight jobs finish or the drain deadline passes;"
                             + " `jk engine stop --now` stops now)");
         }
+        if (!leftAlone.isEmpty()) {
+            msg.append(", ")
+                    .append(leftAlone.size())
+                    .append(" not answering but alive, left alone (may be mid-job; `jk engine stop --now`"
+                            + " stops regardless): pid ")
+                    .append(leftAlone);
+        }
         if (!survived.isEmpty()) {
             msg.append(", ")
                     .append(survived.size())
                     .append(" did NOT exit: pid ")
                     .append(survived);
         }
-        return settle(survived.isEmpty() ? Exit.SUCCESS : Exit.FAILURE, msg.toString());
+        return settle(survived.isEmpty() && leftAlone.isEmpty() ? Exit.SUCCESS : Exit.FAILURE, msg.toString());
     }
 
     /**

@@ -712,7 +712,7 @@ population = { examined = 4 }
 
 [clock-owner]
 [clock-owner.populations]
-"clients/cli" = { classes = 676, sites = 41838 }
+"clients/cli" = { classes = 756, sites = 47311 }
 "clients/cli-terminal" = { classes = 48, sites = 1630 }
 "plugins/image-builder" = { classes = 13, sites = 1201 }
 "plugins/java-compiler" = { classes = 25, sites = 1420 }
@@ -924,10 +924,6 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 in     = "clients/cli"
 at     = "cc.jumpkick.command.system.CleanCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.system.DoctorCommand#checkEngine()Lcc/jumpkick/command/system/DoctorCommand$Check; -> java.lang.System#currentTimeMillis()J"
-reason = "pure move: the command split re-keyed the sites into command.pipeline, command.system and command.toolchain; same reads, same count"
 [[clock-owner.entries]]
 in     = "clients/cli"
 at     = "cc.jumpkick.command.system.EngineStatusCommand#printFleet(Ljava/util/List;)V -> java.lang.System#currentTimeMillis()J"

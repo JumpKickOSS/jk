@@ -103,6 +103,7 @@ class EngineFleetTest {
                         EngineFleet.Outcome.STOPPED,
                         EngineFleet.Outcome.KILLED,
                         EngineFleet.Outcome.DRAINING,
+                        EngineFleet.Outcome.LEFT_ALONE,
                         EngineFleet.Outcome.SURVIVED);
     }
 

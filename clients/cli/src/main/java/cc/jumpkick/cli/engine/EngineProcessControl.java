@@ -49,18 +49,85 @@ public final class EngineProcessControl {
         }
     }
 
+    /** What a drain request got back; see {@link #drain}. */
+    public sealed interface Drain {
+        /** Nothing accepted the connection: a no-op stop. */
+        record Unreachable() implements Drain {}
+
+        /** The engine acknowledged with {@code jobs} in flight; {@code 0} means it is exiting now. */
+        record Acked(int jobs) implements Drain {}
+
+        /** The connection was accepted but no {@code bye} came back within the exchange watchdog. */
+        record NoAck() implements Drain {}
+    }
+
     /**
      * Schedule a graceful drain: the engine refuses new jobs and exits cleanly once in-flight jobs
-     * finish. Returns the in-flight job count at the moment of the request (0 → the engine is exiting
-     * now), or {@code -1} when nothing was reachable (a no-op stop).
+     * finish. A missing ack is not a missing engine: a SerialGC pause of several seconds is an
+     * ordinary event mid-build, and the request is still in the engine's socket buffer.
      */
-    public static int drain(@Nullable Path socket) {
-        try (SocketChannel ch = EngineWire.connect(socket)) {
-            String bye = EngineWire.exchange(ch, ProtoLifecycle.shutdown(false));
-            if (!EngineProtocol.BYE.equals(EngineProtocol.typeOf(bye))) return -1;
-            return ByeFrame.decode(bye).plans();
+    public static Drain drain(@Nullable Path socket) {
+        SocketChannel ch;
+        try {
+            ch = EngineWire.connect(socket);
         } catch (IOException e) {
-            return -1;
+            return new Drain.Unreachable();
+        }
+        try (ch) {
+            String bye = EngineWire.exchange(ch, ProtoLifecycle.shutdown(false));
+            if (!EngineProtocol.BYE.equals(EngineProtocol.typeOf(bye))) return new Drain.NoAck();
+            return new Drain.Acked(ByeFrame.decode(bye).plans());
+        } catch (IOException e) {
+            return new Drain.NoAck();
+        }
+    }
+
+    /** The graceful stop's verdict once the drain request has been given its patience. */
+    public sealed interface GracefulStop {
+        /** The engine drains {@code jobs} in-flight jobs and exits on its own once they finish. */
+        record Draining(int jobs) implements GracefulStop {}
+
+        /** The engine acknowledged with nothing in flight, or reports a drain underway: it is exiting now. */
+        record Exiting() implements GracefulStop {}
+
+        /** Nothing accepts the connection: no listener to ask, so the pid is all there is to go on. */
+        record Unreachable() implements GracefulStop {}
+
+        /** Accepted every connection and answered none; left alone, since a kill would abandon jobs it may run. */
+        record Silent() implements GracefulStop {}
+    }
+
+    /**
+     * Ask for a drain and wait out a silent engine. A drain that goes unacknowledged is followed by a
+     * status probe after {@code patience}'s backoff: an engine that reports in-flight jobs or a drain
+     * underway is draining whatever happened to the ack, an idle one that never saw the request is
+     * asked again, and one whose listener is gone is unreachable. Only an engine silent through every
+     * round is {@link GracefulStop.Silent}; this never kills.
+     */
+    public static GracefulStop drainPatiently(@Nullable Path socket, EngineProbe.Patience patience) {
+        for (int round = 0; ; round++) {
+            switch (drain(socket)) {
+                case Drain.Acked(int jobs) -> {
+                    return jobs > 0 ? new GracefulStop.Draining(jobs) : new GracefulStop.Exiting();
+                }
+                case Drain.Unreachable u -> {
+                    return new GracefulStop.Unreachable();
+                }
+                case Drain.NoAck n -> {
+                    /* give the engine its patience, then read what it says about itself */
+                }
+            }
+            if (round >= patience.reprobes()) return new GracefulStop.Silent();
+            sleepQuietly(patience.backoff().toMillis());
+            Optional<EngineProbe.Status> status = EngineProbe.status(socket, patience.replyTimeoutMillis());
+            if (status.isPresent()) {
+                int jobs = status.get().activeBuildPlans();
+                if (jobs > 0) return new GracefulStop.Draining(jobs);
+                if (status.get().draining()) return new GracefulStop.Exiting();
+                // Idle and not stopping: the request never reached it; the next round asks again.
+            } else if (!EngineProbe.reachable(socket)) {
+                return new GracefulStop.Unreachable();
+            }
         }
     }
 
