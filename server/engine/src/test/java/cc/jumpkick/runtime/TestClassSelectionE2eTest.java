@@ -23,6 +23,7 @@ import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -111,7 +112,27 @@ class TestClassSelectionE2eTest {
     }
 
     @Test
-    void a_class_the_tag_filter_excluded_fails_the_run_naming_the_tag_and_the_flag(@TempDir Path tmp) throws Exception {
+    void a_prerequisite_without_the_class_skips_without_a_test_jvm(@TempDir Path tmp) throws Exception {
+        Path ws = workspace(tmp);
+        // A JVM flag no JVM accepts: a lib suite that forked would fail before its first test.
+        Files.writeString(
+                ws.resolve("lib/jk.toml"), "\n[test]\njvm-args = [\"-XX:+NoSuchJkFlag\"]\n", StandardOpenOption.APPEND);
+        Steps steps = new Steps();
+
+        WorkspaceResult result = test(ws, tmp, List.of("AppTest"), 0, steps);
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.success()).isTrue();
+        assertThat(steps.status.get(ws.resolve("lib"))).isEqualTo(TaskStatus.SKIPPED);
+        assertThat(steps.label.get(ws.resolve("lib"))).isEqualTo("no classes matched --class AppTest — skipped");
+        assertThat(steps.tests(ws.resolve("app")))
+                .extracting(TestSummary::total)
+                .isEqualTo(1L);
+    }
+
+    @Test
+    void a_class_the_tag_filter_excluded_fails_its_module_naming_the_tag_and_the_flag(@TempDir Path tmp)
+            throws Exception {
         Path ws = workspace(tmp);
         Steps steps = new Steps();
 
@@ -124,10 +145,56 @@ class TestClassSelectionE2eTest {
 
         assertThat(result.success()).isFalse();
         assertThat(result.exitCode()).isEqualTo(Exit.TESTS_FAILED);
-        assertThat(result.errors())
-                .containsExactly("--class named 1 class the tag filter excluded: com.example.BenchTest [bench];"
-                        + " pass --include-tags bench (or a --profile that includes it) to run it");
+        assertThat(steps.status.get(ws.resolve("app"))).isEqualTo(TaskStatus.FAIL);
+        assertThat(steps.tests(ws.resolve("app")))
+                .extracting(tests -> tests.failures().getFirst().message())
+                .isEqualTo(BENCH_EXCLUDED);
     }
+
+    @Test
+    void a_named_class_the_tag_filter_excluded_fails_even_when_another_named_class_ran(@TempDir Path tmp)
+            throws Exception {
+        Path ws = workspace(tmp);
+        Steps steps = new Steps();
+
+        WorkspaceResult result = test(
+                ws,
+                tmp,
+                TestSelection.DEFAULT.withExcludeTags(List.of("bench")).withClasses(List.of("AppTest", "BenchTest")),
+                0,
+                steps);
+
+        assertThat(result.success()).isFalse();
+        assertThat(steps.tests(ws.resolve("app"))).satisfies(tests -> {
+            assertThat(tests.succeeded()).as("AppTest ran").isEqualTo(1L);
+            assertThat(tests.failures())
+                    .singleElement()
+                    .extracting(f -> f.message())
+                    .isEqualTo(BENCH_EXCLUDED);
+        });
+    }
+
+    @Test
+    void a_wildcard_composes_with_the_tag_filter(@TempDir Path tmp) throws Exception {
+        Path ws = workspace(tmp);
+        Steps steps = new Steps();
+
+        WorkspaceResult result = test(
+                ws,
+                tmp,
+                TestSelection.DEFAULT.withExcludeTags(List.of("bench")).withClasses(List.of("App*", "Bench*")),
+                0,
+                steps);
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.success()).isTrue();
+        assertThat(steps.tests(ws.resolve("app")))
+                .extracting(TestSummary::total)
+                .isEqualTo(1L);
+    }
+
+    private static final String BENCH_EXCLUDED = "--class named 1 class the tag filter excluded:"
+            + " com.example.BenchTest [bench]; pass --include-tags bench (or a --profile that includes it) to run it";
 
     @Test
     void serial_tagged_classes_alone_satisfy_the_pattern(@TempDir Path tmp) throws Exception {

@@ -3,6 +3,8 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.model.Profile;
+import cc.jumpkick.model.Profiles;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestFailureInfo;
@@ -10,6 +12,10 @@ import cc.jumpkick.run.TestSummary;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -22,7 +28,84 @@ import org.jspecify.annotations.Nullable;
  */
 public final class TestClassMatch {
 
+    /** A dropped class's tag list in the runner's {@code tag-excluded} warning: {@code a.FooIT [integration, slow]}. */
+    private static final Pattern TAG_LIST = Pattern.compile("\\[([^\\]]+)]");
+
     private TestClassMatch() {}
+
+    /**
+     * True when no pattern's class half carries a {@code *}: the selection names its classes, so a named class
+     * the tag filter drops fails the run instead of passing green without it. A wildcard composes
+     * with the tag filter, and the classes it reaches that the filter drops are a warning.
+     */
+    public static boolean namesClasses(TestSelection selection) {
+        return !selection.classes().isEmpty()
+                && selection.classes().stream().noneMatch(p -> {
+                    int hash = p.indexOf('#');
+                    return (hash < 0 ? p : p.substring(0, hash)).indexOf('*') >= 0;
+                });
+    }
+
+    /**
+     * {@code result} failed by the tag filter dropping a class the selection named: the dropped
+     * class as one more failure beside whatever ran, or {@link #asFailure} when nothing ran.
+     */
+    public static TestSummary withTagExcluded(
+            TestSummary result,
+            String moduleLabel,
+            TestSelection selection,
+            String tagExcluded,
+            @Nullable String suiteHint) {
+        if (nothingMatched(selection, false, result)) return asFailure(moduleLabel, selection, tagExcluded, suiteHint);
+        List<TestFailureInfo> failures = new ArrayList<>(result.failures());
+        failures.add(new TestFailureInfo(moduleLabel, "", "", "(test run)", "", tagExcluded, ""));
+        return new TestSummary(
+                result.total() + 1,
+                result.succeeded(),
+                result.failed() + 1,
+                result.skipped(),
+                result.classes(),
+                failures,
+                result.classWallMs(),
+                result.workers());
+    }
+
+    /**
+     * The runner's {@code tag-excluded} warning with the profiles of {@code profiles}, other than
+     * the {@code active} one, whose tag lists run every tag it names: {@code ; --profile
+     * integration runs it}. Unchanged when no profile does.
+     */
+    public static @Nullable String namingProfiles(
+            @Nullable String tagExcluded, Profiles profiles, @Nullable String active) {
+        if (tagExcluded == null || tagExcluded.isBlank()) return tagExcluded;
+        Set<String> tags = new TreeSet<>();
+        Matcher m = TAG_LIST.matcher(tagExcluded);
+        while (m.find()) {
+            for (String tag : m.group(1).split(",")) {
+                if (!tag.isBlank()) tags.add(tag.trim());
+            }
+        }
+        if (tags.isEmpty()) return tagExcluded;
+        List<String> running = new ArrayList<>();
+        for (String name : new TreeSet<>(profiles.byName().keySet())) {
+            if (name.equals(active)) continue;
+            if (runs(profiles.resolve(name), tags)) running.add("--profile " + name);
+        }
+        if (running.isEmpty()) return tagExcluded;
+        boolean one = !tagExcluded.contains(" classes the tag filter excluded");
+        return tagExcluded + "; " + String.join(" or ", running) + " runs " + (one ? "it" : "them");
+    }
+
+    /**
+     * Whether {@code profile} admits a class carrying {@code tags}: it sets its own exclude list
+     * and that list names none of them, and its include list, when it has one, names one.
+     */
+    private static boolean runs(Profile profile, Set<String> tags) {
+        if (!profile.excludeTagsSet()) return false;
+        if (profile.excludeTags().stream().map(String::trim).anyMatch(tags::contains)) return false;
+        List<String> include = profile.includeTags();
+        return include.isEmpty() || include.stream().map(String::trim).anyMatch(tags::contains);
+    }
 
     /**
      * True when {@code result} is the empty summary of a {@code --class} run: the selection named

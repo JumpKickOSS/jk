@@ -572,28 +572,56 @@ public final class PlannerTest {
                         ctx.label("no tests to run");
                         return;
                     }
-                    // The test runtime classpath is the siblings' jars: wait for them to be written.
-                    PlannerSetup.awaitSiblingArtifacts(ctx, in);
-                    List<Path> testRtCp = TestLaunch.testRuntimeClasspath(ctx, pluginDecls);
-                    Path testClassesForStamp = ctx.require(TEST_CLASSES);
+                    Path testClasses = ctx.require(TEST_CLASSES);
                     List<Path> testSrcs = ctx.get(TEST_SOURCES).orElse(List.of());
                     JkBuild projectUnderTest = ctx.require(PROJECT);
-                    // Worker jars feed both the forked JVM and the TestStamp
-                    // nested-engine CLI modules enrich with engine + every PluginJar so the stamp
-                    // matches what the suite actually loads — same set forecast uses.
-                    Map<String, String> workerJars = testStampWorkerJars(in.dir(), projectUnderTest);
-                    WorkerEnv testEnv = TestLaunch.testEnvironment(ctx, in, projectUnderTest);
-                    List<Path> testResDirs = ctx.get(TEST_RESOURCE_DIRS).orElse(List.of());
+                    String moduleLabel = projectUnderTest.project().group() + ":"
+                            + projectUnderTest.project().name();
+                    String testTaskId = ActionKey.qualifiedTaskId(TaskNames.RUN_TESTS, testClasses);
+                    TestFailureSource.Cache snippets = new TestFailureSource.Cache();
                     // [test] exclude-tags for jk build / BSP: CLI resolves tags for `jk test`;
                     // when the session selection carries no tags at all, apply this module's
                     // own config here. The effective selection feeds BOTH the stamp and the runner.
                     var effectiveSel = effectiveSelection(in.session().testSelection(), in.dir());
-                    testEnv = TestLaunch.withHostWall(testEnv, effectiveSel);
                     SuiteClassFilter suites = suiteFilter(in, cx.compact(), projectUnderTest);
                     AffectedTestRun.Outcome affected = affectedRun(ctx, in, effectiveSel, suites);
                     if (affected != null && affected.classNames().isEmpty()) {
                         return; // nothing affected — no stamp store
                     }
+                    // A --class selection that names no compiled class of this module is judged
+                    // from the class files, before the siblings' jars, the stamp and a test JVM:
+                    // in a workspace most modules do not hold the class the user named.
+                    if (affected == null
+                            && !effectiveSel.classes().isEmpty()
+                            && !suites.namesCompiledClass(
+                                    testClasses,
+                                    effectiveSel.classes(),
+                                    projectUnderTest.build().testExcludeClasses())) {
+                        TestSummary unmatched = judgeClassSelection(
+                                ctx,
+                                in,
+                                effectiveSel,
+                                false,
+                                suites,
+                                moduleLabel,
+                                null,
+                                new TestSummary(0, 0, 0, 0, List.of()));
+                        if (unmatched == null) return;
+                        ctx.put(TEST_RESULT, unmatched);
+                        TestLaunch.recordOutcome(
+                                ctx, in, actionCache, testTaskId, null, unmatched, !testSrcs.isEmpty(), snippets);
+                        return;
+                    }
+                    // The test runtime classpath is the siblings' jars: wait for them to be written.
+                    PlannerSetup.awaitSiblingArtifacts(ctx, in);
+                    List<Path> testRtCp = TestLaunch.testRuntimeClasspath(ctx, pluginDecls);
+                    // Worker jars feed both the forked JVM and the TestStamp
+                    // nested-engine CLI modules enrich with engine + every PluginJar so the stamp
+                    // matches what the suite actually loads — same set forecast uses.
+                    Map<String, String> workerJars = testStampWorkerJars(in.dir(), projectUnderTest);
+                    WorkerEnv testEnv = TestLaunch.withHostWall(
+                            TestLaunch.testEnvironment(ctx, in, projectUnderTest), effectiveSel);
+                    List<Path> testResDirs = ctx.get(TEST_RESOURCE_DIRS).orElse(List.of());
                     List<String> testJvmArgs = TestLaunch.testJvmArgs(ctx, in, projectUnderTest, pluginDecls);
                     List<String> extras = new ArrayList<>(TestStamp.withCompileTest(
                             NodeTestStamp.testStampExtras(
@@ -608,7 +636,6 @@ public final class PlannerTest {
                         extras.add("affected:" + affected.stampToken());
                     }
                     String stampKey = TestLaunch.stampKey(ctx, in, testSrcs, testResDirs, testRtCp, extras);
-                    String testTaskId = ActionKey.qualifiedTaskId(TaskNames.RUN_TESTS, testClassesForStamp);
                     // --force forces a real test run, matching the compile/package
                     // freshness checks above (which all guard on !rerun). Without
                     // this guard the action record would skip the runner even when
@@ -628,9 +655,6 @@ public final class PlannerTest {
                     if (suites.describe() != null) ctx.output(suites.describe());
                     List<Path> runtimeCp =
                             TestLaunch.testRuntimeCpWithLanguageRuntimes(ctx, cx, cas, testRtCp, testSrcs);
-                    String moduleLabel = projectUnderTest.project().group() + ":"
-                            + projectUnderTest.project().name();
-                    TestFailureSource.Cache snippets = new TestFailureSource.Cache();
                     // Test execution is serialized across concurrently-built units unless the
                     // user opted into parallel tests — shared ports/locks/fixtures. The worker
                     // count is decided once the gate is held: a suite parked at the gate is
@@ -677,7 +701,14 @@ public final class PlannerTest {
                     }
                     result = result.withSuites(suites::suiteOf);
                     result = judgeClassSelection(
-                            ctx, in, effectiveSel, affected != null, suites, moduleLabel, tagExcluded, result);
+                            ctx,
+                            in,
+                            effectiveSel,
+                            affected != null,
+                            suites,
+                            moduleLabel,
+                            tagExcluded.message(),
+                            result);
                     if (result == null) return;
                     TagExcludedSuite.note(ctx, effectiveSel, in.profileName(), affected != null, result);
                     ctx.put(TEST_RESULT, result);
@@ -690,8 +721,10 @@ public final class PlannerTest {
     /**
      * The summary a {@code --class} selection leaves, or null when this workspace module skips: a
      * workspace judges the patterns across its modules, a standalone project fails on the spot,
-     * naming the {@code tagExcluded} warning when the tag filter emptied the run. A {@code --class}
-     * naming a class another suite owns says which suite, matched or not.
+     * naming the runner's {@code tagExcluded} warning, with the profiles that run the tag, when the
+     * tag filter emptied the run. A class named without a wildcard that the tag filter dropped fails
+     * the module, whatever else ran. A {@code --class} naming a class another suite owns says which
+     * suite, matched or not.
      */
     private static @Nullable TestSummary judgeClassSelection(
             TaskContext ctx,
@@ -700,10 +733,14 @@ public final class PlannerTest {
             boolean exactClassList,
             SuiteClassFilter suites,
             String moduleLabel,
-            TagExcludedCapture tagExcludedCapture,
+            @Nullable String tagExcluded,
             TestSummary result) {
-        String tagExcluded = tagExcludedCapture.message();
+        tagExcluded =
+                TestClassMatch.namingProfiles(tagExcluded, ctx.require(PROJECT).profiles(), in.profileName());
         String suiteHint = exactClassList ? null : suites.classHint(ctx.require(TEST_CLASSES), sel.classes());
+        if (!exactClassList && tagExcluded != null && TestClassMatch.namesClasses(sel)) {
+            return TestClassMatch.withTagExcluded(result, moduleLabel, sel, tagExcluded, suiteHint);
+        }
         if (!TestClassMatch.nothingMatched(sel, exactClassList, result)) {
             if (suiteHint != null) {
                 ctx.warn("class-in-other-suite", "--class " + String.join(", ", sel.classes()) + ": " + suiteHint);
