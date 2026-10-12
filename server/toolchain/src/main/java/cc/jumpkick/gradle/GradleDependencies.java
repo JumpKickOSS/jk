@@ -5,7 +5,6 @@ import static cc.jumpkick.gradle.GradleScriptText.STR;
 import static cc.jumpkick.gradle.GradleScriptText.firstNonNull;
 
 import cc.jumpkick.compat.ImportReport;
-import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -41,6 +40,7 @@ final class GradleDependencies {
     private final GradleProperties properties;
     private final RefreshVersions refreshVersions;
     private final ImportReport.Builder report;
+    private final CatalogShortNames shortNames;
     private final Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
     /** {@code testCompileOnly} coordinates, named once in the row explaining where they went. */
     private final List<String> testCompileOnly = new ArrayList<>();
@@ -49,11 +49,13 @@ final class GradleDependencies {
             @Nullable GradleVersionCatalog catalog,
             GradleProperties properties,
             RefreshVersions refreshVersions,
-            ImportReport.Builder report) {
+            ImportReport.Builder report,
+            CatalogShortNames shortNames) {
         this.catalog = catalog;
         this.properties = properties;
         this.refreshVersions = refreshVersions;
         this.report = report;
+        this.shortNames = shortNames;
     }
 
     /**
@@ -67,7 +69,8 @@ final class GradleDependencies {
             GradleProperties properties,
             RefreshVersions refreshVersions,
             ImportReport.Builder report) {
-        GradleDependencies deps = new GradleDependencies(catalog, properties, refreshVersions, report);
+        GradleDependencies deps =
+                new GradleDependencies(catalog, properties, refreshVersions, report, CatalogShortNames.layered());
         GradleScriptText.extractBlock(script, "dependencies").ifPresent(body -> deps.parseBlock(body, false));
         if (!deps.testCompileOnly.isEmpty()) {
             report.warning("`testCompileOnly` dependencies " + String.join(", ", deps.testCompileOnly)
@@ -78,9 +81,10 @@ final class GradleDependencies {
     }
 
     /**
-     * Walk the block line by line. An entry whose line ends in {@code {} opens a closure whose body
-     * is collected until its brace closes and read for {@code exclude} rules; a {@code constraints
-     * { }} block's entries are managed versions, whatever configuration they name.
+     * Walk the block line by line. The first {@code {} outside quotes and parentheses opens an
+     * entry's configuration closure, whether it closes on the same line or lines later; its body is
+     * read for {@code exclude} rules. A {@code constraints { }} block's entries are managed versions,
+     * whatever configuration they name.
      */
     private void parseBlock(String body, boolean managed) {
         String[] lines = body.split("\\n");
@@ -97,10 +101,11 @@ final class GradleDependencies {
             String configuration = m.group("config");
             String rest = m.group("rest").trim();
             String closure = null;
-            if (rest.endsWith("{")) {
-                rest = rest.substring(0, rest.length() - 1).trim();
+            int brace = closureStart(rest);
+            if (brace >= 0) {
                 StringBuilder collected = new StringBuilder();
-                i = collectClosure(lines, i, collected);
+                i = collectClosure(rest.substring(brace + 1), lines, i, collected);
+                rest = rest.substring(0, brace).trim();
                 closure = collected.toString();
             }
             if (configuration.equals("constraints") && rest.isEmpty() && closure != null) {
@@ -111,21 +116,43 @@ final class GradleDependencies {
         }
     }
 
-    /** Collect the lines of a closure opened on the previous line; returns the index after its close. */
-    private static int collectClosure(String[] lines, int from, StringBuilder into) {
+    /** The index of the {@code {} that opens {@code rest}'s closure: the first outside quotes and parentheses, or -1. */
+    private static int closureStart(String rest) {
+        int depth = 0;
+        char quote = 0;
+        for (int i = 0; i < rest.length(); i++) {
+            char c = rest.charAt(i);
+            if (quote != 0) {
+                if (c == quote) quote = 0;
+            } else if (c == '"' || c == '\'') quote = c;
+            else if (c == '(' || c == '[') depth++;
+            else if (c == ')' || c == ']') depth--;
+            else if (c == '{' && depth == 0) return i;
+        }
+        return -1;
+    }
+
+    /**
+     * Collect a closure's body: {@code opening} is the text after its {@code {}, continued over
+     * {@code lines} from {@code from} until the brace closes. Returns the index after the closing line.
+     */
+    private static int collectClosure(String opening, String[] lines, int from, StringBuilder into) {
         int depth = 1;
         int i = from;
-        while (i < lines.length && depth > 0) {
-            String line = lines[i];
+        String line = opening;
+        while (true) {
             for (int c = 0; c < line.length(); c++) {
                 if (line.charAt(c) == '{') depth++;
                 else if (line.charAt(c) == '}') depth--;
             }
-            if (depth > 0) into.append(line).append('\n');
-            else into.append(line, 0, Math.max(0, line.lastIndexOf('}'))).append('\n');
-            i++;
+            if (depth <= 0) {
+                into.append(line, 0, Math.max(0, line.lastIndexOf('}'))).append('\n');
+                return i;
+            }
+            into.append(line).append('\n');
+            if (i >= lines.length) return i;
+            line = lines[i++];
         }
-        return i;
     }
 
     private void parseEntry(String configuration, String rest, @Nullable String closure, boolean managed, String line) {
@@ -144,9 +171,9 @@ final class GradleDependencies {
         }
         List<String> exclusions = closure == null ? List.of() : exclusions(closure);
         for (String arg : GradleScriptText.splitArguments(args)) {
-            int before = count();
+            Map<Scope, Integer> before = sizes();
             parseArgument(configuration, scope, arg, line);
-            if (!exclusions.isEmpty() && count() > before) withExclusions(scope, exclusions);
+            if (!exclusions.isEmpty()) withExclusions(before, exclusions);
         }
         if (scope == Scope.TEST && configuration.equals("testCompileOnly")) {
             for (String arg : GradleScriptText.splitArguments(args)) {
@@ -157,18 +184,24 @@ final class GradleDependencies {
         }
     }
 
-    private int count() {
-        int n = 0;
-        for (List<Dependency> list : byScope.values()) n += list.size();
-        return n;
+    /** How many dependencies each scope holds right now. */
+    private Map<Scope, Integer> sizes() {
+        Map<Scope, Integer> out = new EnumMap<>(Scope.class);
+        byScope.forEach((scope, list) -> out.put(scope, list.size()));
+        return out;
     }
 
-    /** Put {@code exclusions} on the dependency added last under {@code scope}. */
-    private void withExclusions(Scope scope, List<String> exclusions) {
-        List<Dependency> list = byScope.get(scope);
-        if (list == null || list.isEmpty()) return;
-        Dependency last = list.getLast();
-        list.set(list.size() - 1, last.withExclusions(exclusions));
+    /**
+     * Put {@code exclusions} on every dependency added since {@code before}, whichever scope it
+     * landed in: a {@code platform(…)} argument's closure configures the platform entry, a bundle's
+     * each member.
+     */
+    private void withExclusions(Map<Scope, Integer> before, List<String> exclusions) {
+        byScope.forEach((scope, list) -> {
+            for (int i = before.getOrDefault(scope, 0); i < list.size(); i++) {
+                list.set(i, list.get(i).withExclusions(exclusions));
+            }
+        });
     }
 
     /** The {@code group:module} exclusions a configuration closure declares; {@code *:*} for {@code isTransitive = false}. */
@@ -262,7 +295,7 @@ final class GradleDependencies {
                     + " Declare the coordinate directly in jk.toml.");
             return;
         }
-        String shortName = shortNameFor(module).orElse(parts[1]);
+        String shortName = shortNames.of(module).orElse(parts[1]);
         if (parts.length == 2) {
             // Version-less `g:a` -- normal in Boot builds, where the plugin's BOM manages the
             // version. jk models it as platform-managed; [spring-boot] (or an explicit
@@ -311,28 +344,6 @@ final class GradleDependencies {
     private static String plural(List<String> names) {
         List<String> quoted = names.stream().map(n -> "`" + n + "`").toList();
         return (quoted.size() == 1 ? "y " : "ies ") + String.join(", ", quoted);
-    }
-
-    /**
-     * Reverse-map {@code group:artifact} to a unique short name in the layered library catalog.
-     * Empty when zero or multiple catalog names share the GA (never invent a name).
-     */
-    static Optional<String> shortNameFor(String groupArtifact) {
-        if (groupArtifact.isBlank()) return Optional.empty();
-        try {
-            LibraryCatalog catalog = LibraryCatalog.layered();
-            List<String> hits = new ArrayList<>();
-            for (String name : catalog.names()) {
-                var mod = catalog.lookup(name);
-                if (mod.isPresent() && groupArtifact.equals(mod.get().moduleKey())) {
-                    hits.add(name);
-                    if (hits.size() > 1) return Optional.empty();
-                }
-            }
-            return hits.size() == 1 ? Optional.of(hits.get(0)) : Optional.empty();
-        } catch (RuntimeException e) {
-            return Optional.empty();
-        }
     }
 
     /**
