@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginContributions;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -54,6 +55,32 @@ public final class ModuleLayoutPlugins {
             if (fixtures != null) addDir(out, moduleDir, fixtures);
         }
         return List.copyOf(out);
+    }
+
+    /**
+     * Every root a module's inputs live under, each walked once: the layout's trees
+     * ({@link ModuleLayout#fingerprintDirs}) plus the manifest's declared roots outside them
+     * ({@link #declaredRoots}). A declared root under a layout root (a variant's
+     * {@code src/demo/kotlin}) is already covered; a {@code [test] extra-src} entry may be a
+     * single file rather than a directory. The preflight memo and a build-logic task's cache key
+     * both read this list, so an edit under any of these roots moves both.
+     */
+    public static List<Path> fingerprintRoots(Path moduleDir, boolean skipTests) throws IOException {
+        List<Path> roots = new ArrayList<>(ModuleLayout.fingerprintDirs(moduleDir, skipTests));
+        Path toml = ManifestPaths.manifestIn(moduleDir);
+        if (!Files.isRegularFile(toml)) return List.copyOf(roots);
+        JkBuild manifest = JkBuildParser.parse(toml);
+        for (Path declared : declaredRoots(moduleDir, manifest, skipTests)) {
+            boolean covered = false;
+            for (Path r : roots) {
+                if (declared.startsWith(r)) {
+                    covered = true;
+                    break;
+                }
+            }
+            if (!covered) roots.add(declared);
+        }
+        return List.copyOf(roots);
     }
 
     private static void addDir(LinkedHashSet<Path> out, Path moduleDir, String rel) {
