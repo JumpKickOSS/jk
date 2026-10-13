@@ -66,7 +66,8 @@ public final class EngineCancel {
      * Ctrl-C handler before {@code halt}; the hard exit is the backup if this is too late.
      *
      * <p>Cancels every tracked jid from this CLI process, then a dir-scoped cancel for {@code cwd}.
-     * All failures are swallowed.
+     * A jid whose {@code job-start} arrives after the signal is cancelled by the thread that reads it
+     * (see {@link ActiveJobs#interrupt}). All failures are swallowed.
      */
     public static void cancelBestEffortForInterrupt(Path cwd) {
         try {
@@ -74,13 +75,9 @@ public final class EngineCancel {
             // against a wedged engine would still serialize to N×2s of dead air.
             long deadline = System.nanoTime() + 3 * SOCKET_TIMEOUT_MILLIS * 1_000_000L / 2;
             Path socket = EnginePaths.activeSocket(EnginePaths.current());
-            for (long jid : ActiveJobs.snapshot()) {
+            for (long jid : ActiveJobs.interrupt(late -> cancelQuietly(socket, late))) {
                 if (System.nanoTime() >= deadline) break;
-                try {
-                    cancelOnce(socket, ProtoLifecycle.cancelRequest(jid), jid);
-                } catch (Exception ignored) {
-                    // best-effort — halt follows
-                }
+                cancelQuietly(socket, jid);
             }
             if (cwd != null && System.nanoTime() < deadline) {
                 try {
@@ -92,6 +89,14 @@ public final class EngineCancel {
             }
         } catch (Throwable ignored) {
             // never throw into the SIGINT handler
+        }
+    }
+
+    private static void cancelQuietly(Path socket, long jid) {
+        try {
+            cancelOnce(socket, ProtoLifecycle.cancelRequest(jid), jid);
+        } catch (Exception ignored) {
+            // best-effort — halt follows
         }
     }
 
