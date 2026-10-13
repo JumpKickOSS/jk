@@ -65,6 +65,22 @@ public final class AggregatedMetrics {
         return new AggregatedMetrics(Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), List.of());
     }
 
+    /** Heap one map entry holds besides its key's characters: the node, the key's header, a boxed value. */
+    private static final long ENTRY_BYTES = 96;
+
+    /** Estimated heap this view holds: per entry {@link #ENTRY_BYTES} plus a byte per key character. */
+    public long retainedBytes() {
+        long bytes = entryBytes(mean) + entryBytes(last) + entryBytes(count) + entryBytes(hostMean);
+        for (var e : classWalls.entrySet()) bytes += ENTRY_BYTES + e.getKey().length() + entryBytes(e.getValue());
+        return bytes;
+    }
+
+    private static long entryBytes(Map<String, ?> map) {
+        long bytes = 0;
+        for (String key : map.keySet()) bytes += ENTRY_BYTES + key.length();
+        return bytes;
+    }
+
     /** True while every file this view was parsed from still has the mtime and size it had then. */
     public boolean fresh() {
         for (FileStamp s : stamps) {

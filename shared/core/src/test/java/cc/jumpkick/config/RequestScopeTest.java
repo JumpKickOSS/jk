@@ -66,6 +66,23 @@ class RequestScopeTest {
     }
 
     @Test
+    void a_weighed_fact_past_the_request_bound_is_computed_on_every_ask() {
+        AtomicInteger small = new AtomicInteger();
+        AtomicInteger large = new AtomicInteger();
+
+        inRequest(() -> {
+            for (int i = 0; i < 3; i++) {
+                RequestScope.current().get("small", k -> small.incrementAndGet(), v -> 1024);
+                RequestScope.current().get("large", k -> large.incrementAndGet(), v -> RequestScope.MAX_WEIGHED_BYTES);
+            }
+            assertThat(RequestScope.current().weighedBytes()).isEqualTo(1024);
+        });
+
+        assertThat(small.get()).as("within the bound: remembered").isEqualTo(1);
+        assertThat(large.get()).as("past the bound: never remembered").isEqualTo(3);
+    }
+
+    @Test
     void a_second_request_does_not_see_the_first_ones_facts() {
         // The property that makes invalidation unnecessary: a new request is a new ledger, so it is a
         // new scope. This is what a `jk watch` iteration gets.

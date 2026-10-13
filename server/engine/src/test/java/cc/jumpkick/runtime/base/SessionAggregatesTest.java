@@ -35,6 +35,7 @@ class SessionAggregatesTest {
     @AfterEach
     void restore() {
         SessionContext.install(previousSession);
+        SessionAggregates.maxBytesForTest(-1);
         SessionAggregates.clear();
         if (previousStateDir == null) System.clearProperty("jk.env.JK_STATE_DIR");
         else System.setProperty("jk.env.JK_STATE_DIR", previousStateDir);
@@ -127,5 +128,60 @@ class SessionAggregatesTest {
                         .step(b.resolve("server/io").toString(), "compile-java"))
                 .as("the folded step view carries the same expansion")
                 .isPresent();
+    }
+
+    @Test
+    void the_memo_table_drops_the_least_recently_read_checkout_past_its_byte_bound(@TempDir Path state)
+            throws Exception {
+        System.setProperty("jk.env.JK_STATE_DIR", state.toString());
+        Path a = checkout(state, "a");
+        Path b = checkout(state, "b");
+        Path c = checkout(state, "c");
+        StringBuilder rows = new StringBuilder("[mean]\n");
+        for (int i = 0; i < 200; i++) rows.append("module.m").append(i).append(".task.compile-java.wall-ms = 800\n");
+        ledger(state, a, rows.toString());
+        SessionAggregates.clear();
+
+        SessionContext.install(Session.defaults().withWorkingDir(a));
+        SessionAggregates.current();
+        long one = SessionAggregates.retainedBytes();
+        assertThat(one).as("a memo has a size").isPositive();
+        SessionAggregates.maxBytesForTest(one * 5 / 2);
+        SessionContext.install(Session.defaults().withWorkingDir(b));
+        SessionAggregates.current();
+        SessionContext.install(Session.defaults().withWorkingDir(c));
+        SessionAggregates.current();
+        assertThat(SessionAggregates.retainedBytes()).isLessThanOrEqualTo(one * 5 / 2);
+
+        long parses = AggregatedMetrics.parseCount();
+        SessionAggregates.current();
+        SessionContext.install(Session.defaults().withWorkingDir(b));
+        SessionAggregates.current();
+        assertThat(AggregatedMetrics.parseCount()).as("b and c stayed").isEqualTo(parses);
+        SessionContext.install(Session.defaults().withWorkingDir(a));
+        SessionAggregates.current();
+        assertThat(AggregatedMetrics.parseCount())
+                .as("a, read least recently, went")
+                .isGreaterThan(parses);
+    }
+
+    @Test
+    void the_memo_just_read_stays_though_it_alone_exceeds_the_bound(@TempDir Path state) throws Exception {
+        System.setProperty("jk.env.JK_STATE_DIR", state.toString());
+        Path a = checkout(state, "a");
+        ledger(state, a, """
+                [mean]
+                module.server/io.task.compile-java.wall-ms = 800
+                """);
+        SessionContext.install(Session.defaults().withWorkingDir(a));
+        SessionAggregates.clear();
+        SessionAggregates.maxBytesForTest(1);
+
+        SessionAggregates.current();
+        long parses = AggregatedMetrics.parseCount();
+        SessionAggregates.current();
+        BuildMetrics.classWallsForSession();
+
+        assertThat(AggregatedMetrics.parseCount()).isEqualTo(parses);
     }
 }

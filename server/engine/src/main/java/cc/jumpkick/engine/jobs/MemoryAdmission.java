@@ -150,7 +150,11 @@ public final class MemoryAdmission {
     /** Headroom the gate never hands out: the coordinator's own churn between collections. */
     public static final long RESERVE_BYTES = 32L << 20;
 
-    /** What every plan job holds regardless of inputs: graph, memos, journal rows, worker plumbing. */
+    /**
+     * What every plan job holds regardless of inputs: graph, memos (the request scope's weighed facts
+     * among them, {@link cc.jumpkick.config.RequestScope#MAX_WEIGHED_BYTES}), journal rows, worker
+     * plumbing.
+     */
     public static final long BASE_JOB_BYTES = 48L << 20;
 
     /**

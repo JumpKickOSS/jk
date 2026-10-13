@@ -210,6 +210,8 @@ public final class FixtureCheck {
             return Evaluators.forKind(c.rule().kind()).evaluate(c.rule(), ctx);
         } catch (Throwable t) {
             return Evaluation.failed(t.getClass().getSimpleName() + ": " + t.getMessage());
+        } finally {
+            ctx.closeHierarchy();
         }
     }
 
