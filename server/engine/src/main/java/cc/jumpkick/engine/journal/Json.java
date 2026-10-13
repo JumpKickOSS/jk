@@ -22,7 +22,28 @@ final class Json {
 
     // ---------------------------------------------------------------- write
 
+    /**
+     * First top-level key of a record's tail. Every field written before it is a scalar or a bounded
+     * object, so a reader of the head ({@link #readHead}) never parses module rows or diagnostics.
+     */
+    static final String TAIL_KEY = "modules";
+
+    /** Where the tail starts in pretty-printed record text: a top-level key sits at depth one. */
+    private static final String TAIL_MARK = "\n  \"" + TAIL_KEY + "\":";
+
+    /** A record's text, and the diagnostics past its budget as a JSON array ({@code null} when none spilled). */
+    record Written(String record, @Nullable String spill) {}
+
+    /** The whole record, every diagnostic inline. */
     static String write(BuildRecord r) {
+        return write(r, Long.MAX_VALUE, "").record();
+    }
+
+    /**
+     * The record with its diagnostics cut at {@code diagnosticsBudget} characters of JSON; the rest
+     * go to {@link Written#spill}, which the record names as {@code diagnosticsSpill = spillName}.
+     */
+    static Written write(BuildRecord r, long diagnosticsBudget, String spillName) {
         Map<String, Object> o = new LinkedHashMap<>();
         o.put("id", r.id());
         o.put("buildNumber", r.buildNumber());
@@ -51,50 +72,6 @@ final class Json {
                             r.tests().skipped()));
         }
 
-        List<Object> modules = new ArrayList<>();
-        for (BuildRecord.Module m : r.modules()) {
-            Map<String, Object> mm = new LinkedHashMap<>();
-            mm.put("coord", m.coord());
-            mm.put("dir", m.dir());
-            mm.put("success", m.success());
-            mm.put("exitCode", m.exitCode());
-            mm.put("millis", m.millis());
-            mm.put("tasks", stepList(m.steps()));
-            modules.add(mm);
-        }
-        o.put("modules", modules);
-
-        o.put("tasks", stepList(r.steps()));
-
-        List<Object> diagnostics = new ArrayList<>();
-        for (BuildRecord.Diag d : r.diagnostics()) {
-            Map<String, Object> dm = new LinkedHashMap<>();
-            dm.put("severity", d.severity());
-            dm.put("dir", d.dir());
-            dm.put("task", d.step());
-            dm.put("code", d.code());
-            if (!d.key().isEmpty()) dm.put("key", d.key());
-            dm.put("message", d.message());
-            if (d.test() != null && !d.test().isEmpty()) dm.put("test", d.test());
-            if (d.module() != null && !d.module().isEmpty()) dm.put("module", d.module());
-            if (!d.suite().isEmpty()) dm.put("suite", d.suite());
-            if (d.engine() != null && !d.engine().isEmpty()) dm.put("engine", d.engine());
-            if (d.className() != null && !d.className().isEmpty())
-                dm.put(EngineProtocol.TEST_CLASS_FIELD, d.className());
-            if (d.method() != null && !d.method().isEmpty()) dm.put("method", d.method());
-            if (d.exceptionClass() != null && !d.exceptionClass().isEmpty())
-                dm.put("exceptionClass", d.exceptionClass());
-            if (d.file() != null && !d.file().isEmpty()) dm.put("file", d.file());
-            if (d.line() > 0) dm.put("line", d.line());
-            if (d.col() > 0) dm.put("col", d.col());
-            if (d.snippetStart() > 0) dm.put("snippetStart", d.snippetStart());
-            if (d.snippet() != null && !d.snippet().isEmpty()) dm.put("snippet", d.snippet());
-            if (d.worker() > 0) dm.put("worker", d.worker());
-            if (d.stack() != null && !d.stack().isEmpty()) dm.put("stack", d.stack());
-            diagnostics.add(dm);
-        }
-        o.put("diagnostics", diagnostics);
-
         o.put("trigger", r.trigger());
         if (r.session() != null) o.put("session", r.session());
         o.put("commit", r.commit());
@@ -112,6 +89,56 @@ final class Json {
             o.put("benefit", b);
         }
 
+        if (r.io() == null) {
+            o.put("io", null);
+        } else {
+            Map<String, Object> io = new LinkedHashMap<>();
+            io.put("remoteUp", r.io().remoteUp());
+            io.put("remoteDown", r.io().remoteDown());
+            io.put("localUp", r.io().localUp());
+            io.put("localDown", r.io().localDown());
+            o.put("io", io);
+        }
+
+        if (r.publish() != null) o.put("publish", publishMap(r.publish()));
+        if (r.delta() != null) o.put("delta", deltaMap(r.delta()));
+
+        o.put("moduleCount", r.modules().size());
+        o.put("failedModules", r.modules().stream().filter(m -> !m.success()).count());
+
+        List<Object> diagnostics = new ArrayList<>();
+        List<Object> spilled = new ArrayList<>();
+        long used = 0;
+        for (BuildRecord.Diag d : r.diagnostics()) {
+            Map<String, Object> dm = diagMap(d);
+            if (spilled.isEmpty()) {
+                if (diagnosticsBudget != Long.MAX_VALUE)
+                    used += MiniJson.write(dm).length();
+                if (used <= diagnosticsBudget) {
+                    diagnostics.add(dm);
+                    continue;
+                }
+            }
+            spilled.add(dm);
+        }
+        if (!spilled.isEmpty()) o.put("diagnosticsSpill", spillName);
+
+        // The tail: everything below grows with the build and is never part of a head read.
+        List<Object> modules = new ArrayList<>();
+        for (BuildRecord.Module m : r.modules()) {
+            Map<String, Object> mm = new LinkedHashMap<>();
+            mm.put("coord", m.coord());
+            mm.put("dir", m.dir());
+            mm.put("success", m.success());
+            mm.put("exitCode", m.exitCode());
+            mm.put("millis", m.millis());
+            mm.put("tasks", stepList(m.steps()));
+            modules.add(mm);
+        }
+        o.put(TAIL_KEY, modules);
+
+        o.put("tasks", stepList(r.steps()));
+
         if (!r.coverage().isEmpty()) {
             List<Object> coverage = new ArrayList<>();
             for (BuildRecord.Coverage c : r.coverage()) {
@@ -128,21 +155,34 @@ final class Json {
             o.put("coverage", coverage);
         }
 
-        if (r.io() == null) {
-            o.put("io", null);
-        } else {
-            Map<String, Object> io = new LinkedHashMap<>();
-            io.put("remoteUp", r.io().remoteUp());
-            io.put("remoteDown", r.io().remoteDown());
-            io.put("localUp", r.io().localUp());
-            io.put("localDown", r.io().localDown());
-            o.put("io", io);
-        }
+        o.put("diagnostics", diagnostics);
 
-        if (r.publish() != null) o.put("publish", publishMap(r.publish()));
-        if (r.delta() != null) o.put("delta", deltaMap(r.delta()));
+        return new Written(MiniJson.writePretty(o), spilled.isEmpty() ? null : MiniJson.write(spilled));
+    }
 
-        return MiniJson.writePretty(o);
+    private static Map<String, Object> diagMap(BuildRecord.Diag d) {
+        Map<String, Object> dm = new LinkedHashMap<>();
+        dm.put("severity", d.severity());
+        dm.put("dir", d.dir());
+        dm.put("task", d.step());
+        dm.put("code", d.code());
+        if (!d.key().isEmpty()) dm.put("key", d.key());
+        dm.put("message", d.message());
+        if (d.test() != null && !d.test().isEmpty()) dm.put("test", d.test());
+        if (d.module() != null && !d.module().isEmpty()) dm.put("module", d.module());
+        if (!d.suite().isEmpty()) dm.put("suite", d.suite());
+        if (d.engine() != null && !d.engine().isEmpty()) dm.put("engine", d.engine());
+        if (d.className() != null && !d.className().isEmpty()) dm.put(EngineProtocol.TEST_CLASS_FIELD, d.className());
+        if (d.method() != null && !d.method().isEmpty()) dm.put("method", d.method());
+        if (d.exceptionClass() != null && !d.exceptionClass().isEmpty()) dm.put("exceptionClass", d.exceptionClass());
+        if (d.file() != null && !d.file().isEmpty()) dm.put("file", d.file());
+        if (d.line() > 0) dm.put("line", d.line());
+        if (d.col() > 0) dm.put("col", d.col());
+        if (d.snippetStart() > 0) dm.put("snippetStart", d.snippetStart());
+        if (d.snippet() != null && !d.snippet().isEmpty()) dm.put("snippet", d.snippet());
+        if (d.worker() > 0) dm.put("worker", d.worker());
+        if (d.stack() != null && !d.stack().isEmpty()) dm.put("stack", d.stack());
+        return dm;
     }
 
     /**
@@ -227,11 +267,44 @@ final class Json {
     // ---------------------------------------------------------------- read
 
     static BuildRecord read(String json) {
+        return read(json, null);
+    }
+
+    /** A whole record, the diagnostics its writer spilled ({@code spill}, a JSON array) appended. */
+    @SuppressWarnings("unchecked")
+    static BuildRecord read(String json, @Nullable String spill) {
         Object root = MiniJson.parse(json);
         if (!(root instanceof Map<?, ?> m)) {
             throw new IllegalArgumentException("record.json is not a JSON object");
         }
+        if (spill != null && MiniJson.parse(spill) instanceof List<?> rest && !rest.isEmpty()) {
+            Map<String, Object> o = new LinkedHashMap<>((Map<String, Object>) m);
+            List<Object> all = new ArrayList<>(arr(o, "diagnostics"));
+            all.addAll(rest);
+            o.put("diagnostics", all);
+            return readMap(o);
+        }
         return readMap(m);
+    }
+
+    /**
+     * The head of record text that reaches its tail, parsed: module rows, tasks, coverage and
+     * diagnostics read back empty. {@code null} when {@code text} stops before the tail.
+     */
+    static BuildJournal.@Nullable Head readHead(String text) {
+        int cut = tailStart(text);
+        if (cut < 0) return null;
+        Object root = MiniJson.parse(text.substring(0, cut) + "\n}");
+        if (!(root instanceof Map<?, ?> m)) {
+            throw new IllegalArgumentException("record.json is not a JSON object");
+        }
+        return new BuildJournal.Head(readMap(m), (int) lng(m, "moduleCount"), (int) lng(m, "failedModules"));
+    }
+
+    /** Index of the comma ending a record's head, or -1 when {@code text} stops before the tail. */
+    static int tailStart(String text) {
+        int at = text.indexOf(TAIL_MARK);
+        return at > 0 && text.charAt(at - 1) == ',' ? at - 1 : -1;
     }
 
     /** A journal row already parsed into the JSON object model. */

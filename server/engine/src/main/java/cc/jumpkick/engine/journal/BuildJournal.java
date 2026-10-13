@@ -69,6 +69,12 @@ public final class BuildJournal {
 
     public static final String DIAGNOSTICS_TXT = "diagnostics.txt";
 
+    /** The diagnostics past {@link #DIAGNOSTICS_BUDGET}, a JSON array the record names as {@code diagnosticsSpill}. */
+    public static final String DIAGNOSTICS_SPILL = "diagnostics-spill.json";
+
+    /** Characters of diagnostic JSON a {@code record.json} carries inline; the rest spill. */
+    static final long DIAGNOSTICS_BUDGET = 256 * 1024;
+
     /** Every test's outcome this run, {@link RunSnapshots#encodeTests}. */
     public static final String TEST_OUTCOMES_TSV = "test-outcomes.tsv";
 
@@ -180,7 +186,7 @@ public final class BuildJournal {
                 // Non-build rows share a millisecond timestamp. The directory name is unique
                 // (pid and request id), so that is the id the sweep looks up.
                 BuildRecord withIds = withId(record.withBuildNumber(n), n > 0 ? timestamp : dirName);
-                Files.writeString(tmp.resolve(RECORD), Json.write(withIds), StandardCharsets.UTF_8);
+                writeRecord(tmp, withIds);
                 if (record.dir() != null && !record.dir().isBlank()) {
                     // One line a reader scanning for a checkout's run takes before the record.
                     Files.writeString(tmp.resolve(ProjectBuilds.CHECKOUT), record.dir() + "\n", StandardCharsets.UTF_8);
@@ -238,7 +244,7 @@ public final class BuildJournal {
             OwnerOnlyFiles.createDirectory(tmp);
             String timestamp = finished.id();
             if (timestamp == null || timestamp.isBlank()) {
-                timestamp = readRecord(target).map(BuildRecord::id).orElse(null);
+                timestamp = readHead(target).map(h -> h.record().id()).orElse(null);
             }
             if (timestamp == null || timestamp.isBlank()) {
                 long stampMillis = finished.finishedAt() > 0
@@ -248,14 +254,18 @@ public final class BuildJournal {
             }
             long n = finished.buildNumber() > 0 ? finished.buildNumber() : ProjectBuilds.runNumberOf(target);
             BuildRecord toWrite = withId(finished.withBuildNumber(n), timestamp);
-            Files.writeString(tmp.resolve(RECORD), Json.write(toWrite), StandardCharsets.UTF_8);
+            writeRecord(tmp, toWrite);
             writeSnapshot(tmp, snapshot);
             writeRunMetricsToml(tmp, toWrite);
             OwnerOnlyFiles.seal(tmp);
             // Every file lands by rename from a sibling under the same runs/ tree: a reader polling
             // the record sees the old bytes or the new ones, and a Windows handle on it is waited
-            // out rather than failing the run.
+            // out rather than failing the run. The spill lands before the record that names it,
+            // and a stale one goes after.
+            boolean spilled = Files.isRegularFile(tmp.resolve(DIAGNOSTICS_SPILL));
+            moveIfPresent(tmp, target, DIAGNOSTICS_SPILL);
             AtomicWrites.moveInto(tmp.resolve(RECORD), target.resolve(RECORD));
+            if (!spilled) Files.deleteIfExists(target.resolve(DIAGNOSTICS_SPILL));
             Files.deleteIfExists(target.resolve(ENGINE_OWNER));
             moveIfPresent(tmp, target, ProjectBuilds.METRICS);
             if (snapshot != null) {
@@ -508,7 +518,7 @@ public final class BuildJournal {
             // j-… directory only its record id finds.
             Optional<Path> dir = r.buildNumber() > 0
                     ? runDir(ProjectBuilds.runDirName(r.buildNumber()), r)
-                    : (r.id() == null ? Optional.empty() : locateById(r.id()).map(Located::dir));
+                    : (r.id() == null ? Optional.empty() : locateById(r.id()));
             if (dir.isEmpty()) continue;
             String locator = dir.get().getFileName().toString();
             EngineOwner owner = ownerOf(dir.get());
@@ -516,7 +526,8 @@ public final class BuildJournal {
                 live++;
                 continue;
             }
-            if (complete(locator, r.abandoned(now, jkVersion), Snapshot.NONE)) abandoned++;
+            BuildRecord whole = readRecord(dir.get()).orElse(r);
+            if (complete(locator, whole.abandoned(now, jkVersion), Snapshot.NONE)) abandoned++;
         }
         return new StaleSweep(abandoned, live);
     }
@@ -540,6 +551,15 @@ public final class BuildJournal {
         }
     }
 
+    /** {@code record.json}, and {@link #DIAGNOSTICS_SPILL} when the diagnostics overran their budget. */
+    private static void writeRecord(Path dir, BuildRecord record) throws IOException {
+        Json.Written written = Json.write(record, DIAGNOSTICS_BUDGET, DIAGNOSTICS_SPILL);
+        if (written.spill() != null) {
+            Files.writeString(dir.resolve(DIAGNOSTICS_SPILL), written.spill(), StandardCharsets.UTF_8);
+        }
+        Files.writeString(dir.resolve(RECORD), written.record(), StandardCharsets.UTF_8);
+    }
+
     private static void writeSnapshot(Path dir, Snapshot s) throws IOException {
         if (s == null) return;
         if (s.testOutcomes() != null) {
@@ -559,54 +579,47 @@ public final class BuildJournal {
         }
     }
 
+    /**
+     * Every non-synthetic record's head, newest first: module rows, tasks, coverage and diagnostics
+     * read back empty. {@link #get} reads a whole record.
+     */
     public List<BuildRecord> list() {
         List<BuildRecord> out = new ArrayList<>();
-        for (Loaded l : loadAll()) out.add(l.record());
+        for (Head h : heads(Integer.MAX_VALUE)) out.add(h.record());
         return out;
     }
 
-    /** A record with the JSON text it came from and the directory holding it. */
-    private record Loaded(BuildRecord record, String json, Path dir) {}
-
     /**
-     * Every non-synthetic record, newest first, read once. Source JSON rides with the parsed
-     * record so a later raw-text consumer does not re-read the file.
+     * A record's fields before its tail ({@link BuildRecord#modules}, steps, coverage and
+     * diagnostics empty), with the module counts its writer stamped there.
      */
-    private List<Loaded> loadAll() {
-        return loadNewest(Integer.MAX_VALUE);
+    public record Head(BuildRecord record, int moduleCount, int failedModules) {
+        /** The head of a record text that carries no tail mark, counted from its own module rows. */
+        static Head of(BuildRecord whole) {
+            int failed =
+                    (int) whole.modules().stream().filter(m -> !m.success()).count();
+            return new Head(whole, whole.modules().size(), failed);
+        }
     }
 
     /**
-     * The newest {@code limit} records. {@code entryDirs()} is newest-first by run-dir mtime
-     * (one stat per dir), so stopping after {@code limit} loads is O(limit) reads.
+     * The newest {@code limit} non-synthetic heads, newest first. {@code entryDirs()} is
+     * newest-first by run-dir mtime (one stat per dir), so stopping after {@code limit} loads is
+     * O(limit) head reads.
      */
-    private List<Loaded> loadNewest(int limit) {
-        List<Loaded> out = new ArrayList<>();
+    public List<Head> heads(int limit) {
+        List<Head> out = new ArrayList<>();
+        if (limit <= 0) return out;
         for (Path dir : entryDirs()) {
             if (out.size() >= limit) break;
-            Path record = dir.resolve(RECORD);
-            if (!Files.isRegularFile(record)) continue;
-            String json;
-            try {
-                json = Files.readString(record, StandardCharsets.UTF_8);
-            } catch (IOException e) {
-                continue;
-            }
-            BuildRecord parsed;
-            try {
-                parsed = Json.read(json);
-            } catch (RuntimeException e) {
-                continue;
-            }
-            if (parsed == null) continue;
-            index(parsed.id(), dir);
+            Optional<Head> head = readHead(dir);
             // Defense in depth: never surface optimize/calibrate fixtures.
-            if (!parsed.synthetic()) out.add(new Loaded(parsed, json, dir));
+            if (head.isPresent() && !head.get().record().synthetic()) out.add(head.get());
         }
         // Newest first by startedAt / finishedAt
-        out.sort(Comparator.comparingLong((Loaded l) -> l.record().finishedAt() > 0
-                        ? l.record().finishedAt()
-                        : l.record().startedAt())
+        out.sort(Comparator.comparingLong((Head h) -> h.record().finishedAt() > 0
+                        ? h.record().finishedAt()
+                        : h.record().startedAt())
                 .reversed());
         return out;
     }
@@ -633,9 +646,13 @@ public final class BuildJournal {
             long number = ProjectBuilds.runNumberOf(run);
             if (number <= 0 || number >= current.buildNumber()) continue;
             if (seen++ >= PREVIOUS_COVERAGE_LOOKBACK) break;
-            Optional<BuildRecord> record = readRecord(run)
-                    .filter(r -> !r.running() && !r.coverage().isEmpty())
-                    .filter(r -> JournalLineage.sameCheckout(r.dir(), current.dir()));
+            boolean candidate = readHead(run)
+                    .map(Head::record)
+                    .filter(r -> !r.running() && JournalLineage.sameCheckout(r.dir(), current.dir()))
+                    .isPresent();
+            if (!candidate) continue;
+            Optional<BuildRecord> record =
+                    readRecord(run).filter(r -> !r.coverage().isEmpty());
             if (record.isPresent()) return record;
         }
         return Optional.empty();
@@ -646,13 +663,14 @@ public final class BuildJournal {
      * in; see {@link JournalLineage#previousInSession}.
      */
     public Optional<JournalLineage.Previous> previousInSession(BuildRecord current) {
-        return JournalLineage.previousInSession(buildsRoot, this::readRecord, current);
+        return JournalLineage.previousInSession(buildsRoot, dir -> readHead(dir).map(Head::record), current)
+                .flatMap(p -> readRecord(p.dir()).map(r -> new JournalLineage.Previous(r, p.dir())));
     }
 
     /** Look up by build-number directory name, {@code j-…} job directory, or record {@code id}. */
     public Optional<BuildRecord> get(String idOrLocator) {
         return switch (kindOf(idOrLocator)) {
-            case RECORD_ID -> locateById(idOrLocator).map(Located::record);
+            case RECORD_ID -> getById(idOrLocator);
             case RUN_NUMBER, JOB_DIR -> findRunDir(idOrLocator).flatMap(this::readRecord);
             case INVALID -> Optional.empty();
         };
@@ -660,15 +678,15 @@ public final class BuildJournal {
 
     /**
      * Run dirs located by {@link #rawFinishedRecordByRequestId} — a wait loop re-reads one
-     * {@code record.json} per poll instead of re-scanning the journal. Bounded residue: cleared
+     * {@code record.json} head per poll instead of re-scanning the journal. Bounded residue: cleared
      * wholesale once full — safe for a value cache (nothing holds these entries).
      */
     private final ConcurrentHashMap<Long, Path> runDirsByRequestId = new ConcurrentHashMap<>();
 
     /**
      * Raw JSON of the <em>finished</em> record stamped with {@code requestId}, or empty while the
-     * run is absent or still {@code running}. The run dir is found with one newest-first scan and
-     * memoized, so repeated polls for the same id cost a single file read.
+     * run is absent or still {@code running}. The run dir is found with one newest-first scan of
+     * record heads and memoized, so a poll reads one head until the run finishes.
      */
     public Optional<String> rawFinishedRecordByRequestId(long requestId) {
         if (requestId <= 0) return Optional.empty();
@@ -678,22 +696,52 @@ public final class BuildJournal {
             runDirsByRequestId.remove(requestId, dir); // pruned since memoized — re-locate
         }
         for (RawLoaded l : loadNewestRaw(200, null)) {
-            if (scanLong(l.json(), "requestId") != requestId) continue;
+            if (scanLong(l.head(), "requestId") != requestId) continue;
             if (runDirsByRequestId.size() >= 1_024) runDirsByRequestId.clear();
             runDirsByRequestId.put(requestId, l.dir());
-            return scanTrue(l.json(), "running") ? Optional.empty() : Optional.of(l.json());
+            return scanTrue(l.head(), "running") ? Optional.empty() : readRaw(l.dir());
         }
         return Optional.empty();
     }
 
-    private static Optional<String> readFinished(Path dir, long requestId) {
+    /** The whole record when its head carries {@code requestId} and says it finished. */
+    private Optional<String> readFinished(Path dir, long requestId) {
+        String head = rawHead(dir);
+        if (head == null || scanLong(head, "requestId") != requestId || scanTrue(head, "running")) {
+            return Optional.empty();
+        }
+        return readRaw(dir);
+    }
+
+    /**
+     * A record's head as text, cut where its tail starts so a lexical scan never reaches into a
+     * module row or a diagnostic; {@code null} when the record is unreadable or not an object.
+     */
+    private @Nullable String rawHead(Path dir) {
         Path record = dir.resolve(RECORD);
-        if (!Files.isRegularFile(record)) return Optional.empty();
+        if (!Files.isRegularFile(record)) return null;
+        recordReads.incrementAndGet();
         try {
-            String json = Files.readString(record, StandardCharsets.UTF_8).strip();
-            if (scanLong(json, "requestId") != requestId || scanTrue(json, "running")) return Optional.empty();
+            String head = ProjectBuilds.recordHead(record).strip();
+            if (head.isEmpty() || head.charAt(0) != '{') return null;
+            int cut = Json.tailStart(head);
+            return cut < 0 ? head : head.substring(0, cut);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /** A whole record's text; empty when torn or not an object, so it never rides into a JSON array verbatim. */
+    private Optional<String> readRaw(Path dir) {
+        recordReads.incrementAndGet();
+        try {
+            String json = Files.readString(dir.resolve(RECORD), StandardCharsets.UTF_8)
+                    .strip();
+            if (json.isEmpty() || json.charAt(0) != '{' || json.charAt(json.length() - 1) != '}') {
+                return Optional.empty();
+            }
             return Optional.of(json);
-        } catch (IOException | RuntimeException e) {
+        } catch (IOException e) {
             return Optional.empty();
         }
     }
@@ -711,40 +759,31 @@ public final class BuildJournal {
     public List<String> rawRecords(int limit, @Nullable Predicate<String> filter) {
         List<String> out = new ArrayList<>();
         for (RawLoaded l : loadNewestRaw(Math.max(limit, 0), filter)) {
-            out.add(l.json());
+            readRaw(l.dir()).ifPresent(out::add);
         }
         return out;
     }
 
-    /** Raw JSON with its run dir and a lexical sort key — no {@link BuildRecord} graph built. */
-    private record RawLoaded(String json, Path dir, long sortKey) {}
+    /** A record's head text with its run dir and a lexical sort key — no {@link BuildRecord} graph built. */
+    private record RawLoaded(String head, Path dir, long sortKey) {}
 
     /**
-     * The raw-only twin of {@link #loadNewest}: the synthetic filter and the newest-first sort
-     * are lexical scans, so a raw-history consumer never pays a full {@code Json.read} per row.
-     * Rows are journal-authored, so the same first-occurrence lexical posture as
-     * {@code HttpHistoryApi}'s scans holds.
+     * The raw-only twin of {@link #heads}: the synthetic filter, {@code filter} and the
+     * newest-first sort are lexical scans of each record's head ({@link #rawHead}), so a caller
+     * reads a whole record only for the rows it keeps.
      */
     private List<RawLoaded> loadNewestRaw(int limit, @Nullable Predicate<String> filter) {
         List<RawLoaded> out = new ArrayList<>();
         for (Path dir : entryDirs()) {
             if (out.size() >= limit) break;
-            Path record = dir.resolve(RECORD);
-            if (!Files.isRegularFile(record)) continue;
-            String json;
-            try {
-                json = Files.readString(record, StandardCharsets.UTF_8).strip();
-            } catch (IOException e) {
-                continue;
-            }
-            // A torn or non-object file must never ride verbatim into a JSON array response.
-            if (json.isEmpty() || json.charAt(0) != '{' || json.charAt(json.length() - 1) != '}') continue;
-            index(scanString(json, "id"), dir);
-            if (BuildRecord.isSyntheticTrigger(scanString(json, "trigger"))) continue;
-            if (filter != null && !filter.test(json)) continue;
-            long sort = scanLong(json, "finishedAt");
-            if (sort <= 0) sort = scanLong(json, "startedAt");
-            out.add(new RawLoaded(json, dir, sort));
+            String head = rawHead(dir);
+            if (head == null) continue;
+            index(scanString(head, "id"), dir);
+            if (BuildRecord.isSyntheticTrigger(scanString(head, "trigger"))) continue;
+            if (filter != null && !filter.test(head)) continue;
+            long sort = scanLong(head, "finishedAt");
+            if (sort <= 0) sort = scanLong(head, "startedAt");
+            out.add(new RawLoaded(head, dir, sort));
         }
         out.sort(Comparator.comparingLong(RawLoaded::sortKey).reversed());
         return out;
@@ -807,17 +846,6 @@ public final class BuildJournal {
         return -1;
     }
 
-    /** The newest {@code limit} records, parsed — the rest of the journal is never read. */
-    public List<BuildRecord> list(int limit) {
-        if (limit <= 0) return List.of();
-        List<BuildRecord> out = new ArrayList<>();
-        for (Loaded l : loadNewest(limit)) {
-            if (out.size() >= limit) break;
-            out.add(l.record());
-        }
-        return out;
-    }
-
     public Optional<Path> recordFile(String idOrLocator) {
         return findRunDir(idOrLocator).map(d -> d.resolve(RECORD)).filter(Files::isRegularFile);
     }
@@ -870,7 +898,7 @@ public final class BuildJournal {
             // Never reap a run that has not finished: the idle gate is checked before this call,
             // so a build admitted in between would otherwise have its `running` stub deleted out
             // from under it.
-            Optional<BuildRecord> record = readRecord(dir);
+            Optional<BuildRecord> record = readHead(dir).map(Head::record);
             if (record.map(BuildRecord::running).orElse(false)) continue;
             entries.add(new Entry(dir, entryMillis(dir, record, nowMillis), sizeOf(dir)));
         }
@@ -951,13 +979,10 @@ public final class BuildJournal {
         return switch (kindOf(locator)) {
             case RUN_NUMBER -> ProjectBuilds.findRunDirByNumber(buildsRoot, Long.parseLong(locator));
             case JOB_DIR -> ProjectBuilds.findRunDirByName(buildsRoot, locator);
-            case RECORD_ID -> locateById(locator).map(Located::dir);
+            case RECORD_ID -> locateById(locator);
             case INVALID -> Optional.empty();
         };
     }
-
-    /** A run found by record id: its directory and the record that proved the id. */
-    private record Located(Path dir, BuildRecord record) {}
 
     /**
      * Run dirs by record {@code id}, filled as records are read and listed, so a run the journal
@@ -975,18 +1000,31 @@ public final class BuildJournal {
      * The indexed dir when its record still carries {@code id} (one read); otherwise one scan of
      * the journal, which fills the index for every record it passes on the way.
      */
-    private Optional<Located> locateById(String id) {
+    private Optional<Path> locateById(String id) {
         Path indexed = runDirsById.get(id);
         if (indexed != null) {
-            Optional<BuildRecord> r = readRecord(indexed);
-            if (r.isPresent() && id.equals(r.get().id())) return Optional.of(new Located(indexed, r.get()));
+            if (carriesId(indexed, id)) return Optional.of(indexed);
             runDirsById.remove(id, indexed); // pruned or rewritten since indexed — re-locate
         }
         for (Path dir : entryDirs()) {
-            Optional<BuildRecord> r = readRecord(dir);
-            if (r.isPresent() && id.equals(r.get().id())) return Optional.of(new Located(dir, r.get()));
+            if (carriesId(dir, id)) return Optional.of(dir);
         }
         return Optional.empty();
+    }
+
+    /** As {@link #locateById}, reading the indexed record whole so a remembered id costs one read. */
+    private Optional<BuildRecord> getById(String id) {
+        Path indexed = runDirsById.get(id);
+        if (indexed != null) {
+            Optional<BuildRecord> r = readRecord(indexed).filter(found -> id.equals(found.id()));
+            if (r.isPresent()) return r;
+            runDirsById.remove(id, indexed);
+        }
+        return locateById(id).flatMap(this::readRecord);
+    }
+
+    private boolean carriesId(Path dir, String id) {
+        return readHead(dir).map(h -> id.equals(h.record().id())).orElse(false);
     }
 
     /**
@@ -1015,14 +1053,41 @@ public final class BuildJournal {
         return recordReads.get();
     }
 
+    /** A whole record, the diagnostics its writer spilled to {@link #DIAGNOSTICS_SPILL} included. */
     private Optional<BuildRecord> readRecord(Path dir) {
         Path record = dir.resolve(RECORD);
         if (!Files.isRegularFile(record)) return Optional.empty();
         recordReads.incrementAndGet();
         try {
-            BuildRecord parsed = Json.read(Files.readString(record, StandardCharsets.UTF_8));
+            String json = Files.readString(record, StandardCharsets.UTF_8);
+            Path spill = dir.resolve(DIAGNOSTICS_SPILL);
+            boolean spilled =
+                    DIAGNOSTICS_SPILL.equals(scanString(json, "diagnosticsSpill")) && Files.isRegularFile(spill);
+            BuildRecord parsed = Json.read(json, spilled ? Files.readString(spill, StandardCharsets.UTF_8) : null);
             index(parsed.id(), dir);
             return Optional.of(parsed);
+        } catch (IOException | RuntimeException e) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * A record's {@link Head}, read from the first {@link ProjectBuilds#RECORD_HEAD_BYTES}; a head
+     * longer than that is read from the whole file.
+     */
+    private Optional<Head> readHead(Path dir) {
+        Path record = dir.resolve(RECORD);
+        if (!Files.isRegularFile(record)) return Optional.empty();
+        recordReads.incrementAndGet();
+        try {
+            Head head = Json.readHead(ProjectBuilds.recordHead(record));
+            if (head == null) {
+                String whole = Files.readString(record, StandardCharsets.UTF_8);
+                head = Json.readHead(whole);
+                if (head == null) head = Head.of(Json.read(whole));
+            }
+            index(head.record().id(), dir);
+            return Optional.of(head);
         } catch (IOException | RuntimeException e) {
             return Optional.empty();
         }

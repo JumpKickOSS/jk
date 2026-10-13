@@ -26,6 +26,10 @@ import org.junit.jupiter.api.io.TempDir;
 
 class BuildJournalTest {
 
+    private static List<BuildRecord> records(List<BuildJournal.Head> heads) {
+        return heads.stream().map(BuildJournal.Head::record).toList();
+    }
+
     @TempDir
     Path dir;
 
@@ -679,9 +683,9 @@ class BuildJournalTest {
         }
         List<BuildRecord> full = j.list();
         assertThat(full).hasSize(5);
-        assertThat(j.list(3)).containsExactlyElementsOf(full.subList(0, 3));
-        assertThat(j.list(99)).containsExactlyElementsOf(full);
-        assertThat(j.list(0)).isEmpty();
+        assertThat(records(j.heads(3))).containsExactlyElementsOf(full.subList(0, 3));
+        assertThat(records(j.heads(99))).containsExactlyElementsOf(full);
+        assertThat(j.heads(0)).isEmpty();
 
         List<String> raw = j.rawRecords(3);
         assertThat(raw).hasSize(3);
@@ -719,7 +723,7 @@ class BuildJournalTest {
 
         // The cut is limit < N: with the pathological stamp mapped to 0 the newest run sorted to
         // the END of the mtime order and fell outside the window. Over-inclusion keeps it in.
-        var top = j.list(2).getFirst();
+        var top = j.heads(2).getFirst().record();
         assertThat(top.finishedAt()).isEqualTo(1_700_000_003_000L);
         assertThat(j.rawRecords(2)).anyMatch(r -> r.contains(String.valueOf(1_700_000_003_000L)));
     }
