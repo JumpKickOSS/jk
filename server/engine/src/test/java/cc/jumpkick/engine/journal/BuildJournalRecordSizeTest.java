@@ -97,7 +97,7 @@ class BuildJournalRecordSizeTest {
         assertThat(head.failedModules()).isEqualTo(1);
         String id = requireNonNull(head.record().id());
         assertThat(cold.list()).extracting(BuildRecord::id).containsExactly(id);
-        assertThat(cold.recordFile(id)).contains(file);
+        assertThat(cold.runDir(id)).contains(file.getParent());
 
         List<Integer> seen = new ArrayList<>();
         cold.rawRecords(5, raw -> {
@@ -126,6 +126,36 @@ class BuildJournalRecordSizeTest {
         assertThat(messages(whole.diagnostics())).isEqualTo(messages(all));
         assertThat(j.get(requireNonNull(whole.id())).orElseThrow().diagnostics())
                 .hasSize(all.size());
+    }
+
+    @Test
+    void every_raw_read_of_a_spilled_record_carries_every_diagnostic() throws Exception {
+        BuildJournal j = new BuildJournal(dir);
+        List<BuildRecord.Diag> all = diags(4_000);
+        String locator = requireNonNull(j.append(record(5L, List.of(), all), BuildJournal.Snapshot.NONE));
+        String id = requireNonNull(j.get(locator).orElseThrow().id());
+        assertThat(requireNonNull(recordFile(j, locator).getParent()).resolve(BuildJournal.DIAGNOSTICS_SPILL))
+                .isRegularFile();
+
+        List<String> raws = new ArrayList<>(j.rawRecords(5));
+        raws.add(j.rawFinishedRecordByRequestId(5L).orElseThrow());
+        raws.add(j.rawRecord(id).orElseThrow());
+        raws.add(j.rawRecord(locator).orElseThrow());
+        assertThat(raws).hasSize(4).allSatisfy(raw -> {
+            assertThat(BuildJournal.scanString(raw, "diagnosticsSpill")).isNull();
+            assertThat(messages(Json.read(raw).diagnostics())).isEqualTo(messages(all));
+        });
+    }
+
+    @Test
+    void a_raw_read_of_an_unspilled_record_is_its_file_as_written() throws Exception {
+        BuildJournal j = new BuildJournal(dir);
+        String locator = requireNonNull(j.append(record(6L, List.of(), diags(3)), BuildJournal.Snapshot.NONE));
+        String json =
+                Files.readString(recordFile(j, locator), StandardCharsets.UTF_8).strip();
+
+        assertThat(j.rawRecord(locator)).contains(json);
+        assertThat(j.rawRecords(5)).containsExactly(json);
     }
 
     @Test

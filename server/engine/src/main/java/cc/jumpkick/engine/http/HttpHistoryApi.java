@@ -40,14 +40,15 @@ final class HttpHistoryApi {
     /**
      * {@code GET /api/history} — the persisted build journal (survives engine restarts). With no
      * {@code ?id=}, a JSON array of the newest entries' full records; with {@code ?id=}, that one
-     * entry's {@code record.json}. Finished records stream verbatim (a cheap {@code "running":true}
+     * entry's record. Every record carries its whole diagnostics list, spill included. Finished
+     * records stream verbatim (a cheap {@code "running":true}
      * pre-check skips the parse); in-flight ones are MiniJson-parsed once to attach live
      * {@code requestId}/{@code progress}.
      */
     void handleHistory(HttpExchange exchange) throws IOException {
         String id = HttpQuery.queryParamLenient(exchange.getRequestURI().getRawQuery(), "id");
         if (id != null && !id.isBlank()) {
-            var record = journal.recordFile(id);
+            var record = journal.rawRecord(id);
             if (record.isEmpty()) {
                 HttpResponses.sendJson(
                         exchange,
@@ -55,12 +56,7 @@ final class HttpHistoryApi {
                         JsonOut.object().put("error", "no such build: " + id).toString());
                 return;
             }
-            HttpResponses.sendJson(
-                    exchange,
-                    200,
-                    redactRecordJson(
-                            enrichHistoryJson(Files.readString(record.get(), StandardCharsets.UTF_8)),
-                            new HashMap<>()));
+            HttpResponses.sendJson(exchange, 200, redactRecordJson(enrichHistoryJson(record.get()), new HashMap<>()));
             return;
         }
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");

@@ -288,8 +288,9 @@ list already hides) and, when the surface had one, `session` — the MCP connect
 `<client> <id>` or the BSP client's `<displayName> <id>`; a CLI row has no `session` key. The
 dashboard's **By session** grouping and the project page's followed run read only these
 fields, so they show exactly what `jk-results.md` prints.
-A row's `diagnostics` is capped; a row that overran it names the rest in `diagnosticsSpill`, a
-file beside its `record.json` that this list does not inline.
+A row's `record.json` carries a capped `diagnostics` list and names the rest in
+`diagnosticsSpill`, a file beside it; this list, `?id=` and the MCP history and diagnostics tools
+merge that file back, so every row carries its whole `diagnostics` and no `diagnosticsSpill`.
 
 ### `GET /report/<token>/<id>/<path>`
 

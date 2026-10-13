@@ -271,20 +271,34 @@ final class Json {
     }
 
     /** A whole record, the diagnostics its writer spilled ({@code spill}, a JSON array) appended. */
-    @SuppressWarnings("unchecked")
     static BuildRecord read(String json, @Nullable String spill) {
-        Object root = MiniJson.parse(json);
-        if (!(root instanceof Map<?, ?> m)) {
-            throw new IllegalArgumentException("record.json is not a JSON object");
-        }
-        if (spill != null && MiniJson.parse(spill) instanceof List<?> rest && !rest.isEmpty()) {
-            Map<String, Object> o = new LinkedHashMap<>((Map<String, Object>) m);
+        Map<?, ?> m = object(json);
+        return readMap(spill == null ? m : withSpill(m, spill));
+    }
+
+    /** Record text with the diagnostics its writer spilled ({@code spill}, a JSON array) inline. */
+    static String writeWithSpill(String json, String spill) {
+        return MiniJson.writePretty(withSpill(object(json), spill));
+    }
+
+    /** {@code record} with {@code spill}'s diagnostics after its own, no longer naming a spill. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> withSpill(Map<?, ?> record, String spill) {
+        Map<String, Object> o = new LinkedHashMap<>((Map<String, Object>) record);
+        o.remove("diagnosticsSpill");
+        if (MiniJson.parse(spill) instanceof List<?> rest) {
             List<Object> all = new ArrayList<>(arr(o, "diagnostics"));
             all.addAll(rest);
             o.put("diagnostics", all);
-            return readMap(o);
         }
-        return readMap(m);
+        return o;
+    }
+
+    private static Map<?, ?> object(String json) {
+        if (!(MiniJson.parse(json) instanceof Map<?, ?> m)) {
+            throw new IllegalArgumentException("record.json is not a JSON object");
+        }
+        return m;
     }
 
     /**
