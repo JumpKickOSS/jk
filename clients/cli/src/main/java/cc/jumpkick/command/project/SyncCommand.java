@@ -11,7 +11,6 @@ import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.SessionMirrorListener;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jdk.JdkEnsure;
@@ -150,8 +149,7 @@ public final class SyncCommand implements CliCommand {
                             session.force(),
                             session.config().forceOr(false),
                             Objects.requireNonNull(global).verbose),
-                    steps -> SessionMirrorListener.mirrored(
-                            BuildPlanConsole.chooseConsoleListener(steps, mode, spec, targetLabel), mode),
+                    steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, targetLabel),
                     fetched,
                     upToDate);
         } catch (IOException e) {

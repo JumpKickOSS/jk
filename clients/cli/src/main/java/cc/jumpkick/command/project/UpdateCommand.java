@@ -11,7 +11,6 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.CliSessionTranscript;
-import cc.jumpkick.cli.run.SessionMirrorListener;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.RichText;
@@ -172,8 +171,7 @@ public final class UpdateCommand implements CliCommand {
 
             @Override
             public BuildPlanListener onModuleStart(String moduleDir, String coord, List<Task> steps) {
-                return SessionMirrorListener.mirrored(
-                        BuildPlanConsole.chooseConsoleListener("Update", "Updating versions", steps, mode), mode);
+                return BuildPlanConsole.chooseConsoleListener("Update", "Updating versions", steps, mode);
             }
 
             @Override
