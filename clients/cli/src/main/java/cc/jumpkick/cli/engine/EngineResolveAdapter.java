@@ -205,41 +205,42 @@ final class EngineResolveAdapter {
                                     req.verbose())
                             .encode()));
 
-            return WireStream.pumpJob(reader, ch, new WireStream.Decoder<BuildPlanResult>() {
-                private final List<Task> steps = new ArrayList<>();
-                private final List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
-                private final FailureTextRefs texts = new FailureTextRefs();
-                private @Nullable BuildPlanListener listener;
-
-                @Override
-                public @Nullable BuildPlanResult onLine(String type, String line) throws IOException {
-                    switch (type) {
-                        case EngineProtocol.PLAN_TASK -> steps.add(EngineEventDecoder.taskFromWire(line));
-                        case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
-                        case EngineProtocol.BUILDPLAN_FINISH -> {
-                            PlanFinishSyncEvent e = PlanFinishSyncEvent.decode(line);
-                            if (fetchedOut != null) fetchedOut[0] = e.fetched();
-                            if (upToDateOut != null) upToDateOut[0] = e.upToDate();
-                            BuildPlanResult result = new BuildPlanResult(
-                                    "sync",
-                                    e.success(),
-                                    Duration.ZERO,
-                                    List.of(),
-                                    List.of(),
-                                    diagnostics,
-                                    false,
-                                    false);
-                            if (listener != null) listener.planFinish(result);
-                            return result;
-                        }
-                        case EngineProtocol.ERROR ->
-                            throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
-                        default -> EngineEventDecoder.dispatch(type, line, listener, diagnostics::add, texts);
-                    }
-                    return null;
-                }
-            });
+            return WireStream.pumpJob(reader, ch, syncDecoder(listenerFactory, fetchedOut, upToDateOut));
         }
+    }
+
+    /** The {@code jk sync} plan reader: ends on the sync terminal, refuses on the engine's error frame. */
+    static WireStream.Decoder<BuildPlanResult> syncDecoder(
+            Function<List<Task>, BuildPlanListener> listenerFactory, long[] fetchedOut, long[] upToDateOut) {
+        return new WireStream.Decoder<>() {
+            private final List<Task> steps = new ArrayList<>();
+            private final List<BuildPlanResult.Diagnostic> warnings = new ArrayList<>();
+            private final List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
+            private final FailureTextRefs texts = new FailureTextRefs();
+            private @Nullable BuildPlanListener listener;
+
+            @Override
+            public @Nullable BuildPlanResult onLine(String type, String line) throws IOException {
+                switch (type) {
+                    case EngineProtocol.PLAN_TASK -> steps.add(EngineEventDecoder.taskFromWire(line));
+                    case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
+                    case EngineProtocol.BUILDPLAN_FINISH -> {
+                        PlanFinishSyncEvent e = PlanFinishSyncEvent.decode(line);
+                        if (fetchedOut != null) fetchedOut[0] = e.fetched();
+                        if (upToDateOut != null) upToDateOut[0] = e.upToDate();
+                        BuildPlanResult result = new BuildPlanResult(
+                                "sync", e.success(), Duration.ZERO, List.of(), warnings, diagnostics, false, false);
+                        if (listener != null) listener.planFinish(result);
+                        return result;
+                    }
+                    case EngineProtocol.ERROR ->
+                        throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
+                    default ->
+                        EngineEventDecoder.dispatch(type, line, listener, diagnostics::add, warnings::add, texts);
+                }
+                return null;
+            }
+        };
     }
 
     /** Send a cascade request and replay its stream into {@code handler} until the terminal arrives. */
@@ -254,111 +255,114 @@ final class EngineResolveAdapter {
             BufferedReader reader = EngineWire.protocolReader(ch);
             send(writer, requestLine);
 
-            // Cascade state: the module currently streaming. Modules are strictly sequential on the
-            // wire (the engine locks them one at a time), so one slot suffices. A named type, not
-            // locals, because the catch below has to reach the module that was still live.
-            final class Cascade implements WireStream.Decoder<EngineRequests.LockOutcome> {
-                private @Nullable String currentDir;
-                private @Nullable String currentCoord;
-                private List<Task> steps = new ArrayList<>();
-                private List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
-                private final FailureTextRefs texts = new FailureTextRefs();
-                private @Nullable BuildPlanListener listener;
-
-                @Override
-                public EngineRequests.@Nullable LockOutcome onLine(String type, String line) throws IOException {
-                    switch (type) {
-                        case EngineProtocol.LOCK_MODULE -> {
-                            LockModuleEvent e = LockModuleEvent.decode(line);
-                            currentDir = e.dir();
-                            currentCoord = e.coord();
-                            steps = new ArrayList<>();
-                            diagnostics = new ArrayList<>();
-                            listener = null;
-                        }
-                        case EngineProtocol.PLAN_TASK -> steps.add(EngineEventDecoder.taskFromWire(line));
-                        case EngineProtocol.PLAN_DONE ->
-                            listener = handler.onModuleStart(
-                                    Objects.requireNonNull(currentDir, "plan-done before module-start"),
-                                    Objects.requireNonNull(currentCoord, "plan-done before module-start"),
-                                    steps);
-                        case EngineProtocol.LOCK_PACKAGE -> {
-                            LockPackageEvent e = LockPackageEvent.decode(line);
-                            handler.onPackage(e.dir(), e.name(), e.version(), e.totalSeen());
-                        }
-                        case EngineProtocol.LOCK_PHASE -> {
-                            LockPhaseEvent e = LockPhaseEvent.decode(line);
-                            handler.onPhase(e.dir(), e.label());
-                        }
-                        case EngineProtocol.UPDATE_REWRITE -> {
-                            UpdateRewriteEvent e = UpdateRewriteEvent.decode(line);
-                            handler.onRewrite(e.dir(), e.table(), e.handle(), e.module(), e.from(), e.to());
-                        }
-                        case EngineProtocol.UPDATE_CHANGE -> {
-                            UpdateChangeEvent e = UpdateChangeEvent.decode(line);
-                            handler.onChange(e.dir(), e.coordinate(), e.from(), e.to(), e.members());
-                        }
-                        case EngineProtocol.BUILDPLAN_FINISH -> {
-                            PlanFinishLockEvent e = PlanFinishLockEvent.decode(line);
-                            BuildPlanResult result = new BuildPlanResult(
-                                    planName,
-                                    e.success(),
-                                    Duration.ZERO,
-                                    List.of(),
-                                    List.of(),
-                                    diagnostics,
-                                    false,
-                                    false);
-                            if (listener != null) listener.planFinish(result);
-                            listener = null; // settled — settle() must not settle it twice
-                            // Absent counts are unknown (-1) here, where the record reads 0.
-                            handler.onModuleFinish(
-                                    Objects.requireNonNull(currentDir, "module-finish before module-start"),
-                                    result,
-                                    new EngineRequests.LockCounts(
-                                            Jsonl.has(line, "lockPackages") ? e.packages() : -1,
-                                            Jsonl.has(line, "lockChanged") ? e.changed() : -1,
-                                            Jsonl.has(line, "lockSources") ? e.sources() : -1,
-                                            Jsonl.has(line, "lockPlugins") ? e.plugins() : -1,
-                                            e.unverified(),
-                                            e.insecureRepos()));
-                        }
-                        case EngineProtocol.LOCK_FINISH -> {
-                            LockFinishEvent e = LockFinishEvent.decode(line);
-                            // An absent exit code is a failure here, where the record reads 0.
-                            int exitCode = Jsonl.has(line, "exitCode") ? e.exitCode() : 1;
-                            return new EngineRequests.LockOutcome(e.success(), exitCode, e.errors(), e.refreshed());
-                        }
-                        case EngineProtocol.ERROR ->
-                            throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
-                        default -> EngineEventDecoder.dispatch(type, line, listener, diagnostics::add, texts);
-                    }
-                    return null;
-                }
-
-                /**
-                 * An in-flight module's live region must settle before the error propagates:
-                 * planFinish dismisses the pinned region and restores the captured System.out, or
-                 * the failure prints interleaved with a still-animating region and the terminal is
-                 * left mid-frame with stdout redirected.
-                 */
-                void settle(Throwable failure) {
-                    if (listener == null) return;
-                    try {
-                        listener.planFinish(new BuildPlanResult(
-                                planName, false, Duration.ZERO, List.of(), List.of(), diagnostics, false, false));
-                    } catch (RuntimeException settling) {
-                        failure.addSuppressed(settling);
-                    }
-                }
-            }
-
-            Cascade cascade = new Cascade();
+            CascadeDecoder cascade = new CascadeDecoder(handler, planName);
             try {
                 return WireStream.pumpJob(reader, ch, cascade);
             } catch (IOException | RuntimeException e) {
                 cascade.settle(e);
                 throw e;
+            }
+        }
+    }
+
+    /**
+     * The lock and update cascade reader: a plan per module, strictly sequential on the wire (the
+     * engine locks them one at a time), so one slot holds the module currently streaming. A named
+     * type, so the caller's catch can settle the module that was still live.
+     */
+    static final class CascadeDecoder implements WireStream.Decoder<EngineRequests.LockOutcome> {
+        private final EngineRequests.LockHandler handler;
+        private final String planName;
+        private @Nullable String currentDir;
+        private @Nullable String currentCoord;
+        private List<Task> steps = new ArrayList<>();
+        private List<BuildPlanResult.Diagnostic> warnings = new ArrayList<>();
+        private List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
+        private final FailureTextRefs texts = new FailureTextRefs();
+        private @Nullable BuildPlanListener listener;
+
+        CascadeDecoder(EngineRequests.LockHandler handler, String planName) {
+            this.handler = handler;
+            this.planName = planName;
+        }
+
+        @Override
+        public EngineRequests.@Nullable LockOutcome onLine(String type, String line) throws IOException {
+            switch (type) {
+                case EngineProtocol.LOCK_MODULE -> {
+                    LockModuleEvent e = LockModuleEvent.decode(line);
+                    currentDir = e.dir();
+                    currentCoord = e.coord();
+                    steps = new ArrayList<>();
+                    warnings = new ArrayList<>();
+                    diagnostics = new ArrayList<>();
+                    listener = null;
+                }
+                case EngineProtocol.PLAN_TASK -> steps.add(EngineEventDecoder.taskFromWire(line));
+                case EngineProtocol.PLAN_DONE ->
+                    listener = handler.onModuleStart(
+                            Objects.requireNonNull(currentDir, "plan-done before module-start"),
+                            Objects.requireNonNull(currentCoord, "plan-done before module-start"),
+                            steps);
+                case EngineProtocol.LOCK_PACKAGE -> {
+                    LockPackageEvent e = LockPackageEvent.decode(line);
+                    handler.onPackage(e.dir(), e.name(), e.version(), e.totalSeen());
+                }
+                case EngineProtocol.LOCK_PHASE -> {
+                    LockPhaseEvent e = LockPhaseEvent.decode(line);
+                    handler.onPhase(e.dir(), e.label());
+                }
+                case EngineProtocol.UPDATE_REWRITE -> {
+                    UpdateRewriteEvent e = UpdateRewriteEvent.decode(line);
+                    handler.onRewrite(e.dir(), e.table(), e.handle(), e.module(), e.from(), e.to());
+                }
+                case EngineProtocol.UPDATE_CHANGE -> {
+                    UpdateChangeEvent e = UpdateChangeEvent.decode(line);
+                    handler.onChange(e.dir(), e.coordinate(), e.from(), e.to(), e.members());
+                }
+                case EngineProtocol.BUILDPLAN_FINISH -> {
+                    PlanFinishLockEvent e = PlanFinishLockEvent.decode(line);
+                    BuildPlanResult result = new BuildPlanResult(
+                            planName, e.success(), Duration.ZERO, List.of(), warnings, diagnostics, false, false);
+                    if (listener != null) listener.planFinish(result);
+                    listener = null; // settled — settle() must not settle it twice
+                    // Absent counts are unknown (-1) here, where the record reads 0.
+                    handler.onModuleFinish(
+                            Objects.requireNonNull(currentDir, "module-finish before module-start"),
+                            result,
+                            new EngineRequests.LockCounts(
+                                    Jsonl.has(line, "lockPackages") ? e.packages() : -1,
+                                    Jsonl.has(line, "lockChanged") ? e.changed() : -1,
+                                    Jsonl.has(line, "lockSources") ? e.sources() : -1,
+                                    Jsonl.has(line, "lockPlugins") ? e.plugins() : -1,
+                                    e.unverified(),
+                                    e.insecureRepos()));
+                }
+                case EngineProtocol.LOCK_FINISH -> {
+                    LockFinishEvent e = LockFinishEvent.decode(line);
+                    // An absent exit code is a failure here, where the record reads 0.
+                    int exitCode = Jsonl.has(line, "exitCode") ? e.exitCode() : 1;
+                    return new EngineRequests.LockOutcome(e.success(), exitCode, e.errors(), e.refreshed());
+                }
+                case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
+                default -> EngineEventDecoder.dispatch(type, line, listener, diagnostics::add, warnings::add, texts);
+            }
+            return null;
+        }
+
+        /**
+         * An in-flight module's live region must settle before the error propagates:
+         * planFinish dismisses the pinned region and restores the captured System.out, or
+         * the failure prints interleaved with a still-animating region and the terminal is
+         * left mid-frame with stdout redirected.
+         */
+        void settle(Throwable failure) {
+            if (listener == null) return;
+            try {
+                listener.planFinish(new BuildPlanResult(
+                        planName, false, Duration.ZERO, List.of(), warnings, diagnostics, false, false));
+            } catch (RuntimeException settling) {
+                failure.addSuppressed(settling);
             }
         }
     }
