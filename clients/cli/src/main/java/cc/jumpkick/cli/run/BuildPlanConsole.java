@@ -131,22 +131,6 @@ public final class BuildPlanConsole {
     }
 
     /**
-     * As {@link #chooseConsoleListener(List, Mode, ConsoleSpec, String)}, for one member of a
-     * multi-module workspace run: listeners never stamp their plan-local fraction into {@link
-     * LiveProgress} — the aggregate {@code progress} rider belongs to the engine's {@code
-     * workspace-progress} snapshots alone.
-     */
-    public static BuildPlanListener chooseWorkspaceMemberListener(
-            List<Task> steps, Mode mode, ConsoleSpec spec, String module) {
-        return switch (mode) {
-            case JSON -> new JsonlListener(System.out, false);
-            case VERBOSE -> new VerboseListener(System.out, System.err);
-            case AUTO -> new CommandManagerListener(System.out, spec, module, steps, isInteractiveTerminal(), false);
-            case QUIET -> new CommandManagerListener(System.out, spec, module, steps, false, false);
-        };
-    }
-
-    /**
      * Run {@code plan} with no console output (only the event log), returning its result. For builds
      * whose progress must NOT render to the terminal — e.g. composite dependency units built
      * concurrently, where N live progress bars can't share one terminal region; the caller prints a
@@ -222,9 +206,8 @@ public final class BuildPlanConsole {
 
     /**
      * As {@link #chooseConsoleListener(String, List, Mode)} with a distinct header command and tree
-     * module label (e.g. {@code Update} / {@code Updating versions}).
+     * module label (e.g. {@code Update} / {@code Updating versions}), the transcript mirrored the same way.
      */
-    /** As {@link #chooseConsoleListener(List, Mode, ConsoleSpec, String)}, the transcript mirrored the same way. */
     public static BuildPlanListener chooseConsoleListener(String command, String module, List<Task> steps, Mode mode) {
         BuildPlanListener console =
                 switch (mode) {

@@ -327,8 +327,7 @@ public final class LockCommand implements CliCommand {
 
             @Override
             public BuildPlanListener onModuleStart(String moduleDir, String coord, List<Task> steps) {
-                current = SessionMirrorListener.mirrored(
-                        BuildPlanConsole.chooseConsoleListener("lock", steps, mode), mode);
+                current = BuildPlanConsole.chooseConsoleListener("lock", steps, mode);
                 return current;
             }
 

@@ -351,12 +351,20 @@ public final class FormatCommand implements CliCommand {
         return envBool(envVar);
     }
 
-    /** A plan listener that surfaces the worker's passthrough chatter under {@code --verbose}. */
+    /**
+     * A plan listener that surfaces the worker's passthrough chatter under {@code --verbose}, and
+     * the plan's warnings always.
+     */
     private static BuildPlanListener chatterListener(GlobalOptions global, Consumer<String> sink) {
         return new BuildPlanListener() {
             @Override
             public void output(String step, String line) {
                 if (global.verbose) sink.accept(line);
+            }
+
+            @Override
+            public void warn(String step, String code, String message) {
+                sink.accept(Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " " + message);
             }
         };
     }
