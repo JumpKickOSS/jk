@@ -116,12 +116,16 @@ class CancellationPrecedenceTest extends EngineServerHarness {
     void cancel_by_jid_over_a_second_connection_acks_at_once_and_the_job_finishes_cancelled_by_the_user()
             throws Exception {
         Iterator<String> sse = startEngine(JkEngineConfig.DEFAULTS);
-        try (Client building = new Client(EnginePaths.activeSocket(paths()));
-                Client canceller = new Client(EnginePaths.activeSocket(paths()))) {
+        try (Client building = new Client(EnginePaths.activeSocket(paths()))) {
             long jid = startLock(building);
             assertThat(held.await(30, TimeUnit.SECONDS)).isTrue();
 
-            String ack = canceller.send(ProtoLifecycle.cancelRequest(jid));
+            // Connect only once the job is parked: the engine closes a connection that stays silent
+            // past its first-line grace, and the wait above can outlast it on a loaded host.
+            String ack;
+            try (Client canceller = new Client(EnginePaths.activeSocket(paths()))) {
+                ack = canceller.send(ProtoLifecycle.cancelRequest(jid));
+            }
             // The ack arrives while the download is still parked: it does not wait for the job to settle.
             assertThat(release.getCount()).isEqualTo(1);
             assertThat(EngineProtocol.typeOf(ack)).isEqualTo(EngineProtocol.CANCEL_ACK);
@@ -155,21 +159,23 @@ class CancellationPrecedenceTest extends EngineServerHarness {
     @Test
     void cancel_by_dir_cancels_every_live_job_under_it_and_then_finds_none() throws Exception {
         startEngine(JkEngineConfig.DEFAULTS);
-        try (Client building = new Client(EnginePaths.activeSocket(paths()));
-                Client canceller = new Client(EnginePaths.activeSocket(paths()))) {
+        try (Client building = new Client(EnginePaths.activeSocket(paths()))) {
             startLock(building);
             assertThat(held.await(30, TimeUnit.SECONDS)).isTrue();
 
-            String ack = canceller.send(ProtoLifecycle.cancelRequestForDir(project.toString()));
-            assertThat(Jsonl.longValue(ack, "jid", -1)).isZero();
-            assertThat(Jsonl.bool(ack, "cancelled", false)).isTrue();
-            assertThat(Jsonl.str(ack, "note")).isEqualTo("cancelled 1 job(s)");
+            // Connected after the park, for the same first-line grace as above.
+            try (Client canceller = new Client(EnginePaths.activeSocket(paths()))) {
+                String ack = canceller.send(ProtoLifecycle.cancelRequestForDir(project.toString()));
+                assertThat(Jsonl.longValue(ack, "jid", -1)).isZero();
+                assertThat(Jsonl.bool(ack, "cancelled", false)).isTrue();
+                assertThat(Jsonl.str(ack, "note")).isEqualTo("cancelled 1 job(s)");
 
-            readUntil(building, EngineProtocol.JOB_FINISH);
-            String none = canceller.send(ProtoLifecycle.cancelRequestForDir(project.toString()));
-            assertThat(Jsonl.longValue(none, "jid", -1)).isZero();
-            assertThat(Jsonl.bool(none, "cancelled", true)).isFalse();
-            assertThat(Jsonl.str(none, "note")).isEqualTo("no running jobs for dir");
+                readUntil(building, EngineProtocol.JOB_FINISH);
+                String none = canceller.send(ProtoLifecycle.cancelRequestForDir(project.toString()));
+                assertThat(Jsonl.longValue(none, "jid", -1)).isZero();
+                assertThat(Jsonl.bool(none, "cancelled", true)).isFalse();
+                assertThat(Jsonl.str(none, "note")).isEqualTo("no running jobs for dir");
+            }
         }
     }
 
