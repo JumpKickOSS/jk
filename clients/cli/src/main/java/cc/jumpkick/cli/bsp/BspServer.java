@@ -4,7 +4,6 @@ package cc.jumpkick.cli.bsp;
 import cc.jumpkick.cli.ide.IdeEngineClient;
 import cc.jumpkick.cli.run.DebugAttach;
 import cc.jumpkick.config.DebugJvm;
-import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.diagnostic.CompilerLocus;
 import cc.jumpkick.ide.BspConnectionFile;
 import cc.jumpkick.ide.IdeSourceRoots;
@@ -723,7 +722,8 @@ public final class BspServer {
      * echoed in the result's {@code data} under {@code dataKind} {@value #DEBUG_DATA_KIND}.
      */
     private String testJson(String requestJson, @Nullable Path moduleDir) throws IOException {
-        var selection = withTargetSuite(parseTestSelectionData(requestJson), extractTargetUris(requestJson));
+        var selection = BspRequestParams.withTargetSuite(
+                BspRequestParams.parseTestSelectionData(requestJson), extractTargetUris(requestJson));
         DebugJvm debug = armDebug(requestJson);
         var outcome = ide.testModule(moduleDir, null, selection, debug);
         return statusResult(outcome, "test failed", debug);
@@ -749,7 +749,7 @@ public final class BspServer {
      * to a suspended JVM needs the address before the result, which only comes after the run.
      */
     private @Nullable DebugJvm armDebug(String requestJson) throws IOException {
-        DebugJvm debug = parseDebugData(requestJson);
+        DebugJvm debug = BspRequestParams.parseDebugData(requestJson);
         if (debug == null) return null;
         DebugJvm bound = DebugAttach.bind(debug);
         logMessage(3, originId(requestJson), DebugAttach.announcement(bound));
@@ -790,8 +790,8 @@ public final class BspServer {
         String targetUri = uris.isEmpty() ? pathUri(ide.projectDir()) + "#root" : uris.getFirst();
         // Group diagnostics by file URI.
         Map<String, List<String>> byFile = new LinkedHashMap<>();
-        collectDiagnostics(byFile, errors, 1, ide.projectDir());
-        collectDiagnostics(byFile, warnings, 2, ide.projectDir());
+        BspDiagnostics.collectDiagnostics(byFile, errors, 1, ide.projectDir());
+        BspDiagnostics.collectDiagnostics(byFile, warnings, 2, ide.projectDir());
         for (Map.Entry<String, List<String>> e : byFile.entrySet()) {
             notify(
                     "build/publishDiagnostics",
@@ -801,127 +801,6 @@ public final class BspServer {
                             .token("diagnostics", arrayOf(e.getValue()))
                             .finish());
         }
-    }
-
-    /** ANSI CSI sequences — the colour a compiler paints a message with; an IDE shows them as text. */
-    private static final Pattern ANSI = Pattern.compile("\u001B\\[[0-9;?]*[ -/]*[@-~]");
-
-    /** {@code text} without its ANSI escapes. */
-    static String plain(String text) {
-        return text.indexOf('\u001B') < 0 ? text : ANSI.matcher(text).replaceAll("");
-    }
-
-    /**
-     * BSP severity: 1 = error, 2 = warning. A block is read without its colour escapes, so a
-     * scalac message is parsed and shown as text; an unparseable block lands at project root line 0.
-     */
-    static void collectDiagnostics(Map<String, List<String>> byFile, List<String> raw, int severity, Path projectDir) {
-        if (raw == null) return;
-        for (String coloured : raw) {
-            if (coloured == null || coloured.isBlank()) continue;
-            String text = plain(coloured);
-            CompilerLocus locus = CompilerLocus.parse(text);
-            if (locus != null) {
-                byFile.computeIfAbsent(pathUri(Path.of(locus.file())), k -> new ArrayList<>())
-                        .add(diagnosticJson(
-                                Math.max(0, locus.line() - 1), Math.max(0, locus.col() - 1), severity, text.strip()));
-            } else {
-                byFile.computeIfAbsent(pathUri(projectDir), k -> new ArrayList<>())
-                        .add(diagnosticJson(0, 0, severity, text));
-            }
-        }
-    }
-
-    static String diagnosticJson(int line, int col, int severity, String message) {
-        String position = JsonFields.object()
-                .number("line", line)
-                .number("character", col)
-                .finish();
-        return JsonFields.object()
-                .token(
-                        "range",
-                        JsonFields.object()
-                                .token("start", position)
-                                .token("end", position)
-                                .finish())
-                .number("severity", severity)
-                .string("message", message)
-                .finish();
-    }
-
-    /**
-     * Parse optional {@code data} object on a BSP test request into {@link
-     * cc.jumpkick.config.TestSelection}. Missing/empty → DEFAULT.
-     */
-    static TestSelection parseTestSelectionData(String requestJson) {
-        if (requestJson == null || requestJson.isBlank()) {
-            return TestSelection.DEFAULT;
-        }
-        try {
-            Object parsed = MiniJson.parse(requestJson);
-            if (!(parsed instanceof Map<?, ?> outer)) {
-                return TestSelection.DEFAULT;
-            }
-            // Full request envelope or bare params object — unwrap either.
-            Map<?, ?> params = outer.get("params") instanceof Map<?, ?> inner ? inner : outer;
-            Map<?, ?> src = params.get("data") instanceof Map<?, ?> d ? d : params;
-            boolean all = Boolean.TRUE.equals(src.get("allSuites"));
-            return TestSelection.of(
-                            stringList(src.get("suites")),
-                            all,
-                            stringList(src.get("includeTags")),
-                            stringList(src.get("excludeTags")))
-                    .withClasses(stringList(src.get("classes")));
-        } catch (RuntimeException e) {
-            return TestSelection.DEFAULT;
-        }
-    }
-
-    /**
-     * {@code selection} for a test of one suite target: that suite, unless the request's data
-     * already named suites. A module's own target, or several targets, leave it as it is.
-     */
-    static TestSelection withTargetSuite(TestSelection selection, List<String> targetUris) {
-        if (targetUris.size() != 1 || !selection.suites().isEmpty() || selection.allSuites()) return selection;
-        String suite = suiteOf(targetUris.getFirst());
-        if (suite == null) return selection;
-        return TestSelection.of(List.of(suite), false, selection.includeTags(), selection.excludeTags())
-                .withClasses(selection.classes());
-    }
-
-    /**
-     * The {@code data.debug} field of a BSP test/run request as a {@link DebugJvm}, or null when
-     * absent or false. Accepted shapes: {@code true} (the defaults), an object with optional
-     * {@code host}, {@code port} and {@code suspend}, or the {@code --debug-jvm} spec as a string.
-     * Unparseable payloads read as no debug request, like the selection parse beside it.
-     */
-    static @Nullable DebugJvm parseDebugData(String requestJson) {
-        if (requestJson == null || requestJson.isBlank()) return null;
-        try {
-            Object parsed = MiniJson.parse(requestJson);
-            if (!(parsed instanceof Map<?, ?> outer)) return null;
-            Map<?, ?> params = outer.get("params") instanceof Map<?, ?> inner ? inner : outer;
-            Map<?, ?> src = params.get("data") instanceof Map<?, ?> d ? d : params;
-            Object debug = src.get("debug");
-            if (debug instanceof Boolean on) return on ? DebugJvm.DEFAULT : null;
-            if (debug instanceof String spec) return DebugJvm.parse(spec);
-            if (!(debug instanceof Map<?, ?> fields)) return null;
-            String host = fields.get("host") instanceof String h && !h.isBlank() ? h : DebugJvm.DEFAULT_HOST;
-            int port = fields.get("port") instanceof Number n ? n.intValue() : DebugJvm.DEFAULT_PORT;
-            boolean suspend = !Boolean.FALSE.equals(fields.get("suspend"));
-            return new DebugJvm(host, port, suspend);
-        } catch (RuntimeException e) {
-            return null;
-        }
-    }
-
-    private static List<String> stringList(@Nullable Object value) {
-        if (!(value instanceof List<?> list)) return List.of();
-        List<String> out = new ArrayList<>(list.size());
-        for (Object o : list) {
-            if (o instanceof String str && !str.isBlank()) out.add(str);
-        }
-        return out;
     }
 
     static String statusResult(IdeEngineClient.BuildOutcome outcome, String defaultFail) {
@@ -1078,7 +957,7 @@ public final class BspServer {
         return line.toString(StandardCharsets.US_ASCII);
     }
 
-    private static String pathUri(Path p) {
+    static String pathUri(Path p) {
         return p.toAbsolutePath().normalize().toUri().toString();
     }
 

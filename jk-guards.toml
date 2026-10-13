@@ -258,10 +258,6 @@ in     = "server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java"
 reason = "`jumpkick` here is a package path segment (Path.of(\"cc\", \"jumpkick\", …)), not a repository name"
 
 [[guards.repository-names.allow]]
-in     = "server/toolchain/src/main/java/cc/jumpkick/mvn/PomImporter.java"
-reason = "recognises a foreign build file's declared repository: every spelling a user may have typed"
-
-[[guards.repository-names.allow]]
 in     = "shared/core/src/main/java/cc/jumpkick/config/FormatStyles.java"
 reason = "`google` here is a formatter style name (ktfmt / google-java-format), not a repository"
 

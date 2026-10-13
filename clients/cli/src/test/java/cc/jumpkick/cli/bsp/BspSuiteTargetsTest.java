@@ -38,13 +38,14 @@ class BspSuiteTargetsTest {
         assertThat(BspServer.suiteOf("file:///ws#app")).isNull();
 
         TestSelection plain = TestSelection.DEFAULT.withClasses(List.of("FooIT"));
-        TestSelection suite = BspServer.withTargetSuite(plain, List.of("file:///ws#app::integration"));
+        TestSelection suite = BspRequestParams.withTargetSuite(plain, List.of("file:///ws#app::integration"));
         assertThat(suite.suites()).containsExactly("integration");
         assertThat(suite.classes()).containsExactly("FooIT");
 
-        assertThat(BspServer.withTargetSuite(plain, List.of("file:///ws#app"))).isSameAs(plain);
+        assertThat(BspRequestParams.withTargetSuite(plain, List.of("file:///ws#app")))
+                .isSameAs(plain);
         TestSelection named = TestSelection.of(List.of("e2e"), false, List.of(), List.of());
-        assertThat(BspServer.withTargetSuite(named, List.of("file:///ws#app::integration")))
+        assertThat(BspRequestParams.withTargetSuite(named, List.of("file:///ws#app::integration")))
                 .as("suites the request named win")
                 .isSameAs(named);
     }

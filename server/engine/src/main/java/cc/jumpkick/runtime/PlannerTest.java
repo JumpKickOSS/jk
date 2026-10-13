@@ -546,8 +546,6 @@ public final class PlannerTest {
     static Task runTestsStep(
             BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls, List<String> extraRequires) {
         BuildPlanner.Inputs in = cx.in();
-        Cas cas = cx.cas();
-        ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
         List<String> testRequires = new ArrayList<>();
         testRequires.add(TaskNames.COMPILE_TEST);
@@ -567,155 +565,158 @@ public final class PlannerTest {
                 .requires(testRequires.toArray(new String[0]))
                 .weight(() -> plan.get().runTests())
                 .ticks(in.estimatedTestCount())
-                .execute(ctx -> {
-                    if (ctx.get(NO_TEST_SOURCES).orElse(false)) {
-                        ctx.label("no tests to run");
-                        return;
-                    }
-                    Path testClasses = ctx.require(TEST_CLASSES);
-                    List<Path> testSrcs = ctx.get(TEST_SOURCES).orElse(List.of());
-                    JkBuild projectUnderTest = ctx.require(PROJECT);
-                    String moduleLabel = projectUnderTest.project().group() + ":"
-                            + projectUnderTest.project().name();
-                    String testTaskId = ActionKey.qualifiedTaskId(TaskNames.RUN_TESTS, testClasses);
-                    TestFailureSource.Cache snippets = new TestFailureSource.Cache();
-                    // [test] exclude-tags for jk build / BSP: CLI resolves tags for `jk test`;
-                    // when the session selection carries no tags at all, apply this module's
-                    // own config here. The effective selection feeds BOTH the stamp and the runner.
-                    var effectiveSel = effectiveSelection(in.session().testSelection(), in.dir());
-                    SuiteClassFilter suites = suiteFilter(in, cx.compact(), projectUnderTest);
-                    AffectedTestRun.Outcome affected = affectedRun(ctx, in, effectiveSel, suites);
-                    if (affected != null && affected.classNames().isEmpty()) {
-                        return; // nothing affected — no stamp store
-                    }
-                    // A --class selection that names no compiled class of this module is judged
-                    // from the class files, before the siblings' jars, the stamp and a test JVM:
-                    // in a workspace most modules do not hold the class the user named.
-                    if (affected == null
-                            && !effectiveSel.classes().isEmpty()
-                            && !suites.namesCompiledClass(
-                                    testClasses,
-                                    effectiveSel.classes(),
-                                    projectUnderTest.build().testExcludeClasses())) {
-                        TestSummary unmatched = judgeClassSelection(
-                                ctx,
-                                in,
-                                effectiveSel,
-                                false,
-                                suites,
-                                moduleLabel,
-                                null,
-                                new TestSummary(0, 0, 0, 0, List.of()));
-                        if (unmatched == null) return;
-                        ctx.put(TEST_RESULT, unmatched);
-                        TestLaunch.recordOutcome(
-                                ctx, in, actionCache, testTaskId, null, unmatched, !testSrcs.isEmpty(), snippets);
-                        return;
-                    }
-                    // The test runtime classpath is the siblings' jars: wait for them to be written.
-                    PlannerSetup.awaitSiblingArtifacts(ctx, in);
-                    List<Path> testRtCp = TestLaunch.testRuntimeClasspath(ctx, pluginDecls);
-                    // Worker jars feed both the forked JVM and the TestStamp
-                    // nested-engine CLI modules enrich with engine + every PluginJar so the stamp
-                    // matches what the suite actually loads — same set forecast uses.
-                    Map<String, String> workerJars = testStampWorkerJars(in.dir(), projectUnderTest);
-                    WorkerEnv testEnv = TestLaunch.withHostWall(
-                            TestLaunch.testEnvironment(ctx, in, projectUnderTest), effectiveSel);
-                    List<Path> testResDirs = ctx.get(TEST_RESOURCE_DIRS).orElse(List.of());
-                    List<String> testJvmArgs = TestLaunch.testJvmArgs(ctx, in, projectUnderTest, pluginDecls);
-                    List<String> extras = new ArrayList<>(TestStamp.withCompileTest(
-                            NodeTestStamp.testStampExtras(
-                                    workerJars,
-                                    effectiveSel,
-                                    projectUnderTest,
-                                    testJvmArgs,
-                                    in.dir(),
-                                    ClasspathFingerprint.ON_DISK),
-                            compileTestKeys(ctx)));
-                    if (affected != null && !affected.stampToken().isBlank()) {
-                        extras.add("affected:" + affected.stampToken());
-                    }
-                    String stampKey = TestLaunch.stampKey(ctx, in, testSrcs, testResDirs, testRtCp, extras);
-                    // --force forces a real test run, matching the compile/package
-                    // freshness checks above (which all guard on !rerun). Without
-                    // this guard the action record would skip the runner even when
-                    // the user explicitly asked to bypass build caches.
-                    // A debug request is a request for a JVM to attach to; a replayed green
-                    // marker would leave the debugger with nothing to reach.
-                    // A coverage run is a request for a report; a replayed green marker has none.
-                    boolean coverage =
-                            in.session().coverage() || projectUnderTest.build().testCoverage();
-                    boolean rerun = in.session().config().rebuildOr(false)
-                            || in.session().debugJvm() != null
-                            || coverage;
-                    if (!rerun && stampKey != null && TestLaunch.replayGreenRun(ctx, actionCache, stampKey)) {
-                        return; // skip — nothing changed since last green run
-                    }
-                    TestLaunch.reweightForRealRun(ctx, in);
-                    if (suites.describe() != null) ctx.output(suites.describe());
-                    List<Path> runtimeCp =
-                            TestLaunch.testRuntimeCpWithLanguageRuntimes(ctx, cx, cas, testRtCp, testSrcs);
-                    // Test execution is serialized across concurrently-built units unless the
-                    // user opted into parallel tests — shared ports/locks/fixtures. The worker
-                    // count is decided once the gate is held: a suite parked at the gate is
-                    // not running, and the ones running when it starts are what it shares with.
-                    boolean gated = !in.session().parallelTests();
-                    Path coverageExec = coverage ? TestLaunch.coverageExecFile(ctx) : null;
-                    // The agent and the report tool come first: a coverage run that cannot fetch
-                    // JaCoCo fails before any suite starts, not after the suite ran uninstrumented.
-                    CoverageTools.Jacoco jacoco = resolveBeforeGate(
-                            coverage ? () -> CoverageTools.resolve(projectUnderTest, cas) : null,
-                            gated,
-                            PlannerTest::awaitTestGate);
-                    TestSummary result;
-                    TagExcludedCapture tagExcluded;
-                    try {
-                        // Module pin ([test] workers / [build] test-workers) wins over CLI for
-                        // hermetic opt-out. Auto hands the launcher the share; it applies the
-                        // class-wall rule once the selection is known. A debug run is one JVM.
-                        boolean debug = in.session().debugJvm() != null;
-                        boolean auto = !debug && TestLaunch.autoDispatch(in, projectUnderTest.build(), pluginDecls);
-                        int testWorkers =
-                                debug ? 1 : TestLaunch.dispatchWorkers(in, projectUnderTest.build(), pluginDecls);
-                        tagExcluded = new TagExcludedCapture(TestSupport.bridgeListener(
-                                ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets, suites));
-                        JUnitLauncher launcher = TestLaunch.launcher(
-                                        in, projectUnderTest, effectiveSel, testJvmArgs, affected, jacoco, coverageExec)
-                                .withSuites(suites)
-                                .withIntegrationResults(ctx.require(LAYOUT).integrationResultsDir())
-                                .withAutoShare(auto);
-                        try {
-                            result = TestLaunch.launch(
-                                    ctx, in, launcher, runtimeCp, testWorkers, workerJars, testEnv, tagExcluded);
-                        } catch (TestLauncherFailure e) {
-                            TestLaunch.reportLauncherFailure(
-                                    ctx, in, projectUnderTest, actionCache, testTaskId, stampKey, e);
-                            throw e;
-                        }
-                    } finally {
-                        HeapNotes.flush(ctx);
-                        if (gated) TEST_GATE.release();
-                    }
-                    if (jacoco != null && coverageExec != null) {
-                        TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
-                    }
-                    result = result.withSuites(suites::suiteOf);
-                    result = judgeClassSelection(
-                            ctx,
-                            in,
-                            effectiveSel,
-                            affected != null,
-                            suites,
-                            moduleLabel,
-                            tagExcluded.message(),
-                            result);
-                    if (result == null) return;
-                    TagExcludedSuite.note(ctx, effectiveSel, in.profileName(), affected != null, result);
-                    ctx.put(TEST_RESULT, result);
-                    TestLaunch.recordOutcome(
-                            ctx, in, actionCache, testTaskId, stampKey, result, !testSrcs.isEmpty(), snippets);
-                })
+                .execute(ctx -> runTests(ctx, cx, pluginDecls))
                 .build();
+    }
+
+    /** Run one module's suite, or replay its last green run when nothing it reads has changed. */
+    private static void runTests(TaskContext ctx, BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls)
+            throws Exception {
+        BuildPlanner.Inputs in = cx.in();
+        Cas cas = cx.cas();
+        ActionCache actionCache = cx.actionCache();
+        if (ctx.get(NO_TEST_SOURCES).orElse(false)) {
+            ctx.label("no tests to run");
+            return;
+        }
+        Path testClasses = ctx.require(TEST_CLASSES);
+        List<Path> testSrcs = ctx.get(TEST_SOURCES).orElse(List.of());
+        JkBuild projectUnderTest = ctx.require(PROJECT);
+        String moduleLabel = projectUnderTest.project().group() + ":"
+                + projectUnderTest.project().name();
+        String testTaskId = ActionKey.qualifiedTaskId(TaskNames.RUN_TESTS, testClasses);
+        TestFailureSource.Cache snippets = new TestFailureSource.Cache();
+        // [test] exclude-tags for jk build / BSP: CLI resolves tags for `jk test`;
+        // when the session selection carries no tags at all, apply this module's
+        // own config here. The effective selection feeds BOTH the stamp and the runner.
+        var effectiveSel = effectiveSelection(in.session().testSelection(), in.dir());
+        SuiteClassFilter suites = suiteFilter(in, cx.compact(), projectUnderTest);
+        AffectedTestRun.Outcome affected = affectedRun(ctx, in, effectiveSel, suites);
+        if (affected != null && affected.classNames().isEmpty()) {
+            return; // nothing affected — no stamp store
+        }
+        // A --class selection that names no compiled class of this module is judged
+        // from the class files, before the siblings' jars, the stamp and a test JVM:
+        // in a workspace most modules do not hold the class the user named.
+        if (affected == null
+                && !effectiveSel.classes().isEmpty()
+                && !suites.namesCompiledClass(
+                        testClasses,
+                        effectiveSel.classes(),
+                        projectUnderTest.build().testExcludeClasses())) {
+            TestSummary unmatched = judgeClassSelection(
+                    ctx, in, effectiveSel, false, suites, moduleLabel, null, new TestSummary(0, 0, 0, 0, List.of()));
+            if (unmatched == null) return;
+            ctx.put(TEST_RESULT, unmatched);
+            TestLaunch.recordOutcome(ctx, in, actionCache, testTaskId, null, unmatched, !testSrcs.isEmpty(), snippets);
+            return;
+        }
+        // The test runtime classpath is the siblings' jars: wait for them to be written.
+        PlannerSetup.awaitSiblingArtifacts(ctx, in);
+        List<Path> testRtCp = TestLaunch.testRuntimeClasspath(ctx, pluginDecls);
+        // Worker jars feed both the forked JVM and the TestStamp
+        // nested-engine CLI modules enrich with engine + every PluginJar so the stamp
+        // matches what the suite actually loads — same set forecast uses.
+        Map<String, String> workerJars = testStampWorkerJars(in.dir(), projectUnderTest);
+        WorkerEnv testEnv =
+                TestLaunch.withHostWall(TestLaunch.testEnvironment(ctx, in, projectUnderTest), effectiveSel);
+        List<String> testJvmArgs = TestLaunch.testJvmArgs(ctx, in, projectUnderTest, pluginDecls);
+        String stampKey = testStampKey(
+                ctx, in, projectUnderTest, effectiveSel, affected, workerJars, testJvmArgs, testSrcs, testRtCp);
+        // --force forces a real test run, matching the compile/package
+        // freshness checks above (which all guard on !rerun). Without
+        // this guard the action record would skip the runner even when
+        // the user explicitly asked to bypass build caches.
+        // A debug request is a request for a JVM to attach to; a replayed green
+        // marker would leave the debugger with nothing to reach.
+        // A coverage run is a request for a report; a replayed green marker has none.
+        boolean coverage = in.session().coverage() || projectUnderTest.build().testCoverage();
+        boolean rerun = in.session().config().rebuildOr(false) || in.session().debugJvm() != null || coverage;
+        if (!rerun && stampKey != null && TestLaunch.replayGreenRun(ctx, actionCache, stampKey)) {
+            return; // skip — nothing changed since last green run
+        }
+        TestLaunch.reweightForRealRun(ctx, in);
+        if (suites.describe() != null) ctx.output(suites.describe());
+        List<Path> runtimeCp = TestLaunch.testRuntimeCpWithLanguageRuntimes(ctx, cx, cas, testRtCp, testSrcs);
+        // Test execution is serialized across concurrently-built units unless the
+        // user opted into parallel tests — shared ports/locks/fixtures. The worker
+        // count is decided once the gate is held: a suite parked at the gate is
+        // not running, and the ones running when it starts are what it shares with.
+        boolean gated = !in.session().parallelTests();
+        Path coverageExec = coverage ? TestLaunch.coverageExecFile(ctx) : null;
+        // The agent and the report tool come first: a coverage run that cannot fetch
+        // JaCoCo fails before any suite starts, not after the suite ran uninstrumented.
+        CoverageTools.Jacoco jacoco = resolveBeforeGate(
+                coverage ? () -> CoverageTools.resolve(projectUnderTest, cas) : null,
+                gated,
+                PlannerTest::awaitTestGate);
+        TestSummary result;
+        TagExcludedCapture tagExcluded;
+        try {
+            // Module pin ([test] workers / [build] test-workers) wins over CLI for
+            // hermetic opt-out. Auto hands the launcher the share; it applies the
+            // class-wall rule once the selection is known. A debug run is one JVM.
+            boolean debug = in.session().debugJvm() != null;
+            boolean auto = !debug && TestLaunch.autoDispatch(in, projectUnderTest.build(), pluginDecls);
+            int testWorkers = debug ? 1 : TestLaunch.dispatchWorkers(in, projectUnderTest.build(), pluginDecls);
+            tagExcluded = new TagExcludedCapture(TestSupport.bridgeListener(
+                    ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets, suites));
+            JUnitLauncher launcher = TestLaunch.launcher(
+                            in, projectUnderTest, effectiveSel, testJvmArgs, affected, jacoco, coverageExec)
+                    .withSuites(suites)
+                    .withIntegrationResults(ctx.require(LAYOUT).integrationResultsDir())
+                    .withAutoShare(auto);
+            try {
+                result = TestLaunch.launch(ctx, in, launcher, runtimeCp, testWorkers, workerJars, testEnv, tagExcluded);
+            } catch (TestLauncherFailure e) {
+                TestLaunch.reportLauncherFailure(ctx, in, projectUnderTest, actionCache, testTaskId, stampKey, e);
+                throw e;
+            }
+        } finally {
+            HeapNotes.flush(ctx);
+            if (gated) TEST_GATE.release();
+        }
+        if (jacoco != null && coverageExec != null) {
+            TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
+        }
+        result = result.withSuites(suites::suiteOf);
+        result = judgeClassSelection(
+                ctx, in, effectiveSel, affected != null, suites, moduleLabel, tagExcluded.message(), result);
+        if (result == null) return;
+        TagExcludedSuite.note(ctx, effectiveSel, in.profileName(), affected != null, result);
+        ctx.put(TEST_RESULT, result);
+        TestLaunch.recordOutcome(ctx, in, actionCache, testTaskId, stampKey, result, !testSrcs.isEmpty(), snippets);
+    }
+
+    /**
+     * The action key a green run of this suite is stored under: its sources, resources, runtime
+     * classpath, worker jars, JVM arguments, selection and the test compiles' keys.
+     */
+    private static @Nullable String testStampKey(
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            JkBuild projectUnderTest,
+            TestSelection effectiveSel,
+            AffectedTestRun.@Nullable Outcome affected,
+            Map<String, String> workerJars,
+            List<String> testJvmArgs,
+            List<Path> testSrcs,
+            List<Path> testRtCp)
+            throws Exception {
+        List<Path> testResDirs = ctx.get(TEST_RESOURCE_DIRS).orElse(List.of());
+        List<String> extras = new ArrayList<>(TestStamp.withCompileTest(
+                NodeTestStamp.testStampExtras(
+                        workerJars,
+                        effectiveSel,
+                        projectUnderTest,
+                        testJvmArgs,
+                        in.dir(),
+                        ClasspathFingerprint.ON_DISK),
+                compileTestKeys(ctx)));
+        if (affected != null && !affected.stampToken().isBlank()) {
+            extras.add("affected:" + affected.stampToken());
+        }
+        return TestLaunch.stampKey(ctx, in, testSrcs, testResDirs, testRtCp, extras);
     }
 
     /**

@@ -30,18 +30,19 @@ public final class WarPackager {
 
     /**
      * Write {@code request.explodedDir()} anew, then {@code request.warFile()} from it. The web
-     * roots are copied in order, the webapp first: the first root to carry a path wins, and every
-     * later copy of it is reported in the result.
+     * roots rank in order, the webapp first: the first root to carry a path wins, so they are copied
+     * last-first, and every later copy of a path is reported in the result.
      */
     public War packageWar(WarRequest request) throws IOException {
         Path exploded = request.explodedDir();
         PathUtil.deleteRecursivelyOrThrow(exploded);
         Files.createDirectories(exploded);
-        Map<String, Path> owners = new HashMap<>();
-        List<Shadowed> shadowed = new ArrayList<>();
-        if (request.webapp() != null) copyWebRoot(request.webapp(), "", exploded, owners, shadowed);
-        for (Map.Entry<Path, String> content : request.webContent().entrySet()) {
-            copyWebRoot(content.getKey(), content.getValue(), exploded, owners, shadowed);
+        List<Map.Entry<Path, String>> roots = new ArrayList<>();
+        if (request.webapp() != null) roots.add(Map.entry(request.webapp(), ""));
+        roots.addAll(request.webContent().entrySet());
+        List<Shadowed> shadowed = shadowed(roots);
+        for (Map.Entry<Path, String> root : roots.reversed()) {
+            PathUtil.copyTree(root.getKey(), exploded.resolve(root.getValue()), PathUtil.Copy.OVERWRITE_ALWAYS);
         }
         Path classes = exploded.resolve(CLASSES);
         PathUtil.copyTree(request.classes(), classes);
@@ -58,30 +59,27 @@ public final class WarPackager {
     }
 
     /**
-     * Copy {@code root}'s files under {@code prefix} ({@code ""} for the war root), skipping any
-     * path an earlier root already wrote; {@code owners} maps each written war path to its root.
+     * Each war path that more than one web root carries, against the first root to carry it. Each
+     * root pairs with its war-relative prefix ({@code ""} for the war root), in rank order.
      */
-    private static void copyWebRoot(
-            Path root, String prefix, Path exploded, Map<String, Path> owners, List<Shadowed> shadowed)
-            throws IOException {
-        if (!Files.isDirectory(root)) return;
-        List<Path> files = new ArrayList<>();
-        try (Stream<Path> stream = Files.find(root, Integer.MAX_VALUE, (p, attrs) -> attrs.isRegularFile())) {
-            stream.forEach(files::add);
-        }
-        files.sort(null);
-        for (Path file : files) {
-            String relative = root.relativize(file).toString().replace(File.separatorChar, '/');
-            String path = prefix.isEmpty() ? relative : prefix + "/" + relative;
-            Path owner = owners.putIfAbsent(path, root);
-            if (owner != null) {
-                shadowed.add(new Shadowed(path, owner, root));
-                continue;
+    private static List<Shadowed> shadowed(List<Map.Entry<Path, String>> roots) throws IOException {
+        Map<String, Path> owners = new HashMap<>();
+        List<Shadowed> shadowed = new ArrayList<>();
+        for (Map.Entry<Path, String> entry : roots) {
+            Path root = entry.getKey();
+            String prefix = entry.getValue();
+            List<String> paths = new ArrayList<>();
+            PathUtil.forEachRegularFile(root, (file, attrs) -> {
+                String relative = root.relativize(file).toString().replace(File.separatorChar, '/');
+                paths.add(prefix.isEmpty() ? relative : prefix + "/" + relative);
+            });
+            paths.sort(null);
+            for (String path : paths) {
+                Path owner = owners.putIfAbsent(path, root);
+                if (owner != null) shadowed.add(new Shadowed(path, owner, root));
             }
-            Path target = exploded.resolve(path);
-            Files.createDirectories(target.getParent());
-            Files.copy(file, target, StandardCopyOption.REPLACE_EXISTING);
         }
+        return shadowed;
     }
 
     /**

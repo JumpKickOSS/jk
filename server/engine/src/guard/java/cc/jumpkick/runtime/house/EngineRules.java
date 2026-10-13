@@ -328,9 +328,10 @@ final class EngineRules {
                 assertReaches(src, v, reach, spec.get(0) + " (" + e.getKey() + ")", "key");
         }
         // unpaired keys are honest about whether the forecast steps them
-        // The module forecast emits its steps from ModuleForecast; the shared step factory stays in
-        // TaskForecaster, so both are scanned.
-        String forecaster = src.read("TaskForecaster.java") + "\n" + src.read("ModuleForecast.java");
+        // The module forecast emits its steps from ModuleForecast and its packaging-tail arms; the
+        // shared step factory stays in TaskForecaster, so all three are scanned.
+        String forecaster = src.read("TaskForecaster.java") + "\n" + src.read("ModuleForecast.java") + "\n"
+                + src.read("ForecastPackagingTails.java");
         TreeSet<String> stepArgs = new TreeSet<>();
         for (Pattern p : List.of(
                 Pattern.compile("new TaskForecast\\.Task\\(\\s*([^,]+),"),

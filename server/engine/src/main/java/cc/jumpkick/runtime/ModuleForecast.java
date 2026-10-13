@@ -109,9 +109,6 @@ final class ModuleForecast {
     /** The compile-main classpath, once {@link #compileMain} has derived it; the javadoc arm keys on it. */
     private List<Path> mainCp = List.of();
 
-    private boolean nativeOnBuild;
-    private boolean nativeOnNativeCmd;
-
     /** The native binary this build must bring back: absent on disk while its step forecasts a restore. */
     private boolean nativeBinaryToRestore;
 
@@ -954,58 +951,24 @@ final class ModuleForecast {
         if (javadoc != null) steps.add(javadoc);
     }
 
-    private void nativeImage(Prepared prepared) throws Exception {
+    /**
+     * {@code native-image}, when {@code [native] enabled = "always"} or this module is a terminal of
+     * {@code jk native}. Membership in the resolved terminal set, not {@code project.nativeImage()}:
+     * a table-less unique-main module is a native terminal too.
+     */
+    private void nativeImage(Prepared prepared) {
+        boolean noSources = prepared.mainSrc().isEmpty()
+                && prepared.ktSrc().isEmpty()
+                && prepared.gvSrc().isEmpty();
+        boolean onBuild = project.nativeMode() == JkBuild.NativeMode.ALWAYS;
+        boolean onNativeCmd = target == WorkspaceTarget.NATIVE && terminalDirs.contains(dir);
+        if (noSources || !(onBuild || onNativeCmd)) return;
+        boolean jarDirty = steps.stream().anyMatch(s -> TaskNames.PACKAGE_JAR.equals(s.name()) && !s.cached());
         BuildLayout layout = prepared.layout();
-        List<Path> mainSrc = prepared.mainSrc();
-        List<Path> ktSrc = prepared.ktSrc();
-        List<Path> gvSrc = prepared.gvSrc();
-        // ---- native-image — [native] enabled = "always" (same opt-in as jk build) ----
-        // Hard cascade: jar dirty ⇒ native dirty. Never forecast package-jar RUN +
-        // native-image CACHED (binary mtime vs pre-build jar is not an independent skip).
-        nativeOnBuild = project.nativeMode() == JkBuild.NativeMode.ALWAYS;
-        // Membership in the resolved terminal set — NOT project.nativeImage(). Re-deriving
-        // eligibility from the [native] table made fallback (table-less unique-main) modules
-        // invisible (jar clean + binary missing ⇒ skipped ⇒ "success" with no binary) and
-        // priced unselected cone prereqs WITH tables as perpetually dirty (their plans get
-        // allowNative=false, so the binary they were dirty "for" never appears).
-        nativeOnNativeCmd = target == WorkspaceTarget.NATIVE && terminalDirs.contains(dir);
-        if ((nativeOnBuild || nativeOnNativeCmd) && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
-            boolean jarDirty = steps.stream().anyMatch(s -> TaskNames.PACKAGE_JAR.equals(s.name()) && !s.cached());
-            boolean binaryPresent =
-                    Files.isRegularFile(layout.nativeBinary()) || Files.isRegularFile(layout.nativeLibrary());
-            if (jarDirty || compileDirty) {
-                steps.add(new TaskForecast.Task(
-                        TaskNames.NATIVE_IMAGE, TaskForecast.Status.RUN, "rebuild · compile changed", null));
-            } else if (nativeRestores(layout)) {
-                // Same producer-keyed action record the live step restores from — an on-disk
-                // binary alone is not enough (a previous engine's binary must not hide a miss).
-                if (!binaryPresent) nativeBinaryToRestore = true;
-                steps.add(new TaskForecast.Task(
-                        TaskNames.NATIVE_IMAGE,
-                        TaskForecast.Status.CACHED,
-                        binaryPresent ? "" : "binary missing · restores from cache",
-                        null));
-            } else {
-                steps.add(new TaskForecast.Task(
-                        TaskNames.NATIVE_IMAGE,
-                        TaskForecast.Status.RUN,
-                        binaryPresent
-                                ? "native-image · action cache miss"
-                                : "native-image · binary missing (restores when its key still hits)",
-                        null));
-            }
-        }
-    }
-
-    /** The replayed native key hits — a read-only answer that fails safe to "no". */
-    private boolean nativeRestores(BuildLayout layout) {
-        try {
-            return PackagingKeys.nativeActionCached(
-                    dir, project, layout, lockFile, actionCache, cache, restored.jarShas());
-        } catch (Exception e) {
-            Log.debug("nativeImage: the last record could not be replayed read-only", e);
-            return false;
-        }
+        TaskForecast.Task step = ForecastPackagingTails.nativeImage(
+                project, dir, layout, lockFile, actionCache, cache, restored, jarDirty || compileDirty);
+        nativeBinaryToRestore = step.cached() && !ForecastPackagingTails.nativeBinaryPresent(layout);
+        steps.add(step);
     }
 
     private void writeImage(Prepared prepared) throws Exception {

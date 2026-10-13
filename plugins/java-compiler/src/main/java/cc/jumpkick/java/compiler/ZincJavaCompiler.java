@@ -473,10 +473,29 @@ public final class ZincJavaCompiler {
         if (!(raw instanceof Analysis analysis)) {
             return new Plan(true, "no zinc analysis", allSources(sources, "no zinc analysis"));
         }
+        LinkedHashMap<Path, String> invalid = new LinkedHashMap<>();
+        forecastSources(analysis, sources, converter, invalid);
+        forecastLibraries(analysis, classpath, classOutput, converter, invalid);
+        forecastExternals(analysis, ClasspathAnalyses.of(job.classpathAnalyses(), STAMPER), converter, invalid);
+
+        if (invalid.isEmpty()) {
+            return new Plan(false, "zinc analysis current", List.of());
+        }
+        List<Invalidation> items = new ArrayList<>();
+        for (Map.Entry<Path, String> e : invalid.entrySet()) {
+            items.add(new Invalidation(e.getKey(), e.getValue()));
+        }
+        return new Plan(false, summarize(items), items);
+    }
+
+    /**
+     * Sources whose stamp changed since {@code analysis}, and the sources of every class that used
+     * a class a since-deleted source defined.
+     */
+    private static void forecastSources(
+            Analysis analysis, List<Path> sources, FileConverter converter, Map<Path, String> invalid) {
         ReadStamps previous = analysis.readStamps();
         ReadStamps current = STAMPER;
-        LinkedHashMap<Path, String> invalid = new LinkedHashMap<>();
-
         for (Path src : sources) {
             if (src == null) continue;
             VirtualFile vf = converter.toVirtualFile(src);
@@ -517,7 +536,21 @@ public final class ZincJavaCompiler {
                 }
             }
         }
+    }
 
+    /**
+     * Sources that used a classpath entry (or {@code classOutput}) whose stamp changed since
+     * {@code analysis}, or which the classpath no longer carries.
+     */
+    private static void forecastLibraries(
+            Analysis analysis,
+            @Nullable List<Path> classpath,
+            @Nullable Path classOutput,
+            FileConverter converter,
+            Map<Path, String> invalid) {
+        ReadStamps previous = analysis.readStamps();
+        ReadStamps current = STAMPER;
+        Relations rel = analysis.relations();
         List<Path> libraries = new ArrayList<>(classpath == null ? List.of() : classpath);
         if (classOutput != null) libraries.add(classOutput);
         HashSet<Path> currentLibs = new HashSet<>();
@@ -549,17 +582,6 @@ public final class ZincJavaCompiler {
                 if (src != null) invalid.putIfAbsent(src, why);
             }
         }
-
-        forecastExternals(analysis, ClasspathAnalyses.of(job.classpathAnalyses(), current), converter, invalid);
-
-        if (invalid.isEmpty()) {
-            return new Plan(false, "zinc analysis current", List.of());
-        }
-        List<Invalidation> items = new ArrayList<>();
-        for (Map.Entry<Path, String> e : invalid.entrySet()) {
-            items.add(new Invalidation(e.getKey(), e.getValue()));
-        }
-        return new Plan(false, summarize(items), items);
     }
 
     /**

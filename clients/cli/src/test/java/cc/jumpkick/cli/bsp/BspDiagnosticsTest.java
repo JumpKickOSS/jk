@@ -21,7 +21,7 @@ class BspDiagnosticsTest {
 
     private static Map<String, List<String>> collect(int severity, String... blocks) {
         Map<String, List<String>> byFile = new LinkedHashMap<>();
-        BspServer.collectDiagnostics(byFile, new ArrayList<>(List.of(blocks)), severity, PROJECT);
+        BspDiagnostics.collectDiagnostics(byFile, new ArrayList<>(List.of(blocks)), severity, PROJECT);
         return byFile;
     }
 
