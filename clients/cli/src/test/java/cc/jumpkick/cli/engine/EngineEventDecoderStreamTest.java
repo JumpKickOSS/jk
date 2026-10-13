@@ -393,8 +393,10 @@ class EngineEventDecoderStreamTest {
         String finish = ProtoEvents.stepFinish("/p", "audit", "verify", TaskStatus.SUCCESS.name(), 2_500, 0);
         String error = ProtoEvents.errorLine("/p", "run-tests", "test-failure", "boom", info);
         FailureTextRefs texts = new FailureTextRefs();
-        EngineEventDecoder.dispatch(Jsonl.requiredStr(finish, "type"), finish, listener, diagnostics::add, texts);
-        EngineEventDecoder.dispatch(Jsonl.requiredStr(error, "type"), error, listener, diagnostics::add, texts);
+        EngineEventDecoder.dispatch(
+                Jsonl.requiredStr(finish, "type"), finish, listener, diagnostics::add, w -> {}, texts);
+        EngineEventDecoder.dispatch(
+                Jsonl.requiredStr(error, "type"), error, listener, diagnostics::add, w -> {}, texts);
 
         assertThat(durations).containsExactly(Duration.ofMillis(2_500));
         assertThat(failures).singleElement().satisfies(f -> {

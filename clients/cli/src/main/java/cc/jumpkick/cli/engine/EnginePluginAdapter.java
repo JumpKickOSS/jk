@@ -117,6 +117,7 @@ final class EnginePluginAdapter {
             @Nullable Consumer<String> preFinish) {
         return new WireStream.Decoder<>() {
             private final List<Task> steps = new ArrayList<>();
+            private final List<BuildPlanResult.Diagnostic> warnings = new ArrayList<>();
             private final List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
             private final FailureTextRefs texts = new FailureTextRefs();
             private @Nullable BuildPlanListener listener;
@@ -136,7 +137,7 @@ final class EnginePluginAdapter {
                                 Jsonl.bool(line, "success", false),
                                 Duration.ZERO,
                                 List.of(),
-                                List.of(),
+                                warnings,
                                 diagnostics,
                                 false,
                                 false);
@@ -145,7 +146,8 @@ final class EnginePluginAdapter {
                     case EngineProtocol.WORKSPACE_FINISH -> throw EngineEventDecoder.notASinglePlan();
                     case EngineProtocol.ERROR ->
                         throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
-                    default -> EngineEventDecoder.dispatch(type, line, listener, diagnostics::add, texts);
+                    default ->
+                        EngineEventDecoder.dispatch(type, line, listener, diagnostics::add, warnings::add, texts);
                 }
                 return null;
             }

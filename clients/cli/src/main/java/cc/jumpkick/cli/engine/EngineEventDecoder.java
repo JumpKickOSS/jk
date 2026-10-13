@@ -133,13 +133,6 @@ final class EngineEventDecoder {
                 switch (type) {
                     case EngineProtocol.PLAN_TASK -> steps.add(taskFromWire(line));
                     case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
-                    case EngineProtocol.WARN -> {
-                        // The result carries the warnings too: the console renders them above
-                        // its result line, as it does for an in-process plan.
-                        WarnEvent e = WarnEvent.decode(line);
-                        warnings.add(new BuildPlanResult.Diagnostic(e.task(), e.code(), e.message()));
-                        dispatch(type, line, listener, diagnostics::add, texts);
-                    }
                     case EngineProtocol.BUILDPLAN_FINISH -> {
                         PlanFinishOutcomeEvent e = PlanFinishOutcomeEvent.decode(line);
                         TestSummary counts = e.total() < 0
@@ -167,7 +160,7 @@ final class EngineEventDecoder {
                     case EngineProtocol.WORKSPACE_FINISH -> throw notASinglePlan();
                     case EngineProtocol.ERROR ->
                         throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
-                    default -> dispatch(type, line, listener, diagnostics::add, texts);
+                    default -> dispatch(type, line, listener, diagnostics::add, warnings::add, texts);
                 }
                 return null;
             }
@@ -272,6 +265,7 @@ final class EngineEventDecoder {
                         listener.onWorkspaceFinish(failed);
                         return failed;
                     }
+                    // A member's warnings render live through its listener; its result carries none.
                     default ->
                         dispatch(
                                 type,
@@ -280,6 +274,7 @@ final class EngineEventDecoder {
                                 d -> diagnosticsByDir
                                         .computeIfAbsent(dir, k -> new ArrayList<>())
                                         .add(d),
+                                d -> {},
                                 texts);
                 }
                 return null;
@@ -289,22 +284,32 @@ final class EngineEventDecoder {
 
     /**
      * Replay one standard plan event into {@code listener}, handing {@code plan-diagnostic}s to
-     * {@code onDiagnostic} instead. This is the whole per-plan event vocabulary in one table: the
-     * single-plan and workspace loops above differ only in <em>which</em> listener a line lands on,
-     * never in what the line means. Unknown types are forward-compatible no-ops.
+     * {@code onDiagnostic} instead and each {@code warn} to {@code onWarning} as well. This is the
+     * whole per-plan event vocabulary in one table: every plan reader differs only in <em>which</em>
+     * listener a line lands on, never in what the line means. Unknown types are forward-compatible
+     * no-ops.
      *
-     * <p>A null listener is the pre-{@code plan-done} window, where the factory has not run yet: a
-     * diagnostic still matters (it is carried on the terminal result), everything else needs a
-     * listener that does not exist.
+     * <p>{@code onWarning} feeds the terminal result's warnings, which the console renders above its
+     * result line; a listener that prints {@code warn} live must not print the result's warnings too.
+     * A null listener is the pre-{@code plan-done} window, where the factory has not run yet: a
+     * diagnostic or warning still matters (it is carried on the terminal result), everything else
+     * needs a listener that does not exist.
      */
     static void dispatch(
             String type,
             String line,
             @Nullable BuildPlanListener listener,
             Consumer<BuildPlanResult.Diagnostic> onDiagnostic,
+            Consumer<BuildPlanResult.Diagnostic> onWarning,
             FailureTextRefs texts) {
         if (EngineProtocol.BUILDPLAN_DIAGNOSTIC.equals(type)) {
             onDiagnostic.accept(diagnosticFromWire(line, texts));
+            return;
+        }
+        if (EngineProtocol.WARN.equals(type)) {
+            WarnEvent e = WarnEvent.decode(line);
+            onWarning.accept(new BuildPlanResult.Diagnostic(e.task(), e.code(), e.message()));
+            if (listener != null) listener.warn(e.task(), e.code(), e.message());
             return;
         }
         if (listener == null) return;
@@ -357,10 +362,6 @@ final class EngineEventDecoder {
             case EngineProtocol.OUTPUT -> {
                 OutputEvent e = OutputEvent.decode(line);
                 listener.output(e.task(), e.line());
-            }
-            case EngineProtocol.WARN -> {
-                WarnEvent e = WarnEvent.decode(line);
-                listener.warn(e.task(), e.code(), e.message());
             }
             case EngineProtocol.ERROR_LINE -> dispatchError(listener, line, texts);
             case EngineProtocol.CLASS_FINISH -> {
