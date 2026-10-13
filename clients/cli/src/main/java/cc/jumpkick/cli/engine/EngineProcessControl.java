@@ -153,10 +153,6 @@ public final class EngineProcessControl {
             String bye = EngineWire.exchange(ch, ProtoLifecycle.shutdown(true));
             boolean ok = EngineProtocol.BYE.equals(EngineProtocol.typeOf(bye));
             if (pid > 0) waitForDeathOrKill(pid, STOP_DEATH_WAIT);
-            else if (!ok) {
-                // bye missing but we connected — best-effort: try pid from a late status is gone;
-                // nothing else to wait on.
-            }
             return ok;
         } catch (IOException e) {
             if (pid > 0) waitForDeathOrKill(pid, STOP_DEATH_WAIT);

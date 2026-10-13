@@ -123,6 +123,7 @@ final class EngineEventDecoder {
 
         return WireStream.pumpJob(reader, ch, new WireStream.Decoder<BuildPlanResult>() {
             private final List<Task> steps = new ArrayList<>();
+            private final List<BuildPlanResult.Diagnostic> warnings = new ArrayList<>();
             private final List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
             private final FailureTextRefs texts = new FailureTextRefs();
             private @Nullable BuildPlanListener listener;
@@ -132,6 +133,13 @@ final class EngineEventDecoder {
                 switch (type) {
                     case EngineProtocol.PLAN_TASK -> steps.add(taskFromWire(line));
                     case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
+                    case EngineProtocol.WARN -> {
+                        // The result carries the warnings too: the console renders them above
+                        // its result line, as it does for an in-process plan.
+                        WarnEvent e = WarnEvent.decode(line);
+                        warnings.add(new BuildPlanResult.Diagnostic(e.task(), e.code(), e.message()));
+                        dispatch(type, line, listener, diagnostics::add, texts);
+                    }
                     case EngineProtocol.BUILDPLAN_FINISH -> {
                         PlanFinishOutcomeEvent e = PlanFinishOutcomeEvent.decode(line);
                         TestSummary counts = e.total() < 0
@@ -147,7 +155,7 @@ final class EngineEventDecoder {
                                 e.success(),
                                 Duration.ofNanos(System.nanoTime() - startNanos),
                                 List.of(),
-                                List.of(),
+                                warnings,
                                 diagnostics,
                                 cancelled,
                                 cancelled);

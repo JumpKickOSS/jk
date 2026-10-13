@@ -140,6 +140,50 @@ class EngineEventDecoderStreamTest {
         assertThat(seen).containsExactly("run-tests " + new TestClassResult("g:a", "demo.A", 3, 1, 1, 40));
     }
 
+    /**
+     * A warning reaches the live listener and the terminal result alike, so the console renders it
+     * above the result line: a wildcard {@code --class} run whose tag filter dropped a match says
+     * so on the terminal, not only in {@code jk-results.md}.
+     */
+    @Test
+    void a_warning_is_carried_on_the_terminal_result() throws Exception {
+        String dropped = "--class named 1 class the tag filter excluded: demo.BenchTest [bench]";
+        List<String> live = new ArrayList<>();
+        List<BuildPlanResult> finished = new ArrayList<>();
+        BufferedReader reader = stream(
+                ProtoLifecycle.jobStart(45, "test", "/proj", 9),
+                ProtoEvents.planDone(0),
+                ProtoEvents.warn("/proj", "run-tests", "tag-excluded", dropped),
+                ProtoEvents.planFinish("/proj", true, false));
+
+        BuildPlanResult result = EngineEventDecoder.streamSingleBuildPlanEvents(
+                reader,
+                steps -> new BuildPlanListener() {
+                    @Override
+                    public void warn(String step, String code, String message) {
+                        live.add(message);
+                    }
+
+                    @Override
+                    public void planFinish(BuildPlanResult r) {
+                        finished.add(r);
+                    }
+                },
+                null,
+                null);
+
+        assertThat(live).containsExactly(dropped);
+        assertThat(result.warnings()).singleElement().satisfies(d -> {
+            assertThat(d.step()).isEqualTo("run-tests");
+            assertThat(d.code()).isEqualTo("tag-excluded");
+            assertThat(d.message()).isEqualTo(dropped);
+        });
+        assertThat(finished)
+                .singleElement()
+                .extracting(BuildPlanResult::warnings)
+                .isEqualTo(result.warnings());
+    }
+
     @Test
     void the_job_note_is_forgotten_when_the_stream_finishes() throws Exception {
         BufferedReader reader = stream(
