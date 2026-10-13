@@ -7,6 +7,7 @@ import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -50,16 +51,15 @@ public final class HistoryListVerb implements HostedVerb {
             // Truncate in the journal (synthetic fixtures are already filtered there) rather
             // than materialising every record on disk and then dropping most of them.
             // Oversample then keep only build-like kinds so lock/format/etc. never dilute history.
-            List<BuildRecord> records = host.journal().list(Math.max(limit * 4, limit));
+            List<BuildJournal.Head> heads = host.journal().heads(Math.max(limit * 4, limit));
             int emitted = 0;
-            for (BuildRecord r : records) {
+            for (BuildJournal.Head head : heads) {
+                BuildRecord r = head.record();
                 if (!BuildHistoryKinds.isBuildLike(r.kind())) continue;
                 if (emitted >= limit) break;
                 emitted++;
                 BuildRecord.Tests t = r.tests();
                 BuildRecord.CacheBenefit b = r.benefit();
-                int failedModules =
-                        (int) r.modules().stream().filter(m -> !m.success()).count();
                 // Live progress + jid for in-flight rows — match by build number + project dir.
                 int progressPct = -1;
                 long jid = 0;
@@ -104,8 +104,8 @@ public final class HistoryListVerb implements HostedVerb {
                                 t == null
                                         ? null
                                         : TestSummary.countsMap(t.total(), t.succeeded(), t.failed(), t.skipped()))
-                        .put("moduleCount", r.modules().size())
-                        .put("failedModules", failedModules)
+                        .put("moduleCount", head.moduleCount())
+                        .put("failedModules", head.failedModules())
                         .put("savedMillis", b != null ? b.savedMillis() : -1)
                         .put("estimatedUncachedMillis", b != null ? b.estimatedUncachedMillis() : -1);
                 if (jid > 0) {

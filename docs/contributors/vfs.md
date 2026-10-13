@@ -174,7 +174,11 @@ for it under `max-heap-mb`. No rule of the gate admits past that ledger; a
 fairness admission only stops consulting the committed heap. What the gate
 cannot see is a background thread's allocation: the metrics harvest runs beside
 every live job, so readers of a run's `record.json` take its head
-(`ProjectBuilds.recordHead`), never the whole file.
+(`ProjectBuilds.recordHead`), never the whole file. The record writes its scalar
+fields before its tail (module rows, tasks, coverage, diagnostics), so the
+journal's listings and lookups parse the head alone, and a record carries at
+most 256 KiB of diagnostics: the rest spill to `diagnostics-spill.json` beside
+it, which the record names and a whole read (`jk history show`) appends.
 
 **Pool:** the live sum of every in-flight job’s retained VFS bytes must stay
 ≤ **75% of `max-heap-mb`**. The other 25% is coordinator headroom (module
