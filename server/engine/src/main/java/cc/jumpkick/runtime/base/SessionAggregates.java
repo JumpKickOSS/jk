@@ -8,6 +8,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,27 +24,35 @@ import org.jspecify.annotations.Nullable;
  * a freshness check is one stat per file ({@link AggregatedMetrics#fresh()}), so a build reads
  * its ledger once and a harvest rewrite between builds is picked up on the next read. Memos are
  * keyed by working dir so concurrent builds of different checkouts do not evict each other; the
- * table is a small LRU.
+ * table is an LRU bounded by {@link #MAX_BYTES}.
  *
  * <p>Only a checkout with a {@code jk.toml} is a project session; the engine's own CWD (its
  * state dir) and other directories read the host-wide merge instead.
  */
 public final class SessionAggregates {
 
-    /** Concurrent checkouts a resident engine typically serves; beyond it the least recent goes. */
-    static final int MAX_MEMOS = 8;
+    /**
+     * Heap the memos hold together. Past it the least recently read go, never the one just read: a
+     * job's own ledgers are charged to it by the engine's memory admission while it runs.
+     */
+    static final long MAX_BYTES = 8L << 20;
+
+    private static volatile long maxBytes = MAX_BYTES;
 
     private record Key(Path builds, @Nullable Path work) {}
 
-    /** One window's aggregates and the views folded from them so far. */
-    private record Memo(AggregatedMetrics agg, ConcurrentHashMap<Class<?>, Object> folds) {}
-
-    private static final Map<Key, Memo> MEMOS = new LinkedHashMap<>(16, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<Key, Memo> eldest) {
-            return size() > MAX_MEMOS;
+    /**
+     * One window's aggregates and the views folded from them so far. Each view is counted at the
+     * size of the aggregates it was folded from.
+     */
+    private record Memo(AggregatedMetrics agg, long aggBytes, ConcurrentHashMap<Class<?>, Object> folds) {
+        long bytes() {
+            return aggBytes * (1L + folds.size());
         }
-    };
+    }
+
+    /** Access-ordered: the eldest entry is the least recently read. */
+    private static final Map<Key, Memo> MEMOS = new LinkedHashMap<>(16, 0.75f, true);
 
     private static final AtomicLong FOLDS = new AtomicLong();
 
@@ -62,10 +71,13 @@ public final class SessionAggregates {
      */
     public static <T> T view(Class<T> key, Function<AggregatedMetrics, T> fold) {
         Memo memo = memo();
+        boolean[] folded = {false};
         Object view = memo.folds().computeIfAbsent(key, k -> {
             FOLDS.incrementAndGet();
+            folded[0] = true;
             return fold.apply(memo.agg());
         });
+        if (folded[0]) trim(memo);
         return key.cast(view);
     }
 
@@ -86,6 +98,20 @@ public final class SessionAggregates {
         FOLDS.set(0);
     }
 
+    /** Test seam: the heap the memos are estimated to hold. */
+    static long retainedBytes() {
+        synchronized (MEMOS) {
+            long total = 0;
+            for (Memo m : MEMOS.values()) total += m.bytes();
+            return total;
+        }
+    }
+
+    /** Test seam: the bound the table trims to; {@link #MAX_BYTES} when {@code bytes} is negative. */
+    static void maxBytesForTest(long bytes) {
+        maxBytes = bytes < 0 ? MAX_BYTES : bytes;
+    }
+
     private static Memo memo() {
         Path builds = JkDirs.builds();
         Path work = sessionWorkingDir();
@@ -96,9 +122,25 @@ public final class SessionAggregates {
             if (memo != null && memo.agg().fresh()) return memo;
             AggregatedMetrics agg =
                     project != null ? AggregatedMetrics.load(builds, null, project) : AggregatedMetrics.loadAll(builds);
-            Memo fresh = new Memo(agg, new ConcurrentHashMap<>());
+            Memo fresh = new Memo(agg, agg.retainedBytes(), new ConcurrentHashMap<>());
             MEMOS.put(key, fresh);
+            trim(fresh);
             return fresh;
+        }
+    }
+
+    /** Drop the least recently read memos until the table is within its bound, keeping {@code keep}. */
+    private static void trim(Memo keep) {
+        synchronized (MEMOS) {
+            long total = 0;
+            for (Memo m : MEMOS.values()) total += m.bytes();
+            Iterator<Memo> eldestFirst = MEMOS.values().iterator();
+            while (total > maxBytes && eldestFirst.hasNext()) {
+                Memo m = eldestFirst.next();
+                if (m == keep) continue;
+                total -= m.bytes();
+                eldestFirst.remove();
+            }
         }
     }
 

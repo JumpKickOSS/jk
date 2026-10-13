@@ -7,7 +7,9 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
+import java.util.function.ToLongFunction;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -33,7 +35,9 @@ import org.jspecify.annotations.Nullable;
  * <p><strong>Cache derived facts, never bytes.</strong> The engine runs a 256 MB SerialGC heap;
  * {@code PreflightMemo.fingerprintModule} streams rather than slurps for that reason, and
  * {@code details.jsonl} reaches 46.7 MB for one test run. A path list or a parsed manifest belongs
- * here. File contents do not.
+ * here. File contents do not. A fact whose size grows with the tree (a path list) is remembered
+ * through {@link #get(Object, Function, ToLongFunction)}, which holds one request to {@link
+ * #MAX_WEIGHED_BYTES}; an unweighed fact is constant-sized or charged to a budget of its own.
  *
  * <p><strong>What must not use this.</strong> Anything whose answer can change <em>during</em> a
  * request: build outputs under {@code target/}, live compiler output, CAS blob presence (another
@@ -56,7 +60,16 @@ public final class RequestScope {
     /** A scope for callers with no request — every lookup misses, which is the honest answer. */
     private static final RequestScope UNSCOPED = new RequestScope();
 
+    /**
+     * Bytes of weighed facts one request remembers. Past it a weighed fact is computed on every ask.
+     * The scope lives inside its job's admission share, and this is part of the per-job base the
+     * engine's memory admission charges every plan job.
+     */
+    public static final long MAX_WEIGHED_BYTES = 16L << 20;
+
     private final ConcurrentMap<Object, Object> facts = new ConcurrentHashMap<>();
+
+    private final AtomicLong weighedBytes = new AtomicLong();
 
     private RequestScope() {}
 
@@ -96,6 +109,39 @@ public final class RequestScope {
         // A null fact is not remembered, as computeIfAbsent would not remember it.
         Object prior = computed == null ? null : facts.putIfAbsent(key, computed);
         return prior != null ? (V) prior : computed;
+    }
+
+    /**
+     * As {@link #get(Object, Function)} for a fact that costs {@code bytes} of heap: remembered only
+     * while the scope's weighed facts stay within {@link #MAX_WEIGHED_BYTES}, else returned as
+     * computed and computed again on the next ask.
+     */
+    @SuppressWarnings("unchecked")
+    public <K, V> V get(K key, Function<K, V> compute, ToLongFunction<? super V> bytes) {
+        if (this == UNSCOPED) return compute.apply(key);
+        Object known = facts.get(key);
+        if (known != null) return (V) known;
+        V computed = compute.apply(key);
+        if (computed == null) return computed;
+        long cost = Math.max(0, bytes.applyAsLong(computed));
+        if (!reserve(cost)) return computed;
+        Object prior = facts.putIfAbsent(key, computed);
+        if (prior == null) return computed;
+        weighedBytes.addAndGet(-cost);
+        return (V) prior;
+    }
+
+    private boolean reserve(long cost) {
+        while (true) {
+            long held = weighedBytes.get();
+            if (held + cost > MAX_WEIGHED_BYTES) return false;
+            if (weighedBytes.compareAndSet(held, held + cost)) return true;
+        }
+    }
+
+    /** Bytes of weighed facts this scope remembers. Test seam. */
+    public long weighedBytes() {
+        return weighedBytes.get();
     }
 
     /** How many facts this scope holds. Test seam. */

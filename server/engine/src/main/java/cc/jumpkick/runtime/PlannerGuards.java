@@ -783,11 +783,6 @@ final class PlannerGuards {
     }
 
     /**
-     * Module lanes are quick but each holds a facts index and a text pass in flight; a workspace of
-     * thirty run with the build's parallelism would multiply that against the engine's heap. A few
-     * at a time keep the peak bounded and the wall unchanged.
-     */
-    /**
      * A {@code coverage.*} measure reads the reports a coverage run writes, so the lane asks it only
      * when the tree holds them and this run is not the one writing them: modules finish in any
      * order, and the root's lane would otherwise judge whatever subset exists mid-run. A plain
@@ -830,13 +825,33 @@ final class PlannerGuards {
 
     private static LaneRun.Result runLane(Lane lane, List<Rule> rules, EvalContext ectx, Baseline baseline)
             throws IOException {
-        if (lane != Lane.MODULE) return LaneRun.run(lane, rules, ectx, baseline);
-        LANES.acquireUninterruptibly();
-        try {
-            return LaneRun.run(lane, rules, ectx, baseline);
-        } finally {
-            LANES.release();
+        try (GuardFactsBudget.Held facts = FACTS.hold(factsFiles(lane, ectx))) {
+            if (lane != Lane.MODULE) return LaneRun.run(lane, rules, ectx, baseline);
+            LANES.acquireUninterruptibly();
+            try {
+                return LaneRun.run(lane, rules, ectx, baseline);
+            } finally {
+                LANES.release();
+            }
         }
+    }
+
+    /** The facts indexes a lane may decode: its module's main and test indexes, or every module's main index. */
+    static List<Path> factsFiles(Lane lane, EvalContext ectx) {
+        return switch (lane) {
+            case MODULE -> {
+                Path moduleDir = ectx.moduleDir();
+                if (moduleDir == null) yield List.of();
+                Path buildDir = BuildLayout.moduleTargetDir(moduleDir);
+                yield List.of(FactsIndexing.indexPath(buildDir, "main"), FactsIndexing.indexPath(buildDir, "test"));
+            }
+            case WORKSPACE -> {
+                List<Path> out = new ArrayList<>();
+                for (Path m : ectx.modules()) out.add(FactsIndexing.indexPath(BuildLayout.moduleTargetDir(m), "main"));
+                yield out;
+            }
+            default -> List.of();
+        };
     }
 
     /**
@@ -879,8 +894,14 @@ final class PlannerGuards {
 
     private static final Object BASELINE_LOCK = new Object();
 
-    /** Module lanes in flight at once. */
+    /**
+     * Module lanes in flight at once: each holds a text pass beside its facts. A workspace of thirty
+     * run with the build's parallelism would multiply that against the engine's heap.
+     */
     private static final Semaphore LANES = new Semaphore(4);
+
+    /** The decoded facts indexes lanes hold, bounded in bytes across every job of the engine. */
+    private static final GuardFactsBudget FACTS = GuardFactsBudget.forRuntime();
 
     /**
      * Module lanes run concurrently and each tightens only its own slice of a rule's baseline, so

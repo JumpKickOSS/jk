@@ -4,11 +4,15 @@ package cc.jumpkick.guard.eval;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.groups.Tuple.tuple;
 
+import cc.jumpkick.guard.extract.FactsExtractor;
+import cc.jumpkick.guard.extract.fixture.FixtureBytes;
+import cc.jumpkick.guard.extract.fixture.Sample;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.rules.GuardRules;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
+import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.model.GuardsConfig;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,6 +28,26 @@ class FixtureCheckTest {
     private static ClassFacts cls(String internal) {
         return new ClassFacts(
                 internal, 1, "java/lang/Object", List.of(), "X.java", List.of(), List.of(), List.of(), Set.of());
+    }
+
+    @Test
+    void a_fixture_evaluation_releases_the_type_hierarchy_it_built(@TempDir Path dir) throws Exception {
+        Files.writeString(
+                dir.resolve(GuardsPresence.RULES_FILE),
+                "[guards.r]\nkind = \"classes\"\nwhy = \"w\"\nthat = { named = \"Sample\" }\nshould = { be = [\"final\"] }\n");
+        LoadResult load = GuardRules.load(dir, GuardsConfig.ABSENT);
+        assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
+        Rule rule = load.rules().rule("r").orElseThrow();
+        ClassFacts sample = FactsExtractor.extract(FixtureBytes.of(Sample.class));
+        FactsIndex slice = new FactsIndex(Map.of(sample.name(), sample), Map.of(), "");
+        int before = EvalContext.heldContexts();
+
+        Evaluation verdict = FixtureCheck.evaluate(new FixtureCheck.Case(rule, dir, "", false), dir, slice, null);
+
+        assertThat(verdict.outcome()).isEqualTo(Outcome.CLEAN);
+        assertThat(EvalContext.heldContexts())
+                .as("the slice is not held past its case")
+                .isEqualTo(before);
     }
 
     @Test

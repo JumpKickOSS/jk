@@ -100,6 +100,17 @@ public record EvalContext(
         }
     }
 
+    /** Contexts holding a hierarchy or memos that {@link #closeHierarchy} has not released. Test seam. */
+    static int heldContexts() {
+        int held;
+        synchronized (HIERARCHIES) {
+            held = HIERARCHIES.size();
+        }
+        synchronized (MEMOS) {
+            return held + MEMOS.size();
+        }
+    }
+
     /** This module's main-source-set facts; loaded on first use. */
     public FactsIndex facts() {
         return factsSupplier.get();

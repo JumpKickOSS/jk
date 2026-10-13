@@ -223,7 +223,10 @@ Stop **retaining** new nodes. Serve further queries as streaming
 `PathUtil` walks. Already-recorded prefix nodes stay (do not discard work, do
 not compile the empty set). The build remains correct; it just re-walks the
 unretained tail — once per distinct query per request, since streamed answers
-are still request-scope memoized (path lists, not attribute nodes).
+are still request-scope memoized (path lists, not attribute nodes). Those path
+lists are weighed facts: one request remembers at most 16 MiB of them
+(`RequestScope.MAX_WEIGHED_BYTES`, inside the job's 48 MiB admission base), and
+past that a query re-walks on every ask.
 
 Compilers still receive the filtered source list (`PluginProtocol.SOURCE`). A
 million `.java` files is a **worker** problem (and a “split this module”

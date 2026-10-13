@@ -276,13 +276,17 @@ public final class InputTrees {
         @Override
         public List<Path> withExtension(String ext) {
             @SuppressWarnings("unchecked")
-            List<Path> cached = (List<Path>) RequestScope.current().get(new ExtMemo(root, skipId, List.of(ext)), k -> {
-                List<Path> out = new ArrayList<>();
-                for (FileRef f : files) {
-                    if (f.name.endsWith(ext)) out.add(f.path);
-                }
-                return List.copyOf(out);
-            });
+            List<Path> cached = (List<Path>) RequestScope.current()
+                    .get(
+                            new ExtMemo(root, skipId, List.of(ext)),
+                            k -> {
+                                List<Path> out = new ArrayList<>();
+                                for (FileRef f : files) {
+                                    if (f.name.endsWith(ext)) out.add(f.path);
+                                }
+                                return List.copyOf(out);
+                            },
+                            InputTrees::sharedListBytes);
             return cached;
         }
 
@@ -290,13 +294,17 @@ public final class InputTrees {
         public List<Path> withExtensions(String... exts) {
             List<String> key = List.of(exts);
             @SuppressWarnings("unchecked")
-            List<Path> cached = (List<Path>) RequestScope.current().get(new ExtMemo(root, skipId, key), k -> {
-                List<Path> out = new ArrayList<>();
-                for (FileRef f : files) {
-                    if (endsWithAny(f.name, exts)) out.add(f.path);
-                }
-                return List.copyOf(out);
-            });
+            List<Path> cached = (List<Path>) RequestScope.current()
+                    .get(
+                            new ExtMemo(root, skipId, key),
+                            k -> {
+                                List<Path> out = new ArrayList<>();
+                                for (FileRef f : files) {
+                                    if (endsWithAny(f.name, exts)) out.add(f.path);
+                                }
+                                return List.copyOf(out);
+                            },
+                            InputTrees::sharedListBytes);
             return cached;
         }
 
@@ -315,9 +323,9 @@ public final class InputTrees {
     }
 
     /**
-     * The streaming shape. Queries walk live, but each distinct question is still answered once
-     * per request — a memoized path list is exactly what the pre-VFS collectors kept, and it is
-     * the attribute tree the retain budget bounds, not these.
+     * The streaming shape. Queries walk live, and each distinct question is answered once per
+     * request while the scope's weighed-fact bound has room: the retain budget bounds the attribute
+     * tree, {@link RequestScope#MAX_WEIGHED_BYTES} these path lists.
      */
     public record Overflow(Path root, String skipId) implements Snapshot {
         @Override
@@ -333,7 +341,8 @@ public final class InputTrees {
                             new ExtMemo(root, skipId, List.of(ext)),
                             k -> livePaths(root, skipId, p -> p.getFileName()
                                     .toString()
-                                    .endsWith(ext)));
+                                    .endsWith(ext)),
+                            InputTrees::ownedListBytes);
             return cached;
         }
 
@@ -346,7 +355,8 @@ public final class InputTrees {
                             k -> livePaths(
                                     root,
                                     skipId,
-                                    p -> endsWithAny(p.getFileName().toString(), exts)));
+                                    p -> endsWithAny(p.getFileName().toString(), exts)),
+                            InputTrees::ownedListBytes);
             return cached;
         }
 
@@ -419,6 +429,18 @@ public final class InputTrees {
 
     /** Memo key for a per-request existence probe. */
     private record AnyMemo(Path root, String skipId, String ext) {}
+
+    /** A path list over a listing's own paths: the list alone, the paths are the listing's. */
+    static long sharedListBytes(List<Path> paths) {
+        return 16L + 8L * paths.size();
+    }
+
+    /** A path list a live walk made: the list and every path in it. */
+    static long ownedListBytes(List<Path> paths) {
+        long bytes = sharedListBytes(paths);
+        for (Path p : paths) bytes += 48L + 2L * p.toString().length();
+        return bytes;
+    }
 
     private static boolean endsWithAny(String name, String... exts) {
         for (String ext : exts) {
