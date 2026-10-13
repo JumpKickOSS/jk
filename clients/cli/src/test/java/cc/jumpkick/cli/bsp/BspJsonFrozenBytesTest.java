@@ -30,7 +30,7 @@ class BspJsonFrozenBytesTest {
 
     @Test
     void diagnostic_and_status_shapes() {
-        assertThat(BspServer.diagnosticJson(4, 2, 1, "cannot find symbol \"x\""))
+        assertThat(BspDiagnostics.diagnosticJson(4, 2, 1, "cannot find symbol \"x\""))
                 .isEqualTo("{\"range\":{\"start\":{\"line\":4,\"character\":2},\"end\":{\"line\":4,\"character\":2}},"
                         + "\"severity\":1,\"message\":\"cannot find symbol \\\"x\\\"\"}");
         var green = new IdeEngineClient.BuildOutcome(true, 1, 0, List.of(), List.of());

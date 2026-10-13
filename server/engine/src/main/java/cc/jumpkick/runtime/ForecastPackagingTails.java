@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.JavadocTool;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskNames;
@@ -12,14 +13,15 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The {@link ModuleForecast} arms for the packaging tails beside {@code package-jar}: the fat jar
- * and the javadoc jar, each keyed by the same {@link PackagingKeys} body its live step calls and
+ * The {@link ModuleForecast} arms for the packaging tails beside {@code package-jar}: the fat jar,
+ * the javadoc jar, the native image and the install, each keyed by the same {@link PackagingKeys} body its live step calls and
  * read against the action cache. {@code null} when the module plans no such tail.
  */
 final class ForecastPackagingTails {
@@ -128,5 +130,64 @@ final class ForecastPackagingTails {
                 skip ? TaskForecast.Status.CACHED : TaskForecast.Status.RUN,
                 skip ? "" : "install to local repo",
                 null);
+    }
+
+    /**
+     * {@code native-image}: run when the jar or the compile it packages is dirty — a binary is never
+     * cached under a rebuilt jar — else cached when the producer-keyed action record the live step
+     * restores from still hits. An on-disk binary alone is not enough: a previous engine's binary
+     * must not hide a miss.
+     */
+    static TaskForecast.Task nativeImage(
+            JkBuild project,
+            Path dir,
+            BuildLayout layout,
+            Path lockFile,
+            ActionCache actionCache,
+            Path cache,
+            RestoredOutputs restored,
+            boolean packagedDirty) {
+        if (packagedDirty) {
+            return new TaskForecast.Task(
+                    TaskNames.NATIVE_IMAGE, TaskForecast.Status.RUN, "rebuild · compile changed", null);
+        }
+        boolean binaryPresent = nativeBinaryPresent(layout);
+        if (nativeRestores(project, dir, layout, lockFile, actionCache, cache, restored)) {
+            return new TaskForecast.Task(
+                    TaskNames.NATIVE_IMAGE,
+                    TaskForecast.Status.CACHED,
+                    binaryPresent ? "" : "binary missing · restores from cache",
+                    null);
+        }
+        return new TaskForecast.Task(
+                TaskNames.NATIVE_IMAGE,
+                TaskForecast.Status.RUN,
+                binaryPresent
+                        ? "native-image · action cache miss"
+                        : "native-image · binary missing (restores when its key still hits)",
+                null);
+    }
+
+    /** The module's native executable or shared library is on disk. */
+    static boolean nativeBinaryPresent(BuildLayout layout) {
+        return Files.isRegularFile(layout.nativeBinary()) || Files.isRegularFile(layout.nativeLibrary());
+    }
+
+    /** The replayed native key hits — a read-only answer that fails safe to "no". */
+    private static boolean nativeRestores(
+            JkBuild project,
+            Path dir,
+            BuildLayout layout,
+            Path lockFile,
+            ActionCache actionCache,
+            Path cache,
+            RestoredOutputs restored) {
+        try {
+            return PackagingKeys.nativeActionCached(
+                    dir, project, layout, lockFile, actionCache, cache, restored.jarShas());
+        } catch (Exception e) {
+            Log.debug("nativeImage: the last record could not be replayed read-only", e);
+            return false;
+        }
     }
 }

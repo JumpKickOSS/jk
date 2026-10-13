@@ -14,7 +14,7 @@ class BspTestSelectionParseTest {
 
     @Test
     void missing_data_is_default() {
-        assertThat(BspServer.parseTestSelectionData("{}")).isEqualTo(TestSelection.DEFAULT);
+        assertThat(BspRequestParams.parseTestSelectionData("{}")).isEqualTo(TestSelection.DEFAULT);
     }
 
     @Test
@@ -22,7 +22,7 @@ class BspTestSelectionParseTest {
         String json = """
                 {"params":{"targets":[{"uri":"file:///p#m"}],"data":{"allSuites":true,"excludeTags":["slow","bench"]}}}
                 """;
-        TestSelection s = BspServer.parseTestSelectionData(json);
+        TestSelection s = BspRequestParams.parseTestSelectionData(json);
         assertThat(s.allSuites()).isTrue();
         assertThat(s.excludeTags()).containsExactly("slow", "bench");
     }
@@ -32,7 +32,7 @@ class BspTestSelectionParseTest {
         String json = """
                 {"data":{"suites":["integration","test"],"includeTags":["smoke"]}}
                 """;
-        TestSelection s = BspServer.parseTestSelectionData(json);
+        TestSelection s = BspRequestParams.parseTestSelectionData(json);
         assertThat(s.suites()).containsExactly("integration", "test");
         assertThat(s.includeTags()).containsExactly("smoke");
         assertThat(s.allSuites()).isFalse();
@@ -43,19 +43,19 @@ class BspTestSelectionParseTest {
         String json = """
                 {"data":{"classes":["com.acme.FooTest","*IT"]}}
                 """;
-        assertThat(BspServer.parseTestSelectionData(json).classes()).containsExactly("com.acme.FooTest", "*IT");
+        assertThat(BspRequestParams.parseTestSelectionData(json).classes()).containsExactly("com.acme.FooTest", "*IT");
     }
 
     @Test
     void no_debug_field_is_no_debug_request() {
-        assertThat(BspServer.parseDebugData("{}")).isNull();
-        assertThat(BspServer.parseDebugData("""
+        assertThat(BspRequestParams.parseDebugData("{}")).isNull();
+        assertThat(BspRequestParams.parseDebugData("""
                         {"params":{"targets":[{"uri":"file:///p#m"}],"data":{"allSuites":true}}}
                         """)).isNull();
-        assertThat(BspServer.parseDebugData("""
+        assertThat(BspRequestParams.parseDebugData("""
                         {"data":{"debug":false}}
                         """)).isNull();
-        assertThat(BspServer.parseDebugData("not json")).isNull();
+        assertThat(BspRequestParams.parseDebugData("not json")).isNull();
     }
 
     @Test
@@ -63,7 +63,7 @@ class BspTestSelectionParseTest {
         String json = """
                 {"params":{"targets":[{"uri":"file:///p#m"}],"data":{"debug":true}}}
                 """;
-        assertThat(BspServer.parseDebugData(json)).isEqualTo(DebugJvm.DEFAULT);
+        assertThat(BspRequestParams.parseDebugData(json)).isEqualTo(DebugJvm.DEFAULT);
     }
 
     @Test
@@ -71,11 +71,11 @@ class BspTestSelectionParseTest {
         String json = """
                 {"data":{"suites":["test"],"debug":{"port":0,"suspend":false}}}
                 """;
-        DebugJvm d = BspServer.parseDebugData(json);
+        DebugJvm d = BspRequestParams.parseDebugData(json);
         assertThat(d).isEqualTo(new DebugJvm("localhost", 0, false));
         assertThat(DebugJvm.parse("0").portChosenByClient()).isTrue();
 
-        DebugJvm all = BspServer.parseDebugData("""
+        DebugJvm all = BspRequestParams.parseDebugData("""
                 {"data":{"debug":{"host":"*","port":6006}}}
                 """);
         assertThat(all).isEqualTo(new DebugJvm("*", 6006, true));
@@ -83,7 +83,7 @@ class BspTestSelectionParseTest {
 
     @Test
     void debug_string_is_the_cli_spec() {
-        assertThat(BspServer.parseDebugData("""
+        assertThat(BspRequestParams.parseDebugData("""
                         {"data":{"debug":"0,suspend=n"}}
                         """)).isEqualTo(DebugJvm.parse("0,suspend=n"));
     }
@@ -93,7 +93,7 @@ class BspTestSelectionParseTest {
         String json = """
                 {"data":{"suites":["integration"],"includeTags":["smoke"],"debug":true}}
                 """;
-        TestSelection s = BspServer.parseTestSelectionData(json);
+        TestSelection s = BspRequestParams.parseTestSelectionData(json);
         assertThat(s.suites()).containsExactly("integration");
         assertThat(s.includeTags()).containsExactly("smoke");
     }
