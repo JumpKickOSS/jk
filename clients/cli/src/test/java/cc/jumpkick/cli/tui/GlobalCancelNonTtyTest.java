@@ -112,7 +112,7 @@ class GlobalCancelNonTtyTest {
     @Test
     void ctrl_c_through_a_redirected_stdout_cancels_the_engine_job_and_exits_interrupted() throws Exception {
         Path tmp = newHome();
-        try (StubEngine engine = StubEngine.start(tmp, StubEngine.OnCancel.STAY_SILENT)) {
+        try (StubEngine engine = StubEngine.start(tmp, StubEngine.OnCancel.STAY_SILENT, StubEngine.JobStart.AT_ONCE)) {
             Path out = tmp.resolve("stdout.log");
             Process cli = spawnCli(tmp, out);
             try {
@@ -141,6 +141,42 @@ class GlobalCancelNonTtyTest {
     }
 
     /**
+     * Ctrl-C that lands while the job's {@code job-start} is still on the wire: the handler finds no
+     * jid to cancel, and the job is admitted a moment later. The stub holds {@code job-start} until
+     * the handler's dir-scoped cancel has arrived, so the jid reaches the client strictly after the
+     * handler looked for one; the by-jid cancel must still follow.
+     */
+    @Test
+    void ctrl_c_before_the_job_start_arrives_still_cancels_that_job_by_jid() throws Exception {
+        Path tmp = newHome();
+        try (StubEngine engine =
+                StubEngine.start(tmp, StubEngine.OnCancel.STAY_SILENT, StubEngine.JobStart.AFTER_FIRST_CANCEL)) {
+            Path out = tmp.resolve("stdout.log");
+            Process cli = spawnCli(tmp, out);
+            try {
+                assertThat(engine.jobRequested.await(EXIT_WAIT_SECONDS, TimeUnit.SECONDS))
+                        .as(
+                                "no lock request reached the stub; unexpected=%s\n%s",
+                                engine.unexpectedRequests(), read(out))
+                        .isTrue();
+
+                interrupt(cli);
+
+                assertThat(engine.jobStarted.await(EXIT_WAIT_SECONDS, TimeUnit.SECONDS))
+                        .as("the handler sent no cancel at all\n%s", read(out))
+                        .isTrue();
+                assertThat(cli.waitFor(EXIT_WAIT_SECONDS, TimeUnit.SECONDS)).isTrue();
+                assertThat(cli.exitValue()).as("stdout: %s", read(out)).isEqualTo(Exit.INTERRUPTED);
+                assertThat(engine.cancelledJids())
+                        .as("a job admitted after the Ctrl-C must still be cancelled by jid\n%s", read(out))
+                        .contains(engine.jid);
+            } finally {
+                cli.destroyForcibly();
+            }
+        }
+    }
+
+    /**
      * The unwinding-verb route, which is the common one on a TTY and reachable off one whenever the
      * engine settles the stream. The stub drops the job connection the moment the cancel arrives, so
      * the verb returns an ordinary failure and the entry point exits on the main thread — while the
@@ -150,7 +186,8 @@ class GlobalCancelNonTtyTest {
     @Test
     void a_verb_that_unwinds_before_the_handler_halts_still_exits_interrupted() throws Exception {
         Path tmp = newHome();
-        try (StubEngine engine = StubEngine.start(tmp, StubEngine.OnCancel.DROP_THE_JOB_STREAM)) {
+        try (StubEngine engine =
+                StubEngine.start(tmp, StubEngine.OnCancel.DROP_THE_JOB_STREAM, StubEngine.JobStart.AT_ONCE)) {
             Path out = tmp.resolve("stdout.log");
             Process cli = spawnCli(tmp, out);
             try {
@@ -257,25 +294,36 @@ class GlobalCancelNonTtyTest {
             DROP_THE_JOB_STREAM
         }
 
+        enum JobStart {
+            /** Answer the lock request with {@code job-start} straight away. */
+            AT_ONCE,
+            /** Hold {@code job-start} until the first {@code cancel-request} has arrived. */
+            AFTER_FIRST_CANCEL
+        }
+
         private final ServerSocketChannel listener;
         private final OnCancel onCancel;
+        private final JobStart jobStart;
+        private final CountDownLatch firstCancel = new CountDownLatch(1);
         private final ConcurrentLinkedQueue<String> cancels = new ConcurrentLinkedQueue<>();
         private final ConcurrentLinkedQueue<String> unexpected = new ConcurrentLinkedQueue<>();
         private volatile @Nullable SocketChannel jobConnection;
+        final CountDownLatch jobRequested = new CountDownLatch(1);
         final CountDownLatch jobStarted = new CountDownLatch(1);
         final long jid = 42L;
 
-        private StubEngine(ServerSocketChannel listener, OnCancel onCancel) {
+        private StubEngine(ServerSocketChannel listener, OnCancel onCancel, JobStart jobStart) {
             this.listener = listener;
             this.onCancel = onCancel;
+            this.jobStart = jobStart;
         }
 
-        static StubEngine start(Path home, OnCancel onCancel) throws IOException {
+        static StubEngine start(Path home, OnCancel onCancel, JobStart jobStart) throws IOException {
             EnginePaths.Paths paths = EnginePaths.resolve(stateDir(home), storeDir(home));
             Files.createDirectories(paths.dir());
             ServerSocketChannel listener = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
             listener.bind(UnixDomainSocketAddress.of(paths.socket()));
-            StubEngine engine = new StubEngine(listener, onCancel);
+            StubEngine engine = new StubEngine(listener, onCancel, jobStart);
             Thread accept = new Thread(engine::acceptLoop, "stub-engine-accept");
             accept.setDaemon(true);
             accept.start();
@@ -328,10 +376,16 @@ class GlobalCancelNonTtyTest {
                         send(w, ProtoLifecycle.pong());
                     } else if (EngineProtocol.CANCEL_REQUEST.equals(type)) {
                         cancels.add(line);
+                        firstCancel.countDown();
                         if (onCancel == OnCancel.DROP_THE_JOB_STREAM) closeQuietly(jobConnection);
                         // No cancel-ack on purpose — see the class javadoc.
                     } else if (EngineProtocol.LOCK_REQUEST.equals(type)) {
                         jobConnection = ch;
+                        jobRequested.countDown();
+                        if (jobStart == JobStart.AFTER_FIRST_CANCEL
+                                && !firstCancel.await(EXIT_WAIT_SECONDS, TimeUnit.SECONDS)) {
+                            return;
+                        }
                         String dir = Jsonl.str(line, "dir");
                         send(w, ProtoLifecycle.jobStart(jid, "lock", dir == null ? "" : dir, 1L));
                         jobStarted.countDown();
@@ -343,7 +397,7 @@ class GlobalCancelNonTtyTest {
                         send(w, ProtoLifecycle.requestFailed("stub engine does not serve " + type));
                     }
                 }
-            } catch (IOException ignored) {
+            } catch (IOException | InterruptedException ignored) {
                 // client gone — every assertion is about what it did before that
             } finally {
                 closeQuietly(ch);
