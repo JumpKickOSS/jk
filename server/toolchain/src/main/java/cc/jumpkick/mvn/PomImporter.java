@@ -91,6 +91,9 @@ public final class PomImporter {
     /** How long the POM reads may stand still before the import stops; {@code JK_RESOLVE_TIMEOUT_MS}. */
     private long stallWindowMs = StallWatch.envWindowMs();
 
+    /** The clock the stall window is measured on. */
+    private Clock stallClock = Clock.SYSTEM;
+
     /** The profile ids activated by name ({@code jk import -P}), beside what each POM activates itself. */
     private List<String> activeProfiles = List.of();
 
@@ -135,6 +138,12 @@ public final class PomImporter {
     /** This importer with another stall window for its POM reads, in milliseconds ({@code 0} never stops) — tests. */
     PomImporter stallWindowMs(long windowMs) {
         this.stallWindowMs = windowMs;
+        return this;
+    }
+
+    /** This importer measuring its stall window on {@code clock} — tests. */
+    PomImporter stallClock(Clock clock) {
+        this.stallClock = clock;
         return this;
     }
 
@@ -196,7 +205,7 @@ public final class PomImporter {
      */
     private <T> T watched(Read<T> read) throws IOException {
         StallWatch watch = new StallWatch(
-                Clock.SYSTEM,
+                stallClock,
                 stallWindowMs,
                 "no POM read",
                 resolver::readsCompleted,

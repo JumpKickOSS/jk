@@ -4,6 +4,7 @@ package cc.jumpkick.mvn;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.testing.FakeClock;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -11,6 +12,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -25,18 +27,23 @@ import org.junit.jupiter.api.io.TempDir;
  * the request and never answers stops the import, which names the coordinate it was reading and
  * the URL it waited on instead of sitting silent. The window opens with the first read, so the
  * model building before it is never mistaken for a stalled read.
+ *
+ * <p>The window runs on a {@link FakeClock} the repository moves only once a request reaches it,
+ * so the watch can trip only while the read is parked there, however slowly the import gets that far.
  */
 class PomImporterStallTest {
 
     private HttpServer server;
     private URI base;
     private final CountDownLatch release = new CountDownLatch(1);
+    private final FakeClock clock = new FakeClock();
 
     @BeforeEach
     void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.setExecutor(Executors.newCachedThreadPool());
         server.createContext("/", exchange -> {
+            clock.advance(Duration.ofSeconds(1));
             try {
                 release.await(30, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
@@ -71,7 +78,8 @@ class PomImporterStallTest {
                   <artifactId>stalled</artifactId>
                 </project>
                 """, StandardCharsets.UTF_8);
-        PomImporter importer = TestImporters.over(tempDir, base).stallWindowMs(300);
+        PomImporter importer =
+                TestImporters.over(tempDir, base).stallWindowMs(300).stallClock(clock);
 
         assertThatThrownBy(() -> importer.importFrom(pom))
                 .isInstanceOf(IOException.class)
