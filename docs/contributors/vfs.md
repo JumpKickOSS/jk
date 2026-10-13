@@ -178,7 +178,8 @@ every live job, so readers of a run's `record.json` take its head
 fields before its tail (module rows, tasks, coverage, diagnostics), so the
 journal's listings and lookups parse the head alone, and a record carries at
 most 256 KiB of diagnostics: the rest spill to `diagnostics-spill.json` beside
-it, which the record names and a whole read (`jk history show`) appends.
+it, which the record names and every whole read (`jk history show`, `GET /api/history`, MCP)
+appends.
 
 **Pool:** the live sum of every in-flight job’s retained VFS bytes must stay
 ≤ **75% of `max-heap-mb`**. The other 25% is coordinator headroom (module
