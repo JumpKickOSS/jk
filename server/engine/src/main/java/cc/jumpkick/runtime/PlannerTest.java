@@ -676,8 +676,11 @@ public final class PlannerTest {
             int testWorkers = debug ? 1 : TestLaunch.dispatchWorkers(in, projectUnderTest.build(), pluginDecls);
             tagExcluded = new TagExcludedCapture(TestSupport.bridgeListener(
                     ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets, suites));
+            // The module path is read off the runtime classpath, which the stamp already keys.
+            List<String> forkJvmArgs = new ArrayList<>(testJvmArgs);
+            forkJvmArgs.addAll(JvmModulePath.args(projectUnderTest, in.dir(), runtimeCp));
             JUnitLauncher launcher = TestLaunch.launcher(
-                            in, projectUnderTest, effectiveSel, testJvmArgs, affected, jacoco, coverageExec)
+                            in, projectUnderTest, effectiveSel, forkJvmArgs, affected, jacoco, coverageExec)
                     .withSuites(suites)
                     .withIntegrationResults(ctx.require(LAYOUT).integrationResultsDir())
                     .withAutoShare(auto);

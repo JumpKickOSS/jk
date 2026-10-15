@@ -156,10 +156,12 @@ public record PluginDescriptor(
             List<ProvidedClasspath> providedClasspath,
             List<SourceRoot> sourceRoots,
             /** GMM {@code org.gradle.jvm.environment} (e.g. {@code "android"}), or null. */
-            @Nullable String jvmEnvironment) {
+            @Nullable String jvmEnvironment,
+            /** {@code [contribute.jvm-modules]}: the module path the test JVM and {@code jk run} need, or null. */
+            @Nullable JvmModules jvmModules) {
 
         public static final Contributions NONE = new Contributions(
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null,
                 null);
 
         public Contributions {
@@ -182,7 +184,20 @@ public record PluginDescriptor(
                     && stepDependencies.isEmpty()
                     && commandDependencies.isEmpty()
                     && providedClasspath.isEmpty()
-                    && sourceRoots.isEmpty();
+                    && sourceRoots.isEmpty()
+                    && jvmModules == null;
+        }
+    }
+
+    /**
+     * {@code [contribute.jvm-modules]}: every runtime-classpath jar whose explicit module name
+     * starts with {@code modulePrefix} also rides {@code --module-path}, and {@code addModules}
+     * (a template; a string-list key expands element by element) rides {@code --add-modules}.
+     */
+    public record JvmModules(String modulePrefix, String addModules) {
+        public JvmModules {
+            Objects.requireNonNull(modulePrefix, "modulePrefix");
+            Objects.requireNonNull(addModules, "addModules");
         }
     }
 

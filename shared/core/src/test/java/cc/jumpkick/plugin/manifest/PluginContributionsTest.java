@@ -824,4 +824,51 @@ class PluginContributionsTest {
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("scope must be `compile` or `test`");
     }
+
+    // ---- [contribute.jvm-modules] ------------------------------------------------------------
+
+    @Test
+    void jvm_modules_parse_and_validate_the_template() {
+        String base = """
+                [plugin]
+                id = "fx"
+                table = "fx"
+
+                [schema]
+                modules = { type = "string-list", default = ["javafx.controls"] }
+
+                [contribute.jvm-modules]
+                %s
+                """;
+        var parsed = PluginDescriptors.parse(
+                base.formatted("module-prefix = \"javafx.\"\nadd-modules = \"${config.modules}\""), "fx.toml");
+        assertThat(parsed.contributions().jvmModules())
+                .isEqualTo(new PluginDescriptor.JvmModules("javafx.", "${config.modules}"));
+        assertThatThrownBy(() -> PluginDescriptors.parse(
+                        base.formatted("module-prefix = \"javafx.\"\nadd-modules = \"${config.nope}\""), "fx.toml"))
+                .isInstanceOf(JkBuildParseException.class);
+        assertThatThrownBy(() -> PluginDescriptors.parse(base.formatted("add-modules = \"x\""), "fx.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("module-prefix");
+    }
+
+    @Test
+    void the_javafx_battery_adds_its_default_modules_or_the_tables() {
+        String head = """
+                name = "app"
+                group = "com.example"
+                version = "1.0.0"
+                java = 25
+
+                [javafx]
+                """;
+        assertThat(PluginContributions.jvmModules(JkBuildParser.parse(head), null))
+                .containsExactly(
+                        new PluginContributions.JvmModuleUse("javafx.", List.of("javafx.controls", "javafx.fxml")));
+        assertThat(PluginContributions.jvmModules(
+                        JkBuildParser.parse(head + "modules = [\"javafx.controls\", \"javafx.web\"]\n"), null))
+                .containsExactly(
+                        new PluginContributions.JvmModuleUse("javafx.", List.of("javafx.controls", "javafx.web")));
+        assertThat(PluginContributions.jvmModules(boot(""), null)).isEmpty();
+    }
 }

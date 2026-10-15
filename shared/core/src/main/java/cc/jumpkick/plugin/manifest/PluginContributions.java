@@ -66,6 +66,27 @@ public final class PluginContributions {
         return out;
     }
 
+    /** One plugin's {@code [contribute.jvm-modules]}, resolved: the module-name prefix and the modules to add. */
+    public record JvmModuleUse(String modulePrefix, List<String> addModules) {}
+
+    /** The {@code [contribute.jvm-modules]} of every plugin whose table {@code build} carries, in manifest order. */
+    public static List<JvmModuleUse> jvmModules(JkBuild build, @Nullable Path moduleDir) {
+        List<JvmModuleUse> out = new ArrayList<>();
+        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
+            PluginConfig config = build.pluginConfigs().get(manifest.id());
+            PluginDescriptor.JvmModules mods = manifest.contributions().jvmModules();
+            if (config == null || mods == null) continue;
+            List<String> add = new ArrayList<>();
+            for (String m : Interpolation.resolveAll(mods.addModules(), config, build.project(), null, null)) {
+                for (String one : m.split(",")) {
+                    if (!one.isBlank()) add.add(one.trim());
+                }
+            }
+            out.add(new JvmModuleUse(mods.modulePrefix(), List.copyOf(add)));
+        }
+        return out;
+    }
+
     /** The javac args every present plugin contributes, conditions evaluated against {@code classpathModules}. */
     public static List<String> javacArgs(JkBuild build, @Nullable Path moduleDir, Set<String> classpathModules) {
         return compilerArgs(build, moduleDir, classpathModules, PluginDescriptor.CompilerArgs::javac);

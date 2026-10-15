@@ -107,7 +107,7 @@ it is outer-loop work and is designed after 1.0.
 | 22 | `maven-bundle-plugin` | 66,560 | no | OSGi |
 | 23 | `maven-enforcer-plugin` | 65,664 | core | java =, jk deny, guards |
 | 24 | `maven-antrun-plugin` | 65,536 | built in | build-logic hatch |
-| 25 | `javafx-maven-plugin` | 65,280 | gap | JavaFX |
+| 25 | `javafx-maven-plugin` | 65,280 | contrib | `[javafx]` |
 | 26 | `maven-release-plugin` | 45,440 | gap | release flow (bump, tag) |
 | 27 | `nexus-staging-maven-plugin` | 35,968 | core | jk publish --central |
 | 28 | `quarkus-maven-plugin` | 34,624 | core | quarkus battery |
@@ -171,7 +171,7 @@ it is outer-loop work and is designed after 1.0.
 | 22 | `com.gradleup.shadow` | 15,248 | core | same as shadow |
 | 23 | `org.jetbrains.dokka` | 14,296 | core | `[dokka]`: the javadoc jar of a Kotlin module is Dokka output |
 | 24 | `org.jetbrains.kotlin.kapt` | 14,024 | core | kapt via kotlin-compiler |
-| 25 | `org.openjfx.javafxplugin` | 11,956 | gap | JavaFX module path/run; module path compile exists |
+| 25 | `org.openjfx.javafxplugin` | 11,956 | contrib | `[javafx]`: module path for tests and run |
 | 26 | `org.jetbrains.intellij` | 11,376 | no | IDE plugin development |
 | 27 | `org.sonarqube` | 11,208 | no | SaaS analysis; report upload is CI's job |
 | 28 | `com.vanniktech.maven.publish` | 11,168 | core | jk publish --central |
@@ -227,7 +227,7 @@ it is outer-loop work and is designed after 1.0.
 | 14 | `com.gradleup.shadow` | 15,248 | core | same as shadow |
 | 15 | `org.jetbrains.dokka` | 14,296 | core | `[dokka]`: the javadoc jar of a Kotlin module is Dokka output |
 | 16 | `org.jetbrains.kotlin.kapt` | 14,024 | core | kapt via kotlin-compiler |
-| 17 | `org.openjfx.javafxplugin` | 11,956 | gap | JavaFX module path/run; module path compile exists |
+| 17 | `org.openjfx.javafxplugin` | 11,956 | contrib | `[javafx]`: module path for tests and run |
 | 18 | `org.jetbrains.intellij` | 11,376 | no | IDE plugin development |
 | 19 | `org.sonarqube` | 11,208 | no | SaaS analysis; report upload is CI's job |
 | 20 | `com.vanniktech.maven.publish` | 11,168 | core | jk publish --central |

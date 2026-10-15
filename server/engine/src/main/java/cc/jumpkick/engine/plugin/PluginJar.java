@@ -56,7 +56,8 @@ public enum PluginJar {
     LINT("jk-lint", "jk.lint.plugin.jar"),
     MINIFIED("jk-minified", "jk.minified.plugin.jar"),
     HIBERNATE("jk-hibernate", "jk.hibernate.plugin.jar"),
-    INTELLIJ("jk-intellij", "jk.intellij.plugin.jar");
+    INTELLIJ("jk-intellij", "jk.intellij.plugin.jar"),
+    JAVAFX("jk-javafx", "jk.javafx.plugin.jar");
 
     private final String artifactId;
     private final String jarProperty;

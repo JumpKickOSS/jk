@@ -1,10 +1,10 @@
 version = 1
-generated-by = "jk 0.15.1"
-generated-by-build = "6528e656e6d4"
-generated-by-build-time = "2026-10-10T19:11:09Z"
+generated-by = "jk 0.15.2"
+generated-by-build = "421219838c2f"
+generated-by-build-time = "2026-10-15T15:29:42Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "c4efc7e1ab2f8db978079e9dd1d5563572faebc33259e6ab699678fc351db2e5"
+manifests-sha256 = "aaedde86552149c42f1551b8769473dc49cfc0f4e20fea0b3492ac8d6701bc84"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -3888,6 +3888,14 @@ name    = "jk-java-compiler"
 version = "0.15.2"
 java    = 25
 description = "JumpKick's Java compiler plugin"
+
+[[module]]
+path    = "plugins/javafx"
+group   = "cc.jumpkick"
+name    = "jk-javafx"
+version = "0.15.2"
+java    = 25
+description = "JumpKick's JavaFX plugin: the project's OpenJFX modules on the module path of the test JVM and jk run"
 
 [[module]]
 path    = "plugins/jaxb"

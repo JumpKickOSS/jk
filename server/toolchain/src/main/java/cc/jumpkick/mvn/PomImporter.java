@@ -315,6 +315,7 @@ public final class PomImporter {
                 .pluginConfig(packaging.springBoot())
                 .pluginConfig(packaging.quarkus())
                 .pluginConfig(hibernate)
+                .pluginConfig(JavafxMavenPlugin.map(em.model(), report))
                 .pluginConfig(LintPlugins.map(em, report, inherited, resolver.repos()));
         for (PluginConfig table : generators.tables()) builder.pluginConfig(table);
         List<ReleaseSources> releases = MultiReleasePlugins.map(em.model(), report);
