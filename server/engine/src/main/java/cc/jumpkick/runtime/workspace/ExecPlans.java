@@ -38,6 +38,7 @@ import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.runtime.InstallPlans;
+import cc.jumpkick.runtime.JvmModulePath;
 import cc.jumpkick.runtime.NodeRun;
 import cc.jumpkick.runtime.PluginBuild;
 import cc.jumpkick.runtime.RepoGroupBuilder;
@@ -463,6 +464,7 @@ public final class ExecPlans {
         boolean runnableJar = !classesEntry && classpath.size() == 1 && project.mainClass() != null;
         List<String> argv = new ArrayList<>();
         argv.add(java);
+        argv.addAll(JvmModulePath.args(project, dir, classpath));
         String display;
         if (runnableJar) {
             Path jar = classpath.get(0);

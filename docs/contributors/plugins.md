@@ -153,6 +153,10 @@ ksp    = ["room.schemaLocation=…"]
 dir  = "grails-app/domain"    # module-relative; absolute or ..-escaping dirs fail at load
 kind = "source"               # source | resource — joins roots()/compile/IDE/BSP/fingerprints
 
+[contribute.jvm-modules]             # one table: runtime jars whose module-info names a module
+module-prefix = "javafx."             # under the prefix join --module-path of the test JVM and
+add-modules   = "${config.modules}"   # `jk run`; a string-list key expands to --add-modules
+
 [[contribute.kotlin-plugin]]
 id         = "org.jetbrains.kotlin.noarg"
 coordinate = "org.jetbrains.kotlin:kotlin-noarg-compiler-plugin-embeddable:${kotlin.version}"

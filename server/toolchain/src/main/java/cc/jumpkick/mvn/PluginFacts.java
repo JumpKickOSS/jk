@@ -65,6 +65,7 @@ final class PluginFacts {
             "jaxb-maven-plugin",
             "jooq-codegen-maven",
             "hibernate-enhance-maven-plugin",
+            "javafx-maven-plugin",
             "maven-checkstyle-plugin",
             "maven-pmd-plugin",
             "spotbugs-maven-plugin",
@@ -512,7 +513,8 @@ final class PluginFacts {
             for (Xpp3Dom config : configurations(plugin)) {
                 visit(config, "mainClass", node -> {
                     String v = usable(node.getValue());
-                    if (v != null) found.add(v);
+                    // javafx-maven-plugin names a modular main as module/class; the class is the main.
+                    if (v != null) found.add(v.substring(v.indexOf('/') + 1));
                 });
             }
             if (!found.isEmpty()) return found.getFirst();

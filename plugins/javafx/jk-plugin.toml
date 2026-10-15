@@ -1,0 +1,23 @@
+# JavaFX desktop apps: the OpenJFX modules the project depends on ride the module path of the test
+# JVM and `jk run`, with the named modules added, as javafx-maven-plugin and the
+# org.openjfx.javafxplugin Gradle plugin arrange. The OpenJFX jars are the project's own
+# dependencies; their host classifier is resolved and locked like any other.
+[plugin]
+id        = "javafx"
+table     = "javafx"
+version   = "0.1.0"
+jk-compat = ">=0.15"
+
+[code]
+worker          = "jk-javafx"
+protocol-prefix = "##JKFX:"
+
+[schema]
+modules = { type = "string-list", default = ["javafx.controls", "javafx.fxml"], hint = "the JavaFX modules the app uses, passed as --add-modules; their dependencies resolve from the module path" }
+
+[contribute.jvm-modules]
+module-prefix = "javafx."
+add-modules   = "${config.modules}"
+
+[[import.gradle-plugin]]
+id = "org.openjfx.javafxplugin"

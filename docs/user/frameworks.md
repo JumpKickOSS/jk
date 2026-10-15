@@ -223,6 +223,38 @@ edited entity re-enhances that module. `jk import` writes the table from
 `hibernate-enhance-maven-plugin`, from `hibernate-maven-plugin`'s `enhance` goal, and from the
 Gradle plugin's `hibernate { enhancement { … } }` block.
 
+## JavaFX
+
+**Contrib battery** (best-effort; see [Plugins](plugins.md#batteries-and-their-tiers)).
+
+JavaFX runs as named modules: its jars must be on the module path with `--add-modules`, which
+`javafx-maven-plugin` and the `org.openjfx.javafxplugin` Gradle plugin arrange. `[javafx]` does
+the same for the test JVM and `jk run`. The OpenJFX artifacts are ordinary dependencies, and the
+lock pins this host's `javafx-graphics` classifier ([host classifiers](dependencies.md)).
+
+```toml
+[application]
+main = "com.acme.Launcher"
+
+[javafx]
+modules = ["javafx.controls", "javafx.fxml"]   # the default; passed as --add-modules
+
+[dependencies]
+javafx-controls = { group = "org.openjfx", version = "27" }
+javafx-fxml     = { group = "org.openjfx", version = "27" }
+```
+
+Every runtime jar that declares a `javafx.*` module joins the module path; the modules those
+require resolve from it. Compilation needs nothing extra. A fat jar runs with `java -jar` only
+through a main class that does not extend `javafx.application.Application` (a small launcher that
+calls `Application.launch`), as with the Maven and Gradle plugins. A suite that opens windows
+needs a display; on a headless CI host run it under `xvfb-run`.
+
+`jk import` writes the table from `javafx-maven-plugin` (its `mainClass`, `module/class` included,
+is `[application] main`) and from the Gradle plugin's `javafx { version; modules }` block, writing
+the OpenJFX dependency the Gradle plugin adds for each module. A jlink image and jpackage installers
+are not covered.
+
 ## Protobuf
 
 `[protobuf]` table: generate Java (and friends) from `.proto` sources as part of the

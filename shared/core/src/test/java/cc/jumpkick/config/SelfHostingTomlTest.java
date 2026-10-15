@@ -107,7 +107,8 @@ class SelfHostingTomlTest {
                         "plugins/android",
                         "plugins/micronaut",
                         "plugins/hibernate",
-                        "plugins/intellij");
+                        "plugins/intellij",
+                        "plugins/javafx");
     }
 
     @Test

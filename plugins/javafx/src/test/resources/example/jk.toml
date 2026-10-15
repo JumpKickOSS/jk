@@ -1,0 +1,19 @@
+# A JavaFX app: [javafx] puts the OpenJFX modules on the module path of the test JVM and `jk run`.
+# The OpenJFX jars are ordinary dependencies; the lock pins this host's javafx-graphics classifier.
+name    = "hellofx"
+group   = "com.acme"
+version = "1.0.0"
+java    = 25
+
+[application]
+main = "com.acme.Launcher"
+
+[javafx]
+modules = ["javafx.controls"]
+
+[dependencies]
+javafx-controls = { group = "org.openjfx", version = "27" }
+
+[test-dependencies]
+junit-jupiter           = { group = "org.junit.jupiter", name = "junit-jupiter", version = "6.1.3" }
+junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.3" }

@@ -302,6 +302,7 @@ public final class PluginDescriptors {
         List<PluginDescriptor.ProvidedClasspath> provided =
                 parseProvidedClasspath(contribute, displayPath, schemaKeys, stepDeps, commandDeps);
         String jvmEnvironment = parseJvmEnvironment(contribute, displayPath);
+        PluginDescriptor.JvmModules jvmModules = parseJvmModules(contribute, schemaKeys, displayPath);
         return new PluginDescriptor.Contributions(
                 platformDeps,
                 compilerArgs,
@@ -312,7 +313,8 @@ public final class PluginDescriptors {
                 commandDeps,
                 provided,
                 sourceRoots,
-                jvmEnvironment);
+                jvmEnvironment,
+                jvmModules);
     }
 
     private static List<PluginDescriptor.PlatformDependency> parsePlatformDependencies(
@@ -475,6 +477,18 @@ public final class PluginDescriptors {
                     dependency, jars, "test".equals(scope), parseCondition(t, where)));
         }
         return provided;
+    }
+
+    private static PluginDescriptor.@Nullable JvmModules parseJvmModules(
+            TomlTable contribute, Set<String> schemaKeys, String displayPath) {
+        TomlTable t = contribute.getTable("jvm-modules");
+        if (t == null) return null;
+        String where = displayPath + ".contribute.jvm-modules";
+        String prefix = requireString(t, "module-prefix", where);
+        if (prefix.isBlank()) throw new JkBuildParseException(where + ": module-prefix must not be blank");
+        String addModules = requireString(t, "add-modules", where);
+        Interpolation.validate(addModules, schemaKeys, where + ".add-modules");
+        return new PluginDescriptor.JvmModules(prefix, addModules);
     }
 
     private static @Nullable String parseJvmEnvironment(TomlTable contribute, String displayPath) {

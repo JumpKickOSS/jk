@@ -293,6 +293,8 @@ public final class GradleImporter {
 
         Map<Scope, List<Dependency>> deps =
                 GradleDependencies.parse(stripped, catalog, properties, refreshVersions, report);
+        PluginConfig javafx = JavafxGradle.map(applied.keySet(), stripped, deps, report);
+        if (javafx != null) pluginConfigs.add(javafx);
         List<RepositorySpec> repos = parseRepositories(stripped, report);
         warnUnsupportedSections(stripped, report);
 

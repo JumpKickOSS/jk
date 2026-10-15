@@ -83,6 +83,7 @@ modules = [
   "plugins/micronaut",
   "plugins/hibernate",
   "plugins/intellij",
+  "plugins/javafx",
 ]
 
 # ---------------------------------------------------------------------------
