@@ -2,7 +2,6 @@
 package cc.jumpkick.host;
 
 import java.lang.management.ManagementFactory;
-import java.time.Duration;
 
 /**
  * A wall bound stretched by the load the host is under. A forked compiler that boots in ten seconds
@@ -20,11 +19,6 @@ public final class HostLoad {
     /** The host's one-minute load average, or a negative number where the platform reports none. */
     public static double loadAverage() {
         return ManagementFactory.getOperatingSystemMXBean().getSystemLoadAverage();
-    }
-
-    /** {@code base} multiplied by the load average per online processor — at least once, at most {@link #MAX_FACTOR} times. */
-    public static Duration stretch(Duration base) {
-        return base.multipliedBy(factor(loadAverage(), HostProcessors.count()));
     }
 
     /** The stretch for a load average over a processor count: load per processor, rounded up, within [1, {@link #MAX_FACTOR}]. */
