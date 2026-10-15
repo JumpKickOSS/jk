@@ -1,0 +1,6 @@
+name = "jk-host"
+java = 17
+
+[dependencies.jspecify]
+group = "org.jspecify"
+version = "1.0.1"

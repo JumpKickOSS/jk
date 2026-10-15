@@ -14,35 +14,35 @@ Batteries come in two tiers. **Core** batteries ship with every release, are exe
 own self-host build, and a regression in one blocks a release. **Contrib** batteries are
 best-effort: they ship in the same binary, their tests run, but a framework release that breaks
 one does not hold jk back, and their docs say so. Nothing moves tier silently; this table is the
-register.
+register. **Since** is the first jk release that shipped the battery.
 
-| Battery | Owns | Tier | Why that tier |
-|---|---|---|---|
-| java-compiler | `javac` / Zinc incremental compile, annotation processors; its worker maps a JEP 514 startup cache (so do the kotlinc and formatter workers) | core | every build |
-| kotlin-compiler | `[kotlin]`, K2, KSP, `[[kotlin-plugins]]` | core | every Kotlin build |
-| groovy-compiler | `[groovy]`, joint compilation | core | Grails and Spock paths |
-| test-runner | JUnit Platform suites (Jupiter; JUnit 4 via Vintage; TestNG via testng-engine), tags, profiles (tag filters, test-JVM args), `-ea` test JVMs, coverage (`--coverage` / `[test] coverage`: JaCoCo XML + HTML per module, Coverage block in `jk-results.md`), launcher failures as failed steps | core | every `jk test` |
-| formatter | `jk format` | core | closes the agent edit loop |
-| publisher | `jk publish`: Maven layout, GPG, Sigstore, SLSA, CycloneDX/SPDX; the sources and javadoc jars beside the jar — javadoc for Java, Dokka (`[dokka]`) for Kotlin | core | the ship path for libraries |
-| image-builder | `jk image`: OCI images, JRE base, AOT cache | core | the ship path for services |
-| auditor | `jk audit` (OSV), `jk deny` | core | supply-chain defaults |
-| minified | `[minified]`: R8 classfile-mode slim jar | core | `jk native` and image size |
-| spring-boot | `[spring-boot]`: Boot jar, platform BOM, AOT step | core | the largest server segment |
-| quarkus | `[quarkus]`: augmentation, fast-jar, native via Quarkus | core | second server segment |
-| micronaut | `[micronaut]`: platform BOM, AOT | core | third server segment; Test Resources is not part of it before 1.0 |
-| protobuf | `[protobuf]`: provisioned `protoc`, Java + Kotlin codegen, protoc plugins (`[protobuf.grpc-java]`) | core | the native-binary generator |
-| generator | `[generate.<name>]`: any JVM code generator as a cached generate-stage step | core | one worker behind every generator table |
-| openapi | `[openapi]`: OpenAPI Generator over a contract, interface-only Spring by default | core | most Spring services ship a contract |
-| avro | `[avro]`: Avro's SpecificCompiler over a module's schemas, protocols and IDL files, one parser across the files | core | the Kafka services' generator; code-free sugar over the generator worker |
-| jooq | `[jooq]`: jOOQ codegen over the module's DDL scripts through DDLDatabase, no database for the build; a live schema opt-in | core | most jOOQ services carry their Flyway migrations; code-free sugar over the generator worker |
-| jaxb | `[jaxb]`: xjc over a module's XML schemas and bindings, timestamp-free output | core | the SOAP and XML services' generator; code-free sugar over the generator worker |
-| lint | `[lint]`: Checkstyle, PMD, SpotBugs and detekt as cached steps after compile, each finding a diagnostic with file, line and rule id in `jk-results.md` and the MCP diagnostics; `fail-on` picks the severity that fails | core | a finding an agent does not see is a finding that stays; the census ranks Checkstyle first among the Maven plugins with no jk home |
-| intellij | `[intellij]`: an IntelliJ Platform plugin compiled against a provisioned distribution, its tests in a headless IDE, the installable plugin zip | core | jk's own IntelliJ plugin builds with it |
-| build-info | `[build-info]`: `git.properties` and Boot's `build-info.properties` as cached resources in the jar | core | Boot's `/info` endpoint on every imported service; the git-commit-id plugins' consumers |
-| android | `[android]`: resources, manifest, dex/R8, signing, APK/AAB, Hilt | **contrib** | not AGP parity; AGP moves monthly — keep `jk gradle` for full AGP |
-| grails | `[grails]`: Grails 8 on the Groovy lane | **contrib** | tracks an 8.x milestone; `latest` would pick Grails 7 |
-| hibernate | `[hibernate] enhance = true`: the project's own Hibernate bytecode enhancer over the compiled entities, a cached step whose output is the module's classes | **contrib** | entity models that rely on lazy basic attributes or dirty tracking behave differently without it; most projects do not enhance at build time |
-| Scala 3 | mixed Java/Scala modules through Zinc | **contrib** | compiles; no cross-building, Scala.js/Native or sbt parity |
+| Battery | Owns | Tier | Since | Why that tier |
+|---|---|---|---|---|
+| java-compiler | `javac` / Zinc incremental compile, annotation processors; its worker maps a JEP 514 startup cache (so do the kotlinc and formatter workers) | core | 0.10.1 | every build |
+| kotlin-compiler | `[kotlin]`, K2, KSP, `[[kotlin-plugins]]` | core | 0.10.1 | every Kotlin build |
+| groovy-compiler | `[groovy]`, joint compilation | core | 0.11.0 | Grails and Spock paths |
+| test-runner | JUnit Platform suites (Jupiter; JUnit 4 via Vintage; TestNG via testng-engine), tags, profiles (tag filters, test-JVM args), `-ea` test JVMs, coverage (`--coverage` / `[test] coverage`: JaCoCo XML + HTML per module, Coverage block in `jk-results.md`), launcher failures as failed steps | core | 0.10.1 | every `jk test` |
+| formatter | `jk format` | core | 0.10.1 | closes the agent edit loop |
+| publisher | `jk publish`: Maven layout, GPG, Sigstore, SLSA, CycloneDX/SPDX; the sources and javadoc jars beside the jar — javadoc for Java, Dokka (`[dokka]`) for Kotlin | core | 0.10.1 | the ship path for libraries |
+| image-builder | `jk image`: OCI images, JRE base, AOT cache | core | 0.10.1 | the ship path for services |
+| auditor | `jk audit` (OSV), `jk deny` | core | 0.10.1 | supply-chain defaults |
+| minified | `[minified]`: R8 classfile-mode slim jar | core | 0.10.1 | `jk native` and image size |
+| spring-boot | `[spring-boot]`: Boot jar, platform BOM, AOT step | core | 0.10.1 | the largest server segment |
+| quarkus | `[quarkus]`: augmentation, fast-jar, native via Quarkus | core | 0.11.0 | second server segment |
+| micronaut | `[micronaut]`: platform BOM, AOT | core | 0.11.0 | third server segment; Test Resources is not part of it before 1.0 |
+| protobuf | `[protobuf]`: provisioned `protoc`, Java + Kotlin codegen, protoc plugins (`[protobuf.grpc-java]`) | core | 0.10.1 | the native-binary generator |
+| generator | `[generate.<name>]`: any JVM code generator as a cached generate-stage step | core | 0.13.8 | one worker behind every generator table |
+| openapi | `[openapi]`: OpenAPI Generator over a contract, interface-only Spring by default | core | 0.13.8 | most Spring services ship a contract |
+| avro | `[avro]`: Avro's SpecificCompiler over a module's schemas, protocols and IDL files, one parser across the files | core | 0.13.8 | the Kafka services' generator; code-free sugar over the generator worker |
+| jooq | `[jooq]`: jOOQ codegen over the module's DDL scripts through DDLDatabase, no database for the build; a live schema opt-in | core | 0.13.8 | most jOOQ services carry their Flyway migrations; code-free sugar over the generator worker |
+| jaxb | `[jaxb]`: xjc over a module's XML schemas and bindings, timestamp-free output | core | 0.13.8 | the SOAP and XML services' generator; code-free sugar over the generator worker |
+| lint | `[lint]`: Checkstyle, PMD, SpotBugs and detekt as cached steps after compile, each finding a diagnostic with file, line and rule id in `jk-results.md` and the MCP diagnostics; `fail-on` picks the severity that fails | core | 0.13.8 | a finding an agent does not see is a finding that stays; the census ranks Checkstyle first among the Maven plugins with no jk home |
+| intellij | `[intellij]`: an IntelliJ Platform plugin compiled against a provisioned distribution, its tests in a headless IDE, the installable plugin zip | core | 0.15.2 | jk's own IntelliJ plugin builds with it |
+| build-info | `[build-info]`: `git.properties` and Boot's `build-info.properties` as cached resources in the jar | core | 0.13.8 | Boot's `/info` endpoint on every imported service; the git-commit-id plugins' consumers |
+| android | `[android]`: resources, manifest, dex/R8, signing, APK/AAB, Hilt | **contrib** | 0.10.1 | not AGP parity; AGP moves monthly — keep `jk gradle` for full AGP |
+| grails | `[grails]`: Grails 8 on the Groovy lane | **contrib** | 0.11.0 | tracks an 8.x milestone; `latest` would pick Grails 7 |
+| hibernate | `[hibernate] enhance = true`: the project's own Hibernate bytecode enhancer over the compiled entities, a cached step whose output is the module's classes | **contrib** | 0.15.1 | entity models that rely on lazy basic attributes or dirty tracking behave differently without it; most projects do not enhance at build time |
+| Scala 3 | mixed Java/Scala modules through Zinc | **contrib** | 0.13.0 | compiles; no cross-building, Scala.js/Native or sbt parity |
 
 Coverage (`jk test --coverage` / the Coverage block), sources and javadoc jars, Central Portal
 publishing (`jk publish --central`), and lint as a cached step are core batteries today — see the
@@ -76,8 +76,9 @@ name is refused the same way.
 ## Third-party and vendored plugins
 
 The plugin SDK, `cc.jumpkick:jk-plugin-sdk` (with `jk-host`, its one dependency), ships to
-`https://jumpkick.build/repo/` with each release and is publishable to Maven Central with
-`jk publish --central` ([releases](../contributors/releases.md)); it is not on Central yet. A
+`https://jumpkick.build/repo/` and Maven Central with each release, at the release's version.
+jk resolves `cc.jumpkick` from jumpkick.build alone; a plugin built with Maven or Gradle finds the
+SDK on Central. A
 plugin authored outside the jk tree depends on that coordinate and declares the jk it needs with a
 `jk-compat` floor — [examples/third-party-plugin](examples/third-party-plugin/) is the complete
 shape, and the [contributor plugin guide](../contributors/plugins.md) the reference. Pre-1.0 the
