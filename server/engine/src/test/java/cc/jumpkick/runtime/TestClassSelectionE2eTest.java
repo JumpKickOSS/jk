@@ -37,7 +37,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * {@code --class} across a workspace: the patterns are judged once for the run. A module without
  * the class skips; the run fails only when no module matched; a standalone project fails on the
- * spot; a {@code [test] serial-tags} partition is judged with the rest of its suite.
+ * spot; a {@code [test] serial-tags} partition is judged with the rest of its suite. {@code
+ * --exclusive} keeps a prerequisite's suite from running at all.
  */
 // Out of the unit tier: network resolve + real forked test JVMs.
 @Tag("integration")
@@ -231,6 +232,62 @@ class TestClassSelectionE2eTest {
         assertThat(present.result().success()).isTrue();
         assertThat(present.plan().get(BuildPlanner.TEST_RESULT))
                 .hasValueSatisfying(tests -> assertThat(tests.total()).isEqualTo(1L));
+    }
+
+    @Test
+    void exclusive_runs_only_the_selected_module_and_its_prerequisite_compiles_without_a_test_jvm(@TempDir Path tmp)
+            throws Exception {
+        Path ws = workspace(tmp);
+        // A lib suite that forked would fail before its first test.
+        Files.writeString(
+                ws.resolve("lib/jk.toml"), "\n[test]\njvm-args = [\"-XX:+NoSuchJkFlag\"]\n", StandardOpenOption.APPEND);
+        Steps steps = new Steps();
+        TestSelection exclusive =
+                TestSelection.DEFAULT.withOnlyModules(List.of(ws.resolve("app").toString()));
+
+        WorkspaceResult result = test(ws, tmp, exclusive, 0, steps);
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.success()).isTrue();
+        assertThat(steps.status.get(ws.resolve("lib"))).isEqualTo(TaskStatus.SKIPPED);
+        assertThat(steps.label.get(ws.resolve("lib"))).isEqualTo(TaskNames.TESTS_NOT_SELECTED);
+        assertThat(steps.tests(ws.resolve("lib"))).isNull();
+        assertThat(Files.isDirectory(ws.resolve("lib/target/test-classes/com/example")))
+                .as("the prerequisite still compiled its tests")
+                .isTrue();
+        assertThat(steps.status.get(ws.resolve("app"))).isEqualTo(TaskStatus.SUCCESS);
+        assertThat(steps.tests(ws.resolve("app"))).isNotNull();
+    }
+
+    @Test
+    void without_exclusive_the_prerequisite_runs_its_suite(@TempDir Path tmp) throws Exception {
+        Path ws = workspace(tmp);
+        Steps steps = new Steps();
+
+        WorkspaceResult result = test(ws, tmp, TestSelection.DEFAULT, 0, steps);
+
+        assertThat(result.success()).isTrue();
+        assertThat(steps.tests(ws.resolve("lib")))
+                .extracting(TestSummary::total)
+                .isEqualTo(1L);
+    }
+
+    @Test
+    void exclusive_composes_with_a_class_pattern(@TempDir Path tmp) throws Exception {
+        Path ws = workspace(tmp);
+        Steps steps = new Steps();
+        TestSelection selection = TestSelection.DEFAULT
+                .withClasses(List.of("AppTest"))
+                .withOnlyModules(List.of(ws.resolve("app").toString()));
+
+        WorkspaceResult result = test(ws, tmp, selection, 0, steps);
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.success()).isTrue();
+        assertThat(steps.label.get(ws.resolve("lib"))).isEqualTo(TaskNames.TESTS_NOT_SELECTED);
+        assertThat(steps.tests(ws.resolve("app")))
+                .extracting(TestSummary::total)
+                .isEqualTo(1L);
     }
 
     private static WorkspaceResult test(Path ws, Path tmp, List<String> classes, int workers, Steps steps)

@@ -129,7 +129,8 @@ final class RequestJson {
                 .optionalTrue("guard", value.guard())
                 .optionalTrue("scriptsOnly", value.scriptsOnly())
                 .optionalTrue("noScripts", value.noScripts())
-                .optionalArray("classes", value.classes());
+                .optionalArray("classes", value.classes())
+                .optionalArray("onlyModules", value.onlyModules());
     }
 
     String finish() {

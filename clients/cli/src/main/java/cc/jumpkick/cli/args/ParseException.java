@@ -18,6 +18,8 @@ public final class ParseException extends Exception {
         MISSING_VALUE,
         MISSING_REQUIRED,
         TOO_MANY_ARGS,
+        /** A JVM flag such as {@code -Xmx2g} given where jk's own short options are parsed. */
+        JVM_OPTION,
     }
 
     private final transient Kind kind;

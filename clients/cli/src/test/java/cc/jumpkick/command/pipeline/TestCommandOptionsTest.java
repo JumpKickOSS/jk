@@ -8,6 +8,7 @@ import cc.jumpkick.cli.CommandModels;
 import cc.jumpkick.cli.HelpRenderer;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.args.ArgParser;
+import cc.jumpkick.cli.args.ParseException;
 import cc.jumpkick.command.project.ExplainCommand;
 import cc.jumpkick.command.toolchain.ToolInstallCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -163,5 +164,33 @@ class TestCommandOptionsTest {
                 .isTrue();
         assertThat(new BuildCommand().options().stream().map(Opt::names).anyMatch(n -> n.contains("--no-scripts")))
                 .isTrue();
+    }
+
+    @Test
+    void exclusive_is_a_flag_with_a_short_form_and_generic_help() throws Exception {
+        Opt exclusive = new TestCommand()
+                .options().stream()
+                        .filter(o -> o.names().contains("--exclusive"))
+                        .findFirst()
+                        .orElseThrow();
+        assertThat(exclusive.names()).containsExactly("-X", "--exclusive");
+        assertThat(exclusive.takesValue()).isFalse();
+        assertThat(parse("-m", "app", "-X").isSet("exclusive")).isTrue();
+        assertThat(parse("-m", "app", "--exclusive").isSet("exclusive")).isTrue();
+        assertThat(parse("-m", "app").isSet("exclusive")).isFalse();
+        String help = HelpRenderer.renderHelp(CommandModels.from(new TestCommand(), "jk test", List.of()), false);
+        assertThat(help).contains("Selected modules only (no prereqs)");
+    }
+
+    @Test
+    void a_jvm_flag_is_refused_with_a_jvm_arg_hint_instead_of_bundling_into_dash_x() {
+        for (String jvm : List.of("-Xmx2g", "-Xms512m", "-Xss4m", "-XX:+UseZGC", "-Xlog:gc")) {
+            assertThatThrownBy(() -> parse(jvm))
+                    .isInstanceOf(ParseException.class)
+                    .hasMessageContaining("is a JVM option")
+                    .hasMessageContaining("--jvm-arg=" + jvm)
+                    .extracting(e -> ((ParseException) e).kind())
+                    .isEqualTo(ParseException.Kind.JVM_OPTION);
+        }
     }
 }

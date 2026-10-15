@@ -74,6 +74,11 @@ import org.jspecify.annotations.Nullable;
  */
 public final class TestCommand implements CliCommand {
 
+    static final String EXCLUSIVE_HELP = "Selected modules only (no prereqs)";
+
+    static final String EXCLUSIVE_NEEDS_MODULES =
+            "--exclusive needs a module selection: -m <module>, or run from a member directory";
+
     @Override
     public String name() {
         return "test";
@@ -99,6 +104,7 @@ public final class TestCommand implements CliCommand {
         opts.addAll(CommonOpts.moduleSelection(
                 Opt.flag("Ranked WIP tests (does not run)", "--affected"),
                 Opt.value("<git-ref>", "Ranked tests since ref (no run)", "--affected-since")));
+        opts.add(Opt.flag(EXCLUSIVE_HELP, "-X", "--exclusive"));
         opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
                 .repeat());
         opts.add(Opt.flag("Run every discovered test suite", "--all"));
@@ -146,6 +152,9 @@ public final class TestCommand implements CliCommand {
     @Nullable
     String modulesSpec;
 
+    /** {@code --exclusive}: only the selected modules' suites run; their prerequisites only compile. */
+    boolean exclusive;
+
     TestSelection testSelection = TestSelection.DEFAULT;
 
     /** {@code --debug-jvm}: the one test JVM starts with a JDWP listener; null for a plain run. */
@@ -170,6 +179,7 @@ public final class TestCommand implements CliCommand {
         this.affectedSince = in.value("affected-since").orElse(null);
         this.affectedWip = in.isSet("affected");
         this.modulesSpec = CommonOpts.modulesSpec(in);
+        this.exclusive = in.isSet("exclusive");
         if (ModuleSelectors.bothSelectors(affectedWip, affectedSince)) {
             CommandWedge.printFail("Test", ModuleSelectors.BOTH_MESSAGE);
             return Exit.CONFIG;
@@ -220,6 +230,7 @@ public final class TestCommand implements CliCommand {
         var info = ProjectInfos.orNull(dir);
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(dir, modulesSpec, info);
         if (cwdScope.inferredFromCwd()) this.modulesSpec = cwdScope.modulesSpec();
+        if (exclusiveWithoutSelection()) return finishSession(Exit.CONFIG);
         if (!jdkReady(dir, info)) return finishSession(Exit.FAILURE);
 
         // Workspace root: fan out to members so a bare `jk test` is not just the root
@@ -310,6 +321,14 @@ public final class TestCommand implements CliCommand {
         return JdkPreflight.ensure(dir, info, jdksDir, BuildPlanConsole.modeFor(global));
     }
 
+    /** {@code --exclusive} with neither {@code -m} nor a member directory to narrow to; printed. */
+    private boolean exclusiveWithoutSelection() {
+        if (!exclusive || (modulesSpec != null && !modulesSpec.isBlank())) return false;
+        CommandWedge.printFail("Test", EXCLUSIVE_NEEDS_MODULES);
+        if (session != null) session.error(EXCLUSIVE_NEEDS_MODULES);
+        return true;
+    }
+
     private int finishSession(int code) {
         return CliSessionTranscript.finish(session, code, global.verbose);
     }
@@ -380,6 +399,7 @@ public final class TestCommand implements CliCommand {
             argv.add(r);
         });
         if (in.isSet("affected")) argv.add("--affected");
+        if (in.isSet("exclusive")) argv.add("--exclusive");
         if (in.isSet("serial-tests") || in.isSet("no-parallel-tests")) argv.add("--serial-tests");
         else if (in.isSet("parallel-tests")) argv.add("--parallel-tests");
         in.value("workers").ifPresent(w -> {
@@ -410,6 +430,10 @@ public final class TestCommand implements CliCommand {
                 CommandWedge.printOk("Test", "nothing selected for tests");
                 if (session != null) session.wedge("nothing selected for tests");
                 return 0;
+            }
+            if (exclusive) {
+                this.testSelection = testSelection.withOnlyModules(sel.moduleDirs());
+                SessionContext.install(SessionContext.current().withTestSelection(testSelection));
             }
         } else if (rootInfo != null && rootInfo.moduleDirs().isEmpty()) {
             CommandWedge.printOk("Test", "workspace declares no modules");
@@ -470,8 +494,13 @@ public final class TestCommand implements CliCommand {
         }
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
         var tails = new WorkspaceRunView.Tails(
-                (r, planned) ->
-                        workspaceTestSuccessTail(r, planned, run.servedFromCache(), run.modulesWithSuite(), elapsedMs),
+                (r, planned) -> workspaceTestSuccessTail(
+                        r,
+                        planned,
+                        run.servedFromCache(),
+                        run.modulesWithSuite(),
+                        run.prerequisitesNotTested(),
+                        elapsedMs),
                 r -> workspaceTestFailureTail(r, elapsedMs));
         return run.settleLive(view, agg, result, elapsedMs, tails, settled -> {});
     }
@@ -500,7 +529,12 @@ public final class TestCommand implements CliCommand {
                 CommandWedge.printOk(
                         "Test",
                         workspaceTestSuccessTail(
-                                result, run.planned(), run.servedFromCache(), run.modulesWithSuite(), ms));
+                                result,
+                                run.planned(),
+                                run.servedFromCache(),
+                                run.modulesWithSuite(),
+                                run.prerequisitesNotTested(),
+                                ms));
             }
             return 0;
         }
@@ -568,16 +602,23 @@ public final class TestCommand implements CliCommand {
      * is a green run that tested nothing — {@code --profile <tier>} over modules that carry no
      * such tier — and saying "tests passed" there reads as a passing suite to a person and to an
      * agent alike.
+     *
+     * <p>{@code notTested} is how many prerequisites {@code --exclusive} compiled without running
+     * their suites. They are left out of the module count and named in their own clause, so a green
+     * strict run does not read as a full one.
      */
     static String workspaceTestSuccessTail(
-            WorkspaceResult result, int planned, int served, int withSuite, long elapsedMs) {
-        int n = result.modules() == null ? 0 : result.modules().size();
-        if (n == 0 || planned == 0 || withSuite == 0) {
-            return "No tests to run";
+            WorkspaceResult result, int planned, int served, int withSuite, int notTested, long elapsedMs) {
+        int n = (result.modules() == null ? 0 : result.modules().size()) - notTested;
+        String skipped = notTested <= 0
+                ? ""
+                : "; " + notTested + " prerequisite" + (notTested == 1 ? "" : "s") + " not tested (--exclusive)";
+        if (n <= 0 || planned == 0 || withSuite == 0) {
+            return "No tests to run" + skipped;
         }
         String took = ConsoleSpec.took(Duration.ofMillis(elapsedMs));
         if (n == 1) {
-            return "Tests passed" + (served > 0 ? ", served from cache " : " ") + took;
+            return "Tests passed" + (served > 0 ? ", served from cache" : "") + skipped + " " + took;
         }
         String servedClause = served <= 0
                 ? ""
@@ -587,7 +628,9 @@ public final class TestCommand implements CliCommand {
                                 + Theme.colorize(
                                         String.valueOf(served), Theme.active().focused()) + " served from cache";
         return "Tests passed for "
-                + Theme.colorize(String.valueOf(n), Theme.active().focused()) + " modules" + servedClause + " " + took;
+                + Theme.colorize(String.valueOf(n), Theme.active().focused()) + " modules" + servedClause + skipped
+                + " "
+                + took;
     }
 
     private static String workspaceTestFailureTail(WorkspaceResult result, long elapsedMs) {
