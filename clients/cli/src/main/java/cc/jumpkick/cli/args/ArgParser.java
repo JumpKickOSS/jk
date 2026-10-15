@@ -17,6 +17,13 @@ import org.jspecify.annotations.Nullable;
  */
 public final class ArgParser {
 
+    /**
+     * A HotSpot {@code -X} flag. Short options bundle, so without this check {@code -Xmx2g} would
+     * parse as {@code -X -m x2g} on a command that declares both.
+     */
+    private static final Pattern JVM_FLAG = Pattern.compile(
+            "-X(X[:+-].*|m[sxn]\\d.*|ss\\d.*|log(:.*)?|share:.*|int|comp|mixed|rs|noclassgc|debug|diag|check:.*|future)");
+
     private ArgParser() {}
 
     public static Invocation parse(Command command, List<String> args) throws ParseException {
@@ -127,6 +134,12 @@ public final class ArgParser {
             String tok,
             boolean passthroughUnknown)
             throws ParseException {
+        if (!passthroughUnknown && JVM_FLAG.matcher(tok).matches()) {
+            throw new ParseException(
+                    ParseException.Kind.JVM_OPTION,
+                    tok,
+                    tok + " is a JVM option, not a jk option; pass it with --jvm-arg=" + tok);
+        }
         // Walk the cluster char by char; a value-taking short consumes the rest
         // of the token (or the next arg) and ends the cluster.
         for (int c = 1; c < tok.length(); c++) {

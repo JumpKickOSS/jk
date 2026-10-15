@@ -569,12 +569,27 @@ public final class PlannerTest {
                 .build();
     }
 
+    /** Whether {@code moduleDir}'s suite runs: always, unless {@code --exclusive} left it out of the selection. */
+    static boolean selectedForTests(TestSelection selection, Path moduleDir) {
+        if (!selection.exclusive()) return true;
+        Path dir = BuildGraph.canonicalPath(moduleDir);
+        return selection.onlyModules().stream()
+                .map(Path::of)
+                .map(BuildGraph::canonicalPath)
+                .anyMatch(dir::equals);
+    }
+
     /** Run one module's suite, or replay its last green run when nothing it reads has changed. */
     private static void runTests(TaskContext ctx, BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls)
             throws Exception {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
+        if (!selectedForTests(in.session().testSelection(), in.dir())) {
+            ctx.label(TaskNames.TESTS_NOT_SELECTED);
+            ctx.cached();
+            return;
+        }
         if (ctx.get(NO_TEST_SOURCES).orElse(false)) {
             ctx.label("no tests to run");
             return;

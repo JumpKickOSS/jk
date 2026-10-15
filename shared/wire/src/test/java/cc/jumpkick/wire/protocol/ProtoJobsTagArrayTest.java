@@ -86,4 +86,18 @@ class ProtoJobsTagArrayTest {
         assertThat(skipBack.noScripts()).isTrue();
         assertThat(skipBack.runGuardScripts()).isFalse();
     }
+
+    /** The selected modules ride the wire; a module's own suite identity does not depend on them. */
+    @Test
+    void exclusive_module_dirs_survive_the_round_trip_and_stay_out_of_the_identity() {
+        TestSelection plain = TestSelection.of(List.of(), false, List.of(), List.of());
+        TestSelection sent = plain.withOnlyModules(List.of("/ws/app", "/ws/lib"));
+        TestSelection back = ProtoJobs.testSelectionOf("{" + ProtoJobs.testSelectionFields(sent) + "}");
+        assertThat(back.onlyModules()).containsExactly("/ws/app", "/ws/lib");
+        assertThat(back.exclusive()).isTrue();
+        assertThat(back.identityToken()).isEqualTo(plain.identityToken());
+        assertThat(ProtoJobs.testSelectionOf("{" + ProtoJobs.testSelectionFields(plain) + "}")
+                        .exclusive())
+                .isFalse();
+    }
 }

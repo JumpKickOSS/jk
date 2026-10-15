@@ -112,6 +112,7 @@ final class WorkspaceRunView {
     private final AtomicInteger planned = new AtomicInteger();
     private final AtomicInteger served = new AtomicInteger();
     private final AtomicInteger withSuite = new AtomicInteger();
+    private final AtomicInteger notSelected = new AtomicInteger();
 
     /**
      * @param session transcript to mirror module events into, or null when the verb keeps none
@@ -145,6 +146,11 @@ final class WorkspaceRunView {
     /** Modules that ran a suite or replayed one; zero means the run tested nothing. */
     int modulesWithSuite() {
         return withSuite.get();
+    }
+
+    /** Prerequisites an {@code --exclusive} run compiled without running their suites. */
+    int prerequisitesNotTested() {
+        return notSelected.get();
     }
 
     /** Buffered module output in completion order, painted. Empty for non-buffered chrome. */
@@ -491,7 +497,7 @@ final class WorkspaceRunView {
 
     /** {@code lis} with this module's served-from-cache tally beside it; see {@link #servedFromCache()}. */
     private BuildPlanListener counting(BuildPlanListener lis) {
-        return CompositeBuildPlanListener.of(lis, new ServedTally(served, withSuite));
+        return CompositeBuildPlanListener.of(lis, new ServedTally(served, withSuite, notSelected));
     }
 
     /**

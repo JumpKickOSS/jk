@@ -166,6 +166,18 @@ name the class: `jk test -m clients/cli --class SelfNukeCommandTest` runs it in 
 and skips the prerequisites, whose suites match nothing. A prerequisite compiles its tests and
 is judged from their class files, so it skips without a test JVM, warm engine or cold.
 
+`--exclusive` (`-X`) runs **exactly** the selected modules' suites. Prerequisites still compile,
+main and test, but their suites do not run: each one's `run-tests` step reads
+`prerequisite, tests not run (--exclusive)`, and the summary counts them apart (`Tests passed;
+3 prerequisites not tested (--exclusive)`). Use it while iterating on one module in a large
+workspace, and run without it before you share the change: the default run is the one that
+proves a module against everything it builds on. It needs a selection, either `-m` or a member
+directory as the working directory; without one it is a usage error. It composes with `--class`,
+`--suite`, tag filters and `--guard`.
+
+`-X` is jk's flag here, not the JVM's: `jk test -Xmx2g` is refused with a hint to pass JVM flags
+as `--jvm-arg=-Xmx2g`.
+
 ## Leave classes, sources and dependencies out (`[test] exclude-classes`, `exclude-src`, `exclude-dependencies`)
 
 ```toml

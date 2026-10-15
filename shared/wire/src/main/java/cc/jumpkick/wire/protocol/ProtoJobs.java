@@ -38,15 +38,16 @@ public final class ProtoJobs {
 
     public static TestSelection testSelectionOf(String json) {
         return TestSelection.of(
-                Jsonl.strArray(json, "suites"),
-                Jsonl.bool(json, "allSuites", false),
-                Jsonl.strArray(json, "includeTags"),
-                Jsonl.strArray(json, "excludeTags"),
-                Jsonl.bool(json, "tagsResolved", false),
-                Jsonl.bool(json, "guard", false),
-                Jsonl.bool(json, "scriptsOnly", false),
-                Jsonl.bool(json, "noScripts", false),
-                Jsonl.strArray(json, "classes"));
+                        Jsonl.strArray(json, "suites"),
+                        Jsonl.bool(json, "allSuites", false),
+                        Jsonl.strArray(json, "includeTags"),
+                        Jsonl.strArray(json, "excludeTags"),
+                        Jsonl.bool(json, "tagsResolved", false),
+                        Jsonl.bool(json, "guard", false),
+                        Jsonl.bool(json, "scriptsOnly", false),
+                        Jsonl.bool(json, "noScripts", false),
+                        Jsonl.strArray(json, "classes"))
+                .withOnlyModules(Jsonl.strArray(json, "onlyModules"));
     }
 
     /** The requested JDWP listener, or {@code null} when the line carries none. */

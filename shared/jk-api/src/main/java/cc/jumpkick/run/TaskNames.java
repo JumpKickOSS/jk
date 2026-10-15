@@ -154,6 +154,12 @@ public final class TaskNames {
     public static final String TESTS_UP_TO_DATE = "tests up-to-date";
 
     /**
+     * The label {@link #RUN_TESTS} carries in a prerequisite of an {@code --exclusive} selection:
+     * the module compiled but its suite did not run; a client counts those modules by it.
+     */
+    public static final String TESTS_NOT_SELECTED = "prerequisite, tests not run (--exclusive)";
+
+    /**
      * Packaging steps that require only {@link #PACKAGE_JAR} and therefore run <em>concurrently</em>
      * with {@link #RUN_TESTS} rather than after it.
      *

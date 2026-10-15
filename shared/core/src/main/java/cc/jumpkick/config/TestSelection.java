@@ -43,16 +43,22 @@ public record TestSelection(
          * simple name (matched in any package), or either with {@code *} wildcards. Empty means every
          * class the suites and tags select.
          */
-        List<String> classes) {
+        List<String> classes,
+        /**
+         * {@code --exclusive}: absolute directories of the modules whose suites run; their
+         * prerequisites compile but run no tests. Empty means every module in the run tests.
+         */
+        List<String> onlyModules) {
 
     public static final TestSelection DEFAULT =
-            new TestSelection(List.of(), false, List.of(), List.of(), false, false, false, false, List.of());
+            new TestSelection(List.of(), false, List.of(), List.of(), false, false, false, false, List.of(), List.of());
 
     public TestSelection {
         suites = normalizeNames(suites);
         includeTags = normalizeNames(includeTags);
         excludeTags = normalizeNames(excludeTags);
         classes = normalizeNames(classes);
+        onlyModules = normalizeNames(onlyModules);
     }
 
     public static TestSelection of(
@@ -110,7 +116,13 @@ public record TestSelection(
                 guard,
                 scriptsOnly,
                 noScripts,
-                classes == null ? List.of() : classes);
+                classes == null ? List.of() : classes,
+                List.of());
+    }
+
+    /** True when {@code --exclusive} limits the run's suites to {@link #onlyModules}. */
+    public boolean exclusive() {
+        return !onlyModules.isEmpty();
     }
 
     /** Guard scripts run with {@code --guard} unless {@link #noScripts}, or with {@link #scriptsOnly}. */
@@ -174,7 +186,22 @@ public record TestSelection(
                 guard,
                 scriptsOnly,
                 noScripts,
-                names == null ? List.of() : names);
+                names == null ? List.of() : names,
+                onlyModules);
+    }
+
+    public TestSelection withOnlyModules(List<String> moduleDirs) {
+        return new TestSelection(
+                suites,
+                allSuites,
+                includeTags,
+                excludeTags,
+                tagsResolved,
+                guard,
+                scriptsOnly,
+                noScripts,
+                classes,
+                moduleDirs == null ? List.of() : moduleDirs);
     }
 
     public TestSelection withExcludeTags(List<String> more) {
@@ -190,7 +217,8 @@ public record TestSelection(
                 guard,
                 scriptsOnly,
                 noScripts,
-                classes);
+                classes,
+                onlyModules);
     }
 
     public TestSelection withIncludeTags(List<String> more) {
@@ -206,7 +234,8 @@ public record TestSelection(
                 guard,
                 scriptsOnly,
                 noScripts,
-                classes);
+                classes,
+                onlyModules);
     }
 
     private static List<String> normalizeNames(List<String> in) {
