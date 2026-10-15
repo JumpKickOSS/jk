@@ -3,7 +3,6 @@ package cc.jumpkick.host;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
 /** A bound grows with the load per processor and never shrinks below what it was on a quiet host. */
@@ -25,12 +24,5 @@ class HostLoadTest {
                 .as("rounded up: any excess costs a whole step")
                 .isEqualTo(2);
         assertThat(HostLoad.factor(1_000, 24)).isEqualTo(HostLoad.MAX_FACTOR);
-    }
-
-    @Test
-    void stretch_multiplies_the_base_and_never_returns_less_than_it() {
-        Duration base = Duration.ofSeconds(30);
-        assertThat(HostLoad.stretch(base)).isGreaterThanOrEqualTo(base);
-        assertThat(HostLoad.stretch(base)).isLessThanOrEqualTo(base.multipliedBy(HostLoad.MAX_FACTOR));
     }
 }

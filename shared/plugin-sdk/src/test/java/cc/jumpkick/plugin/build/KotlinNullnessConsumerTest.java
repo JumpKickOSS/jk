@@ -3,7 +3,6 @@ package cc.jumpkick.plugin.build;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.host.HostLoad;
 import cc.jumpkick.host.Os;
 import java.io.File;
 import java.io.IOException;
@@ -11,7 +10,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -57,6 +58,26 @@ class KotlinNullnessConsumerTest {
         assertThat(result.output()).contains("return type mismatch");
     }
 
+    @Test
+    void a_child_that_stops_using_cpu_is_given_up_on(@TempDir Path temp) throws Exception {
+        Path sleeper = temp.resolve("Sleeper.java");
+        Files.writeString(sleeper, """
+                class Sleeper {
+                    public static void main(String[] args) throws Exception {
+                        Thread.sleep(600_000);
+                    }
+                }
+                """);
+        Process process = new ProcessBuilder(javaExecutable().toString(), sleeper.toString()).start();
+        try {
+            long start = System.nanoTime();
+            assertThat(awaitWhileWorking(process, Duration.ofSeconds(3))).contains("used no CPU for 3 seconds");
+            assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofMinutes(2));
+        } finally {
+            process.destroyForcibly();
+        }
+    }
+
     private static CompileResult compile(Path temp, Path source) throws Exception {
         Path output = Files.createDirectories(temp.resolve("classes"));
         Path log = temp.resolve("compiler.log");
@@ -70,15 +91,43 @@ class KotlinNullnessConsumerTest {
         // that on its own, so neither copy of it is spelled there: the launcher reads CLASSPATH,
         // the compiler reads its argfile.
         builder.environment().put("CLASSPATH", System.getProperty("java.class.path"));
-        // A hang guard, not a budget: the compiler boots in seconds on an idle machine and in
-        // minutes on one whose load average is in the hundreds, so the bound grows with the load.
-        Duration bound = HostLoad.stretch(Duration.ofSeconds(30));
         Process process = builder.start();
-        if (!process.waitFor(bound.toMillis(), TimeUnit.MILLISECONDS)) {
+        String stalled = awaitWhileWorking(process, STALL);
+        if (stalled != null) {
             process.destroyForcibly();
-            throw new IOException("Kotlin compiler did not exit within " + bound.toSeconds() + " seconds");
+            throw new IOException("Kotlin compiler " + stalled + "; output:\n" + Files.readString(log));
         }
         return new CompileResult(process.exitValue(), Files.readString(log));
+    }
+
+    /** A compiler that has used no CPU for this long is hung, however loaded the host. */
+    private static final Duration STALL = Duration.ofSeconds(30);
+
+    /** The most a working compiler is given: past this it is spinning, not compiling. */
+    private static final Duration CEILING = Duration.ofMinutes(10);
+
+    /**
+     * Wait for {@code process} while it keeps using CPU: a full build starves it of time, not of
+     * progress. Null when it exited; otherwise why it was given up on. Where the platform reports no
+     * CPU time, only the ceiling applies.
+     */
+    private static @Nullable String awaitWhileWorking(Process process, Duration stall) throws InterruptedException {
+        long start = System.nanoTime();
+        long lastProgress = start;
+        Duration lastCpu = Duration.ZERO;
+        while (!process.waitFor(1, TimeUnit.SECONDS)) {
+            long now = System.nanoTime();
+            Optional<Duration> cpu = process.toHandle().info().totalCpuDuration();
+            if (cpu.isEmpty() || cpu.get().compareTo(lastCpu) > 0) {
+                lastCpu = cpu.orElse(lastCpu);
+                lastProgress = now;
+            }
+            if (now - lastProgress > stall.toNanos()) {
+                return "used no CPU for " + stall.toSeconds() + " seconds";
+            }
+            if (now - start > CEILING.toNanos()) return "did not exit within " + CEILING.toMinutes() + " minutes";
+        }
+        return null;
     }
 
     /**
