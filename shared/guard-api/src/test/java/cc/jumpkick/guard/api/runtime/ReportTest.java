@@ -16,6 +16,7 @@ import cc.jumpkick.guard.facts.MethodFacts;
 import cc.jumpkick.jsonl.MiniJson;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -126,6 +127,25 @@ class ReportTest {
         String error = requireNonNull(MiniJson.str(json, "error"));
         assertThat(error).startsWith("java.lang.IllegalStateException: kaboom");
         assertThat(error.split("\n").length).isLessThanOrEqualTo(6);
+    }
+
+    @Test
+    void a_throw_inside_jdk_code_still_names_the_guard_frame_that_reached_it() {
+        RuntimeException deep = new ArrayIndexOutOfBoundsException("Index 6 out of bounds for length 0");
+        List<StackTraceElement> frames = new ArrayList<>();
+        for (int i = 0; i < 6; i++) frames.add(new StackTraceElement("java.util.regex.Pattern", "m" + i, null, i));
+        frames.add(new StackTraceElement(
+                "cc.jumpkick.guard.house.ParityRules", "docLinksResolve", "ParityRules.java", 1161));
+        frames.add(new StackTraceElement("org.junit.Runner", "run", null, 1));
+        deep.setStackTrace(frames.toArray(StackTraceElement[]::new));
+
+        Report.Collector c = new Report.Collector();
+        c.threw(deep);
+        String error = requireNonNull(MiniJson.str(MiniJson.parse(line(c).toJson()), "error"));
+
+        assertThat(error).startsWith("java.lang.ArrayIndexOutOfBoundsException: Index 6 out of bounds for length 0");
+        assertThat(error).contains("at cc.jumpkick.guard.house.ParityRules.docLinksResolve(ParityRules.java:1161)");
+        assertThat(error).doesNotContain("org.junit.Runner");
     }
 
     @Test

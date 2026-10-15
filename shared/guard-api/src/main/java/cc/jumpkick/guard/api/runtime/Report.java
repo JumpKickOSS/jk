@@ -10,8 +10,6 @@ import cc.jumpkick.guard.api.ToolSite;
 import cc.jumpkick.guard.api.Violations;
 import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -70,15 +68,30 @@ public final class Report {
             population = examined;
         }
 
+        /**
+         * The exception line, its top frames, and the first frame outside the JDK when the top ones
+         * are all JDK code: a throw inside a collection or a regex still names the guard line that
+         * reached it.
+         */
         public void threw(Throwable t) {
             outcome = "threw";
-            StringWriter sw = new StringWriter();
-            t.printStackTrace(new PrintWriter(sw));
-            String[] lines = sw.toString().split("\n");
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < Math.min(lines.length, 6); i++)
-                sb.append(lines[i].strip()).append(i == 0 ? "" : "").append('\n');
-            error = sb.toString().strip();
+            StackTraceElement[] frames = t.getStackTrace();
+            StringBuilder sb = new StringBuilder(t.toString());
+            int shown = Math.min(frames.length, TOP_FRAMES);
+            for (int i = 0; i < shown; i++) sb.append("\nat ").append(frames[i]);
+            for (int i = 0; i < frames.length; i++) {
+                if (jdk(frames[i])) continue;
+                if (i >= shown) sb.append("\n...\nat ").append(frames[i]);
+                break;
+            }
+            error = sb.toString();
+        }
+
+        private static final int TOP_FRAMES = 4;
+
+        private static boolean jdk(StackTraceElement frame) {
+            String c = frame.getClassName();
+            return c.startsWith("java.") || c.startsWith("jdk.") || c.startsWith("sun.");
         }
 
         public void ownerMissing(String message) {
