@@ -39,9 +39,9 @@ they ride the user’s JVM).
 
 Every jk release publishes `cc.jumpkick:jk-plugin-sdk` and `cc.jumpkick:jk-host` (the SDK's one
 dependency) at the release's version — sources and javadoc jars, a POM with the metadata Central
-requires, GPG-signed — to `https://jumpkick.build/repo/`. The same modules are publishable to
-Maven Central with `jk publish --central` ([releases](releases.md#maven-central)); they are not
-on Central yet. A plugin outside this tree:
+requires, GPG-signed — to `https://jumpkick.build/repo/` and to Maven Central
+([releases](releases.md#maven-central)). jk resolves `cc.jumpkick` from jumpkick.build alone;
+Central is where a Maven or Gradle build finds them. A plugin outside this tree:
 
 ```toml
 [dependencies]

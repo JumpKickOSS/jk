@@ -409,7 +409,7 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
    under `target/dist`). The jk that builds is the hosted release `.jk/ci-bootstrap-version` pins,
    installed as a user installs it: the native client on every row. The linux-x86_64
    lane also runs `jk install`, so the first-party plugins it stages for `repo/` are the commit's
-   own.
+   own, and signs the plugin SDK's Central bundles ([below](#maven-central)).
 3. `scripts/assemble-release-dir.sh` (with `DIST_DIR` naming the dist) produces per-platform dirs —
    the client archive(s), the engine jar, the JVM client jar and the Maven spy jar — +
    `SHA256SUMS`.
@@ -429,18 +429,19 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
 6. **`gsutil rsync`** to GCS, then the pointer (`scripts/sign-latest-pointer.sh`): one `gsutil cp`
    of `LATEST` with a no-cache header. The object carries its own signature, so the publish is
    atomic. `VERSION` is copied beside it; nothing verifies it. A leftover `LATEST.sig` is removed.
+   The run then requires the jk-host and jk-plugin-sdk POMs to answer at the version on
+   jumpkick.build and releases both to Maven Central ([below](#maven-central)).
 7. `firebase deploy --only hosting` puts `hosting/public` — the installers with this release's
    floor and public key — on jumpkick.build, after the pointer they will read.
 8. `actions/attest-build-provenance` stores one build-provenance attestation per client, the
    engine jar and the SBOM (`gh attestation verify <file> --repo <owner>/<repo>` checks one).
 9. Last, `scripts/publish-github-release.sh` attaches the tree, the SBOM and the notes to the
    release that started the run and marks it latest. The release page announces nothing before the
-   installers can fetch it. A re-run replaces the assets, as the rsync replaced the tree.
+   installers can fetch it. A re-run replaces the assets, as the rsync replaced the tree. The very
+   last step waits for the SDK to resolve from repo1.maven.org.
 10. Bump `.jk/ci-bootstrap-version` to the new release
     ([self-host](self-host.md#the-bootstrap-pin)). When the release shipped a first native client
     for a platform, that platform's row joins the matrix and `JK_RELEASE_PLATFORMS`.
-11. By hand, never from the workflow: the plugin SDK to Maven Central
-    ([below](#maven-central)).
 
 ### Platforms without a hosted client
 
@@ -482,6 +483,9 @@ platforms' artifacts. Once
 | `JK_RELEASE_RSA_SIGNING_KEY` | Base64 PKCS#8 DER RSA-3072 private key (signing) |
 | `JK_RELEASE_GCS_BUCKET` | GCS bucket name only (no `gs://`), e.g. `jumpkick` |
 | `JK_RELEASE_GCS_SA_JSON` | Key of a service account holding `roles/storage.objectAdmin` on that bucket and `roles/firebasehosting.admin` on the Firebase project that serves jumpkick.build (`jk-release-uploader@jkbuild`) |
+| `JK_CENTRAL_GPG_KEY` | Armored release GPG secret key; signs the plugin SDK's Central bundles (public key on keyserver.ubuntu.com and keys.openpgp.org) |
+| `JK_CENTRAL_GPG_PASSPHRASE` | Its passphrase |
+| `JK_REPO_CENTRAL_USERNAME` / `JK_REPO_CENTRAL_PASSWORD` | Central Portal user token (central.sonatype.com → account → Generate User Token) on the account that owns the `cc.jumpkick` namespace |
 | `GITHUB_TOKEN` (automatic) | Read-only in every job but `publish`, which holds `contents: write` for the GitHub Release and `id-token`/`attestations: write` for the provenance attestations |
 
 Replacing one: `gh secret set <NAME> --repo JumpKickOSS/jk < file`, as an account with admin on
@@ -547,24 +551,37 @@ scripts/publish-github-release.sh 0.13.6 RELEASE_NOTES.md target/release/0.13.6/
 ### Maven Central
 
 The plugin SDK is a public coordinate: `cc.jumpkick:jk-plugin-sdk` and its one dependency
-`cc.jumpkick:jk-host` go to Maven Central through the Central Portal, from the same tree the
-release was built from, after `repo/` is uploaded (a plugin author resolving from `jumpkick.build`
-must see the same bytes). `jk publish --central` bundles each module's jar, POM, sources and
-javadoc jars — the `jk build` outputs under `target/shared/…/lib/` — signs every file with the
-release GPG key and polls the Portal to its verdict ([user doc](../user/publish.md#maven-central)).
+`cc.jumpkick:jk-host` go to Maven Central through the Central Portal at the release version, from
+the same tree the release was built from. jk itself resolves `cc.jumpkick` from `jumpkick.build`
+alone; Central serves plugin authors who build with Maven or Gradle.
+
+`release.yml` does it in three steps of `scripts/publish-central.sh`:
+
+1. **bundle** — the linux-x86_64 build runs `jk publish --central --sign --dry-run` in
+   `shared/host` and `shared/plugin-sdk`: each module's jar, POM, sources and javadoc jars, every
+   file signed with the release GPG key, as one Portal bundle per module.
+2. **upload** — the publish job, once `repo/` is live and both POMs answer on jumpkick.build,
+   uploads jk-host then jk-plugin-sdk with `publishingType=AUTOMATIC` and polls each deployment to
+   `PUBLISHED`. A version the Portal already lists as published is skipped, so a re-run passes.
+3. **await** — the job's last step polls `repo1.maven.org` until both POMs answer and
+   jk-plugin-sdk's `maven-metadata.xml` lists the version (Central syncs minutes to an hour after
+   it publishes).
+
+A Central version is immutable. To prove a key, a token or the POM metadata without publishing,
+run the first two steps by hand against the real Portal with `JK_CENTRAL_VALIDATE_ONLY=1`: each
+deployment is parked user-managed, polled to `VALIDATED` and then dropped.
 
 ```bash
-# once per machine: the Portal user token, bound to the Portal's origin
-printf '%s' "$TOKEN_PASSWORD" | jk repo login central --url https://central.sonatype.com --username "$TOKEN_NAME"
-
-# 6. Central, host first (the SDK's POM depends on it): user-managed, so the deployment waits for
-#    a click in the Portal after a look at target/jk-results.md; --publishing-type automatic skips it.
-export JK_GPG_PASSPHRASE=…
-JK_PUBLISH_CENTRAL=1 JK_CENTRAL_GPG_KEY_FILE=/owner-only/path/release-gpg.asc scripts/publish-maven-repo.sh
-#    or by hand, module by module:
-(cd shared/host && jk publish --central --sign --key-file /owner-only/path/release-gpg.asc)
-(cd shared/plugin-sdk && jk publish --central --sign --key-file /owner-only/path/release-gpg.asc)
+jk build --skip-tests -m shared/plugin-sdk
+JK_CENTRAL_GPG_KEY_FILE=/owner-only/path/release-gpg.asc JK_GPG_PASSPHRASE=… \
+  scripts/publish-central.sh bundle target/central
+JK_REPO_CENTRAL_USERNAME=… JK_REPO_CENTRAL_PASSWORD=… JK_CENTRAL_VALIDATE_ONLY=1 \
+  scripts/publish-central.sh upload target/central
 ```
+
+The release GPG key is its own key, not the RSA key that signs `SHA256SUMS`: Central accepts
+OpenPGP signatures only, checked against a public key it finds on keyserver.ubuntu.com or
+keys.openpgp.org.
 
 Central validates the POM's `<name>`, `<description>`, `<url>`, `<licenses>`, `<developers>` and
 `<scm>`: they come from the `[publish]` table the workspace root declares once for every member

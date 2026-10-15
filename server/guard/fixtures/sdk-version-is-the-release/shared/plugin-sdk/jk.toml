@@ -1,0 +1,5 @@
+name = "jk-plugin-sdk"
+java = 17
+
+[dependencies]
+jk-host.workspace = true

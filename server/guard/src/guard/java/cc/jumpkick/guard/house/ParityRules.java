@@ -659,6 +659,33 @@ final class ParityRules {
         v.population(2);
     }
 
+    // ---- G113 --------------------------------------------------------------------------------
+
+    private static final List<String> SDK_MANIFESTS = List.of("shared/host/jk.toml", "shared/plugin-sdk/jk.toml");
+    private static final Pattern OWN_VERSION = Pattern.compile("^version\\s*=");
+
+    @Guard(
+            id = "sdk-version-is-the-release",
+            why =
+                    "a plugin pins jk-plugin-sdk at the jk release it targets, so the SDK and the jk-host it depends on publish under the workspace version; an own `version` drifts the moment the release moves",
+            instead = "drop the `version` key and inherit the root jk.toml version")
+    @Fixture("server/guard/fixtures/sdk-version-is-the-release")
+    void sdkVersionIsTheRelease(Text text, Violations v) {
+        int population = 0;
+        for (String manifest : SDK_MANIFESTS) {
+            if (textOrNull(text, manifest) == null) continue;
+            population++;
+            List<String> lines = text.lines(manifest);
+            // Top-level keys only: the first table header ends them.
+            for (int i = 0; i < lines.size() && !lines.get(i).startsWith("["); i++)
+                if (OWN_VERSION.matcher(lines.get(i)).find())
+                    v.add(
+                            new TextSite(manifest, i + 1, lines.get(i)),
+                            manifest + " declares its own version; the SDK publishes under the release's");
+        }
+        v.population(population);
+    }
+
     // ---- G99 ---------------------------------------------------------------------------------
 
     private static final Pattern PIPE_TO_TEE = Pattern.compile("\\|\\s*tee\\b");

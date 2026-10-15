@@ -1,0 +1,5 @@
+name = "jk-host"
+java = 17
+
+[dependencies]
+jspecify = "1.0.1"

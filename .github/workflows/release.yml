@@ -15,6 +15,11 @@
 #   JK_RELEASE_GCS_BUCKET      — GCS bucket name (no gs://), e.g. jumpkick
 #   JK_RELEASE_GCS_SA_JSON     — GCP service-account JSON (storage.objectAdmin on the bucket,
 #                                firebasehosting.admin on the hosting project)
+#   JK_CENTRAL_GPG_KEY         — armored release GPG secret key; signs the plugin SDK's Central
+#                                bundles on the linux-x86_64 build (public key on keyserver.ubuntu.com)
+#   JK_CENTRAL_GPG_PASSPHRASE  — its passphrase
+#   JK_REPO_CENTRAL_USERNAME   — Central Portal user token name; only the publish job sees it
+#   JK_REPO_CENTRAL_PASSWORD   — Central Portal user token password
 #   GITHUB_TOKEN (automatic)   — read-only everywhere but the publish job, which writes the
 #                                GitHub Release (contents) and its provenance attestations
 #                                (id-token, attestations)
@@ -28,6 +33,10 @@
 # version's highlights in docs/contributors/releases.md, then the commits since the previous tag)
 # and a build-provenance attestation per artifact — attached last, once the bucket, the pointer
 # and the installers are live, so the release never announces bytes an installer cannot fetch.
+#
+# The plugin SDK (cc.jumpkick:jk-host, cc.jumpkick:jk-plugin-sdk) ships at the release version on
+# both channels: the run fails unless its POMs answer on https://jumpkick.build/repo/ and, once
+# Central has synced, on https://repo1.maven.org/ (scripts/publish-central.sh).
 
 name: Release
 
@@ -173,6 +182,30 @@ jobs:
           path: target/release/repo
           if-no-files-found: error
 
+      # Signed here, where the modules were built; the publish job uploads the bundles once the
+      # release is live on jumpkick.build. A dispatch signs too, so a broken key fails the dry run.
+      - name: Sign the plugin SDK's Central bundles
+        if: matrix.arch_label == 'linux-x86_64'
+        shell: bash
+        env:
+          JK_CENTRAL_GPG_KEY: ${{ secrets.JK_CENTRAL_GPG_KEY }}
+          JK_GPG_PASSPHRASE: ${{ secrets.JK_CENTRAL_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          [[ -n "${JK_CENTRAL_GPG_KEY:-}" ]] || { echo "::error::JK_CENTRAL_GPG_KEY missing — Central refuses unsigned bundles"; exit 1; }
+          key="$RUNNER_TEMP/central-gpg.asc"
+          (umask 077 && printf '%s\n' "$JK_CENTRAL_GPG_KEY" > "$key")
+          JK_CENTRAL_GPG_KEY_FILE="$key" scripts/publish-central.sh bundle target/release/central
+          rm -f "$key"
+
+      - name: Upload the Central bundles (artifact)
+        if: matrix.arch_label == 'linux-x86_64'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: central-bundles-${{ env.JK_VERSION }}
+          path: target/release/central
+          if-no-files-found: error
+
       # Unsigned: the per-platform SHA256SUMS is discarded when the trees are merged, and the
       # signing key stays with the one job whose signature ships.
       - name: Assemble release dir
@@ -256,6 +289,13 @@ jobs:
         with:
           path: target/release/repo
           pattern: maven-repo-*
+          merge-multiple: true
+
+      - name: Download the Central bundles
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: target/release/central
+          pattern: central-bundles-*
           merge-multiple: true
 
       # No runner builds linux-aarch64: scripts/release-linux-aarch64.sh builds it on an
@@ -377,6 +417,30 @@ jobs:
           gsutil ls -l "gs://${BUCKET}/releases/${VER}/"
           gsutil cat "gs://${BUCKET}/releases/latest/LATEST"
 
+      # A plugin pins jk-plugin-sdk at the release it targets, so the release is not out until the
+      # SDK and its one dependency answer at that version where jk resolves cc.jumpkick from.
+      - name: The plugin SDK answers on jumpkick.build
+        if: github.event_name == 'release'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for art in jk-host jk-plugin-sdk; do
+            url="https://jumpkick.build/repo/cc/jumpkick/${art}/${JK_VERSION}/${art}-${JK_VERSION}.pom"
+            code="$(curl -sSL -o /dev/null -w '%{http_code}' "$url")"
+            [[ "$code" == 200 ]] || { echo "::error::$url answered HTTP $code"; exit 1; }
+            echo "$url"
+          done
+
+      # After jumpkick.build holds the same bytes. Released, not parked for a click: a re-run skips
+      # a version the Portal already lists as published.
+      - name: Publish the plugin SDK to Maven Central
+        if: github.event_name == 'release'
+        shell: bash
+        env:
+          JK_REPO_CENTRAL_USERNAME: ${{ secrets.JK_REPO_CENTRAL_USERNAME }}
+          JK_REPO_CENTRAL_PASSWORD: ${{ secrets.JK_REPO_CENTRAL_PASSWORD }}
+        run: scripts/publish-central.sh upload target/release/central
+
       # The installers under hosting/public carry this release's floor and signing key; they go
       # live after the pointer, so a freshly served install.sh never refuses the pointer it reads.
       # firebase-tools reads the service-account file the auth step exported.
@@ -407,3 +471,10 @@ jobs:
           set -euo pipefail
           scripts/publish-github-release.sh "$JK_VERSION" "$RUNNER_TEMP/RELEASE_NOTES.md" \
             out/"${JK_VERSION}"/* out/sbom/jk-"${JK_VERSION}".cdx.json
+
+      # Very last, since Central syncs to repo1 minutes to an hour after it publishes: the run is
+      # green only once a Maven or Gradle build can resolve the SDK at this version.
+      - name: The plugin SDK resolves from repo1
+        if: github.event_name == 'release'
+        shell: bash
+        run: scripts/publish-central.sh await "$JK_VERSION"
