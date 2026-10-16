@@ -133,7 +133,7 @@ feature matrix.
 
 **Tiers.** Core batteries ship with every release and gate; contrib batteries are labelled
 best-effort in every doc and template. Android (not AGP parity, by the docs' own statement) and
-Grails (pinned to a milestone) are contrib. Scala 3 compiles in mixed modules through Zinc and
+Grails are contrib. Scala 3 compiles in mixed modules through Zinc and
 is described exactly that way; cross-building and Scala.js/Native are not goals. Nothing is
 removed; the promise is sized to what one release cadence can keep.
 

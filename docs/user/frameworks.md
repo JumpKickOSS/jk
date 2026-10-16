@@ -116,7 +116,7 @@ jk new -t grails/hello my-svc
 groovy = "5.0.0"              # exact; jk new writes the current stable
 
 [grails]
-version = "8.0.0-M4"          # exactly this 8.x milestone; "latest" would pick Grails 7 GA
+version = "8.0.0"             # exact grails-bom release; "^8" takes the newest 8.x
 
 [dependencies]                # versionless under the BOM
 grails-core     = "org.apache.grails:grails-core"

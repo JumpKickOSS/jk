@@ -105,7 +105,7 @@ These impress on a feature matrix and retain power users; they rarely *cause* th
 | **19** | OCI images | Ship path; not day-one abandon reason. |
 | **20** | Git-as-dependency / git modules | Power-user depth after trust is earned. |
 | **21** | Native-image / deep framework support | Keep them; do not lead with them. |
-| **22** | Contrib batteries: Android, Grails, Scala 3 in mixed modules | Best-effort by label. Android is not AGP parity; Grails tracks a milestone; Scala compiles through Zinc and is described exactly that way. |
+| **22** | Contrib batteries: Android, Grails, Scala 3 in mixed modules | Best-effort by label. Android is not AGP parity; Scala compiles through Zinc and is described exactly that way. |
 
 **Raw speed vs Gradle** is a **credibility footnote** beside this list: faster on clean, warm
 and no-op builds, slower on a one-file edit; the win is fewer failed cycles and less agent

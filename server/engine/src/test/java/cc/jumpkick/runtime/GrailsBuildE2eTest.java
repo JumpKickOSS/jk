@@ -41,14 +41,14 @@ class GrailsBuildE2eTest {
                 name    = "gnotes"
                 group   = "com.example"
                 version = "1.0.0"
-                jdk     = 25
-                groovy  = "5.0.7" # grails scaffold pin (GRAILS_GROOVY_VERSION) — overrides the M4 bom
+                java    = 25
+                groovy  = "5.1.3" # the line grails-bom 8.0.0 manages
 
                 [application]
                 main = "com.example.Application"
 
                 [grails]
-                version = "8.0.0-M4"
+                version = "8.0.0"
 
                 [dependencies]
                 grails-core            = { group = "org.apache.grails", name = "grails-core" }
@@ -166,7 +166,7 @@ class GrailsBuildE2eTest {
             var attrs = jf.getManifest().getMainAttributes();
             assertThat(attrs.getValue("Main-Class")).isEqualTo("org.springframework.boot.loader.launch.JarLauncher");
             assertThat(attrs.getValue("Start-Class")).isEqualTo("com.example.Application");
-            assertThat(attrs.getValue("Grails-Version")).isEqualTo("8.0.0-M4");
+            assertThat(attrs.getValue("Grails-Version")).isEqualTo("8.0.0");
             assertThat(jf.getEntry("BOOT-INF/classes/com/example/Note.class")).isNotNull();
             assertThat(jf.getEntry("BOOT-INF/classes/application.yml")).isNotNull();
             assertThat(jf.getEntry("BOOT-INF/classpath.idx")).isNotNull();
