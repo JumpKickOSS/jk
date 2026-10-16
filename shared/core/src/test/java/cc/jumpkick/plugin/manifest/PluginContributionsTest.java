@@ -141,7 +141,7 @@ class PluginContributionsTest {
                 groovy = "5.0.7"
 
                 [grails]
-                version = "8.0.0-M4"
+                version = "8.0.0"
                 """ + extra);
     }
 
@@ -150,7 +150,7 @@ class PluginContributionsTest {
         JkBuild build = grails("");
         assertThat(build.dependencies().of(Scope.PLATFORM))
                 .extracting(Dependency::module, d -> d.version().raw())
-                .containsExactly(tuple("org.apache.grails:grails-bom", "8.0.0-M4"));
+                .containsExactly(tuple("org.apache.grails:grails-bom", "8.0.0"));
         assertThat(PluginContributions.javacArgs(build, null, Set.of())).containsExactly("-parameters");
         assertThat(PluginContributions.groovyArgs(build, null, Set.of())).containsExactly("--parameters");
         assertThat(PluginContributions.kotlinArgs(build, null, Set.of())).isEmpty();

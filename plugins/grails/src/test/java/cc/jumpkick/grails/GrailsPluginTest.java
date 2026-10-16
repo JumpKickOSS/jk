@@ -22,7 +22,7 @@ class GrailsPluginTest {
 
     @Test
     void the_manifest_records_the_resolved_boot_version_and_the_grails_line(@TempDir Path tmp) throws Exception {
-        FakeBuildIo io = fake(tmp, Map.of("version", "8.0.0-M4", "boot-version", "4"));
+        FakeBuildIo io = fake(tmp, Map.of("version", "8.0.0", "boot-version", "4"));
 
         GrailsPlugin.produceJar(io);
 
@@ -31,7 +31,7 @@ class GrailsPluginTest {
             assertThat(attrs.getValue("Spring-Boot-Version"))
                     .as("the Boot version the closure resolved to, not the boot-version selector")
                     .isEqualTo("4.1.2");
-            assertThat(attrs.getValue("Grails-Version")).isEqualTo("8.0.0-M4");
+            assertThat(attrs.getValue("Grails-Version")).isEqualTo("8.0.0");
             assertThat(attrs.getValue("Main-Class")).isEqualTo("org.springframework.boot.loader.launch.JarLauncher");
             assertThat(attrs.getValue("Start-Class")).isEqualTo("com.example.Application");
             assertThat(jar.getEntry("BOOT-INF/classes/com/example/Application.class"))
@@ -54,8 +54,7 @@ class GrailsPluginTest {
         io.extra(
                 "spring-boot-loader",
                 io.jar("spring-boot-loader.jar", "org/springframework/boot/loader/launch/JarLauncher.class"));
-        io.entry(
-                "grails-core-8.0.0-M4.jar", "org.apache.grails", "grails-core", "8.0.0-M4", "grails/core/Marker.class");
+        io.entry("grails-core-8.0.0.jar", "org.apache.grails", "grails-core", "8.0.0", "grails/core/Marker.class");
         io.entry(
                 "spring-boot-4.1.2.jar",
                 "org.springframework.boot",
