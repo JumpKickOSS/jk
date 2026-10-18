@@ -1,0 +1,292 @@
+#!/usr/bin/env python3
+"""The scoreboard: every measured subject of the jk loop, banked, banded and ranked against its target.
+
+    bench/scoreboard --tier fast               # every fast-tier dimension, judged and banked
+    bench/scoreboard --dim counts --runs 5     # one dimension
+    bench/scoreboard --subject 'inner.noop.*'  # rows whose subject matches the glob
+    bench/scoreboard --no-bank                 # judge only; scoreboard.toml is not rewritten
+    bench/scoreboard --gaps                    # banked rows ranked by distance to target, nothing measured
+    bench/scoreboard --selftest                # the band arithmetic
+
+A row is one (dimension, subject, project, tool, kind). Kinds:
+
+  count          work done, read from counters that load does not move: tasks run, bytes and calls
+                 written, files rewritten, bytes read, output size. Each row's runs must agree within
+                 the row's band, or the row is `unstable` and neither banked nor judged.
+  paired-wall    candidate against baseline run interleaved; the ratio of medians with its CI.
+  absolute-wall  published seconds; the night tier only.
+
+Every value is lower-is-better. A jk row worse than its banked value by more than its band fails the
+run (exit 1) and prints the commit range since the line was banked. A row better by more than the
+improvement threshold is rewritten in scoreboard.toml: an improvement is banked, never a failure.
+A row the file has never seen is seeded at its measured value. Rows from another host are kept and
+never compared.
+
+Dimensions live in bench/scoreboard.d/<name>.py, each with TIERS (the tiers it runs in) and
+measure(ctx) -> list of row dicts. Results land in $SCOREBOARD_HOME/results/<stamp>/rows.json
+(default $JK_BENCH_HOME/scoreboard).
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import fnmatch
+import importlib.util
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import benchtools  # noqa: E402
+
+JK_TREE = HERE.parent
+BOARD = JK_TREE / "scoreboard.toml"
+DIMS = HERE / "scoreboard.d"
+HOME = benchtools.scratch("SCOREBOARD_HOME", "scoreboard")
+TIERS = ("fast", "night", "release")
+
+KEY = ("dim", "subject", "project", "tool", "kind")
+DEFAULT_BAND = {"count": 0.02, "paired-wall": 0.05, "absolute-wall": 0.15}
+IMPROVE = {"count": 0.02, "paired-wall": 0.05, "absolute-wall": 0.05}
+
+HEADER = """\
+# scoreboard.toml — every banked subject of the jk loop (bench/scoreboard, PRD go-loop.md).
+#
+# One [[row]] per (dim, subject, project, tool, kind). `value` is lower-is-better in `unit`; `band`
+# is how far above it a jk measurement may land before the run fails; `target` is where the subject
+# is headed, and `bench/scoreboard --gaps` ranks rows by value / target. `runs`, `date`, `commit`
+# and `host-id` say where the value came from. Only rows of the measuring host are compared.
+#
+# The ratchet rewrites a row when a measurement improves on it and seeds a row it has never seen;
+# it never raises a row. Raise one by hand after an intentional change and say why in the commit.
+"""
+
+
+# --------------------------------------------------------------------------- board file
+
+def key(row: dict) -> tuple:
+    return tuple(row.get(k, "") for k in KEY) + (row.get("host-id", ""),)
+
+
+def load_board(path: Path = BOARD) -> list[dict]:
+    if not path.is_file():
+        return []
+    return list(tomllib.loads(path.read_text(encoding="utf-8")).get("row", []))
+
+
+def _toml_value(v) -> str:
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, int):
+        return str(v)
+    if isinstance(v, float):
+        return repr(round(v, 4))
+    s = str(v).replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{s}"'
+
+
+ORDER = KEY + ("value", "unit", "band", "target", "runs", "date", "commit", "host-id")
+
+
+def render_board(rows: list[dict]) -> str:
+    out = [HEADER]
+    for row in sorted(rows, key=key):
+        out.append("\n[[row]]")
+        for k in ORDER + tuple(sorted(set(row) - set(ORDER))):
+            if k in row and row[k] is not None:
+                out.append(f"{k} = {_toml_value(row[k])}")
+    return "\n".join(out) + "\n"
+
+
+# --------------------------------------------------------------------------- judging
+
+def judge(board: list[dict], measured: list[dict], host: str, today: str, commit: str):
+    """(new board, failures, notes). Pure: the arithmetic --selftest covers."""
+    by_key = {key(r): dict(r) for r in board}
+    failures, notes = [], []
+    for m in measured:
+        if m.get("unstable"):
+            notes.append(f"unstable  {m['subject']} [{m['tool']}]: runs {m['samples']} disagree beyond the band; not banked")
+            continue
+        row = {k: m[k] for k in KEY}
+        row["host-id"] = host
+        k = key(row)
+        kind = m["kind"]
+        band = m.get("band", DEFAULT_BAND[kind])
+        value = m["value"]
+        slack = m.get("slack", 0)
+        fresh = {**row, "value": value, "unit": m["unit"], "band": band, "target": m.get("target"),
+                 "runs": m["runs"], "date": today, "commit": commit}
+        old = by_key.get(k)
+        if old is None:
+            by_key[k] = fresh
+            notes.append(f"seeded    {m['subject']} [{m['tool']}] = {fmt(value, m['unit'])}")
+            continue
+        banked = old["value"]
+        limit = banked * (1 + band) + slack
+        if m["tool"] == "jk" and value > limit:
+            failures.append(f"REGRESSED {m['subject']} [{m['tool']}]: {fmt(value, m['unit'])}, banked "
+                            f"{fmt(banked, m['unit'])} (band {band:.0%}); commits since: {old.get('commit', '?')}..HEAD")
+        elif value < banked * (1 - IMPROVE[kind]) - slack or (banked > 0 and value == 0):
+            by_key[k] = {**fresh, "band": old.get("band", band), "target": old.get("target", fresh["target"])}
+            notes.append(f"improved  {m['subject']} [{m['tool']}]: {fmt(banked, m['unit'])} -> {fmt(value, m['unit'])} (banked)")
+    return list(by_key.values()), failures, notes
+
+
+def fmt(value, unit: str) -> str:
+    if unit == "bytes":
+        for scale, name in ((1 << 20, "MiB"), (1 << 10, "KiB")):
+            if value >= scale:
+                return f"{value / scale:.2f} {name}"
+        return f"{int(value)} B"
+    return f"{value:g} {unit}"
+
+
+def gaps(board: list[dict], host: str) -> list[tuple[float, dict]]:
+    """Rows with a target, worst ratio first. A zero target ranks by the raw value."""
+    ranked = []
+    for r in board:
+        if r.get("host-id") != host or r.get("tool") != "jk" or r.get("target") is None:
+            continue
+        t = r["target"]
+        ratio = r["value"] / t if t else (float("inf") if r["value"] else 0.0)
+        if ratio > 1:
+            ranked.append((ratio, r))
+    return sorted(ranked, key=lambda x: (-x[0], -x[1]["value"]))
+
+
+def selftest() -> int:
+    host, today = "h", "2026-10-18"
+    base = [{"dim": "d", "subject": "s", "project": "p", "tool": "jk", "kind": "count", "host-id": host,
+             "value": 1000, "unit": "bytes", "band": 0.02, "runs": 3, "date": "2026-10-01", "commit": "abc"}]
+    m = lambda v, **kw: [{"dim": "d", "subject": "s", "project": "p", "tool": "jk", "kind": "count",
+                          "value": v, "unit": "bytes", "runs": 3, **kw}]
+    _, f, _ = judge(base, m(1019), host, today, "def")
+    assert not f, f
+    _, f, _ = judge(base, m(1021), host, today, "def")
+    assert f and "abc..HEAD" in f[0], f
+    b, f, n = judge(base, m(900), host, today, "def")
+    assert not f and b[0]["value"] == 900 and b[0]["commit"] == "def", (b, n)
+    b, f, n = judge(base, m(990), host, today, "def")
+    assert b[0]["value"] == 1000, b
+    b, f, n = judge(base, m(5000, unstable=True, samples=[1, 9000]), host, today, "def")
+    assert not f and b[0]["value"] == 1000 and "unstable" in n[0], n
+    b, f, n = judge(base, [{**m(7)[0], "subject": "new"}], host, today, "def")
+    assert len(b) == 2 and "seeded" in n[0], n
+    b, f, n = judge(base, [{**m(5000)[0], "tool": "gradle"}], host, today, "def")
+    assert not f, f
+    zero = [{**base[0], "value": 0}]
+    _, f, _ = judge(zero, m(1), host, today, "def")
+    assert f, "a zero-banked count must fail on any increase"
+    _, f, _ = judge(zero, m(4000, slack=4096), host, today, "def")
+    assert not f, "slack absorbs small absolute drift"
+    assert render_board(load_board_text(render_board(b))) == render_board(b)
+    g = gaps([{**base[0], "target": 100}, {**base[0], "subject": "t", "value": 50, "target": 100}], host)
+    assert len(g) == 1 and g[0][0] == 10.0, g
+    print("selftest ok")
+    return 0
+
+
+def load_board_text(text: str) -> list[dict]:
+    return list(tomllib.loads(text).get("row", []))
+
+
+# --------------------------------------------------------------------------- dimensions
+
+def load_dims() -> dict:
+    sys.dont_write_bytecode = True  # no __pycache__ beside the dimensions in the tree
+    dims = {}
+    for path in sorted(DIMS.glob("*.py")):
+        spec = importlib.util.spec_from_file_location(f"scoreboard_{path.stem}", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        dims[path.stem] = mod
+    return dims
+
+
+def jk_binary() -> str:
+    """$JK_BIN, else the installed client, else whatever `jk` is on PATH."""
+    if os.environ.get("JK_BIN"):
+        return os.environ["JK_BIN"]
+    candidate = benchtools.jk_home() / "bin" / "jk"
+    return str(candidate) if candidate.is_file() else (shutil.which("jk") or str(candidate))
+
+
+def jk_commit() -> str:
+    res = subprocess.run(["git", "rev-parse", "--short=9", "HEAD"], cwd=JK_TREE, capture_output=True, text=True)
+    return res.stdout.strip() or "unknown"
+
+
+class Context:
+    """What a dimension gets: run count, scratch home, the jk binary and a subject filter."""
+
+    def __init__(self, runs: int, out: Path, subjects: list[str]):
+        self.runs = runs
+        self.home = HOME
+        self.out = out
+        self.jk = jk_binary()
+        self.subjects = subjects
+
+    def wants(self, subject: str) -> bool:
+        return not self.subjects or any(fnmatch.fnmatch(subject, s) for s in self.subjects)
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--tier", choices=TIERS, default="fast")
+    ap.add_argument("--dim", action="append", default=[], help="only this dimension (repeatable)")
+    ap.add_argument("--subject", action="append", default=[], help="only subjects matching this glob (repeatable)")
+    ap.add_argument("--runs", type=int, default=5, help="measured runs per row, after one warm-up (default 5)")
+    ap.add_argument("--no-bank", action="store_true", help="judge only; leave scoreboard.toml as it is")
+    ap.add_argument("--gaps", action="store_true", help="rank banked rows by distance to target; measure nothing")
+    ap.add_argument("--selftest", action="store_true")
+    ns = ap.parse_args(argv)
+    if ns.selftest:
+        return selftest()
+
+    host = benchtools.host_id()
+    board = load_board()
+    if ns.gaps:
+        ranked = gaps(board, host)
+        if not ranked:
+            print("no banked jk row on this host is over its target")
+        for ratio, r in ranked:
+            shown = "∞" if ratio == float("inf") else f"{ratio:.1f}×"
+            print(f"{shown:>7}  {r['subject']:<40} {r['project']:<18} {fmt(r['value'], r['unit']):>12}  target {fmt(r['target'], r['unit'])}")
+        return 0
+
+    dims = load_dims()
+    chosen = [d for d in (ns.dim or dims) if d in dims and (ns.dim or ns.tier in dims[d].TIERS)]
+    unknown = sorted(set(ns.dim) - set(dims))
+    if unknown:
+        raise SystemExit(f"unknown dimension(s): {', '.join(unknown)}; known: {', '.join(dims)}")
+    stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    out = HOME / "results" / stamp
+    out.mkdir(parents=True, exist_ok=True)
+    ctx = Context(ns.runs, out, ns.subject)
+    measured = []
+    for name in chosen:
+        print(f"── {name}", flush=True)
+        measured += dims[name].measure(ctx)
+    (out / "rows.json").write_text(json.dumps(measured, indent=1) + "\n", encoding="utf-8")
+
+    new_board, failures, notes = judge(board, measured, host, dt.date.today().isoformat(), jk_commit())
+    for row in measured:
+        print(f"  {row['subject']:<40} [{row['tool']}] {fmt(row['value'], row['unit']):>12}"
+              + ("   unstable" if row.get("unstable") else ""))
+    for line in notes + failures:
+        print(line)
+    if not ns.no_bank:
+        BOARD.write_text(render_board(new_board), encoding="utf-8")
+    print(f"rows: {out / 'rows.json'}")
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
