@@ -212,6 +212,35 @@ class BuildPlanFirstReadyTest {
     }
 
     /**
+     * A failure with nothing left in flight returns at once: the cancel grace is how long the plan
+     * waits for siblings to stop, and with none to wait for it is nothing. A compile error in a
+     * one-module build used to sit out the whole grace before the client heard of it.
+     */
+    @Test
+    void a_failure_with_no_sibling_in_flight_does_not_wait_out_the_cancel_grace() {
+        var plan = BuildPlan.builder("red")
+                .addTask(Task.builder("compile-java")
+                        .kind(TaskKind.CPU)
+                        .execute(ctx -> {
+                            throw new RuntimeException("cannot find symbol");
+                        })
+                        .build())
+                .addTask(Task.builder("package-jar")
+                        .kind(TaskKind.CPU)
+                        .requires("compile-java")
+                        .execute(ctx -> {})
+                        .build())
+                .build();
+
+        long start = System.nanoTime();
+        BuildPlanResult r = plan.run();
+        Duration wall = Duration.ofNanos(System.nanoTime() - start);
+
+        assertThat(r.success()).isFalse();
+        assertThat(wall).isLessThan(BuildPlan.COOPERATIVE_CANCEL_GRACE);
+    }
+
+    /**
      * The SYNC arm of the same promise: a step that fails inline on the plan thread must flip the
      * flag before the plan blocks on the next async terminal, or the in-flight sibling runs out its
      * whole wall first.
