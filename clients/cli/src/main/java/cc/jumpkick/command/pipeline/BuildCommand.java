@@ -18,9 +18,7 @@ import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.AggregateContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.CliSessionTranscript;
-import cc.jumpkick.cli.run.CompositeBuildPlanListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.SessionMirrorListener;
 import cc.jumpkick.cli.tui.BuildNotify;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Coord;
@@ -640,12 +638,9 @@ public final class BuildCommand implements CliCommand {
                             variant,
                             clientEnv,
                             graalHome),
-                    steps -> {
-                        var console = BuildPlanConsole.chooseConsoleListener(steps, mode, spec, timelineModule);
-                        // Mirror plan events into details.jsonl (JSON mode dual-writes itself).
-                        if (mode == BuildPlanConsole.Mode.JSON || session == null) return console;
-                        return CompositeBuildPlanListener.of(new SessionMirrorListener(session), console);
-                    },
+                    // The chooser mirrors plan events into details.jsonl itself (JSON mode dual-writes);
+                    // a second mirror here wrote every event twice.
+                    steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, timelineModule),
                     testResultHolder,
                     buildOutcomeHolder);
         } catch (JobCancelledException e) {
