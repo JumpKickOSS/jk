@@ -3,8 +3,14 @@ package cc.jumpkick.java.compiler;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticListener;
@@ -26,11 +32,13 @@ import org.jspecify.annotations.Nullable;
  * has not seen. A compile whose classpath shares 190 of its 200 entries with its predecessor drops
  * from 276 ms to 56 ms.
  *
- * <p>Reuse is bounded by the job, not by the process being immortal: the worker's pull loop stays up
- * across the modules of one job and exits on {@code DONE}, so no manager outlives the build that
- * created it. Within a job, javac re-resolves the classpath on every task, so a directory entry
- * whose contents changed since the last compile is seen — a class added to an upstream output
- * directory resolves, and one removed stops resolving. {@code ReusedJavacFileManagerTest} pins both.
+ * <p>Reuse is bounded by what is on disk, not by the job: the engine keeps a worker for a short
+ * linger after its job, so the next build's compile may get the manager the last one left. javac
+ * re-resolves the classpath on every task, so a directory entry whose contents changed since the
+ * last compile is seen — a class added to an upstream output directory resolves, and one removed
+ * stops resolving. An archive is different: the manager holds it open and reads the file it opened,
+ * so one rewritten since (a snapshot re-resolved, a local jar rebuilt) discards the manager, judged
+ * by its size, mtime and file key. {@code ReusedJavacFileManagerTest} pins all three.
  *
  * <p>Per thread rather than static because the worker is single-threaded today but the protocol is
  * specified to allow concurrent items; {@link StandardJavaFileManager} is not thread-safe, so a
@@ -53,6 +61,9 @@ final class ReusedJavacFileManager {
     /** Every option-set location a compile has declared on the held manager since it was built. */
     private final Set<StandardLocation> carried = EnumSet.noneOf(StandardLocation.class);
 
+    /** Every archive a compile on the held manager named, as it was on disk then. */
+    private final Map<Path, ArchiveStamp> archives = new HashMap<>();
+
     private ReusedJavacFileManager() {}
 
     /**
@@ -70,7 +81,20 @@ final class ReusedJavacFileManager {
             Charset encoding,
             DiagnosticListener<JavaFileObject> diags,
             Set<StandardLocation> declared) {
-        return PER_THREAD.get().get(javac, encoding, diags, declared);
+        return acquire(javac, encoding, diags, declared, List.of());
+    }
+
+    /**
+     * As above, for a compile whose path options name {@code archives}: a held manager that opened
+     * one of them as it was before a rewrite is thrown away rather than handed over.
+     */
+    static StandardJavaFileManager acquire(
+            JavaCompiler javac,
+            Charset encoding,
+            DiagnosticListener<JavaFileObject> diags,
+            Set<StandardLocation> declared,
+            List<Path> archives) {
+        return PER_THREAD.get().get(javac, encoding, diags, declared, archives);
     }
 
     /**
@@ -93,11 +117,15 @@ final class ReusedJavacFileManager {
             JavaCompiler javac,
             Charset wanted,
             DiagnosticListener<JavaFileObject> diags,
-            Set<StandardLocation> declared) {
+            Set<StandardLocation> declared,
+            List<Path> named) {
         relay.to = diags;
+        Map<Path, ArchiveStamp> now = new HashMap<>();
+        for (Path archive : named) now.put(archive, ArchiveStamp.of(archive));
         StandardJavaFileManager current = fm;
-        if (current != null && wanted.equals(encoding) && !staleLocation(current, declared)) {
+        if (current != null && wanted.equals(encoding) && !staleLocation(current, declared) && !rewritten(now)) {
             carried.addAll(declared);
+            archives.putAll(now);
             return current;
         }
         close(current);
@@ -106,7 +134,33 @@ final class ReusedJavacFileManager {
         encoding = wanted;
         carried.clear();
         carried.addAll(declared);
+        archives.clear();
+        archives.putAll(now);
         return fresh;
+    }
+
+    /** Whether an archive the held manager may have open is not the file it was when last named. */
+    private boolean rewritten(Map<Path, ArchiveStamp> now) {
+        for (Map.Entry<Path, ArchiveStamp> e : now.entrySet()) {
+            ArchiveStamp then = archives.get(e.getKey());
+            if (then != null && !then.equals(e.getValue())) return true;
+        }
+        return false;
+    }
+
+    /** An archive as it is on disk: a rewrite moves its size, its mtime or, for a rename over it, its file key. */
+    record ArchiveStamp(
+            long size, long mtimeMillis, @Nullable Object key) {
+        static final ArchiveStamp MISSING = new ArchiveStamp(-1L, -1L, null);
+
+        static ArchiveStamp of(Path archive) {
+            try {
+                BasicFileAttributes a = Files.readAttributes(archive, BasicFileAttributes.class);
+                return new ArchiveStamp(a.size(), a.lastModifiedTime().toMillis(), a.fileKey());
+            } catch (IOException e) {
+                return MISSING;
+            }
+        }
     }
 
     /**

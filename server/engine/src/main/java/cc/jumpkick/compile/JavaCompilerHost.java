@@ -18,6 +18,7 @@ import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerGc;
 import cc.jumpkick.engine.plugin.WorkerLeases;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -40,12 +42,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
  * A pool of Zinc {@code jk-java-compiler} JVMs per job ({@link JobWorkers} request scope). Compile
  * and {@code jk explain} PLAN share the pool; {@link #end(long)} / job teardown sends {@code DONE}
- * to every lane and the processes exit. No engine residency.
+ * to every lane and the processes exit. A plain Java compile goes on a {@link WarmLanes} pool
+ * instead, whose lanes outlive the job by a short linger.
  *
  * <p><strong>Lanes.</strong> One worker compiles one module at a time — the wire is a strict
  * {@code READY} / {@code COMPILE} / {@code RESULT} handshake with a single in-flight item, which is
@@ -97,8 +101,12 @@ public final class JavaCompilerHost {
         return new Scope(id, ephemeral);
     }
 
-    /** Send {@code DONE} to every lane and drop the pool for {@code requestId}. Process kill is {@link JobWorkers}. */
+    /**
+     * Send {@code DONE} to every lane and drop the pool for {@code requestId}, and stop any warm lane
+     * still compiling for it. Process kill is {@link JobWorkers}.
+     */
     public static void end(long requestId) {
+        WarmLanes.abandon(requestId);
         String prefix = requestId + "|";
         for (String key : List.copyOf(POOLS.keySet())) {
             if (!key.startsWith(prefix)) continue;
@@ -111,14 +119,28 @@ public final class JavaCompilerHost {
         Long id = JobWorkers.currentRequestId();
         if (id == null) return ForkedJavac.oneshot(req);
         Long heap = WorkerHeap.forRequest(req);
-        return pool(id, req, heap).submit(CompileWork.compile(req, heap));
+        CompileWork w = CompileWork.compile(req, heap).forJob(id, SessionContext.current());
+        return lanesFor(id, req, heap, w).submit(w);
     }
 
     static ForkedJavac.Plan plan(ForkedJavac.Request req) {
         Long id = JobWorkers.currentRequestId();
         if (id == null) return ForkedJavac.oneshotPlan(req);
         Long heap = WorkerHeap.forRequest(req);
-        return pool(id, req, heap).submitPlan(CompileWork.plan(req, heap));
+        CompileWork w = CompileWork.plan(req, heap).forJob(id, SessionContext.current());
+        return lanesFor(id, req, heap, w).submitPlan(w);
+    }
+
+    /** The pool {@code item} goes on: a warm one when the request may linger, else its job's. */
+    private static Lanes lanesFor(long id, ForkedJavac.Request req, @Nullable Long heapBytes, CompileWork item) {
+        if (!WarmLanes.lingers(req)) return pool(id, req, heapBytes);
+        Path home = ForkedJavac.workerJavaHome(req);
+        // The whole environment, not its fingerprint: a job's pool sees one request's variables, a
+        // warm one every later request's, and a worker cannot be handed new ones.
+        String env = Hashing.sha256Hex(new TreeMap<>(req.env().environment()).toString());
+        String key = "warm|" + home + "|" + req.workerJar() + "|" + env + "|" + (heapBytes == null ? "" : heapBytes)
+                + "|" + String.join(" ", req.jvmArgs());
+        return WarmLanes.lanes(key, () -> Lanes.warm(req, home, heapBytes), item);
     }
 
     private static Lanes pool(long id, ForkedJavac.Request req, @Nullable Long heapBytes) {
@@ -136,7 +158,8 @@ public final class JavaCompilerHost {
      */
     private static void retryWithHeap(long id, CompileWork failed, long heapBytes) {
         ForkedJavac.Request req = Objects.requireNonNull(failed.req, "a retried item carries its request");
-        CompileWork again = failed.plan ? CompileWork.plan(req, heapBytes) : CompileWork.compile(req, heapBytes);
+        CompileWork again = (failed.plan ? CompileWork.plan(req, heapBytes) : CompileWork.compile(req, heapBytes))
+                .forJob(failed.job, failed.session);
         again.ranOut.addAll(failed.ranOut);
         if (failed.heapBytes != null) again.ranOut.add(failed.heapBytes);
         HeapScope.Key key = WorkerHeap.key(req);
@@ -152,7 +175,7 @@ public final class JavaCompilerHost {
             if (e != null) failed.forecast.completeExceptionally(e);
             else failed.forecast.complete(r);
         });
-        pool(id, req, heapBytes).enqueue(again);
+        lanesFor(id, req, heapBytes, again).enqueue(again);
     }
 
     /** Test seam: live lanes for {@code requestId} across its pools, or 0 when the job has none. */
@@ -365,6 +388,35 @@ public final class JavaCompilerHost {
                     true);
         }
 
+        /**
+         * A {@link WarmLanes} pool: each lane's worker runs under a scope of its own, and a worker
+         * that runs out of heap retries on the warm pool for the bigger heap.
+         */
+        static Lanes warm(ForkedJavac.Request template, Path workerJavaHome, @Nullable Long heapBytes) {
+            return new Lanes(
+                    laneBudget(),
+                    (owner, index) -> new Session(
+                            owner,
+                            WarmLanes.nextScope(),
+                            index,
+                            self -> self.converse(template, workerJavaHome, heapBytes)),
+                    ForkedJavac::writeSpec,
+                    (failed, bigger) -> retryWithHeap(failed.job, failed, bigger),
+                    true);
+        }
+
+        /** Stop every lane whose current item {@code which} picks: its worker is killed, its item failed. */
+        void stopLanesWorking(Predicate<CompileWork> which) {
+            List<Session> doomed = new ArrayList<>();
+            synchronized (this) {
+                for (Session lane : lanes) {
+                    CompileWork t = lane.taken;
+                    if (t != null && which.test(t)) doomed.add(lane);
+                }
+            }
+            for (Session lane : doomed) JobWorkers.shutdownForRequest(lane.requestId, 0L);
+        }
+
         /** Test seam: a pool whose lanes run {@code starter}'s body instead of forking a worker. */
         Lanes(int budget, LaneStarter starter, SpecFile specs) {
             this(budget, starter, specs, (failed, bigger) -> {
@@ -516,6 +568,14 @@ public final class JavaCompilerHost {
             return true;
         }
 
+        /** Test seam: the {@link JobWorkers} scope of each live lane. */
+        synchronized List<Long> laneScopes() {
+            lanes.removeIf(lane -> !lane.alive());
+            List<Long> scopes = new ArrayList<>();
+            for (Session lane : lanes) scopes.add(lane.requestId);
+            return scopes;
+        }
+
         /** Live lanes, dead ones pruned. */
         synchronized int liveLanes() {
             lanes.removeIf(lane -> !lane.alive());
@@ -611,7 +671,7 @@ public final class JavaCompilerHost {
      * <p>Two threads share a lane. The {@code io} thread runs the body and outlives the worker by
      * exactly as long as it takes to notice the exit. The worker's pump thread delivers every
      * protocol line, so it is the pump — not {@code io} — that blocks in {@link #takeNext} and
-     * writes {@code slot}, {@code busy} and {@code inflight}. The pump may still be parked on the
+     * writes {@code slot}, {@code taken} and {@code inflight}. The pump may still be parked on the
      * queue after the worker has died; {@link #takeNext} checks {@code dead} so an item it takes
      * then goes back to the pool instead of to a worker that is gone.
      */
@@ -624,8 +684,8 @@ public final class JavaCompilerHost {
         private final AtomicReference<@Nullable CompileWork> inflight = new AtomicReference<>();
         // Set the instant an item leaves the queue for this lane, before the spec write; inflight is
         // set only once the command is on the wire. grow() reads this one: a lane that has taken an
-        // item is not free capacity.
-        private volatile boolean busy;
+        // item is not free capacity, and a warm pool stops the lane whose item's job has ended.
+        private volatile @Nullable CompileWork taken;
         private volatile boolean dead;
         // Bounded record of the worker's non-protocol lines, surfaced on a crash; reset at each
         // dispatch so it describes the work item that died, not the worker's first breath.
@@ -663,7 +723,7 @@ public final class JavaCompilerHost {
          * that is starting up, or blocked in {@code take()}, counts as free.
          */
         boolean working() {
-            return busy;
+            return taken != null;
         }
 
         void join(long millis) {
@@ -778,7 +838,7 @@ public final class JavaCompilerHost {
             String module = WorkerHeap.moduleOf(work.req.label());
             if (module.isBlank()) return;
             HeapScope.Key key = new HeapScope.Key(
-                    SessionContext.current().workingDir(),
+                    work.session.workingDir(),
                     module,
                     WorkerHeap.kindOf(work.req.label()),
                     JvmOptions.hostFeature(learnedHome));
@@ -816,7 +876,7 @@ public final class JavaCompilerHost {
                         else owner.enqueue(next);
                         return CompileWork.POISON;
                     }
-                    if (next != CompileWork.POISON) busy = true;
+                    if (next != CompileWork.POISON) taken = next;
                     return next;
                 }
             }
@@ -832,7 +892,7 @@ public final class JavaCompilerHost {
                 if (dead) return CompileWork.POISON;
                 CompileWork next = owner.queue.poll();
                 if (next == null || next == CompileWork.POISON) return next;
-                busy = true;
+                taken = next;
                 return next;
             }
         }
@@ -903,7 +963,7 @@ public final class JavaCompilerHost {
         /** The exchange is over: no item, not busy. */
         private void idle() {
             inflight.set(null);
-            busy = false;
+            taken = null;
         }
 
         /**
@@ -930,7 +990,8 @@ public final class JavaCompilerHost {
                 }
                 try {
                     next.waitNanos = CLOCK.nanos() - next.enqueuedNanos;
-                    next.spec = owner.specs.write(next.req);
+                    ForkedJavac.Request req = next.req;
+                    next.spec = SessionContext.where(next.session, () -> owner.specs.write(req));
                     transcript.reset();
                     inflight.set(next);
                     // The worker may have died during the spec write. inflight is published before
@@ -941,7 +1002,7 @@ public final class JavaCompilerHost {
                             deleteSpec(next);
                             owner.enqueue(next);
                         }
-                        busy = false;
+                        taken = null;
                         convo.send("DONE");
                         convo.closeInput();
                         return;
@@ -949,13 +1010,13 @@ public final class JavaCompilerHost {
                     remember(next);
                     convo.send((next.plan ? "PLAN " : "COMPILE ") + next.spec.toAbsolutePath());
                     return;
-                } catch (IOException | RuntimeException e) {
+                } catch (Exception e) {
                     // Whatever the spec write threw (a classpath jar not on disk is an
                     // IllegalStateException), it fails this item alone. Escaping here would end the
                     // lane with the item neither queued nor in flight, and its caller would wait forever.
                     next.compile.completeExceptionally(e);
                     next.forecast.completeExceptionally(e);
-                    busy = false;
+                    taken = null;
                 }
             }
         }
@@ -999,7 +1060,7 @@ public final class JavaCompilerHost {
          */
         private void failAll(Throwable e) {
             CompileWork cur = inflight.getAndSet(null);
-            busy = false;
+            taken = null;
             // Drop the lane before putting the item back, so a last-lane drain cannot fail the
             // retry it has not been given yet.
             owner.laneDied(this, e);
@@ -1020,7 +1081,7 @@ public final class JavaCompilerHost {
             String output = transcript.render();
             WorkerFate.Cause cause = causeOf(e, output);
             Long heap = cur.heapBytes;
-            boolean alive = !owner.closing() && !JobWorkers.ended(requestId);
+            boolean alive = !owner.closing() && !JobWorkers.ended(cur.job != 0 ? cur.job : requestId);
             if (cause == WorkerFate.Cause.HEAP_EXHAUSTED && heap != null) {
                 noteFilled(heap);
                 String label = cur.req == null ? "" : cur.req.label();
