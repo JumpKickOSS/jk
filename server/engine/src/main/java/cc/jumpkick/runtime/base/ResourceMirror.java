@@ -83,7 +83,7 @@ public final class ResourceMirror {
         for (Path dir : resourceDirs) PathUtil.copyTree(dir, classes);
         Path parent = ledger.getParent();
         if (parent != null) Files.createDirectories(parent);
-        AtomicWrites.replace(ledger, current.isEmpty() ? "" : String.join("\n", current) + "\n");
+        AtomicWrites.replaceIfChanged(ledger, current.isEmpty() ? "" : String.join("\n", current) + "\n");
         return current;
     }
 

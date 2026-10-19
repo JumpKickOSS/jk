@@ -574,6 +574,9 @@ public record ProjectIdentity(
          * from {@code identity}, the checkout set keeps every other live checkout the file already
          * listed, and the writer's own entry is stamped with the clock's instant.
          */
+        /** How stale a checkout's {@code last-built} may read before a build moves it: a listing's precision. */
+        static final Duration LAST_BUILT_GRAIN = Duration.ofMinutes(5);
+
         public static void write(Path projectHome, ProjectIdentity identity) throws IOException {
             write(projectHome, identity, Clock.SYSTEM);
         }
@@ -588,12 +591,25 @@ public record ProjectIdentity(
         private static void fold(Path projectHome, Path file, ProjectIdentity identity, Clock clock)
                 throws IOException {
             Path own = identity.path();
+            Instant now = clock.instant();
+            Instant built = now;
             List<Checkout> merged = new ArrayList<>();
             for (Checkout c : read(projectHome).map(IdentityFile::checkouts).orElse(List.of())) {
-                if (ProjectBuilds.sameCheckout(c.path(), own) || !c.live(identity.id())) continue;
+                if (ProjectBuilds.sameCheckout(c.path(), own)) {
+                    // A checkout built again within the grain keeps its stamp, so a run of builds
+                    // leaves the file as it was instead of rewriting it for a newer second.
+                    Instant was = c.lastBuilt();
+                    if (was != null
+                            && !was.isAfter(now)
+                            && Duration.between(was, now).compareTo(LAST_BUILT_GRAIN) < 0) {
+                        built = was;
+                    }
+                    continue;
+                }
+                if (!c.live(identity.id())) continue;
                 merged.add(c);
             }
-            merged.add(new Checkout(own, clock.instant()));
+            merged.add(new Checkout(own, built));
             StringBuilder b = new StringBuilder();
             b.append("id = ").append(MinimalToml.quote(identity.id())).append('\n');
             b.append("coord = ").append(MinimalToml.quote(identity.coord())).append('\n');
@@ -621,7 +637,7 @@ public record ProjectIdentity(
                             .append('\n');
                 }
             }
-            AtomicWrites.replace(file, b.toString());
+            AtomicWrites.replaceIfChanged(file, b.toString());
         }
 
         private static List<Checkout> sortedByPath(List<Checkout> checkouts) {

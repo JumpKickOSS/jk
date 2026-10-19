@@ -412,7 +412,7 @@ public final class PreflightMemo {
             // Dual-write: durable cache survives jk clean; in-tree copy stays for local inspection.
             Path durable = durableMemoFile(entryDir);
             Files.createDirectories(durable.getParent());
-            AtomicWrites.replace(durable, body);
+            AtomicWrites.replaceIfChanged(durable, body);
             writeInTree(memoFile(entryDir), entryDir, body);
         } catch (Exception e) {
             // fail-open
@@ -435,7 +435,7 @@ public final class PreflightMemo {
     private static void writeInTree(Path file, Path entryDir, String body) throws IOException {
         if (!Files.isDirectory(entryDir.resolve(BuildLayout.TARGET))) return;
         Files.createDirectories(file.getParent());
-        AtomicWrites.replace(file, body);
+        AtomicWrites.replaceIfChanged(file, body);
     }
 
     // Graph structure (layer A) + rebuild without WorkspaceLoader
@@ -480,7 +480,7 @@ public final class PreflightMemo {
                     sb.append("edge\t").append(from).append('\t').append(to).append('\n');
                 }
             }
-            AtomicWrites.replace(file, sb.toString());
+            AtomicWrites.replaceIfChanged(file, sb.toString());
         } catch (Exception e) {
             // fail-open
             Log.debug("storeGraph: fail-open", e);
@@ -787,7 +787,7 @@ public final class PreflightMemo {
                 sb.append("schema=").append(SCHEMA).append('\n');
                 sb.append("cacheKeyVersion=").append(gotVersion).append('\n');
                 for (String line : byKey.values()) sb.append(line).append('\n');
-                AtomicWrites.replace(file, sb.toString());
+                AtomicWrites.replaceIfChanged(file, sb.toString());
             } catch (Exception e) {
                 // fail-open
                 Log.debug("storeShape: fail-open", e);

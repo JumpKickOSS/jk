@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -57,6 +58,14 @@ public final class JournalWriter {
     private final LongSupplier clock;
     private final String version;
     private final Consumer<String> log;
+
+    /**
+     * The kind of run each checkout's latest record and {@code target/} reports describe, while that
+     * run stands as a success. Only a no-op of that kind leaves them as they are: after a failure,
+     * or a run of another kind, the reports on disk are not this run's to keep. Engine-lifetime, so
+     * the first run after a start is always journaled in full.
+     */
+    private final Map<String, String> reportedKind = new ConcurrentHashMap<>();
 
     public void register(
             long requestId,
@@ -202,23 +211,31 @@ public final class JournalWriter {
         if (a != null && affected != null) a.addAffected(affected);
     }
 
-    public void write(long requestId, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
+    /**
+     * Persist the request's row and reports. A no-op ({@link BuildAccumulator#isNoop}) whose run has
+     * no directory yet is a line of the project's run log instead, and leaves every report as the
+     * last run of its kind wrote it; for one, this returns the agent verdict its {@code jk-agent.txt}
+     * would have held, and otherwise {@code null}.
+     */
+    public @Nullable String write(long requestId, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
         BuildAccumulator a = sessions.takeAccumulator(requestId);
         if (a == null) {
             // Usually means clearProgress/retire ran first — leaves a permanent running=true journal
             // stub (jk jobs "Building" forever). Surface it; do not silently drop.
             log.accept("jk engine: build journal skip requestId=" + requestId + " (no accumulator)");
-            return;
+            return null;
         }
         List<MarkdownTestReport.ModuleRun> tests = a.results().takeTests();
         try {
             if (a.discarded()) {
                 deleteStub(a);
-                return;
+                return null;
             }
             long finishedAt = clock.getAsLong();
-            String commit = gitCommit(a.dir());
             boolean cancelledEffective = cancelled || a.wasCancelled();
+            String noop = confirmNoop(a, cancelledEffective, finishedAt, millis);
+            if (noop != null) return noop;
+            String commit = gitCommit(a.dir());
             CacheBenefit.Result benefit = computeBenefit(a, millis);
             BuildRecord record = a.toRecord(finishedAt, cancelledEffective, millis, version, commit, benefit);
             long buildNumber = a.buildNumber();
@@ -236,7 +253,7 @@ public final class JournalWriter {
                     }
                     journal.purgeProject(record.coord(), record.dir());
                 }
-                return;
+                return null;
             }
             Iteration iteration = iteration(record, tests);
             record = iteration.record();
@@ -261,6 +278,10 @@ public final class JournalWriter {
             BuildRecord previous = coverage.isEmpty() || !historyConfig.enabled()
                     ? null
                     : journal.previousWithCoverage(record).orElse(null);
+            if (latest != null) {
+                if (record.success() && !record.cancelled()) reportedKind.put(a.dir(), record.kind());
+                else reportedKind.remove(a.dir());
+            }
             try {
                 JkResultsMarkdown.write(record, runDir, latest, tests, previous);
             } catch (IOException | RuntimeException e) {
@@ -292,6 +313,22 @@ public final class JournalWriter {
         } catch (RuntimeException e) {
             log.accept("jk engine: build journal append failed: " + e);
         }
+        return null;
+    }
+
+    /**
+     * Journal {@code a} as a no-op when it is one: a run-log line and nothing else — no record, no
+     * snapshot walk, no timeline, no report rewritten, no git probe. The agent verdict when it was,
+     * else {@code null} and the caller journals the run in full.
+     */
+    private @Nullable String confirmNoop(BuildAccumulator a, boolean cancelled, long finishedAt, long millis) {
+        if (cancelled || !historyConfig.enabled() || a.buildNumber() <= 0) return null;
+        String jid = a.journalId();
+        if (jid == null || jid.isBlank() || !a.kind().equals(reportedKind.get(a.dir())) || !a.isNoop()) return null;
+        BuildRecord record =
+                a.toRecord(finishedAt, false, millis, version, null).withBuildNumber(a.buildNumber());
+        if (record.synthetic() || !record.success() || !journal.confirm(jid, record)) return null;
+        return JkResultsAgent.render(record).stripTrailing() + " · up to date\n";
     }
 
     /** Attempts at rewriting a run's record in place before the run is left {@code running}. */
@@ -389,7 +426,8 @@ public final class JournalWriter {
             AtomicWrites.replace(runDir.resolve(name), body);
         }
         if (latestMarkdown != null && latestMarkdown.getParent() != null) {
-            AtomicWrites.replace(latestMarkdown.getParent().resolve(name), body);
+            // The latest copy is often the same text as the last run's: leave it, and its mtime.
+            AtomicWrites.replaceIfChanged(latestMarkdown.getParent().resolve(name), body);
         }
     }
 
@@ -469,7 +507,8 @@ public final class JournalWriter {
 
     /**
      * The project's git HEAD as a short SHA, or {@code null} when the dir isn't a git repo, git
-     * isn't on PATH, or the call errors/times out. Best-effort (1s cap): a commit stamp is a
+     * isn't on PATH, or the call errors/times out. Read from {@code .git} ({@link GitHead}); git
+     * is asked only about a repository that read cannot answer. Best-effort (1s cap): a commit stamp is a
      * nice-to-have on the history record, never worth failing or stalling journaling.
      *
      * <p>stderr is discarded at the OS level and stdout drained on a side thread, so the 1s cap
@@ -479,6 +518,8 @@ public final class JournalWriter {
      */
     static @Nullable String gitCommit(String dir) {
         if (dir == null || dir.isEmpty()) return null;
+        GitHead.Head head = GitHead.of(Path.of(dir));
+        if (head.known()) return head.commit();
         Process p = null;
         try {
             p = JobWorkers.start(new ProcessBuilder("git", "-C", dir, "rev-parse", "--short", "HEAD")

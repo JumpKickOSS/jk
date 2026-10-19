@@ -1145,6 +1145,10 @@ in     = "server/engine/src/main/java/cc/jumpkick/runtime/base/KtsSession.java"
 reason = "the .kts host outlives any one build: its reader, reaper and shutdown hook carry no request"
 
 [[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/compile/WarmLanes.java"
+reason = "warm compiler lanes outlive any one build: their linger reaper and shutdown hook carry no request; each item brings its own session"
+
+[[guards.request-thread-carries-session.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/task/CasPrewriter.java"
 reason = "polls the output directory for finished class files"
 

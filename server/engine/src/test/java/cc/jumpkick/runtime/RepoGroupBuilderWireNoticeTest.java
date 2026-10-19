@@ -205,7 +205,9 @@ class RepoGroupBuilderWireNoticeTest {
         public void clearProgress(long id) {}
 
         @Override
-        public void writeJournal(long id, boolean cancelled, long millis, @Nullable BufferedWriter writer) {}
+        public @Nullable String writeJournal(long id, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
+            return null;
+        }
 
         @Override
         public void maybeIdleBoundary() {}

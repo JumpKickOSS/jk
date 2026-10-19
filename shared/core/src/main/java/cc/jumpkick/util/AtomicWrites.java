@@ -10,12 +10,14 @@ import java.nio.file.AccessDeniedException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.IntConsumer;
@@ -133,6 +135,30 @@ public final class AtomicWrites {
     /** Write {@code content} (UTF-8) to {@code target} atomically. */
     public static void replace(Path target, String content) throws IOException {
         replace(target, content.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * As {@link #replace(Path, byte[])}, unless {@code target} already holds exactly {@code bytes}:
+     * then nothing is written, the file keeps its mtime, and this returns {@code false}.
+     *
+     * <p>For state a build rewrites with the same content far more often than with new: a memo, a
+     * ledger, a sidecar. Rewriting it costs a staging file, a rename and a dirty page, and moves an
+     * mtime that file watchers, freshness checks and the hash memo all treat as a change. One stat
+     * and, when the size matches, one read is the price of finding out.
+     */
+    public static boolean replaceIfChanged(Path target, byte[] bytes) throws IOException {
+        try {
+            if (Files.size(target) == bytes.length && Arrays.equals(Files.readAllBytes(target), bytes)) return false;
+        } catch (NoSuchFileException absent) {
+            // First write.
+        }
+        replace(target, bytes);
+        return true;
+    }
+
+    /** As {@link #replaceIfChanged(Path, byte[])} for UTF-8 text. */
+    public static boolean replaceIfChanged(Path target, String content) throws IOException {
+        return replaceIfChanged(target, content.getBytes(StandardCharsets.UTF_8));
     }
 
     /**

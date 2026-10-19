@@ -400,6 +400,10 @@ public final class PathUtil {
                     Files.copy(file, target, StandardCopyOption.COPY_ATTRIBUTES, StandardCopyOption.REPLACE_EXISTING);
                 } else {
                     Files.copy(file, target, StandardCopyOption.REPLACE_EXISTING);
+                    // The skip above compares against the source's mtime, so the copy has to carry
+                    // it: a copy stamped with the time of copying never matches again, and every
+                    // later copyTree of the same tree rewrites every file.
+                    if (!always) Files.setLastModifiedTime(target, attrs.lastModifiedTime());
                 }
                 return FileVisitResult.CONTINUE;
             }
@@ -418,19 +422,25 @@ public final class PathUtil {
         }
     }
 
-    /** Options for {@link #copyTree}. The default is: keep extras, skip identical, replace differing. */
+    /**
+     * Options for {@link #copyTree}. The default is: keep extras, skip identical, replace differing,
+     * and give each copy its source's modification time, which is what makes the next copy of an
+     * unchanged file a skip.
+     */
     public enum Copy {
         /** Delete {@code to} before copying, so the result is exactly {@code from}. */
         CLEAN_TARGET,
 
         /**
-         * Copy every file even when the target already matches. For a caller that needs the mtime
-         * bumped — staging that is about to be stamped, say — rather than preserved.
+         * Copy every file even when the target already matches, stamped with the time of copying.
+         * For a caller that needs the mtime bumped — staging that is about to be stamped, say —
+         * rather than carried.
          */
         OVERWRITE_ALWAYS,
 
         /**
-         * Carry each file's timestamps across ({@code COPY_ATTRIBUTES}).
+         * Carry each file's attributes across ({@code COPY_ATTRIBUTES}): every timestamp and,
+         * where the filesystem keeps them, the permission bits, not only the modification time.
          *
          * <p>For a copy whose point is that the <em>relationship</em> between two files' mtimes
          * survives — a scratch checkout where {@code jk.toml} must still look older than

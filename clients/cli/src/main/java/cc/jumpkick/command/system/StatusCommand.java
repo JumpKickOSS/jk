@@ -16,6 +16,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.RichText;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkVersion;
@@ -266,7 +267,7 @@ public final class StatusCommand implements CliCommand {
             // Cache only. The artifact store lives under JK_STORE_DIR, survives a nuke, and has
             // its own report in `jk storage usage`; folding it in here made "Size on Disk" name a
             // number no cache command can act on. Shared inodes inside the root count once.
-            CacheCommand.SectionStats s = CacheCommand.sectionStats(root);
+            CacheCommand.SectionStats s = StatusCacheUsage.of(root, Clock.SYSTEM);
             return new CacheSnapshot(
                     CacheCommand.fmtBytes(s.root().bytes()),
                     formatCount(s.cacheCas().files()),
@@ -349,6 +350,22 @@ public final class StatusCommand implements CliCommand {
                 + Theme.colorize(leader, t.darkGray())
                 + " "
                 + Theme.colorize(val, t.brightWhite()));
+    }
+
+    /**
+     * The lock's JDK pin as a reader names it: {@code vendor version}, the required pair when the
+     * lock requires one, else the suggested. The pin travels as its fingerprint, {@code
+     * suggestedVendor|suggestedVersion|requiredVendor|requiredVersion}, which is not for printing.
+     */
+    static String lockJdkText(@Nullable String fingerprint) {
+        if (fingerprint == null || fingerprint.isBlank()) return "";
+        String[] f = fingerprint.split("\\|", -1);
+        if (f.length != 4) return fingerprint;
+        boolean required = !f[2].isBlank() || !f[3].isBlank();
+        String vendor = required ? f[2] : f[0];
+        String version = required ? f[3] : f[1];
+        String text = (vendor + " " + version).trim();
+        return required && !text.isEmpty() ? text + " (required)" : text;
     }
 
     /**
@@ -468,7 +485,7 @@ public final class StatusCommand implements CliCommand {
             if (langs.isEmpty()) langs.add("Java");
 
             String jdk = info.jdk();
-            if (jdk == null || jdk.isBlank()) jdk = info.lockJdk();
+            if (jdk == null || jdk.isBlank()) jdk = lockJdkText(info.lockJdk());
             if (jdk == null || jdk.isBlank()) jdk = "—";
 
             int modules = info.moduleDirs().isEmpty() ? 1 : info.moduleDirs().size();

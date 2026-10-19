@@ -71,6 +71,7 @@ class CacheRetentionCoverageTest {
         // Bookkeeping entries seed a file that must SURVIVE; see the dedicated test below.
         m.put(CacheTree.LAST_PRUNED, root -> null);
         m.put(CacheTree.PRUNE_LOCK, root -> null);
+        m.put(CacheTree.STATUS_USAGE, root -> null);
         return m;
     }
 

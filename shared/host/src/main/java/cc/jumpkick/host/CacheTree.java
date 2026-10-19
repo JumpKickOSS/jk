@@ -78,7 +78,10 @@ public enum CacheTree {
     LAST_PRUNED(".last-pruned", "constant-size cadence sentinel"),
 
     /** Cross-process prune mutex, held for the length of a maintenance pass. */
-    PRUNE_LOCK(".prune.lock", "zero-byte lock file held across the prune");
+    PRUNE_LOCK(".prune.lock", "zero-byte lock file held across the prune"),
+
+    /** {@code jk status}'s last cache footprint, so a status does not walk the cache every time. */
+    STATUS_USAGE(".status-usage", "one line of three numbers, rewritten by jk status");
 
     private final String entry;
     private final String bookkeeping;

@@ -16,11 +16,23 @@ import java.util.List;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /** Machine JSONL shape + output mode aliases (docs/machine-output.md). */
 class JsonlShapeTest {
+
+    @BeforeEach
+    void liveFile() {
+        // Reads the transcript while it is written; the lazy open has tests of its own.
+        CliSessionTranscript.lazyOpenMillis = 0;
+    }
+
+    @AfterEach
+    void lazyAgain() {
+        CliSessionTranscript.lazyOpenMillis = CliSessionTranscript.LAZY_OPEN_MILLIS;
+    }
 
     @AfterEach
     void clearProgress() {

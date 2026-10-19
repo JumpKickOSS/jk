@@ -29,7 +29,12 @@ public interface JobJournaling {
     /** Drop the calling thread's results sink. */
     void closeResults();
 
-    void writeJournal(long id, boolean cancelled, long millis, @Nullable BufferedWriter writer);
+    /**
+     * Persist the request's row. A no-op is journaled as a run-log line and no reports; for one
+     * this returns its agent verdict, else {@code null}.
+     */
+    @Nullable
+    String writeJournal(long id, boolean cancelled, long millis, @Nullable BufferedWriter writer);
 
     BuildJournal journal();
 

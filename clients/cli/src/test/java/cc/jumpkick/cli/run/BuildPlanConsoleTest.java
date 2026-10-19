@@ -12,10 +12,23 @@ import cc.jumpkick.run.Task;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class BuildPlanConsoleTest {
+
+    @BeforeEach
+    void liveFile() {
+        // These read the transcript while it is written; the lazy open has tests of its own.
+        CliSessionTranscript.lazyOpenMillis = 0;
+    }
+
+    @AfterEach
+    void lazyAgain() {
+        CliSessionTranscript.lazyOpenMillis = CliSessionTranscript.LAZY_OPEN_MILLIS;
+    }
 
     private static BuildPlan oneStepInteractivePlan() {
         Task step = Task.builder("ensure-jdk")
@@ -68,6 +81,32 @@ class BuildPlanConsoleTest {
             console.stepStart("run-tests", "test", 1);
             assertThat(Files.readAllLines(details))
                     .anyMatch(l -> l.contains("\"type\":\"task-start\"") && l.contains("\"run-tests\""));
+        } finally {
+            session.finish(0);
+        }
+    }
+
+    @Test
+    void a_build_console_writes_each_step_event_into_the_transcript_once(@TempDir Path project) throws Exception {
+        CliSessionTranscript session = requireNonNull(CliSessionTranscript.open(project, "build", List.of("build")));
+        try {
+            Path details = project.resolve("runs").resolve("8").resolve(CliSessionTranscript.FILE_NAME);
+            session.bindJob(43, 8, details.toString(), 0);
+            Task step = Task.builder("compile-java")
+                    .ticks(1)
+                    .execute(ctx -> ctx.progress(1))
+                    .build();
+            BuildPlan plan = BuildPlan.builder("build").addTask(step).build();
+            plan.addListener(BuildPlanConsole.chooseConsoleListener(
+                    plan.steps(),
+                    BuildPlanConsole.Mode.QUIET,
+                    new ConsoleSpec("Build", r -> "ok", r -> "failed", true),
+                    "app"));
+            Capture.stdout(plan::run);
+            assertThat(Files.readAllLines(details))
+                    .as("the chooser mirrors already; a second mirror doubled every event")
+                    .filteredOn(l -> l.contains("\"type\":\"task-start\"") && l.contains("\"compile-java\""))
+                    .hasSize(1);
         } finally {
             session.finish(0);
         }

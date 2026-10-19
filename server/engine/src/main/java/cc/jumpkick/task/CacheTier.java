@@ -82,8 +82,8 @@ public final class CacheTier {
             case TOOL_SRC -> Bound.subtrees(Duration.ofDays(30), Bound.countCap(256));
 
             // Bookkeeping, not cache: the reason is CacheTree's, because it is the same fact that
-            // keeps `jk cache nuke` off these two entries.
-            case LAST_PRUNED, PRUNE_LOCK -> Bound.unbounded(tree.bookkeeping());
+            // keeps `jk cache nuke` off these entries.
+            case LAST_PRUNED, PRUNE_LOCK, STATUS_USAGE -> Bound.unbounded(tree.bookkeeping());
         };
     }
 }

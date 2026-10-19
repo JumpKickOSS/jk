@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
@@ -23,6 +24,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -42,6 +44,11 @@ import org.jspecify.annotations.Nullable;
  * <p>Directory name is the project build number (e.g. {@code 27}). {@link BuildRecord#id()} is a
  * UTC timestamp stamp for the run, not a path key. {@link #begin}/{@link #complete} locators are
  * the build-number directory name. On complete, requests {@link MetricsHarvest}.
+ *
+ * <p>A numbered run admitted through {@link #beginLater} has no directory until it has run for
+ * {@link #STUB_DELAY_MILLIS}: a run that ends sooner is finished by {@link #complete}, which writes the
+ * whole entry at once, or by {@link #confirm}, which leaves a no-op as one line of {@link
+ * #RUN_LOG} instead.
  */
 public final class BuildJournal {
 
@@ -76,10 +83,34 @@ public final class BuildJournal {
     /** UTC timestamp form stored as {@link BuildRecord#id()} (not the directory name). */
     private static final DateTimeFormatter ID_TS = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmssSSS");
 
+    /**
+     * The project home's log of runs that left no directory: one tab-separated line per no-op,
+     * {@code <build-number> <finished-at UTC> <kind> <millis> <trigger>}.
+     */
+    public static final String RUN_LOG = "runs.log";
+
+    /**
+     * How long a run admitted through {@link #beginLater} goes without its in-flight entry. Long
+     * enough that a no-op (tens of milliseconds) is over before it, short enough that a run a
+     * person or an agent could watch has its entry on disk while it does.
+     */
+    static final long STUB_DELAY_MILLIS = 150;
+
     private final Path buildsRoot;
 
+    /** Runs admitted through {@link #beginLater} whose in-flight entry is not written yet. */
+    private final PendingRuns pending = new PendingRuns((running, header) -> append(running, Snapshot.NONE, header));
+
+    private final long stubDelayMillis;
+
     public BuildJournal(Path buildsRoot) {
+        this(buildsRoot, STUB_DELAY_MILLIS);
+    }
+
+    /** {@code stubDelayMillis}: how long {@link #beginLater} waits before writing the in-flight entry. */
+    BuildJournal(Path buildsRoot, long stubDelayMillis) {
         this.buildsRoot = buildsRoot.normalize();
+        this.stubDelayMillis = stubDelayMillis;
     }
 
     public static BuildJournal current() {
@@ -98,11 +129,21 @@ public final class BuildJournal {
         return findRunDir(locator);
     }
 
+    /**
+     * The run directory of {@code buildNumber} in {@code projectDir}'s home: one on disk, or the one
+     * a run admitted through {@link #beginLater} will have, which may never exist.
+     */
     public Optional<Path> runDir(@Nullable String coord, String projectDir, long buildNumber) {
         if (buildNumber <= 0) return Optional.empty();
+        Path planned = plannedRunDir(projectDir, buildNumber);
+        if (Files.isDirectory(planned)) return Optional.of(planned);
+        return pending.plannedAt(planned) ? Optional.of(planned) : Optional.empty();
+    }
+
+    private Path plannedRunDir(@Nullable String projectDir, long buildNumber) {
         Path home = ProjectBuilds.projectHome(
-                buildsRoot, coord, Path.of(projectDir == null || projectDir.isBlank() ? "." : projectDir));
-        return ProjectBuilds.findRunDir(home, buildNumber);
+                buildsRoot, null, Path.of(projectDir == null || projectDir.isBlank() ? "." : projectDir));
+        return ProjectBuilds.runDir(home, buildNumber);
     }
 
     public Optional<Path> detailsFile(String locator) {
@@ -139,6 +180,11 @@ public final class BuildJournal {
      * {@link BuildRecord#id()} on disk is a UTC timestamp stamp, not the directory name.
      */
     public @Nullable String append(BuildRecord record, Snapshot snapshot) {
+        return append(record, snapshot, null);
+    }
+
+    /** {@link #append}, opening the run's {@code details.jsonl} with {@code transcriptHeader} when given. */
+    private @Nullable String append(BuildRecord record, Snapshot snapshot, @Nullable String transcriptHeader) {
         try {
             Path projectPath = Path.of(record.dir() == null || record.dir().isBlank() ? "." : record.dir());
             String coord = record.coord() == null || record.coord().isBlank() ? "unknown:unknown" : record.coord();
@@ -147,7 +193,7 @@ public final class BuildJournal {
             ProjectBuilds.writeIdentity(home, coord, projectPath);
             long stampMillis = record.finishedAt() > 0
                     ? record.finishedAt()
-                    : (record.startedAt() > 0 ? record.startedAt() : System.currentTimeMillis());
+                    : (record.startedAt() > 0 ? record.startedAt() : Clock.SYSTEM.millis());
             String timestamp = ID_TS.format(LocalDateTime.ofInstant(Instant.ofEpochMilli(stampMillis), ZoneOffset.UTC));
             long n = record.buildNumber();
             String dirName;
@@ -181,7 +227,11 @@ public final class BuildJournal {
                     // One line a reader scanning for a checkout's run takes before the record.
                     Files.writeString(tmp.resolve(ProjectBuilds.CHECKOUT), record.dir() + "\n", StandardCharsets.UTF_8);
                 }
-                writeSnapshot(tmp, snapshot);
+                writeSnapshot(tmp, snapshot, record.running() ? null : previousRun(target));
+                if (transcriptHeader != null) {
+                    Files.writeString(
+                            tmp.resolve(ProjectBuilds.DETAILS), transcriptHeader + "\n", StandardCharsets.UTF_8);
+                }
                 if (record.running()) {
                     Files.writeString(
                             tmp.resolve(ENGINE_OWNER), EngineOwner.current().line(), StandardCharsets.UTF_8);
@@ -218,12 +268,81 @@ public final class BuildJournal {
     }
 
     /**
+     * {@link #begin}, after {@link #STUB_DELAY_MILLIS}: the locator now, the in-flight entry only if
+     * the run is still going then. Most builds of an unchanged tree finish first, and those leave
+     * no directory to write and delete. A run with no build number begins at once.
+     */
+    public @Nullable String beginLater(BuildRecord running) {
+        if (running == null) return null;
+        long requestId = running.requestId();
+        if (requestId <= 0
+                || running.buildNumber() <= 0
+                || running.dir() == null
+                || running.dir().isBlank()) {
+            return begin(running);
+        }
+        try {
+            pending.defer(requestId, running, plannedRunDir(running.dir(), running.buildNumber()), stubDelayMillis);
+            return ProjectBuilds.runDirName(running.buildNumber());
+        } catch (RuntimeException e) {
+            return begin(running);
+        }
+    }
+
+    /**
+     * Hold {@code header}, the first line of the transcript the engine writes for request {@code
+     * requestId}, until its run has a directory: it is written with the entry, and dropped with a
+     * no-op. False when the run is not pending, and the caller writes the line itself.
+     */
+    public boolean holdTranscriptHeader(long requestId, String header) {
+        return pending.hold(requestId, header);
+    }
+
+    /** Settle every pending entry planned at {@code dir}'s run {@code n}: a run deleted before it began never begins. */
+    private void settlePendingAt(@Nullable String dir, long n) {
+        if (n <= 0 || dir == null || dir.isBlank()) return;
+        try {
+            pending.settleAt(plannedRunDir(dir, n));
+        } catch (RuntimeException e) {
+            Log.debug("settle pending: best-effort", e);
+        }
+    }
+
+    /**
+     * Finish {@code finished} as a no-op: a line in its project's {@link #RUN_LOG} in place of a run
+     * directory. Only a run whose entry is still unwritten qualifies; for one that already has its
+     * directory (it ran past {@link #STUB_DELAY_MILLIS}, or began through {@link #begin}) this
+     * returns false and writes nothing, and the caller {@link #complete completes} it as any other.
+     */
+    public boolean confirm(String locator, BuildRecord finished) {
+        if (finished == null || !validLocator(locator) || finished.buildNumber() <= 0) return false;
+        PendingRuns.Entry entry = pending.settle(finished.requestId());
+        if (entry == null || Files.exists(entry.planned)) return false;
+        pending.written(finished.requestId());
+        PendingRuns.logNoop(entry.planned, finished);
+        return true;
+    }
+
+    /**
      * Replace an in-flight entry with its finished record. {@code locator} is the build-number
      * directory name returned by {@link #begin}. Preserves the timestamp {@code id} from the
      * in-flight record when {@code finished.id()} is blank.
      */
     public boolean complete(String locator, BuildRecord finished, Snapshot snapshot) {
         if (!validLocator(locator) || finished == null) return false;
+        PendingRuns.Entry never = pending.settle(finished.requestId());
+        if (never != null && !Files.isDirectory(never.planned)) {
+            if (never.planned.equals(plannedRunDir(finished.dir(), finished.buildNumber()))) {
+                // Never begun: the whole entry is written now, where admission planned it.
+                if (append(finished, snapshot, never.transcriptHeader()) == null) return false;
+                pending.written(finished.requestId());
+                return true;
+            }
+            // The finished record names the checkout by another path than admission did (a
+            // symlink): begin where admission would have, and complete that entry as always.
+            if (append(never.running, Snapshot.NONE, never.transcriptHeader()) == null) return false;
+        }
+        if (never != null) pending.written(finished.requestId());
         Path target = resolveForComplete(locator, finished).orElse(null);
         if (target == null || !Files.isDirectory(target)) return false;
         Path parent = Objects.requireNonNull(target.getParent(), "journal entry has no parent");
@@ -245,7 +364,7 @@ public final class BuildJournal {
             long n = finished.buildNumber() > 0 ? finished.buildNumber() : ProjectBuilds.runNumberOf(target);
             BuildRecord toWrite = withId(finished.withBuildNumber(n), timestamp);
             writeRecord(tmp, toWrite);
-            writeSnapshot(tmp, snapshot);
+            writeSnapshot(tmp, snapshot, previousRun(target));
             RunMetricsToml.write(tmp, toWrite);
             OwnerOnlyFiles.seal(tmp);
             // Every file lands by rename from a sibling under the same runs/ tree: a reader polling
@@ -355,23 +474,86 @@ public final class BuildJournal {
         Files.writeString(dir.resolve(RECORD), written.record(), StandardCharsets.UTF_8);
     }
 
-    private static void writeSnapshot(Path dir, Snapshot s) throws IOException {
+    /**
+     * The snapshot files of a run. {@code previous} is the run before it, when one is on disk: a
+     * source list or lockfile byte-identical to that run's is linked to its copy rather than
+     * written again. Most runs change neither, and the lockfile alone is tens of kilobytes a run.
+     */
+    private static void writeSnapshot(Path dir, Snapshot s, @Nullable Path previous) throws IOException {
         if (s == null) return;
         if (s.testOutcomes() != null) {
             Files.writeString(dir.resolve(TEST_OUTCOMES_TSV), s.testOutcomes(), StandardCharsets.UTF_8);
         }
         if (s.sources() != null) {
-            Files.writeString(dir.resolve(SOURCES_TSV), s.sources(), StandardCharsets.UTF_8);
+            shareOrWrite(dir.resolve(SOURCES_TSV), s.sources().getBytes(StandardCharsets.UTF_8), previous);
         }
         if (s.resultsMd() != null && Files.isRegularFile(s.resultsMd())) {
             Files.copy(s.resultsMd(), dir.resolve(RESULTS_MD), StandardCopyOption.REPLACE_EXISTING);
         }
         if (s.lockfile() != null && Files.isRegularFile(s.lockfile())) {
-            Files.copy(s.lockfile(), dir.resolve(ManifestPaths.LOCK), StandardCopyOption.REPLACE_EXISTING);
+            shareOrWrite(dir.resolve(ManifestPaths.LOCK), Files.readAllBytes(s.lockfile()), previous);
         }
         if (s.diagnosticsText() != null && !s.diagnosticsText().isBlank()) {
             Files.writeString(dir.resolve(DIAGNOSTICS_TXT), s.diagnosticsText(), StandardCharsets.UTF_8);
         }
+    }
+
+    /**
+     * Write {@code bytes} at {@code target}, or link it to the file of the same name in {@code
+     * previous} when that holds exactly these bytes. A run's files are never rewritten once it
+     * completes, so a shared inode cannot change under either run, and pruning one run leaves the
+     * other's copy whole. A filesystem without links gets the bytes.
+     */
+    static void shareOrWrite(Path target, byte[] bytes, @Nullable Path previous) throws IOException {
+        if (previous != null) {
+            Path prior = previous.resolve(target.getFileName().toString());
+            try {
+                if (Files.isRegularFile(prior, LinkOption.NOFOLLOW_LINKS)
+                        && Files.size(prior) == bytes.length
+                        && Arrays.equals(Files.readAllBytes(prior), bytes)) {
+                    Files.createLink(target, prior);
+                    return;
+                }
+            } catch (IOException | UnsupportedOperationException noLink) {
+                Files.deleteIfExists(target);
+            }
+        }
+        Files.write(target, bytes);
+    }
+
+    /** How many lower-numbered directories {@link #previousRun} tries for a finished record. */
+    private static final int PREVIOUS_RUN_SCAN = 8;
+
+    /**
+     * The nearest lower-numbered run directory beside {@code runDir} with a record, or {@code null}.
+     * Listed rather than counted down: a run of no-ops leaves numbers with no directory.
+     */
+    static @Nullable Path previousRun(Path runDir) {
+        Path runs = runDir.getParent();
+        if (runs == null) return null;
+        long n = ProjectBuilds.runNumberOf(runDir);
+        List<Long> lower = new ArrayList<>();
+        try {
+            PathUtil.forEachChild(runs, (p, attrs) -> {
+                String name = p.getFileName().toString();
+                if (!attrs.isDirectory() || !ProjectBuilds.validRunDirName(name)) return true;
+                try {
+                    long k = Long.parseLong(name);
+                    if (k > 0 && k < n) lower.add(k);
+                } catch (NumberFormatException ignored) {
+                    // not a run number
+                }
+                return true;
+            });
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+        lower.sort(Comparator.reverseOrder());
+        for (int i = 0; i < Math.min(lower.size(), PREVIOUS_RUN_SCAN); i++) {
+            Path candidate = runs.resolve(Long.toString(lower.get(i)));
+            if (Files.isRegularFile(candidate.resolve(RECORD))) return candidate;
+        }
+        return null;
     }
 
     /**
@@ -690,6 +872,7 @@ public final class BuildJournal {
         if (idOrLocator != null && !idOrLocator.isBlank() && ProjectBuilds.validRunDirName(idOrLocator)) {
             try {
                 long n = Long.parseLong(idOrLocator);
+                settlePendingAt(dir, n);
                 Optional<Path> scoped = runDir(coord, dir, n);
                 if (scoped.isPresent()) {
                     if (!Files.isDirectory(scoped.get())) return false;
