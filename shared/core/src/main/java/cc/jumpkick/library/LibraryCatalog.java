@@ -2,8 +2,8 @@
 package cc.jumpkick.library;
 
 import cc.jumpkick.config.StampedMemo.FileStamp;
-import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceModules;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -41,9 +41,6 @@ import org.tomlj.TomlTable;
  * <p>Per-name shadowing; the bundled layer is always present. There is no host-local catalog file.
  */
 public final class LibraryCatalog {
-
-    /** {@link TomlScan} key for the workspace module list. */
-    private static final String WORKSPACE_MODULES = "workspace.modules";
 
     private static final String BUNDLED_RESOURCE = "/cc/jumpkick/library/libraries.toml";
 
@@ -206,7 +203,7 @@ public final class LibraryCatalog {
 
     /** Entries of {@code [workspace] modules} in {@code jkToml}, as written. Empty on unreadable. */
     static List<String> workspaceModulePaths(Path jkToml) {
-        return TomlScan.scan(jkToml, WORKSPACE_MODULES).stringArray(WORKSPACE_MODULES);
+        return WorkspaceScan.modulesListed(jkToml);
     }
 
     /** Test seam: build a catalog from a single in-memory map. */
