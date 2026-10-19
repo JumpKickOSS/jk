@@ -22,6 +22,7 @@ import cc.jumpkick.runtime.PlannerTails;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.runtime.TestSupport;
+import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.runtime.workspace.ModuleInputProvenance;
 import cc.jumpkick.runtime.workspace.StandalonePlanTimings;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -143,7 +144,9 @@ public final class SingleBuildVerb implements HostedVerb {
             JobOutcome outcome = result.success() ? JobOutcome.ok() : JobOutcome.failed(Exit.FAILURE);
             if (result.success() && barWeight > 0) {
                 long moduleMs = (System.nanoTime() - startNanos) / 1_000_000;
-                if (moduleMs > 0) {
+                // An up-to-date run's wall over the whole plan's weight is no throughput at all, and
+                // would rewrite host-metrics.toml on every no-op to say so.
+                if (moduleMs > 0 && BuildService.moduleDidWork(result)) {
                     Calibration.refine(moduleMs / (double) barWeight, System.currentTimeMillis());
                 }
                 host.maybeEnqueuePrune(cache);

@@ -81,15 +81,17 @@ final class JobSettlement {
         events.publishEvent("request-finish", events.withProgress(events.withIo(finishPayload, jid), jid));
         // Journal first: clearProgress retires the JobSession (drops the accumulator).
         // Writing after retire leaves a permanent running=true stub in jk jobs.
+        String noop = null;
         try {
-            journal.writeJournal(jid, cancelled, elapsedMillis, writer);
+            noop = journal.writeJournal(jid, cancelled, elapsedMillis, writer);
         } finally {
             // Last write under the project's target/ is the journal's jk-results.md copy,
             // so this is the moment the engine is provably done with the tree. The client
             // blocks on this line rather than the plan terminal — otherwise `jk build`
             // returns mid-write and a following `jk clean` races the memo/journal writers.
             // In a finally so a throwing journal can never strand the client.
-            if (writer != null) WireWriter.sendQuiet(writer, ProtoLifecycle.jobFinish(jid));
+            // A no-op says so: its run has no directory, so the client keeps no transcript for it.
+            if (writer != null) WireWriter.sendQuiet(writer, ProtoLifecycle.jobFinish(jid, noop));
         }
         events.clearProgress(jid);
         // Idle boundary after finish side-effects so prune/GC see journal + event garbage too.

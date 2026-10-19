@@ -18,10 +18,22 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class CliSessionTranscriptTest {
+
+    @BeforeEach
+    void liveFile() {
+        // These read the transcript while it is written; the lazy open has tests of its own.
+        CliSessionTranscript.lazyOpenMillis = 0;
+    }
+
+    @AfterEach
+    void lazyAgain() {
+        CliSessionTranscript.lazyOpenMillis = CliSessionTranscript.LAZY_OPEN_MILLIS;
+    }
 
     @AfterEach
     void clearProgress() {

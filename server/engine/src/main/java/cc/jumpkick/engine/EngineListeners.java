@@ -19,6 +19,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildPlanner;
+import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.TimelineEvent;
@@ -73,9 +74,13 @@ public final class EngineListeners {
     }
 
     public void flushTimeline(long requestId, @Nullable BufferedWriter writer) {
+        flushTimeline(requestId, writer, true);
+    }
+
+    private void flushTimeline(long requestId, @Nullable BufferedWriter writer, boolean didWork) {
         BuildAccumulator a = sessions.accumulator(requestId);
         if (a == null) return;
-        a.flushTimeline().ifPresent(path -> {
+        a.flushTimeline(didWork).ifPresent(path -> {
             if (writer != null) WireWriter.sendQuiet(writer, new TimelineEvent(path.toString()).encode());
         });
     }
@@ -164,7 +169,7 @@ public final class EngineListeners {
 
             @Override
             public void planFinished(String d, BuildPlanResult result) {
-                flushTimeline(rid, writer);
+                flushTimeline(rid, writer, !result.success() || BuildService.moduleDidWork(result));
                 if (releaseSlotOnFinish) inFlight.release(rid);
                 journal.accBuildPlanFinish(rid, d, result);
             }
