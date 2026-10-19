@@ -54,6 +54,44 @@ class PathUtilCopyTreeTest {
         assertThat(Files.getLastModifiedTime(to.resolve("same.txt"))).isEqualTo(old);
     }
 
+    /**
+     * The same property with nothing set by hand: the first copy must leave the target in a state
+     * the second recognises. A copy stamped with the time of copying never matched again, so every
+     * resource mirror rewrote every resource on every build.
+     */
+    @Test
+    void a_second_copy_of_an_unchanged_tree_writes_nothing(@TempDir Path tmp) throws IOException {
+        Path from = Files.createDirectories(tmp.resolve("from/nested"));
+        Files.writeString(from.resolve("one.txt"), "one");
+        FileTime source = FileTime.fromMillis(System.currentTimeMillis() - 600_000);
+        Files.setLastModifiedTime(from.resolve("one.txt"), source);
+        Path to = tmp.resolve("to");
+        Path copy = to.resolve("nested/one.txt");
+
+        PathUtil.copyTree(tmp.resolve("from"), to);
+        assertThat(Files.getLastModifiedTime(copy)).isEqualTo(source);
+
+        // Same length, same mtime, different bytes: only a skipped file still reads ONE.
+        Files.writeString(copy, "ONE");
+        Files.setLastModifiedTime(copy, source);
+        PathUtil.copyTree(tmp.resolve("from"), to);
+
+        assertThat(Files.readString(copy)).isEqualTo("ONE");
+    }
+
+    @Test
+    void overwrite_always_stamps_the_copy_with_the_time_of_copying(@TempDir Path tmp) throws IOException {
+        Path from = Files.createDirectories(tmp.resolve("from"));
+        Files.writeString(from.resolve("f.txt"), "f");
+        FileTime old = FileTime.fromMillis(System.currentTimeMillis() - 600_000);
+        Files.setLastModifiedTime(from.resolve("f.txt"), old);
+        Path to = tmp.resolve("to");
+
+        PathUtil.copyTree(from, to, PathUtil.Copy.OVERWRITE_ALWAYS);
+
+        assertThat(Files.getLastModifiedTime(to.resolve("f.txt"))).isNotEqualTo(old);
+    }
+
     @Test
     void a_differing_target_is_replaced(@TempDir Path tmp) throws IOException {
         Path from = Files.createDirectories(tmp.resolve("from"));
