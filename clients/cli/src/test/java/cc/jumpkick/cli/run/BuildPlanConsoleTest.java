@@ -87,6 +87,32 @@ class BuildPlanConsoleTest {
     }
 
     @Test
+    void a_build_console_writes_each_step_event_into_the_transcript_once(@TempDir Path project) throws Exception {
+        CliSessionTranscript session = requireNonNull(CliSessionTranscript.open(project, "build", List.of("build")));
+        try {
+            Path details = project.resolve("runs").resolve("8").resolve(CliSessionTranscript.FILE_NAME);
+            session.bindJob(43, 8, details.toString(), 0);
+            Task step = Task.builder("compile-java")
+                    .ticks(1)
+                    .execute(ctx -> ctx.progress(1))
+                    .build();
+            BuildPlan plan = BuildPlan.builder("build").addTask(step).build();
+            plan.addListener(BuildPlanConsole.chooseConsoleListener(
+                    plan.steps(),
+                    BuildPlanConsole.Mode.QUIET,
+                    new ConsoleSpec("Build", r -> "ok", r -> "failed", true),
+                    "app"));
+            Capture.stdout(plan::run);
+            assertThat(Files.readAllLines(details))
+                    .as("the chooser mirrors already; a second mirror doubled every event")
+                    .filteredOn(l -> l.contains("\"type\":\"task-start\"") && l.contains("\"compile-java\""))
+                    .hasSize(1);
+        } finally {
+            session.finish(0);
+        }
+    }
+
+    @Test
     void interactive_plan_stays_silent_on_a_terminal(@TempDir Path cache) {
         String out =
                 Capture.stdout(() -> BuildPlanConsole.run(oneStepInteractivePlan(), BuildPlanConsole.Mode.AUTO, cache));
