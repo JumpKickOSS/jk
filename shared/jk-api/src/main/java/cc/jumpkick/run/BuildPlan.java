@@ -20,6 +20,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -514,12 +515,23 @@ public final class BuildPlan {
      */
     private void cancelSiblings(Collection<CompletableFuture<TaskStatus>> outstanding) {
         cancelled.set(true);
+        // The grace is a bound, not a sleep: it ends when every sibling has stopped, at once when
+        // there is none. A fixed sleep made every red single-module build 200 ms slower than it
+        // had to be, with nothing in flight to wait for.
+        List<CompletableFuture<TaskStatus>> live = new ArrayList<>();
+        for (CompletableFuture<TaskStatus> f : outstanding) {
+            if (!f.isDone()) live.add(f);
+        }
+        if (live.isEmpty()) return;
         try {
-            Thread.sleep(COOPERATIVE_CANCEL_GRACE.toMillis());
+            CompletableFuture.allOf(live.toArray(CompletableFuture[]::new))
+                    .get(COOPERATIVE_CANCEL_GRACE.toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        } catch (ExecutionException | TimeoutException | CancellationException e) {
+            // A sibling that failed has stopped; one past the grace is cancelled below.
         }
-        for (CompletableFuture<TaskStatus> f : outstanding) {
+        for (CompletableFuture<TaskStatus> f : live) {
             if (!f.isDone()) f.cancel(true);
         }
     }
