@@ -20,6 +20,7 @@ import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.IOException;
+import java.net.BindException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -59,6 +60,9 @@ public final class EngineHttpFront {
 
     private volatile @Nullable HttpEngineServer server;
     private volatile @Nullable String error;
+
+    /** Set by {@link #stopNow} and {@link #close}: a bind still retrying then lets its server go. */
+    private volatile boolean stopped;
 
     public @Nullable HttpEngineServer server() {
         return server;
@@ -101,24 +105,59 @@ public final class EngineHttpFront {
         candidate.setOnSseAdmitted(() -> peakActiveConnections.accumulateAndGet(liveConnections.getAsInt(), Math::max));
         if (cacheGate != null) candidate.setCacheGate(cacheGate);
         try {
-            candidate.start();
-            Files.writeString(paths.http(), candidate.url());
-            server = candidate;
-            log.accept("jk engine: http listening on " + candidate.url());
+            candidate.start(1);
+            serve(candidate);
+        } catch (BindException busy) {
+            // Someone holds the port: a predecessor still letting go, or another engine. The bind
+            // retries for seconds, and engine startup — the first build's wait — must not.
+            error = "port " + config.port() + " busy, retrying";
+            // Startup chore; reads no session.
+            Thread.ofVirtual().name("jk-engine-http-bind").start(() -> bindLater(candidate));
         } catch (IOException | RuntimeException e) {
-            candidate.close();
-            error = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-            log.accept("jk engine: http failed to start (" + error + ") — continuing without http");
+            failed(candidate, e);
         }
+    }
+
+    /** The retrying bind, off the startup path; a stop that lands meanwhile lets the port go. */
+    private void bindLater(HttpEngineServer candidate) {
+        try {
+            candidate.start();
+            serve(candidate);
+        } catch (IOException | RuntimeException e) {
+            failed(candidate, e);
+        }
+    }
+
+    private void serve(HttpEngineServer candidate) throws IOException {
+        if (stopped) {
+            candidate.close();
+            return;
+        }
+        Files.writeString(paths.http(), candidate.url());
+        server = candidate;
+        error = null;
+        if (stopped) {
+            close();
+            return;
+        }
+        log.accept("jk engine: http listening on " + candidate.url());
+    }
+
+    private void failed(HttpEngineServer candidate, Exception e) {
+        candidate.close();
+        error = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+        log.accept("jk engine: http failed to start (" + error + ") — continuing without http");
     }
 
     /** Hand the Web UI port to a successor immediately (idempotent). */
     public void stopNow() {
+        stopped = true;
         HttpEngineServer h = server;
         if (h != null) h.stopNow();
     }
 
     public void close() {
+        stopped = true;
         HttpEngineServer h = server;
         if (h != null) h.close();
         server = null;

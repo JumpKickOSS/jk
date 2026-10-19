@@ -221,9 +221,17 @@ public final class HttpEngineServer implements AutoCloseable {
      * WSL2 localhost forwarding from Windows.
      */
     public void start() throws IOException {
+        start(BIND_ATTEMPTS);
+    }
+
+    /**
+     * As {@link #start()}, giving up after {@code attempts} binds: {@code 1} answers at once, so a
+     * caller with something better to do than wait for the port can retry elsewhere.
+     */
+    public void start(int attempts) throws IOException {
         tokens.loadOrMint();
         InetSocketAddress bind = new InetSocketAddress(InetAddress.getByName(config.host()), config.port());
-        server = bindWithRetry(bind);
+        server = bindWithRetry(bind, attempts);
         server.createContext("/", this::handle);
         // One thread per HTTP exchange; each handler binds the request's session itself.
         executor = Executors.newThreadPerTaskExecutor(
@@ -239,12 +247,12 @@ public final class HttpEngineServer implements AutoCloseable {
      * is genuinely held, we give up quickly and serve without HTTP. (Port {@code 0} is OS-assigned
      * and never collides, so this is a no-op there.)
      */
-    private static HttpServer bindWithRetry(InetSocketAddress bind) throws IOException {
+    private static HttpServer bindWithRetry(InetSocketAddress bind, int attempts) throws IOException {
         for (int attempt = 1; ; attempt++) {
             try {
                 return HttpServer.create(bind, 0);
             } catch (BindException e) {
-                if (attempt >= BIND_ATTEMPTS) throw e;
+                if (attempt >= attempts) throw e;
                 try {
                     Thread.sleep(BIND_RETRY_MILLIS);
                 } catch (InterruptedException ie) {
