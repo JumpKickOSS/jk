@@ -15,12 +15,12 @@ subject = "inner.edit.disk-write-bytes"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 12386304
+value = 188416
 unit = "bytes"
 band = 0.02
 runs = 5
-date = "2026-10-18"
-commit = "6588ef9e7"
+date = "2026-10-19"
+commit = "50d3e4fde"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -29,12 +29,12 @@ subject = "inner.edit.file-read-bytes"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 7095143
+value = 3926922
 unit = "bytes"
 band = 0.05
 runs = 5
-date = "2026-10-18"
-commit = "6588ef9e7"
+date = "2026-10-19"
+commit = "50d3e4fde"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -43,13 +43,13 @@ subject = "inner.edit.file-write-bytes"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 10978286
+value = 113676
 unit = "bytes"
 band = 0.02
 target = 262144
 runs = 5
-date = "2026-10-18"
-commit = "6588ef9e7"
+date = "2026-10-19"
+commit = "50d3e4fde"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -58,12 +58,12 @@ subject = "inner.edit.files-written"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 43
+value = 26
 unit = "files"
 band = 0.0
 runs = 5
-date = "2026-10-18"
-commit = "6588ef9e7"
+date = "2026-10-19"
+commit = "50d3e4fde"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -86,13 +86,13 @@ subject = "inner.edit.target-files-touched"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 64
+value = 10
 unit = "files"
 band = 0.0
 target = 4
 runs = 5
-date = "2026-10-18"
-commit = "6588ef9e7"
+date = "2026-10-19"
+commit = "50d3e4fde"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -129,13 +129,13 @@ subject = "inner.noop.disk-write-bytes"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 8212480
+value = 12288
 unit = "bytes"
 band = 0.02
 target = 65536
 runs = 5
-date = "2026-10-18"
-commit = "6588ef9e7"
+date = "2026-10-19"
+commit = "50d3e4fde"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -144,12 +144,12 @@ subject = "inner.noop.file-read-bytes"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 2582392
+value = 1077469
 unit = "bytes"
 band = 0.05
 runs = 5
-date = "2026-10-18"
-commit = "6588ef9e7"
+date = "2026-10-19"
+commit = "50d3e4fde"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -158,13 +158,13 @@ subject = "inner.noop.file-write-bytes"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 6824139
+value = 116
 unit = "bytes"
 band = 0.02
 target = 16384
 runs = 5
-date = "2026-10-18"
-commit = "6588ef9e7"
+date = "2026-10-19"
+commit = "50d3e4fde"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -173,13 +173,13 @@ subject = "inner.noop.files-written"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 29
+value = 3
 unit = "files"
 band = 0.0
 target = 2
 runs = 5
-date = "2026-10-18"
-commit = "6588ef9e7"
+date = "2026-10-19"
+commit = "50d3e4fde"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -188,12 +188,12 @@ subject = "inner.noop.output-bytes"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 34
+value = 48
 unit = "bytes"
 band = 0.0
 runs = 5
-date = "2026-10-18"
-commit = "6588ef9e7"
+date = "2026-10-19"
+commit = "50d3e4fde"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -202,13 +202,13 @@ subject = "inner.noop.target-files-touched"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 60
+value = 1
 unit = "files"
 band = 0.0
 target = 0
 runs = 5
-date = "2026-10-18"
-commit = "6588ef9e7"
+date = "2026-10-19"
+commit = "50d3e4fde"
 host-id = "1a8c211a203d"
 
 [[row]]
