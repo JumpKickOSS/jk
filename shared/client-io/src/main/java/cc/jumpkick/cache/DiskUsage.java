@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cache;
 
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -65,6 +66,56 @@ public final class DiskUsage {
     /** Convenience: {@link #exclusive(List)} over a vararg. */
     public static Stats[] exclusive(Path... roots) throws IOException {
         return exclusive(List.of(roots));
+    }
+
+    /**
+     * One walk of {@code root}: its {@link Stats} first, then the files under each of {@code
+     * within} (each a subtree of {@code root}) as a count. The same tree walked once per question
+     * cost {@code jk status} three passes over the cache where one answers all three.
+     */
+    public static long[] sections(Path root, List<Path> within) throws IOException {
+        long[] out = new long[2 + within.size()];
+        if (root == null || !Files.isDirectory(root)) return out;
+        SeenLinks seen = new SeenLinks();
+        PathUtil.forEachRegularFile(root, (p, attrs) -> {
+            long size = regularSize(p, seen);
+            if (size < 0) return;
+            out[0]++;
+            out[1] += size;
+            for (int i = 0; i < within.size(); i++) {
+                if (p.startsWith(within.get(i))) out[2 + i]++;
+            }
+        });
+        return out;
+    }
+
+    /**
+     * {@code p}'s bytes when it is a regular file whose inode this walk has not met, 0 when it has,
+     * and -1 when it is not a regular file or will not read.
+     */
+    private static long regularSize(Path p, SeenLinks seen) {
+        if (seen.unixSupported) {
+            try {
+                Map<String, Object> u = Files.readAttributes(p, "unix:isRegularFile,nlink,size,dev,ino");
+                if (!Boolean.TRUE.equals(u.get("isRegularFile"))) return -1;
+                long nlink = attr(u, "nlink");
+                return nlink <= 1 || seen.addInode(attr(u, "dev"), attr(u, "ino")) ? attr(u, "size") : 0;
+            } catch (UnsupportedOperationException | IllegalArgumentException e) {
+                seen.unixSupported = false;
+            } catch (IOException unreadable) {
+                return -1;
+            }
+        }
+        BasicFileAttributes attrs;
+        try {
+            attrs = Files.readAttributes(p, BasicFileAttributes.class);
+        } catch (IOException unreadable) {
+            return -1;
+        }
+        if (!attrs.isRegularFile()) return -1;
+        Object key = attrs.fileKey();
+        if (key == null) key = seen.sameFileIdentity(p, attrs.size());
+        return seen.addObject(key) ? attrs.size() : 0;
     }
 
     /** Sum of {@link Stats#bytes()} — true unique storage across exclusive sections. */

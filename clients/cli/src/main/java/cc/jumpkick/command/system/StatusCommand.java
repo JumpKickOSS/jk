@@ -16,6 +16,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.RichText;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkVersion;
@@ -266,7 +267,7 @@ public final class StatusCommand implements CliCommand {
             // Cache only. The artifact store lives under JK_STORE_DIR, survives a nuke, and has
             // its own report in `jk storage usage`; folding it in here made "Size on Disk" name a
             // number no cache command can act on. Shared inodes inside the root count once.
-            CacheCommand.SectionStats s = CacheCommand.sectionStats(root);
+            CacheCommand.SectionStats s = StatusCacheUsage.of(root, Clock.SYSTEM);
             return new CacheSnapshot(
                     CacheCommand.fmtBytes(s.root().bytes()),
                     formatCount(s.cacheCas().files()),
