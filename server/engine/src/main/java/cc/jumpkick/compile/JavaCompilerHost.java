@@ -764,7 +764,7 @@ public final class JavaCompilerHost {
                             "java-compiler",
                             hostJavaHome,
                             workerCp,
-                            ForkedJavac.novelJvmArgs(template),
+                            ForkedJavac.aotKeyFlags(template),
                             (aotOutput, scratch) ->
                                     ForkedJavac.trainerCommand(template, workerCp, hostJavaHome, aotOutput, scratch)),
                     heapBytes,
