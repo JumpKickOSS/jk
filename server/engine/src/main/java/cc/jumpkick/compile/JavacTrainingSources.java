@@ -18,7 +18,7 @@ import java.util.Map;
  * compile was 583–620 ms from a Hello.java cache against 495–547 ms from one recorded on the
  * application itself.
  */
-final class JavacTrainingSources {
+public final class JavacTrainingSources {
 
     private JavacTrainingSources() {}
 
@@ -315,7 +315,7 @@ final class JavacTrainingSources {
             """);
 
     /** Write the training module under {@code dir}: the source files, in a stable order. */
-    static List<Path> write(Path dir) throws IOException {
+    public static List<Path> write(Path dir) throws IOException {
         Path pkg = Files.createDirectories(dir.resolve("demo/train"));
         List<Path> out = new ArrayList<>();
         for (String name : FILES.keySet().stream().sorted().toList()) {
