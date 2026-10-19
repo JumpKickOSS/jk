@@ -14,6 +14,7 @@ import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
@@ -60,6 +61,24 @@ class AtomicWritesTest {
         try (var kids = Files.list(target.getParent())) {
             assertThat(kids).containsExactly(target);
         }
+    }
+
+    @Test
+    void replace_if_changed_leaves_identical_content_and_its_mtime_alone(@TempDir Path dir) throws IOException {
+        Path f = dir.resolve("memo.txt");
+        assertThat(AtomicWrites.replaceIfChanged(f, "a\n")).as("first write").isTrue();
+        FileTime old = FileTime.fromMillis(System.currentTimeMillis() - 600_000);
+        Files.setLastModifiedTime(f, old);
+
+        assertThat(AtomicWrites.replaceIfChanged(f, "a\n")).isFalse();
+        assertThat(Files.getLastModifiedTime(f)).isEqualTo(old);
+
+        assertThat(AtomicWrites.replaceIfChanged(f, "b\n"))
+                .as("same size, other bytes")
+                .isTrue();
+        assertThat(Files.readString(f)).isEqualTo("b\n");
+        assertThat(AtomicWrites.replaceIfChanged(f, "longer\n")).isTrue();
+        assertThat(Files.readString(f)).isEqualTo("longer\n");
     }
 
     @Test
