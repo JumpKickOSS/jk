@@ -507,7 +507,8 @@ public final class JournalWriter {
 
     /**
      * The project's git HEAD as a short SHA, or {@code null} when the dir isn't a git repo, git
-     * isn't on PATH, or the call errors/times out. Best-effort (1s cap): a commit stamp is a
+     * isn't on PATH, or the call errors/times out. Read from {@code .git} ({@link GitHead}); git
+     * is asked only about a repository that read cannot answer. Best-effort (1s cap): a commit stamp is a
      * nice-to-have on the history record, never worth failing or stalling journaling.
      *
      * <p>stderr is discarded at the OS level and stdout drained on a side thread, so the 1s cap
@@ -517,6 +518,8 @@ public final class JournalWriter {
      */
     static @Nullable String gitCommit(String dir) {
         if (dir == null || dir.isEmpty()) return null;
+        GitHead.Head head = GitHead.of(Path.of(dir));
+        if (head.known()) return head.commit();
         Process p = null;
         try {
             p = JobWorkers.start(new ProcessBuilder("git", "-C", dir, "rev-parse", "--short", "HEAD")
