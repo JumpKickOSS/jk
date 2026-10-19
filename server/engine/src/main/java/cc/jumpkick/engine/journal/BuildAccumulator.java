@@ -229,6 +229,9 @@ public final class BuildAccumulator {
     /** The kinds a run of which can be a no-op: builds of the tree, not runs of another tool or a push. */
     static final Set<String> NOOP_KINDS = Set.of("build", "test", "compile", "native");
 
+    /** What every step that restores its outputs from the action cache puts in its label. */
+    static final String CACHE_HIT = "cache hit";
+
     /**
      * Whether the run proved the tree up to date and did nothing else: it succeeded unforced, and
      * every step it ran was a skip or bookkeeping rather than productive work ({@link
@@ -247,7 +250,9 @@ public final class BuildAccumulator {
                 for (BuildRecord.Task t : steps.values()) {
                     ran = true;
                     String status = t.status() == null ? "" : t.status().trim().toUpperCase(Locale.ROOT);
-                    if ("SKIPPED".equals(status)) continue;
+                    // A skip that restored its outputs from the action cache rewrote them: the run
+                    // is a build of an earlier state, not an up-to-date tree, and its report says so.
+                    if ("SKIPPED".equals(status) && !t.detail().contains(CACHE_HIT)) continue;
                     if (!"SUCCESS".equals(status) || BuildService.isProductiveStep(t.name())) return false;
                 }
             }

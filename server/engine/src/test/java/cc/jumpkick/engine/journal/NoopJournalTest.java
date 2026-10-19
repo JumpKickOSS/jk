@@ -221,6 +221,28 @@ class NoopJournalTest {
     }
 
     @Test
+    void a_run_that_restored_its_classes_from_the_cache_is_journaled_whole() throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("proj"));
+        BuildJournal journal = new BuildJournal(tmp.resolve("builds"), HOUR);
+        JobSessions sessions = new JobSessions(() -> 0L);
+        JournalWriter writer = writer(journal, sessions, new ArrayList<>());
+        run(writer, sessions, journal, project, 51, 1, "SUCCESS", JobOutcome.SUCCEEDED);
+
+        String locator = requireNonNull(journal.beginLater(running(2, 52, project)));
+        writer.register(52, "build", project.toString(), "cli", null, true, false, 2, locator);
+        BuildAccumulator a = requireNonNull(sessions.accumulator(52));
+        a.addTask("", "parse-build", "resolve", "SUCCESS", 1, 0);
+        a.noteLabel("", "compile-java", "cache hit bb405de2");
+        a.addTask("", "compile-java", "compile", "SKIPPED", 4, 0);
+        a.stamp(JobOutcome.SUCCEEDED);
+
+        assertThat(writer.write(52, false, 90, null))
+                .as("a restore rewrote target/classes: the tree was not up to date")
+                .isNull();
+        assertThat(journal.runDir("g:a", project.toString(), 2)).isPresent();
+    }
+
+    @Test
     void the_first_run_an_engine_sees_is_journaled_whole() throws Exception {
         Path project = Files.createDirectories(tmp.resolve("proj"));
         BuildJournal journal = new BuildJournal(tmp.resolve("builds"), HOUR);
