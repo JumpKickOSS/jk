@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,6 +23,15 @@ final class CompileWork {
     final @Nullable Long heapBytes;
     /** On a heap retry: every heap this item's earlier workers ran out of, oldest first. */
     final List<Long> ranOut = new ArrayList<>();
+
+    /**
+     * The job that asked for this item and the session it asked under: a lane that outlives one
+     * job ({@link WarmLanes}) writes the spec and files the heap under these, not its own, and is
+     * stopped when that job ends with the item still on it.
+     */
+    long job;
+
+    Session session = SessionContext.current();
 
     /** Set once this item has been put back because the lane running it died. */
     boolean revived;
@@ -68,6 +79,13 @@ final class CompileWork {
 
     static CompileWork plan(ForkedJavac.Request req, @Nullable Long heapBytes) {
         return new CompileWork(req, true, heapBytes);
+    }
+
+    /** This item is {@code job}'s, asked for under {@code session}. */
+    CompileWork forJob(long job, Session session) {
+        this.job = job;
+        this.session = session;
+        return this;
     }
 
     static final CompileWork POISON = new CompileWork(null, false, null);

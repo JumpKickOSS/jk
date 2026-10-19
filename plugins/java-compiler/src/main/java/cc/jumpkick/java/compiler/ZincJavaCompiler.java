@@ -756,8 +756,9 @@ public final class ZincJavaCompiler {
      * dependency store, but a sibling module's classes directory is rewritten in place, and a loader
      * over its previous classes would generate the previous code.
      *
-     * <p>Reuse is bounded by the job: the worker's pull loop stays up across the modules of one job
-     * and exits on {@code DONE}, so no loader outlives the build that created it.
+     * <p>Reuse is bounded by the digest, not the job: the engine keeps a worker for a short linger
+     * after its build, and a later build's processor path is digested the same way, so a loader
+     * outlives its build only while the path still reads as what it loaded.
      */
     static synchronized ProcessorLoad processorsFor(List<Path> processorPath, String processorDigest) {
         if (processorPath == null || processorPath.isEmpty()) return ProcessorLoad.none();
