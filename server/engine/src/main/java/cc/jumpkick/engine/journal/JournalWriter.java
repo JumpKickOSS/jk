@@ -389,7 +389,8 @@ public final class JournalWriter {
             AtomicWrites.replace(runDir.resolve(name), body);
         }
         if (latestMarkdown != null && latestMarkdown.getParent() != null) {
-            AtomicWrites.replace(latestMarkdown.getParent().resolve(name), body);
+            // The latest copy is often the same text as the last run's: leave it, and its mtime.
+            AtomicWrites.replaceIfChanged(latestMarkdown.getParent().resolve(name), body);
         }
     }
 

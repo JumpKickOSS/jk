@@ -281,7 +281,7 @@ def main(argv: list[str]) -> int:
         print(f"  {row['subject']:<40} [{row['tool']}] {fmt(row['value'], row['unit']):>12}"
               + ("   unstable" if row.get("unstable") else ""))
     for line in notes + failures:
-        print(line)
+        print(line.replace("(banked)", "(--no-bank: not written)") if ns.no_bank else line)
     if not ns.no_bank:
         BOARD.write_text(render_board(new_board), encoding="utf-8")
     print(f"rows: {out / 'rows.json'}")

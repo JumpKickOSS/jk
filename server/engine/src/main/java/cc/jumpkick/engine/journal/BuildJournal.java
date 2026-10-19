@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
@@ -23,6 +24,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -181,7 +183,7 @@ public final class BuildJournal {
                     // One line a reader scanning for a checkout's run takes before the record.
                     Files.writeString(tmp.resolve(ProjectBuilds.CHECKOUT), record.dir() + "\n", StandardCharsets.UTF_8);
                 }
-                writeSnapshot(tmp, snapshot);
+                writeSnapshot(tmp, snapshot, null);
                 if (record.running()) {
                     Files.writeString(
                             tmp.resolve(ENGINE_OWNER), EngineOwner.current().line(), StandardCharsets.UTF_8);
@@ -245,7 +247,7 @@ public final class BuildJournal {
             long n = finished.buildNumber() > 0 ? finished.buildNumber() : ProjectBuilds.runNumberOf(target);
             BuildRecord toWrite = withId(finished.withBuildNumber(n), timestamp);
             writeRecord(tmp, toWrite);
-            writeSnapshot(tmp, snapshot);
+            writeSnapshot(tmp, snapshot, previousRun(target));
             RunMetricsToml.write(tmp, toWrite);
             OwnerOnlyFiles.seal(tmp);
             // Every file lands by rename from a sibling under the same runs/ tree: a reader polling
@@ -355,23 +357,66 @@ public final class BuildJournal {
         Files.writeString(dir.resolve(RECORD), written.record(), StandardCharsets.UTF_8);
     }
 
-    private static void writeSnapshot(Path dir, Snapshot s) throws IOException {
+    /**
+     * The snapshot files of a run. {@code previous} is the run before it, when one is on disk: a
+     * source list or lockfile byte-identical to that run's is linked to its copy rather than
+     * written again. Most runs change neither, and the lockfile alone is tens of kilobytes a run.
+     */
+    private static void writeSnapshot(Path dir, Snapshot s, @Nullable Path previous) throws IOException {
         if (s == null) return;
         if (s.testOutcomes() != null) {
             Files.writeString(dir.resolve(TEST_OUTCOMES_TSV), s.testOutcomes(), StandardCharsets.UTF_8);
         }
         if (s.sources() != null) {
-            Files.writeString(dir.resolve(SOURCES_TSV), s.sources(), StandardCharsets.UTF_8);
+            shareOrWrite(dir.resolve(SOURCES_TSV), s.sources().getBytes(StandardCharsets.UTF_8), previous);
         }
         if (s.resultsMd() != null && Files.isRegularFile(s.resultsMd())) {
             Files.copy(s.resultsMd(), dir.resolve(RESULTS_MD), StandardCopyOption.REPLACE_EXISTING);
         }
         if (s.lockfile() != null && Files.isRegularFile(s.lockfile())) {
-            Files.copy(s.lockfile(), dir.resolve(ManifestPaths.LOCK), StandardCopyOption.REPLACE_EXISTING);
+            shareOrWrite(dir.resolve(ManifestPaths.LOCK), Files.readAllBytes(s.lockfile()), previous);
         }
         if (s.diagnosticsText() != null && !s.diagnosticsText().isBlank()) {
             Files.writeString(dir.resolve(DIAGNOSTICS_TXT), s.diagnosticsText(), StandardCharsets.UTF_8);
         }
+    }
+
+    /**
+     * Write {@code bytes} at {@code target}, or link it to the file of the same name in {@code
+     * previous} when that holds exactly these bytes. A run's files are never rewritten once it
+     * completes, so a shared inode cannot change under either run, and pruning one run leaves the
+     * other's copy whole. A filesystem without links gets the bytes.
+     */
+    static void shareOrWrite(Path target, byte[] bytes, @Nullable Path previous) throws IOException {
+        if (previous != null) {
+            Path prior = previous.resolve(target.getFileName().toString());
+            try {
+                if (Files.isRegularFile(prior, LinkOption.NOFOLLOW_LINKS)
+                        && Files.size(prior) == bytes.length
+                        && Arrays.equals(Files.readAllBytes(prior), bytes)) {
+                    Files.createLink(target, prior);
+                    return;
+                }
+            } catch (IOException | UnsupportedOperationException noLink) {
+                Files.deleteIfExists(target);
+            }
+        }
+        Files.write(target, bytes);
+    }
+
+    /** How far back {@link #previousRun} looks past pruned or foreign run numbers. */
+    private static final int PREVIOUS_RUN_SCAN = 8;
+
+    /** The nearest lower-numbered run directory beside {@code runDir}, or {@code null}. */
+    static @Nullable Path previousRun(Path runDir) {
+        Path runs = runDir.getParent();
+        if (runs == null) return null;
+        long n = ProjectBuilds.runNumberOf(runDir);
+        for (long k = n - 1; k > 0 && k >= n - PREVIOUS_RUN_SCAN; k--) {
+            Path candidate = runs.resolve(Long.toString(k));
+            if (Files.isRegularFile(candidate.resolve(RECORD))) return candidate;
+        }
+        return null;
     }
 
     /**
