@@ -10,6 +10,7 @@ import static cc.jumpkick.engine.journal.JkResultsMarkdown.fmtDuration;
 import static cc.jumpkick.engine.journal.JkResultsMarkdown.runTestsFailed;
 
 import cc.jumpkick.layout.TestSuites;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.test.MarkdownTestReport;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -41,7 +42,7 @@ final class JkResultsTestsSection {
             sb.append(" (").append(roll.total).append(" total)");
             if (runTestsFailed(r) && roll.fail == 0) sb.append(" · **run-tests failed**");
             if (r.success() && roll.fail > 0) sb.append(" · ").append(REPORTED);
-            if (roll.ms > 0) sb.append(" · _took ").append(fmtDuration(roll.ms)).append('_');
+            appendTook(sb, roll, r);
             sb.append('\n');
             return true;
         }
@@ -96,8 +97,38 @@ final class JkResultsTestsSection {
                         .append("** tests");
             }
         }
-        if (roll.ms > 0) sb.append(" · _took ").append(fmtDuration(roll.ms)).append('_');
+        appendTook(sb, roll, r);
         sb.append("\n\n");
+    }
+
+    /**
+     * {@code · _took <tests>_}: the test cases' own time. When the run-tests step took well over
+     * that, its wall rides beside it — class setup (a Spring context, a Testcontainers database)
+     * is charged to no test, and a reader told "took 2.6s" of a 27 s step looks for the rest in
+     * the wrong place.
+     */
+    private static void appendTook(StringBuilder sb, TestRollup roll, BuildRecord r) {
+        if (roll.ms <= 0) return;
+        sb.append(" · _took ").append(fmtDuration(roll.ms));
+        long step = runTestsMillis(r);
+        if (step >= 2 * roll.ms && step - roll.ms >= 1_000) {
+            sb.append(" (run-tests ").append(fmtDuration(step)).append(')');
+        }
+        sb.append('_');
+    }
+
+    /** The longest run-tests step in {@code r}, top level or any module's; 0 when there is none. */
+    static long runTestsMillis(BuildRecord r) {
+        long max = 0;
+        for (BuildRecord.Task t : r.steps()) {
+            if (TaskNames.RUN_TESTS.equals(t.name())) max = Math.max(max, t.millis());
+        }
+        for (BuildRecord.Module m : r.modules()) {
+            for (BuildRecord.Task t : m.steps()) {
+                if (TaskNames.RUN_TESTS.equals(t.name())) max = Math.max(max, t.millis());
+            }
+        }
+        return max;
     }
 
     private static void appendPackageTable(StringBuilder sb, List<MarkdownTestReport.ModuleRun> tests, boolean multi) {
