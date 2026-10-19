@@ -136,10 +136,27 @@ def cmdline(pid: int) -> str:
     return _CMDLINES[pid]
 
 
+def state_root() -> Path:
+    """The state root the measured jk runs on: $JK_STATE_DIR, else the jk home's."""
+    return Path(os.environ["JK_STATE_DIR"]) if os.environ.get("JK_STATE_DIR") else benchtools.jk_home() / "state"
+
+
+def same_state(pid: int) -> bool:
+    """Whether engine {pid} serves this run's state root: another checkout's or another install's
+    engine on the same host is not this bill."""
+    try:
+        env = open(f"/proc/{pid}/environ", "rb").read().split(b"\0")
+    except OSError:
+        return False
+    theirs = next((e[len(b"JK_STATE_DIR="):].decode() for e in env if e.startswith(b"JK_STATE_DIR=")), None)
+    mine = os.environ.get("JK_STATE_DIR")
+    return theirs == mine if mine else theirs is None
+
+
 def engine_pids() -> set[int]:
     """The resident jk engines: the pid files under the state root, checked against /proc."""
     pids = set()
-    for pid_file in (benchtools.jk_home() / "state" / "engine").glob("*.pid"):
+    for pid_file in (state_root() / "engine").glob("*.pid"):
         try:
             pid = int(pid_file.read_text().strip().split()[0])
         except (OSError, ValueError, IndexError):
@@ -161,7 +178,8 @@ def _in_gradle_home(pid: int) -> bool:
 def resident_roots(tool: str, procs: dict[int, tuple[int, int]]) -> set[int]:
     """Processes the command does not own but the tool's memory bill includes."""
     if tool == "jk":
-        return engine_pids() | {pid for pid in procs if "jk-engine" in cmdline(pid) and "java" in cmdline(pid)[:200]}
+        return engine_pids() | {pid for pid in procs
+                                if "jk-engine" in cmdline(pid) and "java" in cmdline(pid)[:200] and same_state(pid)}
     if tool == "gradle":
         # Only daemons of the harness's own Gradle home: another checkout's daemon is not this bill. A
         # daemon runs in <gradle home>/daemon/<version>; the pinned distribution lives outside that home,
