@@ -353,6 +353,22 @@ public final class StatusCommand implements CliCommand {
     }
 
     /**
+     * The lock's JDK pin as a reader names it: {@code vendor version}, the required pair when the
+     * lock requires one, else the suggested. The pin travels as its fingerprint, {@code
+     * suggestedVendor|suggestedVersion|requiredVendor|requiredVersion}, which is not for printing.
+     */
+    static String lockJdkText(@Nullable String fingerprint) {
+        if (fingerprint == null || fingerprint.isBlank()) return "";
+        String[] f = fingerprint.split("\\|", -1);
+        if (f.length != 4) return fingerprint;
+        boolean required = !f[2].isBlank() || !f[3].isBlank();
+        String vendor = required ? f[2] : f[0];
+        String version = required ? f[3] : f[1];
+        String text = (vendor + " " + version).trim();
+        return required && !text.isEmpty() ? text + " (required)" : text;
+    }
+
+    /**
      * Left-align {@code label} and pad with dots up to {@code width - 1}, then append {@code :}.
      * Example: {@code dottedLabel("JDK", 18)} → {@code "JDK..............:"}.
      */
@@ -469,7 +485,7 @@ public final class StatusCommand implements CliCommand {
             if (langs.isEmpty()) langs.add("Java");
 
             String jdk = info.jdk();
-            if (jdk == null || jdk.isBlank()) jdk = info.lockJdk();
+            if (jdk == null || jdk.isBlank()) jdk = lockJdkText(info.lockJdk());
             if (jdk == null || jdk.isBlank()) jdk = "—";
 
             int modules = info.moduleDirs().isEmpty() ? 1 : info.moduleDirs().size();
