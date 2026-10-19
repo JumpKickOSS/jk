@@ -308,6 +308,27 @@ class JkResultsMarkdownTest {
     }
 
     @Test
+    void a_run_tests_step_far_longer_than_its_tests_shows_beside_their_time() {
+        var run = new MarkdownTestReport.ModuleRun(
+                "/ws/app",
+                "g:app",
+                List.of(
+                        new MarkdownTestReport.Entry("com.acme.WebTest", "a()", 1_000, null, null, null),
+                        new MarkdownTestReport.Entry("com.acme.DbTest", "b()", 1_600, null, null, null)));
+        BuildRecord slow =
+                record(true, List.of(), List.of(), List.of(task("run-tests", "test", "SUCCESS", 27_300)), null);
+        BuildRecord fast =
+                record(true, List.of(), List.of(), List.of(task("run-tests", "test", "SUCCESS", 3_100)), null);
+
+        assertThat(JkResultsMarkdown.render(slow, null, null, List.of(run)))
+                .as("a database container started in class setup is charged to no test")
+                .contains("_took 2.6s (run-tests 27.3s)_");
+        assertThat(JkResultsMarkdown.render(fast, null, null, List.of(run)))
+                .contains("_took 2.6s_")
+                .doesNotContain("(run-tests");
+    }
+
+    @Test
     void test_details_fold_package_table_and_skip_diag_duplicate() {
         MarkdownTestReport.Entry fail = new MarkdownTestReport.Entry(
                 "com.acme.FooTest",
