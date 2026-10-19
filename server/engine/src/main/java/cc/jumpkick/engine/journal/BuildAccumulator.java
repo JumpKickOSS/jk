@@ -12,6 +12,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.CacheBenefit;
 import cc.jumpkick.runtime.base.ChromeTimeline;
+import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.test.AffectedTests;
 import cc.jumpkick.test.RunResults;
@@ -223,6 +224,35 @@ public final class BuildAccumulator {
     /** True only when the runner explicitly reported success (not merely "no failure seen yet"). */
     public boolean succeeded() {
         return Boolean.TRUE.equals(success);
+    }
+
+    /** The kinds a run of which can be a no-op: builds of the tree, not runs of another tool or a push. */
+    static final Set<String> NOOP_KINDS = Set.of("build", "test", "compile", "native");
+
+    /**
+     * Whether the run proved the tree up to date and did nothing else: it succeeded unforced, and
+     * every step it ran was a skip or bookkeeping rather than productive work ({@link
+     * BuildService#isProductiveStep}, the test the client's "all up to date" uses), with no
+     * diagnostic, publish or ranking to keep. Such a run's record would repeat the last one.
+     */
+    public boolean isNoop() {
+        if (!NOOP_KINDS.contains(kind) || !succeeded() || userCancelled || discarded || rebuild) return false;
+        if (publish != null || affected() != null || !diagSnapshot().isEmpty()) return false;
+        for (ModuleOutcome m : moduleSnapshot()) {
+            if (m.didWork() || !m.success()) return false;
+        }
+        boolean ran = false;
+        for (Map<String, BuildRecord.Task> steps : stepsByDir.values()) {
+            synchronized (steps) {
+                for (BuildRecord.Task t : steps.values()) {
+                    ran = true;
+                    String status = t.status() == null ? "" : t.status().trim().toUpperCase(Locale.ROOT);
+                    if ("SKIPPED".equals(status)) continue;
+                    if (!"SUCCESS".equals(status) || BuildService.isProductiveStep(t.name())) return false;
+                }
+            }
+        }
+        return ran;
     }
 
     /** True when the runner already stamped success or failure via {@link #stamp}. */
@@ -710,7 +740,20 @@ public final class BuildAccumulator {
     private volatile boolean timelineFlushed;
 
     public Optional<Path> flushTimeline() {
+        return flushTimeline(true);
+    }
+
+    /**
+     * {@link #flushTimeline()}, unless the plan did no work ({@code didWork} false): a no-op's trace
+     * would replace the last real run's with a row of skips, so it is written only when the timeline
+     * was {@link ChromeTimeline#asked asked for} by path.
+     */
+    public Optional<Path> flushTimeline(boolean didWork) {
         if (timeline == null || timelineFlushed) return Optional.empty();
+        if (!didWork && !timeline.asked()) {
+            timelineFlushed = true;
+            return Optional.empty();
+        }
         Optional<Path> written = timeline.flush();
         if (written.isPresent()) timelineFlushed = true;
         return written;

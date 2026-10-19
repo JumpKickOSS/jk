@@ -6,6 +6,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.JobFinishFrame;
 import cc.jumpkick.wire.protocol.JobQueuedFrame;
 import cc.jumpkick.wire.protocol.JobStartFrame;
 import java.io.BufferedReader;
@@ -55,6 +56,19 @@ public final class WireStream {
      */
     public static void onJobStart(@Nullable JobStartListener listener) {
         jobStartListener = listener;
+    }
+
+    /** The agent verdict of this invocation's last engine job when it was a no-op: a run-log line, no run directory. */
+    private static volatile @Nullable String lastJobNoop;
+
+    /** Take what a {@code job-finish} line says about the run: whether it was a no-op, and its verdict. */
+    public static void noteJobFinish(String line) {
+        lastJobNoop = JobFinishFrame.decode(line).noop();
+    }
+
+    /** The verdict the last {@code job-finish} this process saw carried for a no-op, if it was one. */
+    public static Optional<String> lastJobNoop() {
+        return Optional.ofNullable(lastJobNoop);
     }
 
     /** The journal run directory of this invocation's last engine job, if it started one. */
@@ -180,6 +194,7 @@ public final class WireStream {
 
     /** Hand a decoded {@code job-start} to the registered observer, if any. */
     private static void notifyJobStart(JobStartFrame start, long jid) {
+        lastJobNoop = null;
         String details = start.detailsPath();
         if (details != null && !details.isBlank()) lastRunDir = Path.of(details).getParent();
         JobStartListener listener = jobStartListener;
@@ -219,7 +234,10 @@ public final class WireStream {
         try {
             String line;
             while ((line = reader.readLine()) != null) {
-                if (EngineProtocol.JOB_FINISH.equals(EngineProtocol.typeOf(line))) return;
+                if (EngineProtocol.JOB_FINISH.equals(EngineProtocol.typeOf(line))) {
+                    noteJobFinish(line);
+                    return;
+                }
             }
         } catch (IOException ignored) {
             // Outcome already decided; a broken stream now tells us nothing new.

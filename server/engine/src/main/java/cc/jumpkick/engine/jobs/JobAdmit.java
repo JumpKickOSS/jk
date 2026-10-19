@@ -102,8 +102,10 @@ public final class JobAdmit {
         String projectId = ProjectIds.refresh(canonDir != null ? canonDir : dir);
         String journalId = null;
         if (host.historyConfig().enabled() && canonDir != null && !canonDir.isBlank()) {
+            // Deferred: a run over before the journal's stub delay (a no-op) never has its in-flight
+            // entry written, and one that turns out a no-op leaves no directory at all.
             journalId = host.journal()
-                    .begin(BuildRecord.running(
+                    .beginLater(BuildRecord.running(
                             buildNumber,
                             kind,
                             canonDir,
@@ -170,6 +172,7 @@ public final class JobAdmit {
      */
     public static void openDetachedTranscript(
             JobEnvelope.Host host,
+            long requestId,
             String kind,
             String dir,
             String trigger,
@@ -178,6 +181,8 @@ public final class JobAdmit {
         Path details = detailsFile(host, dir, admit);
         if (details == null) return;
         String header = new SessionStartLine(host.nowMillis(), kind, List.of(kind), trigger, session).encode();
+        // A run whose directory is not written yet takes the line with it, or drops it as a no-op.
+        if (host.journal().holdTranscriptHeader(requestId, header)) return;
         try {
             Files.createDirectories(details.getParent());
             Files.writeString(

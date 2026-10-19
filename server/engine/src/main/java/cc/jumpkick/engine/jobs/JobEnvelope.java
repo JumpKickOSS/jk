@@ -180,7 +180,8 @@ public final class JobEnvelope {
             }
         }
         // A detached run has no CLI to open its transcript: the engine writes the header itself.
-        if (detached) JobAdmit.openDetachedTranscript(host, eventKind, eventDir, trigger, session, admit);
+        if (detached)
+            JobAdmit.openDetachedTranscript(host, eventRequestId, eventKind, eventDir, trigger, session, admit);
         ConnectionWatch watch = new ConnectionWatch(host::nowMillis, host::log);
         live.registerLiveJob(
                 eventRequestId,

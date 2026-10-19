@@ -198,16 +198,19 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
     volatile boolean journalCancelled;
     volatile long journalMillis;
 
+    private final BuildJournal journal = BuildJournal.current();
+
     volatile boolean journalThrows;
 
     @Override
-    public void writeJournal(long id, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
+    public @Nullable String writeJournal(long id, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
         teardownOrder.add("writeJournal");
         sequence.add("writeJournal");
         journalCancelled = cancelled;
         journalMillis = millis;
         journalWritten = true;
         if (journalThrows) throw new IllegalStateException("journal disk full");
+        return null;
     }
 
     /** The row JournalWriter would persist for this run, built the same way it builds it. */
@@ -259,7 +262,8 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
 
     @Override
     public BuildJournal journal() {
-        return BuildJournal.current();
+        // One journal, as the engine has: a run admitted through it is still pending in it.
+        return journal;
     }
 
     @Override
