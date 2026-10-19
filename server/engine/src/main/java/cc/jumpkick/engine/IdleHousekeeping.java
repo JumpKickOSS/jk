@@ -138,6 +138,7 @@ public final class IdleHousekeeping {
                 pruneJournal();
                 pruneMetrics();
                 pruneHeapDumps();
+                EngineAotTrainer.maybeTrain(this::idle, log);
             }
             try {
                 MetricsHarvest.get().awaitIdle(30_000L);

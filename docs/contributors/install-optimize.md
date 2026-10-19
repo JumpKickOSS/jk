@@ -59,10 +59,24 @@ The java-compiler, kotlinc and formatter workers (`java … PluginMain`) map a J
 per tool, recorded only for the JDK jk itself runs on: a worker forked on a project's own JDK
 runs without a cache, a landing cache deletes the tool's other caches, and the engine deletes
 every cache for another jk version or another JDK when it starts. The key hashes the worker GC
-flag, the worker classpath and the module's own JVM flags. Nothing pre-trains: the first run that
-misses forks one background trainer (a synthetic `Hello.java` / `Hello.kt` / formatter sources)
-and the next run maps the result. A recording that fails is not retried until the next engine
+flag, the worker classpath, the module's own JVM flags and, for javac, what the trainer compiled.
+Nothing pre-trains: the first run that misses forks one background trainer (for javac a bundled
+four-file module, `JavacTrainingSources`, compiled at `--release 21` or the module's, whichever is
+higher; a synthetic `Hello.kt` for kotlinc; formatter sources) and the next run maps the result. A recording that fails is not retried until the next engine
 start. `JK_WORKER_AOT=off` turns mapping and recording off; suite JVMs and CI set it.
+
+## The engine's startup cache
+
+The engine maps a JEP 514 cache of its own, `<state>/engine-aot/engine-<jk-version>-<key>.aot`
+(`EngineAotCache`), keyed by the engine jar's path, size and mtime and the JDK's `release` file. A
+resident engine cannot record it for itself: the JVM assembles a cache when the recording run
+exits, and a resident engine exits when it is replaced. So an idle engine with no cache for its
+jar (`EngineAotTrainer`, once per process, not under `CI`) runs the jk CLI against a scratch state
+and cache with `JK_ENGINE_AOT_RECORD` set: the spawner starts that trainer engine recording, the
+CLI builds the javac training module, edits and rebuilds it, rebuilds it as a no-op and asks for
+status, and `jk engine stop` makes the trainer assemble the cache, which lands atomically beside
+the others and replaces them. About 10 s once; on petclinic a no-op on a fresh engine is then
+~0.8 s instead of 1.17 s, for ~9 MiB more idle PSS. `JK_ENGINE_AOT=off` turns both halves off.
 
 ## Install
 
