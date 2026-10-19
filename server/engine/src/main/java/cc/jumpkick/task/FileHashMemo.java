@@ -6,9 +6,7 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -45,6 +43,10 @@ import org.jspecify.annotations.Nullable;
  * millisecond tick, which compilers do to restored class files, moves the nanoseconds and voids the
  * seed. A self-hash carries no stamp and is instead gated on {@link #SETTLE_MS}, so a same-size
  * rewrite inside one mtime tick cannot reuse a stale digest.
+ *
+ * <p>The file is a {@link MemoLog}: a flush appends the entries that changed since the last one, and
+ * a load keeps the last line per path. A line whose token is not a SHA-256 is not an entry, so a
+ * damaged record can lose an entry but never misreport one.
  *
  * <p>Every I/O failure fails open: the caller re-hashes. Nothing here is load-bearing, which is also
  * why a concurrent engine writing the same store is last-writer-wins rather than locked — a lost
@@ -264,26 +266,48 @@ public final class FileHashMemo {
             this.token = token;
             this.used = USE_TICK.incrementAndGet();
         }
+
+        /**
+         * Whether this entry already says what {@code o} would: the same stat identity and digest.
+         * A settled self-hash answers for a restore seed of the same file too; it was only recorded
+         * once the mtime was out of the settle window, and that mtime has not moved.
+         */
+        boolean answersFor(Entry o) {
+            return size == o.size
+                    && mtimeMillis == o.mtimeMillis
+                    && token.equals(o.token)
+                    && (nanos == o.nanos || nanos < 0);
+        }
+    }
+
+    /** Sixty-four lowercase hex digits; anything else on a line is a torn or foreign record. */
+    static boolean isSha256(String token) {
+        if (token.length() != 64) return false;
+        for (int i = 0; i < 64; i++) {
+            char c = token.charAt(i);
+            if ((c < '0' || c > '9') && (c < 'a' || c > 'f')) return false;
+        }
+        return true;
     }
 
     /** The in-memory map for one cache root, plus the single file it persists to. */
     private static final class Store {
 
         private final Path file;
+        private final MemoLog log;
         private final ConcurrentMap<String, Entry> entries = new ConcurrentHashMap<>();
         private final AtomicBoolean trimming = new AtomicBoolean();
         private volatile boolean dirty;
 
         private Store(Path dir) {
             this.file = dir.resolve(STORE_FILE);
+            this.log = new MemoLog(file);
         }
 
         static Store load(Path dir) {
             Store s = new Store(dir);
             try {
-                for (String line : Files.readAllLines(s.file, StandardCharsets.UTF_8)) {
-                    decode(line, s.entries);
-                }
+                s.log.load(line -> decode(line, s.entries));
             } catch (IOException | RuntimeException e) {
                 // No store yet, or an unreadable one: start empty and refill.
                 Log.debug("load: No store yet, or an unreadable one", e);
@@ -322,7 +346,14 @@ public final class FileHashMemo {
         }
 
         void put(String path, Entry e) {
+            Entry old = entries.get(path);
+            // The same fingerprint again is not a change: nothing to append, nothing to flush.
+            if (old != null && old.answersFor(e)) {
+                old.used = USE_TICK.incrementAndGet();
+                return;
+            }
             entries.put(path, e);
+            log.changed(path);
             dirty = true;
             if (entries.size() > MAX_ENTRIES + TRIM_SLACK) trim();
         }
@@ -332,7 +363,7 @@ public final class FileHashMemo {
             if (!trimming.compareAndSet(false, true)) return;
             try {
                 for (Map.Entry<String, Entry> victim : victims(entries, MAX_ENTRIES)) {
-                    entries.remove(victim.getKey(), victim.getValue());
+                    if (entries.remove(victim.getKey(), victim.getValue())) log.dropped();
                 }
             } finally {
                 trimming.set(false);
@@ -344,29 +375,20 @@ public final class FileHashMemo {
             dirty = false;
             try {
                 trim();
-                StringBuilder sb = new StringBuilder(entries.size() * 128);
-                for (Map.Entry<String, Entry> e : entries.entrySet()) {
-                    String path = e.getKey();
-                    // The record is one line and NUL-delimited, so a path carrying either is one
-                    // this format cannot read back. It stays live in memory and is simply not written.
-                    if (path.indexOf('\n') >= 0 || path.indexOf('\0') >= 0) continue;
-                    Entry v = e.getValue();
-                    sb.append(path)
-                            .append('\0')
-                            .append(v.size)
-                            .append('\0')
-                            .append(v.mtimeMillis)
-                            .append('\0')
-                            .append(v.nanos)
-                            .append('\0')
-                            .append(v.token)
-                            .append('\n');
-                }
-                AtomicWrites.replace(file, sb.toString());
+                log.flush(entries, Store::encode);
             } catch (IOException | RuntimeException e) {
                 // The memo is an optimisation, never a requirement.
                 dirty = true;
             }
+        }
+
+        /**
+         * One record line. NUL-delimited, so a path carrying a newline or a NUL is one this format
+         * cannot read back: it stays live in memory and is simply not written.
+         */
+        private static @Nullable String encode(String path, Entry v) {
+            if (path.indexOf('\n') >= 0 || path.indexOf('\0') >= 0) return null;
+            return path + '\0' + v.size + '\0' + v.mtimeMillis + '\0' + v.nanos + '\0' + v.token;
         }
 
         private static void decode(String line, ConcurrentMap<String, Entry> into) {
@@ -379,7 +401,7 @@ public final class FileHashMemo {
             int d = line.indexOf('\0', c + 1);
             if (d < 0) return;
             String token = line.substring(d + 1);
-            if (token.isEmpty()) return;
+            if (!isSha256(token)) return;
             try {
                 Entry e = new Entry(
                         Long.parseLong(line.substring(a + 1, b)),
