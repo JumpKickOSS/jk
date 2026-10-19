@@ -180,8 +180,8 @@ public final class EngineEnvelopeHost implements JobEnvelope.Host {
     }
 
     @Override
-    public void writeJournal(long id, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
-        journalWriter.write(id, cancelled, millis, writer);
+    public @Nullable String writeJournal(long id, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
+        return journalWriter.write(id, cancelled, millis, writer);
     }
 
     @Override

@@ -5,6 +5,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -77,7 +78,7 @@ public final class ModuleInputProvenance {
                 Path file = recordFile(workspaceRoot, dir, unit.manifest());
                 Path parent = file.getParent();
                 if (parent != null) Files.createDirectories(parent);
-                Files.writeString(file, fp + "\n", StandardCharsets.UTF_8);
+                AtomicWrites.replaceIfChanged(file, fp + "\n");
             } catch (IOException | RuntimeException unwritable) {
                 // A target dir that cannot be written is the build's problem to report, not this
                 // one's: the next preflight simply finds no record and treats the module as clean.

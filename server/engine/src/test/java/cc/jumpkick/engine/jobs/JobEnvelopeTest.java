@@ -189,6 +189,8 @@ class JobEnvelopeTest {
         Path details = host.journal()
                 .detailsFile(host.coordOf(dir.toString()), dir.toString(), host.lastBuildNumber)
                 .orElseThrow();
+        // This host never completes the run: the header lands with its in-flight entry.
+        Await.until(Duration.ofSeconds(30), () -> Files.isRegularFile(details));
         List<String> lines = Files.readAllLines(details);
         assertThat(lines).isNotEmpty();
         SessionStartLine header = SessionStartLine.decode(lines.getFirst());

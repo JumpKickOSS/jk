@@ -108,6 +108,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -739,6 +740,9 @@ public final class CommandDispatch {
 
     /** The agent report of the run this invocation started, or {@code null} when it started none. */
     private static @Nullable String thisRunReport() {
+        // A no-op has no run directory; its verdict came on the job's last line.
+        Optional<String> noop = WireStream.lastJobNoop();
+        if (noop.isPresent()) return noop.get().endsWith("\n") ? noop.get() : noop.get() + "\n";
         Path file = WireStream.lastRunDir()
                 .map(dir -> dir.resolve(ProjectBuilds.AGENT))
                 .orElse(null);

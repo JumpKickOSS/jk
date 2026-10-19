@@ -199,6 +199,103 @@ class FileHashMemoTest {
         });
     }
 
+    /** A flush writes what changed since the last one, after what is already there. */
+    @Test
+    void a_flush_appends_only_what_changed(@TempDir Path dir) throws Exception {
+        Path a = Files.writeString(dir.resolve("A.java"), "class A {}");
+        Path b = Files.writeString(dir.resolve("B.java"), "class B {}");
+        settle(a);
+        settle(b);
+        Path cache = dir.resolve("cache");
+        Path log = cache.resolve("hash-memo/memo.v1");
+        String[] before = new String[1];
+        withCache(cache, () -> {
+            try {
+                FileHashMemo.contentHash(a);
+                FileHashMemo.flush();
+                before[0] = Files.readString(log);
+                FileHashMemo.contentHash(b);
+                FileHashMemo.flush();
+                String after = Files.readString(log);
+                assertThat(after).startsWith(before[0]);
+                assertThat(after.substring(before[0].length()).split("\n")).hasSize(1);
+                assertThat(after.substring(before[0].length()))
+                        .startsWith(b.toAbsolutePath().toString());
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    /**
+     * A build that only re-confirms what the store holds writes nothing. Every no-op build used to
+     * rewrite the whole store, megabytes for one stale entry.
+     */
+    @Test
+    void the_same_fingerprint_again_leaves_the_store_unwritten(@TempDir Path dir) throws Exception {
+        Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
+        settle(f);
+        Path cache = dir.resolve("cache");
+        Path log = cache.resolve("hash-memo/memo.v1");
+        withCache(cache, () -> {
+            try {
+                String sha = FileHashMemo.contentHash(f);
+                FileHashMemo.flush();
+                FileTime written = Files.getLastModifiedTime(log);
+                Files.setLastModifiedTime(log, FileTime.fromMillis(written.toMillis() - 60_000));
+                FileTime sentinel = Files.getLastModifiedTime(log);
+
+                FileHashMemo.reset();
+                FileHashMemo.contentHash(f);
+                FileHashMemo.rememberContent(f, sha);
+                FileHashMemo.flush();
+
+                assertThat(Files.getLastModifiedTime(log)).isEqualTo(sentinel);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    /** An append cut short is not an entry, and the next flush starts the log clean. */
+    @Test
+    void a_torn_tail_is_never_read_as_a_fingerprint(@TempDir Path dir) throws Exception {
+        Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
+        settle(f);
+        Path abs = f.toAbsolutePath().normalize();
+        BasicFileAttributes attrs = Files.readAttributes(abs, BasicFileAttributes.class);
+        String real = Hashing.sha256Hex(f);
+        Path cache = dir.resolve("cache");
+        Path log = Files.createDirectories(cache.resolve("hash-memo")).resolve("memo.v1");
+        // The same path and stat, the token cut mid-way: a crash during an append.
+        Files.writeString(
+                log,
+                abs + "\0" + attrs.size() + "\0" + attrs.lastModifiedTime().toMillis() + "\0-1\0"
+                        + real.substring(0, 40));
+        withCache(cache, () -> {
+            try {
+                assertThat(FileHashMemo.contentHash(f)).isEqualTo(real);
+                assertThat(FileHashMemo.contentReads())
+                        .as("the torn line answered nothing")
+                        .isEqualTo(1);
+                FileHashMemo.flush();
+                String clean = Files.readString(log);
+                assertThat(clean).endsWith("\n").contains(real).doesNotContain(real.substring(0, 40) + "\n");
+                assertThat(clean.split("\n")).hasSize(1);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @Test
+    void only_a_sha256_is_a_token() {
+        assertThat(FileHashMemo.isSha256("a".repeat(64))).isTrue();
+        assertThat(FileHashMemo.isSha256("a".repeat(63))).isFalse();
+        assertThat(FileHashMemo.isSha256("A".repeat(64))).isFalse();
+        assertThat(FileHashMemo.isSha256("g".repeat(64))).isFalse();
+    }
+
     @Test
     void an_unreadable_store_fails_open(@TempDir Path dir) throws Exception {
         Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");

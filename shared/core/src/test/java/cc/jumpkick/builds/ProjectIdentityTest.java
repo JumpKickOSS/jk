@@ -6,11 +6,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
+import cc.jumpkick.testing.FakeClock;
 import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -194,6 +196,44 @@ class ProjectIdentityTest {
      * checkout with its own stamp, drops a checkout whose directory is gone on the next write,
      * and {@code checkoutsForId} answers only the live ones.
      */
+    /**
+     * Builds of one checkout inside the grain leave the identity file untouched: the listing it
+     * feeds shows minutes, and a no-op build used to rewrite it for a newer second.
+     */
+    @Test
+    void a_rebuild_inside_the_grain_leaves_the_identity_file_alone(@TempDir Path tmp, @TempDir Path stateDir)
+            throws Exception {
+        System.setProperty("jk.env.JK_STATE_DIR", stateDir.toString());
+        try {
+            String id = "aabbccddeeff00112233445566778899";
+            Path a = Files.createDirectories(tmp.resolve("wt-a"));
+            Path home = ProjectBuilds.projectHome(id);
+            Path file = home.resolve(ProjectBuilds.IDENTITY);
+            FakeClock clock = new FakeClock();
+            ProjectIdentity.IdentityFile.write(home, identityAt(id, a), clock);
+            String first = Files.readString(file);
+            FileTime sentinel =
+                    FileTime.fromMillis(Files.getLastModifiedTime(file).toMillis() - 60_000);
+            Files.setLastModifiedTime(file, sentinel);
+
+            clock.advance(Duration.ofMinutes(4));
+            ProjectIdentity.IdentityFile.write(home, identityAt(id, a), clock);
+            assertThat(Files.readString(file)).isEqualTo(first);
+            assertThat(Files.getLastModifiedTime(file)).as("not rewritten").isEqualTo(sentinel);
+
+            clock.advance(Duration.ofMinutes(2));
+            ProjectIdentity.IdentityFile.write(home, identityAt(id, a), clock);
+            assertThat(ProjectIdentity.IdentityFile.read(home)
+                            .orElseThrow()
+                            .checkouts()
+                            .getFirst()
+                            .lastBuilt())
+                    .isEqualTo(FakeClock.START.plus(Duration.ofMinutes(6)));
+        } finally {
+            System.clearProperty("jk.env.JK_STATE_DIR");
+        }
+    }
+
     @Test
     void identity_file_keeps_every_live_checkout_and_prunes_dead_ones(@TempDir Path tmp, @TempDir Path stateDir)
             throws Exception {

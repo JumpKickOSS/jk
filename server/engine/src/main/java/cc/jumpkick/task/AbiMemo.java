@@ -5,9 +5,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -25,7 +23,8 @@ import org.jspecify.annotations.Nullable;
  * Content identity → ABI token: the JVM ABI token of a jar or classes directory, or, under the
  * {@code kotlin:} namespace, the digest of its Kotlin classpath snapshot. Keyed by {@link
  * ClasspathFingerprint#entry}, never path or mtime: the same jar bytes at two paths share one extract. A hit is a map read; a miss is the
- * caller's to extract. Fail-open — a lost entry costs one re-extract.
+ * caller's to extract. Fail-open — a lost entry costs one re-extract. The file is a {@link MemoLog}:
+ * a flush appends the tokens put since the last one rather than rewriting every one the memo holds.
  */
 public final class AbiMemo {
 
@@ -137,20 +136,20 @@ public final class AbiMemo {
 
     private static final class Store {
         private final Path file;
+        private final MemoLog log;
         private final ConcurrentMap<String, Entry> entries = new ConcurrentHashMap<>();
         private final AtomicBoolean trimming = new AtomicBoolean();
         private volatile boolean dirty;
 
         private Store(Path dir) {
             this.file = dir.resolve(STORE_FILE);
+            this.log = new MemoLog(file);
         }
 
         static Store load(Path dir) {
             Store s = new Store(dir);
             try {
-                for (String line : Files.readAllLines(s.file, StandardCharsets.UTF_8)) {
-                    decode(line, s.entries);
-                }
+                s.log.load(line -> decode(line, s.entries));
             } catch (IOException | RuntimeException e) {
                 // No store yet, or unreadable: start empty.
                 Log.debug("load: No store yet, or unreadable", e);
@@ -180,7 +179,14 @@ public final class AbiMemo {
         }
 
         void put(String key, String token) {
+            Entry old = entries.get(key);
+            // The token the memo already holds: nothing to append, nothing to flush.
+            if (old != null && old.token.equals(token)) {
+                old.used = USE_TICK.incrementAndGet();
+                return;
+            }
             entries.put(key, new Entry(token));
+            log.changed(key);
             dirty = true;
             if (entries.size() > MAX_ENTRIES + TRIM_SLACK) trim();
         }
@@ -190,7 +196,7 @@ public final class AbiMemo {
             if (!trimming.compareAndSet(false, true)) return;
             try {
                 for (Map.Entry<String, Entry> victim : victims(entries, MAX_ENTRIES)) {
-                    entries.remove(victim.getKey(), victim.getValue());
+                    if (entries.remove(victim.getKey(), victim.getValue())) log.dropped();
                 }
             } finally {
                 trimming.set(false);
@@ -202,25 +208,25 @@ public final class AbiMemo {
             dirty = false;
             try {
                 trim();
-                StringBuilder sb = new StringBuilder(entries.size() * 96);
-                for (Map.Entry<String, Entry> e : entries.entrySet()) {
-                    String key = e.getKey();
-                    if (key.indexOf('\n') >= 0 || key.indexOf('\0') >= 0) continue;
-                    String token = e.getValue().token;
-                    if (token.indexOf('\n') >= 0 || token.indexOf('\0') >= 0) continue;
-                    sb.append(key).append('\0').append(token).append('\n');
-                }
-                AtomicWrites.replace(file, sb.toString());
+                log.flush(entries, Store::encode);
             } catch (IOException | RuntimeException e) {
                 dirty = true;
             }
+        }
+
+        /** One record line, or {@code null} for a key or token this NUL-delimited format cannot carry. */
+        private static @Nullable String encode(String key, Entry e) {
+            if (key.indexOf('\n') >= 0 || key.indexOf('\0') >= 0) return null;
+            if (e.token.indexOf('\n') >= 0 || e.token.indexOf('\0') >= 0) return null;
+            return key + '\0' + e.token;
         }
 
         private static void decode(String line, ConcurrentMap<String, Entry> into) {
             int a = line.indexOf('\0');
             if (a < 0) return;
             String token = line.substring(a + 1);
-            if (token.isEmpty()) return;
+            // A NUL in the token is two records run together: not an entry.
+            if (token.isEmpty() || token.indexOf('\0') >= 0) return;
             into.put(line.substring(0, a), new Entry(token));
         }
     }

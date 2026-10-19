@@ -30,6 +30,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -179,7 +180,7 @@ public final class PlannerPackage {
                     ? jarPath.resolveSibling(name.substring(0, name.length() - 4) + ".pom")
                     : jarPath.resolveSibling(name + ".pom");
             Files.createDirectories(pom.getParent());
-            Files.write(pom, InstallPlans.renderedPomBytes(project, layout));
+            AtomicWrites.replaceIfChanged(pom, InstallPlans.renderedPomBytes(project, layout));
         } catch (IOException ignored) {
             // Launch still fails clearly if the POM is missing; packaging must not.
         }

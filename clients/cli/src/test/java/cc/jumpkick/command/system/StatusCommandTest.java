@@ -89,4 +89,12 @@ class StatusCommandTest {
         String up = TestAnsi.strip(StatusCommand.engineStatusMessage(Optional.of(s)));
         assertThat(up).isEqualTo("JumpKick Engine v" + JkVersion.VERSION + " is running (pid 403279)");
     }
+
+    @Test
+    void the_lock_jdk_pin_prints_as_vendor_and_version_not_as_its_fingerprint() {
+        assertThat(StatusCommand.lockJdkText("temurin|25.0.4.1||")).isEqualTo("temurin 25.0.4.1");
+        assertThat(StatusCommand.lockJdkText("temurin|25||21")).isEqualTo("21 (required)");
+        assertThat(StatusCommand.lockJdkText("||zulu|17")).isEqualTo("zulu 17 (required)");
+        assertThat(StatusCommand.lockJdkText("")).isEmpty();
+    }
 }

@@ -1102,10 +1102,6 @@ at     = "cc.jumpkick.engine.jobs.JobSession#remaining(Lcc/jumpkick/wire/runtime
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.engine.journal.BuildJournal#append(Lcc/jumpkick/engine/journal/BuildRecord;Lcc/jumpkick/engine/journal/BuildJournal$Snapshot;)Ljava/lang/String; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.engine.journal.BuildJournal#complete(Ljava/lang/String;Lcc/jumpkick/engine/journal/BuildRecord;Lcc/jumpkick/engine/journal/BuildJournal$Snapshot;)Z -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]

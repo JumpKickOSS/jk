@@ -118,14 +118,19 @@ public final class CacheCommand extends GroupCommand {
      * files of Zinc analysis, three populations summed under one heading. The footprint above is
      * deliberately the opposite choice: a size is honest as a superset, a count is not.
      *
+     * <p>The tiers carry counts only; their bytes are not measured, and the root is walked once.
+     *
      * <p>Bytes are unique-inode within the walk: a cache-CAS blob hard-linked into
      * {@code actions/} is counted once, exactly as the nuke's own measurement counts it.
      */
     static SectionStats sectionStats(Path cacheRoot) throws IOException {
-        return new SectionStats(
-                statsOf(CacheTree.CACHE_CAS.under(cacheRoot)),
-                statsOf(ActionTree.KEYS.under(CacheTree.ACTIONS.under(cacheRoot))),
-                statsOf(cacheRoot));
+        // One walk: the two tiers are subtrees of the root, and only their counts are shown.
+        long[] w = DiskUsage.sections(
+                cacheRoot,
+                List.of(
+                        CacheTree.CACHE_CAS.under(cacheRoot),
+                        ActionTree.KEYS.under(CacheTree.ACTIONS.under(cacheRoot))));
+        return new SectionStats(new Stats(w[2], 0), new Stats(w[3], 0), new Stats(w[0], w[1]));
     }
 
     /**

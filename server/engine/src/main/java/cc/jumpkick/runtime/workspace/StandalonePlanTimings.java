@@ -42,7 +42,9 @@ public final class StandalonePlanTimings {
             public void planFinish(BuildPlanResult result) {
                 if (result == null || !result.success() || result.cancelled() || result.userCancelled()) return;
                 StepTimings.record(cache, List.copyOf(samples), StepTimings.DEFAULT_ALPHA, clock.millis());
-                Calibration.learnFromSuccess(List.copyOf(host));
+                // A plan that did no work teaches the host's rates nothing a build did not, and
+                // would rewrite host-metrics.toml on every up-to-date run to say so.
+                if (BuildService.moduleDidWork(result)) Calibration.learnFromSuccess(List.copyOf(host));
             }
         });
     }

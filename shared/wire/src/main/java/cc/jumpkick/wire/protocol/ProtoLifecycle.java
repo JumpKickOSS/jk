@@ -230,6 +230,14 @@ public final class ProtoLifecycle {
         return new JobFinishFrame(jid).encode();
     }
 
+    /**
+     * {@link #jobFinish(long)} for a run that was a no-op when {@code noop} is its agent verdict; see
+     * {@link JobFinishFrame}.
+     */
+    public static String jobFinish(long jid, @Nullable String noop) {
+        return new JobFinishFrame(jid, noop).encode();
+    }
+
     /** {@link EngineProtocol#CANCEL_REQUEST}: cancel by {@code jid} (optional {@code dir} to cancel all for a project). */
     public static String cancelRequest(long jid) {
         return new CancelRequestFrame(jid).encode();

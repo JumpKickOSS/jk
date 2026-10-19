@@ -23,7 +23,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Default path: {@code <project>/target/jk-profile.json} (canonical build output dir).
  * Disable with request {@code noTimeline=true} or env {@code JK_CHROME_PROFILE=off}. Override path
- * with {@code JK_CHROME_PROFILE=<file>}.
+ * with {@code JK_CHROME_PROFILE=<file>}, which also asks for the timeline of a run that did no
+ * work: by default such a run leaves the last one's in place ({@link #asked}).
  *
  * <p>Spans use the plan's measured {@link java.time.Duration} (same numbers as {@link
  * BuildMetrics}), placed with {@link System#nanoTime} at step finish so concurrent modules
@@ -36,6 +37,8 @@ public final class ChromeTimeline {
     static final String DEFAULT_REL = "target/jk-profile.json";
 
     private final Path file;
+    /** {@code JK_CHROME_PROFILE} named the file: every run's timeline is wanted, no-ops' too. */
+    private final boolean asked;
     /**
      * Appends dominate (one per step) and reads happen only at {@link #flush}, so a synchronized
      * ArrayList beats {@code CopyOnWriteArrayList}, whose per-add full-array copy makes recording
@@ -46,8 +49,14 @@ public final class ChromeTimeline {
     private final Map<String, Integer> tids = new ConcurrentHashMap<>();
     private final AtomicInteger nextTid = new AtomicInteger(1);
 
-    private ChromeTimeline(Path file) {
+    private ChromeTimeline(Path file, boolean asked) {
         this.file = file;
+        this.asked = asked;
+    }
+
+    /** Whether the timeline was asked for by path, rather than written by default. */
+    public boolean asked() {
+        return asked;
     }
 
     /**
@@ -71,7 +80,7 @@ public final class ChromeTimeline {
                     : projectDir.resolve(DEFAULT_REL).toAbsolutePath().normalize();
             Path parent = file.getParent();
             if (parent != null) Files.createDirectories(parent);
-            return new ChromeTimeline(file);
+            return new ChromeTimeline(file, env != null && !env.isBlank());
         } catch (RuntimeException | IOException e) {
             return null;
         }

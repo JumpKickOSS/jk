@@ -1,0 +1,241 @@
+# scoreboard.toml — every banked subject of the jk loop (bench/scoreboard, PRD go-loop.md).
+#
+# One [[row]] per (dim, subject, project, tool, kind). `value` is lower-is-better in `unit`; `band`
+# is how far above it a jk measurement may land before the run fails; `target` is where the subject
+# is headed, and `bench/scoreboard --gaps` ranks rows by value / target. `runs`, `date`, `commit`
+# and `host-id` say where the value came from. Only rows of the measuring host are compared.
+#
+# The ratchet rewrites a row when a measurement improves on it and seeds a row it has never seen;
+# it never raises a row. Raise one by hand after an intentional change and say why in the commit.
+
+
+[[row]]
+dim = "inner"
+subject = "inner.edit.disk-write-bytes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 12386304
+unit = "bytes"
+band = 0.02
+runs = 5
+date = "2026-10-18"
+commit = "6588ef9e7"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.edit.file-read-bytes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 7095143
+unit = "bytes"
+band = 0.05
+runs = 5
+date = "2026-10-18"
+commit = "6588ef9e7"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.edit.file-write-bytes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 10978286
+unit = "bytes"
+band = 0.02
+target = 262144
+runs = 5
+date = "2026-10-18"
+commit = "6588ef9e7"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.edit.files-written"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 43
+unit = "files"
+band = 0.0
+runs = 5
+date = "2026-10-18"
+commit = "6588ef9e7"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.edit.output-bytes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 35
+unit = "bytes"
+band = 0.0
+runs = 5
+date = "2026-10-18"
+commit = "6588ef9e7"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.edit.target-files-touched"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 64
+unit = "files"
+band = 0.0
+target = 4
+runs = 5
+date = "2026-10-18"
+commit = "6588ef9e7"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.edit.tasks-run"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 5
+unit = "tasks"
+band = 0.0
+runs = 5
+date = "2026-10-18"
+commit = "6588ef9e7"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.edit.tasks-skipped"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 5
+unit = "tasks"
+band = 0.0
+runs = 5
+date = "2026-10-18"
+commit = "6588ef9e7"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.noop.disk-write-bytes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 8212480
+unit = "bytes"
+band = 0.02
+target = 65536
+runs = 5
+date = "2026-10-18"
+commit = "6588ef9e7"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.noop.file-read-bytes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 2582392
+unit = "bytes"
+band = 0.05
+runs = 5
+date = "2026-10-18"
+commit = "6588ef9e7"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.noop.file-write-bytes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 6824139
+unit = "bytes"
+band = 0.02
+target = 16384
+runs = 5
+date = "2026-10-18"
+commit = "6588ef9e7"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.noop.files-written"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 29
+unit = "files"
+band = 0.0
+target = 2
+runs = 5
+date = "2026-10-18"
+commit = "6588ef9e7"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.noop.output-bytes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 34
+unit = "bytes"
+band = 0.0
+runs = 5
+date = "2026-10-18"
+commit = "6588ef9e7"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.noop.target-files-touched"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 60
+unit = "files"
+band = 0.0
+target = 0
+runs = 5
+date = "2026-10-18"
+commit = "6588ef9e7"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.noop.tasks-run"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 3
+unit = "tasks"
+band = 0.0
+target = 2
+runs = 5
+date = "2026-10-18"
+commit = "6588ef9e7"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.noop.tasks-skipped"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 7
+unit = "tasks"
+band = 0.0
+runs = 5
+date = "2026-10-18"
+commit = "6588ef9e7"
+host-id = "1a8c211a203d"

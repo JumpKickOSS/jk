@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -26,10 +27,17 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class JavaCompilerHostLanesTest {
 
+    /** These are the job's own lanes; {@link WarmLanesTest} has the ones that outlive it. */
+    @BeforeEach
+    void jobScopedLanes() {
+        WarmLanes.lingerForTests(0);
+    }
+
     @AfterEach
     void clearSharedPlan() {
         JvmOptions.resetSharedPlanForTests();
         JavaCompilerHost.overrideLaneBudgetForTests(0);
+        WarmLanes.lingerForTests(-1);
     }
 
     @Test

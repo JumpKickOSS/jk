@@ -67,3 +67,42 @@ decision are in [docs/user/packaging.md](../user/packaging.md#fat-jar-size-again
 ```bash
 jk test --profile bench -m server/engine --class cc.jumpkick.compile.JarSizeBenchTest
 ```
+
+## The scoreboard: work counts that load does not move
+
+`bench/scoreboard` measures the loop in counters, not seconds, so it can judge a change on a busy
+machine. Every row lives in [`scoreboard.toml`](../../scoreboard.toml): one `[[row]]` per dimension,
+subject, project, tool and kind, with its banked `value`, `band`, `target` and where it came from.
+
+```bash
+bench/scoreboard --tier fast             # measure, judge, bank (exit 1 on a regression)
+bench/scoreboard --no-bank               # judge only
+bench/scoreboard --subject 'inner.noop.*'
+bench/scoreboard --gaps                  # banked rows over their target, worst first
+bench/scoreboard --selftest
+```
+
+The first dimension, `counts` (`bench/scoreboard.d/counts.py`), runs the wall harness's
+spring-petclinic on a **private engine** (its own `JK_STATE_DIR`, the user's store and caches), so
+another session's jobs never land in its counters. For a no-op and a one-file edit it records:
+
+| counter | source |
+|---|---|
+| `tasks-run`, `tasks-skipped` | `task-finish` statuses from `--output json` |
+| `disk-write-bytes` | `/proc/<pid>/io` `write_bytes` of every process carrying the private state dir: file bytes only, native copies included |
+| `target-files-touched` | files under `target/` created, deleted or rewritten (inode, size, mtime) |
+| `files-written`, `file-write-bytes`, `file-read-bytes` | a JFR recording on the engine (`jdk.FileWrite`, `jdk.FileRead`; `/proc` and `/sys` reads left out) |
+| `output-bytes` | what `jk build --no-ansi` printed |
+
+Counting stops at a quiet point: the engine finishes part of a job after its reply (the idle
+boundary flushes the hash memo; the journal completes the run record), so each window waits until
+the engine's processes have written no file bytes for 1 s. Each row takes five runs after a warm-up,
+and its value is the median. A row with more than one run in four outside its band is `unstable`:
+printed, never banked or judged. `<scenario>-file-writes.tsv` in the run's results directory lists
+every file the engine wrote, biggest first. `<scenario>-target-touched.txt` lists the files under `target/` the
+build created, deleted or rewritten.
+
+A jk row above its banked value by more than its band (exact for task and file counts, 2–5 % plus a
+small absolute slack for bytes) fails the run and prints the commit range since it was banked; a
+row that improves is rewritten. Commit the rewritten file. Files stat'd, files hashed and files
+compiled need the engine to count them, and are not rows yet.

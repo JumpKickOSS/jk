@@ -33,8 +33,10 @@ import org.jspecify.annotations.Nullable;
  * {@code tail -F} mid-run.
  *
  * <p>On open the session buffers until {@link #bindJob} (from engine {@code job-start}) points at the
- * journal run's details path. If the command never receives job-start (failure before admit), a
- * local run dir is created at {@link #finish} so the transcript is still retained.
+ * journal run's details path, and past that until the session is {@link #LAZY_OPEN_MILLIS} old: a
+ * build that ends sooner writes its file at {@link #finish}, or none at all when the engine said it
+ * was a no-op, whose run has no directory. If the command never receives job-start (failure before
+ * admit), a local run dir is created at {@link #finish} so the transcript is still retained.
  *
  * <p>A build verb is one engine job, so its transcript is that job's file. A loop verb ({@code jk
  * dev}) runs many jobs in one session and opens with {@link #openAcrossJobs}: the first job-start
@@ -55,6 +57,16 @@ public final class CliSessionTranscript {
     public static final String FILE_NAME = "details.jsonl";
 
     private static final String ENV = "JK_CLI_DETAILS";
+
+    /**
+     * How old a session is before its bound file is opened. Longer than the engine's delay before a
+     * run's directory exists, so a run that lasts has its directory by then; short enough for a
+     * {@code tail -F} of any build worth watching.
+     */
+    static final long LAZY_OPEN_MILLIS = 400;
+
+    /** {@link #LAZY_OPEN_MILLIS}; a test of the live file sets it to {@code 0}. */
+    static volatile long lazyOpenMillis = LAZY_OPEN_MILLIS;
 
     /** Active session for dual-write; cleared on finish. */
     private static volatile @Nullable CliSessionTranscript active;
@@ -78,6 +90,9 @@ public final class CliSessionTranscript {
     private final ByteArrayOutputStream pending = new ByteArrayOutputStream(4096);
 
     private @Nullable Path file;
+    /** The details path {@link #bindJob} named, opened once the session is {@link #LAZY_OPEN_MILLIS} old. */
+    private @Nullable Path target;
+
     private @Nullable OutputStream out;
     private long lastFlushMs;
     private @Nullable String wedgeSummary;
@@ -174,15 +189,12 @@ public final class CliSessionTranscript {
                 if (acrossJobs && bound && out != null) {
                     // The file stays where the first job put it; the line says where this job's run is.
                 } else if (detailsPath != null && !detailsPath.isBlank()) {
-                    openFile(Path.of(detailsPath));
+                    bindTarget(Path.of(detailsPath));
                 } else if (buildNumber > 0 && projectDir != null) {
                     // Fallback: resolve runs/<N>/details.jsonl for this project under the live builds root.
-                    try {
-                        String coord = coordOf(projectDir);
-                        Path run = ProjectBuilds.runDir(ProjectBuilds.buildsRoot(), coord, projectDir, buildNumber);
-                        openFile(run.resolve(ProjectBuilds.DETAILS));
-                    } catch (IOException ignored) {
-                    }
+                    String coord = coordOf(projectDir);
+                    Path run = ProjectBuilds.runDir(ProjectBuilds.buildsRoot(), coord, projectDir, buildNumber);
+                    bindTarget(run.resolve(ProjectBuilds.DETAILS));
                 }
                 String jobLine = JsonlShape.jobMeta(jid, buildNumber, etaMs, detailsPath);
                 if (jobLine != null) {
@@ -201,6 +213,16 @@ public final class CliSessionTranscript {
             this.etaMs = etaMs;
             appendRaw(JsonlShape.withProgress(JsonlShape.eta(etaMs), null), true);
         }
+    }
+
+    /** Name the file; a transcript across jobs opens it now, any other once it is old enough. */
+    private void bindTarget(Path detailsFile) throws IOException {
+        target = detailsFile;
+        if (acrossJobs || oldEnough()) openFile(detailsFile);
+    }
+
+    private boolean oldEnough() {
+        return Clock.SYSTEM.millis() - started.toEpochMilli() >= lazyOpenMillis;
     }
 
     private void openFile(Path detailsFile) throws IOException {
@@ -322,6 +344,7 @@ public final class CliSessionTranscript {
 
     private void flushPending() throws IOException {
         if (pending.size() == 0) return;
+        if (out == null && target != null && oldEnough()) openFile(target);
         if (out == null) {
             // Keep buffering until bind/finish opens a file.
             lastFlushMs = System.currentTimeMillis();
@@ -364,6 +387,11 @@ public final class CliSessionTranscript {
         synchronized (lock) {
             if (closed) return file == null ? Optional.empty() : Optional.of(file);
             try {
+                if (out == null && target != null) {
+                    // A no-op's run has no directory to hold its transcript; its stdout said it all.
+                    if (WireStream.lastJobNoop().isPresent()) return Optional.empty();
+                    openFile(target);
+                }
                 if (!bound || out == null) ensureLocalRun();
                 Instant finished = Instant.now();
                 long durationMs = Duration.between(started, finished).toMillis();
