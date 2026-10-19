@@ -23,6 +23,14 @@ final class ConnectionWatch {
     /** How often the wait for the runner looks at the EOF watcher's verdict. */
     private static final long EOF_LOOK_MS = 50L;
 
+    /**
+     * How long an EOF waits for the body to return before it is a disconnect. The body sends its
+     * terminal and then returns; a client that half-closes on reading the terminal lands its EOF in
+     * between, and took every finished build for a cancelled one ({@code the client disconnected
+     * before the job finished} on the record, a warning in every report).
+     */
+    static final long TERMINAL_GRACE_MS = 500L;
+
     private final LongSupplier nowMillis;
     private final Consumer<String> log;
 
@@ -38,7 +46,8 @@ final class ConnectionWatch {
      * job's body is still running is a disconnect, and runs {@code onDisconnect} once. Once {@code
      * bodyFinished} holds, the body has sent its terminal and only its teardown remains, so the EOF
      * is the client half-closing after reading that terminal — the end of the request, not a
-     * disconnect that stops it — and nothing is cancelled. Returns with the interrupt flag cleared,
+     * disconnect that stops it — and nothing is cancelled. The body sends that terminal before it
+     * returns, so an EOF waits up to {@link #TERMINAL_GRACE_MS} for it to. Returns with the interrupt flag cleared,
      * so the joins that follow are not spuriously skipped.
      */
     void watchForEof(
@@ -58,7 +67,7 @@ final class ConnectionWatch {
         try {
             while (done.getCount() > 0) {
                 if (gone.await(EOF_LOOK_MS, TimeUnit.MILLISECONDS)) {
-                    if (done.getCount() > 0 && !bodyFinished.getAsBoolean()) onDisconnect.run();
+                    if (done.getCount() > 0 && !finishesWithin(bodyFinished, TERMINAL_GRACE_MS)) onDisconnect.run();
                     break;
                 }
             }
@@ -66,6 +75,16 @@ final class ConnectionWatch {
             // A cancel or runner wake landed here: the joins below bound what is left.
         }
         Thread.interrupted();
+    }
+
+    /** Whether {@code finished} holds now or within {@code graceMs}. */
+    private static boolean finishesWithin(BooleanSupplier finished, long graceMs) throws InterruptedException {
+        // Counted in sleeps, not read off the injected clock: a test's clock may stand still.
+        for (long slept = 0; !finished.getAsBoolean(); slept += 5) {
+            if (slept >= graceMs) return false;
+            Thread.sleep(5);
+        }
+        return true;
     }
 
     /**

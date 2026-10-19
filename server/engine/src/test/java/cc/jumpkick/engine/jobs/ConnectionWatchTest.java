@@ -49,6 +49,23 @@ class ConnectionWatchTest {
     }
 
     /**
+     * The body sends its terminal and then returns; the client's half-close on reading it lands in
+     * between. That EOF is still the end of the request: the body returning moments later proves it.
+     */
+    @Test
+    void eof_just_before_the_body_returns_is_the_end_of_the_request_not_a_disconnect() {
+        ConnectionWatch watch = new ConnectionWatch(System::currentTimeMillis, s -> {});
+        AtomicInteger disconnects = new AtomicInteger();
+        long returnsAt = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(100);
+        watch.watchForEof(
+                new BufferedReader(new StringReader("")),
+                new CountDownLatch(1),
+                () -> System.nanoTime() >= returnsAt,
+                disconnects::incrementAndGet);
+        assertThat(disconnects).as("the body returned inside the grace").hasValue(0);
+    }
+
+    /**
      * The client never writes mid-job, so the EOF read can only be ended by the client — and on
      * Windows not even a half-close from this side wakes it. The connection thread therefore
      * never sits in that read: the job's own latch releases it, and a client that sends nothing
