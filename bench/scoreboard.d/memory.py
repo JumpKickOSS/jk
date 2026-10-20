@@ -125,7 +125,7 @@ def measure(ctx) -> list[dict]:
     if not any(ctx.wants(f"memory.idle-{m}m.{c}") for m in marks for c in COUNTERS):
         return []
     state = ctx.home / "memory-state"
-    env = pc.engine_env(state)
+    env = pc.engine_env(state, jk=ctx.jk)
     pc.stop(ctx.jk, state)
     work = pc.working_copy(ctx.home, ctx.jk, state, f"{pc.PROJECT}-memory")
     pc.settle(work, ctx.jk, env)

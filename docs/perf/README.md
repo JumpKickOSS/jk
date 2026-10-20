@@ -73,10 +73,15 @@ Load slows both sides of a pair alike, so the median pair ratio holds on a busy 
 absolute wall would not. Each row also carries both medians and minimums in milliseconds and the
 ratio of the medians.
 
-To judge a branch, build it and point `JK_BIN` at its client against the installed release:
+To judge a branch, build it and point `JK_BIN` at its client against the installed jk; to judge
+the installed jk against a release, install that release into a home of its own and pass its
+client as the baseline. A side installed in its own home runs from that home, sharing the user's
+store and cache:
 
 ```bash
 jk build --skip-tests && JK_BIN=target/dist/jk bench/scoreboard --dim paired
+JK_HOME=~/.cache/jk-bench/release-0.15.2 JK_VERSION=0.15.2 bash install.sh
+bench/scoreboard --dim paired --baseline ~/.cache/jk-bench/release-0.15.2/bin/jk
 ```
 
 ### Absolute walls and the night

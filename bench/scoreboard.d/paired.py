@@ -64,7 +64,7 @@ def ratio_ci(ratios: list[float], rng: random.Random) -> tuple[float, float]:
 def measure(ctx) -> list[dict]:
     sides = {"candidate": ctx.jk, "baseline": ctx.baseline}
     states = {name: ctx.home / "paired" / name for name in sides}
-    envs = {name: pc.engine_env(states[name]) for name in sides}
+    envs = {name: pc.engine_env(states[name], jk=jk) for name, jk in sides.items()}
     works = {}
     for name, jk in sides.items():
         pc.stop(jk, states[name])

@@ -67,7 +67,7 @@ def rows_for(name: str, walls: list[float], ctx) -> list[dict]:
 
 def measure(ctx) -> list[dict]:
     state = ctx.home / "latency-state"
-    env = pc.engine_env(state)
+    env = pc.engine_env(state, jk=ctx.jk)
     pc.stop(ctx.jk, state)
     work = pc.working_copy(ctx.home, ctx.jk, state, f"{pc.PROJECT}-latency")
     pc.settle(work, ctx.jk, env)
