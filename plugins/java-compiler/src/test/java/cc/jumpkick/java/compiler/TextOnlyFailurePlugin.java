@@ -32,7 +32,7 @@ public final class TextOnlyFailurePlugin implements Plugin {
             Object log = logClass.getMethod("instance", contextClass).invoke(null, context);
             Class<?> kind = Class.forName("com.sun.tools.javac.util.Log$WriterKind");
             Method print = logClass.getMethod("printRawLines", kind, String.class);
-            print.invoke(log, Enum.valueOf(kind.asSubclass(Enum.class), "ERROR"), args[0]);
+            print.invoke(log, kind.getField("ERROR").get(null), args[0]);
             Field errors = logClass.getField("nerrors");
             errors.setInt(log, errors.getInt(log) + 1);
         } catch (ReflectiveOperationException e) {

@@ -3,8 +3,8 @@ package cc.jumpkick.idea;
 
 import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.execution.process.OSProcessHandler;
-import com.intellij.execution.process.ProcessAdapter;
 import com.intellij.execution.process.ProcessEvent;
+import com.intellij.execution.process.ProcessListener;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.util.Key;
@@ -87,7 +87,7 @@ public final class JkCliRunner {
         OSProcessHandler handler = new OSProcessHandler(cmd);
         StringBuilder out = new StringBuilder();
         StringBuilder err = new StringBuilder();
-        handler.addProcessListener(new ProcessAdapter() {
+        handler.addProcessListener(new ProcessListener() {
             @Override
             public void onTextAvailable(@NotNull ProcessEvent event, @NotNull Key outputType) {
                 String text = event.getText();

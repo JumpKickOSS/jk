@@ -63,7 +63,8 @@ final class JkProjectGraph {
                         JkSystem.ID,
                         wsRoot.resolve(PROJECT_OUTPUT).toString(),
                         projectLevel,
-                        projectLevel == null ? null : String.valueOf(def.level())));
+                        projectLevel == null ? null : String.valueOf(def.level()),
+                        List.of()));
 
         Map<String, LibraryData> libraries = new LinkedHashMap<>();
         for (JkWireModel.Lib lib : model.libs) {
@@ -148,7 +149,9 @@ final class JkProjectGraph {
         int level = m.javaRelease() > 0 ? m.javaRelease() : m.sdk().level();
         LanguageLevel languageLevel = level(level);
         if (languageLevel != null) {
-            node.createChild(JavaModuleData.KEY, new JavaModuleData(JkSystem.ID, languageLevel, String.valueOf(level)));
+            node.createChild(
+                    JavaModuleData.KEY,
+                    new JavaModuleData(JkSystem.ID, languageLevel, String.valueOf(level), List.of()));
         }
     }
 
