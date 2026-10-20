@@ -92,9 +92,9 @@ first. Before each absolute-wall dimension it waits for a **quiet host**: 1-minu
 CPU PSI `some` avg60 below 0.5 %, and no live job on the user's engine. It looks every 5 minutes
 until the deadline (`--deadline`, default 06:30); a host still busy then records `skipped: busy`
 and banks nothing for that dimension. Each batch is **calibrated**: a fixed javac batch of
-generated sources, timed before and after. Drift above 10 %, a host slower than its banked
-calibration, or a host that turned busy during the batch marks every row `noisy`: recorded, never
-banked or judged. A clean batch banks the calibration as its own row.
+generated sources, timed before and after. Drift above 10 %, or a host slower than its banked
+calibration, marks every row `noisy`: recorded, never banked or judged. The load at the end of a
+batch is the batch's own builds, so interference during it shows as calibration drift instead. A clean batch banks the calibration as its own row.
 
 After the measurements, the commands in [`bench/night-queue`](../../bench/night-queue) run one after
 another (an integration tier, a corpus re-run), never beside the measurements. The run then banks,
