@@ -131,16 +131,29 @@ public final class JavaCompilerHost {
         return lanesFor(id, req, heap, w).submitPlan(w);
     }
 
+    /**
+     * As {@link #plan} when a warm worker that can take {@code req} is already running, else null:
+     * a forecast is not worth starting a compiler JVM, which costs seconds on a cold engine.
+     */
+    static ForkedJavac.@Nullable Plan planIfWarm(ForkedJavac.Request req) {
+        if (!WarmLanes.lingers(req)) return null;
+        if (!WarmLanes.running(warmKey(req, WorkerHeap.forRequest(req)))) return null;
+        return plan(req);
+    }
+
     /** The pool {@code item} goes on: a warm one when the request may linger, else its job's. */
     private static Lanes lanesFor(long id, ForkedJavac.Request req, @Nullable Long heapBytes, CompileWork item) {
         if (!WarmLanes.lingers(req)) return pool(id, req, heapBytes);
         Path home = ForkedJavac.workerJavaHome(req);
+        return WarmLanes.lanes(warmKey(req, heapBytes), () -> Lanes.warm(req, home, heapBytes), item);
+    }
+
+    private static String warmKey(ForkedJavac.Request req, @Nullable Long heapBytes) {
         // The whole environment, not its fingerprint: a job's pool sees one request's variables, a
         // warm one every later request's, and a worker cannot be handed new ones.
         String env = Hashing.sha256Hex(new TreeMap<>(req.env().environment()).toString());
-        String key = "warm|" + home + "|" + req.workerJar() + "|" + env + "|" + (heapBytes == null ? "" : heapBytes)
-                + "|" + String.join(" ", req.jvmArgs());
-        return WarmLanes.lanes(key, () -> Lanes.warm(req, home, heapBytes), item);
+        return "warm|" + ForkedJavac.workerJavaHome(req) + "|" + req.workerJar() + "|" + env + "|"
+                + (heapBytes == null ? "" : heapBytes) + "|" + String.join(" ", req.jvmArgs());
     }
 
     private static Lanes pool(long id, ForkedJavac.Request req, @Nullable Long heapBytes) {
