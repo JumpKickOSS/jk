@@ -202,29 +202,48 @@ public final class GitCliExtension implements GitBackend {
     @Override
     public Optional<GitFetcher.Worktree> describeWorktree(Path dir) throws IOException {
         if (!Files.isDirectory(dir)) return Optional.empty();
-        ProcResult head =
-                exec(dir, null, List.of("rev-parse", "--verify", "--end-of-options", "HEAD"), localTimeoutSec);
-        if (head.exit != 0) return Optional.empty(); // outside a repository, or an unborn HEAD
-        String sha = head.output.strip();
-        // symbolic-ref answers only while HEAD points at a branch; detached, it exits non-zero.
-        ProcResult ref = exec(dir, null, List.of("symbolic-ref", "--short", "-q", "HEAD"), localTimeoutSec);
-        String branch = ref.exit == 0 ? ref.output.strip() : "";
-        if (branch.isEmpty()) branch = sha;
-        ProcResult time =
-                exec(dir, null, List.of("show", "-s", "--format=%ct", "--end-of-options", sha), localTimeoutSec);
-        if (time.exit != 0) throw new IOException("git show failed for " + sha + ": " + time.output.strip());
+        // Two commands, not five: a build with [build-info] asks this on every run. The branch
+        // header of one status names HEAD's commit and branch beside the dirty entries, and one
+        // show prints the commit time and, on git 2.32+, the nearest tag.
+        ProcResult status = exec(
+                dir,
+                null,
+                List.of("status", "--porcelain=v2", "--branch", "--untracked-files=normal"),
+                localTimeoutSec);
+        if (status.exit != 0) {
+            if (status.output.contains("not a git repository")) return Optional.empty();
+            throw new IOException("git status failed: " + status.output.strip());
+        }
+        String sha = "";
+        String branch = "";
+        boolean dirty = false;
+        for (String line : status.output.split("\n")) {
+            if (line.startsWith("# branch.oid "))
+                sha = line.substring("# branch.oid ".length()).strip();
+            else if (line.startsWith("# branch.head "))
+                branch = line.substring("# branch.head ".length()).strip();
+            else if (!line.isBlank() && !line.startsWith("# ")) dirty = true;
+        }
+        if (sha.isEmpty() || sha.equals("(initial)")) return Optional.empty(); // an unborn HEAD
+        // Detached, the header says "(detached)"; the build names the commit instead.
+        if (branch.isEmpty() || branch.equals("(detached)")) branch = sha;
+        boolean describeFormat = git.major() > 2 || (git.major() == 2 && git.minor() >= 32);
+        String format = describeFormat ? "%ct%n%(describe:tags=true,abbrev=0)" : "%ct";
+        ProcResult show =
+                exec(dir, null, List.of("show", "-s", "--format=" + format, "--end-of-options", sha), localTimeoutSec);
+        if (show.exit != 0) throw new IOException("git show failed for " + sha + ": " + show.output.strip());
+        String[] lines = show.output.strip().split("\n", 2);
         long epoch;
         try {
-            epoch = Long.parseLong(time.output.strip());
+            epoch = Long.parseLong(lines[0].strip());
         } catch (NumberFormatException e) {
-            throw new IOException("unexpected commit-time output: " + time.output.strip(), e);
+            throw new IOException("unexpected commit-time output: " + show.output.strip(), e);
         }
-        ProcResult status =
-                exec(dir, null, List.of("status", "--porcelain", "--untracked-files=normal"), localTimeoutSec);
-        if (status.exit != 0) throw new IOException("git status failed: " + status.output.strip());
-        boolean dirty = !status.output.strip().isEmpty();
-        return Optional.of(new GitFetcher.Worktree(
-                sha, branch, Instant.ofEpochSecond(epoch), dirty, describeNearestTag(dir, sha)));
+        Optional<String> tag;
+        if (!describeFormat) tag = describeNearestTag(dir, sha);
+        else if (lines.length < 2 || lines[1].isBlank()) tag = Optional.empty();
+        else tag = Optional.of(lines[1].strip());
+        return Optional.of(new GitFetcher.Worktree(sha, branch, Instant.ofEpochSecond(epoch), dirty, tag));
     }
 
     // --- cache primitives ----------------------------------------------------
