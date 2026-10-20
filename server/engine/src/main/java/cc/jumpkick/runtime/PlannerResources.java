@@ -92,14 +92,15 @@ public final class PlannerResources {
                             .resolve(ResourceMirror.LEDGER);
                     if (!resDirs.isEmpty() || ownManifest) {
                         ctx.label("copy resources");
-                        ResourceMirror.sync(resDirs, classes, ledger);
+                        // A tree whose files all match their copies is not work: the step reports SKIPPED.
+                        copied = ResourceMirror.syncChanges(resDirs, classes, ledger) > 0;
                         if (ownManifest) {
                             Files.copy(
                                     pluginManifest,
                                     classes.resolve(ManifestPaths.PLUGIN_MANIFEST),
                                     StandardCopyOption.REPLACE_EXISTING);
+                            copied = true;
                         }
-                        copied = true;
                     } else {
                         ResourceMirror.sync(List.of(), classes, ledger);
                         ctx.label("no static resources");

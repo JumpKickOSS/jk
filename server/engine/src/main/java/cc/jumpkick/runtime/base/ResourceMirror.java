@@ -60,6 +60,20 @@ public final class ResourceMirror {
     public static Set<String> sync(
             List<Path> resourceDirs, Path classes, Path ledger, boolean adoptUnowned, Set<String> protect)
             throws IOException {
+        return mirror(resourceDirs, classes, ledger, adoptUnowned, protect).files();
+    }
+
+    /** As {@link #sync(List, Path, Path)}, answering how many files under {@code classes} it wrote or removed. */
+    public static int syncChanges(List<Path> resourceDirs, Path classes, Path ledger) throws IOException {
+        return mirror(resourceDirs, classes, ledger, false, Set.of()).changes();
+    }
+
+    private record Mirrored(Set<String> files, int changes) {}
+
+    private static Mirrored mirror(
+            List<Path> resourceDirs, Path classes, Path ledger, boolean adoptUnowned, Set<String> protect)
+            throws IOException {
+        int changes = 0;
         Set<String> current = new TreeSet<>();
         for (Path dir : resourceDirs) {
             PathUtil.forEachRegularFile(
@@ -76,15 +90,16 @@ public final class ResourceMirror {
             if (current.contains(gone)) continue;
             Path stale = classes.resolve(gone);
             if (Files.deleteIfExists(stale)) {
+                changes++;
                 Path parent = stale.getParent();
                 if (parent != null) pruneEmptyParents(parent, classes);
             }
         }
-        for (Path dir : resourceDirs) PathUtil.copyTree(dir, classes);
+        for (Path dir : resourceDirs) changes += PathUtil.copyTree(dir, classes);
         Path parent = ledger.getParent();
         if (parent != null) Files.createDirectories(parent);
         AtomicWrites.replaceIfChanged(ledger, current.isEmpty() ? "" : String.join("\n", current) + "\n");
-        return current;
+        return new Mirrored(current, changes);
     }
 
     /**
