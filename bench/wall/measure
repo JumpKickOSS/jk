@@ -574,6 +574,9 @@ def main() -> int:
                     "tool_version": versions.get(tool, tool),
                 })
             continue
+        if tool == "gradle":
+            # A fresh daemon, as jk gets a fresh engine: one left from an earlier run carries its heap.
+            sh([GRADLE, "--stop", "-q"], cwd=works[tool], check=False)
         for scenario in scenarios:
             row = measure(tool, scenario, works[tool], args.runs, out_dir / f"{tool}-{scenario}.log")
             row["tool_version"] = versions[tool]
