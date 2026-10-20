@@ -6,7 +6,9 @@ import cc.jumpkick.cli.api.Osc;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
+import cc.jumpkick.terminal.RegionPainter;
 import java.io.PrintStream;
+import java.util.List;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -40,8 +42,9 @@ import org.jspecify.annotations.Nullable;
  *     that declared it cannot read them is the invariant broken. The animator thread still runs,
  *     and calls the caller's heartbeat instead of painting; the caller decides what a plain
  *     "still working" looks like and how often to say it.
- * <li><b>animating</b> — a real terminal. The full in-place row, one frame every {@link
- *     Spinner#FRAME_MS}, the taskbar told the region's state on every frame.
+ * <li><b>animating</b> — a real terminal. The row is polled every {@link FrameClock#FRAME_MS} and
+ *     painted through a {@link RegionPainter}, which writes only the cells that changed (nothing
+ *     when none did); the taskbar is told the region's state when it changes.
  * </ul>
  *
  * <p>A silent or plain region still registers as the active {@link LiveRegion} and still runs the
@@ -68,11 +71,11 @@ final class LiveLine implements AutoCloseable, LiveRegion {
     private final @Nullable Runnable onCancel;
     private final @Nullable Supplier<String> settleLine;
 
+    private final RegionPainter painter = new RegionPainter(RegionPainter.Park.IN_ROW);
     private int tick;
     private int percent = INDETERMINATE;
-    private boolean drawn;
     private boolean closed;
-    private @Nullable Thread animator;
+    private @Nullable FrameClock clock;
 
     private LiveLine(Builder b) {
         this.out = b.out;
@@ -133,8 +136,9 @@ final class LiveLine implements AutoCloseable, LiveRegion {
             CommandWedge.envelopeStart(out);
             LiveRegion.setActive(line);
             if (line.animate) {
-                out.print(Ansi.HIDE_CURSOR);
-                out.print(line.taskbar());
+                StringBuilder f = new StringBuilder(Ansi.HIDE_CURSOR);
+                line.painter.status(f, line.taskbar());
+                out.print(f);
                 out.flush();
             }
             line.startAnimator();
@@ -162,11 +166,9 @@ final class LiveLine implements AutoCloseable, LiveRegion {
         return !silent && !animate;
     }
 
-    /** Drive the OS taskbar to {@code percent} (0–100). No-op unless animating. */
+    /** Drive the OS taskbar to {@code percent} (0–100), on the next frame. No-op unless animating. */
     synchronized void progress(int percent) {
         this.percent = Math.max(0, Math.min(100, percent));
-        if (closed || !animate) return;
-        out.print(taskbar());
     }
 
     /**
@@ -192,10 +194,9 @@ final class LiveLine implements AutoCloseable, LiveRegion {
     synchronized boolean printAbove(String text) {
         if (closed || silent) return false;
         if (animate) {
-            if (drawn) {
-                out.print("\r");
-                out.print(Ansi.ERASE_LINE_TO_END);
-            }
+            StringBuilder f = new StringBuilder();
+            if (painter.height() > 0) painter.lift(f, 0, 0);
+            out.print(f);
             out.println(text);
             repaint();
             return true;
@@ -217,7 +218,9 @@ final class LiveLine implements AutoCloseable, LiveRegion {
         stopAnimator();
         LiveRegion.clearActive(this);
         if (!animate) return true;
-        if (drawn) out.print(Ansi.CLEAR_LINE);
+        StringBuilder f = new StringBuilder();
+        if (painter.height() > 0) painter.lift(f, 0, 0);
+        out.print(f);
         out.print(Osc.taskbarClear());
         out.print(Ansi.SHOW_CURSOR);
         out.flush();
@@ -255,40 +258,27 @@ final class LiveLine implements AutoCloseable, LiveRegion {
         return settle != null;
     }
 
-    /** The animator: frames when animating, heartbeats when plain, no thread at all when silent. */
+    /** The clock: frames when animating, heartbeats when plain, no thread at all when silent. */
     private void startAnimator() {
         if (silent || (!animate && heartbeat == null)) return;
-        long interval = animate ? Spinner.FRAME_MS : PLAIN_TICK_MS;
-        animator = new Thread(
-                () -> {
-                    while (!closed) {
-                        try {
-                            Thread.sleep(interval);
-                        } catch (InterruptedException e) {
-                            break;
-                        }
-                        step();
-                    }
-                },
-                "jk-live-line");
-        animator.setDaemon(true);
-        animator.start();
+        clock = FrameClock.start("jk-live-line", animate ? FrameClock.FRAME_MS : PLAIN_TICK_MS, this::step);
     }
 
     private void stopAnimator() {
-        if (animator != null) {
-            animator.interrupt();
-            animator = null;
+        if (clock != null) {
+            clock.stop();
+            clock = null;
         }
     }
 
+    /** Paint the current frame: only the cells that changed since the last, nothing when none did. */
     private void repaint() {
-        out.print(taskbar());
-        out.print("\r");
-        out.print(frame.render(tick));
-        out.print(Ansi.ERASE_LINE_TO_END);
+        StringBuilder f = new StringBuilder();
+        painter.status(f, taskbar());
+        painter.paint(f, List.of(frame.render(tick)), 0, 0, 0);
+        if (f.isEmpty()) return;
+        out.print(f);
         out.flush();
-        drawn = true;
     }
 
     /** The taskbar told what the region knows: a percentage once one was reported, busy until then. */

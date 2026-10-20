@@ -7,6 +7,7 @@ import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.FrameClock;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Icon;
 import cc.jumpkick.cli.tui.JkWedge;
@@ -19,7 +20,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.ide.IdeGeneration;
 import cc.jumpkick.ide.IdeModel;
 import cc.jumpkick.terminal.Ansi;
-import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
+import cc.jumpkick.terminal.RegionPainter;
 import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -47,10 +48,9 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
     private final List<RichText> details = new ArrayList<>();
 
     private int frame;
-    private int linesDrawn;
-    private List<String> lastLines = List.of();
+    private final RegionPainter painter = new RegionPainter(RegionPainter.Park.BELOW);
     private boolean done;
-    private @Nullable Thread animator;
+    private @Nullable FrameClock clock;
 
     private IdeChrome(PrintStream out, boolean animate) {
         this.out = PlainAscii.wrapping(out);
@@ -121,8 +121,6 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
             if (animate && Theme.active().isAnsi()) {
                 wipe();
                 out.println(line);
-                lastLines = List.of();
-                linesDrawn = 0;
                 paint();
                 return;
             }
@@ -232,20 +230,7 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
     }
 
     private void startAnimator() {
-        animator = new Thread(this::loop, "jk-ide-chrome");
-        animator.setDaemon(true);
-        animator.start();
-    }
-
-    private void loop() {
-        while (!done) {
-            tick();
-            try {
-                Thread.sleep(WorkspaceProgressTracker.TTY_FRAME_MS);
-            } catch (InterruptedException e) {
-                return;
-            }
-        }
+        clock = FrameClock.start("jk-ide-chrome", FrameClock.FRAME_MS, this::tick);
     }
 
     void tick() {
@@ -256,38 +241,25 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
         }
     }
 
-    /** Must hold {@link #lock}. */
+    /** Must hold {@link #lock}. Writes only what changed since the last paint. */
     private void paint() {
-        List<String> lines = renderLines(frame);
-        int prev = lastLines.size();
-        if (prev > 0) out.print(Ansi.cursorUp(prev));
-        for (int i = 0; i < lines.size(); i++) {
-            boolean changed = i >= prev || !lines.get(i).equals(lastLines.get(i));
-            if (changed) {
-                out.print('\r');
-                out.print(lines.get(i));
-                out.print(Ansi.ERASE_LINE_TO_END);
-            }
-            out.print('\n');
-        }
-        if (prev > lines.size()) out.print(Ansi.ERASE_DISPLAY_TO_END);
-        out.print(Osc.taskbarIndeterminate());
+        StringBuilder f = new StringBuilder();
+        painter.paint(f, renderLines(frame), 0, 0, Integer.MAX_VALUE);
+        painter.status(f, Osc.taskbarIndeterminate());
+        if (f.isEmpty()) return;
+        out.print(f);
         out.flush();
-        lastLines = lines;
-        linesDrawn = lines.size();
     }
 
     /** Must hold {@link #lock}. */
     private void wipe() {
-        if (linesDrawn > 0) out.print(Ansi.cursorUp(linesDrawn));
-        out.print('\r');
-        out.print(Ansi.ERASE_DISPLAY_TO_END);
-        linesDrawn = 0;
-        lastLines = List.of();
+        StringBuilder f = new StringBuilder();
+        painter.lift(f, 0, Integer.MAX_VALUE);
+        out.print(f);
     }
 
     private void stopAnimator() {
-        if (animator != null) animator.interrupt();
+        if (clock != null) clock.stop();
     }
 
     @Override
