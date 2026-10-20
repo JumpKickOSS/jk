@@ -16,9 +16,10 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Renders a javac / kotlinc / groovyc diagnostic block as a test-failure-shaped report: aligned
- * {@code key: value} rows, a dashboard-linked path, and an editor-style source window. The caret
- * line is consumed for its column and not printed — the error token is red + bold + underline.
+ * Renders a javac / kotlinc / groovyc diagnostic block. Under ANSI it is a test-failure-shaped
+ * report: aligned {@code key: value} rows, a dashboard-linked path, and an editor-style source
+ * window, the error token red + bold + underline. Plain, it is the compiler's own shape: {@code
+ * path:line:col: error: message}, the source line, a caret, then the trailer lines.
  */
 public final class CompilerDiagnostic {
 
@@ -49,6 +50,7 @@ public final class CompilerDiagnostic {
             if (HEADER.matcher(lines[i]).matches()) headers.add(i);
         }
         if (headers.isEmpty()) return rawBlock;
+        boolean ansi = Theme.active().isAnsi();
         StringBuilder out = new StringBuilder();
         // One read per file per render pass: a multi-unit block (kotlinc batch, javac's
         // per-file error volley) otherwise re-slurps the same source once per unit.
@@ -57,7 +59,8 @@ public final class CompilerDiagnostic {
             int start = headers.get(h);
             int end = h + 1 < headers.size() ? headers.get(h + 1) : lines.length;
             if (out.length() > 0) out.append('\n');
-            paintUnit(out, lines, start, end, severity, sources);
+            if (ansi) paintUnit(out, lines, start, end, severity, sources);
+            else plainUnit(out, lines, start, end, severity, sources);
         }
         return out.toString();
     }
@@ -139,6 +142,67 @@ public final class CompilerDiagnostic {
             if (i > 0) out.append('\n');
             out.append(window.get(i));
         }
+    }
+
+    /**
+     * One unit as javac prints it, with the path shown project-relative and the column in the
+     * header: the source line comes from disk when it is readable, else from the block.
+     */
+    private static void plainUnit(
+            StringBuilder out, String[] lines, int start, int end, String severity, Map<String, List<String>> sources) {
+        Matcher header = HEADER.matcher(lines[start]);
+        if (!header.matches()) {
+            out.append(lines[start]);
+            return;
+        }
+        String file = CompilerLocus.fileName(header.group("file"));
+        int lineNo = CompilerLocus.parsePositive(header.group("line"));
+        int col1 = CompilerLocus.parsePositive(header.group("col"));
+        String rest = header.group("rest") == null ? "" : header.group("rest").strip();
+        int caretCol0 = -1;
+        String snippet = null;
+        List<String> trailers = new ArrayList<>();
+        for (int i = start + 1; i < end; i++) {
+            String line = lines[i];
+            if (CARET.matcher(line).matches()) {
+                caretCol0 = line.indexOf('^');
+                continue;
+            }
+            if (i + 1 < end && CARET.matcher(lines[i + 1]).matches()) {
+                snippet = line;
+                continue;
+            }
+            if (!line.isBlank()) trailers.add(line.stripTrailing());
+        }
+        int markCol = caretCol0 >= 0 ? caretCol0 : (col1 > 0 ? col1 - 1 : -1);
+        out.append(PathDisplay.of(Path.of(file))).append(':').append(lineNo);
+        if (markCol >= 0) out.append(':').append(markCol + 1);
+        out.append(": ");
+        if (!hasSeverity(rest)) out.append(severity).append(": ");
+        out.append(rest);
+        List<String> fileLines = readSource(file, sources);
+        String source =
+                fileLines != null && lineNo >= 1 && lineNo <= fileLines.size() ? fileLines.get(lineNo - 1) : snippet;
+        if (source != null && !source.isBlank()) {
+            out.append('\n').append(source.stripTrailing());
+            if (markCol >= 0) out.append('\n').append(caretUnder(source, markCol));
+        }
+        for (String trailer : trailers) out.append('\n').append(trailer);
+    }
+
+    /** A caret under column {@code col0} of {@code source}, tabs kept so it lines up as the source does. */
+    static String caretUnder(String source, int col0) {
+        StringBuilder sb = new StringBuilder(col0 + 1);
+        for (int i = 0; i < col0; i++) sb.append(i < source.length() && source.charAt(i) == '\t' ? '\t' : ' ');
+        return sb.append('^').toString();
+    }
+
+    private static boolean hasSeverity(String rest) {
+        return rest.startsWith("error:")
+                || rest.startsWith("warning:")
+                || rest.startsWith("note:")
+                || rest.startsWith("e:")
+                || rest.startsWith("w:");
     }
 
     private static String paintKv(Kv kv, int keyWidth, Theme t) {
