@@ -18,8 +18,14 @@ Subjects, per scenario (`inner.<scenario>.<counter>`):
   file-read-bytes        bytes the engine JVM read from files, /proc and /sys left out (JFR)
   output-bytes           what `jk build --no-ansi` printed, stdout and stderr
 
-Counters the engine has to report itself (files stat'd, files hashed, files compiled, actions
-restored) are not here yet; /proc and JFR cannot see them.
+The engine reports the rest itself, in the `work` and `vfs` objects of its status-ack, read off the
+private engine's socket around the build:
+
+  files-fingerprinted    input files whose content hash the build asked for
+  files-hashed           of those, the ones the hash memo could not answer and were read whole
+  sources-compiled       Java sources javac compiled
+  actions-restored       action-cache entries copied back into the tree
+  tree-walks             directory trees the build's VFS walked (the last job's own figure)
 
 Each row takes `runs` measured runs after one warm-up. The value is the median; a row with more
 than a quarter of its runs outside the band around that median is `unstable`. The JFR counters come from a second set of runs with a
@@ -55,9 +61,20 @@ COUNTERS = {
     "file-write-bytes": ("bytes", 0.02, 4096, None),
     "file-read-bytes": ("bytes", 0.05, 16384, None),
     "output-bytes": ("bytes", 0.0, 8, None),
+    "files-fingerprinted": ("files", 0.0, 0, None),
+    "files-hashed": ("files", 0.0, 0, None),
+    "sources-compiled": ("files", 0.0, 0, None),
+    "actions-restored": ("actions", 0.0, 0, None),
+    "tree-walks": ("walks", 0.0, 0, None),
 }
+# status-ack `work` field per counter; tree-walks comes from `vfs` and is already per job.
+WORK = {"files-fingerprinted": "filesFingerprinted", "files-hashed": "filesHashed",
+        "sources-compiled": "javaSourcesCompiled", "actions-restored": "actionsRestored"}
 # Where the loop should be: a no-op that writes nothing it did not have to and touches no output.
 TARGETS = {
+    ("noop", "files-hashed"): 0,
+    ("noop", "sources-compiled"): 0,
+    ("edit", "sources-compiled"): 1,
     ("noop", "target-files-touched"): 0,
     ("noop", "files-written"): 2,
     ("noop", "file-write-bytes"): 16 << 10,
@@ -123,11 +140,17 @@ def one_run(scenario: str, work: Path, jk: str, env: dict, state: Path) -> dict:
     if scenario == "edit":
         edit(work)
     io0 = pc.quiesce(state)
+    w0 = pc.status_ack(state).get("work", {})
     t0 = target_census(work)
     plain = subprocess.run([jk, "build", "--skip-tests", "--no-ansi"], cwd=work, env=env, capture_output=True)
     io1 = pc.quiesce(state)
     t1 = target_census(work)
-    sample = {"disk-write-bytes": io_delta(io0, io1), "target-files-touched": len(touched(t0, t1)),
+    ack = pc.status_ack(state)
+    w1 = ack.get("work", {})
+    sample = {name: w1[field] - w0[field] for name, field in WORK.items() if field in w0 and field in w1}
+    if "vfs" in ack:
+        sample["tree-walks"] = ack["vfs"].get("walks", 0)
+    sample |= {"disk-write-bytes": io_delta(io0, io1), "target-files-touched": len(touched(t0, t1)),
               "_touched": touched(t0, t1),
               "output-bytes": len(plain.stdout) + len(plain.stderr), "rc": plain.returncode}
     # The task census needs the JSON stream; it is a separate build of the same scenario state.
