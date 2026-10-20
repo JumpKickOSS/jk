@@ -225,9 +225,7 @@ final class EngineConnection {
                         hs != null ? hs.url() : null,
                         ctx.http().error(),
                         hs != null && hs.mcpEnabled());
-                WireWriter.send(
-                        writer,
-                        Jsonl.append(InputTrees.appendToStatusAck(ack), "\"work\":" + WorkCounters.statusJson()));
+                WireWriter.send(writer, WorkCounters.appendToStatusAck(InputTrees.appendToStatusAck(ack)));
             }
             case EngineProtocol.SHUTDOWN -> {
                 ctx.shutdown().handle(line, writer);
