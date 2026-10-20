@@ -3,7 +3,12 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.compile.ClasspathProcessors;
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Variants;
+import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.runtime.TaskForecaster.DepHint;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
@@ -326,5 +331,24 @@ final class ForecastSteps {
             return new SourceApiIndex.Hint(SourceApiIndex.Kind.API_CHANGED, own.files());
         }
         return own;
+    }
+
+    /**
+     * The manifest as the build plans it ({@code CorePlan}): the CLI's packaging override and the
+     * selected {@code [variants]} folded in. A plugin's config carries the build type even when no
+     * variant is declared, and its packager keys on that config, so a forecast over the parsed
+     * manifest priced a packaging step the build never runs. A selection that does not apply fails
+     * the build itself; the forecast keeps the parsed manifest and prices against it.
+     */
+    static JkBuild planned(JkBuild manifest, Path dir) {
+        Session session = SessionContext.current();
+        try {
+            JkBuild build = BuildPlanner.applyAssemblyOverride(manifest, session);
+            return VariantApply.apply(build, dir, Variants.Selection.parse(session.variant()), session.clientEnv())
+                    .build();
+        } catch (RuntimeException e) {
+            Log.debug("forecast of " + dir + " prices the parsed manifest: its variants do not apply", e);
+            return manifest;
+        }
     }
 }
