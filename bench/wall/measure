@@ -163,11 +163,15 @@ def engine_pids() -> set[int]:
 
 
 def _in_gradle_home(pid: int) -> bool:
+    """A daemon of the pinned Gradle in the harness's home: it runs in <home>/daemon/<version>, and a
+    daemon an earlier pin left behind is not this run's bill."""
     try:
         cwd = os.readlink(f"/proc/{pid}/cwd")
     except OSError:
         return False
     home = str(gradle_home())
+    if PINNED is not None:
+        return cwd == f"{home}/daemon/{PINNED.gradle_version}"
     return cwd == home or cwd.startswith(home + "/")
 
 
