@@ -507,17 +507,39 @@ public final class BuildForecasting {
         if (scheduled.isEmpty()) return fullyCachedExplainPlan(graph);
         List<TaskForecast.Module> modules = pf.modules();
         if (modules.isEmpty()) {
-            // Memo hit, or --force/--redo: no walk happened, so the step lists come from one here.
-            Cas cas = JkStores.storeCas(); // artifact CAS for classpath fingerprints
-            ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
-            modules = TaskForecaster.of(
-                    graph, cas, actionCache, cache, skipTests, WorkspaceTarget.PACKAGE, Set.of(), profile);
+            // Memo hit, or --force/--redo: no walk happened, so the step lists come from one here,
+            // over the modules the build schedules and no others.
+            modules = scheduledModules(graph, cache, skipTests, profile, scheduled);
         }
         return new ExplainPlan(
                 withReasons(onlyScheduled(modules, scheduled), pf.reasons()),
                 graph.edges(),
                 graph.maxReadyWidth(),
                 List.of());
+    }
+
+    /**
+     * The plan of a build whose preflight memo hit: step lists for the {@code scheduled} modules
+     * only. The memo vouched for the rest — inputs unchanged, outputs present — and a hit's dirty
+     * set never moves a consumer's inputs (an input change misses the whole memo), so walking them
+     * would price no work at the cost of a whole-workspace forecast: on a 54-module workspace whose
+     * root runs a {@code jk: always} script, a no-op spent ~270 ms pricing that one script.
+     */
+    public static ExplainPlan scheduledPlan(
+            BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable String profile, Set<Path> scheduled) {
+        return new ExplainPlan(
+                scheduledModules(graph, cache, skipTests, profile, scheduled),
+                graph.edges(),
+                graph.maxReadyWidth(),
+                List.of());
+    }
+
+    private static List<TaskForecast.Module> scheduledModules(
+            BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable String profile, Set<Path> scheduled) {
+        Cas cas = JkStores.storeCas(); // artifact CAS for classpath fingerprints
+        ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
+        return TaskForecaster.of(
+                graph, cas, actionCache, cache, skipTests, WorkspaceTarget.PACKAGE, Set.of(), profile, null, scheduled);
     }
 
     /** Attach the preflight's own reasons to the modules it scheduled. */

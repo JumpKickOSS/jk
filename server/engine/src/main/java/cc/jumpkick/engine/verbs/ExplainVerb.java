@@ -12,6 +12,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.workspace.ExplainReport;
+import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ExplainRequest;
 import cc.jumpkick.wire.protocol.ProtoEvents;
@@ -105,12 +106,11 @@ public final class ExplainVerb implements HostedVerb {
                         etaJdksDir,
                         (stage, done, total, label) ->
                                 host.sendQuiet(writer, ProtoEvents.preflight(stage, done, total, label)));
-                ExplainReport report = ExplainReport.compute(
-                        entryDir,
-                        entryBuild,
-                        cache,
-                        session,
-                        new ExplainReport.Knobs(req.profile(), maxModuleConcurrency, req.skipTests(), selection));
+                ExplainReport.Knobs knobs =
+                        new ExplainReport.Knobs(req.profile(), maxModuleConcurrency, req.skipTests(), selection);
+                // A quick forecast (jk status) must not start a compiler worker to plan a compile.
+                ExplainReport report = ScopedValue.where(JavaCompile.WARM_PLANS_ONLY, req.quick())
+                        .call(() -> ExplainReport.compute(entryDir, entryBuild, cache, session, knobs));
                 ExplainPlan plan = report.plan();
                 if (plan.hasErrors()) {
                     for (String err : plan.errors()) {

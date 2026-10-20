@@ -3,7 +3,7 @@
 #
 # The point is a repeatable row so a scheduling change can be shown to have moved the number,
 # and so a claim about a wall carries the machine it was measured on. The ratchet over the
-# series is scripts/wall-band.py against wall-baseline.toml; the workflow is wall-measure.yml.
+# series is the scoreboard's `dogfood` dimension (bench/scoreboard --tier night).
 #
 # Usage:
 #   ./scripts/dogfood-wall-measure.sh                 # full: rebuild + no-op + touched
@@ -47,7 +47,7 @@ mkdir -p "$OUT_DIR"
 ROW_FILE="$OUT_DIR/row.md"
 : > "$ROW_FILE"
 # The machine-readable twin of row.md: one JSON object per line, an `env` object followed by one
-# `measurement` per side per row. Trend tooling and the scheduled CI job read this file; the
+# `measurement` per side per row. The scoreboard reads this file; the
 # markdown is for people, and a table nobody can parse is not a baseline.
 ROW_JSONL="$OUT_DIR/row.jsonl"
 : > "$ROW_JSONL"

@@ -1085,6 +1085,14 @@ in     = "server/engine/src/main/java/cc/jumpkick/engine/IdleHousekeeping.java"
 reason = "idle-time warmup and class preload run while no build is live"
 
 [[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/EngineAotTrainer.java"
+reason = "records the engine's startup cache from an idle engine by driving a scratch trainer engine; serves no request"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/EngineHttpFront.java"
+reason = "retries a busy HTTP port beside startup so the first build never waits on the dashboard; serves no request"
+
+[[guards.request-thread-carries-session.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/engine/DrainReporter.java"
 reason = "engine-lifetime drain report to the successor"
 

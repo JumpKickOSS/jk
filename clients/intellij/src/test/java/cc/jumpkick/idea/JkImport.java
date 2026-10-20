@@ -33,7 +33,7 @@ final class JkImport {
         ImportSpecBuilder spec = new ImportSpecBuilder(project, JkSystem.ID)
                 .use(ProgressExecutionMode.MODAL_SYNC)
                 .dontReportRefreshErrors()
-                .callback(new ExternalProjectRefreshCallback() {
+                .withCallback(new ExternalProjectRefreshCallback() {
                     @Override
                     public void onSuccess(@Nullable DataNode<ProjectData> node) {
                         if (node == null) return;

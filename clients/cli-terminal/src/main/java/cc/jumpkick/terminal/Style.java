@@ -142,6 +142,39 @@ public final class Style {
         return Ansi.sgr(body) + text + Ansi.RESET;
     }
 
+    /**
+     * {@code glyphs[i]} in {@code styles[i]}, painted back to back: one SGR per change of style and
+     * one reset at the end, where a {@link #render} per cell pays an open and a reset for every
+     * glyph. SGR only adds, so a change that drops an attribute or a color resets first.
+     */
+    public static String renderRuns(char[] glyphs, Style[] styles) {
+        StringBuilder sb = new StringBuilder(glyphs.length * 4);
+        Style current = EMPTY;
+        for (int i = 0; i < glyphs.length; i++) {
+            Style next = styles[i];
+            if (!next.equals(current)) {
+                if (current.dropsTo(next)) sb.append(Ansi.RESET);
+                String body = next.sgrBody();
+                if (!body.isEmpty()) sb.append(Ansi.sgr(body));
+                current = next;
+            }
+            sb.append(glyphs[i]);
+        }
+        if (!current.sgrBody().isEmpty()) sb.append(Ansi.RESET);
+        return sb.toString();
+    }
+
+    /** Whether painting {@code next} over this style needs a reset: it lacks something this one sets. */
+    private boolean dropsTo(Style next) {
+        return (bold && !next.bold)
+                || (dim && !next.dim)
+                || (italic && !next.italic)
+                || (underline && !next.underline)
+                || (strike && !next.strike)
+                || (fg != null && next.fg == null)
+                || (bg != null && next.bg == null);
+    }
+
     @Override
     public boolean equals(Object obj) {
         if (this == obj) {

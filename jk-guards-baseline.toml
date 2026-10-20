@@ -2259,10 +2259,12 @@ population = { constants = 126, files = 2266, literals = 44164 }
 population = { files = 204 }
 
 [workflow-pins-permissions]
-population = { examined = 4 }
+population = { examined = 3 }
+scope-reason = "the wall-measure workflow is gone: the scoreboard's night tier measures on the reference host"
 
 [workflow-tee-pipefail]
-population = { examined = 4 }
+population = { examined = 3 }
+scope-reason = "the wall-measure workflow is gone: the scoreboard's night tier measures on the reference host"
 
 [xml-parser-hardening]
 population = { files = 1 }

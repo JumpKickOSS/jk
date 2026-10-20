@@ -366,9 +366,9 @@ class OutputWindowTest {
         cm.addTask("g:a", "compile-main");
         cm.stepRunning("g:a", "compile-main");
         cm.tick(); // paint a live region there is something to climb over
-        assertThat(cm.lastLines).isNotEmpty();
+        assertThat(cm.painter.rows()).isNotEmpty();
         cm.writeAbove("native-image: error"); // ring only while the pane is hidden
-        int painted = cm.lastLines.size(); // openPeekPaint replaces lastLines — sample it first
+        int painted = cm.painter.rows().size(); // openPeekPaint replaces lastLines — sample it first
         buf.reset();
 
         cm.outputWindow().show();

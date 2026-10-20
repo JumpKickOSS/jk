@@ -10,10 +10,15 @@ import cc.jumpkick.host.JdkCompilerAccess;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.PluginSpec;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -100,6 +105,51 @@ class ForkedJavacSpecTest {
         assertThat(trainer).contains("--add-opens=java.base/java.lang=ALL-UNNAMED", "-Dprobe=1");
         assertThat(trainer.stream().filter(JdkCompilerAccess.JVM_FLAGS.getFirst()::equals))
                 .hasSize(1);
+    }
+
+    @Test
+    void the_aot_key_names_what_the_cache_was_trained_on(@TempDir Path dir) {
+        assertThat(ForkedJavac.aotKeyFlags(request(dir))).containsExactly(ForkedJavac.TRAINING);
+    }
+
+    /** The trainer compiles the bundled module, with the worker's own jars as its classpath. */
+    @Test
+    void the_aot_trainer_compiles_a_module_not_a_hello_world(@TempDir Path dir) throws Exception {
+        Path host = requireNonNull(JavaHomes.runningJavaHome());
+        Path scratch = Files.createDirectories(dir.resolve("scratch"));
+        Path jar = Files.writeString(dir.resolve("w.jar"), "");
+        ForkedJavac.trainerCommand(request(dir), jar.toString(), host, dir.resolve("out.aot"), scratch);
+
+        PluginSpec spec = PluginSpec.read(scratch.resolve("train.spec"));
+        assertThat(spec.sources()).hasSizeGreaterThanOrEqualTo(4).allMatch(Files::isRegularFile);
+        assertThat(spec.compileClasspath()).contains(jar);
+    }
+
+    /** A module on release 17 or 8 still records a cache: the trainer compiles at 21. */
+    @Test
+    void the_aot_trainer_compiles_at_a_release_the_training_module_builds_whatever_the_modules_is() {
+        assertThat(ForkedJavac.trainingRelease(8)).isEqualTo(JavacTrainingSources.MIN_RELEASE);
+        assertThat(ForkedJavac.trainingRelease(17)).isEqualTo(JavacTrainingSources.MIN_RELEASE);
+        assertThat(ForkedJavac.trainingRelease(0)).isEqualTo(JavacTrainingSources.MIN_RELEASE);
+        assertThat(ForkedJavac.trainingRelease(25)).isEqualTo(25);
+    }
+
+    /** The bundled training module compiles cleanly with the JDK's own javac. */
+    @Test
+    void the_training_module_compiles(@TempDir Path dir) throws Exception {
+        List<Path> sources = JavacTrainingSources.write(dir.resolve("src"));
+        JavaCompiler javac = requireNonNull(ToolProvider.getSystemJavaCompiler());
+        List<String> args = new ArrayList<>(List.of(
+                "--release",
+                String.valueOf(JavacTrainingSources.MIN_RELEASE),
+                "-d",
+                dir.resolve("out").toString()));
+        for (Path s : sources) args.add(s.toString());
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+        assertThat(javac.run(null, null, err, args.toArray(String[]::new)))
+                .as(err.toString(StandardCharsets.UTF_8))
+                .isZero();
     }
 
     private static ForkedJavac.Request request(Path dir) {

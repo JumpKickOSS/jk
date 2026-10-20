@@ -7,7 +7,7 @@ jk-spring-boot.workspace = true
 
 [processor-dependencies]
 error_prone_core = { group = "com.google.errorprone", version = "2.50.0" }
-nullaway = { group = "com.uber.nullaway", version = "0.14.1" }
+nullaway = { group = "com.uber.nullaway", version = "0.14.2" }
 
 # Nullness is enforced here: every production package is @NullMarked (JSpecify) and NullAway
 # checks it at error severity, with the same flags in every enforced module so the block is one

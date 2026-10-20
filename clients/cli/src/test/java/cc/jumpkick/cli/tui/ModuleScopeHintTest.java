@@ -79,14 +79,14 @@ class ModuleScopeHintTest {
         cm.name = "Build";
         cm.startNanos = System.nanoTime();
         cm.tick();
-        int prev = cm.lastLines.size();
+        int prev = cm.painter.rows().size();
         assertThat(prev).isGreaterThan(0);
         buf.reset();
 
         ModuleScopeHint.show("building", List.of("jk-cli"), false, cm);
 
         String raw = buf.toString(StandardCharsets.UTF_8);
-        assertThat(raw).contains(Ansi.cursorUp(prev));
+        assertThat(raw).contains(prev == 1 ? Ansi.CSI + "A" : Ansi.cursorUp(prev));
         assertThat(TestAnsi.strip(raw)).contains("building module jk-cli");
         // Caption is scrollback only — live chrome starts with the Build header.
         List<String> live = cm.renderBuildPlanLines(80, 0);

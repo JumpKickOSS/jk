@@ -8,10 +8,10 @@ What a release may change in the formats projects depend on: [Compatibility](com
 
 | Line | Meaning |
 |------|---------|
-| **`0.15.2`** | Current product version (no `-SNAPSHOT` on `main`) |
-| Tag **`v0.15.2`** | Next public release cut from that line |
-| Prior | **`0.15.1`** — previous release; **`0.10.1`** first public |
-| Later | Semver-ish: `0.15.3`, `0.16.0`, … |
+| **`0.15.3`** | Current product version (no `-SNAPSHOT` on `main`) |
+| Tag **`v0.15.3`** | Next public release cut from that line |
+| Prior | **`0.15.2`** — previous release; **`0.10.1`** first public |
+| Later | Semver-ish: `0.15.4`, `0.16.0`, … |
 
 Bump `JkVersion.VERSION`, the workspace `jk.toml` `version` and the installers' pointer floor
 (`RELEASE_FLOOR` in `install.sh`, `$ReleaseFloor` in `install.ps1`, mirrored under
@@ -25,6 +25,25 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 <version>` puts the entry at the top of the GitHub Release notes, ahead of the commit list since the
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
+
+### 0.15.3
+
+- **A build with nothing to do is one line.** A no-op writes that line in the run log and leaves
+  state, outputs and the run directory unwritten. The forecast prices only the modules that will
+  actually run.
+- **Edits and cold starts are faster.** The javac worker stays warm between builds and maps a
+  startup cache from a real compile. The engine's heap floor is 8 MiB; a fresh engine maps its own
+  startup cache and no longer waits on a busy HTTP port.
+- **`jk status` names the JDK and answers from memory.** The catalog scan and the cache walk are
+  remembered, and the lock's JDK pin prints as `temurin 25.0.4.1`.
+- **OpenJFX.** A contrib `[javafx]` battery puts the project's OpenJFX modules on the module path
+  of the test JVM and `jk run`.
+- **`jk test --exclusive` (`-X`)** compiles the selected modules' prerequisites and runs only those
+  modules' suites.
+- **Smaller:** Grails templates, docs and tests pin Grails 8.0.0; Ctrl-C cancels a job whose start
+  arrives after the signal; a test JVM that exits 0 before its plan finishes fails the run; a
+  generated file whose origin was deleted is pruned with its classes; `jk install` stages the
+  client before replacing the live one; a release publishes the plugin SDK to Maven Central.
 
 ### 0.15.2
 

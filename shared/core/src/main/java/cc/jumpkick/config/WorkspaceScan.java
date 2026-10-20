@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.lock.ManifestPaths;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Client-side twin of {@link WorkspaceLocator} using {@link TomlScan} instead of a full parse.
@@ -19,7 +22,36 @@ public final class WorkspaceScan {
 
     private static final int MAX_DEPTH = 8192;
 
+    private static final String WORKSPACE_MODULES = "workspace.modules";
+
+    /** Manifests are few per engine; a test run's temp projects are many, so the memo is capped. */
+    private static final int SCANNED_MAX = 1024;
+
+    private static final ConcurrentHashMap<Path, Scanned> SCANNED = new ConcurrentHashMap<>();
+
+    /** One {@link #modulesListed} answer and the file state it was read from. */
+    private record Scanned(FileStamp stamp, List<String> modules) {}
+
     private WorkspaceScan() {}
+
+    /**
+     * The {@code [workspace] modules} entries of {@code jkToml}, as written; empty when it is
+     * absent, unreadable or lists none. Remembered against the file's size and modification time:
+     * catalog-root and workspace-root discovery ask for every module of every parse, and on jk's
+     * own 54-module workspace the rescans of its root manifest were most of a {@code jk status}.
+     */
+    public static List<String> modulesListed(Path jkToml) {
+        FileStamp stamp = FileStamp.of(jkToml);
+        if (stamp == null) return List.of();
+        Path key = jkToml.toAbsolutePath().normalize();
+        Scanned kept = SCANNED.get(key);
+        if (kept != null && kept.stamp().equals(stamp)) return kept.modules();
+        List<String> modules =
+                List.copyOf(TomlScan.scan(jkToml, WORKSPACE_MODULES).stringArray(WORKSPACE_MODULES));
+        if (SCANNED.size() >= SCANNED_MAX) SCANNED.clear();
+        SCANNED.put(key, new Scanned(stamp, modules));
+        return modules;
+    }
 
     /**
      * The nearest strict ancestor whose {@code jk.toml} declares workspace modules, or empty.
@@ -52,8 +84,7 @@ public final class WorkspaceScan {
             Path rootJkToml = parent.resolve(ManifestPaths.MANIFEST);
             if (Files.exists(rootJkToml)) {
                 String relative = parent.relativize(normalized).toString().replace('\\', '/');
-                if (WorkspaceModules.lists(
-                        TomlScan.scan(rootJkToml, "workspace.modules").stringArray("workspace.modules"), relative)) {
+                if (WorkspaceModules.lists(modulesListed(rootJkToml), relative)) {
                     return Optional.of(parent);
                 }
             }
@@ -86,10 +117,6 @@ public final class WorkspaceScan {
     }
 
     private static boolean declaresTomlModules(Path dir) {
-        Path toml = dir.resolve(ManifestPaths.MANIFEST);
-        if (!Files.exists(toml)) return false;
-        return !TomlScan.scan(toml, "workspace.modules")
-                .stringArray("workspace.modules")
-                .isEmpty();
+        return !modulesListed(dir.resolve(ManifestPaths.MANIFEST)).isEmpty();
     }
 }

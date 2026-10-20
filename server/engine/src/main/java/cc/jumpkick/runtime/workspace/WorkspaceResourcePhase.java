@@ -112,6 +112,10 @@ final class WorkspaceResourcePhase {
                     List.of());
         } else if (dirtyUnits.isEmpty() && !distrust) {
             plan = BuildForecasting.fullyCachedExplainPlan(preflight.graph());
+        } else if (preflight.forecast().isPresent() && !distrust) {
+            // A memo hit: the preflight walked nothing, and only the dirty set needs pricing.
+            plan = BuildForecasting.scheduledPlan(
+                    preflight.graph(), request.cache(), request.skipTests(), request.profile(), preflight.dirty());
         } else {
             plan = BuildForecasting.explainFromGraph(
                     preflight.graph(), request.cache(), request.skipTests(), null, request.profile());

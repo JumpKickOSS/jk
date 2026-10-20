@@ -57,6 +57,12 @@ public final class JavaCompile {
         }
     }
 
+    /**
+     * Bound true for a forecast that must not start a compiler worker ({@code jk status}): a cold
+     * worker's start costs seconds, so the compile is predicted from the prior record instead.
+     */
+    public static final ScopedValue<Boolean> WARM_PLANS_ONLY = ScopedValue.newInstance();
+
     public enum Outcome {
         CACHE_HIT,
         INCREMENTAL,
@@ -207,6 +213,7 @@ public final class JavaCompile {
             // bytes would then compile nothing. Nothing is recorded and the analysis goes, so the
             // next build compiles the module whole from what is on disk.
             if (Files.isDirectory(stateDir)) PathUtil.deleteRecursively(stateDir);
+            WorkCounters.compiled(wr.compiledSources().size());
             return new Result(true, "compiled", key, wr.diagnostics(), wr.compiledSources(), moved, wr.waitMillis());
         }
         if (persist) {
@@ -218,6 +225,7 @@ public final class JavaCompile {
         } else if (Files.isDirectory(stateDir)) {
             PathUtil.deleteRecursively(stateDir);
         }
+        WorkCounters.compiled(wr.compiledSources().size());
         return new Result(true, "compiled", key, wr.diagnostics(), wr.compiledSources(), List.of(), wr.waitMillis());
     }
 
@@ -240,7 +248,11 @@ public final class JavaCompile {
         return predict(taskId, request, jkVersion, actionCache, stateDir, workerJar, null, env);
     }
 
-    /** {@code env} mirrors the build's so the plan worker shares its pool rather than starting a second one. */
+    /**
+     * Zinc's own plan from a compiler worker for {@code env} (the build's, so the plan shares its
+     * pool); under {@link #WARM_PLANS_ONLY}, only from one already running, else the prior compile
+     * record.
+     */
     public static Prediction predict(
             String taskId,
             CompileRequest request,
@@ -288,9 +300,9 @@ public final class JavaCompile {
         if (workerJar != null && Files.isRegularFile(workerJar)) {
             Path gen = generatedSourceDir != null ? generatedSourceDir : stateDir.resolve("gen");
             Files.createDirectories(gen);
-            ForkedJavac.Plan plan;
+            ForkedJavac.@Nullable Plan plan;
             try {
-                plan = ForkedJavac.plan(new ForkedJavac.Request(
+                ForkedJavac.Request planned = new ForkedJavac.Request(
                                 request.javaHome(),
                                 workerJar,
                                 request.sources(),
@@ -307,26 +319,13 @@ public final class JavaCompile {
                                 request.scalaCompilerJar(),
                                 request.scalaBridgeJar(),
                                 env)
-                        .withClasspathAnalyses(producerAnalyses(request, stateDir)));
+                        .withClasspathAnalyses(producerAnalyses(request, stateDir));
+                plan = WARM_PLANS_ONLY.orElse(false) ? ForkedJavac.planIfWarm(planned) : ForkedJavac.plan(planned);
             } catch (RuntimeException e) {
                 // A plan the worker cannot make (a sibling jar not built yet, say) is a full compile.
                 return new Prediction(Outcome.FULL, key, request.sources().size(), "no plan: " + e.getMessage());
             }
-            List<Path> files = plan.sources();
-            if (plan.full()) {
-                return new Prediction(
-                        Outcome.FULL,
-                        key,
-                        files.isEmpty() ? request.sources().size() : files.size(),
-                        plan.reason(),
-                        files);
-            }
-            String reason = plan.reason();
-            if (reason.isBlank()) {
-                int n = files.size();
-                reason = n == 1 ? "1 source" : n + " sources";
-            }
-            return new Prediction(Outcome.INCREMENTAL, key, files.size(), reason, files);
+            if (plan != null) return fromPlan(plan, key, request);
         }
         Optional<ActionCache.ActionRecord> prior = actionCache.lastFor(taskId, stateDir);
         if (prior.isEmpty()) {
@@ -351,6 +350,20 @@ public final class JavaCompile {
         int n = changed.size();
         String reason = n == 1 ? "1 source changed" : n + " sources changed";
         return new Prediction(Outcome.INCREMENTAL, key, n, reason, changed);
+    }
+
+    private static Prediction fromPlan(ForkedJavac.Plan plan, String key, CompileRequest request) {
+        List<Path> files = plan.sources();
+        if (plan.full()) {
+            return new Prediction(
+                    Outcome.FULL, key, files.isEmpty() ? request.sources().size() : files.size(), plan.reason(), files);
+        }
+        String reason = plan.reason();
+        if (reason.isBlank()) {
+            int n = files.size();
+            reason = n == 1 ? "1 source" : n + " sources";
+        }
+        return new Prediction(Outcome.INCREMENTAL, key, files.size(), reason, files);
     }
 
     /**

@@ -1,6 +1,6 @@
 group = "cc.jumpkick"
 name = "jk"
-version = "0.15.2"
+version = "0.15.3"
 description = "JumpKick: The best damn build system for the JVM"
 java = 25
 
@@ -14,13 +14,13 @@ scm = { url = "https://github.com/JumpKickOSS/jk", connection = "scm:git:https:/
 # Versions a dependency's own graph pins below an advisory fix. Nothing here declares these
 # directly; every edge onto them takes the version below. `jk audit --severity HIGH` is clean.
 [managed-dependencies]
-jackson-core = { group = "com.fasterxml.jackson.core", version = "2.22.3" }
-jackson-databind = { group = "com.fasterxml.jackson.core", version = "2.22.3" }
-jackson-datatype-jsr310 = { group = "com.fasterxml.jackson.datatype", version = "2.22.3" }
+jackson-core = { group = "com.fasterxml.jackson.core", version = "2.22.4" }
+jackson-databind = { group = "com.fasterxml.jackson.core", version = "2.22.4" }
+jackson-datatype-jsr310 = { group = "com.fasterxml.jackson.datatype", version = "2.22.4" }
 httpcore5 = { group = "org.apache.httpcomponents.core5", version = "5.4.4" }
 httpcore5-h2 = { group = "org.apache.httpcomponents.core5", version = "5.4.4" }
-httpclient5 = { group = "org.apache.httpcomponents.client5", version = "5.6.4" }
-plexus-utils = { group = "org.codehaus.plexus", version = "4.0.3" }
+httpclient5 = { group = "org.apache.httpcomponents.client5", version = "5.6.5" }
+plexus-utils = { group = "org.codehaus.plexus", version = "4.1.0" }
 
 [workspace]
 modules = [

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.terminal.Ansi;
 import org.junit.jupiter.api.Test;
 
 /** Detail-segment classification and coloring ({@code JkManagerColor.colorDetail} and friends). */
@@ -105,8 +106,11 @@ class JkManagerDetailColorTest {
         assertThat(TestAnsi.strip(painted)).isEqualTo(detail);
         assertThat(painted).contains(Theme.colorize("downloading", t.midGray()));
         assertThat(painted).contains(Theme.colorize("Temurin 25", t.cyan()));
-        assertThat(painted).contains(Theme.colorize("▰", t.blue()));
-        assertThat(painted).contains(Theme.colorize("▱", t.darkGray()));
+        // One run per color: the filled cells open blue once, the empty ones switch to gray and reset once.
+        assertThat(painted)
+                .contains(Ansi.sgr(t.blue().sgrBody()) + "▰▰▰▰▰"
+                        + Ansi.sgr(t.darkGray().sgrBody()));
+        assertThat(painted).contains(Theme.colorize("▱▱▱▱▱", t.darkGray()));
         assertThat(painted).contains(Theme.colorize("50%", t.midGray()));
         assertThat(painted).doesNotContain(Theme.colorize("50", t.warning()));
     }

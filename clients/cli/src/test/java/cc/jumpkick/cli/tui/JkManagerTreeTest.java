@@ -448,10 +448,10 @@ class JkManagerTreeTest {
     }
 
     @Test
-    void paint_on_region_grow_prescrolls_then_climbs_new_height() {
-        // Bottom-pinned growth: each extra trailing \n would scroll the viewport and orphan the
-        // previous ● Build into scrollback while lastLines still counts it — the next frame stacks
-        // a second header. Growing must emit (next-prev) newlines first, then cursorUp(next).
+    void paint_on_region_grow_at_the_bottom_keeps_one_header() {
+        // Bottom-pinned growth scrolls the viewport as the new rows are made: the climb must still
+        // land on the region's top, or the previous ● Build is orphaned and a second one stacks.
+        var screen = LiveRegionScreen.filled(24, 80);
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(stream(buf), true, true, 80);
         cm.height = 24;
@@ -461,8 +461,9 @@ class JkManagerTreeTest {
         cm.stepRunning("cc.jumpkick:jk-cli", "native-image", "native");
         cm.stepMessage("cc.jumpkick:jk-cli", "native-image", "classpath input size: ~4.3 MiB");
         cm.tick();
-        int prev = cm.lastLines.size();
+        int prev = cm.painter.rows().size();
         assertThat(prev).isGreaterThan(0);
+        screen.write(buf.toString(StandardCharsets.UTF_8));
 
         for (int i = 0; i < 5; i++) {
             cm.addCompletion("✓ [" + (11 - i) + " of 15] cc.jumpkick:mod-" + i + " took 1.0s");
@@ -472,17 +473,18 @@ class JkManagerTreeTest {
 
         buf.reset();
         cm.tick();
-        String raw = buf.toString(StandardCharsets.UTF_8);
-        int grow = next - prev;
-        assertThat(raw).startsWith("\r\n".repeat(grow) + Ansi.cursorUp(next));
-        assertThat(TestAnsi.strip(raw).lines().filter(l -> l.contains("Build")).count())
-                .isEqualTo(1);
+        screen.write(buf.toString(StandardCharsets.UTF_8));
+        assertThat(screen.countBuildHeaders()).isEqualTo(1);
+        for (int i = 0; i < 5; i++) {
+            String mod = "cc.jumpkick:mod-" + i + " ";
+            assertThat(screen.countMatching(l -> l.contains(mod))).isEqualTo(1);
+        }
     }
 
     @Test
-    void paint_on_peek_open_via_failure_then_grow_prescrolls() {
+    void paint_on_peek_open_via_failure_then_grow_keeps_one_header() {
         // Force-show (native-image failure) paints via openPeekPaint; the next animator frame that
-        // grows the completion tail must still pre-scroll — that is the flash-then-duplicate path.
+        // grows the completion tail must still land on the region — the flash-then-duplicate path.
         // The header count is read off a viewport, not the frame bytes: openPeekPaint and the next
         // frame share a frame counter, so the diff may step over an unchanged header row.
         var screen = LiveRegionScreen.filled(24, 80);
@@ -497,7 +499,7 @@ class JkManagerTreeTest {
         cm.writeProcessOutput("native-image: Error: libz not found");
         cm.showProcessFailureOutput();
         screen.write(buf.toString(StandardCharsets.UTF_8));
-        int prev = cm.lastLines.size();
+        int prev = cm.painter.rows().size();
         assertThat(cm.outputWindow().visible()).isTrue();
         assertThat(prev).isGreaterThan(0);
 
@@ -511,15 +513,14 @@ class JkManagerTreeTest {
         cm.tick();
         String raw = buf.toString(StandardCharsets.UTF_8);
         screen.write(raw);
-        assertThat(raw).startsWith("\r\n".repeat(next - prev) + Ansi.cursorUp(next));
         assertThat(screen.countBuildHeaders()).isEqualTo(1);
     }
 
     @Test
-    void paint_rewrites_only_rows_whose_text_changed() throws Exception {
-        // A frame climbs to the region top and steps over every row whose text is unchanged with
-        // a bare newline; it never erases the display to end just to rewrite everything. Here the
-        // spinner header pulses, so it is rewritten; the completion tail rows are not.
+    void paint_writes_only_the_cells_that_changed() throws Exception {
+        // A frame writes only what differs from the screen; it never erases the display to end
+        // just to rewrite everything. Here the header's pulse glyph changes colour, so that one
+        // cell is written; the header text and the completion rows are not.
         NoAnsi.forcedAnsi(() -> {
             var buf = new ByteArrayOutputStream();
             var cm = new JkManager(stream(buf), true, true, 80);
@@ -531,19 +532,17 @@ class JkManagerTreeTest {
             cm.addCompletion("✓ [1 of 15] cc.jumpkick:mod-a took 1.0s");
             cm.addCompletion("✓ [2 of 15] cc.jumpkick:mod-b took 1.0s");
             cm.tick();
-            List<String> painted = cm.lastLines;
+            List<String> painted = cm.painter.rows();
             assertThat(String.join("\n", stripAll(painted))).contains("mod-a").contains("mod-b");
 
             buf.reset();
             cm.tick();
             String raw = buf.toString(StandardCharsets.UTF_8);
             String text = TestAnsi.strip(raw);
-            assertThat(raw).startsWith(Ansi.cursorUp(painted.size()));
             assertThat(raw).doesNotContain(Ansi.ERASE_DISPLAY_TO_END);
-            assertThat(text).contains("Build").doesNotContain("mod-a").doesNotContain("mod-b");
-            // One newline per region row, changed or not, lands the cursor back at the park.
-            assertThat(raw.chars().filter(c -> c == '\n').count()).isEqualTo(painted.size());
-            assertThat(cm.lastLines).hasSize(painted.size());
+            assertThat(text).doesNotContain("Build").doesNotContain("mod-a").doesNotContain("mod-b");
+            assertThat(raw.getBytes(StandardCharsets.UTF_8).length).isLessThan(64);
+            assertThat(cm.painter.rows()).hasSize(painted.size());
             return null;
         });
     }
@@ -563,7 +562,7 @@ class JkManagerTreeTest {
             cm.stepRunning("cc.jumpkick:jk-cli", "compile-java", "compile");
             cm.addCompletion("✓ [1 of 15] cc.jumpkick:mod-a took 1.0s");
             cm.tick();
-            int rows = cm.lastLines.size();
+            int rows = cm.painter.rows().size();
             cm.out.println("linker: cannot find -lz");
 
             buf.reset();
@@ -603,7 +602,7 @@ class JkManagerTreeTest {
             cm.stepMessage("cc.jumpkick:jk-cli", "native-image", "[5/8] Inlining methods...");
             cm.tick();
 
-            List<String> painted = List.copyOf(cm.lastLines);
+            List<String> painted = List.copyOf(cm.painter.rows());
             assertThat(painted).isNotEmpty();
 
             Size.probe = () -> new Size.Window(24, 50);

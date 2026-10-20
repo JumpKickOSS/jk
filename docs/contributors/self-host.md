@@ -47,16 +47,14 @@ eight minutes). A guard failure is annotated with the rule that owns it.
 | What proves the graph is honest | `jk build` must not rewrite the committed `jk-lock.toml`; `cmp` of `target/dist/jk` against `$JK_HOME/bin/jk` and the engine sha against `jk-engine.toml` prove the takeover |
 | What audits the graph | `jk audit --severity HIGH --output json` over the committed lock, after the drift check, by the checkout's own jk: HIGH, CRITICAL and unlabelled advisories fail the job, `scripts/ci-audit-annotate.sh` names each one, the JSON is the `jk-audit` artifact; a pin bump or an `[audit] ignore` with a reason is the fix, never a skipped step |
 | What runs nightly | `jk test --profile integration`, `--profile slow`, `--profile network`, `--profile bench`, the coverage ratchet (`jk test --coverage`, `jk guard`), the heap guard, the doc examples, the audit at `LOW` (informational), the macOS product smoke and the JVM client smoke on a runner with a plain JDK and no GraalVM (`ci-nightly.yml`) |
-| Wall-clock series | `.github/workflows/wall-measure.yml`, weekly, ratcheted by `scripts/wall-band.py` against `wall-baseline.toml` |
+| Wall-clock series | `bench/scoreboard --tier night` on the reference host, banked in `scoreboard.toml` ([perf](../perf/README.md)) |
 
 Guard **G57** (`ci-cadence`) keeps the self-host job, its isolated `JK_HOME`, the four verbs it
 runs (`jk build`, `jk install`, `jk guard`, `jk test`), its bootstrap through `install.sh` at the
-pinned version, the nightly tiers, the JVM client smoke and the scheduled wall measurement in
-place. It fails on a
+pinned version, the nightly tiers, the JVM client smoke and the scoreboard in place. It fails on a
 `gradlew` in the self-host job, on a `JK_VERSION=<digits>` literal in any workflow, and on
 `continue-on-error` on any job of `ci.yml`: that flag is how a merge requirement becomes a
-courtesy run without anyone deleting a job. The weekly wall measurement keeps its own
-`continue-on-error` in `wall-measure.yml`, where a wall time is a record rather than a verdict.
+courtesy run without anyone deleting a job.
 Guard **G63** (`curated-integration`) owns the curated registry's shape, the classes it names, the
 lane script and its step in the self-host job.
 
@@ -476,5 +474,5 @@ rebuild, warm no-op, and one file really edited — to `target/dogfood-wall/`, e
 | `row.md` | people: the rows plus the machine they were measured on |
 | `row.jsonl` | tooling: one `env` object, then one `measurement` per side per row, walls in seconds |
 
-`.github/workflows/wall-measure.yml` runs it weekly and `scripts/wall-band.py` ratchets each row
-against `wall-baseline.toml` ([perf](../perf/README.md)).
+The scoreboard's `dogfood` dimension runs it in the night tier and ratchets each row in
+`scoreboard.toml` ([perf](../perf/README.md)).

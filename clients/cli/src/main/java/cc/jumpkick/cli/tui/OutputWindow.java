@@ -150,7 +150,7 @@ public final class OutputWindow {
      *
      * <p>Reserves: plan chrome + the on-state rule (1) + <strong>one cursor-park row</strong>. The
      * live region always ends with {@code \n} after its last line; if that parks the cursor past
-     * the bottom of the viewport, the terminal scrolls and {@code cursorUp(lastLines)} overshoots
+     * the bottom of the viewport, the terminal scrolls and the climb back to the region's top overshoots
      * — stacking wedge headers into scrollback. Keeping region height ≤ {@code rows - 1} prevents
      * that.
      *

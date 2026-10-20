@@ -327,6 +327,11 @@ public final class ForkedJavac {
         return JavaCompilerHost.plan(request);
     }
 
+    /** As {@link #plan} on a warm worker already running; null when the plan would start one. */
+    public static @Nullable Plan planIfWarm(Request request) {
+        return JavaCompilerHost.planIfWarm(request);
+    }
+
     static Result oneshot(Request req) {
         try {
             return run(req);
@@ -440,7 +445,7 @@ public final class ForkedJavac {
                             "java-compiler",
                             hostJavaHome,
                             workerCp,
-                            novelJvmArgs(req),
+                            aotKeyFlags(req),
                             (aotOutput, scratch) -> trainerCommand(req, workerCp, hostJavaHome, aotOutput, scratch)),
                     heapBytes,
                     req.jvmArgs());
@@ -537,29 +542,52 @@ public final class ForkedJavac {
     }
 
     /**
+     * glibc keeps what javac's native allocations freed; trimmed every minute the idle javac
+     * worker is ~10 MiB smaller, with no measurable cost to a compile. The collector stays the
+     * batch one: G1 with a periodic full GC gave back ~80 MiB idle but made every warm compile
+     * 5–10 ms slower, and the warm compile is the inner loop.
+     */
+    static final String TRIM_NATIVE_HEAP = "-XX:TrimNativeHeapInterval=60000";
+
+    /** The trainer's workload, in the startup cache's key: {@link JavacTrainingSources}, rev 2. */
+    static final String TRAINING = "train:sources-2";
+
+    /**
+     * What a worker's startup cache is keyed by beyond its classpath and collector: the module's
+     * own JVM flags, and {@link #TRAINING}, what the cache was recorded on — a new fixture is a new
+     * key, so a cache recorded on the old one is never mapped again.
+     */
+    static List<String> aotKeyFlags(Request req) {
+        List<String> key = new ArrayList<>(novelJvmArgs(req));
+        key.add(TRAINING);
+        return key;
+    }
+
+    /**
      * Background AOT trainer: same {@code java -cp worker PluginMain @spec} shape as a real
      * compile, started with the module's own JVM flags, recording with {@code -XX:AOTCacheOutput}
-     * while compiling a synthetic Hello.java.
+     * while compiling {@link JavacTrainingSources}.
      */
     static List<String> trainerCommand(Request req, String workerCp, Path hostJavaHome, Path aotOutput, Path scratch)
             throws IOException {
         return trainerCommand(
-                hostJavaHome, workerCp, aotOutput, scratch, req.release() > 0 ? req.release() : 25, novelJvmArgs(req));
+                hostJavaHome, workerCp, aotOutput, scratch, trainingRelease(req.release()), novelJvmArgs(req));
+    }
+
+    /**
+     * The {@code --release} the trainer compiles at: the module's, but never below {@link
+     * JavacTrainingSources#MIN_RELEASE}, which the training module needs. The cache is keyed by
+     * the worker, not the release, so a module on 17 maps a cache recorded at 21; recorded at 17
+     * the training compile fails and no module gets a cache.
+     */
+    static int trainingRelease(int moduleRelease) {
+        return Math.max(JavacTrainingSources.MIN_RELEASE, moduleRelease);
     }
 
     /** The trainer argv for a flag set the caller names; the compile path derives it from its request. */
     public static List<String> trainerCommand(
             Path hostJavaHome, String workerCp, Path aotOutput, Path scratch, int release, List<String> module)
             throws IOException {
-        Path src = scratch.resolve("Hello.java");
-        Files.writeString(src, """
-                package demo;
-                public class Hello {
-                  public static void main(String[] args) {
-                    System.out.println("jk-java-compiler aot train");
-                  }
-                }
-                """);
         Path classes = scratch.resolve("out");
         Files.createDirectories(classes);
         SpecWriter sw = new SpecWriter()
@@ -571,8 +599,10 @@ public final class ForkedJavac {
                         "sourceOutput",
                         scratch.resolve("gen"),
                         "workdir",
-                        scratch.resolve("zinc-work")))
-                .source(src);
+                        scratch.resolve("zinc-work")));
+        // The worker's own jars stand in for a dependency classpath: javac opens and indexes them.
+        for (Path jar : Classpaths.split(workerCp)) sw.cp(jar, "compile");
+        for (Path src : JavacTrainingSources.write(scratch.resolve("src"))) sw.source(src);
         Path trainSpec = scratch.resolve("train.spec");
         Files.write(trainSpec, sw.lines(), StandardCharsets.UTF_8);
         PluginLoader.sealNetworkPolicy(trainSpec);
@@ -602,6 +632,8 @@ public final class ForkedJavac {
         List<String> flags = new ArrayList<>(aot);
         flags.addAll(JdkCompilerAccess.JVM_FLAGS);
         flags.addAll(JvmOptions.batchFlags(1));
+        // A worker can wait minutes for its next build (WarmLanes); give back what malloc holds.
+        flags.add(TRIM_NATIVE_HEAP);
         if (heapBytes != null) {
             // The plan's -Xms and SoftMaxHeapSize can sit above a learned -Xmx; HotSpot refuses that.
             flags.add("-Xmx" + WorkerHeap.mib(heapBytes) + "m");
