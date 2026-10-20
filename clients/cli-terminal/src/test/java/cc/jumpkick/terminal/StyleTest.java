@@ -54,4 +54,23 @@ class StyleTest {
         assertThat(styled.plain()).isEqualTo("AB");
         assertThat(styled.columns()).isEqualTo(2);
     }
+
+    @Test
+    void runsOpenOncePerStyleAndResetOnce() {
+        Style a = Style.EMPTY.underline().foreground(1, 2, 3);
+        Style b = Style.EMPTY.underline().foreground(4, 5, 6);
+        String ansi = Style.renderRuns("xxyy".toCharArray(), new Style[] {a, a, b, b});
+        assertThat(ansi).isEqualTo(Ansi.sgr("4;38;2;1;2;3") + "xx" + Ansi.sgr("4;38;2;4;5;6") + "yy" + Ansi.RESET);
+    }
+
+    @Test
+    void runsResetBeforeAStyleThatDropsAnAttribute() {
+        Style bold = Style.EMPTY.bold().foreground(1, 2, 3);
+        Style plain = Style.EMPTY.foreground(1, 2, 3);
+        String ansi = Style.renderRuns("ab".toCharArray(), new Style[] {bold, plain});
+        assertThat(ansi)
+                .isEqualTo(Ansi.sgr("1;38;2;1;2;3") + "a" + Ansi.RESET + Ansi.sgr("38;2;1;2;3") + "b" + Ansi.RESET);
+        assertThat(Style.renderRuns("ab".toCharArray(), new Style[] {bold, Style.EMPTY}))
+                .isEqualTo(Ansi.sgr("1;38;2;1;2;3") + "a" + Ansi.RESET + "b");
+    }
 }

@@ -97,10 +97,12 @@ public final class JkManagerColor {
         out.append(Theme.colorize(p.name(), t.cyan()));
         if (p.hasBar()) {
             out.append(Theme.colorize(" ", t.midGray()));
-            for (int i = 0; i < p.bar().length(); i++) {
-                char c = p.bar().charAt(i);
-                out.append(Theme.colorize(String.valueOf(c), c == JdkProgressLabel.FILLED ? t.blue() : t.darkGray()));
+            char[] glyphs = p.bar().toCharArray();
+            Style[] styles = new Style[glyphs.length];
+            for (int i = 0; i < glyphs.length; i++) {
+                styles[i] = glyphs[i] == JdkProgressLabel.FILLED ? t.blue() : t.darkGray();
             }
+            out.append(t.isAnsi() ? Style.renderRuns(glyphs, styles) : Theme.paint(p.bar(), Style.EMPTY));
             out.append(Theme.colorize(" ", t.midGray()));
             out.append(Theme.colorize(p.percent() + "%", t.midGray()));
         }
