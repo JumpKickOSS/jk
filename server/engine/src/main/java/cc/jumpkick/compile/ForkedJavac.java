@@ -327,6 +327,11 @@ public final class ForkedJavac {
         return JavaCompilerHost.plan(request);
     }
 
+    /** As {@link #plan} on a warm worker already running; null when the plan would start one. */
+    public static @Nullable Plan planIfWarm(Request request) {
+        return JavaCompilerHost.planIfWarm(request);
+    }
+
     static Result oneshot(Request req) {
         try {
             return run(req);

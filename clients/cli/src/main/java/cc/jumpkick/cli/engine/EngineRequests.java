@@ -199,7 +199,40 @@ public final class EngineRequests {
             boolean rebuild,
             int maxModuleConcurrency,
             /** {@code -m}/{@code --affected-since} selector tokens, as {@code jk build} sends them. */
-            List<String> modules) {
+            List<String> modules,
+            /** Plan compiles only on a compiler worker already running: {@code jk status}'s forecast. */
+            boolean quick) {
+
+        /** As the canonical form, not quick. */
+        public ExplainRequest(
+                Path entryDir,
+                Path cache,
+                int workers,
+                boolean skipTests,
+                @Nullable String profile,
+                @Nullable Path jdksDir,
+                boolean serial,
+                boolean parallelTests,
+                boolean verbose,
+                boolean rebuild,
+                int maxModuleConcurrency,
+                List<String> modules) {
+            this(
+                    entryDir,
+                    cache,
+                    workers,
+                    skipTests,
+                    profile,
+                    jdksDir,
+                    serial,
+                    parallelTests,
+                    verbose,
+                    rebuild,
+                    maxModuleConcurrency,
+                    modules,
+                    false);
+        }
+
         /** No rebuild; {@code maxModuleConcurrency} follows {@code serial}; the whole workspace. */
         public ExplainRequest(
                 Path entryDir,

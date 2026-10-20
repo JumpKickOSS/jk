@@ -520,7 +520,7 @@ public final class StatusCommand implements CliCommand {
             ExplainPlan plan = EngineClient.explain(
                     paths,
                     new EngineRequests.ExplainRequest(
-                            cwd, JkDirs.cache(), 1, false, null, null, true, false, false, false),
+                            cwd, JkDirs.cache(), 1, false, null, null, true, false, false, false, 1, List.of(), true),
                     etaOut);
             if (plan == null || plan.modules() == null) return null;
             int total = plan.modules().size();

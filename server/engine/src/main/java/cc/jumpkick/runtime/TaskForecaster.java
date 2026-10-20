@@ -29,6 +29,7 @@ import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
@@ -335,7 +336,7 @@ public final class TaskForecaster {
      * lane needs: the session and its cancel token, the run's io ledger, and the request scope a
      * compile prediction forks its plan worker under, so the lanes share one worker pool rather
      * than starting one each. The entry memo is a {@code ScopedValue}, which does not ride a pool
-     * hop, so it is handed across explicitly.
+     * hop, so it and {@link JavaCompile#WARM_PLANS_ONLY} are handed across explicitly.
      */
     private static void walkWave(List<BuildGraph.BuildUnit> members, Consumer<BuildGraph.BuildUnit> one) {
         int lanes = Math.clamp(members.size() / MIN_MODULES_PER_WAVE_LANE, 1, WAVE_LANES);
@@ -344,16 +345,17 @@ public final class TaskForecaster {
             return;
         }
         Map<Path, String> memo = ClasspathFingerprint.entryMemo();
+        boolean warmPlansOnly = JavaCompile.WARM_PLANS_ONLY.orElse(false);
         int chunk = (members.size() + lanes - 1) / lanes;
         List<Future<?>> pending = new ArrayList<>(lanes);
         for (int lane = 0; lane < lanes; lane++) {
             List<BuildGraph.BuildUnit> slice = members.subList(
                     Math.min(lane * chunk, members.size()), Math.min((lane + 1) * chunk, members.size()));
-            pending.add(JkThreads.cpu()
-                    .submit(() -> ClasspathFingerprint.withEntryMemo(memo, () -> {
+            pending.add(JkThreads.cpu().submit(() -> ScopedValue.where(JavaCompile.WARM_PLANS_ONLY, warmPlansOnly)
+                    .call(() -> ClasspathFingerprint.withEntryMemo(memo, () -> {
                         for (BuildGraph.BuildUnit u : slice) one.accept(u);
                         return null;
-                    })));
+                    }))));
         }
         joinWave(pending);
     }

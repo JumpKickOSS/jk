@@ -12,7 +12,8 @@ import org.jspecify.annotations.Nullable;
  * estimate rides back as an {@link EngineProtocol#ETA} event inside the explain burst. {@code
  * selection} is the client's resolved test selection — an input to every module's {@code run-tests}
  * stamp key, so an explain without it forecasts against keys no build computes; the default
- * selection is omitted from the line.
+ * selection is omitted from the line. A {@code quick} forecast (the one {@code jk status} prints)
+ * plans a compile only on a compiler worker already running, never starting one.
  */
 public record ExplainRequest(
         @Nullable String dir,
@@ -32,7 +33,8 @@ public record ExplainRequest(
          * workspace.
          */
         List<String> modules,
-        TestSelection selection) {
+        TestSelection selection,
+        boolean quick) {
 
     public ExplainRequest {
         selection = selection == null ? TestSelection.DEFAULT : selection;
@@ -54,6 +56,7 @@ public record ExplainRequest(
                 .number("maxModuleConcurrency", maxModuleConcurrency)
                 .optionalArray("modules", modules)
                 .testSelection(selection, true)
+                .bool("quick", quick)
                 .finish();
     }
 
@@ -71,6 +74,7 @@ public record ExplainRequest(
                 Jsonl.bool(json, "rebuild", false),
                 Jsonl.intValue(json, "maxModuleConcurrency", 0),
                 Jsonl.strArray(json, "modules"),
-                ProtoJobs.testSelectionOf(json));
+                ProtoJobs.testSelectionOf(json),
+                Jsonl.bool(json, "quick", false));
     }
 }

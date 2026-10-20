@@ -73,7 +73,8 @@ final class EngineExplainDecoder {
                         // The session's resolved selection, same as jk build sends: it feeds every
                         // module's run-tests stamp key, and an explain that omits it forecasts a suite
                         // re-run for every module in the tree.
-                        SessionContext.current().testSelection())
+                        SessionContext.current().testSelection(),
+                        req.quick())
                 .encode();
         // The same session envelope every build line carries — variant, client env, worker-JVM
         // tuning, toolchain — so the engine decodes the explain and the build to one Session.
