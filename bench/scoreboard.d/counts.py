@@ -184,7 +184,7 @@ def jfr_run(scenario: str, work: Path, jk: str, env: dict, state: Path, jfc: Pat
 
 def measure(ctx) -> list[dict]:
     state = ctx.home / "state"
-    env = pc.engine_env(state)
+    env = pc.engine_env(state, jk=ctx.jk)
     # A fresh engine every time: one left running carries memos and pending chores of its own.
     pc.stop(ctx.jk, state)
     work = pc.working_copy(ctx.home, ctx.jk, state)
