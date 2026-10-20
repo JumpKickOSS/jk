@@ -104,7 +104,7 @@ def _toml_value(v) -> str:
 
 ORDER = KEY + ("value", "unit", "band", "target", "runs", "date", "commit", "host-id")
 # Measurement fields that stay in rows.json and never reach scoreboard.toml.
-UNBANKED = ("samples", "slack", "unstable", "noisy", "value", "unit", "band", "target", "runs")
+UNBANKED = ("samples", "baseline-samples", "slack", "unstable", "noisy", "value", "unit", "band", "target", "runs")
 
 
 def render_board(rows: list[dict]) -> str:
@@ -281,6 +281,7 @@ class Context:
         self.baseline = baseline or os.environ.get("SCOREBOARD_BASELINE") or installed_jk()
         self.subjects = subjects
         self.skipped: list[str] = []
+        self.tools: list[str] | None = None
 
     def wants(self, subject: str) -> bool:
         return not self.subjects or any(fnmatch.fnmatch(subject, s) for s in self.subjects)
@@ -460,6 +461,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--gaps", action="store_true", help="rank banked rows by distance to target; measure nothing")
     ap.add_argument("--render", action="store_true", help="render the docs tables from scoreboard.toml; measure nothing")
     ap.add_argument("--deadline", help="night tier: stop waiting for a quiet host at this local HH:MM (default 06:30)")
+    ap.add_argument("--tool", action="append", help="only this tool, where a dimension measures several (repeatable)")
     ap.add_argument("--selftest", action="store_true")
     ns = ap.parse_args(argv)
     if ns.selftest:
@@ -500,6 +502,7 @@ def main(argv: list[str]) -> int:
     out = HOME / "results" / stamp
     out.mkdir(parents=True, exist_ok=True)
     ctx = Context(ns.tier, ns.runs, ns.pairs, out, ns.subject, ns.baseline)
+    ctx.tools = ns.tool
     measured = []
     # Load-proof kinds first, then the absolute walls, each behind the quiet gate.
     for name in sorted(chosen, key=lambda d: getattr(dims[d], "KIND", "") == "absolute-wall"):
