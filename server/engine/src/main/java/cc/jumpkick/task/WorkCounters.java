@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.jsonl.JsonFields;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -27,11 +28,12 @@ public final class WorkCounters {
 
     /** The {@code work} object of a {@code status-ack}. */
     public static String statusJson() {
-        return "{\"filesFingerprinted\":" + FileHashMemo.contentHashInvocations()
-                + ",\"memoHits\":" + FileHashMemo.memoHits()
-                + ",\"filesHashed\":" + FileHashMemo.contentReads()
-                + ",\"javaSourcesCompiled\":" + SOURCES_COMPILED.get()
-                + ",\"actionsRestored\":" + ACTIONS_RESTORED.get()
-                + "}";
+        return JsonFields.object()
+                .number("filesFingerprinted", FileHashMemo.contentHashInvocations())
+                .number("memoHits", FileHashMemo.memoHits())
+                .number("filesHashed", FileHashMemo.contentReads())
+                .number("javaSourcesCompiled", SOURCES_COMPILED.get())
+                .number("actionsRestored", ACTIONS_RESTORED.get())
+                .finish();
     }
 }
