@@ -400,7 +400,7 @@ unit = "bytes"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -409,12 +409,12 @@ subject = "cli.output.build-green.full.bytes"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 2757
+value = 3183
 unit = "bytes"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -428,7 +428,7 @@ unit = "lines"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -437,12 +437,12 @@ subject = "cli.output.build-green.full.lines"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 56
+value = 60
 unit = "lines"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -456,7 +456,7 @@ unit = "bytes"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -485,7 +485,7 @@ unit = "bytes"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -499,7 +499,7 @@ unit = "lines"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -528,7 +528,7 @@ unit = "lines"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -542,7 +542,7 @@ unit = "bytes"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -551,12 +551,12 @@ subject = "cli.output.build-green.tty.bytes"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 13407
+value = 2290
 unit = "bytes"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -565,12 +565,12 @@ subject = "cli.output.build-green.tty.bytes"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 3943
+value = 4544
 unit = "bytes"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -584,7 +584,7 @@ unit = "lines"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -593,12 +593,12 @@ subject = "cli.output.build-green.tty.lines"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 25
+value = 19
 unit = "lines"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -607,12 +607,12 @@ subject = "cli.output.build-green.tty.lines"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 56
+value = 60
 unit = "lines"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -626,7 +626,7 @@ unit = "bytes"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -635,12 +635,12 @@ subject = "cli.output.build-red.full.bytes"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 3123
+value = 3541
 unit = "bytes"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -654,7 +654,7 @@ unit = "lines"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -663,12 +663,12 @@ subject = "cli.output.build-red.full.lines"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 54
+value = 57
 unit = "lines"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -682,7 +682,7 @@ unit = "bytes"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -705,12 +705,12 @@ subject = "cli.output.build-red.plain.bytes"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 996
+value = 987
 unit = "bytes"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -724,7 +724,7 @@ unit = "lines"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -747,12 +747,12 @@ subject = "cli.output.build-red.plain.lines"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 12
+value = 11
 unit = "lines"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -761,12 +761,12 @@ subject = "cli.output.build-red.tty.bytes"
 project = "spring-petclinic"
 tool = "gradle"
 kind = "count"
-value = 1006
+value = 1003
 unit = "bytes"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -775,12 +775,12 @@ subject = "cli.output.build-red.tty.bytes"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 7433
+value = 5629
 unit = "bytes"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -789,12 +789,12 @@ subject = "cli.output.build-red.tty.bytes"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 4158
+value = 4661
 unit = "bytes"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -808,7 +808,7 @@ unit = "lines"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -817,12 +817,12 @@ subject = "cli.output.build-red.tty.lines"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 24
+value = 20
 unit = "lines"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -831,12 +831,12 @@ subject = "cli.output.build-red.tty.lines"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 54
+value = 57
 unit = "lines"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -850,7 +850,7 @@ unit = "bytes"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -859,12 +859,12 @@ subject = "cli.output.test-green.full.bytes"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 83133
+value = 83556
 unit = "bytes"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -878,7 +878,7 @@ unit = "lines"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -887,12 +887,12 @@ subject = "cli.output.test-green.full.lines"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 683
+value = 687
 unit = "lines"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -906,7 +906,7 @@ unit = "bytes"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -929,12 +929,12 @@ subject = "cli.output.test-green.plain.bytes"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 75786
+value = 75776
 unit = "bytes"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -948,7 +948,7 @@ unit = "lines"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -976,7 +976,7 @@ unit = "lines"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -990,7 +990,7 @@ unit = "bytes"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -999,12 +999,12 @@ subject = "cli.output.test-green.tty.bytes"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 6740
+value = 1582
 unit = "bytes"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -1013,12 +1013,12 @@ subject = "cli.output.test-green.tty.bytes"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 86129
+value = 86754
 unit = "bytes"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -1032,7 +1032,7 @@ unit = "lines"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -1041,12 +1041,12 @@ subject = "cli.output.test-green.tty.lines"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 15
+value = 6
 unit = "lines"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -1055,12 +1055,12 @@ subject = "cli.output.test-green.tty.lines"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 685
+value = 689
 unit = "lines"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -1074,7 +1074,7 @@ unit = "bytes"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -1083,12 +1083,12 @@ subject = "cli.output.test-red.full.bytes"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 85051
+value = 85480
 unit = "bytes"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -1102,7 +1102,7 @@ unit = "lines"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -1111,12 +1111,12 @@ subject = "cli.output.test-red.full.lines"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 709
+value = 713
 unit = "lines"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -1130,7 +1130,7 @@ unit = "bytes"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -1153,12 +1153,12 @@ subject = "cli.output.test-red.plain.bytes"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 77574
+value = 77569
 unit = "bytes"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -1172,7 +1172,7 @@ unit = "lines"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -1200,7 +1200,7 @@ unit = "lines"
 band = 0.0
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -1209,12 +1209,12 @@ subject = "cli.output.test-red.tty.bytes"
 project = "spring-petclinic"
 tool = "gradle"
 kind = "count"
-value = 30384
+value = 3665
 unit = "bytes"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -1223,12 +1223,12 @@ subject = "cli.output.test-red.tty.bytes"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 483621
+value = 24448
 unit = "bytes"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -1237,12 +1237,12 @@ subject = "cli.output.test-red.tty.bytes"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 88201
+value = 88793
 unit = "bytes"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -1251,12 +1251,12 @@ subject = "cli.output.test-red.tty.lines"
 project = "spring-petclinic"
 tool = "gradle"
 kind = "count"
-value = 216
+value = 34
 unit = "lines"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -1265,12 +1265,12 @@ subject = "cli.output.test-red.tty.lines"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 771
+value = 680
 unit = "lines"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -1279,12 +1279,12 @@ subject = "cli.output.test-red.tty.lines"
 project = "spring-petclinic"
 tool = "maven"
 kind = "count"
-value = 709
+value = 713
 unit = "lines"
 band = 0.25
 runs = 1
 date = "2026-10-20"
-commit = "5cdaeab7e"
+commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
