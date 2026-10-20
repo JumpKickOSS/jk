@@ -364,9 +364,11 @@ public final class PathUtil {
      * <p>Symbolic links are not followed and not recreated. {@code walkFileTree}'s default is
      * no-follow, so a link arrives here as a non-regular file and is skipped — deliberately, for the
      * reason G37 gives about deletes: a copy that follows a link writes into somebody else's tree.
+     *
+     * <p>Returns how many files it wrote; an unchanged tree is 0.
      */
-    public static void copyTree(Path from, Path to, Copy... options) throws IOException {
-        copyTree(from, to, dir -> false, options);
+    public static int copyTree(Path from, Path to, Copy... options) throws IOException {
+        return copyTree(from, to, dir -> false, options);
     }
 
     /**
@@ -376,12 +378,13 @@ public final class PathUtil {
      * staged layout. A predicate rather than a baked-in rule: {@code :host} has no business knowing
      * what a plugin's scratch directory is called.
      */
-    public static void copyTree(Path from, Path to, Predicate<Path> skipSubtree, Copy... options) throws IOException {
-        if (!Files.isDirectory(from)) return;
+    public static int copyTree(Path from, Path to, Predicate<Path> skipSubtree, Copy... options) throws IOException {
+        if (!Files.isDirectory(from)) return 0;
         Set<Copy> opts = options.length == 0 ? Set.of() : EnumSet.copyOf(Arrays.asList(options));
         if (opts.contains(Copy.CLEAN_TARGET)) deleteRecursivelyOrThrow(to);
         boolean always = opts.contains(Copy.OVERWRITE_ALWAYS);
         boolean preserve = opts.contains(Copy.PRESERVE_ATTRIBUTES);
+        int[] copied = {0};
         Files.walkFileTree(from, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
@@ -405,9 +408,11 @@ public final class PathUtil {
                     // later copyTree of the same tree rewrites every file.
                     if (!always) Files.setLastModifiedTime(target, attrs.lastModifiedTime());
                 }
+                copied[0]++;
                 return FileVisitResult.CONTINUE;
             }
         });
+        return copied[0];
     }
 
     /** Whether {@code target} already has the source's size and modification time. */
