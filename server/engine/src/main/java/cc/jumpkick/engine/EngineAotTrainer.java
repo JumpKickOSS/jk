@@ -35,11 +35,18 @@ import java.util.function.Consumer;
  * The CLI builds a small Java module ({@link JavacTrainingSources}), edits it and builds again,
  * builds once more as a no-op, asks for status and stops the trainer, whose exit assembles the
  * cache. The store is shared, so nothing is downloaded twice. Skipped under CI, where the engine
- * leaves with the job, and whenever {@code JK_ENGINE_AOT} is off. One attempt per engine process.
+ * leaves with the job, and whenever {@code JK_ENGINE_AOT} is off.
+ *
+ * <p>The recording competes with the user's builds for the CPU, so it stands down the moment a job
+ * arrives: the step in flight is killed, the trainer engine stopped, and the next settled idle
+ * tries again. A recording that fails for any other reason is not retried by this engine.
  */
 final class EngineAotTrainer {
 
     private static final AtomicBoolean ATTEMPTED = new AtomicBoolean();
+
+    /** How often a step in flight checks that the engine is still idle. */
+    private static final long IDLE_POLL_MILLIS = 100;
 
     /** Ceiling for each CLI step; the whole recording is a few seconds of builds plus assembly. */
     private static final long STEP_TIMEOUT_SECONDS = 120;
@@ -62,10 +69,17 @@ final class EngineAotTrainer {
         if (cache == null || Files.isRegularFile(cache) || !idle.getAsBoolean()) return;
         if (!ATTEMPTED.compareAndSet(false, true)) return;
         // Idle-time recording beside the resident engine; reads no session.
-        Thread.ofVirtual().name("jk-engine-aot-train").start(() -> train(cli, cache, log));
+        Thread.ofVirtual().name("jk-engine-aot-train").start(() -> train(cli, cache, idle, log));
     }
 
-    private static void train(Path cli, Path cache, Consumer<String> log) {
+    /** A job arrived while a recording step was in flight. */
+    static final class Yielded extends Exception {
+        Yielded() {
+            super(null, null, false, false);
+        }
+    }
+
+    private static void train(Path cli, Path cache, BooleanSupplier idle, Consumer<String> log) {
         long start = Clock.SYSTEM.millis();
         Path scratch = null;
         try {
@@ -74,12 +88,20 @@ final class EngineAotTrainer {
             Path recorded = scratch.resolve("engine.aot");
             Map<String, String> env = env(scratch, recorded);
             Path main = project.resolve("src/main/java/demo/train/Main.java");
-            boolean ok = run(cli, project, env, "build", "--skip-tests", "--no-ansi");
-            if (ok) {
-                Files.writeString(main, Files.readString(main) + "\n// edited\n", StandardCharsets.UTF_8);
-                ok = run(cli, project, env, "build", "--skip-tests", "--no-ansi")
-                        && run(cli, project, env, "build", "--skip-tests", "--no-ansi")
-                        && run(cli, project, env, "status", "--no-ansi");
+            boolean ok;
+            try {
+                ok = step(cli, project, env, idle, "build", "--skip-tests", "--no-ansi");
+                if (ok) {
+                    Files.writeString(main, Files.readString(main) + "\n// edited\n", StandardCharsets.UTF_8);
+                    ok = step(cli, project, env, idle, "build", "--skip-tests", "--no-ansi")
+                            && step(cli, project, env, idle, "build", "--skip-tests", "--no-ansi")
+                            && step(cli, project, env, idle, "status", "--no-ansi");
+                }
+            } catch (Yielded y) {
+                run(cli, project, env, "engine", "stop");
+                ATTEMPTED.set(false);
+                Log.debug("EngineAotTrainer: a job arrived; the next settled idle records again");
+                return;
             }
             run(cli, project, env, "engine", "stop");
             if (!ok || !awaitAssembled(recorded)) {
@@ -135,6 +157,34 @@ final class EngineAotTrainer {
 
     private static boolean run(Path cli, Path dir, Map<String, String> env, String... args)
             throws IOException, InterruptedException {
+        Process p = start(cli, dir, env, args);
+        if (!p.waitFor(STEP_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            p.destroyForcibly();
+            return false;
+        }
+        return p.exitValue() == 0;
+    }
+
+    /** As {@link #run}, killed the moment {@code idle} turns false. */
+    static boolean step(Path cli, Path dir, Map<String, String> env, BooleanSupplier idle, String... args)
+            throws IOException, InterruptedException, Yielded {
+        if (!idle.getAsBoolean()) throw new Yielded();
+        Process p = start(cli, dir, env, args);
+        long deadline = Clock.SYSTEM.millis() + TimeUnit.SECONDS.toMillis(STEP_TIMEOUT_SECONDS);
+        while (!p.waitFor(IDLE_POLL_MILLIS, TimeUnit.MILLISECONDS)) {
+            if (!idle.getAsBoolean()) {
+                p.destroyForcibly();
+                throw new Yielded();
+            }
+            if (Clock.SYSTEM.millis() > deadline) {
+                p.destroyForcibly();
+                return false;
+            }
+        }
+        return p.exitValue() == 0;
+    }
+
+    private static Process start(Path cli, Path dir, Map<String, String> env, String... args) throws IOException {
         List<String> command = new ArrayList<>(List.of(cli.toString()));
         command.addAll(List.of(args));
         ProcessBuilder pb = new ProcessBuilder(command)
@@ -143,12 +193,7 @@ final class EngineAotTrainer {
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD);
         pb.environment().clear();
         pb.environment().putAll(env);
-        Process p = pb.start();
-        if (!p.waitFor(STEP_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-            p.destroyForcibly();
-            return false;
-        }
-        return p.exitValue() == 0;
+        return pb.start();
     }
 
     /** The trainer's exit assembles the cache; wait for a non-empty file whose size has settled. */
