@@ -20,7 +20,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -34,7 +33,7 @@ class WizardTest {
      * Wizard.run drains stdin for ~40ms on entry ({@code drainInput}). Keys written before that
      * are discarded — always {@link #waitReady} after submit before typing.
      */
-    private record Harness(MemoryTerminal tty, PipedOutputStream input, AtomicInteger drawnBeforeKey) {
+    private record Harness(MemoryTerminal tty, PipedOutputStream input, PipedInputStream keys) {
         String output() {
             return new String(tty.written(), StandardCharsets.UTF_8);
         }
@@ -44,12 +43,10 @@ class WizardTest {
         var pipeIn = new PipedInputStream(8192);
         var pipeOut = new PipedOutputStream(pipeIn);
         var tty = Terminals.memory(pipeIn, new ByteArrayOutputStream());
-        return new Harness(tty, pipeOut, new AtomicInteger());
+        return new Harness(tty, pipeOut, pipeIn);
     }
 
-    /** Feed {@code bytes}, recording how much the wizard had drawn first (see {@link #settle}). */
     private static void write(Harness h, byte... bytes) throws IOException {
-        h.drawnBeforeKey().set(h.tty().written().length);
         h.input().write(bytes);
         h.input().flush();
     }
@@ -69,23 +66,20 @@ class WizardTest {
     }
 
     /**
-     * Wait until the wizard has redrawn in response to the last {@link #write} — the observable
-     * effect of it having consumed those bytes. Ordering matters here: a navigation key that gets
-     * merged into the next read is a different key sequence, which is why keystrokes cannot simply
-     * be written back to back.
-     *
-     * <p>This was a bare {@code Thread.sleep(10)}. Ten milliseconds was a guess about how fast this
-     * machine drains a pipe: too short under load (a flake) and, worse, unable to prove the key had
-     * been consumed at all, so the negative assertions it guarded could pass having verified
-     * nothing. A redraw is a fact; wait for the fact.
+     * Wait until the wizard has read every byte of the last {@link #write}. A key that changes
+     * nothing on screen writes nothing, so a redraw cannot be the signal; an emptied pipe is. Keys
+     * written back to back could merge into one read and parse as a different sequence.
      */
+    private static int unread(Harness h) {
+        try {
+            return h.keys().available();
+        } catch (IOException e) {
+            return 0;
+        }
+    }
+
     private static void settle(Harness h) throws Exception {
-        int before = h.drawnBeforeKey().get();
-        Await.until(
-                Duration.ofSeconds(5),
-                () -> h.tty().written().length > before,
-                () -> "the wizard never redrew after the last keystroke (still " + before
-                        + " bytes drawn) — the key was not consumed");
+        Await.until(Duration.ofSeconds(5), () -> unread(h) == 0, () -> "the wizard never read the last keystroke");
     }
 
     @Test
@@ -579,6 +573,111 @@ class WizardTest {
             write(h, (byte) 'h', (byte) 'i', (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.get("name")).isEqualTo("hi");
+        } finally {
+            exec.shutdownNow();
+            h.tty().close();
+        }
+    }
+
+    /**
+     * Wait for the wizard's whole answer to the last {@link #write} and return the bytes it wrote.
+     * Reading {@code written()} flushes, so a read mid-print sees part of a frame: wait until the
+     * count holds still.
+     */
+    private static String frameAfter(Harness h, int before) throws Exception {
+        int[] last = {-1};
+        Await.until(
+                Duration.ofSeconds(5),
+                () -> {
+                    int now = h.tty().written().length;
+                    boolean still = now > before && now == last[0];
+                    last[0] = now;
+                    return still;
+                },
+                () -> "the wizard never repainted after the last keystroke");
+        byte[] all = h.tty().written();
+        return new String(all, before, all.length - before, StandardCharsets.UTF_8);
+    }
+
+    @Test
+    void a_selection_move_rewrites_the_two_markers_not_the_menu() throws Exception {
+        var h = newHarness();
+        var builder = WizardStep.RadioStep.vertical("db", "Database");
+        for (String name : List.of("postgres", "mysql", "mariadb", "oracle", "sqlserver", "h2", "hsqldb", "derby")) {
+            builder.choice(name, name + " database with a longer label");
+        }
+        var wizard = Wizard.builder()
+                .command("Test")
+                .step(builder.defaultChoice("postgres").build())
+                .build();
+
+        var exec = Executors.newSingleThreadExecutor();
+        try {
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
+            waitReady(h, "derby database");
+            int menu = h.tty().written().length;
+            write(h, (byte) 0x1B, (byte) '[', (byte) 'B');
+            String move = frameAfter(h, menu);
+
+            var screen = new LiveRegionScreen(40, 100);
+            screen.write(h.output());
+            List<String> rows = screen.viewport();
+            assertThat(rows.stream()
+                            .filter(r -> r.contains("postgres database"))
+                            .findFirst()
+                            .orElseThrow())
+                    .contains(Rail.RADIO_OFF);
+            assertThat(rows.stream()
+                            .filter(r -> r.contains("mysql database"))
+                            .findFirst()
+                            .orElseThrow())
+                    .contains(Rail.RADIO_ON);
+            assertThat(move.getBytes(StandardCharsets.UTF_8).length)
+                    .as(
+                            "one move against a menu of %d bytes: %s",
+                            menu,
+                            move.replace("\u001b", "ESC").replace("\r", "CR").replace("\n", "LF"))
+                    .isLessThan(menu / 4);
+
+            write(h, (byte) 0x0A);
+            assertThat(await(result).orElseThrow().get("db")).isEqualTo("mysql");
+        } finally {
+            exec.shutdownNow();
+            h.tty().close();
+        }
+    }
+
+    @Test
+    void a_typed_character_paints_that_cell_and_the_caret() throws Exception {
+        var h = newHarness();
+        var wizard = Wizard.builder()
+                .command("Test")
+                .step(WizardStep.InputStep.of("name", "Project name").build())
+                .build();
+
+        var exec = Executors.newSingleThreadExecutor();
+        try {
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
+            waitReady(h, "Project name");
+            int start = h.tty().written().length;
+            write(h, (byte) 'a');
+            frameAfter(h, start);
+            int before = h.tty().written().length;
+            write(h, (byte) 'b');
+            String typed = frameAfter(h, before);
+            assertThat(typed.getBytes(StandardCharsets.UTF_8).length)
+                    .as(typed.replace("\u001b", "ESC").replace("\r", "CR").replace("\n", "LF"))
+                    .isLessThan(80);
+
+            var screen = new LiveRegionScreen(20, 80);
+            screen.write(h.output());
+            assertThat(screen.viewport()).anyMatch(r -> r.contains("ab"));
+
+            write(h, (byte) 0x0A);
+            assertThat(await(result).orElseThrow().get("name")).isEqualTo("ab");
+            var settled = new LiveRegionScreen(20, 80);
+            settled.write(h.output());
+            assertThat(settled.viewport()).anyMatch(r -> r.contains("➜ ab"));
         } finally {
             exec.shutdownNow();
             h.tty().close();

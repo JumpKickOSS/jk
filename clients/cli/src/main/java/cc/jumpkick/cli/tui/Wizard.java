@@ -6,6 +6,7 @@ import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.InputMode;
 import cc.jumpkick.terminal.Key;
 import cc.jumpkick.terminal.ModeGuard;
+import cc.jumpkick.terminal.RegionPainter;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.terminal.Styled;
 import cc.jumpkick.terminal.StyledBuilder;
@@ -24,7 +25,7 @@ import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Interactive wizard: {@link InputMode#PROMPT}, incremental redraw of the active step only, no
+ * Interactive wizard: {@link InputMode#PROMPT}, the active step repainted cell by cell, no
  * alt-screen (keeps the transcript). Cancels restore cursor/SGR for a clean shell prompt. When the
  * theme is not ANSI the same steps run through {@link CookedWizard} as line prompts instead.
  */
@@ -43,6 +44,9 @@ public final class Wizard {
 
     /** Column count of {@link #INDENT}. */
     private static final int INDENT_COLS = 0;
+
+    /** Row of an input step's buffer in the active region: under the bullet. */
+    private static final int INPUT_ROW = 1;
 
     /** Poll interval for keys; lets the loop observe async cancellation flag. */
     private static final long KEY_POLL_MS = 75L;
@@ -126,8 +130,8 @@ public final class Wizard {
      * to the active {@code ╰} row, preserve the existing {@code ╰──} prefix (which the active region
      * already drew in cyan), and append a separator space + red {@code <message>} right after it.
      *
-     * <p>Assumes the wizard has just returned {@link Optional#empty()} and that the in-loop cancel
-     * path called {@link #moveBelowCloser} — so {@link #run}'s trailing {@code \r\n} places the
+     * <p>Assumes the wizard has just returned {@link Optional#empty()} with the cursor parked under
+     * the active closer — so {@link #run}'s trailing {@code \r\n} places the
      * cursor two lines below the active closer. Under a plain theme there is no rail to climb, so
      * the marker is one appended line.
      */
@@ -146,20 +150,6 @@ public final class Wizard {
                 .build();
         writer.print(line.toAnsi());
         writer.println();
-        writer.flush();
-    }
-
-    /**
-     * Reposition the cursor one row below the active closer so cancellation handlers can rely on a
-     * fixed cursor position regardless of step type. Input steps leave the cursor mid-region (on the
-     * input buffer line); other step types leave it already below the closer.
-     */
-    private static void moveBelowCloser(PrintWriter writer, int regionLines, int cursorOffset) {
-        int linesDown = regionLines - cursorOffset;
-        if (linesDown > 0) {
-            writer.print(Ansi.cursorDown(linesDown));
-        }
-        writer.print("\r");
         writer.flush();
     }
 
@@ -206,42 +196,34 @@ public final class Wizard {
             firstStep = false;
 
             var state = new ActiveState(step, answers);
-            var regionLines = renderActiveRegion(tty, step, state);
-            var cursorOffset = positionInputCursor(writer, step, state, regionLines);
-            writer.flush();
+            var region = new ActiveRegion(tty);
+            region.paint(step, state);
 
             while (true) {
                 if (cancelled) {
-                    moveBelowCloser(writer, regionLines, cursorOffset);
+                    region.park();
                     throw new WizardCancelled();
                 }
                 var key = tty.readKey(Duration.ofMillis(KEY_POLL_MS));
                 if (key.isEmpty()) {
                     if (!tty.isLive()) {
-                        moveBelowCloser(writer, regionLines, cursorOffset);
+                        region.park();
                         throw new WizardCancelled();
                     }
                     continue;
                 }
                 if (key.get() instanceof Key.CtrlC) {
-                    moveBelowCloser(writer, regionLines, cursorOffset);
+                    region.park();
                     throw new WizardCancelled();
                 }
-                var done = state.handle(key.get());
-
-                writer.print(HIDE_CURSOR);
-                eraseLines(writer, cursorOffset);
-
-                if (done) {
+                if (state.handle(key.get())) {
                     state.commit(answers);
+                    region.lift();
                     renderSettledRegion(tty, step, answers);
                     writer.flush();
                     break;
                 }
-
-                regionLines = renderActiveRegion(tty, step, state);
-                cursorOffset = positionInputCursor(writer, step, state, regionLines);
-                writer.flush();
+                region.paint(step, state);
             }
         }
 
@@ -254,19 +236,79 @@ public final class Wizard {
         return Answers.of(Map.copyOf(answers));
     }
 
-    private int renderActiveRegion(TerminalSession tty, WizardStep step, ActiveState state) {
-        var writer = tty.ttyOut();
-        writer.println(
-                INDENT + Rail.stepBullet(Rail.StepState.ACTIVE, step.prompt()).toAnsi());
-        var interactive = state.render();
-        for (var line : interactive) {
-            writer.println(INDENT + Rail.mid(line, Rail.StepState.ACTIVE).toAnsi());
+    /**
+     * The active step on screen: its bullet, its interactive rows and the {@code ╰} closer, painted
+     * by a {@link RegionPainter} so a keystroke sends only the cells it changed. The cursor parks
+     * under the closer; an input step raises the visible caret to the end of its buffer between
+     * paints.
+     */
+    private static final class ActiveRegion {
+        private final TerminalSession tty;
+        private final PrintWriter writer;
+        private final RegionPainter painter = new RegionPainter(RegionPainter.Park.BELOW);
+
+        /** 1-based column of the raised caret on the input row; -1 while the cursor is parked. */
+        private int caret = -1;
+
+        ActiveRegion(TerminalSession tty) {
+            this.tty = tty;
+            this.writer = tty.ttyOut();
         }
-        // └ hook one line below the interactive content; gets erased on commit
-        // and re-emitted (with the next step's content above it) on each step.
-        writer.println(
-                Theme.colorize("╰──────", Theme.active().railStyle(Rail.StepState.ACTIVE, Rail.RailGlyph.CLOSE)));
-        return 1 + interactive.size() + 1;
+
+        void paint(WizardStep step, ActiveState state) {
+            var size = tty.size();
+            StringBuilder frame = new StringBuilder();
+            int height = painter.height();
+            painter.paint(frame, lines(step, state), size.cols(), 0, size.rows());
+            int next = step instanceof WizardStep.InputStep
+                    ? INDENT_COLS + RAIL_PREFIX_WIDTH + state.input.length() + 1
+                    : -1;
+            if (frame.isEmpty() && next == caret) return;
+            StringBuilder out = new StringBuilder();
+            if (caret >= 0) out.append(HIDE_CURSOR).append(Ansi.cursorDown(height - INPUT_ROW));
+            out.append(frame);
+            if (next >= 0) {
+                out.append(Ansi.cursorUp(painter.height() - INPUT_ROW))
+                        .append(Ansi.cursorToColumn(next))
+                        .append(SHOW_CURSOR);
+            }
+            caret = next;
+            writer.print(out);
+            writer.flush();
+        }
+
+        /** Erase the region and leave the cursor where its top row was. */
+        void lift() {
+            StringBuilder out = new StringBuilder();
+            if (caret >= 0) {
+                out.append(HIDE_CURSOR).append(Ansi.cursorPrevLine(INPUT_ROW)).append(CLEAR_TO_END);
+                painter.forget();
+            } else {
+                painter.lift(out, 0, tty.size().rows());
+            }
+            caret = -1;
+            writer.print(out);
+            writer.flush();
+        }
+
+        /** Return the cursor to column 0 under the closer, where cancellation expects it. */
+        void park() {
+            if (caret >= 0) writer.print(Ansi.cursorDown(painter.height() - INPUT_ROW));
+            caret = -1;
+            writer.print("\r");
+            writer.flush();
+        }
+
+        private static List<String> lines(WizardStep step, ActiveState state) {
+            var out = new ArrayList<String>();
+            out.add(INDENT
+                    + Rail.stepBullet(Rail.StepState.ACTIVE, step.prompt()).toAnsi());
+            for (var line : state.render()) {
+                out.add(INDENT + Rail.mid(line, Rail.StepState.ACTIVE).toAnsi());
+            }
+            out.add(Theme.colorize("╰──────", Theme.active().railStyle(Rail.StepState.ACTIVE, Rail.RailGlyph.CLOSE)));
+            return out;
+        }
     }
 
     private void renderSettledRegion(TerminalSession tty, WizardStep step, Map<String, Object> answers) {
@@ -276,46 +318,6 @@ public final class Wizard {
         for (var line : summarize(step, answers)) {
             writer.println(INDENT + Rail.mid(line, Rail.StepState.COMPLETED).toAnsi());
         }
-    }
-
-    private void eraseLines(PrintWriter writer, int rows) {
-        if (rows <= 0) {
-            // Still need to return to column 0 so the redraw doesn't prepend onto
-            // whatever was to the left of the cursor (e.g., an input buffer).
-            writer.print("\r");
-            writer.print(CLEAR_TO_END);
-            return;
-        }
-        // ESC[<n>F = cursor previous line: moves up n lines AND to column 0.
-        // (ESC[<n>A only moves up, preserving column — that left the redraw
-        // starting mid-line and pasting the new bullet onto the old text.)
-        writer.print(Ansi.cursorPrevLine(rows));
-        writer.print(CLEAR_TO_END);
-    }
-
-    /**
-     * Positions the cursor for input steps and returns the cursor's offset (in lines) from the top of
-     * the active region. The caller must pass this value back to {@link #eraseLines} so the redraw
-     * moves up by the correct amount instead of climbing past the region origin and eating prior
-     * terminal content.
-     */
-    private int positionInputCursor(PrintWriter writer, WizardStep step, ActiveState state, int regionLines) {
-        if (!(step instanceof WizardStep.InputStep)) {
-            // Cursor sits below the region after the final println.
-            return regionLines;
-        }
-        // After emitting (bullet + interactive) lines, the cursor sits at the start
-        // of the line BELOW the region. The input buffer line is the second line of
-        // the region (line index 1: bullet is line 0). Move the cursor up to that
-        // line, then to the column just past the last typed character.
-        var linesUp = regionLines - 1;
-        if (linesUp > 0) {
-            writer.print(Ansi.cursorUp(linesUp));
-        }
-        var col = INDENT_COLS + RAIL_PREFIX_WIDTH + state.input.length() + 1;
-        writer.print(Ansi.cursorToColumn(col));
-        writer.print(SHOW_CURSOR);
-        return 1;
     }
 
     /**

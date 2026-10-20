@@ -3,15 +3,16 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.InputMode;
 import cc.jumpkick.terminal.Key;
 import cc.jumpkick.terminal.ModeGuard;
+import cc.jumpkick.terminal.RegionPainter;
 import cc.jumpkick.terminal.TerminalSession;
 import cc.jumpkick.terminal.Terminals;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
@@ -83,9 +84,17 @@ public final class Prompt<T> implements Widget {
             return yes;
         }
         if (!Theme.active().isAnsi()) return cookedFallback();
-        var err = CliOutput.stderr();
-        String hint = hintText(false);
-        err.print(promptText(false));
+        return ask(tty, CliOutput.stderr());
+    }
+
+    /** The raw-mode prompt on {@code tty}, painted to {@code err} as one in-place row. */
+    T ask(TerminalSession tty, PrintStream err) {
+        var painter = new RegionPainter(RegionPainter.Park.IN_ROW);
+        int cols = tty.size().cols();
+        String asked = question.render() + " ";
+        StringBuilder frame = new StringBuilder();
+        painter.paint(frame, List.of(asked + hintText(false)), cols, 0, 0);
+        err.print(frame.append(' '));
         err.flush();
         try (ModeGuard raw = tty.enter(InputMode.PROMPT)) {
             while (true) {
@@ -95,21 +104,14 @@ public final class Prompt<T> implements Widget {
                 }
                 T result = interpret(key.get());
                 if (result != null) {
-                    err.print(settleOverwrite(hint, settleLabel(result)));
+                    frame.setLength(0);
+                    painter.paint(frame, List.of(asked + settleLabel(result)), cols, 0, 0);
+                    err.print(frame.append("\r\n"));
                     err.flush();
                     return result;
                 }
             }
         }
-    }
-
-    /**
-     * Rewinds over the printed hint plus its trailing space and paints the settled answer. The
-     * hint carries SGR color when ANSI is active, so the rewind must count visible columns, not
-     * raw chars — overshooting drags the cursor into the question text and the erase wipes it.
-     */
-    static String settleOverwrite(String hint, @Nullable String answer) {
-        return Ansi.cursorBack(RenderContext.visibleWidth(hint) + 1) + answer + Ansi.ERASE_LINE_TO_END + "\r\n";
     }
 
     @Override
