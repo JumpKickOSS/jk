@@ -372,7 +372,8 @@ def absolute_batch(name: str, mod, ctx, board: list[dict], host: str, deadline: 
     """One absolute-wall dimension behind the quiet gate, calibrated before and after.
 
     A busy host past the deadline yields no rows at all (`skipped: busy`); calibration drift above
-    DRIFT, or a host slower than its banked calibration, marks every row `noisy`.
+    DRIFT, or a host slower than its banked calibration, marks every row `noisy`. The load at the end
+    of a batch is the batch's own, so interference is judged by the calibration alone.
     """
     reason = wait_quiet(deadline)
     if reason is not None:
@@ -388,8 +389,6 @@ def absolute_batch(name: str, mod, ctx, board: list[dict], host: str, deadline: 
         noisy = f"calibration drifted {before:g} s -> {after:g} s"
     elif banked and min(before, after) > banked * (1 + DRIFT):
         noisy = f"host slower than its banked calibration ({min(before, after):g} s vs {banked:g} s)"
-    elif busy_reason(cond, 0):
-        noisy = f"host got busy during the batch ({busy_reason(cond, 0)})"
     for row in rows:
         row.update({f"{k}-end": v for k, v in cond.items()})
         row["calibration-s"] = f"{before:g}/{after:g}"
