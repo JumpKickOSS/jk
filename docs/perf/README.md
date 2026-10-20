@@ -80,8 +80,8 @@ store and cache:
 
 ```bash
 jk build --skip-tests && JK_BIN=target/dist/jk bench/scoreboard --dim paired
-JK_HOME=~/.cache/jk-bench/release-0.15.2 JK_VERSION=0.15.2 bash install.sh
-bench/scoreboard --dim paired --baseline ~/.cache/jk-bench/release-0.15.2/bin/jk
+JK_HOME="$JK_BENCH_HOME/release-0.15.2" JK_VERSION=0.15.2 bash install.sh
+bench/scoreboard --dim paired --baseline "$JK_BENCH_HOME/release-0.15.2/bin/jk"
 ```
 
 ### Absolute walls and the night
