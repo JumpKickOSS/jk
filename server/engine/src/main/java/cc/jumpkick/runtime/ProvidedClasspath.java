@@ -44,6 +44,24 @@ public final class ProvidedClasspath {
     }
 
     /**
+     * The forecast's view of {@link #contributed}: the same entries resolved the same way, so a
+     * compile key priced before the build names the jars the build's compile reads. A tool that
+     * does not resolve leaves the forecast without it, which keys a compile the build would not
+     * make — a predicted miss, never a false hit.
+     */
+    static Provided forecast(JkBuild project, Path moduleDir, Path lockFile, Cas cas) {
+        try {
+            return providedClasspath(project, moduleDir, lockFile, cas, new PluginBuild.StepTools());
+        } catch (IOException | RuntimeException e) {
+            Log.debug("provided classpath of " + moduleDir + " left out of the forecast", e);
+            return Provided.NONE;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Provided.NONE;
+        }
+    }
+
+    /**
      * The model's view of {@link #contributed}: each module's provided jars named
      * for an IDE ({@code <tool>/<path in it>} for a globbed jar, the tool's artifact name for a
      * tool that is one jar). A module whose tools do not resolve lists none.
