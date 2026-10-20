@@ -40,8 +40,12 @@ public record JkEngineConfig(
     /** Default engine heap when {@code CI=1} or {@code CI=true} and heap is unset. */
     public static final int CI_DEFAULT_MAX_HEAP_MB = 512;
 
-    /** Initial engine heap ({@code -Xms}), clamped to {@link #maxHeapMb}. */
-    public static final int MIN_HEAP_MB = 32;
+    /**
+     * Initial engine heap ({@code -Xms}), clamped to {@link #maxHeapMb}. It is also the floor the
+     * idle trim's full collection can shrink to: an idle engine holds ~11 MiB of live heap, so a
+     * 32 MiB floor kept ~20 MiB committed for nothing.
+     */
+    public static final int MIN_HEAP_MB = 8;
 
     /** Per-job input-tree retain, in MiB. {@code 0} disables the VFS (always live-walk). CI does not change this. */
     public static final int DEFAULT_VFS_MAX_MB = 32;

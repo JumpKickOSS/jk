@@ -48,6 +48,24 @@ class ResourceMirrorTest {
     }
 
     @Test
+    void an_unchanged_tree_is_no_change_and_an_edit_or_a_delete_is_one(@TempDir Path tmp) throws Exception {
+        Path res = tmp.resolve("src/main/resources");
+        Files.createDirectories(res);
+        Files.writeString(res.resolve("a.txt"), "a");
+        Files.writeString(res.resolve("b.txt"), "b");
+        Path classes = tmp.resolve("target/classes/main");
+        Path ledger = tmp.resolve("target/incremental/" + ResourceMirror.LEDGER);
+
+        assertThat(ResourceMirror.syncChanges(List.of(res), classes, ledger)).isEqualTo(2);
+        assertThat(ResourceMirror.syncChanges(List.of(res), classes, ledger)).isZero();
+        Files.writeString(res.resolve("a.txt"), "a, longer");
+        assertThat(ResourceMirror.syncChanges(List.of(res), classes, ledger)).isEqualTo(1);
+        Files.delete(res.resolve("b.txt"));
+        assertThat(ResourceMirror.syncChanges(List.of(res), classes, ledger)).isEqualTo(1);
+        assertThat(ResourceMirror.syncChanges(List.of(res), classes, ledger)).isZero();
+    }
+
+    @Test
     void a_file_present_in_two_roots_is_mirrored_once_and_kept_while_either_holds_it(@TempDir Path tmp)
             throws Exception {
         Path r1 = tmp.resolve("r1");

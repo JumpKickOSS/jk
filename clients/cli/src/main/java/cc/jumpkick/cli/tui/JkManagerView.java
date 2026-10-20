@@ -29,7 +29,7 @@ final class JkManagerView {
 
     /**
      * Terminal columns used for the last paint. On a shrink, already-drawn lines may reflow to more
-     * physical rows than {@code lastLines.size()}; wipe uses this to estimate how far to cursor-up.
+     * physical rows than the region's height; wipe uses this to estimate how far to cursor-up.
      */
     private int paintedCols;
 
@@ -199,13 +199,16 @@ final class JkManagerView {
 
     /** Repaint the single simple-mode spinner line in place (must hold the manager lock). */
     void paintSimple() {
-        m.out.print('\r');
-        m.out.print(Theme.colorize(m.PULSE, m.openPulseColors[Math.floorMod(m.frame, m.openPulseColors.length)]));
-        m.out.print(' ');
-        m.out.print(m.label);
-        m.out.print(Glyphs.ELLIPSIS);
-        m.out.print(Ansi.ERASE_LINE_TO_END);
-        m.out.print(Osc.taskbarIndeterminate());
+        StringBuilder f = new StringBuilder();
+        m.painter.status(f, Osc.taskbarIndeterminate());
+        m.painter.paint(f, List.of(simpleLine(m.frame)), 0, 0, 0);
+        m.out.print(f);
+    }
+
+    /** The simple-mode row for animator frame {@code frame}: the pulse, the label, an ellipsis. */
+    String simpleLine(int frame) {
+        Style pulse = m.openPulseColors[Math.floorMod(frame, m.openPulseColors.length)];
+        return Theme.colorize(JkManager.PULSE, pulse) + " " + m.label + Glyphs.ELLIPSIS;
     }
 
     /**
@@ -275,7 +278,9 @@ final class JkManagerView {
                 m.out.flush();
                 return;
             }
-            m.out.print(Ansi.CLEAR_LINE);
+            StringBuilder f = new StringBuilder();
+            m.painter.lift(f, 0, 0);
+            m.out.print(f);
             m.out.print(text);
             m.out.print('\n');
             paintSimple();
@@ -291,13 +296,10 @@ final class JkManagerView {
      * <p>Cursor invariant: between paints the cursor is parked at the start of the line immediately
      * below the live region.
      *
-     * <p>Each frame climbs to the region top and rewrites only the rows whose text changed since
-     * the last paint (most frames: the spinner header alone); an unchanged row is stepped over
-     * with a bare newline. Rows the new region no longer covers — a shrink's stale tail, or
-     * park-row lines a child wrote at the park — are erased below it. Growth at the bottom of
-     * the viewport must pre-scroll first: otherwise the extra trailing {@code \n}s orphan the
-     * header into scrollback while {@code lastLines} still counts it, and the next frame stacks
-     * a second {@code ● Build}.
+     * <p>The {@link cc.jumpkick.terminal.RegionPainter} writes only the cells that changed since
+     * the last paint (most frames: the pulse glyph alone, nothing when the frame is the same), and
+     * erases rows the new region no longer covers — a shrink's stale tail, or park-row lines a
+     * child wrote at the park.
      *
      * <p>The whole frame is assembled and written once: a terminal that renders between writes
      * would otherwise show the half-painted region.
@@ -306,43 +308,13 @@ final class JkManagerView {
         syncSize();
         long elapsed = m.elapsedMillis();
         List<String> lines = m.renderBuildPlanLines(m.width, elapsed);
-        // The diff assumes one physical row per painted line. A wrapped row (clipping failed) or
-        // a resize (new truncation budget) misaligns lastLines against the screen: rewrite all.
-        boolean force = forceFullRepaint || m.linesDrawn != m.lastLines.size();
+        if (forceFullRepaint) m.painter.invalidate();
         forceFullRepaint = false;
-        int painted = Math.max(m.linesDrawn, m.lastLines.size());
-        int drift = m.parkDrift.getAndSet(0);
-        int next = lines.size();
-        int maxUp = OutputWindow.maxRegionLines(m.height);
-        int grow = next - painted;
         StringBuilder f = new StringBuilder(256);
-        if (grow > 0 && painted > 0) {
-            // Room first, then climb the new height plus any unlocked park-row newlines.
-            for (int i = 0; i < grow; i++) f.append("\r\n");
-            f.append(Ansi.cursorUp(Math.min(next + drift, maxUp)));
-        } else if (painted + drift > 0) {
-            f.append(Ansi.cursorUp(Math.min(painted + drift, maxUp)));
-        }
-        int prev = m.lastLines.size();
-        int rows = 0;
-        for (int i = 0; i < next; i++) {
-            String line = lines.get(i);
-            if (force || i >= prev || !line.equals(m.lastLines.get(i))) {
-                rows += emitLine(f, line);
-            } else {
-                f.append('\n');
-                rows++;
-            }
-        }
-        // Rows left under the new region: a shrink's stale tail, or the park-row drift lines.
-        if (painted + drift + Math.max(grow, 0) > next) {
-            f.append('\r').append(Ansi.ERASE_DISPLAY_TO_END);
-        }
-        m.lastLines = List.copyOf(lines);
-        m.linesDrawn = rows;
+        m.painter.paint(f, lines, colBudget(), m.parkDrift.getAndSet(0), OutputWindow.maxRegionLines(m.height));
         paintedCols = m.width;
         appendTaskbar(f, elapsed);
-        m.out.print(f.toString());
+        m.out.print(f);
     }
 
     /**
@@ -350,27 +322,15 @@ final class JkManagerView {
      * parked on the line immediately below the region.
      */
     private void liftRegion(StringBuilder f) {
-        int up = Math.min(m.climbRows(), OutputWindow.maxRegionLines(m.height));
-        if (up == 0) return;
-        f.append(Ansi.cursorUp(up));
-        f.append('\r');
-        f.append(Ansi.ERASE_DISPLAY_TO_END);
+        m.painter.lift(f, m.parkDrift.getAndSet(0), OutputWindow.maxRegionLines(m.height));
     }
 
-    /**
-     * Paint one row from column 0, clipped so it cannot wrap, and advance a line. Returns the
-     * physical rows occupied (1 unless clipping failed and the terminal width wrapped the row).
-     */
-    private int emitLine(StringBuilder f, String line) {
-        String painted = RenderContext.truncateVisible(line, colBudget());
+    /** Print one scrollback row above the region from column 0, clipped so it cannot wrap. */
+    private void emitLine(StringBuilder f, String line) {
         f.append('\r');
-        f.append(painted);
+        f.append(RenderContext.truncateVisible(line, colBudget()));
         f.append(Ansi.ERASE_LINE_TO_END);
         f.append('\n');
-        int vis = RenderContext.visibleWidth(painted);
-        int width = Math.max(1, m.width);
-        if (vis <= 0) return 1;
-        return Math.max(1, (vis + width - 1) / width);
     }
 
     /** Columns one row may paint at the current terminal width. */
@@ -451,20 +411,17 @@ final class JkManagerView {
         m.out.flush();
     }
 
-    /** Write live-region lines from the current cursor and update lastLines / linesDrawn. */
+    /** Paint the live region from the cursor, where a lift left its new top. */
     private void writeLiveRegion(StringBuilder f, List<String> live) {
-        int rows = 0;
-        for (String line : live) rows += emitLine(f, line);
-        m.lastLines = List.copyOf(live);
-        m.linesDrawn = rows;
+        m.painter.paint(f, live, colBudget(), 0, OutputWindow.maxRegionLines(m.height));
         paintedCols = m.width;
         appendTaskbar(f, m.elapsedMillis());
     }
 
-    /** The OS taskbar is re-told the bar's percent on every frame; it keeps no state of its own. */
+    /** The OS taskbar is told the bar's percent when it changes. */
     private void appendTaskbar(StringBuilder f, long elapsedMillis) {
         long[] bd = m.displayBar(elapsedMillis);
-        f.append(Osc.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
+        m.painter.status(f, Osc.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
     }
 
     /**
@@ -505,14 +462,14 @@ final class JkManagerView {
      * Pull columns/rows from the process-wide cache (one ioctl only if SIGWINCH cleared it). On a
      * real size change, mark a full rewrite so every row re-truncates under the new budget. On a
      * column change with a live region, wipe first — after a shrink the terminal may have reflowed
-     * the old paint onto more physical rows than {@code lastLines.size()}.
+     * the old paint onto more physical rows than the region's height.
      */
     private void syncSize() {
         Size.Window size = Size.current();
         int cols = size.cols() > 0 ? size.cols() : m.width;
         int rows = size.rows() > 0 ? size.rows() : m.height;
         if (cols == m.width && rows == m.height) return;
-        if (cols != m.width && !m.lastLines.isEmpty()) {
+        if (cols != m.width && m.painter.height() > 0) {
             wipeReflowedRegion(paintedCols > 0 ? paintedCols : m.width, cols);
         }
         m.width = cols;
@@ -525,22 +482,21 @@ final class JkManagerView {
     /**
      * Move to the top of the (possibly reflowed) live region and erase it so the next paint does not
      * stack under orphans. Cursor is left at the start of the former region — paint treats this as a
-     * first frame ({@code lastLines} cleared).
+     * first frame (the painter forgets the region).
      */
     private void wipeReflowedRegion(int fromCols, int toCols) {
         // Clipping terminals (xterm, linux console, screen, …) keep exactly one physical row per
         // logical line: climbing the reflow estimate there overshoots into completed output above
         // the region and ERASE_DISPLAY_TO_END destroys it. Only terminals known to
         // rewrap get the reflow-height climb.
-        int up = m.lastLines.size();
+        int up = m.painter.height();
         if (TerminalReflow.reflows()) {
-            up = Math.max(TerminalReflow.physicalRows(m.lastLines, fromCols, toCols), up);
+            up = Math.max(TerminalReflow.physicalRows(m.painter.rows(), fromCols, toCols), up);
         }
         if (up > 0) m.out.print(Ansi.cursorUp(up));
         m.out.print('\r');
         m.out.print(Ansi.ERASE_DISPLAY_TO_END);
-        m.lastLines = List.of();
-        m.linesDrawn = 0;
+        m.painter.forget();
     }
 
     /**

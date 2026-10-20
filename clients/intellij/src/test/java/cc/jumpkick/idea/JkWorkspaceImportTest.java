@@ -6,6 +6,7 @@ import static java.util.Objects.requireNonNull;
 import com.intellij.execution.PsiLocation;
 import com.intellij.execution.actions.ConfigurationContext;
 import com.intellij.execution.actions.ConfigurationFromContext;
+import com.intellij.execution.process.ProcessOutputType;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.externalSystem.model.DataNode;
 import com.intellij.openapi.externalSystem.model.ProjectKeys;
@@ -16,6 +17,9 @@ import com.intellij.openapi.externalSystem.model.project.LibraryDependencyData;
 import com.intellij.openapi.externalSystem.model.project.LibraryPathType;
 import com.intellij.openapi.externalSystem.model.project.ModuleData;
 import com.intellij.openapi.externalSystem.model.project.ProjectData;
+import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskId;
+import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskNotificationListener;
+import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskType;
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
@@ -229,6 +233,44 @@ public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
         String failure = requireNonNull(result.failure());
         assertTrue(failure, failure.contains("jk: engine refused the connection"));
         assertFalse(failure, failure.contains("second line"));
+    }
+
+    /**
+     * A run of jk tasks takes the task names and the arguments from the execution settings, where
+     * the platform puts both, and streams the CLI's output to the run console.
+     */
+    public void test_a_task_run_passes_the_settings_tasks_and_arguments_to_jk() throws Exception {
+        Path ws = workspace(createTempDir("jk-task").toPath());
+        Path fake = echoJk(createTempDir("echo-jk").toPath());
+        System.setProperty("jk.bin", fake.toString());
+        JkExecutionSettings settings = new JkExecutionSettings(fake.toString());
+        settings.setTasks(List.of("build"));
+        settings.withArguments("-m", "core");
+        ExternalSystemTaskId id =
+                ExternalSystemTaskId.create(JkSystem.ID, ExternalSystemTaskType.EXECUTE_TASK, getProject());
+        StringBuilder console = new StringBuilder();
+
+        new JkTaskManager().executeTasks(ws.toString(), id, settings, new ExternalSystemTaskNotificationListener() {
+            @Override
+            public void onTaskOutput(ExternalSystemTaskId task, String text, ProcessOutputType type) {
+                console.append(text);
+            }
+        });
+
+        assertTrue(console.toString(), console.toString().contains("args: build -m core"));
+    }
+
+    /** A jk that prints the arguments it was given and succeeds. */
+    private static Path echoJk(Path dir) throws IOException {
+        if (SystemInfo.isWindows) {
+            Path cmd = dir.resolve("jk.cmd");
+            Files.writeString(cmd, "@echo args: %*\r\n@exit /b 0\r\n");
+            return cmd;
+        }
+        Path sh = dir.resolve("jk");
+        Files.writeString(sh, "#!/bin/sh\necho \"args: $*\"\n");
+        if (!sh.toFile().setExecutable(true)) throw new IOException("cannot make " + sh + " executable");
+        return sh;
     }
 
     /**

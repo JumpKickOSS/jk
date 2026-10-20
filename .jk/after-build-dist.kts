@@ -23,7 +23,9 @@
 // jar — dependencies not included — and is deliberately NOT what lands here.
 //
 // Marked `jk: always`: it copies build output, which the action key cannot see, so a cached verdict
-// on unchanged sources would leave a stale binary in dist after a rebuild.
+// on unchanged sources would leave a stale binary in dist after a rebuild. Running every build is
+// cheap because the copies are not: a file is copied only when its size or mtime differs from the
+// dist copy, and the copy keeps the mtime, so a no-op build costs a stat per shipped file.
 //
 // Bindings are `projectDir` (the workspace root) and `outDir`. Nothing is written to `outDir`.
 
@@ -31,6 +33,25 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.util.Comparator
+
+/** True when [to] is a copy of [from] by size and mtime, the stamp [copyIfChanged] preserves. */
+fun sameStamp(from: Path, to: Path): Boolean =
+    Files.isRegularFile(to)
+        && Files.size(from) == Files.size(to)
+        && Files.getLastModifiedTime(from) == Files.getLastModifiedTime(to)
+
+/**
+ * Copy [from] over [to] unless it is already there, keeping the mtime so the next build sees the
+ * same stamp. Through a temp file and an atomic move: a running engine or client may hold the old
+ * file open, and on Linux overwriting a busy binary is ETXTBSY, where a move swaps the entry.
+ */
+fun copyIfChanged(from: Path, to: Path) {
+    if (sameStamp(from, to)) return
+    Files.createDirectories(to.parent)
+    val tmp = to.resolveSibling(to.fileName.toString() + ".tmp")
+    Files.copy(from, tmp, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES)
+    Files.move(tmp, to, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+}
 
 val target: Path = projectDir.resolve("target")
 if (!Files.isDirectory(target)) {
@@ -107,27 +128,35 @@ if (!Files.isDirectory(target)) {
     }
 
     /**
-     * Rewrite `dist/repos/jk-local/` from the workspace's module jars and POMs: Maven layout under
-     * the store id `jk install` shelves to, and nothing else, so an installer copies the directory
-     * as one shelf. Rewritten whole: a version bump leaves no shelf entry of the version before.
+     * Bring `dist/repos/jk-local/` to the workspace's module jars and POMs: Maven layout under the
+     * store id `jk install` shelves to, and nothing else, so an installer copies the directory as
+     * one shelf. Anything else under `repos/` is removed — a version bump leaves no shelf entry of
+     * the version before — and an entry already up to date is left alone.
      */
     fun writeShelf(dist: Path, version: String): Int {
         val repos = dist.resolve("repos")
-        if (Files.isDirectory(repos)) {
-            Files.walk(repos).use { walk ->
-                walk.sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
-            }
-        }
         val shelf = repos.resolve("jk-local")
+        val wanted = LinkedHashMap<Path, Path>()
         var shelved = 0
         for (rel in workspaceModules()) {
             val m = moduleArtifacts(rel, version) ?: continue
             val dir = shelf.resolve(m.group.replace('.', '/')).resolve(m.artifact).resolve(version)
-            Files.createDirectories(dir)
-            Files.copy(m.jar, dir.resolve(m.jar.fileName), StandardCopyOption.REPLACE_EXISTING)
-            Files.copy(m.pom, dir.resolve(m.pom.fileName), StandardCopyOption.REPLACE_EXISTING)
+            wanted[dir.resolve(m.jar.fileName)] = m.jar
+            wanted[dir.resolve(m.pom.fileName)] = m.pom
             shelved++
         }
+        if (Files.isDirectory(repos)) {
+            Files.walk(repos).use { walk ->
+                walk.sorted(Comparator.reverseOrder()).forEach { p ->
+                    if (Files.isDirectory(p)) {
+                        Files.list(p).use { if (!it.findAny().isPresent) Files.delete(p) }
+                    } else if (p !in wanted) {
+                        Files.delete(p)
+                    }
+                }
+            }
+        }
+        for ((to, from) in wanted) copyIfChanged(from, to)
         return shelved
     }
 
@@ -207,20 +236,14 @@ if (!Files.isDirectory(target)) {
             Files.createDirectories(lib)
             val clientOut = dist.resolve(client.fileName)
             val engineOut = lib.resolve("jk-engine-$version.jar")
-            // REPLACE_EXISTING, not delete-then-copy: a running engine may hold the old jar open,
-            // and on Linux overwriting a busy binary is ETXTBSY — so the client is replaced through
-            // a temp file and an atomic move, which swaps the directory entry instead.
-            val tmp = dist.resolve(client.fileName.toString() + ".tmp")
-            Files.copy(client, tmp, StandardCopyOption.REPLACE_EXISTING)
-            if (Files.isExecutable(client)) tmp.toFile().setExecutable(true, false)
-            Files.move(tmp, clientOut, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-            Files.copy(engineJar, engineOut, StandardCopyOption.REPLACE_EXISTING)
+            copyIfChanged(client, clientOut)
+            copyIfChanged(engineJar, engineOut)
             val clientJar = clientAssembly(version)
             val clientJarOut = lib.resolve("jk-$version.jar")
-            if (clientJar != null) Files.copy(clientJar, clientJarOut, StandardCopyOption.REPLACE_EXISTING)
+            if (clientJar != null) copyIfChanged(clientJar, clientJarOut)
             val spyJar = mavenSpy(version)
             val spyJarOut = lib.resolve("jk-maven-spy-$version.jar")
-            if (spyJar != null) Files.copy(spyJar, spyJarOut, StandardCopyOption.REPLACE_EXISTING)
+            if (spyJar != null) copyIfChanged(spyJar, spyJarOut)
             // The pruning half matters as much as the copying:
             // `install.sh` takes the FIRST `lib/jk-engine-*.jar` it globs, so one jar left behind
             // by an earlier version is an installer that pairs today's client with last month's

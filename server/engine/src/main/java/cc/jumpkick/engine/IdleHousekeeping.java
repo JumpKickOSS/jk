@@ -79,7 +79,8 @@ public final class IdleHousekeeping {
     }
 
     /**
-     * The trim that runs once the engine has sat idle for {@link HeapTrim#SETTLE}: drop the
+     * The trim that runs once the engine has sat idle for {@link HeapTrim#SETTLE}, which is also when
+     * the engine startup cache is recorded if this install has none: drop the
      * per-build memos again (the harvest thread and client disconnects allocate after the
      * boundary), empty the process-wide memos a next build of the same workspace would have
      * reused ({@link MemoTrim}), collect so the heap uncommits, and return the native heap. One
@@ -87,6 +88,8 @@ public final class IdleHousekeeping {
      */
     private void settledTrim() {
         if (!idle()) return;
+        // A settled idle, not the boundary: the user's next build is less likely to land on it.
+        if (!draining.getAsBoolean()) EngineAotTrainer.maybeTrain(this::idle, log);
         dropHeapResidue();
         String memos = MemoTrim.drop(LastBuiltRoot.get());
         System.gc();

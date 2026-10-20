@@ -4,6 +4,7 @@ package cc.jumpkick.cli.engine;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.tui.JdkInstallView;
+import cc.jumpkick.config.EngineAotCache;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.SessionContext;
@@ -18,6 +19,7 @@ import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -614,6 +616,10 @@ public final class EngineSpawn {
             command.add("-Xmx" + config.maxHeapMb() + "m");
         }
         command.addAll(forwardedJvmArgs());
+        // The engine's startup cache, when this install has recorded one: a fresh engine's first
+        // build no longer loads and links the engine cold.
+        command.addAll(EngineAotCache.spawnFlags(
+                JkDirs.state(), javaHome, Path.of(target.engine().path()), System::getenv));
         command.add("-cp");
         command.add(target.engine().path());
         command.add("cc.jumpkick.engine.EngineMain");

@@ -39,7 +39,7 @@ class SpinnerProgressBarTest {
     }
 
     @Test
-    void advancing_fill_repaints_the_whole_glyph_row() {
+    void advancing_fill_repaints_only_the_recolored_and_newly_filled_glyphs() {
         var buf = new ByteArrayOutputStream();
         try (var pb = SpinnerProgressBar.show(stream(buf))) {
             pb.update(50, "step"); // 20 filled (out of 40)
@@ -47,12 +47,12 @@ class SpinnerProgressBarTest {
             pb.update(60, "step"); // 24 filled
         }
         String diff = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
-        // The moving gradient re-colors every filled glyph when the frontier
-        // advances, so the row is repainted whole: 24 ▰ + 16 ▱.
+        // The moving gradient re-colors every filled glyph when the frontier advances, so all 24
+        // filled glyphs are written; the 16 empty ones are unchanged and are not.
         long filled = diff.chars().filter(c -> c == '▰').count();
         long empty = diff.chars().filter(c -> c == '▱').count();
         assertThat(filled).isEqualTo(24);
-        assertThat(empty).isEqualTo(16);
+        assertThat(empty).isZero();
     }
 
     @Test
@@ -103,25 +103,18 @@ class SpinnerProgressBarTest {
     }
 
     @Test
-    void shrinking_status_pads_only_the_removed_tail_with_spaces() {
+    void shrinking_status_erases_the_removed_tail() {
         String longStatus = "downloading temurin-25.tar.gz";
         String shortStatus = "extracting";
-        int expectedShrink = longStatus.length() - shortStatus.length();
-
         var buf = new ByteArrayOutputStream();
-        try (var pb = SpinnerProgressBar.show(stream(buf))) {
-            pb.update(50, longStatus);
-            buf.reset();
-            pb.update(50, shortStatus);
-        }
-        String diff = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
-        assertThat(diff).contains(shortStatus);
-        // Exactly `expectedShrink` trailing spaces after the new status —
-        // the gap between old and new status lengths.
-        int idx = diff.indexOf(shortStatus);
-        String trailing = diff.substring(idx + shortStatus.length());
-        long spaces = trailing.chars().takeWhile(c -> c == ' ').count();
-        assertThat(spaces).isEqualTo(expectedShrink);
+        var pb = SpinnerProgressBar.show(stream(buf));
+        pb.update(50, longStatus);
+        pb.update(50, shortStatus);
+        var screen = new LiveRegionScreen(4, 120);
+        screen.write(buf.toString(StandardCharsets.UTF_8));
+        // The new status ends the row: the old one's tail is erased, not left behind it.
+        assertThat(screen.row(0)).endsWith(" 50%: " + shortStatus);
+        pb.close();
     }
 
     @Test

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.idea;
 
+import com.intellij.execution.process.ProcessOutputType;
 import com.intellij.openapi.externalSystem.model.ExternalSystemException;
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskId;
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskNotificationListener;
@@ -12,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Runs {@code jk <task…>} for the platform's external-system task machinery, streaming both
@@ -22,24 +22,27 @@ public final class JkTaskManager implements ExternalSystemTaskManager<JkExecutio
 
     private final Map<ExternalSystemTaskId, EmptyProgressIndicator> running = new ConcurrentHashMap<>();
 
+    /** The task names and the arguments both ride on {@code settings}; the platform sets them. */
     @Override
     public void executeTasks(
-            @NotNull ExternalSystemTaskId id,
-            @NotNull List<String> taskNames,
             @NotNull String projectPath,
-            @Nullable JkExecutionSettings settings,
-            @Nullable String jvmParametersSetup,
+            @NotNull ExternalSystemTaskId id,
+            @NotNull JkExecutionSettings settings,
             @NotNull ExternalSystemTaskNotificationListener listener)
             throws ExternalSystemException {
+        List<String> taskNames = settings.getTasks();
         List<String> args = new ArrayList<>(taskNames);
-        if (settings != null) args.addAll(settings.getArguments());
-        listener.onTaskOutput(id, JkBin.path() + " " + String.join(" ", args) + "\n", true);
+        args.addAll(settings.getArguments());
+        listener.onTaskOutput(id, JkBin.path() + " " + String.join(" ", args) + "\n", ProcessOutputType.STDOUT);
         EmptyProgressIndicator indicator = new EmptyProgressIndicator();
         running.put(id, indicator);
         JkCliRunner.Result run;
         try {
             run = JkCliRunner.run(
-                    new File(projectPath), args, indicator, line -> listener.onTaskOutput(id, line + "\n", true));
+                    new File(projectPath),
+                    args,
+                    indicator,
+                    line -> listener.onTaskOutput(id, line + "\n", ProcessOutputType.STDOUT));
         } catch (Exception e) {
             throw new ExternalSystemException("Failed to start '" + JkBin.path() + "': " + e.getMessage(), e);
         } finally {

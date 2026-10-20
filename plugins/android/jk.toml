@@ -5,11 +5,11 @@ description = "JumpKick's Android packaging plugin"
 jk-plugin-sdk.workspace = true
 jk-client-io.workspace = true
 apksig = "9.4.1"
-asm = "9.10.1"
+asm = "9.11.1"
 
 [processor-dependencies]
 error_prone_core = { group = "com.google.errorprone", version = "2.50.0" }
-nullaway = { group = "com.uber.nullaway", version = "0.14.1" }
+nullaway = { group = "com.uber.nullaway", version = "0.14.2" }
 
 # Nullness is enforced here: every production package is @NullMarked (JSpecify) and NullAway
 # checks it at error severity, with the same flags in every enforced module so the block is one

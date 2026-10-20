@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -141,6 +142,39 @@ class WarmLanesTest {
         assertThat(r.success())
                 .as("a warm worker must see the jar as it is now: %s", r.diagnostics())
                 .isTrue();
+    }
+
+    @Test
+    @Tag("integration")
+    void a_warm_only_plan_starts_no_worker_and_uses_the_one_a_build_left(@TempDir Path dir) throws Exception {
+        Path worker = workerJar();
+        WarmLanes.closeAllForTests(); // another class in this JVM may have left a worker for the same key
+        WarmLanes.lingerForTests(60_000);
+        ForkedJavac.Request req = moduleRequest(dir, worker, "w");
+
+        assertThat(inJob(9321L, () -> ForkedJavac.planIfWarm(req)))
+                .as("no warm worker: no plan")
+                .isNull();
+        assertThat(WarmLanes.laneScopes()).as("and no worker started for one").isEmpty();
+
+        assertThat(compileInJob(9322L, req).success()).isTrue();
+        Files.writeString(
+                req.sources().getFirst(),
+                "package p; public class C { public int n() { return 2; } public int m() { return 3; } }");
+        ForkedJavac.Plan plan = inJob(9323L, () -> ForkedJavac.planIfWarm(req));
+        assertThat(plan).as("the build's worker is still warm").isNotNull();
+        assertThat(plan.sources()).contains(req.sources().getFirst());
+    }
+
+    private static <T> T inJob(long job, Callable<T> work) throws Exception {
+        JobWorkers.open(job);
+        try {
+            return JkThreads.io().submit(work).get(120, TimeUnit.SECONDS);
+        } finally {
+            JobWorkers.shutdownForRequest(job, 0L);
+            JavaCompilerHost.end(job);
+            JobWorkers.close();
+        }
     }
 
     private static ForkedJavac.Result compileInJob(long job, ForkedJavac.Request req) throws Exception {

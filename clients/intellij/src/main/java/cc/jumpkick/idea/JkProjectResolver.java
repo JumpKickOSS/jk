@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.idea;
 
+import com.intellij.execution.process.ProcessOutputType;
 import com.intellij.openapi.externalSystem.model.DataNode;
 import com.intellij.openapi.externalSystem.model.ExternalSystemException;
 import com.intellij.openapi.externalSystem.model.ProjectKeys;
@@ -44,20 +45,23 @@ public final class JkProjectResolver implements ExternalSystemProjectResolver<Jk
         }
         JkWireModel model = model(id, new File(projectPath), listener);
         List<String> added = JkSdkTable.ensure(model.sdkEntries);
-        for (String name : added) listener.onTaskOutput(id, "registered SDK " + name + "\n", true);
+        for (String name : added) listener.onTaskOutput(id, "registered SDK " + name + "\n", ProcessOutputType.STDOUT);
         listener.onStatusChange(new ExternalSystemTaskNotificationEvent(id, "Building project structure"));
         return JkProjectGraph.build(model, JkSourceRoots::of);
     }
 
     private JkWireModel model(ExternalSystemTaskId id, File dir, ExternalSystemTaskNotificationListener listener) {
         listener.onStatusChange(new ExternalSystemTaskNotificationEvent(id, "Resolving JumpKick model"));
-        listener.onTaskOutput(id, JkBin.path() + " " + String.join(" ", PRINT_MODEL) + "\n", true);
+        listener.onTaskOutput(id, JkBin.path() + " " + String.join(" ", PRINT_MODEL) + "\n", ProcessOutputType.STDOUT);
         EmptyProgressIndicator indicator = new EmptyProgressIndicator();
         running.put(id, indicator);
         JkCliRunner.Result run;
         try {
             run = JkCliRunner.runCapture(
-                    dir, PRINT_MODEL, indicator, line -> listener.onTaskOutput(id, line + "\n", false));
+                    dir,
+                    PRINT_MODEL,
+                    indicator,
+                    line -> listener.onTaskOutput(id, line + "\n", ProcessOutputType.STDERR));
         } catch (Exception e) {
             throw new ExternalSystemException(
                     "Failed to start '" + JkBin.path() + "': " + e.getMessage()

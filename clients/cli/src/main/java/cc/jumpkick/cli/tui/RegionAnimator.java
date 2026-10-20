@@ -6,7 +6,7 @@ import java.util.function.LongConsumer;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Run exactly one of the live region's two background loops — the ANSI frame loop, or the
+ * Run exactly one of the live region's two {@link FrameClock}s — the ANSI frame beat, or the
  * {@code --no-ansi} heartbeat that wakes about once a second to emit a 30 s stage line — and stop it
  * once; a second stop is a no-op.
  *
@@ -27,7 +27,7 @@ final class RegionAnimator {
     private final BooleanSupplier done;
 
     private volatile boolean stopped;
-    private @Nullable Thread thread;
+    private @Nullable FrameClock clock;
 
     /**
      * @param flushStale flushes a captured partial line that went quiet; runs outside {@code lock}
@@ -49,62 +49,37 @@ final class RegionAnimator {
     }
 
     void startFrames() {
-        thread = new Thread(this::frameLoop, "jk-command-manager");
-        thread.setDaemon(true);
-        thread.start();
+        clock = FrameClock.start("jk-command-manager", FrameClock.FRAME_MS, this::frameBeat, true);
     }
 
-    /** Plain-mode background thread: wake about once a second and emit a 30s stage heartbeat. */
+    /** Plain-mode clock: wake about once a second and emit a 30s stage heartbeat. */
     void startPlainHeartbeat() {
-        thread = new Thread(this::heartbeatLoop, "jk-plain-heartbeat");
-        thread.setDaemon(true);
-        thread.start();
+        clock = FrameClock.start("jk-plain-heartbeat", 1_000L, this::heartbeatBeat);
     }
 
-    private void frameLoop() {
-        try {
-            while (!stopped) {
-                // Flush a captured partial line that's gone quiet (no newline),
-                // OUTSIDE the render lock so the order matches step writes
-                // (sink → lock) and can't deadlock with tick (lock only).
-                flushStale.accept(STALE_FLUSH_MS);
-                frame.run();
-                Thread.sleep(JkManager.FRAME_MS);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+    private void frameBeat() {
+        // Flush a captured partial line that's gone quiet (no newline),
+        // OUTSIDE the render lock so the order matches step writes
+        // (sink → lock) and can't deadlock with tick (lock only).
+        flushStale.accept(STALE_FLUSH_MS);
+        frame.run();
+    }
+
+    private void heartbeatBeat() {
+        synchronized (lock) {
+            if (done.getAsBoolean() || stopped) return;
+            heartbeat.run();
         }
     }
 
-    private void heartbeatLoop() {
-        try {
-            while (!stopped) {
-                Thread.sleep(1_000L);
-                synchronized (lock) {
-                    if (done.getAsBoolean() || stopped) return;
-                    heartbeat.run();
-                }
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    /** Stop the loop and join it briefly. Idempotent. */
+    /** Stop the clock. Idempotent. */
     void stop() {
         stopped = true;
-        Thread a;
+        FrameClock c;
         synchronized (lock) {
-            a = thread;
-            thread = null;
+            c = clock;
+            clock = null;
         }
-        if (a != null) {
-            a.interrupt();
-            try {
-                a.join(200);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
+        if (c != null) c.stop();
     }
 }

@@ -10,9 +10,9 @@ import com.intellij.execution.RunnerAndConfigurationSettings;
 import com.intellij.execution.actions.ConfigurationContext;
 import com.intellij.execution.actions.ConfigurationFromContext;
 import com.intellij.execution.executors.DefaultDebugExecutor;
-import com.intellij.execution.process.ProcessAdapter;
 import com.intellij.execution.process.ProcessEvent;
 import com.intellij.execution.process.ProcessHandler;
+import com.intellij.execution.process.ProcessListener;
 import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.execution.runners.ExecutionEnvironmentBuilder;
 import com.intellij.execution.ui.RunContentDescriptor;
@@ -131,7 +131,7 @@ public class JkDebugBreakpointTest extends HeavyPlatformTestCase {
         pumpUntil(started::isDone, PAUSE_TIMEOUT_MS, "debug session started");
         ProcessHandler jk = requireNonNull(started.get().getProcessHandler());
         StringBuilder output = new StringBuilder();
-        jk.addProcessListener(new ProcessAdapter() {
+        jk.addProcessListener(new ProcessListener() {
             @Override
             public void onTextAvailable(@NotNull ProcessEvent event, @NotNull Key type) {
                 synchronized (output) {

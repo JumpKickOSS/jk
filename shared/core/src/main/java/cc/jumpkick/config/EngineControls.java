@@ -104,6 +104,18 @@ public final class EngineControls {
                     "JDK the engine JVM runs on. Same pin as [toolchain].jdk."),
             control(
                     "",
+                    "JK_ENGINE_AOT",
+                    "on",
+                    ENGINE_START,
+                    "off: the engine neither maps nor records its own startup cache."),
+            control(
+                    "",
+                    "JK_ENGINE_AOT_RECORD",
+                    "unset",
+                    ENGINE_START,
+                    "Internal: the spawned engine records its startup cache to this path."),
+            control(
+                    "",
                     "JK_ENGINE_TRANSPORT",
                     "unix; tcp on Windows",
                     ENGINE_START,

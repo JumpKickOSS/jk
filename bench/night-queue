@@ -1,0 +1,2 @@
+# Heavy jobs `bench/scoreboard --tier night` runs one after another once its measurements are done,
+# never beside them. One shell command per line, run from the jk tree; `#` lines are skipped.

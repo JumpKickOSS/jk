@@ -10,6 +10,1403 @@
 
 
 [[row]]
+dim = "calibration"
+subject = "javac.fixed-tree"
+project = "generated"
+tool = "javac"
+kind = "absolute-wall"
+value = 1.787
+unit = "s"
+band = 0.1
+runs = 2
+date = "2026-10-20"
+commit = "92335d1c6"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.latency.deps.p50"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 6.5
+unit = "ms"
+band = 0.15
+target = 60
+runs = 30
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.818/1.813"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 1.82
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "cli"
+subject = "cli.latency.deps.p99"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 8.7
+unit = "ms"
+band = 0.15
+runs = 30
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.818/1.813"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 1.82
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "cli"
+subject = "cli.latency.explain.p50"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 28.8
+unit = "ms"
+band = 0.15
+target = 60
+runs = 30
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.818/1.813"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 1.82
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "cli"
+subject = "cli.latency.explain.p99"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 53.9
+unit = "ms"
+band = 0.15
+runs = 30
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.818/1.813"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 1.82
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "cli"
+subject = "cli.latency.help.p50"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 3.8
+unit = "ms"
+band = 0.15
+target = 15
+runs = 30
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.818/1.813"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 1.82
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "cli"
+subject = "cli.latency.help.p99"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 4.2
+unit = "ms"
+band = 0.15
+runs = 30
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.818/1.813"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 1.82
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "cli"
+subject = "cli.latency.noop-build-cold.p50"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 1110.8
+unit = "ms"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.818/1.813"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 1.82
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "cli"
+subject = "cli.latency.noop-build-cold.p99"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 1143.8
+unit = "ms"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.818/1.813"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 1.82
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "cli"
+subject = "cli.latency.noop-build.p50"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 65.8
+unit = "ms"
+band = 0.15
+target = 60
+runs = 30
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.818/1.813"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 1.82
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "cli"
+subject = "cli.latency.noop-build.p99"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 74.3
+unit = "ms"
+band = 0.15
+runs = 30
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.818/1.813"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 1.82
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "cli"
+subject = "cli.latency.status-cold.p50"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 124.1
+unit = "ms"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.818/1.813"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 1.82
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "cli"
+subject = "cli.latency.status-cold.p99"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 564.1
+unit = "ms"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.818/1.813"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 1.82
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "cli"
+subject = "cli.latency.status.p50"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 36.3
+unit = "ms"
+band = 0.15
+target = 60
+runs = 30
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.818/1.813"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 1.82
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "cli"
+subject = "cli.latency.status.p99"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 74.3
+unit = "ms"
+band = 0.15
+runs = 30
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.818/1.813"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 1.82
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "cli"
+subject = "cli.latency.version-cold.p50"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 4.4
+unit = "ms"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.818/1.813"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 1.82
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "cli"
+subject = "cli.latency.version-cold.p99"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 4.6
+unit = "ms"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.818/1.813"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 1.82
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "cli"
+subject = "cli.latency.version.p50"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 3.9
+unit = "ms"
+band = 0.15
+target = 15
+runs = 30
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.818/1.813"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 1.82
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "cli"
+subject = "cli.latency.version.p99"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 4.7
+unit = "ms"
+band = 0.15
+runs = 30
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.818/1.813"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 1.82
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-green.full.bytes"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 0
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-green.full.bytes"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 3183
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-green.full.lines"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 0
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-green.full.lines"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 60
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-green.plain.bytes"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 0
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-green.plain.bytes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 35
+unit = "bytes"
+band = 0.0
+target = 120
+runs = 1
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-green.plain.bytes"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 0
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-green.plain.lines"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 0
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-green.plain.lines"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 1
+unit = "lines"
+band = 0.0
+target = 1
+runs = 1
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-green.plain.lines"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 0
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-green.tty.bytes"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 16
+unit = "bytes"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-green.tty.bytes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 2290
+unit = "bytes"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-green.tty.bytes"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 4544
+unit = "bytes"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-green.tty.lines"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 0
+unit = "lines"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-green.tty.lines"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 19
+unit = "lines"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-green.tty.lines"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 60
+unit = "lines"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-red.full.bytes"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 970
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-red.full.bytes"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 3541
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-red.full.lines"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 20
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-red.full.lines"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 57
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-red.plain.bytes"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 967
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-red.plain.bytes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 396
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-red.plain.bytes"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 987
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-red.plain.lines"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 20
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-red.plain.lines"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 4
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-red.plain.lines"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 11
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-red.tty.bytes"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 1003
+unit = "bytes"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-red.tty.bytes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 5629
+unit = "bytes"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-red.tty.bytes"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 4661
+unit = "bytes"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-red.tty.lines"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 20
+unit = "lines"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-red.tty.lines"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 20
+unit = "lines"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.build-red.tty.lines"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 57
+unit = "lines"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-green.full.bytes"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 3242
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-green.full.bytes"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 83556
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-green.full.lines"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 21
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-green.full.lines"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 687
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-green.plain.bytes"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 3242
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-green.plain.bytes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 46
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-green.plain.bytes"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 75776
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-green.plain.lines"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 21
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-green.plain.lines"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 1
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-green.plain.lines"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 587
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-green.tty.bytes"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 3279
+unit = "bytes"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-green.tty.bytes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 1582
+unit = "bytes"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-green.tty.bytes"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 86754
+unit = "bytes"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-green.tty.lines"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 21
+unit = "lines"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-green.tty.lines"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 6
+unit = "lines"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-green.tty.lines"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 689
+unit = "lines"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-red.full.bytes"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 3615
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-red.full.bytes"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 85480
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-red.full.lines"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 34
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-red.full.lines"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 713
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-red.plain.bytes"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 3615
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-red.plain.bytes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 329
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-red.plain.bytes"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 77569
+unit = "bytes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-red.plain.lines"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 34
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-red.plain.lines"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 5
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-red.plain.lines"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 611
+unit = "lines"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-red.tty.bytes"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 3665
+unit = "bytes"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-red.tty.bytes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 24448
+unit = "bytes"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-red.tty.bytes"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 88793
+unit = "bytes"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-red.tty.lines"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 34
+unit = "lines"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-red.tty.lines"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 680
+unit = "lines"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "cli"
+subject = "cli.output.test-red.tty.lines"
+project = "spring-petclinic"
+tool = "maven"
+kind = "count"
+value = 713
+unit = "lines"
+band = 0.25
+runs = 1
+date = "2026-10-20"
+commit = "811a2907d"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "dogfood"
+subject = "dogfood.noop"
+project = "jk"
+tool = "jk"
+kind = "absolute-wall"
+value = 0.65
+unit = "s"
+band = 0.15
+runs = 2
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.784/1.811"
+command = "jk build"
+cpu-psi-avg10-end = 0.19
+cpu-psi-avg60-end = 0.31
+load-end = 2.94
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "dogfood"
+subject = "dogfood.noop.guards"
+project = "jk"
+tool = "jk"
+kind = "absolute-wall"
+value = 0.62
+unit = "s"
+band = 0.15
+runs = 2
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.784/1.811"
+command = "jk build"
+cpu-psi-avg10-end = 0.19
+cpu-psi-avg60-end = 0.31
+load-end = 2.94
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "dogfood"
+subject = "dogfood.rebuild"
+project = "jk"
+tool = "jk"
+kind = "absolute-wall"
+value = 189.64
+unit = "s"
+band = 0.15
+runs = 2
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.784/1.811"
+command = "jk build -r"
+cpu-psi-avg10-end = 0.19
+cpu-psi-avg60-end = 0.31
+load-end = 2.94
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "dogfood"
+subject = "dogfood.touched"
+project = "jk"
+tool = "jk"
+kind = "absolute-wall"
+value = 4.19
+unit = "s"
+band = 0.15
+runs = 2
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.784/1.811"
+command = "jk build"
+cpu-psi-avg10-end = 0.19
+cpu-psi-avg60-end = 0.31
+load-end = 2.94
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "dogfood"
+subject = "dogfood.touched.guards"
+project = "jk"
+tool = "jk"
+kind = "absolute-wall"
+value = 7.34
+unit = "s"
+band = 0.15
+runs = 2
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.784/1.811"
+command = "jk build"
+cpu-psi-avg10-end = 0.19
+cpu-psi-avg60-end = 0.31
+load-end = 2.94
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "inner"
+subject = "inner.edit.actions-restored"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 1
+unit = "actions"
+band = 0.0
+runs = 5
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+
+[[row]]
 dim = "inner"
 subject = "inner.edit.disk-write-bytes"
 project = "spring-petclinic"
@@ -29,12 +1426,12 @@ subject = "inner.edit.file-read-bytes"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 3926922
+value = 2871663
 unit = "bytes"
 band = 0.05
 runs = 5
-date = "2026-10-19"
-commit = "50d3e4fde"
+date = "2026-10-20"
+commit = "5cdaeab7e"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -43,13 +1440,41 @@ subject = "inner.edit.file-write-bytes"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 113676
+value = 102913
 unit = "bytes"
 band = 0.02
 target = 262144
 runs = 5
-date = "2026-10-19"
-commit = "50d3e4fde"
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.edit.files-fingerprinted"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 742
+unit = "files"
+band = 0.0
+runs = 5
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.edit.files-hashed"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 10
+unit = "files"
+band = 0.0
+runs = 5
+date = "2026-10-20"
+commit = "5cdaeab7e"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -82,6 +1507,21 @@ host-id = "1a8c211a203d"
 
 [[row]]
 dim = "inner"
+subject = "inner.edit.sources-compiled"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 1
+unit = "files"
+band = 0.0
+target = 1
+runs = 5
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
 subject = "inner.edit.target-files-touched"
 project = "spring-petclinic"
 tool = "jk"
@@ -101,12 +1541,12 @@ subject = "inner.edit.tasks-run"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 5
+value = 4
 unit = "tasks"
 band = 0.0
 runs = 5
-date = "2026-10-18"
-commit = "6588ef9e7"
+date = "2026-10-20"
+commit = "5cdaeab7e"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -115,12 +1555,73 @@ subject = "inner.edit.tasks-skipped"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 5
+value = 6
 unit = "tasks"
 band = 0.0
 runs = 5
-date = "2026-10-18"
-commit = "6588ef9e7"
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.edit.tree-walks"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 11
+unit = "walks"
+band = 0.0
+runs = 5
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.edit.wall"
+project = "spring-petclinic"
+tool = "jk"
+kind = "paired-wall"
+value = 0.172
+unit = "ratio"
+band = 0.1
+runs = 20
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+baseline = "jk 0.15.2"
+baseline-min-ms = 762
+baseline-ms = 825
+candidate = "jk 0.15.3"
+candidate-min-ms = 107
+candidate-ms = 149
+ci-high = 0.192
+ci-low = 0.149
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg10-start = 0.02
+cpu-psi-avg60-end = 0.04
+cpu-psi-avg60-start = 0.02
+load-end = 1.57
+load-start = 1.74
+memory-psi-avg10-end = 0.0
+memory-psi-avg10-start = 0.01
+memory-psi-avg60-end = 0.03
+memory-psi-avg60-start = 0.03
+ratio-of-medians = 0.181
+
+[[row]]
+dim = "inner"
+subject = "inner.noop.actions-restored"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 1
+unit = "actions"
+band = 0.0
+runs = 5
+date = "2026-10-20"
+commit = "5cdaeab7e"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -169,6 +1670,35 @@ host-id = "1a8c211a203d"
 
 [[row]]
 dim = "inner"
+subject = "inner.noop.files-fingerprinted"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 291
+unit = "files"
+band = 0.0
+runs = 5
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.noop.files-hashed"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 0
+unit = "files"
+band = 0.0
+target = 0
+runs = 5
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
 subject = "inner.noop.files-written"
 project = "spring-petclinic"
 tool = "jk"
@@ -198,6 +1728,21 @@ host-id = "1a8c211a203d"
 
 [[row]]
 dim = "inner"
+subject = "inner.noop.sources-compiled"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 0
+unit = "files"
+band = 0.0
+target = 0
+runs = 5
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
 subject = "inner.noop.target-files-touched"
 project = "spring-petclinic"
 tool = "jk"
@@ -217,13 +1762,13 @@ subject = "inner.noop.tasks-run"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 3
+value = 2
 unit = "tasks"
 band = 0.0
 target = 2
 runs = 5
-date = "2026-10-18"
-commit = "6588ef9e7"
+date = "2026-10-20"
+commit = "5cdaeab7e"
 host-id = "1a8c211a203d"
 
 [[row]]
@@ -232,10 +1777,1585 @@ subject = "inner.noop.tasks-skipped"
 project = "spring-petclinic"
 tool = "jk"
 kind = "count"
-value = 7
+value = 8
 unit = "tasks"
 band = 0.0
 runs = 5
-date = "2026-10-18"
-commit = "6588ef9e7"
+date = "2026-10-20"
+commit = "4fd583742"
 host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.noop.tree-walks"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 11
+unit = "walks"
+band = 0.0
+runs = 5
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+
+[[row]]
+dim = "inner"
+subject = "inner.noop.wall"
+project = "spring-petclinic"
+tool = "jk"
+kind = "paired-wall"
+value = 0.575
+unit = "ratio"
+band = 0.1
+runs = 20
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+baseline = "jk 0.15.2"
+baseline-min-ms = 77
+baseline-ms = 93
+candidate = "jk 0.15.3"
+candidate-min-ms = 46
+candidate-ms = 50
+ci-high = 0.604
+ci-low = 0.55
+cpu-psi-avg10-end = 0.02
+cpu-psi-avg10-start = 0.0
+cpu-psi-avg60-end = 0.02
+cpu-psi-avg60-start = 0.0
+load-end = 1.74
+load-start = 1.34
+memory-psi-avg10-end = 0.01
+memory-psi-avg10-start = 0.0
+memory-psi-avg60-end = 0.03
+memory-psi-avg60-start = 0.02
+ratio-of-medians = 0.535
+
+[[row]]
+dim = "memory"
+subject = "memory.idle-1m.heap-committed"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 21975040
+unit = "bytes"
+band = 0.05
+runs = 1
+date = "2026-10-20"
+commit = "fa9d756a5"
+host-id = "1a8c211a203d"
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "memory"
+subject = "memory.idle-1m.metaspace"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 3276800
+unit = "bytes"
+band = 0.05
+runs = 1
+date = "2026-10-20"
+commit = "fa9d756a5"
+host-id = "1a8c211a203d"
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "memory"
+subject = "memory.idle-1m.processes"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 2
+unit = "processes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+tool-version = "Gradle 9.8.0"
+
+[[row]]
+dim = "memory"
+subject = "memory.idle-1m.processes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 1
+unit = "processes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "fa9d756a5"
+host-id = "1a8c211a203d"
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "memory"
+subject = "memory.idle-1m.pss"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 1055648768
+unit = "bytes"
+band = 0.05
+runs = 1
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+tool-version = "Gradle 9.8.0"
+
+[[row]]
+dim = "memory"
+subject = "memory.idle-1m.pss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 122987520
+unit = "bytes"
+band = 0.05
+runs = 1
+date = "2026-10-20"
+commit = "fa9d756a5"
+host-id = "1a8c211a203d"
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "memory"
+subject = "memory.idle-30m.heap-committed"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 21327872
+unit = "bytes"
+band = 0.05
+runs = 1
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "memory"
+subject = "memory.idle-30m.metaspace"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 24444928
+unit = "bytes"
+band = 0.05
+runs = 1
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "memory"
+subject = "memory.idle-30m.processes"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 2
+unit = "processes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+tool-version = "Gradle 9.8.0"
+
+[[row]]
+dim = "memory"
+subject = "memory.idle-30m.processes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 1
+unit = "processes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "memory"
+subject = "memory.idle-30m.pss"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 1057989632
+unit = "bytes"
+band = 0.05
+runs = 1
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+tool-version = "Gradle 9.8.0"
+
+[[row]]
+dim = "memory"
+subject = "memory.idle-30m.pss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 98840576
+unit = "bytes"
+band = 0.05
+target = 62914560
+runs = 1
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "memory"
+subject = "memory.idle-5m.heap-committed"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 21975040
+unit = "bytes"
+band = 0.05
+runs = 1
+date = "2026-10-20"
+commit = "fa9d756a5"
+host-id = "1a8c211a203d"
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "memory"
+subject = "memory.idle-5m.metaspace"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 3276800
+unit = "bytes"
+band = 0.05
+runs = 1
+date = "2026-10-20"
+commit = "fa9d756a5"
+host-id = "1a8c211a203d"
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "memory"
+subject = "memory.idle-5m.processes"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 2
+unit = "processes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+tool-version = "Gradle 9.8.0"
+
+[[row]]
+dim = "memory"
+subject = "memory.idle-5m.processes"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 1
+unit = "processes"
+band = 0.0
+runs = 1
+date = "2026-10-20"
+commit = "fa9d756a5"
+host-id = "1a8c211a203d"
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "memory"
+subject = "memory.idle-5m.pss"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "count"
+value = 1056735232
+unit = "bytes"
+band = 0.05
+runs = 1
+date = "2026-10-20"
+commit = "5cdaeab7e"
+host-id = "1a8c211a203d"
+tool-version = "Gradle 9.8.0"
+
+[[row]]
+dim = "memory"
+subject = "memory.idle-5m.pss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "count"
+value = 114418688
+unit = "bytes"
+band = 0.05
+target = 125829120
+runs = 1
+date = "2026-10-20"
+commit = "fa9d756a5"
+host-id = "1a8c211a203d"
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 2.81
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "92335d1c6"
+host-id = "1a8c211a203d"
+calibration-s = "1.787/1.853"
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.7 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 4.21
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 10.83
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 2.04
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "./gradlew classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+p90-s = 4.14
+tool-version = "Gradle 9.5.1 (the repository's wrapper)"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 0.39
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "fc56a8bc4"
+host-id = "1a8c211a203d"
+calibration-s = "1.767/1.839"
+command = "jk build --skip-tests --no-ansi -r"
+conditions = "loadavg 1.7 at start, engine live jobs 0"
+cpu-psi-avg10-end = 0.03
+cpu-psi-avg60-end = 0.12
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 3.35
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 4.06
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 0.9
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk build --skip-tests --no-ansi -r"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+p90-s = 1.26
+tool-version = "jk 0.13.7"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 3.36
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "0f4bf5ea2"
+host-id = "1a8c211a203d"
+calibration-s = "1.798/1.841"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 1.0 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.01
+cpu-psi-avg60-end = 0.03
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 2.98
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 3.44
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 2.26
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+p90-s = 2.6
+tool-version = "Maven 3.9.16 via jk mvn"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean.peak-rss"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1732247552
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "92335d1c6"
+host-id = "1a8c211a203d"
+calibration-s = "1.787/1.853"
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.7 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 4.21
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean.peak-rss"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1768947712
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "./gradlew classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+tool-version = "Gradle 9.5.1 (the repository's wrapper)"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 1101004800
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "fc56a8bc4"
+host-id = "1a8c211a203d"
+command = "jk build --skip-tests --no-ansi -r"
+conditions = "loadavg 1.7 at start, engine live jobs 0"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 2846883840
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk build --skip-tests --no-ansi -r"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+tool-version = "jk 0.13.7"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 596639744
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "0f4bf5ea2"
+host-id = "1a8c211a203d"
+calibration-s = "1.798/1.841"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 1.0 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.01
+cpu-psi-avg60-end = 0.03
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 2.98
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 456130560
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+tool-version = "Maven 3.9.16 via jk mvn"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 0.65
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "92335d1c6"
+host-id = "1a8c211a203d"
+calibration-s = "1.787/1.853"
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.7 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 4.21
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 0.67
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 0.52
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "./gradlew classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+p90-s = 0.59
+tool-version = "Gradle 9.5.1 (the repository's wrapper)"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 0.14
+unit = "s"
+band = 0.15
+target = 0.3
+runs = 5
+date = "2026-10-20"
+commit = "fc56a8bc4"
+host-id = "1a8c211a203d"
+calibration-s = "1.767/1.839"
+command = "jk build --skip-tests --no-ansi"
+conditions = "loadavg 1.7 at start, engine live jobs 0"
+cpu-psi-avg10-end = 0.03
+cpu-psi-avg60-end = 0.12
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 3.35
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 0.29
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 0.64
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk build --skip-tests --no-ansi"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+p90-s = 1.05
+tool-version = "jk 0.13.7"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 3.32
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "0f4bf5ea2"
+host-id = "1a8c211a203d"
+calibration-s = "1.798/1.841"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 1.0 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.01
+cpu-psi-avg60-end = 0.03
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 2.98
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 3.39
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 2.23
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+p90-s = 2.3
+tool-version = "Maven 3.9.16 via jk mvn"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit.peak-rss"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1599078400
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "92335d1c6"
+host-id = "1a8c211a203d"
+calibration-s = "1.787/1.853"
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.7 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 4.21
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit.peak-rss"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1826619392
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "./gradlew classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+tool-version = "Gradle 9.5.1 (the repository's wrapper)"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 660602880
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "fc56a8bc4"
+host-id = "1a8c211a203d"
+command = "jk build --skip-tests --no-ansi"
+conditions = "loadavg 1.7 at start, engine live jobs 0"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 2847932416
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk build --skip-tests --no-ansi"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+tool-version = "jk 0.13.7"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 601882624
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "0f4bf5ea2"
+host-id = "1a8c211a203d"
+calibration-s = "1.798/1.841"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 1.0 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.01
+cpu-psi-avg60-end = 0.03
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 2.98
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 449839104
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+tool-version = "Maven 3.9.16 via jk mvn"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 0.55
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "92335d1c6"
+host-id = "1a8c211a203d"
+calibration-s = "1.787/1.853"
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.7 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 4.21
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 0.57
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 0.44
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "./gradlew classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+p90-s = 1.05
+tool-version = "Gradle 9.5.1 (the repository's wrapper)"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 0.05
+unit = "s"
+band = 0.15
+target = 0.1
+runs = 5
+date = "2026-10-20"
+commit = "4fd583742"
+host-id = "1a8c211a203d"
+calibration-s = "1.822/1.88"
+command = "jk build --skip-tests --no-ansi"
+conditions = "loadavg 1.3 at start, engine live jobs 0"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.03
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 3.17
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 0.33
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 0.09
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk build --skip-tests --no-ansi"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+p90-s = 0.36
+tool-version = "jk 0.13.7"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 2.51
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "0f4bf5ea2"
+host-id = "1a8c211a203d"
+calibration-s = "1.798/1.841"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 1.0 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.01
+cpu-psi-avg60-end = 0.03
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 2.98
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 2.72
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 1.84
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+p90-s = 1.92
+tool-version = "Maven 3.9.16 via jk mvn"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop.peak-rss"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1482686464
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "92335d1c6"
+host-id = "1a8c211a203d"
+calibration-s = "1.787/1.853"
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.7 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 4.21
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop.peak-rss"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1780482048
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "./gradlew classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+tool-version = "Gradle 9.5.1 (the repository's wrapper)"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 575668224
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "fc56a8bc4"
+host-id = "1a8c211a203d"
+command = "jk build --skip-tests --no-ansi"
+conditions = "loadavg 1.7 at start, engine live jobs 0"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 2674917376
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk build --skip-tests --no-ansi"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+tool-version = "jk 0.13.7"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 472907776
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "0f4bf5ea2"
+host-id = "1a8c211a203d"
+calibration-s = "1.798/1.841"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 1.0 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.01
+cpu-psi-avg60-end = 0.03
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 2.98
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 418381824
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+tool-version = "Maven 3.9.16 via jk mvn"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 0.59
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "92335d1c6"
+host-id = "1a8c211a203d"
+calibration-s = "1.787/1.853"
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.7 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 4.21
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 0.61
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 0.43
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "./gradlew classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+p90-s = 0.48
+tool-version = "Gradle 9.5.1 (the repository's wrapper)"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 0.1
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "fc56a8bc4"
+host-id = "1a8c211a203d"
+calibration-s = "1.767/1.839"
+command = "jk build --skip-tests --no-ansi"
+conditions = "loadavg 1.7 at start, engine live jobs 0"
+cpu-psi-avg10-end = 0.03
+cpu-psi-avg60-end = 0.12
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 3.35
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 0.1
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 0.1
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk build --skip-tests --no-ansi"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+p90-s = 0.1
+tool-version = "jk 0.13.7"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 3.31
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "0f4bf5ea2"
+host-id = "1a8c211a203d"
+calibration-s = "1.798/1.841"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 1.0 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.01
+cpu-psi-avg60-end = 0.03
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 2.98
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 3.38
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 2.4
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+p90-s = 3.66
+tool-version = "Maven 3.9.16 via jk mvn"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild.peak-rss"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1479540736
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "92335d1c6"
+host-id = "1a8c211a203d"
+calibration-s = "1.787/1.853"
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.7 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 4.21
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild.peak-rss"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1782579200
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "./gradlew classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+tool-version = "Gradle 9.5.1 (the repository's wrapper)"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 562036736
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "fc56a8bc4"
+host-id = "1a8c211a203d"
+command = "jk build --skip-tests --no-ansi"
+conditions = "loadavg 1.7 at start, engine live jobs 0"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 2543845376
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk build --skip-tests --no-ansi"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+tool-version = "jk 0.13.7"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 591396864
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "0f4bf5ea2"
+host-id = "1a8c211a203d"
+calibration-s = "1.798/1.841"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 1.0 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.01
+cpu-psi-avg60-end = 0.03
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 2.98
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 463470592
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+tool-version = "Maven 3.9.16 via jk mvn"
+
+[[row]]
+dim = "wall"
+subject = "wall.test"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 36.38
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "92335d1c6"
+host-id = "1a8c211a203d"
+calibration-s = "1.787/1.853"
+command = "gradle test --rerun --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.7 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 4.21
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 45.76
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.test"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 24.45
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "./gradlew test --rerun --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+p90-s = 38.74
+tool-version = "Gradle 9.5.1 (the repository's wrapper)"
+
+[[row]]
+dim = "wall"
+subject = "wall.test"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 28.33
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-09-28"
+commit = "21a8fc0ac"
+host-id = "1a8c211a203d"
+command = "jk test -r --no-ansi"
+conditions = "loadavg 1.1 at start, engine live jobs ?"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+p90-s = 28.79
+tool-version = "jk 0.14.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.test"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 26.15
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk test -r --no-ansi"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+p90-s = 35.66
+tool-version = "jk 0.13.7"
+
+[[row]]
+dim = "wall"
+subject = "wall.test"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 30.39
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "0f4bf5ea2"
+host-id = "1a8c211a203d"
+calibration-s = "1.798/1.841"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip test"
+conditions = "loadavg 1.0 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.01
+cpu-psi-avg60-end = 0.03
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 2.98
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 31.03
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.test"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 23.66
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip test"
+conditions = "loadavg 0.4 at start, engine live jobs 0"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+p90-s = 27.31
+tool-version = "Maven 3.9.16 via jk mvn"
+
+[[row]]
+dim = "wall"
+subject = "wall.test.peak-rss"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1852833792
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "92335d1c6"
+host-id = "1a8c211a203d"
+calibration-s = "1.787/1.853"
+command = "gradle test --rerun --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.7 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 4.21
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.test.peak-rss"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 3080716288
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "./gradlew test --rerun --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+tool-version = "Gradle 9.5.1 (the repository's wrapper)"
+
+[[row]]
+dim = "wall"
+subject = "wall.test.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 1990197248
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "fc56a8bc4"
+host-id = "1a8c211a203d"
+command = "jk test -r --no-ansi"
+conditions = "loadavg 1.7 at start, engine live jobs 0"
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+tool-version = "jk 0.15.3"
+
+[[row]]
+dim = "wall"
+subject = "wall.test.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 7842299904
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk test -r --no-ansi"
+conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+tool-version = "jk 0.13.7"
+
+[[row]]
+dim = "wall"
+subject = "wall.test.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 1318060032
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-20"
+commit = "0f4bf5ea2"
+host-id = "1a8c211a203d"
+calibration-s = "1.798/1.841"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip test"
+conditions = "loadavg 1.0 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.01
+cpu-psi-avg60-end = 0.03
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 2.98
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.test.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 1133510656
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host-id = "bocabox"
+command = "jk mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip test"
+conditions = "loadavg 0.4 at start, engine live jobs 0"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+tool-version = "Maven 3.9.16 via jk mvn"

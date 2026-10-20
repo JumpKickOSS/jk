@@ -158,7 +158,7 @@ final class ModuleForecast {
         this.workerJar = workerJar;
         this.profileName = profileName;
         this.m2Dir = m2Dir;
-        this.project = u.manifest();
+        this.project = ForecastSteps.planned(u.manifest(), u.dir());
         this.dir = u.dir();
         this.lockFile = LockPaths.lockFile(dir);
     }
@@ -181,7 +181,16 @@ final class ModuleForecast {
             List<Path> gvSrc,
             boolean mixedKotlin,
             boolean mixedGroovy,
-            boolean kotlinModule) {}
+            boolean kotlinModule,
+            ProvidedClasspath.Provided provided) {
+
+        /** The main compile classpath the build derives: the lock's, the siblings', then the plugin-provided jars. */
+        List<Path> withProvided(List<Path> cp) {
+            List<Path> out = new ArrayList<>(cp);
+            out.addAll(provided.compile());
+            return out;
+        }
+    }
 
     TaskForecast.Module run() {
         if (dep == null) dep = TaskForecaster.DepDirtiness.NONE;
@@ -324,7 +333,10 @@ final class ModuleForecast {
                 gvSrc,
                 mixedKotlin,
                 mixedGroovy,
-                langs.kotlin());
+                langs.kotlin(),
+                // The build adds these to every compile and test classpath (PlannerSetup), so a
+                // key priced without them names a compile the build never makes.
+                ProvidedClasspath.forecast(project, dir, lockFile, cas));
     }
 
     private void compileMain(Prepared prepared) throws Exception {
@@ -339,7 +351,8 @@ final class ModuleForecast {
         boolean mixedGroovy = prepared.mixedGroovy();
         if (!mainSrc.isEmpty()) {
             WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES);
-            List<Path> cp = PlannerSupport.mainCompileClasspath(dir, project, lock, resolver, sib, false);
+            List<Path> cp = prepared.withProvided(
+                    PlannerSupport.mainCompileClasspath(dir, project, lock, resolver, sib, false));
             mainCp = cp;
             Path out = layout.classesDir();
             // Same stamp gate as BuildPlanner compile-main: a post-rebuild tree with a
@@ -567,7 +580,10 @@ final class ModuleForecast {
         testDirty = false;
         // --skip-tests composes no compile-test/run-tests steps, so don't forecast
         // (or content-hash the inputs of) steps the build will not run.
-        testCompileCp = PlannerSupport.testCompileClasspath(dir, project, lock, resolver);
+        List<Path> testCp = new ArrayList<>(PlannerSupport.testCompileClasspath(dir, project, lock, resolver));
+        testCp.addAll(prepared.provided().compile());
+        testCp.addAll(prepared.provided().testOnly());
+        testCompileCp = testCp;
         testDirty = PlannerGuardSuite.addSuiteForecasts(
                 steps,
                 skipTests,
@@ -731,7 +747,12 @@ final class ModuleForecast {
             // stored green marker. After jk clean, project the main: fingerprint from the
             // compile action record — ClasspathFingerprint.entry(empty classes) is
             // missing:… and would falsely forecast a full suite.
-            List<Path> testRt = PlannerSupport.testRuntimeClasspath(dir, project, lock, resolver);
+            List<Path> testRt = new ArrayList<>(PlannerSupport.testRuntimeClasspath(dir, project, lock, resolver));
+            for (Path p : prepared.provided().jars().stream()
+                    .map(ProvidedClasspath.Provided.Jar::path)
+                    .toList()) {
+                if (!testRt.contains(p)) testRt.add(p);
+            }
             long ts = Perf.start();
             String mainFp = null;
             if (!classesTreeWhole(layout)) {

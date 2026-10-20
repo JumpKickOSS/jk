@@ -72,7 +72,8 @@ class KotlinNullnessConsumerTest {
         try {
             assertThat(cpuTime(process)).as("child CPU time").isPresent();
             long start = System.nanoTime();
-            assertThat(awaitWhileWorking(process, Duration.ofSeconds(3))).contains("used no CPU for 3 seconds");
+            assertThat(awaitWhileWorking(process, Duration.ofSeconds(3), Duration.ofMinutes(1)))
+                    .contains("used no CPU for 3 seconds");
             assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofMinutes(2));
         } finally {
             process.destroyForcibly();
@@ -93,7 +94,7 @@ class KotlinNullnessConsumerTest {
         // the compiler reads its argfile.
         builder.environment().put("CLASSPATH", System.getProperty("java.class.path"));
         Process process = builder.start();
-        String stalled = awaitWhileWorking(process, STALL);
+        String stalled = awaitWhileWorking(process, STALL, CEILING);
         if (stalled != null) {
             process.destroyForcibly();
             throw new IOException("Kotlin compiler " + stalled + "; output:\n" + Files.readString(log));
@@ -118,7 +119,8 @@ class KotlinNullnessConsumerTest {
      * progress. Null when it exited; otherwise why it was given up on. Where no CPU time can be
      * read, only the ceiling applies.
      */
-    private static @Nullable String awaitWhileWorking(Process process, Duration stall) throws InterruptedException {
+    private static @Nullable String awaitWhileWorking(Process process, Duration stall, Duration ceiling)
+            throws InterruptedException {
         long start = System.nanoTime();
         long lastProgress = start;
         Duration lastCpu = Duration.ZERO;
@@ -136,7 +138,7 @@ class KotlinNullnessConsumerTest {
             if (cpuKnown && now - lastProgress > stall.toNanos()) {
                 return "used no CPU for " + stall.toSeconds() + " seconds";
             }
-            if (now - start > CEILING.toNanos()) return "did not exit within " + CEILING.toMinutes() + " minutes";
+            if (now - start > ceiling.toNanos()) return "did not exit within " + ceiling.toMinutes() + " minutes";
         }
         return null;
     }

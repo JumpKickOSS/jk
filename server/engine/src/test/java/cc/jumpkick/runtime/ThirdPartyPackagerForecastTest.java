@@ -17,6 +17,7 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
@@ -204,11 +205,15 @@ class ThirdPartyPackagerForecastTest {
         assertThat(cold.cached()).isFalse();
         assertThat(cold.text()).isEqualTo("repackage · " + PACKAGER);
 
-        // The record a live package-jar leaves behind, keyed by the packager's own token bag.
-        Path artifact = PluginBuild.mainArtifactPath(layout, requireNonNull(owner.packager()));
+        // The record a live package-jar leaves behind, keyed by the packager's own token bag over
+        // the manifest the build plans: variants applied, so the plugin config carries the build
+        // type. A forecast over the parsed manifest keyed a config the build never packs with.
+        JkBuild planned = VariantApply.applyDefaults(project, proj);
+        var plannedOwner = requireNonNull(PackagingKeys.pluginFor(planned, layout, cache));
+        Path artifact = PluginBuild.mainArtifactPath(layout, requireNonNull(plannedOwner.packager()));
         assertThat(artifact.getFileName().toString()).endsWith(".hlo");
         var keyed = PackagingKeys.pluginPackager(new PackagingKeys.Packager(
-                        project,
+                        planned,
                         proj,
                         cache,
                         lockFile,
@@ -218,8 +223,8 @@ class ThirdPartyPackagerForecastTest {
                         layout.classesDir(),
                         artifact,
                         TaskForecaster.forecastJavaHome(proj, project, LockfileReader.read(lockFile)),
-                        requireNonNull(owner.packager()),
-                        owner.decls(),
+                        requireNonNull(plannedOwner.packager()),
+                        plannedOwner.decls(),
                         Map.of(),
                         BuildEnv.ambient()))
                 .keyed();

@@ -14,6 +14,7 @@ import cc.jumpkick.engine.verbs.VerbShape;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
+import cc.jumpkick.task.WorkCounters;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.JobControlAckFrame;
@@ -224,7 +225,7 @@ final class EngineConnection {
                         hs != null ? hs.url() : null,
                         ctx.http().error(),
                         hs != null && hs.mcpEnabled());
-                WireWriter.send(writer, InputTrees.appendToStatusAck(ack));
+                WireWriter.send(writer, WorkCounters.appendToStatusAck(InputTrees.appendToStatusAck(ack)));
             }
             case EngineProtocol.SHUTDOWN -> {
                 ctx.shutdown().handle(line, writer);

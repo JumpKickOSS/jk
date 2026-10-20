@@ -13,26 +13,28 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The bench tier's side of the wall ratchet: a microbenchmark reports its median under a name, and
- * when {@code wall-baseline.toml} (the path in the {@code jk.wallBaseline} system property) carries a
- * {@code [bench.<name>]} table, a median more than the band above the banked one fails. A bench with
- * no banked line prints its number and passes — the first nightly run's output is what gets banked.
+ * The bench tier's side of the scoreboard: a microbenchmark reports its median under a name, and
+ * when {@code scoreboard.toml} carries a {@code dim = "bench"} row with that subject (value in
+ * milliseconds), a median more than the band above the banked one fails. The file is the {@code
+ * jk.scoreboard} system property, else the nearest {@code scoreboard.toml} above the working
+ * directory. A bench with no banked row prints its number and passes, so a nightly run's output is
+ * what gets banked.
  */
 public final class BenchBand {
-    /** Same band as the wall rows: hosted runners are noisy, and a bench asserts a shape, not a number. */
+    /** A bench asserts a shape, not a number: the same band as the scoreboard's absolute walls. */
     public static final double BAND = 0.15;
 
-    private static final Pattern TABLE = Pattern.compile("^\\[bench\\.([a-z0-9-]+)]$");
-    private static final Pattern MEDIAN = Pattern.compile("^median-ms\\s*=\\s*(\\d+(?:\\.\\d+)?)$");
+    private static final Pattern FIELD = Pattern.compile("^([a-z-]+)\\s*=\\s*(.+)$");
 
     private BenchBand() {}
 
-    /** Report {@code medianMs} under {@code name}; fail when a banked line exists and the band is exceeded. */
+    /** Report {@code medianMs} under {@code name}; fail when a banked row exists and the band is exceeded. */
     public static void within(String name, long medianMs) {
         Long banked = banked(name);
         if (banked == null) {
             System.out.printf(
-                    "bench %s: median=%d ms (unbaselined — bank it as [bench.%s] median-ms)%n", name, medianMs, name);
+                    "bench %s: median=%d ms (unbaselined: bank it as a dim = \"bench\" row in scoreboard.toml)%n",
+                    name, medianMs);
             return;
         }
         System.out.printf("bench %s: median=%d ms, banked %d ms%n", name, medianMs, banked);
@@ -43,10 +45,8 @@ public final class BenchBand {
     }
 
     static @Nullable Long banked(String name) {
-        String file = System.getProperty("jk.wallBaseline");
-        if (file == null || file.isBlank()) return null;
-        Path p = Path.of(file);
-        if (!Files.isRegularFile(p)) return null;
+        Path p = board();
+        if (p == null) return null;
         try {
             return parse(Files.readString(p)).get(name);
         } catch (IOException e) {
@@ -54,27 +54,42 @@ public final class BenchBand {
         }
     }
 
-    /** {@code [bench.<name>]} tables → their {@code median-ms}, ignoring every other table. */
+    private static @Nullable Path board() {
+        String file = System.getProperty("jk.scoreboard");
+        if (file != null && !file.isBlank()) return Files.isRegularFile(Path.of(file)) ? Path.of(file) : null;
+        for (Path dir = Path.of("").toAbsolutePath(); dir != null; dir = dir.getParent()) {
+            Path candidate = dir.resolve("scoreboard.toml");
+            if (Files.isRegularFile(candidate)) return candidate;
+        }
+        return null;
+    }
+
+    /** {@code [[row]]} entries with {@code dim = "bench"} and unit {@code ms}: subject to rounded value. */
     static Map<String, Long> parse(String toml) {
         Map<String, Long> out = new HashMap<>();
-        String current = null;
-        for (String raw : toml.split("\n")) {
+        Map<String, String> row = null;
+        for (String raw : (toml + "\n[[row]]").split("\n")) {
             String line = raw.strip();
             if (line.isEmpty() || line.startsWith("#")) continue;
-            Matcher table = TABLE.matcher(line);
-            if (table.matches()) {
-                current = table.group(1);
-                continue;
-            }
             if (line.startsWith("[")) {
-                current = null;
+                if (row != null
+                        && "\"bench\"".equals(row.get("dim"))
+                        && "\"ms\"".equals(row.get("unit"))
+                        && row.containsKey("subject")
+                        && row.containsKey("value")) {
+                    out.put(unquote(row.get("subject")), Math.round(Double.parseDouble(row.get("value"))));
+                }
+                row = "[[row]]".equals(line) ? new HashMap<>() : null;
                 continue;
             }
-            Matcher median = MEDIAN.matcher(line);
-            if (current != null && median.matches()) {
-                out.put(current, Math.round(Double.parseDouble(median.group(1))));
-            }
+            Matcher field = FIELD.matcher(line);
+            if (row != null && field.matches())
+                row.put(field.group(1), field.group(2).strip());
         }
         return out;
+    }
+
+    private static String unquote(String value) {
+        return value.length() >= 2 && value.startsWith("\"") ? value.substring(1, value.length() - 1) : value;
     }
 }

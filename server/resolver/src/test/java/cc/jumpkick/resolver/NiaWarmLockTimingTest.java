@@ -53,7 +53,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
  *     --class cc.jumpkick.resolver.NiaWarmLockTimingTest
  * }</pre>
  *
- * <p>The lock cost's gate is the wall-band harness, not this assert.
+ * <p>The lock cost's gate is the scoreboard (bench/scoreboard), not this assert.
  */
 @Tag("network")
 @ExtendWith(SysProps.class)

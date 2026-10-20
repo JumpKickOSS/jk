@@ -6,8 +6,11 @@ import cc.jumpkick.cli.theme.Gradient;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
+import cc.jumpkick.terminal.RegionPainter;
 import cc.jumpkick.terminal.Style;
 import java.io.PrintStream;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Single-line progress bar widget ({@code ▰…▱… 62%: status}) for long IO (JDK download/install).
@@ -58,9 +61,9 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
     private int lastFilled = 0;
     private String lastPercent = "";
     private String lastStatus = "";
-    private boolean drawn = false;
     private boolean closed = false;
     private int lastPercentVal = 0;
+    private final RegionPainter painter = new RegionPainter(RegionPainter.Park.IN_ROW);
 
     private SpinnerProgressBar(PrintStream out, boolean silent) {
         this.out = out;
@@ -98,18 +101,15 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         String percentStr = String.format("%3d%%", clamped);
         String statusStr = status == null ? "" : status;
 
-        out.print(Osc.taskbarProgress(clamped));
-        if (!drawn) {
-            renderInitial(filled, clamped, percentStr, statusStr);
-        } else {
-            renderDiff(filled, clamped, percentStr, statusStr);
-        }
+        StringBuilder f = new StringBuilder();
+        painter.status(f, Osc.taskbarProgress(clamped));
+        painter.paint(f, List.of(row(filled, clamped, percentStr, statusStr)), 0, 0, 0);
+        out.print(f);
         out.flush();
         lastFilled = filled;
         lastPercent = percentStr;
         lastPercentVal = clamped;
         lastStatus = statusStr;
-        drawn = true;
     }
 
     @Override
@@ -122,7 +122,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         // CR + erase-line, a partial bar (e.g. a plan that failed
         // before any progress) would stay in the transcript next to
         // the failure summary that follows.
-        if (drawn) out.print(Ansi.CLEAR_LINE);
+        wipe();
         out.print(Osc.taskbarClear());
         out.print(SHOW_CURSOR);
         out.flush();
@@ -146,6 +146,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
             return;
         }
         out.print(Ansi.CLEAR_LINE); // clear the bar line
+        painter.forget();
         out.print(Osc.taskbarClear());
         out.print(SHOW_CURSOR);
         out.println(message);
@@ -163,21 +164,18 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
      * println} on the bar's stream — there's no pinned row to clear.
      */
     public synchronized void writeAbove(String line) {
-        if (silent || closed || !drawn) {
+        if (silent || closed || painter.height() == 0) {
             out.println(line);
             out.flush();
             return;
         }
-        out.print(Ansi.CLEAR_LINE); // wipe the bar line
+        wipe();
         out.println(line); // emit the hoisted message
-        // Force a fresh full redraw at the same position. Without resetting
-        // `drawn`, renderDiff would no-op on identical state and the bar
-        // wouldn't reappear.
-        drawn = false;
-        renderInitial(lastFilled, lastPercentVal, lastPercent, lastStatus);
-        out.print(Osc.taskbarProgress((int) Math.round(lastFilled * 100.0 / SEGMENTS)));
+        // The lift forgot the row, so this paint draws the whole bar again under the message.
+        StringBuilder f = new StringBuilder();
+        painter.paint(f, List.of(row(lastFilled, lastPercentVal, lastPercent, lastStatus)), 0, 0, 0);
+        out.print(f);
         out.flush();
-        drawn = true;
     }
 
     /**
@@ -194,23 +192,21 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         LiveRegion.clearActive(this);
         if (silent) return;
         Style strikeStyle = Theme.active().dim().crossedOut();
-        out.print("\r");
-        out.print(Theme.colorize(
-                Glyphs.cross() + " Failed", Theme.active().error().bold()));
-        out.print(" ");
         // Every segment painted with the dark-red→bright-red gradient.
         // We don't care about filled vs empty here — the bar's role at
         // this point is to mark *where* the plan stopped, not to
         // continue showing in-flight progress.
-        char empty = emptyChar();
-        for (int i = 0; i < SEGMENTS; i++) {
-            out.print(Theme.colorize(String.valueOf(empty), failColors[i]));
-        }
-        out.print(GAP);
-        out.print(Theme.colorize(lastPercent, percentStyle(lastPercentVal)));
-        out.print(SEPARATOR);
-        out.print(Theme.colorize(lastStatus, strikeStyle));
-        out.print(Ansi.ERASE_LINE_TO_END); // wipe any residue past the (shorter) status
+        char[] glyphs = new char[SEGMENTS];
+        Arrays.fill(glyphs, emptyChar());
+        String failed = Theme.colorize(
+                        Glyphs.cross() + " Failed", Theme.active().error().bold())
+                + " "
+                + paint(glyphs, failColors)
+                + GAP
+                + Theme.colorize(lastPercent, percentStyle(lastPercentVal))
+                + SEPARATOR
+                + Theme.colorize(lastStatus, strikeStyle);
+        settleRow(failed);
         out.print(Osc.taskbarClear());
         out.print(SHOW_CURSOR);
         out.println();
@@ -229,18 +225,17 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         if (silent) return false;
         Style redStyle = Theme.active().error();
         Style strikeStyle = Theme.active().dim().crossedOut();
-        out.print("\r");
-        char filled = filledChar();
-        char empty = emptyChar();
+        char[] glyphs = new char[SEGMENTS];
+        Style[] styles = new Style[SEGMENTS];
         for (int i = 0; i < SEGMENTS; i++) {
-            char c = i < lastFilled ? filled : empty;
-            out.print(Theme.colorize(String.valueOf(c), redStyle));
+            glyphs[i] = i < lastFilled ? filledChar() : emptyChar();
+            styles[i] = redStyle;
         }
-        out.print(GAP);
-        out.print(Theme.colorize(lastPercent, percentStyle(lastPercentVal)));
-        out.print(SEPARATOR);
-        out.print(Theme.colorize(lastStatus, strikeStyle));
-        out.print(Ansi.ERASE_LINE_TO_END); // wipe any residue past the (shorter) cancel status
+        settleRow(paint(glyphs, styles)
+                + GAP
+                + Theme.colorize(lastPercent, percentStyle(lastPercentVal))
+                + SEPARATOR
+                + Theme.colorize(lastStatus, strikeStyle));
         out.print(Osc.taskbarClear());
         out.print(SHOW_CURSOR);
         out.flush();
@@ -249,46 +244,44 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         return false;
     }
 
-    private void renderInitial(int filled, int percent, String percentStr, String status) {
-        out.print("\r");
-        renderSegments(0, SEGMENTS, filled);
-        out.print(GAP);
-        out.print(Theme.colorize(percentStr, percentStyle(percent)));
-        out.print(SEPARATOR);
-        out.print(Theme.colorize(status, Theme.active().dim()));
+    /** The bar's row: segments, percent, status. */
+    private String row(int filled, int percent, String percentStr, String status) {
+        return segments(filled)
+                + GAP
+                + Theme.colorize(percentStr, percentStyle(percent))
+                + SEPARATOR
+                + Theme.colorize(status, Theme.active().dim());
     }
 
-    private void renderDiff(int filled, int percent, String percentStr, String status) {
-        // Segments: the moving gradient re-colors every filled glyph when
-        // the frontier advances, so there's no surgical sub-range to redraw.
-        // Jump to the first glyph and overwrite the whole row in place.
-        if (filled != lastFilled) {
-            moveToCol(1);
-            renderSegments(0, SEGMENTS, filled);
-        }
-        // Percent: repaint the 4-char block (it's already fixed-width).
-        if (!percentStr.equals(lastPercent)) {
-            moveToCol(1 + SEGMENTS + GAP.length());
-            out.print(Theme.colorize(percentStr, percentStyle(percent)));
-        }
-        // Status: repaint; overwrite shrinkage with the exact number of spaces.
-        if (!status.equals(lastStatus)) {
-            moveToCol(statusCol());
-            out.print(Theme.colorize(status, Theme.active().dim()));
-            int shrink = lastStatus.length() - status.length();
-            if (shrink > 0) out.print(" ".repeat(shrink));
-        }
+    /** Paint {@code row} over the bar as its last state; only the cells that differ are written. */
+    private void settleRow(String row) {
+        StringBuilder f = new StringBuilder();
+        painter.paint(f, List.of(row), 0, 0, 0);
+        out.print(f);
     }
 
-    private void renderSegments(int from, int to, int filled) {
-        char full = filledChar();
-        char empty = emptyChar();
-        for (int i = from; i < to; i++) {
+    /** Erase the bar's row, leaving the cursor at its start. */
+    private void wipe() {
+        StringBuilder f = new StringBuilder();
+        painter.lift(f, 0, 0);
+        out.print(f);
+    }
+
+    private String segments(int filled) {
+        char[] glyphs = new char[SEGMENTS];
+        Style[] styles = new Style[SEGMENTS];
+        for (int i = 0; i < SEGMENTS; i++) {
             boolean isFilled = i < filled;
-            char c = isFilled ? full : empty;
-            Style style = isFilled ? filledColor(i, filled) : emptyStyle;
-            out.print(Theme.colorize(String.valueOf(c), style));
+            glyphs[i] = isFilled ? filledChar() : emptyChar();
+            styles[i] = isFilled ? filledColor(i, filled) : emptyStyle;
         }
+        return paint(glyphs, styles);
+    }
+
+    /** Styled runs under ANSI; the plain rewrite of the glyphs under {@code --no-ansi}. */
+    private static String paint(char[] glyphs, Style[] styles) {
+        if (!Theme.active().isAnsi()) return Theme.paint(new String(glyphs), Style.EMPTY);
+        return Style.renderRuns(glyphs, styles);
     }
 
     /**
@@ -300,15 +293,6 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
      */
     private Style filledColor(int i, int filled) {
         return segmentColors[SEGMENTS - filled + i];
-    }
-
-    private static int statusCol() {
-        // 1-based column where the status text begins.
-        return 1 + SEGMENTS + GAP.length() + PERCENT_WIDTH + SEPARATOR.length();
-    }
-
-    private void moveToCol(int col) {
-        out.print(Ansi.cursorToColumn(col));
     }
 
     static Style[] buildGradient(int n) {

@@ -135,6 +135,26 @@ class LibraryCatalogLayeringTest {
                 .isEqualTo("com.acme:internal");
     }
 
+    /** The remembered {@code [workspace] modules} scan is read again once the manifest changes. */
+    @Test
+    void a_module_added_to_the_workspace_manifest_moves_its_catalog_root(@TempDir Path root) throws Exception {
+        Path ws = root.toAbsolutePath().normalize();
+        Path mod = Files.createDirectories(ws.resolve("b"));
+        Files.writeString(mod.resolve("jk.toml"), "[package]\nname = \"b\"\n");
+        Path manifest = ws.resolve("jk.toml");
+        Files.writeString(manifest, "[workspace]\nmodules = [\"a\"]\n");
+        assertThat(LibraryCatalog.catalogRoot(mod))
+                .as("not a member: its own root")
+                .isEqualTo(mod);
+        assertThat(LibraryCatalog.catalogRoot(mod)).isEqualTo(mod);
+
+        Files.writeString(manifest, "[workspace]\nmodules = [\"a\", \"b\"]\n");
+
+        assertThat(LibraryCatalog.catalogRoot(mod))
+                .as("a member now: the workspace's")
+                .isEqualTo(ws);
+    }
+
     /**
      * Catalog-root discovery reads {@code workspace.modules} through {@link
      * cc.jumpkick.config.TomlScan}, the owner of that scan, instead of a private line loop. The

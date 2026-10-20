@@ -97,11 +97,11 @@ class SpinnerTest {
             s.update(shortMsg);
             buf.reset();
             s.step();
-            // The frame is rewound with \r and the old tail is erased to the end of the row, so the
-            // shorter message needs no padding of its own.
+            // Only the changed cells are written and the old tail is erased to the end of the row,
+            // so the shorter message needs no padding of its own.
             String raw = buf.toString(StandardCharsets.UTF_8);
-            assertThat(raw).startsWith(Ansi.taskbarIndeterminate() + "\r");
-            assertThat(raw).endsWith(shortMsg + Ansi.ERASE_LINE_TO_END);
+            assertThat(raw).doesNotContain(Ansi.taskbarIndeterminate());
+            assertThat(raw).endsWith(Ansi.ERASE_LINE_TO_END);
             assertThat(TestAnsi.strip(raw)).doesNotContain(shortMsg + " ");
             return null;
         });
@@ -225,9 +225,9 @@ class SpinnerTest {
     }
 
     @Test
-    void each_step_reasserts_osc94_indeterminate_in_ansi() throws Exception {
+    void osc94_indeterminate_is_sent_once_while_it_holds_in_ansi() throws Exception {
         NoAnsi.forcedAnsi(() -> {
-            assertThat(countOccurrences(threeSteps(), "\033]9;4;3\007")).isEqualTo(3);
+            assertThat(countOccurrences(threeSteps(), "\033]9;4;3\007")).isEqualTo(1);
             return null;
         });
     }
