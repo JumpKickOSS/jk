@@ -70,6 +70,7 @@ class KotlinNullnessConsumerTest {
                 """);
         Process process = new ProcessBuilder(javaExecutable().toString(), sleeper.toString()).start();
         try {
+            assertThat(cpuTime(process)).as("child CPU time").isPresent();
             long start = System.nanoTime();
             assertThat(awaitWhileWorking(process, Duration.ofSeconds(3))).contains("used no CPU for 3 seconds");
             assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofMinutes(2));
@@ -107,27 +108,104 @@ class KotlinNullnessConsumerTest {
     private static final Duration CEILING = Duration.ofMinutes(10);
 
     /**
+     * CPU a working compiler burns that an idle JVM does not. A sleeping HotSpot still accrues a
+     * few milliseconds; below this step the process is not making progress.
+     */
+    private static final Duration CPU_STEP = Duration.ofMillis(50);
+
+    /**
      * Wait for {@code process} while it keeps using CPU: a full build starves it of time, not of
-     * progress. Null when it exited; otherwise why it was given up on. Where the platform reports no
-     * CPU time, only the ceiling applies.
+     * progress. Null when it exited; otherwise why it was given up on. Where no CPU time can be
+     * read, only the ceiling applies.
      */
     private static @Nullable String awaitWhileWorking(Process process, Duration stall) throws InterruptedException {
         long start = System.nanoTime();
         long lastProgress = start;
         Duration lastCpu = Duration.ZERO;
+        boolean cpuKnown = false;
         while (!process.waitFor(1, TimeUnit.SECONDS)) {
             long now = System.nanoTime();
-            Optional<Duration> cpu = process.toHandle().info().totalCpuDuration();
-            if (cpu.isEmpty() || cpu.get().compareTo(lastCpu) > 0) {
-                lastCpu = cpu.orElse(lastCpu);
-                lastProgress = now;
+            Optional<Duration> cpu = cpuTime(process);
+            if (cpu.isPresent()) {
+                cpuKnown = true;
+                if (cpu.get().minus(lastCpu).compareTo(CPU_STEP) >= 0) {
+                    lastCpu = cpu.get();
+                    lastProgress = now;
+                }
             }
-            if (now - lastProgress > stall.toNanos()) {
+            if (cpuKnown && now - lastProgress > stall.toNanos()) {
                 return "used no CPU for " + stall.toSeconds() + " seconds";
             }
             if (now - start > CEILING.toNanos()) return "did not exit within " + CEILING.toMinutes() + " minutes";
         }
         return null;
+    }
+
+    /**
+     * Cumulative CPU time of {@code process}. The process handle on macOS leaves this empty for
+     * every process but the current one, so {@code ps} supplies it there.
+     */
+    private static Optional<Duration> cpuTime(Process process) throws InterruptedException {
+        Optional<Duration> reported = process.toHandle().info().totalCpuDuration();
+        if (reported.isPresent() || Os.isWindows()) return reported;
+        return cpuTimeFromPs(process.pid());
+    }
+
+    private static Optional<Duration> cpuTimeFromPs(long pid) throws InterruptedException {
+        Process ps;
+        try {
+            ps = new ProcessBuilder("ps", "-o", "time=", "-p", Long.toString(pid))
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+        if (!ps.waitFor(2, TimeUnit.SECONDS)) {
+            ps.destroyForcibly();
+            return Optional.empty();
+        }
+        String out;
+        try {
+            out = new String(ps.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+        if (ps.exitValue() != 0 || out.isEmpty()) return Optional.empty();
+        return Optional.of(parsePsTime(out));
+    }
+
+    /** {@code ps -o time=} value: {@code [[dd-]hh:]mm:ss[.fraction]}. */
+    private static Duration parsePsTime(String text) {
+        String t = text.trim();
+        long days = 0;
+        int dash = t.indexOf('-');
+        if (dash >= 0) {
+            days = Long.parseLong(t.substring(0, dash));
+            t = t.substring(dash + 1);
+        }
+        String[] parts = t.split(":");
+        long hours = 0;
+        long minutes = 0;
+        double seconds;
+        if (parts.length == 1) {
+            seconds = Double.parseDouble(parts[0]);
+        } else if (parts.length == 2) {
+            minutes = Long.parseLong(parts[0]);
+            seconds = Double.parseDouble(parts[1]);
+        } else if (parts.length == 3) {
+            hours = Long.parseLong(parts[0]);
+            minutes = Long.parseLong(parts[1]);
+            seconds = Double.parseDouble(parts[2]);
+        } else {
+            throw new IllegalArgumentException("ps time: " + text);
+        }
+        long wholeSeconds = (long) seconds;
+        long nanos = Math.round((seconds - wholeSeconds) * 1_000_000_000d);
+        return Duration.ofDays(days)
+                .plusHours(hours)
+                .plusMinutes(minutes)
+                .plusSeconds(wholeSeconds)
+                .plusNanos(nanos);
     }
 
     /**
