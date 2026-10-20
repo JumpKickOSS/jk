@@ -523,6 +523,10 @@ public final class ActionCache {
      * it), so the caller falls through to a real run instead of building on wrong bytes.
      */
     public boolean restore(ActionRecord record, Path outputDir) throws IOException {
+        return WorkCounters.restored(restoreInto(record, outputDir));
+    }
+
+    private boolean restoreInto(ActionRecord record, Path outputDir) throws IOException {
         // Paths the resource mirror or a language merge owns stay on disk and are not rewritten
         // from this record: a compile that snapshotted them would otherwise delete or resurrect a
         // resource, or lay a dropped Kotlin class back beside javac's output.
@@ -648,6 +652,10 @@ public final class ActionCache {
     }
 
     private boolean restoreArtifacts(ActionRecord record, Path baseDir, boolean pruneRoots) throws IOException {
+        return WorkCounters.restored(copyArtifacts(record, baseDir, pruneRoots));
+    }
+
+    private boolean copyArtifacts(ActionRecord record, Path baseDir, boolean pruneRoots) throws IOException {
         if (record.outputs().isEmpty()) return false;
         Optional<Map<String, Blob>> resolved = resolveAll(record.outputs());
         if (resolved.isEmpty()) return false;
