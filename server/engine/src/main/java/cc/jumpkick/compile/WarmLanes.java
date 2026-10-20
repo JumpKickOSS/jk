@@ -109,6 +109,12 @@ final class WarmLanes {
         return pool.lanes;
     }
 
+    /** Whether the warm pool for {@code key} has a worker running now. */
+    static boolean running(String key) {
+        Warm w = POOLS.get(key);
+        return w != null && w.lanes.liveLanes() > 0;
+    }
+
     /** {@code job} has ended: stop every warm lane still working on one of its items. */
     static void abandon(long job) {
         for (Warm w : POOLS.values()) w.lanes.stopLanesWorking(t -> t.job == job);

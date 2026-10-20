@@ -771,7 +771,8 @@ class EngineProtocolTest {
                         false,
                         1,
                         List.of("api", "affected:main"),
-                        TestSelection.DEFAULT)
+                        TestSelection.DEFAULT,
+                        true)
                 .encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.EXPLAIN_REQUEST);
         assertThat(Jsonl.str(json, "dir")).isEqualTo("/work");
@@ -783,6 +784,7 @@ class EngineProtocolTest {
         assertThat(Jsonl.bool(json, "parallelTests", false)).isTrue();
         assertThat(Jsonl.strArray(json, "modules")).containsExactly("api", "affected:main");
         assertThat(ExplainRequest.decode(json).modules()).containsExactly("api", "affected:main");
+        assertThat(ExplainRequest.decode(json).quick()).isTrue();
 
         String defaults = new ExplainRequest(
                         "/w",
@@ -797,7 +799,8 @@ class EngineProtocolTest {
                         false,
                         0,
                         List.of(),
-                        TestSelection.DEFAULT)
+                        TestSelection.DEFAULT,
+                        false)
                 .encode();
         assertThat(Jsonl.str(defaults, "profile")).isNull();
         assertThat(Jsonl.str(defaults, "jdksDir")).isNull();
