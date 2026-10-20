@@ -118,22 +118,22 @@ public final class ProgressBar {
             return;
         }
         Style[] colors = colorsFor(width);
-        Style brightest = colors[width - 1];
+        Style brightest = colors[width - 1].underline();
+        char[] glyphs = new char[width];
+        Style[] styles = new Style[width];
         for (int i = 0; i < width; i++) {
-            char c;
-            Style color;
             if (i < full) { // whole cell
-                c = FULL_BLOCK;
-                color = colors[width - fill + i];
+                glyphs[i] = FULL_BLOCK;
+                styles[i] = colors[width - fill + i].underline();
             } else if (i == full && eighths > 0) { // fractional frontier
-                c = (char) (0x2590 - eighths); // ▏ (1/8) … ▉ (7/8)
-                color = colors[width - fill + i]; // == brightest (the frontier)
+                glyphs[i] = (char) (0x2590 - eighths); // ▏ (1/8) … ▉ (7/8)
+                styles[i] = colors[width - fill + i].underline(); // == brightest (the frontier)
             } else { // unreached
-                c = ' ';
-                color = brightest;
+                glyphs[i] = ' ';
+                styles[i] = brightest;
             }
-            sb.append(Theme.colorize(String.valueOf(c), color.underline()));
         }
+        sb.append(Style.renderRuns(glyphs, styles));
     }
 
     /**
@@ -199,14 +199,14 @@ public final class ProgressBar {
         if (segments <= 0) return "";
         Style[] colors = segments == SEGMENTS ? fillColors : buildGradient(segments, gradient);
         int fill = (int) Math.round(fraction(numerator, denominator) * segments);
-        StringBuilder sb = new StringBuilder();
+        char[] glyphs = new char[segments];
+        Style[] styles = new Style[segments];
         for (int i = 0; i < segments; i++) {
             boolean isFilled = i < fill;
-            char c = isFilled ? FILLED_CHAR : EMPTY_CHAR;
-            Style style = isFilled ? colors[segments - fill + i] : colors[0];
-            sb.append(Theme.colorize(String.valueOf(c), style));
+            glyphs[i] = isFilled ? FILLED_CHAR : EMPTY_CHAR;
+            styles[i] = isFilled ? colors[segments - fill + i] : colors[0];
         }
-        return sb.toString();
+        return paint(glyphs, styles);
     }
 
     /**
@@ -217,12 +217,19 @@ public final class ProgressBar {
     public static String renderBar(long numerator, long denominator, int segments, Style fillStyle, Style emptyStyle) {
         if (segments <= 0) return "";
         int fill = (int) Math.round(fraction(numerator, denominator) * segments);
-        StringBuilder sb = new StringBuilder();
+        char[] glyphs = new char[segments];
+        Style[] styles = new Style[segments];
         for (int i = 0; i < segments; i++) {
-            char c = i < fill ? FILLED_CHAR : EMPTY_CHAR;
-            sb.append(Theme.colorize(String.valueOf(c), i < fill ? fillStyle : emptyStyle));
+            glyphs[i] = i < fill ? FILLED_CHAR : EMPTY_CHAR;
+            styles[i] = i < fill ? fillStyle : emptyStyle;
         }
-        return sb.toString();
+        return paint(glyphs, styles);
+    }
+
+    /** Styled runs under ANSI; the plain rewrite of the glyphs under {@code --no-ansi}. */
+    private static String paint(char[] glyphs, Style[] styles) {
+        if (!Theme.active().isAnsi()) return Theme.paint(new String(glyphs), Style.EMPTY);
+        return Style.renderRuns(glyphs, styles);
     }
 
     private static Style[] buildGradient(int n, Gradient gradient) {

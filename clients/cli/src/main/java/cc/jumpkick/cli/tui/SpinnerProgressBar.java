@@ -8,6 +8,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Style;
 import java.io.PrintStream;
+import java.util.Arrays;
 
 /**
  * Single-line progress bar widget ({@code ▰…▱… 62%: status}) for long IO (JDK download/install).
@@ -202,10 +203,9 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         // We don't care about filled vs empty here — the bar's role at
         // this point is to mark *where* the plan stopped, not to
         // continue showing in-flight progress.
-        char empty = emptyChar();
-        for (int i = 0; i < SEGMENTS; i++) {
-            out.print(Theme.colorize(String.valueOf(empty), failColors[i]));
-        }
+        char[] glyphs = new char[SEGMENTS];
+        Arrays.fill(glyphs, emptyChar());
+        out.print(paint(glyphs, failColors));
         out.print(GAP);
         out.print(Theme.colorize(lastPercent, percentStyle(lastPercentVal)));
         out.print(SEPARATOR);
@@ -230,12 +230,13 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         Style redStyle = Theme.active().error();
         Style strikeStyle = Theme.active().dim().crossedOut();
         out.print("\r");
-        char filled = filledChar();
-        char empty = emptyChar();
+        char[] glyphs = new char[SEGMENTS];
+        Style[] styles = new Style[SEGMENTS];
         for (int i = 0; i < SEGMENTS; i++) {
-            char c = i < lastFilled ? filled : empty;
-            out.print(Theme.colorize(String.valueOf(c), redStyle));
+            glyphs[i] = i < lastFilled ? filledChar() : emptyChar();
+            styles[i] = redStyle;
         }
+        out.print(paint(glyphs, styles));
         out.print(GAP);
         out.print(Theme.colorize(lastPercent, percentStyle(lastPercentVal)));
         out.print(SEPARATOR);
@@ -281,14 +282,21 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
     }
 
     private void renderSegments(int from, int to, int filled) {
-        char full = filledChar();
-        char empty = emptyChar();
+        if (to <= from) return;
+        char[] glyphs = new char[to - from];
+        Style[] styles = new Style[to - from];
         for (int i = from; i < to; i++) {
             boolean isFilled = i < filled;
-            char c = isFilled ? full : empty;
-            Style style = isFilled ? filledColor(i, filled) : emptyStyle;
-            out.print(Theme.colorize(String.valueOf(c), style));
+            glyphs[i - from] = isFilled ? filledChar() : emptyChar();
+            styles[i - from] = isFilled ? filledColor(i, filled) : emptyStyle;
         }
+        out.print(paint(glyphs, styles));
+    }
+
+    /** Styled runs under ANSI; the plain rewrite of the glyphs under {@code --no-ansi}. */
+    private static String paint(char[] glyphs, Style[] styles) {
+        if (!Theme.active().isAnsi()) return Theme.paint(new String(glyphs), Style.EMPTY);
+        return Style.renderRuns(glyphs, styles);
     }
 
     /**
