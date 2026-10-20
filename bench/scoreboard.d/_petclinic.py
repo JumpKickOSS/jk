@@ -8,8 +8,10 @@ its walls. Every helper takes that state directory.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -148,3 +150,23 @@ def stop(jk: str, state: Path) -> None:
 def version(jk: str) -> str:
     res = subprocess.run([jk, "--version"], capture_output=True, text=True)
     return res.stdout.strip() or "?"
+
+
+def status_ack(state: Path) -> dict:
+    """The private engine's status-ack, read off its socket; empty when no engine is running."""
+    for sock in sorted((state / "engine").glob("*.sock")):
+        try:
+            with socket.socket(socket.AF_UNIX) as s:
+                s.settimeout(5)
+                s.connect(str(sock))
+                s.sendall(b'{"type":"status","proto":1}\n')
+                buf = b""
+                while b"\n" not in buf:
+                    chunk = s.recv(65536)
+                    if not chunk:
+                        break
+                    buf += chunk
+            return json.loads(buf.split(b"\n", 1)[0])
+        except (OSError, ValueError):
+            continue
+    return {}
