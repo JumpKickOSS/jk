@@ -207,6 +207,7 @@ public final class JavaCompile {
             // bytes would then compile nothing. Nothing is recorded and the analysis goes, so the
             // next build compiles the module whole from what is on disk.
             if (Files.isDirectory(stateDir)) PathUtil.deleteRecursively(stateDir);
+            WorkCounters.compiled(wr.compiledSources().size());
             return new Result(true, "compiled", key, wr.diagnostics(), wr.compiledSources(), moved, wr.waitMillis());
         }
         if (persist) {
@@ -218,6 +219,7 @@ public final class JavaCompile {
         } else if (Files.isDirectory(stateDir)) {
             PathUtil.deleteRecursively(stateDir);
         }
+        WorkCounters.compiled(wr.compiledSources().size());
         return new Result(true, "compiled", key, wr.diagnostics(), wr.compiledSources(), List.of(), wr.waitMillis());
     }
 
