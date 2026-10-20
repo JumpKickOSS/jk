@@ -37,14 +37,22 @@ TARGETS = {("jk", "edit"): 0.30, ("jk", "noop"): 0.10}
 
 def measure(ctx) -> list[dict]:
     out = ctx.out / "wall"
-    env = dict(os.environ, JK_BIN=ctx.jk)
+    # A private engine started fresh: the user's engine carries whatever it built before, and its
+    # heap is the peak-RSS column's biggest term.
+    state = ctx.home / "wall-state"
+    env = dict(os.environ, JK_BIN=ctx.jk, JK_STATE_DIR=str(state))
+    subprocess.run([ctx.jk, "engine", "stop"], env=env, capture_output=True)
     scenarios = [s for s in SCENARIOS if ctx.wants(f"wall.{s}") or ctx.wants(f"wall.{s}.peak-rss")]
     if not scenarios:
         return []
     cmd = [sys.executable, str(MEASURE), "--out", str(out), "--runs", str(ctx.runs)]
+    for tool in TOOLS:
+        if ctx.tools is None or tool in ctx.tools:
+            cmd += ["--tool", tool]
     for s in scenarios:
         cmd += ["--scenario", s]
     subprocess.run(cmd, env=env, check=False)
+    subprocess.run([ctx.jk, "engine", "stop"], env=env, capture_output=True)
     rows = []
     rows_file = out / "rows.jsonl"
     if not rows_file.is_file():
