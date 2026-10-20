@@ -1,16 +1,18 @@
 # The wall harness
 
 jk, Gradle and Maven on one pinned public Spring Boot project: wall clock and peak memory for a
-clean build, a warm rebuild, a no-op, a one-file edit and a test run. The numbers it banks are the
-table in [docs/user/performance.md](../../docs/user/performance.md) and the footnote in
-[docs/user/why.md](../../docs/user/why.md); the banked entries live in the `[[wall.*]]` section of
-[`wall-baseline.toml`](../../wall-baseline.toml).
+clean build, a warm rebuild, a no-op, a one-file edit and a test run. The scoreboard's `wall`
+dimension runs it in the night tier and banks its rows (`dim = "wall"`) in
+[`scoreboard.toml`](../../scoreboard.toml); those rows are the table in
+[docs/user/performance.md](../../docs/user/performance.md) and the footnote in
+[docs/user/why.md](../../docs/user/why.md).
 
 ```bash
 bench/wall/measure                          # every tool, every scenario, five timed runs each
 bench/wall/measure --tool gradle --scenario edit --runs 3
-bench/wall/measure --bank                   # measure, bank into wall-baseline.toml, render the docs tables
-bench/wall/measure --render                 # docs tables from the banked entries; nothing measured
+bench/wall/measure --out DIR                # rows.jsonl and the logs into DIR
+bench/scoreboard --tier night --dim wall    # measured behind the quiet gate, banked, docs rendered
+bench/scoreboard --render                   # docs tables from scoreboard.toml; nothing measured
 ```
 
 Clones, working copies, Gradle's private user home and build cache, and the per-run logs live under
@@ -38,9 +40,8 @@ retarget the JVM (`JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS`, `JDK_HOME`, `KOTLIN_HOME
 
 Every row records the Maven and Gradle versions and the binary paths, plus a host block. The
 host id is the first 12 hex digits of sha256 over cpu model, logical CPUs, RAM GiB rounded, and
-the OS id (`/etc/os-release` `ID` and `VERSION_ID`), unless `JK_BENCH_HOST` is set. `--bank`
-fills a cell from `--from` only when that row's host id matches, and the docs table compares
-only this host. Rows with no host id are host `bocabox` and are kept under an other-host heading.
+the OS id (`/etc/os-release` `ID` and `VERSION_ID`), unless `JK_BENCH_HOST` is set. The scoreboard
+compares a row only with this host's, and the docs table shows one host.
 
 ## The project
 
@@ -111,8 +112,9 @@ earlier.
 ## Reading the numbers honestly
 
 - The engine is shared. `measure` waits (`--wait-idle`, default 900 s) until `jk engine status`
-  reports no live job before it starts, and records the load average at start and end in the
-  banked `load` field. A number banked under load says so.
+  reports no live job before it starts, and records the load average at start and end. The
+  scoreboard adds its quiet gate and a calibration run before and after; a row taken on a busy
+  or drifting host is `noisy` and never banked.
 - Warm means different things per tool and the rows say which: the rebuild row is jk's action
   cache against Gradle's build cache against Maven's recompile.
 - One module. A multi-module project would move every ratio; this harness answers the question

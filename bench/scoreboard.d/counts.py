@@ -31,7 +31,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import statistics
 import subprocess
 import sys
@@ -40,17 +39,10 @@ from pathlib import Path
 
 TIERS = ("fast", "night", "release")
 
-BENCH = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(BENCH))
-import benchtools  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _petclinic as pc  # noqa: E402
+from _petclinic import PROJECT, edit, settle  # noqa: E402
 
-PROJECT = "spring-petclinic"
-COMMIT = "818c4136ea971c21674525f9053de0d9c7ad8cfe"
-SOURCE = "https://github.com/spring-projects/spring-petclinic"
-EDIT = "src/main/java/org/springframework/samples/petclinic/system/WelcomeController.java"
-DROP = ("src/test/java/org/springframework/samples/petclinic/PostgresIntegrationTests.java",)
-STRAYS = ("pom.xml", "build.gradle", "settings.gradle", "gradlew", "gradlew.bat", "mvnw", "mvnw.cmd", "gradle")
-EDIT_MARK = "// scoreboard edit"
 SCENARIOS = ("noop", "edit")
 
 # (counter, unit, band, slack, target) — slack absorbs absolute drift a ratio cannot (a few log lines).
@@ -85,97 +77,7 @@ _TMP = re.compile(r"(/\.?[^/]*?)-\d{6,}(\.tmp)$")
 _RUN = re.compile(r"/runs/\.?\d+(\.complete)?(\.tmp)?/")
 
 
-# --------------------------------------------------------------------------- the project and the engine
-
-def working_copy(home: Path, jk: str) -> Path:
-    """The pinned petclinic as a jk project, built once; reused while its marker matches."""
-    work = home / "work" / PROJECT
-    marker = work / ".scoreboard-ready"
-    if marker.is_file() and marker.read_text().strip() == COMMIT:
-        return work
-    repo = home / "repos" / PROJECT
-    if not (repo / ".git").is_dir():
-        repo.parent.mkdir(parents=True, exist_ok=True)
-        wall = benchtools.bench_home() / "wall" / "repos" / PROJECT
-        subprocess.run(["git", "clone", "-q", str(wall) if (wall / ".git").is_dir() else SOURCE, str(repo)], check=True)
-    subprocess.run(["git", "fetch", "-q", "origin"], cwd=repo, check=False)
-    shutil.rmtree(work, ignore_errors=True)
-    work.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "clone", "-q", "--shared", str(repo), str(work)], check=True)
-    subprocess.run(["git", "checkout", "-q", COMMIT], cwd=work, check=True)
-    for rel in DROP:
-        (work / rel).unlink()
-    for stray in STRAYS:
-        p = work / stray
-        shutil.rmtree(p) if p.is_dir() else p.unlink(missing_ok=True)
-    for name in ("jk.toml", "jk-lock.toml"):
-        shutil.copy(BENCH / "wall" / PROJECT / name, work / name)
-    subprocess.run([jk, "build", "--skip-tests", "--no-ansi"], cwd=work, env=engine_env(home), check=True,
-                   stdout=subprocess.DEVNULL)
-    marker.write_text(COMMIT + "\n")
-    return work
-
-
-def engine_env(home: Path) -> dict[str, str]:
-    env = {k: v for k, v in os.environ.items() if k not in benchtools.STRIPPED}
-    env["JK_STATE_DIR"] = str(home / "state")
-    return env
-
-
-def engine_tree(home: Path) -> list[int]:
-    """Every process carrying the private JK_STATE_DIR: the engine and the workers it forked."""
-    needle = f"JK_STATE_DIR={home / 'state'}\0".encode()
-    pids = []
-    for entry in os.listdir("/proc"):
-        if not entry.isdigit():
-            continue
-        try:
-            if needle in Path(f"/proc/{entry}/environ").read_bytes() + b"\0":
-                pids.append(int(entry))
-        except OSError:
-            continue
-    return pids
-
-
-def engine_pid(home: Path) -> int | None:
-    for pid in engine_tree(home):
-        try:
-            if b"EngineMain" in Path(f"/proc/{pid}/cmdline").read_bytes() or b"jk-engine" in Path(f"/proc/{pid}/cmdline").read_bytes():
-                return pid
-        except OSError:
-            continue
-    return None
-
-
-def io_snapshot(home: Path) -> dict[int, int]:
-    snap = {}
-    for pid in engine_tree(home):
-        try:
-            fields = dict(line.split(": ") for line in Path(f"/proc/{pid}/io").read_text().splitlines() if line)
-            snap[pid] = int(fields["write_bytes"])
-        except (OSError, KeyError, ValueError):
-            continue
-    return snap
-
-
-def quiesce(home: Path, quiet_s: float = 1.0, cap_s: float = 10.0) -> dict[int, int]:
-    """Wait until the engine tree has written no file bytes for quiet_s, and return that snapshot.
-
-    The engine finishes some of a job's work after the reply: the idle boundary flushes the hash
-    memo, the journal completes the run record. Counting up to a quiet point puts that work inside
-    the job that caused it rather than in whichever later window it happens to land.
-    """
-    deadline = time.monotonic() + cap_s
-    last, since = io_snapshot(home), time.monotonic()
-    while time.monotonic() < deadline:
-        time.sleep(0.1)
-        now = io_snapshot(home)
-        if now != last:
-            last, since = now, time.monotonic()
-        elif time.monotonic() - since >= quiet_s:
-            break
-    return last
-
+# --------------------------------------------------------------------------- counters
 
 def io_delta(before: dict, after: dict) -> int:
     return sum(b - before.get(pid, 0) for pid, b in after.items())
@@ -216,29 +118,14 @@ def task_census(jsonl: str) -> tuple[int, int]:
 
 # --------------------------------------------------------------------------- scenarios
 
-def edit(work: Path) -> None:
-    with open(work / EDIT, "a", encoding="utf-8") as fh:
-        fh.write(f"\n{EDIT_MARK} {time.time_ns()}\n")
-
-
-def unedit(work: Path) -> None:
-    subprocess.run(["git", "checkout", "-q", "--", EDIT], cwd=work, check=True)
-
-
-def settle(work: Path, jk: str, env: dict) -> None:
-    """Put the tree back at a built baseline, so every scenario starts from the same state."""
-    unedit(work)
-    subprocess.run([jk, "build", "--skip-tests", "--no-ansi"], cwd=work, env=env, check=True, stdout=subprocess.DEVNULL)
-
-
-def one_run(scenario: str, work: Path, jk: str, env: dict, home: Path) -> dict:
+def one_run(scenario: str, work: Path, jk: str, env: dict, state: Path) -> dict:
     """Plain pass: /proc counters, the target census, the task census and the output size."""
     if scenario == "edit":
         edit(work)
-    io0 = quiesce(home)
+    io0 = pc.quiesce(state)
     t0 = target_census(work)
     plain = subprocess.run([jk, "build", "--skip-tests", "--no-ansi"], cwd=work, env=env, capture_output=True)
-    io1 = quiesce(home)
+    io1 = pc.quiesce(state)
     t1 = target_census(work)
     sample = {"disk-write-bytes": io_delta(io0, io1), "target-files-touched": len(touched(t0, t1)),
               "_touched": touched(t0, t1),
@@ -253,9 +140,9 @@ def one_run(scenario: str, work: Path, jk: str, env: dict, home: Path) -> dict:
     return sample
 
 
-def jfr_run(scenario: str, work: Path, jk: str, env: dict, home: Path, jfc: Path, out: Path) -> dict:
+def jfr_run(scenario: str, work: Path, jk: str, env: dict, state: Path, jfc: Path, out: Path) -> dict:
     """Recording pass: files the engine JVM wrote and read, attributed by path."""
-    pid = engine_pid(home)
+    pid = pc.engine_pid(state)
     if pid is None:
         return {}
     java_bin = Path(os.readlink(f"/proc/{pid}/exe")).parent
@@ -263,11 +150,11 @@ def jfr_run(scenario: str, work: Path, jk: str, env: dict, home: Path, jfc: Path
     if scenario == "edit":
         edit(work)
     rec = out / f"{scenario}-{time.time_ns()}.jfr"
-    quiesce(home)
+    pc.quiesce(state)
     subprocess.run([jcmd, str(pid), "JFR.start", "name=scoreboard", f"settings={jfc}"], check=True, capture_output=True)
     try:
         subprocess.run([jk, "build", "--skip-tests", "--no-ansi"], cwd=work, env=env, capture_output=True)
-        quiesce(home)
+        pc.quiesce(state)
         subprocess.run([jcmd, str(pid), "JFR.dump", "name=scoreboard", f"filename={rec}"], check=True, capture_output=True)
     finally:
         subprocess.run([jcmd, str(pid), "JFR.stop", "name=scoreboard"], capture_output=True)
@@ -281,7 +168,7 @@ def jfr_run(scenario: str, work: Path, jk: str, env: dict, home: Path, jfc: Path
         path = v.get("path") or ""
         if e["type"] == "jdk.FileWrite":
             n = max(0, v.get("bytesWritten", 0))
-            if path and str(home / "results") not in path:
+            if path and str(out.parent) not in path:
                 calls_bytes = written.setdefault(_RUN.sub("/runs/N/", _TMP.sub(r"\1\2", path)), [0, 0])
                 calls_bytes[0] += 1
                 calls_bytes[1] += n
@@ -296,11 +183,11 @@ def jfr_run(scenario: str, work: Path, jk: str, env: dict, home: Path, jfc: Path
 # --------------------------------------------------------------------------- the dimension
 
 def measure(ctx) -> list[dict]:
-    home = ctx.home
-    env = engine_env(home)
+    state = ctx.home / "state"
+    env = pc.engine_env(state)
     # A fresh engine every time: one left running carries memos and pending chores of its own.
-    subprocess.run([ctx.jk, "engine", "stop"], env=env, capture_output=True)
-    work = working_copy(home, ctx.jk)
+    pc.stop(ctx.jk, state)
+    work = pc.working_copy(ctx.home, ctx.jk, state)
     jfc = ctx.out / "files.jfc"
     jfc.write_text(JFC, encoding="utf-8")
     rows = []
@@ -308,10 +195,10 @@ def measure(ctx) -> list[dict]:
         if not any(ctx.wants(f"inner.{scenario}.{c}") for c in COUNTERS):
             continue
         settle(work, ctx.jk, env)
-        one_run(scenario, work, ctx.jk, env, home)  # warm-up
-        plain = [one_run(scenario, work, ctx.jk, env, home) for _ in range(ctx.runs)]
-        jfr_run(scenario, work, ctx.jk, env, home, jfc, ctx.out)  # warm-up
-        rec = [jfr_run(scenario, work, ctx.jk, env, home, jfc, ctx.out) for _ in range(ctx.runs)]
+        one_run(scenario, work, ctx.jk, env, state)  # warm-up
+        plain = [one_run(scenario, work, ctx.jk, env, state) for _ in range(ctx.runs)]
+        jfr_run(scenario, work, ctx.jk, env, state, jfc, ctx.out)  # warm-up
+        rec = [jfr_run(scenario, work, ctx.jk, env, state, jfc, ctx.out) for _ in range(ctx.runs)]
         if any(s["rc"] for s in plain):
             raise SystemExit(f"counts: jk build failed in the {scenario} scenario; see {work}")
         (ctx.out / f"{scenario}-target-touched.txt").write_text("\n".join(plain[-1]["_touched"]) + "\n")
@@ -337,5 +224,5 @@ def measure(ctx) -> list[dict]:
                 # One stray run in five is a background chore landing in the window, not drift.
                 "unstable": outliers > len(samples) // 4,
             })
-    subprocess.run([ctx.jk, "engine", "stop"], env=env, capture_output=True)
+    pc.stop(ctx.jk, state)
     return rows

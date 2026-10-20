@@ -345,7 +345,9 @@ final class ParityRules {
 
     private static final String CI = ".github/workflows/ci.yml";
     private static final String NIGHTLY = ".github/workflows/ci-nightly.yml";
-    private static final String WALL = ".github/workflows/wall-measure.yml";
+    /** The night tier that times this tree, and the board its rows bank into. */
+    private static final List<String> SCOREBOARD =
+            List.of("scripts/dogfood-wall-measure.sh", "bench/scoreboard", "scoreboard.toml");
     /** The one place the release CI bootstraps jk from is written; every workflow step reads it. */
     private static final String BOOTSTRAP_PIN = ".jk/ci-bootstrap-version";
     /** The bridge commit the pinned release builds while it cannot build the tree itself. */
@@ -458,18 +460,10 @@ final class ParityRules {
             if (LITERAL_BOOTSTRAP.matcher(HouseRules.owner(text, wf)).find())
                 problems.add(wf + " spells a JK_VERSION literal; the bootstrap version is read from " + BOOTSTRAP_PIN
                         + ", so a release bumps one file");
-        if (!exists(text, "scripts/dogfood-wall-measure.sh"))
-            problems.add("scripts/dogfood-wall-measure.sh is missing");
-        String wall = textOrNull(text, WALL);
-        if (wall == null) {
-            problems.add(WALL
-                    + " is missing — the wall measurement is scheduled, not something a contributor has to remember");
-        } else {
-            for (String must : List.of("schedule:", "dogfood-wall-measure.sh", "upload-artifact", "row.jsonl"))
-                if (!wall.contains(must))
-                    problems.add(WALL + " must keep '" + must + "': a measurement nobody schedules, or whose"
-                            + " machine-readable result nobody keeps, is not a baseline");
-        }
+        for (String must : SCOREBOARD)
+            if (!exists(text, must))
+                problems.add(must + " is missing — the scoreboard's night tier is the wall measurement, and its rows"
+                        + " are the baseline");
         for (String p : problems)
             v.add(new TextSite(p.startsWith(".github") || p.startsWith(".jk/") ? p.split("['\\s]")[0] : CI, 0, p), p);
         v.population(4);
