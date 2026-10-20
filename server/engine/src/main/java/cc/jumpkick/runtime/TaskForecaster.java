@@ -134,6 +134,26 @@ public final class TaskForecaster {
             Set<Path> terminalDirs,
             @Nullable String profile,
             @Nullable Path m2Dir) {
+        return of(graph, cas, actionCache, cache, skipTests, target, terminalDirs, profile, m2Dir, null);
+    }
+
+    /**
+     * As above, walking only the modules in {@code only} and reporting every other one with no
+     * work. For a caller that already knows the rest are clean and their outputs present — a
+     * preflight memo hit, whose dirty set is build logic or a stale row and never moves a
+     * consumer's inputs — so pricing the few that run need not walk the workspace. Null walks all.
+     */
+    public static List<TaskForecast.Module> of(
+            BuildGraph.Result graph,
+            Cas cas,
+            ActionCache actionCache,
+            Path cache,
+            boolean skipTests,
+            WorkspaceTarget target,
+            Set<Path> terminalDirs,
+            @Nullable String profile,
+            @Nullable Path m2Dir,
+            @Nullable Set<Path> only) {
         // One resolver for the whole walk: every module resolves its classpath against the same
         // lock and store, so its per-artifact resolve memo is only useful if it outlives a module.
         ClasspathResolver resolver = new ClasspathResolver(cas);
@@ -150,7 +170,18 @@ public final class TaskForecaster {
             // directory entry is a whole tree walk. It writes nothing, so one reading each is the
             // same answer — see ClasspathFingerprint.withEntryMemo, which only a reader may bind.
             return ClasspathFingerprint.withEntryMemo(() -> forecastModules(
-                    graph, cas, resolver, actionCache, cache, skipTests, target, terminalDirs, worker, profile, m2Dir));
+                    graph,
+                    cas,
+                    resolver,
+                    actionCache,
+                    cache,
+                    skipTests,
+                    target,
+                    terminalDirs,
+                    worker,
+                    profile,
+                    m2Dir,
+                    only));
         } catch (RuntimeException | Error direct) {
             throw direct;
         } catch (Exception impossible) {
@@ -170,7 +201,8 @@ public final class TaskForecaster {
             Set<Path> terminalDirs,
             @Nullable Path workerJar,
             @Nullable String profile,
-            @Nullable Path m2Dir) {
+            @Nullable Path m2Dir,
+            @Nullable Set<Path> only) {
         // --force/--rerun bypasses jk's build caches, so every step runs — the forecast must say
         // so too (otherwise the plan tree renders "Fully Cached" while the ETA, which honors force,
         // predicts a full rebuild — a self-contradiction).
@@ -206,6 +238,10 @@ public final class TaskForecaster {
             if (SessionContext.current().cancelled()) {
                 throw new CancellationException("forecast cancelled after " + forecast.size() + " of "
                         + graph.topoOrder().size() + " modules");
+            }
+            if (only != null && !only.contains(u.dir())) {
+                forecast.put(u.dir(), new TaskForecast.Module(u.dir(), u.coord(), List.of(), 0, 0, false, false));
+                return;
             }
             // Scope-aware: a dirty *test-only* sibling (e.g. cli → engine via test-dependencies)
             // must not force compile/package/native — only tests re-run against the new jar.
