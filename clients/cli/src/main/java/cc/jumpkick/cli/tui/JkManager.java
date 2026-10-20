@@ -8,6 +8,7 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
+import cc.jumpkick.terminal.RegionPainter;
 import cc.jumpkick.terminal.Size;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.wire.runtime.progress.HeaderProgressStrategy;
@@ -41,7 +42,6 @@ public final class JkManager implements AutoCloseable, LiveRegion {
 
     static final String PULSE = Spinner.PULSE_GLYPH;
     static final int PULSE_FRAMES = Spinner.PULSE_FRAMES;
-    static final long FRAME_MS = Spinner.FRAME_MS;
 
     /** Flush a captured partial line (no newline yet) after this much quiet. */
     private static final int DEFAULT_WIDTH = 80;
@@ -94,8 +94,11 @@ public final class JkManager implements AutoCloseable, LiveRegion {
 
     boolean done; // a terminal render already happened
     int frame;
-    int linesDrawn; // plan mode: lines in the live region
-    List<String> lastLines = List.of(); // plan mode: last painted lines, for diffing
+    /**
+     * What the live region shows: every frame goes through it and it writes only what changed.
+     * Plan mode parks the cursor under the region; simple mode is one row.
+     */
+    final RegionPainter painter;
     /**
      * Newlines written to {@link #out} without holding {@link #lock}. Each one is a park-row
      * insertion the next climb must include, or a second {@code ● Build} stacks under the orphan.
@@ -144,6 +147,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         // PlainAscii.wrap is identity under ANSI; under --no-ansi rewrites …/•/● in messages.
         this.animate = animate;
         this.planMode = planMode;
+        this.painter = new RegionPainter(planMode ? RegionPainter.Park.BELOW : RegionPainter.Park.IN_ROW);
         // Unlocked newlines on this stream are park-row insertions; the next climb includes them.
         this.out = new RegionPrintStream(PlainAscii.wrapping(out), this);
         this.width = width <= 0 ? DEFAULT_WIDTH : width;
@@ -572,31 +576,21 @@ public final class JkManager implements AutoCloseable, LiveRegion {
 
     /** Simple mode: repaint the spinner line with its first (settled) glyph, then newline. */
     void freezeSpinnerLine() {
-        out.print('\r');
-        out.print(Theme.colorize(PULSE, openPulseColors[0]));
-        out.print(' ');
-        out.print(label);
-        out.print(Glyphs.ELLIPSIS);
-        out.print(Ansi.ERASE_LINE_TO_END);
+        StringBuilder f = new StringBuilder();
+        painter.paint(f, List.of(view.simpleLine(0)), 0, 0, 0);
+        painter.forget();
+        out.print(f);
         out.print('\n');
     }
 
-    /** Erase the live region and park the cursor at its top-left. */
+    /**
+     * Erase the live region and park the cursor at its top-left. The lift returns to column 0
+     * before erasing: on a Ctrl-C the tty has just echoed "^C" at the cursor.
+     */
     void wipeRegion() {
-        if (planMode) {
-            int up = climbRows();
-            if (up > 0) out.print(Ansi.cursorUp(up));
-            // Return to column 0 first: cursorUp preserves the column, and on a
-            // Ctrl-C the tty has just echoed "^C" at the cursor (two columns in),
-            // so a bare ERASE_DISPLAY_TO_END would leave the first two columns of
-            // the top line — the spinner glyph — on screen.
-            out.print('\r');
-            out.print(Ansi.ERASE_DISPLAY_TO_END);
-            linesDrawn = 0;
-            lastLines = List.of();
-        } else {
-            out.print(Ansi.CLEAR_LINE);
-        }
+        StringBuilder f = new StringBuilder();
+        painter.lift(f, parkDrift.getAndSet(0), Integer.MAX_VALUE);
+        out.print(f);
     }
 
     // --- rendering --------------------------------------------------------
@@ -649,14 +643,6 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /** Hand the real streams back, flushing a trailing partial line. Idempotent. */
     void restoreStreams() {
         pane.restoreStreams();
-    }
-
-    /**
-     * Physical rows to cursor-up from the park: last painted height plus unlocked newlines that
-     * landed at the park since then.
-     */
-    int climbRows() {
-        return Math.max(linesDrawn, lastLines.size()) + parkDrift.getAndSet(0);
     }
 
     /** The region's answer to model changes: header target, seed lock, plain-view lines. */
@@ -724,7 +710,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         private void noteUnlockedNewlines(int n) {
             if (n <= 0) return;
             if (!m.planMode || !m.animate || m.done) return;
-            if (m.lastLines.isEmpty()) return;
+            if (m.painter.height() == 0) return;
             if (Thread.holdsLock(m.lock)) return;
             m.parkDrift.addAndGet(n);
         }
