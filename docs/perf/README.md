@@ -1,90 +1,50 @@
-# Performance records and the wall ratchet
+# Performance records and the scoreboard
 
 Decision records and benches live in KanArtist (`projects/jk/docs/perf/`). This directory keeps the
 two records that describe jk's own behaviour ([engine-heap-monorepo.md](engine-heap-monorepo.md),
 [junit-parallel-vs-jk-workers.md](junit-parallel-vs-jk-workers.md)) and the contract the progress bar
 and ETA follow ([../contributors/progress-contract.md](../contributors/progress-contract.md)).
 
-## The scheduled wall measurement, and its ratchet
+## The scoreboard
 
-`.github/workflows/wall-measure.yml` runs `scripts/dogfood-wall-measure.sh` on a schedule (Mondays,
-07:40 UTC; also on demand). It times this tree with jk, three rows by two sides:
-
-| row | what is timed |
-|---|---|
-| `rebuild` | everything from scratch: `jk build -r` |
-| `noop` | a warm build with nothing changed |
-| `touched` | a warm build after one production file is edited |
-
-| side | meaning |
-|---|---|
-| `jk` | `jk build` raw — `[guards] on-build = false`, the published number |
-| `jk-guards` | `jk build` as contributors run it, house-rule guards on (the opt-in number, its own series) |
-
-The rows land in `target/dogfood-wall/row.jsonl` (an `env` object, then one `measurement` per side and
-row with its timed walls). `scripts/wall-band.py` compares each row's median with
-[`wall-baseline.toml`](../../wall-baseline.toml):
-
-- a row more than **15 %** above its banked median fails the run and prints the commit range
-  since the line was banked (`commit` in the table), so the regression is bisectable;
-- any row more than **5 %** below its median has its line rewritten in the same run — an improvement is
-  banked, never a failure; the job cannot commit, so the diff is in the step summary and the
-  `dogfood-wall` artifact for a contributor to commit;
-- a row the file has never seen is added at its measured median: the first scheduled run seeds the
-  file, and the band is tuned from the noise the following runs record.
-
-The guards-off invariant this holds: a project without `jk-guards.toml` pays nothing for jk's own
-guards. The `jk` and `jk-guards` rows are separate series so the guards' cost never reads as drift in
-the product number.
-
-### Re-baselining after an intentional change
-
-Edit the row's `median-s` (and `date`, `commit`) in `wall-baseline.toml` in the same commit as the
-change, and say why in the commit message. The ratchet never raises a jk line by itself. A run that
-is red because the runner was slow is re-run from the Actions tab; three consecutive green scheduled
-runs are the bar for tightening the band.
-
-### Microbenchmarks
-
-The nightly bench profile (`jk test --profile bench`, `@Tag("bench")`) reports each bench's median through
-`cc.jumpkick.testing.BenchBand`. A bench with a `[bench.<name>]` table in `wall-baseline.toml` fails
-when its median exceeds the banked `median-ms` by the same 15 % band; one without prints its number
-as `unbaselined` so it can be banked from the job log. `./scripts/wall-band.py --selftest` and the
-`BenchBand` unit test cover the arithmetic without a runner.
-
-### Fat-jar size
-
-`JarSizeBenchTest` (`server/engine`, tier `bench`) packages the four fixtures in
-[`bench/jar-size/`](../../bench/jar-size/README.md) with the installed `jk`, with Gradle Shadow (the
-fixtures' own wrappers) and with Maven Shade over the same pinned dependencies, prints the per-tool
-table and attributes every
-byte of the jk-minus-tool delta to a named cause. Unlike the microbenches it asserts: a jk jar more
-than 0.5 % above its line in [`jar-size-baseline.toml`](../../jar-size-baseline.toml), or more than
-1 % above Shadow's, fails. Sizes are a pure function of the pinned inputs, so the band is for a jk
-version string changing length inside the SBOM, not for noise. The current table and the deflate
-decision are in [docs/user/packaging.md](../user/packaging.md#fat-jar-size-against-shadow-and-shade).
+`bench/scoreboard` is the one ratchet over jk's loop. Every row lives in
+[`scoreboard.toml`](../../scoreboard.toml): one `[[row]]` per dimension, subject, project, tool and
+kind, with its banked `value`, `band`, `target`, where it came from (`runs`, `date`, `commit`,
+`host-id`) and the conditions it was taken under. Only rows of the measuring host are compared.
 
 ```bash
-jk test --profile bench -m server/engine --class cc.jumpkick.compile.JarSizeBenchTest
-```
-
-## The scoreboard: work counts that load does not move
-
-`bench/scoreboard` measures the loop in counters, not seconds, so it can judge a change on a busy
-machine. Every row lives in [`scoreboard.toml`](../../scoreboard.toml): one `[[row]]` per dimension,
-subject, project, tool and kind, with its banked `value`, `band`, `target` and where it came from.
-
-```bash
-bench/scoreboard --tier fast             # measure, judge, bank (exit 1 on a regression)
+bench/scoreboard --tier fast             # count and paired-wall rows: measure, judge, bank (exit 1 on a regression)
+bench/scoreboard --tier night            # the fast tier, then every absolute wall behind the quiet gate
 bench/scoreboard --no-bank               # judge only
+bench/scoreboard --dim paired --baseline ~/jk-0.15.2/bin/jk
 bench/scoreboard --subject 'inner.noop.*'
 bench/scoreboard --gaps                  # banked rows over their target, worst first
+bench/scoreboard --render                # docs tables from the banked rows
 bench/scoreboard --selftest
 ```
 
-The first dimension, `counts` (`bench/scoreboard.d/counts.py`), runs the wall harness's
-spring-petclinic on a **private engine** (its own `JK_STATE_DIR`, the user's store and caches), so
-another session's jobs never land in its counters. For a no-op and a one-file edit it records:
+Three kinds of row:
+
+| kind | what it holds | when it runs |
+|---|---|---|
+| `count` | work counters load does not move: tasks run, bytes and files written, files under `target/` touched, output size | any time |
+| `paired-wall` | the candidate jk against a baseline jk, interleaved A B A B; the median of the pair ratios with a bootstrap 95 % CI | any time |
+| `absolute-wall` | published seconds and peak RSS: jk, Gradle and Maven on petclinic (`wall`), jk on its own tree (`dogfood`) | night, quiet host only |
+
+A jk `count` or `absolute-wall` row above its banked value by more than its band (exact for task
+and file counts, 2–5 % plus a small absolute slack for bytes, 15 % for seconds) fails the run and
+prints the commit range since it was banked; a row that improves is rewritten, and a row the file
+has never seen is seeded. A `paired-wall` row fails when its CI's lower bound is above 1 + band
+(10 %): the candidate is slower beyond doubt. Its value is today's ratio, rewritten every run.
+Gradle and Maven rows record what those tools do today and never fail. Commit the rewritten file;
+the ratchet never raises a jk row by itself, so raise one by hand after an intentional change and
+say why in the commit.
+
+### Counts
+
+The `counts` dimension (`bench/scoreboard.d/counts.py`) runs the wall harness's spring-petclinic on a
+**private engine** (its own `JK_STATE_DIR`, the user's store and caches), so another session's jobs
+never land in its counters. For a no-op and a one-file edit it records:
 
 | counter | source |
 |---|---|
@@ -99,10 +59,91 @@ boundary flushes the hash memo; the journal completes the run record), so each w
 the engine's processes have written no file bytes for 1 s. Each row takes five runs after a warm-up,
 and its value is the median. A row with more than one run in four outside its band is `unstable`:
 printed, never banked or judged. `<scenario>-file-writes.tsv` in the run's results directory lists
-every file the engine wrote, biggest first. `<scenario>-target-touched.txt` lists the files under `target/` the
-build created, deleted or rewritten.
+every file the engine wrote, biggest first. `<scenario>-target-touched.txt` lists the files under
+`target/` the build created, deleted or rewritten. Files stat'd, files hashed and files compiled
+need the engine to count them, and are not rows yet.
 
-A jk row above its banked value by more than its band (exact for task and file counts, 2–5 % plus a
-small absolute slack for bytes) fails the run and prints the commit range since it was banked; a
-row that improves is rewritten. Commit the rewritten file. Files stat'd, files hashed and files
-compiled need the engine to count them, and are not rows yet.
+### Paired walls
+
+The `paired` dimension times a no-op and a one-file edit with the candidate (`$JK_BIN`, else the
+installed jk) and a baseline (`--baseline`, `$SCOREBOARD_BASELINE`, else the installed jk, which
+makes an unpaired run an A/A check). Each side has its own private engine and working copy; each
+of the 20 pairs runs the two sides back to back in a random order, after three warm-up rounds.
+Load slows both sides of a pair alike, so the median pair ratio holds on a busy host where an
+absolute wall would not. Each row also carries both medians and minimums in milliseconds and the
+ratio of the medians.
+
+To judge a branch, build it and point `JK_BIN` at its client against the installed release:
+
+```bash
+jk build --skip-tests && JK_BIN=target/dist/jk bench/scoreboard --dim paired
+```
+
+### Absolute walls and the night
+
+`--tier night` takes `$JK_BENCH_HOME/heavy.lock` (`flock`) for its whole run, so another heavy job
+that takes the same lock waits instead of landing in the numbers, and runs the load-proof kinds
+first. Before each absolute-wall dimension it waits for a **quiet host**: 1-minute load below 1.0,
+CPU PSI `some` avg60 below 0.5 %, and no live job on the user's engine. It looks every 5 minutes
+until the deadline (`--deadline`, default 06:30); a host still busy then records `skipped: busy`
+and banks nothing for that dimension. Each batch is **calibrated**: a fixed javac batch of
+generated sources, timed before and after. Drift above 10 %, a host slower than its banked
+calibration, or a host that turned busy during the batch marks every row `noisy`: recorded, never
+banked or judged. A clean batch banks the calibration as its own row.
+
+After the measurements, the commands in [`bench/night-queue`](../../bench/night-queue) run one after
+another (an integration tier, a corpus re-run), never beside the measurements. The run then banks,
+renders `docs/user/performance.md` and `why.md` from the `wall` rows between their
+`wall-table` markers (every number names its commit and conditions), and writes the morning report
+to `$JK_BENCH_HOME/scoreboard/night/<date>.md`: regressions with commit ranges, banked and recorded
+rows, noisy and skipped rows, queue results and the top five gaps.
+
+On a Linux host, a systemd user timer fires it:
+
+```ini
+# ~/.config/systemd/user/jk-scoreboard.service
+[Service]
+Type=oneshot
+WorkingDirectory=%h/src/oss/jk
+ExecStart=%h/src/oss/jk/bench/scoreboard --tier night
+
+# ~/.config/systemd/user/jk-scoreboard.timer
+[Timer]
+OnCalendar=*-*-* 01:30
+Persistent=false
+[Install]
+WantedBy=timers.target
+```
+
+Enable it with `systemctl --user enable --now jk-scoreboard.timer` (and `loginctl enable-linger`
+so it fires with no session open). Under WSL, a Windows Task Scheduler entry starts it without a
+WSL shell:
+
+```powershell
+schtasks /Create /TN "jk scoreboard night" /SC DAILY /ST 01:30 /TR ^
+  "wsl.exe -d Ubuntu-26.04 -e bash -lc 'cd ~/src/oss/jk && bench/scoreboard --tier night'"
+```
+
+## Microbenchmarks
+
+The nightly bench profile (`jk test --profile bench`, `@Tag("bench")`) reports each bench's median through
+`cc.jumpkick.testing.BenchBand`. A bench with a `dim = "bench"` row in `scoreboard.toml` (subject the
+bench's name, value in `ms`) fails when its median exceeds the banked value by 15 %; one without
+prints its number as `unbaselined` so it can be banked from the job log. The `BenchBand` unit test
+covers the arithmetic.
+
+## Fat-jar size
+
+`JarSizeBenchTest` (`server/engine`, tier `bench`) packages the four fixtures in
+[`bench/jar-size/`](../../bench/jar-size/README.md) with the installed `jk`, with Gradle Shadow (the
+fixtures' own wrappers) and with Maven Shade over the same pinned dependencies, prints the per-tool
+table and attributes every
+byte of the jk-minus-tool delta to a named cause. Unlike the microbenches it asserts: a jk jar more
+than 0.5 % above its line in [`jar-size-baseline.toml`](../../jar-size-baseline.toml), or more than
+1 % above Shadow's, fails. Sizes are a pure function of the pinned inputs, so the band is for a jk
+version string changing length inside the SBOM, not for noise. The current table and the deflate
+decision are in [docs/user/packaging.md](../user/packaging.md#fat-jar-size-against-shadow-and-shade).
+
+```bash
+jk test --profile bench -m server/engine --class cc.jumpkick.compile.JarSizeBenchTest
+```

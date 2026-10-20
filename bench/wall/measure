@@ -3,12 +3,10 @@
 
     bench/wall/measure                         # every tool, every scenario, five timed runs each
     bench/wall/measure --tool jk --scenario edit --runs 3
-    bench/wall/measure --bank                  # measure, then rewrite the [[wall.*]] tail of wall-baseline.toml
-    bench/wall/measure --bank --from "$JK_BENCH_HOME/wall/results/<run>" --tool maven --scenario test
-                                               # re-measure one cell and bank it with that run's other rows
-    bench/wall/measure --bank --from <run1> --from <run2> --runs 0
-                                               # bank earlier runs as they are, the later run winning a cell
-    bench/wall/measure --render                # the docs tables from wall-baseline.toml, nothing measured
+    bench/wall/measure --out DIR               # rows.jsonl and the logs into DIR
+
+The scoreboard's `wall` dimension (bench/scoreboard --tier night) runs this harness behind its quiet
+gate and banks the rows in scoreboard.toml; `bench/scoreboard --render` writes the docs tables.
 
 The project is spring-projects/spring-petclinic at the commit in PROJECT: one module, a pom.xml
 and a build.gradle from the same authors, green under all three tools. Every tool gets its own
@@ -58,8 +56,6 @@ sys.path.insert(0, str(HERE.parent))
 import benchtools  # noqa: E402
 
 JK_TREE = HERE.parent.parent
-BASELINE = JK_TREE / "wall-baseline.toml"
-DOCS = [JK_TREE / "docs" / "user" / "performance.md", JK_TREE / "docs" / "user" / "why.md"]
 WALL_HOME = benchtools.scratch("WALL_HOME", "wall")
 
 
@@ -490,156 +486,11 @@ def as_typed(part: str) -> str:
     return part
 
 
-# --------------------------------------------------------------------------- host, banking, rendering
+# --------------------------------------------------------------------------- host
 
 def host_line() -> str:
     return benchtools.host_summary()
 
-
-def jk_commit() -> str:
-    res = subprocess.run(["git", "-C", str(JK_TREE), "rev-parse", "--short", "HEAD"], capture_output=True, text=True)
-    if res.returncode != 0 or not res.stdout.strip():
-        raise SystemExit("refusing to run: cannot read the jk tree commit")
-    return res.stdout.strip()
-
-
-def toml_str(value: str) -> str:
-    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
-
-
-def _entry_host(entry: dict) -> str:
-    return entry.get("host-id") or benchtools.LEGACY_HOST
-
-
-def _all_banked() -> list[tuple[str, str, dict]]:
-    import tomllib
-    if not BASELINE.is_file():
-        return []
-    data = tomllib.loads(BASELINE.read_text()).get("wall", {})
-    return [(tool, scenario, entry) for tool, scenarios in data.items() for scenario, entries in scenarios.items() for entry in entries]
-
-
-def _emit_number(value) -> str:
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, float):
-        return f"{value:.2f}"
-    if isinstance(value, str):
-        return toml_str(value)
-    return str(value)
-
-
-def _emit_saved(out: list[str], tool: str, scenario: str, entry: dict) -> None:
-    out.append("")
-    out.append(f"[[wall.{tool}.{scenario}]]")
-    for key, value in entry.items():
-        out.append(f"{key} = {_emit_number(value)}")
-
-
-def bank(rows: list[dict], versions: dict[str, str], load: str) -> None:
-    """Rewrite this host's [[wall.*]] entries. Rows from another host stay in the file, uncompared."""
-    text = BASELINE.read_text() if BASELINE.is_file() else ""
-    head = text.split("\n" + WALL_MARK, 1)[0].rstrip("\n") + "\n"
-    current = benchtools.host_id()
-    kept = [(tool, scenario, entry) for tool, scenario, entry in _all_banked() if _entry_host(entry) != current]
-    out = [head, "", WALL_MARK]
-    out.append("# one entry per tool and scenario for this host. Other-host entries follow and are not compared.")
-    today = dt.date.today().isoformat()
-    info = benchtools.host_info()
-    for row in rows:
-        if "median_s" not in row:
-            continue
-        out.append("")
-        out.append(f"[[wall.{row['tool']}.{row['scenario']}]]")
-        out.append(f"median-s = {row['median_s']:.2f}")
-        out.append(f"p90-s = {row['p90_s']:.2f}")
-        out.append(f"peak-rss-mb = {row['peak_rss_mb']}")
-        out.append(f"runs = {row['runs']}")
-        out.append(f"date = {toml_str(today)}")
-        out.append(f"commit = {toml_str(jk_commit())}")
-        out.append(f"host = {toml_str(host_line())}")
-        out.append(f"host-id = {toml_str(current)}")
-        out.append(f"host-cpu = {toml_str(info['cpu'])}")
-        out.append(f"host-logical-cpus = {info['logical_cpus']}")
-        out.append(f"host-ram-gib = {info['ram_gib']}")
-        out.append(f"host-os = {toml_str(info['os'])}")
-        out.append(f"host-kernel = {toml_str(info['kernel'])}")
-        out.append(f"host-wsl = {'true' if info['wsl'] else 'false'}")
-        out.append(f"project = {toml_str(PROJECT['source'].split('github.com/')[1] + '@' + PROJECT['commit'][:9])}")
-        out.append(f"tool-version = {toml_str(row.get('tool_version') or versions[row['tool']])}")
-        if PINNED is not None:
-            out.append(f"maven-version = {toml_str(PINNED.maven_version)}")
-            out.append(f"gradle-version = {toml_str(PINNED.gradle_version)}")
-            if PINNED.maven_bin is not None:
-                out.append(f"maven-binary = {toml_str(str(PINNED.maven_bin))}")
-            if PINNED.gradle_bin is not None:
-                out.append(f"gradle-binary = {toml_str(str(PINNED.gradle_bin))}")
-            out.append(f"stale-tools = {'true' if PINNED.stale_tools else 'false'}")
-            out.append(f"offline-tools = {'true' if PINNED.offline_tools else 'false'}")
-        out.append(f"command = {toml_str(row['command'])}")
-        out.append(f"load = {toml_str(row.get('load') or load)}")
-    if kept:
-        out.append("")
-        out.append("# Other host entries. Not compared with the rows above.")
-        for tool, scenario, entry in kept:
-            _emit_saved(out, tool, scenario, entry)
-    BASELINE.write_text("\n".join(out) + "\n")
-    print(f"banked {sum('median_s' in r for r in rows)} entries into {BASELINE}", file=sys.stderr)
-
-
-def _table(entries: dict[tuple[str, str], dict]) -> str:
-    """Walls, peak memory, and the run line for one host's cells."""
-    labels = {"clean": "Clean build", "rebuild": "Warm rebuild", "noop": "No-op", "edit": "One-file edit", "test": "Test run"}
-    names = {"jk": "jk", "gradle": "Gradle", "maven": "Maven"}
-    lines = ["| Scenario | " + " | ".join(f"{names[t]} median / p90" for t in TOOLS) + " |",
-             "|---|" + "---:|" * len(TOOLS)]
-    for scenario in SCENARIOS:
-        cells = []
-        for tool in TOOLS:
-            entry = entries.get((tool, scenario))
-            cells.append(f"{entry['median-s']:.2f} s / {entry['p90-s']:.2f} s" if entry else "—")
-        lines.append(f"| {labels[scenario]} | " + " | ".join(cells) + " |")
-    lines += ["", "| Scenario | " + " | ".join(f"{names[t]} peak RSS" for t in TOOLS) + " |", "|---|" + "---:|" * len(TOOLS)]
-    for scenario in SCENARIOS:
-        cells = []
-        for tool in TOOLS:
-            entry = entries.get((tool, scenario))
-            cells.append(f"{entry['peak-rss-mb']:,} MiB" if entry else "—")
-        lines.append(f"| {labels[scenario]} | " + " | ".join(cells) + " |")
-    if entries:
-        any_entry = next(iter(entries.values()))
-        versions = "; ".join(sorted({e["tool-version"] for e in entries.values()}))
-        hid = _entry_host(any_entry)
-        lines += ["", f"Measured {any_entry['date']} on {any_entry['host']} (host `{hid}`); project {any_entry['project']}; "
-                      f"{versions}; jk tree at {any_entry['commit']}; {any_entry['runs']} timed runs per cell; {any_entry['load']}."]
-    return "\n".join(lines)
-
-
-def render_table() -> str:
-    """The markdown the docs carry between the wall-table markers: the most recently banked host's
-    cells. Another host's rows stay in wall-baseline.toml and are not published beside them."""
-    grouped: dict[str, dict[tuple[str, str], dict]] = {}
-    for tool, scenario, entry in _all_banked():
-        grouped.setdefault(_entry_host(entry), {})[(tool, scenario)] = entry
-    if not grouped:
-        return "_No banked wall yet: run `bench/wall/measure --bank`._"
-    latest = max(grouped, key=lambda host: max(str(e.get("date", "")) for e in grouped[host].values()))
-    return _table(grouped[latest])
-
-
-def render_docs() -> None:
-    table = render_table()
-    for doc in DOCS:
-        text = doc.read_text()
-        begin, end = "<!-- wall-table:begin -->", "<!-- wall-table:end -->"
-        if begin not in text or end not in text:
-            print(f"{doc}: no wall-table markers, left alone", file=sys.stderr)
-            continue
-        pre, rest = text.split(begin, 1)
-        _, post = rest.split(end, 1)
-        doc.write_text(f"{pre}{begin}\n{table}\n{end}{post}")
-        print(f"rendered the table into {doc}", file=sys.stderr)
-    print(table)
 
 
 # --------------------------------------------------------------------------- main
@@ -650,50 +501,23 @@ def main() -> int:
     ap.add_argument("--scenario", action="append", choices=SCENARIOS, help="measure only this scenario (repeatable)")
     ap.add_argument("--runs", type=int, default=5, help="timed runs per cell (default 5)")
     ap.add_argument("--wait-idle", type=float, default=900, help="seconds to wait for the shared engine to have no live job (default 900)")
-    ap.add_argument("--bank", action="store_true", help="rewrite the [[wall.*]] tail of wall-baseline.toml and the docs tables")
-    ap.add_argument("--render", action="store_true", help="only render the docs tables from wall-baseline.toml")
-    ap.add_argument("--from", dest="from_dirs", action="append", type=Path, default=[],
-                    help="an earlier run's results directory whose rows fill the cells this run does not measure (repeatable; later wins)")
+    ap.add_argument("--out", type=Path, help="results directory (default $WALL_HOME/results/<timestamp>)")
     benchtools.add_arguments(ap)
     args = ap.parse_args()
     benchtools.use_flags(args)
-    if args.render:
-        render_docs()
-        return 0
 
     global PINNED, MVN, GRADLE
     tools = args.tool or list(TOOLS)
     scenarios = args.scenario or list(SCENARIOS)
-    if args.bank and (args.tool or args.scenario) and not args.from_dirs:
-        raise SystemExit("--bank banks a whole run: drop --tool and --scenario, or name the run to fill from with --from")
-    if args.runs == 0:
-        tools, scenarios = [], []
-    if tools:
-        if not Path(JK).is_file():
-            raise SystemExit(f"refusing to run: jk binary not found at {JK}")
-        PINNED = benchtools.resolve(allow_stale=args.allow_stale_tools, offline=args.offline_tools)
-        MVN = str(PINNED.maven_bin)
-        GRADLE = str(PINNED.gradle_bin)
-    earlier: dict[tuple[str, str], dict] = {}
-    skipped_hosts: list[dict] = []
-    for from_dir in args.from_dirs:
-        for line in (from_dir / "rows.jsonl").read_text().splitlines():
-            if not line.strip():
-                continue
-            row = json.loads(line)
-            if "median_s" not in row:
-                continue
-            if benchtools.row_host(row) != benchtools.host_id():
-                skipped_hosts.append(row)
-                continue
-            earlier[(row["tool"], row["scenario"])] = row
-    if skipped_hosts:
-        ids = ", ".join(sorted({benchtools.row_host(row) for row in skipped_hosts}))
-        print(f"skipped {len(skipped_hosts)} cells from other host(s) {ids}; they do not fill this host's bank", file=sys.stderr)
-    out_dir = WALL_HOME / "results" / f"{dt.datetime.now():%Y-%m-%dT%H%M%S}"
-    out_dir.mkdir(parents=True)
+    if not Path(JK).is_file():
+        raise SystemExit(f"refusing to run: jk binary not found at {JK}")
+    PINNED = benchtools.resolve(allow_stale=args.allow_stale_tools, offline=args.offline_tools)
+    MVN = str(PINNED.maven_bin)
+    GRADLE = str(PINNED.gradle_bin)
+    out_dir = args.out or WALL_HOME / "results" / f"{dt.datetime.now():%Y-%m-%dT%H%M%S}"
+    out_dir.mkdir(parents=True, exist_ok=True)
     log = out_dir / "setup.log"
-    repo = clone() if tools or args.from_dirs else None
+    repo = clone()
     blocked: dict[str, Exception] = {}
     if repo is not None:
         for tool in tools:
@@ -719,18 +543,8 @@ def main() -> int:
             blocked[tool] = exc
     versions = {tool: tool_version(tool, works[tool]) for tool in works}
 
-    live, load1 = wait_idle(args.wait_idle if tools else 0)
+    live, load1 = wait_idle(args.wait_idle)
     load = f"loadavg {load1:.1f} at start, engine live jobs {live if live is not None else '?'}"
-    for row in earlier.values():
-        if row["tool"] not in versions:
-            recorded = row.get("tool_version")
-            work = WALL_HOME / "work" / row["tool"]
-            if recorded:
-                versions[row["tool"]] = recorded
-            elif PINNED is not None and work.is_dir():
-                versions[row["tool"]] = tool_version(row["tool"], work)
-            else:
-                raise SystemExit(f"refusing to use a {row['tool']} row that records no tool version")
     print(f"host: {host_line()}\n{load}", file=sys.stderr)
     rows = []
 
@@ -771,16 +585,9 @@ def main() -> int:
             print(f"{row['tool']:<8}{row['scenario']:<9}   every run failed; see {out_dir}", file=sys.stderr)
     print(f"rows in {out_dir / 'rows.jsonl'}, logs beside it", file=sys.stderr)
     if any(row["failures"] for row in rows):
-        print("a run failed; nothing banked", file=sys.stderr)
+        print("a run failed", file=sys.stderr)
         return 1
-    if args.bank:
-        measured = {(row["tool"], row["scenario"]) for row in rows}
-        banked_rows = [row for key, row in earlier.items() if key not in measured] + rows
-        banked_rows.sort(key=lambda row: (TOOLS.index(row["tool"]), SCENARIOS.index(row["scenario"])))
-        bank(banked_rows, versions, load)
-        render_docs()
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

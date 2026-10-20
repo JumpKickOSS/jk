@@ -581,3 +581,22 @@ def stamp(tools: Tools | None = None) -> dict:
     if tools is not None:
         row.update(tools.as_row())
     return row
+
+
+def _psi(resource: str) -> dict[str, float]:
+    """`some` avg10/avg60 from /proc/pressure/<resource>; empty where the kernel has no PSI."""
+    try:
+        line = Path(f"/proc/pressure/{resource}").read_text().splitlines()[0]
+    except (OSError, IndexError):
+        return {}
+    fields = dict(f.split("=") for f in line.split()[1:])
+    return {"avg10": float(fields["avg10"]), "avg60": float(fields["avg60"])}
+
+
+def conditions() -> dict:
+    """How busy the host is right now: 1-minute load average and CPU and memory PSI (`some`, %)."""
+    out = {"load": round(os.getloadavg()[0], 2)}
+    for res in ("cpu", "memory"):
+        for k, v in _psi(res).items():
+            out[f"{res}-psi-{k}"] = v
+    return out

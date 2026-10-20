@@ -131,7 +131,7 @@ peak RSS included — how it was measured and what "warm" means per tool is in
 | One-file edit | 594 MiB | 1,497 MiB | 423 MiB |
 | Test run | 1,487 MiB | 1,703 MiB | 1,201 MiB |
 
-Measured 2026-09-28 on 12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL (host `1a8c211a203d`); project spring-projects/spring-petclinic@818c4136e; Gradle 9.8.0; Maven 3.9.16; jk 0.14.0; jk tree at 21a8fc0ac; 5 timed runs per cell; loadavg 1.1 at start, engine live jobs ?.
+Measured on 12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL (host `1a8c211a203d`); project spring-projects/spring-petclinic; Gradle 9.8.0; Maven 3.9.16; jk 0.14.0; 5 timed runs per cell. Banked 2026-09-28 at jk tree 21a8fc0ac. Conditions: jk loadavg 1.1 at start, engine live jobs ?; Gradle loadavg 0.7 at start, engine live jobs 0; Maven loadavg 1.1 at start, engine live jobs ?.
 <!-- wall-table:end -->
 
 ---

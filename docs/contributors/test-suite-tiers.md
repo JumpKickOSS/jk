@@ -208,7 +208,7 @@ JK_NIA_OVERLAY=~/src/oss/jk-examples/android/nowinandroid/overlay \
 ```
 
 A number taken while anything else was building is load, not lock cost. The lock's gate is the
-scheduled wall measurement ([docs/perf](../perf/README.md)), not this assert.
+scoreboard ([docs/perf](../perf/README.md)), not this assert.
 
 ## One heavy run per machine
 

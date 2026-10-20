@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """The scoreboard: every measured subject of the jk loop, banked, banded and ranked against its target.
 
-    bench/scoreboard --tier fast               # every fast-tier dimension, judged and banked
+    bench/scoreboard --tier fast               # count and paired-wall rows, judged and banked
+    bench/scoreboard --tier night              # then every absolute wall behind the quiet gate, the
+                                               # night queue, the docs tables and the morning report
     bench/scoreboard --dim counts --runs 5     # one dimension
+    bench/scoreboard --dim paired --baseline B # the candidate ($JK_BIN) against jk binary B
     bench/scoreboard --subject 'inner.noop.*'  # rows whose subject matches the glob
     bench/scoreboard --no-bank                 # judge only; scoreboard.toml is not rewritten
     bench/scoreboard --gaps                    # banked rows ranked by distance to target, nothing measured
+    bench/scoreboard --render                  # docs tables from the banked rows, nothing measured
     bench/scoreboard --selftest                # the band arithmetic
 
 A row is one (dimension, subject, project, tool, kind). Kinds:
@@ -13,31 +17,38 @@ A row is one (dimension, subject, project, tool, kind). Kinds:
   count          work done, read from counters that load does not move: tasks run, bytes and calls
                  written, files rewritten, bytes read, output size. Each row's runs must agree within
                  the row's band, or the row is `unstable` and neither banked nor judged.
-  paired-wall    candidate against baseline run interleaved; the ratio of medians with its CI.
-  absolute-wall  published seconds; the night tier only.
+  paired-wall    candidate against baseline run interleaved; the median pair ratio with its CI. It
+                 fails when the CI's lower bound is above 1 + band, and records today's ratio.
+  absolute-wall  published seconds and peak RSS, behind the quiet gate and the calibration run; a
+                 row taken on a busy or drifting host is `noisy` and neither banked nor judged.
 
 Every value is lower-is-better. A jk row worse than its banked value by more than its band fails the
 run (exit 1) and prints the commit range since the line was banked. A row better by more than the
 improvement threshold is rewritten in scoreboard.toml: an improvement is banked, never a failure.
-A row the file has never seen is seeded at its measured value. Rows from another host are kept and
-never compared.
+A row the file has never seen is seeded at its measured value. Another tool's row records what
+that tool does today. Rows from another host are kept and never compared.
 
-Dimensions live in bench/scoreboard.d/<name>.py, each with TIERS (the tiers it runs in) and
-measure(ctx) -> list of row dicts. Results land in $SCOREBOARD_HOME/results/<stamp>/rows.json
-(default $JK_BENCH_HOME/scoreboard).
+Dimensions live in bench/scoreboard.d/<name>.py (files starting with `_` are shared helpers), each
+with TIERS (the tiers it runs in), an optional KIND = "absolute-wall", measure(ctx) -> list of row
+dicts and an optional render(board, host). Results land in $SCOREBOARD_HOME/results/<stamp>/rows.json
+(default $JK_BENCH_HOME/scoreboard). docs/perf/README.md is the reference.
 """
 
 from __future__ import annotations
 
 import argparse
 import datetime as dt
+import fcntl
 import fnmatch
 import importlib.util
 import json
+import re
+import statistics
 import os
 import shutil
 import subprocess
 import sys
+import time
 import tomllib
 from pathlib import Path
 
@@ -92,6 +103,8 @@ def _toml_value(v) -> str:
 
 
 ORDER = KEY + ("value", "unit", "band", "target", "runs", "date", "commit", "host-id")
+# Measurement fields that stay in rows.json and never reach scoreboard.toml.
+UNBANKED = ("samples", "slack", "unstable", "noisy", "value", "unit", "band", "target", "runs")
 
 
 def render_board(rows: list[dict]) -> str:
@@ -114,6 +127,9 @@ def judge(board: list[dict], measured: list[dict], host: str, today: str, commit
         if m.get("unstable"):
             notes.append(f"unstable  {m['subject']} [{m['tool']}]: runs {m['samples']} disagree beyond the band; not banked")
             continue
+        if m.get("noisy"):
+            notes.append(f"noisy     {m['subject']} [{m['tool']}]: {m['noisy']}; recorded, not banked or judged")
+            continue
         row = {k: m[k] for k in KEY}
         row["host-id"] = host
         k = key(row)
@@ -122,15 +138,30 @@ def judge(board: list[dict], measured: list[dict], host: str, today: str, commit
         value = m["value"]
         slack = m.get("slack", 0)
         fresh = {**row, "value": value, "unit": m["unit"], "band": band, "target": m.get("target"),
-                 "runs": m["runs"], "date": today, "commit": commit}
+                 "runs": m["runs"], "date": today, "commit": commit,
+                 **{x: v for x, v in m.items() if x not in UNBANKED and x not in row}}
         old = by_key.get(k)
+        if kind == "paired-wall":
+            # The baseline runs beside the candidate, so the row is today's ratio, not a bank to beat.
+            by_key[k] = {**fresh, "target": (old or {}).get("target", fresh["target"])}
+            line = (f"{m['subject']} [{m['tool']}]: {value:.2f}× [{m['ci-low']:.2f}–{m['ci-high']:.2f}] "
+                    f"{m['candidate-ms']} ms vs {m['baseline-ms']} ms ({m['baseline']})")
+            if m["tool"] == "jk" and m["ci-low"] > 1 + band:
+                failures.append(f"REGRESSED {line}: slower than the baseline beyond the {band:.0%} band")
+            else:
+                notes.append(f"paired    {line}")
+            continue
         if old is None:
             by_key[k] = fresh
             notes.append(f"seeded    {m['subject']} [{m['tool']}] = {fmt(value, m['unit'])}")
             continue
+        if m["tool"] != "jk":
+            # Another tool's row is a reference, not a ratchet: it records what that tool does today.
+            by_key[k] = {**fresh, "band": old.get("band", band), "target": old.get("target", fresh["target"])}
+            continue
         banked = old["value"]
         limit = banked * (1 + band) + slack
-        if m["tool"] == "jk" and value > limit:
+        if value > limit:
             failures.append(f"REGRESSED {m['subject']} [{m['tool']}]: {fmt(value, m['unit'])}, banked "
                             f"{fmt(banked, m['unit'])} (band {band:.0%}); commits since: {old.get('commit', '?')}..HEAD")
         elif value < banked * (1 - IMPROVE[kind]) - slack or (banked > 0 and value == 0):
@@ -179,8 +210,9 @@ def selftest() -> int:
     assert not f and b[0]["value"] == 1000 and "unstable" in n[0], n
     b, f, n = judge(base, [{**m(7)[0], "subject": "new"}], host, today, "def")
     assert len(b) == 2 and "seeded" in n[0], n
-    b, f, n = judge(base, [{**m(5000)[0], "tool": "gradle"}], host, today, "def")
-    assert not f, f
+    gbase = [{**base[0], "tool": "gradle"}]
+    b, f, n = judge(gbase, [{**m(5000)[0], "tool": "gradle"}], host, today, "def")
+    assert not f and b[0]["value"] == 5000, (f, b)
     zero = [{**base[0], "value": 0}]
     _, f, _ = judge(zero, m(1), host, today, "def")
     assert f, "a zero-banked count must fail on any increase"
@@ -189,6 +221,17 @@ def selftest() -> int:
     assert render_board(load_board_text(render_board(b))) == render_board(b)
     g = gaps([{**base[0], "target": 100}, {**base[0], "subject": "t", "value": 50, "target": 100}], host)
     assert len(g) == 1 and g[0][0] == 10.0, g
+    pw = lambda lo, **kw: [{"dim": "d", "subject": "w", "project": "p", "tool": "jk", "kind": "paired-wall",
+                            "value": 1.2, "unit": "ratio", "band": 0.1, "runs": 12, "ci-low": lo, "ci-high": 1.4,
+                            "candidate-ms": 120, "baseline-ms": 100, "baseline": "jk 0", "samples": [1], **kw}]
+    b, f, n = judge(base, pw(1.05), host, today, "def")
+    assert not f and "paired" in n[0], (f, n)
+    row = next(r for r in b if r["subject"] == "w")
+    assert row["ci-low"] == 1.05 and "samples" not in row, row
+    _, f, _ = judge(b, pw(1.11), host, today, "ghi")
+    assert f and "slower than the baseline" in f[0], f
+    b2, f, n = judge(b, pw(2.0, noisy="load 9"), host, today, "ghi")
+    assert not f and "noisy" in n[0] and b2 == b, n
     print("selftest ok")
     return 0
 
@@ -202,7 +245,7 @@ def load_board_text(text: str) -> list[dict]:
 def load_dims() -> dict:
     sys.dont_write_bytecode = True  # no __pycache__ beside the dimensions in the tree
     dims = {}
-    for path in sorted(DIMS.glob("*.py")):
+    for path in sorted(DIMS.glob("[!_]*.py")):
         spec = importlib.util.spec_from_file_location(f"scoreboard_{path.stem}", path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -210,12 +253,14 @@ def load_dims() -> dict:
     return dims
 
 
-def jk_binary() -> str:
-    """$JK_BIN, else the installed client, else whatever `jk` is on PATH."""
-    if os.environ.get("JK_BIN"):
-        return os.environ["JK_BIN"]
+def installed_jk() -> str:
     candidate = benchtools.jk_home() / "bin" / "jk"
     return str(candidate) if candidate.is_file() else (shutil.which("jk") or str(candidate))
+
+
+def jk_binary() -> str:
+    """$JK_BIN, else the installed client, else whatever `jk` is on PATH."""
+    return os.environ.get("JK_BIN") or installed_jk()
 
 
 def jk_commit() -> str:
@@ -226,15 +271,182 @@ def jk_commit() -> str:
 class Context:
     """What a dimension gets: run count, scratch home, the jk binary and a subject filter."""
 
-    def __init__(self, runs: int, out: Path, subjects: list[str]):
+    def __init__(self, tier: str, runs: int, pairs: int, out: Path, subjects: list[str], baseline: str | None):
+        self.tier = tier
         self.runs = runs
+        self.pairs = pairs
         self.home = HOME
         self.out = out
         self.jk = jk_binary()
+        self.baseline = baseline or os.environ.get("SCOREBOARD_BASELINE") or installed_jk()
         self.subjects = subjects
+        self.skipped: list[str] = []
 
     def wants(self, subject: str) -> bool:
         return not self.subjects or any(fnmatch.fnmatch(subject, s) for s in self.subjects)
+
+
+# --------------------------------------------------------------------------- quiet gate and calibration
+
+# An absolute wall is taken only on a quiet host: 1-minute load, CPU PSI `some` avg60 (%), and no
+# live job on the user's engine. Calibration is a fixed javac run before and after the batch.
+QUIET = {"load": 1.0, "cpu-psi-avg60": 0.5}
+POLL_S = 300
+DRIFT = 0.10
+CALIBRATION_CLASSES = 150
+NIGHT_DEADLINE = dt.time(6, 30)
+LOCK = benchtools.bench_home() / "heavy.lock"
+QUEUE = HERE / "night-queue"
+
+
+def user_engine_jobs() -> int:
+    """Live jobs on the user's own engine (not a private one); 0 when it is not running."""
+    env = {k: v for k, v in os.environ.items() if k != "JK_STATE_DIR"}
+    res = subprocess.run([installed_jk(), "engine", "status", "--no-ansi"], capture_output=True, text=True, env=env)
+    m = re.search(r"Live Jobs\W+(\d+)", res.stdout)
+    return int(m.group(1)) if m else 0
+
+
+def busy_reason(cond: dict, jobs: int) -> str | None:
+    over = [f"{k} {cond[k]:g} > {limit:g}" for k, limit in QUIET.items() if cond.get(k, 0) > limit]
+    if jobs:
+        over.append(f"{jobs} live job(s) on the user's engine")
+    return "; ".join(over) or None
+
+
+def wait_quiet(deadline: dt.datetime | None) -> str | None:
+    """None once the host is quiet; the reason it is busy if the deadline passes first (None = check once)."""
+    while True:
+        reason = busy_reason(benchtools.conditions(), user_engine_jobs())
+        if reason is None:
+            return None
+        if deadline is None or dt.datetime.now() >= deadline:
+            return reason
+        print(f"  host busy ({reason}); next look in {POLL_S // 60} min, until {deadline:%H:%M}", flush=True)
+        time.sleep(POLL_S)
+
+
+def _calibration_sources(root: Path) -> list[Path]:
+    """A fixed tree: generated classes with generics, records, lambdas and switches, the same every time."""
+    src = root / "src" / "cal"
+    src.mkdir(parents=True, exist_ok=True)
+    files = []
+    for i in range(CALIBRATION_CLASSES):
+        f = src / f"C{i}.java"
+        prev = f"C{i - 1}" if i else "Object"
+        f.write_text(
+            f"package cal;\nimport java.util.*;\nimport java.util.stream.*;\n"
+            f"public final class C{i} {{\n"
+            f"  record R(int a, String b, List<{prev}> c) {{}}\n"
+            f"  sealed interface S permits A, B {{}}\n  record A(int v) implements S {{}}\n  record B(String v) implements S {{}}\n"
+            f"  static int f(S s) {{ return switch (s) {{ case A a -> a.v() * {i}; case B b -> b.v().length(); }}; }}\n"
+            f"  static Map<String, List<Integer>> g(List<R> rs) {{\n"
+            f"    return rs.stream().collect(Collectors.groupingBy(R::b, TreeMap::new,"
+            f" Collectors.mapping(r -> r.a() + f(new A(r.a())), Collectors.toList())));\n  }}\n}}\n",
+            encoding="utf-8")
+        files.append(f)
+    return files
+
+
+def calibrate(runs: int = 5) -> float:
+    """Median seconds of one fixed javac batch: how fast this host is right now."""
+    root = HOME / "calibration"
+    files = _calibration_sources(root)
+    javac = shutil.which("javac") or str(Path(os.environ.get("JAVA_HOME", "")) / "bin" / "javac")
+    walls = []
+    for _ in range(runs + 1):
+        out = root / "out"
+        shutil.rmtree(out, ignore_errors=True)
+        t0 = time.perf_counter()
+        subprocess.run([javac, "-d", str(out), *map(str, files)], check=True, capture_output=True)
+        walls.append(time.perf_counter() - t0)
+    return round(statistics.median(walls[1:]), 3)
+
+
+def calibration_row(seconds: float, runs: int) -> dict:
+    return {"dim": "calibration", "subject": "javac.fixed-tree", "project": "generated", "tool": "javac",
+            "kind": "absolute-wall", "value": seconds, "unit": "s", "runs": runs, "band": DRIFT}
+
+
+def absolute_batch(name: str, mod, ctx, board: list[dict], host: str, deadline: dt.datetime | None) -> list[dict]:
+    """One absolute-wall dimension behind the quiet gate, calibrated before and after.
+
+    A busy host past the deadline yields no rows at all (`skipped: busy`); calibration drift above
+    DRIFT, or a host slower than its banked calibration, marks every row `noisy`.
+    """
+    reason = wait_quiet(deadline)
+    if reason is not None:
+        ctx.skipped.append(f"{name}: skipped: busy ({reason})")
+        return []
+    before = calibrate()
+    rows = mod.measure(ctx)
+    after = calibrate()
+    cond = benchtools.conditions()
+    banked = next((r["value"] for r in board if r.get("dim") == "calibration" and r.get("host-id") == host), None)
+    noisy = None
+    if abs(after - before) > DRIFT * min(before, after):
+        noisy = f"calibration drifted {before:g} s -> {after:g} s"
+    elif banked and min(before, after) > banked * (1 + DRIFT):
+        noisy = f"host slower than its banked calibration ({min(before, after):g} s vs {banked:g} s)"
+    elif busy_reason(cond, 0):
+        noisy = f"host got busy during the batch ({busy_reason(cond, 0)})"
+    for row in rows:
+        row.update({f"{k}-end": v for k, v in cond.items()})
+        row["calibration-s"] = f"{before:g}/{after:g}"
+        if noisy:
+            row["noisy"] = noisy
+    return rows + ([] if noisy else [calibration_row(min(before, after), 2)])
+
+
+# --------------------------------------------------------------------------- the night
+
+def run_queue(out: Path) -> list[str]:
+    """bench/night-queue: one shell command per line, run one after another after the measurements."""
+    if not QUEUE.is_file():
+        return []
+    results = []
+    for i, line in enumerate(QUEUE.read_text().splitlines()):
+        cmd = line.strip()
+        if not cmd or cmd.startswith("#"):
+            continue
+        t0 = time.monotonic()
+        with open(out / f"queue-{i}.log", "w") as log:
+            rc = subprocess.run(cmd, shell=True, cwd=JK_TREE, stdout=log, stderr=subprocess.STDOUT).returncode
+        results.append(f"`{cmd}`: exit {rc} in {(time.monotonic() - t0) / 60:.0f} min (log {out / f'queue-{i}.log'})")
+    return results
+
+
+def morning_report(path: Path, measured: list[dict], failures: list[str], notes: list[str], skipped: list[str],
+                   queue: list[str], board: list[dict], host: str) -> None:
+    lines = [f"# Scoreboard night {dt.date.today().isoformat()}", "",
+             f"jk tree {jk_commit()}; host `{host}`; {len(measured)} rows measured.", ""]
+    sections = [("Regressions", failures), ("Banked and recorded", [n for n in notes if not n.startswith(("noisy", "unstable"))]),
+                ("Noisy or unstable (not banked)", [n for n in notes if n.startswith(("noisy", "unstable"))]),
+                ("Skipped", skipped), ("Queue", queue),
+                ("Top gaps", [f"{r:.1f}× {row['subject']} [{row['project']}] {fmt(row['value'], row['unit'])}, target "
+                              f"{fmt(row['target'], row['unit'])}" for r, row in gaps(board, host)[:5]])]
+    for title, items in sections:
+        lines += [f"## {title}", ""] + ([f"- {x}" for x in items] or ["- none"]) + [""]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def hold_heavy_lock():
+    """The host-wide lock every heavy run takes (`flock` on it from a shell); None when another holds it."""
+    LOCK.parent.mkdir(parents=True, exist_ok=True)
+    fh = open(LOCK, "w")
+    try:
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        fh.close()
+        return None
+    return fh
+
+
+def render_docs(dims: dict, board: list[dict], host: str) -> None:
+    for mod in dims.values():
+        if hasattr(mod, "render"):
+            mod.render(board, host)
 
 
 def main(argv: list[str]) -> int:
@@ -243,8 +455,12 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--dim", action="append", default=[], help="only this dimension (repeatable)")
     ap.add_argument("--subject", action="append", default=[], help="only subjects matching this glob (repeatable)")
     ap.add_argument("--runs", type=int, default=5, help="measured runs per row, after one warm-up (default 5)")
+    ap.add_argument("--pairs", type=int, default=20, help="interleaved pairs per paired-wall row (default 20)")
+    ap.add_argument("--baseline", help="the jk a paired-wall row compares against (default $SCOREBOARD_BASELINE, else the installed jk)")
     ap.add_argument("--no-bank", action="store_true", help="judge only; leave scoreboard.toml as it is")
     ap.add_argument("--gaps", action="store_true", help="rank banked rows by distance to target; measure nothing")
+    ap.add_argument("--render", action="store_true", help="render the docs tables from scoreboard.toml; measure nothing")
+    ap.add_argument("--deadline", help="night tier: stop waiting for a quiet host at this local HH:MM (default 06:30)")
     ap.add_argument("--selftest", action="store_true")
     ns = ap.parse_args(argv)
     if ns.selftest:
@@ -260,30 +476,56 @@ def main(argv: list[str]) -> int:
             shown = "∞" if ratio == float("inf") else f"{ratio:.1f}×"
             print(f"{shown:>7}  {r['subject']:<40} {r['project']:<18} {fmt(r['value'], r['unit']):>12}  target {fmt(r['target'], r['unit'])}")
         return 0
-
     dims = load_dims()
+    if ns.render:
+        render_docs(dims, board, host)
+        return 0
+
     chosen = [d for d in (ns.dim or dims) if d in dims and (ns.dim or ns.tier in dims[d].TIERS)]
     unknown = sorted(set(ns.dim) - set(dims))
     if unknown:
         raise SystemExit(f"unknown dimension(s): {', '.join(unknown)}; known: {', '.join(dims)}")
+    night = ns.tier in ("night", "release") and not ns.dim
+    lock = None
+    if night or any(getattr(dims[d], "KIND", "") == "absolute-wall" for d in chosen):
+        lock = hold_heavy_lock()
+        if lock is None:
+            raise SystemExit(f"another heavy run holds {LOCK}; the scoreboard waits for none")
+    deadline = None
+    if night:
+        hh, mm = map(int, (ns.deadline or NIGHT_DEADLINE.strftime("%H:%M")).split(":"))
+        deadline = dt.datetime.combine(dt.date.today(), dt.time(hh, mm))
+        if deadline < dt.datetime.now() - dt.timedelta(hours=12):
+            deadline += dt.timedelta(days=1)
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     out = HOME / "results" / stamp
     out.mkdir(parents=True, exist_ok=True)
-    ctx = Context(ns.runs, out, ns.subject)
+    ctx = Context(ns.tier, ns.runs, ns.pairs, out, ns.subject, ns.baseline)
     measured = []
-    for name in chosen:
+    # Load-proof kinds first, then the absolute walls, each behind the quiet gate.
+    for name in sorted(chosen, key=lambda d: getattr(dims[d], "KIND", "") == "absolute-wall"):
         print(f"── {name}", flush=True)
-        measured += dims[name].measure(ctx)
+        if getattr(dims[name], "KIND", "") == "absolute-wall":
+            measured += absolute_batch(name, dims[name], ctx, board, host, deadline)
+        else:
+            measured += dims[name].measure(ctx)
     (out / "rows.json").write_text(json.dumps(measured, indent=1) + "\n", encoding="utf-8")
+    queue = run_queue(out) if night else []
 
     new_board, failures, notes = judge(board, measured, host, dt.date.today().isoformat(), jk_commit())
     for row in measured:
-        print(f"  {row['subject']:<40} [{row['tool']}] {fmt(row['value'], row['unit']):>12}"
-              + ("   unstable" if row.get("unstable") else ""))
-    for line in notes + failures:
+        flag = "   unstable" if row.get("unstable") else "   noisy" if row.get("noisy") else ""
+        print(f"  {row['subject']:<40} [{row['tool']}] {fmt(row['value'], row['unit']):>12}{flag}")
+    for line in notes + failures + ctx.skipped + queue:
         print(line.replace("(banked)", "(--no-bank: not written)") if ns.no_bank else line)
     if not ns.no_bank:
         BOARD.write_text(render_board(new_board), encoding="utf-8")
+        if night:
+            render_docs(dims, new_board, host)
+    if night:
+        report = HOME / "night" / f"{dt.date.today().isoformat()}.md"
+        morning_report(report, measured, failures, notes, ctx.skipped, queue, new_board, host)
+        print(f"morning report: {report}")
     print(f"rows: {out / 'rows.json'}")
     return 1 if failures else 0
 
