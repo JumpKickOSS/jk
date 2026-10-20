@@ -66,7 +66,7 @@ def break_compile(work: Path, edit_file: str) -> None:
 
 def jk_rows(ctx, scenarios: list[str]) -> list[dict]:
     state = ctx.home / "cli-state"
-    env = pc.engine_env(state)
+    env = pc.engine_env(state, jk=ctx.jk)
     pc.stop(ctx.jk, state)
     work = pc.working_copy(ctx.home, ctx.jk, state, f"{pc.PROJECT}-cli")
     rows = []
