@@ -53,15 +53,23 @@ def working_copy(home: Path, jk: str, state: Path, name: str = PROJECT) -> Path:
         shutil.rmtree(p) if p.is_dir() else p.unlink(missing_ok=True)
     for f in ("jk.toml", "jk-lock.toml"):
         shutil.copy(BENCH / "wall" / PROJECT / f, work / f)
-    subprocess.run([jk, "build", "--skip-tests", "--no-ansi"], cwd=work, env=engine_env(state), check=True,
+    subprocess.run([jk, "build", "--skip-tests", "--no-ansi"], cwd=work, env=engine_env(state, jk=jk), check=True,
                    stdout=subprocess.DEVNULL)
     marker.write_text(COMMIT + "\n")
     return work
 
 
-def engine_env(state: Path, extra: dict[str, str] | None = None) -> dict[str, str]:
+def engine_env(state: Path, extra: dict[str, str] | None = None, jk: str | None = None) -> dict[str, str]:
+    """The environment of a private engine on `state`. For a jk installed in a home of its own
+    (`<home>/bin/jk` beside `<home>/lib`), that home, with the user's store and cache shared."""
     env = {k: v for k, v in os.environ.items() if k not in benchtools.STRIPPED}
     env["JK_STATE_DIR"] = str(state)
+    home = Path(jk).resolve().parent.parent if jk else None
+    user = benchtools.jk_home()
+    if home is not None and (home / "lib").is_dir() and home != user.resolve():
+        env["JK_HOME"] = str(home)
+        env.setdefault("JK_STORE_DIR", str(user / "store"))
+        env.setdefault("JK_CACHE_DIR", str(user / "cache"))
     env.update(extra or {})
     return env
 
@@ -144,7 +152,7 @@ def settle(work: Path, jk: str, env: dict) -> None:
 
 
 def stop(jk: str, state: Path) -> None:
-    subprocess.run([jk, "engine", "stop"], env=engine_env(state), capture_output=True)
+    subprocess.run([jk, "engine", "stop"], env=engine_env(state, jk=jk), capture_output=True)
 
 
 def version(jk: str) -> str:
