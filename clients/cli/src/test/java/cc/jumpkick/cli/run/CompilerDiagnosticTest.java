@@ -3,6 +3,8 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.api.PathDisplay;
+import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.terminal.Width;
 import java.nio.file.Files;
@@ -24,6 +26,41 @@ class CompilerDiagnosticTest {
 
     private static String plain(String rendered) {
         return Width.stripAnsi(rendered == null ? "" : rendered);
+    }
+
+    @Test
+    void plain_output_is_the_compiler_s_own_block(@TempDir Path tmp) throws Exception {
+        Path src = tmp.resolve("Foo.java");
+        Files.writeString(src, String.join("\n", "class Foo {", "\tvoid t() { undefinedCall(); }", "}", ""));
+        String raw = String.join(
+                "\n",
+                src + ":2: error: cannot find symbol",
+                "\tvoid t() { undefinedCall(); }",
+                "\t           ^",
+                "  symbol:   method undefinedCall()",
+                "  location: class Foo");
+        String rendered = NoAnsi.forced(() -> CompilerDiagnostic.render(raw));
+        assertThat(rendered)
+                .isEqualTo(String.join(
+                        "\n",
+                        PathDisplay.of(src) + ":2:13: error: cannot find symbol",
+                        "\tvoid t() { undefinedCall(); }",
+                        "\t           ^",
+                        "  symbol:   method undefinedCall()",
+                        "  location: class Foo"));
+    }
+
+    @Test
+    void plain_output_names_the_severity_a_kotlinc_header_leaves_out(@TempDir Path tmp) throws Exception {
+        Path src = tmp.resolve("Foo.kt");
+        Files.writeString(src, "fun f() = x\n");
+        String raw = "file://" + src + ":1:11 Unresolved reference 'x'.";
+        String rendered = NoAnsi.forced(() -> CompilerDiagnostic.render(raw, "warning"));
+        assertThat(rendered.split("\n"))
+                .containsExactly(
+                        PathDisplay.of(src) + ":1:11: warning: Unresolved reference 'x'.",
+                        "fun f() = x",
+                        "          ^");
     }
 
     @Test

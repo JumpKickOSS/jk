@@ -9,8 +9,10 @@ Scenarios (`cli.output.<scenario>.<mode>.<counter>`):
   test-red      the suite with one failing test added (night only)
 
 Modes: `tty` runs under script(1) at 120 columns, so progress redraws and colour count; `plain` is
-`--no-ansi` for jk, `-q` for Maven and Gradle (their quiet modes, the closest to a one-line
-answer), and the `full` mode is Maven and Gradle without `-q`. Counters are `bytes` and `lines`.
+`--no-ansi` for jk with agent mode off (what a person piping the output sees, even when the
+harness runs inside a coding agent), `-q` for Maven and Gradle (their quiet modes, the closest to
+a one-line answer); `agent` is jk's agent report (`JK_AGENT=1`), and the `full` mode is Maven and
+Gradle without `-q`. Counters are `bytes` and `lines`.
 
 The fast tier runs jk's build scenarios only; the night tier adds the tests and the other tools.
 """
@@ -71,7 +73,7 @@ def jk_rows(ctx, scenarios: list[str]) -> list[dict]:
     work = pc.working_copy(ctx.home, ctx.jk, state, f"{pc.PROJECT}-cli")
     rows = []
     for scenario in scenarios:
-        for mode in ("tty", "plain"):
+        for mode in ("tty", "plain", "agent"):
             pc.settle(work, ctx.jk, env)
             (work / FAIL_TEST).unlink(missing_ok=True)
             verb = scenario.split("-")[0]
@@ -82,7 +84,7 @@ def jk_rows(ctx, scenarios: list[str]) -> list[dict]:
             if scenario == "test-red":
                 (work / FAIL_TEST).write_text(RED_TEST, encoding="utf-8")
             cmd = [ctx.jk, verb] + (["--skip-tests"] if verb == "build" else []) + ([] if mode == "tty" else ["--no-ansi"])
-            rc, out = captured(cmd, work, env, mode == "tty")
+            rc, out = captured(cmd, work, dict(env, JK_AGENT="1" if mode == "agent" else "0"), mode == "tty")
             (ctx.out / f"cli-jk-{scenario}-{mode}.txt").write_bytes(out)
             rows += output_rows("jk", scenario, mode, out, rc, ctx)
     (work / FAIL_TEST).unlink(missing_ok=True)

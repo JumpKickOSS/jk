@@ -4,6 +4,7 @@ package cc.jumpkick.cli.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.api.PathDisplay;
+import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
@@ -18,6 +19,29 @@ class DiagnosticReportTest {
 
     private static String plain(String s) {
         return Width.stripAnsi(s == null ? "" : s);
+    }
+
+    @Test
+    void plain_error_is_one_line_with_its_step_and_module() throws Exception {
+        String report = NoAnsi.forced(() -> DiagnosticReport.renderError(
+                "parse-build", "workspace", "error: sibling not built\n\nrun jk build first", "g:app"));
+        assertThat(report).isEqualTo("error: Parse Build in g:app: sibling not built\n  run jk build first");
+    }
+
+    @Test
+    void plain_warning_drops_the_leader_the_message_already_carries() throws Exception {
+        String report = NoAnsi.forced(
+                () -> DiagnosticReport.renderWarning("", "notice", "jk: warning: repository is anonymous", null));
+        assertThat(report).isEqualTo("warning: Notice: repository is anonymous");
+    }
+
+    @Test
+    void plain_compiler_error_has_no_pill_and_no_rail() throws Exception {
+        String raw = String.join("\n", "/w/Foo.java:3: error: ';' expected", "    int x", "         ^");
+        String report = NoAnsi.forced(() -> DiagnosticReport.renderError("compile-java", "javac", raw, "g:app", true));
+        assertThat(report)
+                .startsWith("/w/Foo.java:3:10: error: ';' expected")
+                .doesNotContain("Compile Java", "+--", " | ");
     }
 
     @Test

@@ -16,12 +16,11 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Human-facing failure / warning reports for plan diagnostics: a colored phase pill (same language
+ * Failure / warning reports for plan diagnostics. Under ANSI: a colored phase pill (same language
  * as explain/tree badges and the web phase strip) plus a heavy vertical rail, with coords and paths
- * painted in the shared theme roles.
- *
- * <p>Replaces the flat {@code ✘ Error [parse-build]: …} banner for non-test-failure diagnostics.
- * Per-test failures still use the dedicated {@link TestFailureHighlight} block from run-tests output.
+ * painted in the shared theme roles. Plain: a compiler diagnostic is the compiler's own block (see
+ * {@link CompilerDiagnostic}) and anything else is one {@code error:} / {@code warning:} line.
+ * Per-test failures use the dedicated {@link TestFailureHighlight} block from run-tests output.
  */
 public final class DiagnosticReport {
 
@@ -69,6 +68,7 @@ public final class DiagnosticReport {
         if ("test-failure".equals(code)) return "";
         if ("verbatim".equals(code)) return message == null ? "" : message;
         String title = titleFor(step, code);
+        if (!Theme.active().isAnsi()) return plain("error", title, code, message, module);
         String body = ConsoleSpec.isCompilerCode(code)
                 ? railBlock(CompilerDiagnostic.render(nullToEmpty(message), "error"), Role.ERROR)
                 : railBlock(paintProse(nullToEmpty(message)), Role.ERROR);
@@ -105,12 +105,35 @@ public final class DiagnosticReport {
     /** Like {@link #renderWarning(String, String, String)} with a {@code group:artifact} module. */
     public static String renderWarning(String step, String code, @Nullable String message, @Nullable String module) {
         String title = titleFor(step, code);
+        if (!Theme.active().isAnsi()) return plain("warning", title, code, message, module);
         if (ConsoleSpec.isCompilerCode(code)) {
             return header(title, Role.WARNING, module)
                     + "\n"
                     + railBlock(CompilerDiagnostic.render(nullToEmpty(message), "warning"), Role.WARNING);
         }
         return header(title, Role.WARNING, module) + "\n" + railBlock(paintProse(nullToEmpty(message)), Role.WARNING);
+    }
+
+    /** Leaders a message may already carry; the plain report spells its own severity. */
+    private static final Pattern LEADER = Pattern.compile("^(?:jk: )?(?:error|warning): ");
+
+    /**
+     * The terse report: a compiler block as the compiler prints it, else {@code severity: Title in
+     * module: message} with any further message lines indented under it.
+     */
+    private static String plain(
+            String severity, String title, @Nullable String code, @Nullable String message, @Nullable String module) {
+        String text = nullToEmpty(message).strip();
+        if (ConsoleSpec.isCompilerCode(code)) return CompilerDiagnostic.render(text, severity);
+        text = LEADER.matcher(text).replaceFirst("");
+        StringBuilder sb = new StringBuilder(severity).append(": ").append(title);
+        if (module != null && !module.isBlank()) sb.append(" in ").append(module);
+        String[] lines = relativizePathsInPlain(text).split("\n", -1);
+        sb.append(": ").append(lines[0].strip());
+        for (int i = 1; i < lines.length; i++) {
+            if (!lines[i].isBlank()) sb.append("\n  ").append(lines[i].stripTrailing());
+        }
+        return sb.toString();
     }
 
     /**
