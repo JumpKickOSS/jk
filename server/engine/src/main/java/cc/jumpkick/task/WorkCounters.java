@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.jsonl.JsonFields;
+import cc.jumpkick.jsonl.Jsonl;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -24,6 +25,11 @@ public final class WorkCounters {
     static boolean restored(boolean restored) {
         if (restored) ACTIONS_RESTORED.incrementAndGet();
         return restored;
+    }
+
+    /** {@code ack} with the {@code work} object spliced in. */
+    public static String appendToStatusAck(String ack) {
+        return Jsonl.append(ack, "\"work\":" + statusJson());
     }
 
     /** The {@code work} object of a {@code status-ack}. */
