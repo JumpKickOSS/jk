@@ -158,7 +158,7 @@ final class ModuleForecast {
         this.workerJar = workerJar;
         this.profileName = profileName;
         this.m2Dir = m2Dir;
-        this.project = u.manifest();
+        this.project = ForecastSteps.planned(u.manifest(), u.dir());
         this.dir = u.dir();
         this.lockFile = LockPaths.lockFile(dir);
     }
