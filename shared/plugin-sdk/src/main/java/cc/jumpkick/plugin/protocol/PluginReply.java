@@ -91,6 +91,15 @@ public final class PluginReply {
         return "{\"t\":\"ready\"}";
     }
 
+    /** Serve mode: one run ended with {@code code}; {@code retire} when the worker exits next. */
+    public static String exited(int code, boolean retire) {
+        return JsonFields.object()
+                .string("t", PluginProtocol.EXITED)
+                .number("code", code)
+                .bool("retire", retire)
+                .finish();
+    }
+
     /**
      * One classpath entry's ABI snapshot, reported by the Kotlin worker's {@code snapshot} op: the
      * entry as the engine named it and the SHA-256 of the snapshot file's bytes.

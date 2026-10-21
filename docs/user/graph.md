@@ -35,10 +35,12 @@ are `INFERRED`.
 
 Every `jk graph` command refreshes the graph before answering. Files are compared by size and
 modification time, then by content hash; only changed files are read again, and each module's class
-index is updated one class file at a time. An unchanged tree answers from a stored snapshot in well
-under a second. `-r` extracts every file again.
+index is updated one class file at a time. An unchanged tree answers from the graph already in
+memory, or from a stored snapshot. `-r` extracts every file again.
 
-The graph is built in its own worker process, so its memory is never the engine's.
+The graph is built in its own worker process, so its memory is never the engine's. The worker
+stays up between commands with the graph in memory and exits after 30 idle minutes
+(`JK_WORKER_LINGER_MS`), or sooner when another fork needs its memory.
 
 ## Reading an answer
 

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.engine.plugin.WarmLinger;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -334,7 +335,7 @@ class KtsSessionTest {
         assertThat(outB.resolve("done")).exists();
     }
 
-    /** With no script for the idle timeout the host is shut down; the next script starts a fresh one. */
+    /** With no script for the linger the host is shut down; the next script starts a fresh one. */
     @Test
     void an_idle_host_is_shut_down_and_a_later_script_starts_a_fresh_one(@TempDir Path dir) throws Exception {
         Path script = dir.resolve("idle.kts");
@@ -343,7 +344,7 @@ class KtsSessionTest {
         Path out = Files.createDirectories(dir.resolve("o"));
 
         KtsSession.shutdown(); // the shortened timeout applies to a host started after it
-        KtsSession.idleTimeoutForTests(Duration.ofMillis(300));
+        WarmLinger.forTests(300);
         try {
             BuildLogicKtsHost.evaluate(script, project, out);
             long first = KtsSession.hostPid();
@@ -356,7 +357,7 @@ class KtsSessionTest {
             BuildLogicKtsHost.evaluate(script, project, out);
             assertThat(KtsSession.hostPid()).isNotEqualTo(first);
         } finally {
-            KtsSession.idleTimeoutForTests(KtsSession.IDLE_TIMEOUT);
+            WarmLinger.forTests(-1);
         }
     }
 

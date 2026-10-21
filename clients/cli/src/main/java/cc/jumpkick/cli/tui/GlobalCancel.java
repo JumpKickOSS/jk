@@ -26,8 +26,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <li>Cooperative session cancel + engine {@code cancel-request} (jid / project dir) — same
  * kill path as the web UI and {@code jk cancel}
  * <li>Settle the active plan region ("Build job was cancelled by user took …")
- * <li>Run the verb's interrupt hooks — the children a {@code jk dev} owns — within
- * {@link #HOOKS_BOUND_MILLIS}
+ * <li>Run the verb's interrupt hooks — the child a {@code jk run} owns, and {@code jk dev}'s app
+ * and sidecars — within {@link #HOOKS_BOUND_MILLIS}
  * <li>{@code halt(}{@link Exit#INTERRUPTED}{@code )} — guaranteed process death if anything
  * above is stuck. 130 is {@code 128 + SIGINT}, what every shell already means by it; this
  * handler must not halt with Exit.USAGE (2); use the cancel exit code.
@@ -54,8 +54,8 @@ public final class GlobalCancel {
 
     /**
      * What a verb wants done before this process halts: children to stop, mostly. {@link
-     * Runtime#halt} skips finally blocks and shutdown hooks, so a {@code jk dev} that owns an app
-     * and its sidecars would otherwise leave them running whenever SIGINT reaches only jk — an IDE
+     * Runtime#halt} skips finally blocks and shutdown hooks, so a {@code jk run} or {@code jk dev}
+     * that owns a child would otherwise leave it running whenever SIGINT reaches only jk — an IDE
      * stop button, a {@code kill -INT}, a terminal that did not forward to the process group.
      */
     private static final List<Runnable> INTERRUPT_HOOKS = new CopyOnWriteArrayList<>();

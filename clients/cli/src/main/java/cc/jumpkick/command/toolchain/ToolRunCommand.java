@@ -11,6 +11,7 @@ import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.DebugAttach;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.command.ToolTargets;
 import cc.jumpkick.command.VariantSelection;
 import cc.jumpkick.command.pipeline.BuildFlags;
@@ -500,7 +501,8 @@ public final class ToolRunCommand implements CliCommand {
                 Path javaHome = installed.javaHome() != null && Files.isDirectory(installed.javaHome())
                         ? installed.javaHome()
                         : JavaHomes.runningJavaHome();
-                return ToolLauncher.execEphemeral(javaHome, installed.env(), installed.jvmArgs(), toolArgs);
+                return ProcessTrees.awaitExit(
+                        ToolLauncher.startEphemeral(javaHome, installed.env(), installed.jvmArgs(), toolArgs));
             }
         }
 
@@ -537,6 +539,6 @@ public final class ToolRunCommand implements CliCommand {
 
         // The exec deliberately stays client-side: the tool inherits this terminal's stdio.
         Path javaHome = JavaHomes.runningJavaHome();
-        return ToolLauncher.execEphemeral(javaHome, env, aliasJavaOptions, toolArgs);
+        return ProcessTrees.awaitExit(ToolLauncher.startEphemeral(javaHome, env, aliasJavaOptions, toolArgs));
     }
 }

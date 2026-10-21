@@ -12,6 +12,7 @@ import cc.jumpkick.cli.run.DebugAttach;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Coord;
+import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.ManifestPaths;
@@ -225,7 +226,7 @@ public final class RunVerb implements BuildVerb {
             // Skip the gap only once the exec actually started — a failed start() still owns the
             // terminal, and its error wedge has earned the envelope's trailing blank.
             CliOutput.skipTrailingBlank();
-            return p.waitFor();
+            return ProcessTrees.awaitExit(p);
         } catch (IOException e) {
             CommandWedge.printFail("Run", e.getMessage());
             return Exit.SOFTWARE;

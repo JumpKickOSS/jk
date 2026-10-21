@@ -30,13 +30,15 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.EnumMap;
+import java.util.Deque;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -67,6 +69,15 @@ public final class CodeFormatter implements Plugin {
         return new PluginManifest("jk-formatter", "##JKFMT:");
     }
 
+    /** A run gave up on a file whose thread is still running: the worker must not serve again. */
+    private static volatile boolean leftThreadsBehind;
+
+    /** False once a run has abandoned a thread to the per-file timeout. */
+    @Override
+    public boolean reusable() {
+        return !leftThreadsBehind;
+    }
+
     @Override
     public int run(List<String> args, ProtocolWriter out) throws Exception {
         if (args.isEmpty()) {
@@ -82,13 +93,13 @@ public final class CodeFormatter implements Plugin {
         // Built once for the whole run, then only read, so every thread shares one copy.
         TypeIndex index = spec.optimizeImports ? TypeIndex.scan(spec.indexFiles) : null;
 
-        Workers workers = new Workers(spec);
+        Formatters formatters = new Formatters(spec);
         Tally tally;
         try {
             tally = formatAll(spec, out, stampCache, (ref, i, dog) -> {
-                // Untimed on purpose: the first file a thread sees pays for its Spotless step chain
-                // and the classloaders behind it, which is not that file's own cost.
-                Formatter fmt = workers.get().formatter(ref.kind());
+                // Untimed on purpose: a file that finds no idle formatter pays for a Spotless step
+                // chain and the classloaders behind it, which is not that file's own cost.
+                Formatter fmt = formatters.borrow(ref.kind());
                 // The host listed a file but sent no jars for its language. Reported, not skipped in
                 // silence: a file the run was told to visit and said nothing about is
                 // indistinguishable from a dead worker, which is the shortfall
@@ -98,10 +109,11 @@ public final class CodeFormatter implements Plugin {
                 }
                 try (var window = dog.watch(i, ref.file())) {
                     return formatOne(ref, fmt, spec, stampCache, index);
+                } finally {
+                    formatters.giveBack(ref.kind(), fmt);
                 }
             });
         } finally {
-            workers.close();
             // One write for the whole run: every contains/record above was a map operation.
             if (stampCache != null) stampCache.save();
         }
@@ -370,6 +382,7 @@ public final class CodeFormatter implements Plugin {
      * the files behind them a thread and {@linkplain #unstarted settles them with a reason} instead.
      */
     private static void replaceSlot(ThreadPoolExecutor pool, int slots, AtomicInteger abandoned) {
+        leftThreadsBehind = true;
         int lost = abandoned.incrementAndGet();
         if (lost > slots) return;
         pool.setMaximumPoolSize(slots + lost);
@@ -410,123 +423,132 @@ public final class CodeFormatter implements Plugin {
     }
 
     /**
-     * Per-thread Spotless formatters. A {@link Formatter} owns its step chain — google-java-format,
-     * palantir, ktfmt and scalafmt behind their own classloaders — and is not documented thread-safe,
-     * so no two threads share one. Built lazily per language: a tree with no Scala never pays for a
-     * scalafmt chain, and a thread that only ever sees Java builds only that one.
+     * Spotless formatters, kept for the life of the worker. A {@link Formatter} owns its step chain
+     * — google-java-format, palantir, ktfmt and scalafmt behind their own classloaders — and is not
+     * documented thread-safe, so a file borrows one for itself and gives it back. Built lazily per
+     * language and per {@linkplain #shape shape}: a tree with no Scala never pays for a scalafmt
+     * chain, and a served worker's next run finds the chains this one built.
+     *
+     * <p>A formatter a timed-out file never gave back stays with its thread; the worker retires
+     * after that run ({@link #reusable}).
      *
      * <p>The {@link TypeIndex} is deliberately <em>not</em> in here — it is immutable once built, so
      * one copy serves every thread.
      */
-    private static final class Workers implements AutoCloseable {
+    static final class Formatters {
 
-        private final List<Holder> created = Collections.synchronizedList(new ArrayList<>());
-        private final ThreadLocal<Holder> local;
+        /** Idle formatters by shape. Guarded by itself. */
+        private static final Map<String, Deque<Formatter>> IDLE = new HashMap<>();
 
-        Workers(Spec spec) {
-            this.local = ThreadLocal.withInitial(() -> {
-                Holder h = new Holder(spec);
-                created.add(h);
-                return h;
-            });
+        private final Spec spec;
+
+        Formatters(Spec spec) {
+            this.spec = spec;
         }
 
-        Holder get() {
-            return local.get();
+        /** A formatter for {@code kind} that no other thread holds, or null when the run has no jars for it. */
+        @Nullable
+        Formatter borrow(Kind kind) {
+            String shape = shape(spec, kind);
+            synchronized (IDLE) {
+                Deque<Formatter> idle = IDLE.get(shape);
+                if (idle != null && !idle.isEmpty()) return idle.pop();
+            }
+            return build(kind);
         }
 
-        @Override
-        public void close() {
-            synchronized (created) {
-                for (Holder h : created) h.close();
+        /** {@code f}, borrowed for {@code kind}, is free again. */
+        void giveBack(Kind kind, Formatter f) {
+            String shape = shape(spec, kind);
+            synchronized (IDLE) {
+                IDLE.computeIfAbsent(shape, k -> new ArrayDeque<>()).push(f);
             }
         }
 
-        static final class Holder implements AutoCloseable {
-            private final Spec spec;
-            private final EnumMap<Kind, @Nullable Formatter> byKind = new EnumMap<>(Kind.class);
+        /** Everything a {@code kind} chain is built from: two runs with one shape share formatters. */
+        static String shape(Spec spec, Kind kind) {
+            return switch (kind) {
+                case JAVA ->
+                    String.join(
+                            "\u0000",
+                            "java",
+                            spec.javaStyle,
+                            spec.javaVersion,
+                            String.valueOf(spec.importOrder),
+                            String.valueOf(spec.removeUnusedImports),
+                            spec.javaJars.toString(),
+                            spec.removeUnusedJars.toString());
+                case KOTLIN ->
+                    String.join(
+                            "\u0000",
+                            "kotlin",
+                            spec.kotlinStyle,
+                            spec.kotlinVersion,
+                            String.valueOf(spec.kotlinMaxWidth),
+                            spec.kotlinJars.toString());
+                case GROOVY -> "groovy";
+                case SCALA ->
+                    String.join(
+                            "\u0000",
+                            "scala",
+                            spec.scalaVersion,
+                            spec.scalaJars.toString(),
+                            String.valueOf(spec.cacheDir));
+            };
+        }
 
-            Holder(Spec spec) {
-                this.spec = spec;
-            }
+        private @Nullable Formatter build(Kind kind) {
+            List<FormatterStep> steps =
+                    switch (kind) {
+                        case JAVA -> spec.javaJars.isEmpty() ? null : javaSteps(spec);
+                        case KOTLIN ->
+                            spec.kotlinJars.isEmpty()
+                                    ? null
+                                    : List.of(KtfmtStep.create(
+                                            spec.kotlinVersion,
+                                            provisioner(spec.kotlinJars),
+                                            ktfmtStyle(spec.kotlinStyle),
+                                            ktfmtOptions(spec.kotlinMaxWidth)));
+                        case GROOVY -> groovySteps();
+                        case SCALA -> spec.scalaJars.isEmpty() ? null : scalaSteps(spec);
+                    };
+            if (steps == null) return null;
+            Formatter f = Formatter.builder()
+                    .lineEndingsPolicy(LineEnding.UNIX.createPolicy())
+                    .encoding(StandardCharsets.UTF_8)
+                    .steps(steps)
+                    .build();
+            warm(f, kind);
+            return f;
+        }
 
-            /** The formatter for {@code kind} on this thread, or null when the run has no jars for it. */
-            @Nullable
-            Formatter formatter(Kind kind) {
-                if (byKind.containsKey(kind)) return byKind.get(kind);
-                Formatter f = build(kind);
-                byKind.put(kind, f);
-                return f;
+        /**
+         * Format a stub so the chain's lazy state — a provisioned classloader per jar set, the
+         * formatter object behind it — exists before any real file is measured against it. Without
+         * this the first file a thread sees carries that cost and can look pathological to the
+         * per-file timeout. Best-effort: a chain that cannot format a stub will say so on its
+         * first real file, like any other failure.
+         */
+        private static void warm(Formatter f, Kind kind) {
+            String stub =
+                    switch (kind) {
+                        case JAVA, GROOVY -> "class A {}\n";
+                        case KOTLIN, SCALA -> "class A\n";
+                    };
+            try {
+                DirtyState.of(f, new File("A" + extension(kind)), stub.getBytes(StandardCharsets.UTF_8));
+            } catch (RuntimeException ignored) {
+                // Warming is an optimization, never a requirement.
             }
+        }
 
-            private @Nullable Formatter build(Kind kind) {
-                List<FormatterStep> steps =
-                        switch (kind) {
-                            case JAVA -> spec.javaJars.isEmpty() ? null : javaSteps(spec);
-                            case KOTLIN ->
-                                spec.kotlinJars.isEmpty()
-                                        ? null
-                                        : List.of(KtfmtStep.create(
-                                                spec.kotlinVersion,
-                                                provisioner(spec.kotlinJars),
-                                                ktfmtStyle(spec.kotlinStyle),
-                                                ktfmtOptions(spec.kotlinMaxWidth)));
-                            case GROOVY -> groovySteps();
-                            case SCALA -> spec.scalaJars.isEmpty() ? null : scalaSteps(spec);
-                        };
-                if (steps == null) return null;
-                Formatter f = Formatter.builder()
-                        .lineEndingsPolicy(LineEnding.UNIX.createPolicy())
-                        .encoding(StandardCharsets.UTF_8)
-                        .steps(steps)
-                        .build();
-                warm(f, kind);
-                return f;
-            }
-
-            /**
-             * Format a stub so the chain's lazy state — a provisioned classloader per jar set, the
-             * formatter object behind it — exists before any real file is measured against it. Without
-             * this the first file a thread sees carries that cost and can look pathological to the
-             * per-file timeout. Best-effort: a chain that cannot format a stub will say so on its
-             * first real file, like any other failure.
-             */
-            private static void warm(Formatter f, Kind kind) {
-                String stub =
-                        switch (kind) {
-                            case JAVA, GROOVY -> "class A {}\n";
-                            case KOTLIN, SCALA -> "class A\n";
-                        };
-                try {
-                    DirtyState.of(f, new File("A" + extension(kind)), stub.getBytes(StandardCharsets.UTF_8));
-                } catch (RuntimeException ignored) {
-                    // Warming is an optimization, never a requirement.
-                }
-            }
-
-            private static String extension(Kind kind) {
-                return switch (kind) {
-                    case JAVA -> ".java";
-                    case KOTLIN -> ".kt";
-                    case GROOVY -> ".groovy";
-                    case SCALA -> ".scala";
-                };
-            }
-
-            @Override
-            public void close() {
-                for (Formatter f : byKind.values()) {
-                    if (f == null) continue;
-                    try {
-                        f.close();
-                    } catch (Throwable ignored) {
-                        // A thread abandoned to the per-file timeout may still be inside this
-                        // formatter. Its step chain dies with the process either way, and a close
-                        // that trips over the live use must not turn a reported timeout into a
-                        // worker crash — reconcile reads any exit outside {0, 1} as a death.
-                    }
-                }
-            }
+        private static String extension(Kind kind) {
+            return switch (kind) {
+                case JAVA -> ".java";
+                case KOTLIN -> ".kt";
+                case GROOVY -> ".groovy";
+                case SCALA -> ".scala";
+            };
         }
     }
 

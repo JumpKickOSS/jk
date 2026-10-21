@@ -8,6 +8,7 @@ import cc.jumpkick.compile.JavaCompilerHost.Lanes;
 import cc.jumpkick.compile.JavaCompilerHost.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.engine.plugin.WarmLinger;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -38,12 +39,12 @@ class WarmLanesTest {
     @AfterEach
     void reset() {
         WarmLanes.closeAllForTests();
-        WarmLanes.lingerForTests(-1);
+        WarmLinger.forTests(-1);
     }
 
     @Test
     void one_key_is_one_pool_and_an_idle_one_is_retired_after_its_linger(@TempDir Path dir) throws Exception {
-        WarmLanes.lingerForTests(50);
+        WarmLinger.forTests(50);
         AtomicInteger made = new AtomicInteger();
         Lanes pool = idlePool();
         CompileWork first = item(dir, "a", 1L);
@@ -103,7 +104,7 @@ class WarmLanesTest {
     @Tag("integration")
     void the_next_job_compiles_on_the_worker_the_last_one_left(@TempDir Path dir) throws Exception {
         Path worker = workerJar();
-        WarmLanes.lingerForTests(60_000);
+        WarmLinger.forTests(60_000);
         ForkedJavac.Request req = moduleRequest(dir, worker, "m");
         Path src = req.sources().getFirst();
 
@@ -126,7 +127,7 @@ class WarmLanesTest {
     @Tag("integration")
     void a_rewritten_jar_on_the_classpath_is_read_again_by_a_warm_worker(@TempDir Path dir) throws Exception {
         Path worker = workerJar();
-        WarmLanes.lingerForTests(60_000);
+        WarmLinger.forTests(60_000);
         Path lib = dir.resolve("lib.jar");
         writeLib(dir, lib, "public int one() { return 1; }");
         ForkedJavac.Request uses = moduleRequest(
@@ -149,7 +150,7 @@ class WarmLanesTest {
     void a_warm_only_plan_starts_no_worker_and_uses_the_one_a_build_left(@TempDir Path dir) throws Exception {
         Path worker = workerJar();
         WarmLanes.closeAllForTests(); // another class in this JVM may have left a worker for the same key
-        WarmLanes.lingerForTests(60_000);
+        WarmLinger.forTests(60_000);
         ForkedJavac.Request req = moduleRequest(dir, worker, "w");
 
         assertThat(inJob(9321L, () -> ForkedJavac.planIfWarm(req)))

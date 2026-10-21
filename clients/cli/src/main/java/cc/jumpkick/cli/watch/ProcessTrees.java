@@ -14,7 +14,7 @@ import java.util.List;
  * where still alive, then waited for once more so "stopped" means gone. The whole pass fits strictly
  * inside {@link GlobalCancel#HOOKS_BOUND_MILLIS}, which is what lets the SIGINT hook run it.
  */
-final class ProcessTrees {
+public final class ProcessTrees {
 
     /** How long the trees get to exit on their own after the polite signal. */
     static final Duration GRACE = Duration.ofSeconds(3);
@@ -24,6 +24,17 @@ final class ProcessTrees {
             Duration.ofMillis(GlobalCancel.HOOKS_BOUND_MILLIS).minus(GRACE).minusSeconds(1);
 
     private ProcessTrees() {}
+
+    /**
+     * Wait until {@code process} exits. On SIGINT, stop its tree before this process halts, so the
+     * child cannot outlive the command.
+     */
+    public static int awaitExit(Process process) throws InterruptedException {
+        try (GlobalCancel.Registration onInterrupt =
+                GlobalCancel.onInterrupt(() -> stop(List.of(process.toHandle()), Clock.SYSTEM))) {
+            return process.waitFor();
+        }
+    }
 
     /** Stop {@code roots} and everything beneath them; a root that is already gone is nothing to do. */
     static void stop(Collection<ProcessHandle> roots, Clock clock) {

@@ -2,8 +2,8 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.compile.JavaCompilerHost.Lanes;
-import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.engine.plugin.WarmLinger;
 import cc.jumpkick.host.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -15,11 +15,9 @@ import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Compiler lanes that outlive the job that started them, for {@link #lingerMillis} after their last
- * item: the {@link LingerWindow} the builds are arriving in. A one-file edit on a warm worker is a compile; on a fresh one it is a JVM start, a Zinc
- * warm-up and a cold javac, which on petclinic is 50 ms against 590 ms. The linger is the inner
- * loop's cadence, not a residency: a worker nothing has asked for in that long exits, so the idle
- * engine is back to its floor well before any idle mark that matters.
+ * Compiler lanes that outlive the job that started them, for the {@link WarmLinger linger} after
+ * their last item. A one-file edit on a warm worker is a compile; on a fresh one it is a JVM start,
+ * a Zinc warm-up and a cold javac, which on petclinic is 50 ms against 590 ms.
  *
  * <p>A warm pool is keyed by everything a running worker cannot be given — JDK, worker jar, the
  * environment it was started with, heap and the module's own JVM flags — and not by job. Each lane
@@ -30,11 +28,9 @@ import org.jspecify.annotations.Nullable;
  * <p>A lane still yields to the lease ledger and the lane budget exactly as a job's does: an idle
  * warm lane exits when a fork waits for its memory or another pool needs its slot. Scala and the
  * other compiler-classpath requests stay job-scoped; their compiler caches are not worth holding.
- * {@code JK_COMPILE_LINGER_MS} pins the linger; {@code 0} turns warm lanes off.
+ * A linger of {@code 0} turns warm lanes off.
  */
 final class WarmLanes {
-
-    static final String ENV = "JK_COMPILE_LINGER_MS";
 
     private static final ConcurrentHashMap<String, Warm> POOLS = new ConcurrentHashMap<>();
 
@@ -43,33 +39,13 @@ final class WarmLanes {
 
     private static final Clock CLOCK = Clock.SYSTEM;
 
-    private static final boolean CI = EnvValues.isCi(System::getenv);
-
-    private static final LingerWindow WINDOW = new LingerWindow();
-
-    private static volatile long lingerForTests = -1L;
-
     private static volatile boolean hookRegistered;
 
     private WarmLanes() {}
 
-    /**
-     * How long a warm pool waits after its last item before its lanes exit: {@code
-     * JK_COMPILE_LINGER_MS} when set (0 turns warm lanes off), else {@link LingerWindow#CI_MS} under
-     * CI, else the window the recent builds' gaps call for.
-     */
+    /** How long a warm pool waits after its last item before its lanes exit. */
     static long lingerMillis() {
-        long pinned = lingerForTests;
-        if (pinned >= 0) return pinned;
-        String v = System.getenv(ENV);
-        if (v != null && !v.isBlank()) {
-            try {
-                return Math.max(0L, Long.parseLong(v.trim()));
-            } catch (NumberFormatException e) {
-                // an unreadable pin is no pin
-            }
-        }
-        return CI ? LingerWindow.CI_MS : WINDOW.millis();
+        return WarmLinger.millis();
     }
 
     /** Whether {@code req} is compiled on a warm pool rather than its job's. */
@@ -99,11 +75,7 @@ final class WarmLanes {
             return pool;
         });
         Warm pool = held[0];
-        WINDOW.arrived(item.job, CLOCK.nanos());
-        item.compile.whenComplete((r, e) -> {
-            WINDOW.settled(CLOCK.nanos());
-            pool.settled();
-        });
+        item.compile.whenComplete((r, e) -> pool.settled());
         pool.armReaper();
         registerShutdownHook();
         return pool.lanes;
@@ -118,11 +90,6 @@ final class WarmLanes {
     /** {@code job} has ended: stop every warm lane still working on one of its items. */
     static void abandon(long job) {
         for (Warm w : POOLS.values()) w.lanes.stopLanesWorking(t -> t.job == job);
-    }
-
-    /** Test seam: pin the linger; {@code -1} reads the environment again. */
-    static void lingerForTests(long millis) {
-        lingerForTests = millis;
     }
 
     /** Test seam: retire every warm pool now and wait for its lanes to exit. */
