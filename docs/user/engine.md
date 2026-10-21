@@ -405,7 +405,13 @@ code-graph worker and the build-script host (`.jk/*.kts`). A warm worker keeps i
 loaded classes and what it caches (the formatter its step chains, the graph worker the loaded
 graph), and shuts
 down after 30 idle minutes (`JK_WORKER_LINGER_MIN`), or at once when a queued fork needs its
-lease. The build-script host starts with a planned heap of 256 MiB — learned after that, the
+lease. An idle warm worker also exits when the host is short of memory, so the IDE and the
+browser get it back: on macOS when the system's memory pressure reaches warn (after a minute
+idle) or critical (at once), on Linux when the cgroup's, else the host's, memory pressure stall
+figures cross the same two levels. A worker in the middle of a run is never stopped for it; the
+next run starts a fresh one. Workers of one tool share by heap: a run takes an idle worker with
+at least the heap it needs, and a smaller idle one exits once a bigger one is idle, so each tool
+keeps one warm worker at the largest heap it needed. The build-script host starts with a planned heap of 256 MiB — learned after that, the
 same way as other planned workers — so its lease is that heap plus the usual overhead instead
 of the unsized 512 MiB default. A warm worker's lease is held while the process is alive and
 drops when it exits.

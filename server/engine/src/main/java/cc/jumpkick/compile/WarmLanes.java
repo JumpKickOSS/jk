@@ -2,6 +2,7 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.compile.JavaCompilerHost.Lanes;
+import cc.jumpkick.engine.plugin.HostPressure;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WarmLinger;
 import cc.jumpkick.host.time.Clock;
@@ -90,12 +91,23 @@ final class WarmLanes {
         item.compile.whenComplete((r, e) -> pool.settled());
         pool.armReaper();
         registerShutdownHook();
+        HostPressure.register("warm java compilers", WarmLanes::shedIdle);
         if (created[0]) {
             for (Warm w : List.copyOf(POOLS.values())) {
                 if (covers(pool, w)) w.retireIfIdle();
             }
         }
         return pool.lanes;
+    }
+
+    /** Retire every pool with no work that has been idle at least {@code minIdle}; how many. */
+    static int shedIdle(Duration minIdle) {
+        int shed = 0;
+        long now = CLOCK.nanos();
+        for (Warm w : List.copyOf(POOLS.values())) {
+            if (now - w.lastUsedNanos >= minIdle.toNanos() && w.retireIfIdle()) shed++;
+        }
+        return shed;
     }
 
     /** Whether a warm pool of {@code family} that fits {@code heap} has a worker running now. */
@@ -211,18 +223,20 @@ final class WarmLanes {
         }
 
         /**
-         * Retire when no item is on this pool; a pool with work keeps it. The lanes are closed off
-         * the caller's thread, which may be one of theirs finishing its last item.
+         * Retire when no item is on this pool, and say whether it did; a pool with work keeps it.
+         * The lanes are closed off the caller's thread, which may be one of theirs finishing its
+         * last item.
          */
-        void retireIfIdle() {
+        boolean retireIfIdle() {
             boolean[] retired = {false};
             POOLS.computeIfPresent(key, (k, w) -> {
                 if (w != this || items > 0) return w;
                 retired[0] = true;
                 return null;
             });
-            // Closes a covered pool's lanes; reads no session.
-            if (retired[0]) Thread.ofVirtual().name("jk-javac-covered").start(this::retire);
+            // Closes a retired pool's lanes; reads no session.
+            if (retired[0]) Thread.ofVirtual().name("jk-javac-retire").start(this::retire);
+            return retired[0];
         }
 
         synchronized void armReaper() {
