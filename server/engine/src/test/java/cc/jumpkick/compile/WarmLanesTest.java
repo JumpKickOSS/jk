@@ -50,8 +50,8 @@ class WarmLanesTest {
         CompileWork first = item(dir, "a", 1L);
         CompileWork second = item(dir, "b", 2L);
 
-        assertThat(WarmLanes.lanes("k", () -> counted(made, pool), first)).isSameAs(pool);
-        assertThat(WarmLanes.lanes("k", () -> counted(made, pool), second)).isSameAs(pool);
+        assertThat(WarmLanes.lanes("k", 512L, h -> counted(made, pool), first)).isSameAs(pool);
+        assertThat(WarmLanes.lanes("k", 512L, h -> counted(made, pool), second)).isSameAs(pool);
         assertThat(made).as("the second job finds the first one's pool").hasValue(1);
 
         Thread.sleep(200);
@@ -67,6 +67,50 @@ class WarmLanesTest {
         second.compile.complete(ok());
         awaitTrue(() -> WarmLanes.poolCount() == 0, "the idle pool is retired");
         assertThat(pool.closing()).isTrue();
+    }
+
+    @Test
+    void a_compile_goes_on_the_smallest_pool_whose_heap_covers_it(@TempDir Path dir) throws Exception {
+        WarmLinger.forTests(60_000);
+        Lanes big = idlePool();
+        CompileWork onBig = item(dir, "a", 1L);
+        assertThat(WarmLanes.lanes("k", 1024L, h -> big, onBig)).isSameAs(big);
+
+        CompileWork small = item(dir, "b", 2L);
+        assertThat(WarmLanes.lanes("k", 256L, h -> idlePool(), small))
+                .as("a smaller compile fits the bigger pool")
+                .isSameAs(big);
+        CompileWork bigger = item(dir, "c", 3L);
+        Lanes biggest = idlePool();
+        assertThat(WarmLanes.lanes("k", 2048L, h -> biggest, bigger))
+                .as("a bigger compile never fits a smaller pool")
+                .isSameAs(biggest);
+        CompileWork other = item(dir, "d", 4L);
+        Lanes pinned = idlePool();
+        assertThat(WarmLanes.lanes("k", null, h -> pinned, other))
+                .as("a pinned heap fits only a pinned pool")
+                .isSameAs(pinned);
+        assertThat(WarmLanes.lanes("other", 256L, h -> idlePool(), item(dir, "e", 5L)))
+                .as("another family never shares")
+                .isNotSameAs(big);
+    }
+
+    @Test
+    void a_pool_a_bigger_one_covers_retires_once_it_has_no_work(@TempDir Path dir) throws Exception {
+        WarmLinger.forTests(60_000);
+        Lanes small = idlePool();
+        CompileWork onSmall = item(dir, "a", 1L);
+        WarmLanes.lanes("k", 256L, h -> small, onSmall);
+        Lanes big = idlePool();
+        CompileWork onBig = item(dir, "b", 2L);
+        WarmLanes.lanes("k", 1024L, h -> big, onBig);
+        assertThat(small.closing()).as("an item is still on the smaller pool").isFalse();
+
+        onSmall.compile.complete(ok());
+
+        awaitTrue(small::closing, "the covered pool retires when its work is done");
+        assertThat(big.closing()).isFalse();
+        onBig.compile.complete(ok());
     }
 
     @Test

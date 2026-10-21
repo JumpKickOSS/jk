@@ -137,7 +137,7 @@ public final class JavaCompilerHost {
      */
     static ForkedJavac.@Nullable Plan planIfWarm(ForkedJavac.Request req) {
         if (!WarmLanes.lingers(req)) return null;
-        if (!WarmLanes.running(warmKey(req, WorkerHeap.forRequest(req)))) return null;
+        if (!WarmLanes.running(warmFamily(req), WorkerHeap.forRequest(req))) return null;
         return plan(req);
     }
 
@@ -145,15 +145,16 @@ public final class JavaCompilerHost {
     private static Lanes lanesFor(long id, ForkedJavac.Request req, @Nullable Long heapBytes, CompileWork item) {
         if (!WarmLanes.lingers(req)) return pool(id, req, heapBytes);
         Path home = ForkedJavac.workerJavaHome(req);
-        return WarmLanes.lanes(warmKey(req, heapBytes), () -> Lanes.warm(req, home, heapBytes), item);
+        return WarmLanes.lanes(warmFamily(req), heapBytes, heap -> Lanes.warm(req, home, heap), item);
     }
 
-    private static String warmKey(ForkedJavac.Request req, @Nullable Long heapBytes) {
+    /** What a warm worker for {@code req} cannot be given, heap aside: its pools differ only in heap. */
+    private static String warmFamily(ForkedJavac.Request req) {
         // The whole environment, not its fingerprint: a job's pool sees one request's variables, a
         // warm one every later request's, and a worker cannot be handed new ones.
         String env = Hashing.sha256Hex(new TreeMap<>(req.env().environment()).toString());
         return "warm|" + ForkedJavac.workerJavaHome(req) + "|" + req.workerJar() + "|" + env + "|"
-                + (heapBytes == null ? "" : heapBytes) + "|" + String.join(" ", req.jvmArgs());
+                + String.join(" ", req.jvmArgs());
     }
 
     private static Lanes pool(long id, ForkedJavac.Request req, @Nullable Long heapBytes) {

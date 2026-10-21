@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,13 +49,14 @@ class WarmWorkersTest {
     }
 
     private WarmWorkers.Launch launch(String flavor) {
-        List<String> command = List.of(
-                Path.of(System.getProperty("java.home"), "bin", "java").toString(),
-                "-Dflavor=" + flavor,
-                "-cp",
-                System.getProperty("java.class.path"),
-                ServeFixture.class.getName(),
-                "--serve");
+        return launch(flavor, null);
+    }
+
+    private WarmWorkers.Launch launch(String flavor, @Nullable String xmx) {
+        List<String> command = new ArrayList<>(
+                List.of(Path.of(System.getProperty("java.home"), "bin", "java").toString(), "-Dflavor=" + flavor));
+        if (xmx != null) command.add("-Xmx" + xmx);
+        command.addAll(List.of("-cp", System.getProperty("java.class.path"), ServeFixture.class.getName(), "--serve"));
         return new WarmWorkers.Launch(
                 "test worker",
                 command,
@@ -84,6 +86,32 @@ class WarmWorkersTest {
         Seen other = run(launch("b"), "ok", out);
         assertThat(other.pid).isNotEqualTo(first.pid);
         assertThat(WarmWorkers.idleCount()).isEqualTo(2);
+    }
+
+    @Test
+    void an_idle_worker_with_enough_heap_serves_a_run_that_asks_for_less() throws Exception {
+        WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
+        long big = run(launch("a", "256m"), "ok", out).pid;
+
+        assertThat(run(launch("a", "64m"), "ok", out).pid).as("256m covers 64m").isEqualTo(big);
+        long bigger = run(launch("a", "512m"), "ok", out).pid;
+        assertThat(bigger).as("256m does not cover 512m").isNotEqualTo(big);
+        assertThat(run(launch("a"), "ok", out).pid)
+                .as("a command with no heap takes only a worker with none")
+                .isNotIn(big, bigger);
+    }
+
+    @Test
+    void an_idle_worker_a_bigger_idle_sibling_covers_exits() throws Exception {
+        WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
+        run(launch("a", "64m"), "ok", out);
+        run(launch("a", "256m"), "ok", out);
+
+        assertThat(WarmWorkers.idleCount())
+                .as("the 64m worker exits once the 256m one is idle")
+                .isEqualTo(1);
+        long pid = run(launch("a", "64m"), "ok", out).pid;
+        assertThat(run(launch("a", "128m"), "ok", out).pid).isEqualTo(pid);
     }
 
     @Test

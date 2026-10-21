@@ -145,6 +145,7 @@ public final class PlannerLang {
         private final @Nullable Path workingDir;
         private final Path snapshotDir;
         private final WorkerEnv env;
+        private final HeapScope.Key heapKey;
         private @Nullable KotlincRequest request;
 
         private KotlinWorker(
@@ -166,15 +167,28 @@ public final class PlannerLang {
             this.workingDir = workingDir;
             this.snapshotDir = snapshotDir;
             this.env = WorkerEnv.forModule(project.build().env(), moduleDir, null);
+            this.heapKey = heapKey(moduleDir, project, HeapScope.KOTLIN_COMPILE);
         }
 
         WorkerEnv env() {
             return env;
         }
 
-        /** Snapshots classpath entries through this compile's worker; resolves it on first use. */
+        /**
+         * Snapshots classpath entries through this compile's worker; resolves it on first use. The
+         * snapshot runs under the compile's heap scope, so it asks for the compile's heap and
+         * shares its warm worker.
+         */
         KotlinClasspathAbi.Snapshotter snapshotter() {
-            return entries -> KotlincSnapshots.snapshot(request(), entries, env);
+            return entries -> {
+                KotlincRequest req = request();
+                HeapScope.Key previous = HeapScope.bind(heapKey);
+                try {
+                    return KotlincSnapshots.snapshot(req, entries, env);
+                } finally {
+                    HeapScope.restore(previous);
+                }
+            };
         }
 
         /** The compile request, built once: what the worker is told and what the key hashes. */
@@ -568,14 +582,17 @@ public final class PlannerLang {
     }
 
     /** Fork {@code body} under this module's learned-heap key and flush any retry line onto {@code ctx}. */
-    private static <T> T learning(TaskContext ctx, Path project, String kind, Callable<T> body) throws IOException {
-        JkBuild build = ctx.require(PROJECT);
-        HeapScope.Key key = new HeapScope.Key(
-                project,
+    /** Where a compile of {@code build} in {@code dir} learns its worker heap. */
+    private static HeapScope.Key heapKey(Path dir, JkBuild build, String kind) {
+        return new HeapScope.Key(
+                dir,
                 build.project().group() + ":" + build.project().name(),
                 kind,
                 JvmOptions.hostFeature(JavaHomes.runningJavaHome()));
-        HeapScope.Key previous = HeapScope.bind(key);
+    }
+
+    private static <T> T learning(TaskContext ctx, Path project, String kind, Callable<T> body) throws IOException {
+        HeapScope.Key previous = HeapScope.bind(heapKey(project, ctx.require(PROJECT), kind));
         try {
             return body.call();
         } catch (IOException | RuntimeException e) {

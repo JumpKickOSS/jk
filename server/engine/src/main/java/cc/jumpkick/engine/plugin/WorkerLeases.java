@@ -258,6 +258,13 @@ public final class WorkerLeases {
     }
 
     /** The {@code -Xmx} the command asks for, or {@code -1} when it names none. The last flag wins. */
+    /** Whether {@code arg} sizes the heap: {@code -Xmx}, {@code -Xms} or an {@code -XX:} heap size. */
+    public static boolean heapFlag(String arg) {
+        return XMX.matcher(arg).matches()
+                || XMS.matcher(arg).matches()
+                || XX_HEAP.matcher(arg).matches();
+    }
+
     public static long parseXmx(List<String> command) {
         long found = -1;
         for (String arg : command) {

@@ -41,8 +41,10 @@ import org.jspecify.annotations.Nullable;
  * fresh one.
  *
  * <p><strong>A launch</strong> is the whole command line and environment. Anything a running
- * worker cannot be given (heap, JVM flags, classpath, startup cache) is part of it, so two runs
- * that differ there never share a worker.
+ * worker cannot be given (JVM flags, classpath, startup cache) is part of it, so two runs that
+ * differ there never share a worker. The heap is the exception: an idle worker of the same launch
+ * with at least the heap a run asks for serves it, and one that a bigger idle sibling covers
+ * exits instead of idling, so a tool settles on one warm worker at the largest heap it needed.
  *
  * <p>The worker's output is read on a platform thread, for the reason {@code KtsSession} gives: an
  * idle worker is silent for as long as the linger, and a virtual thread parked on that pipe would
@@ -63,11 +65,19 @@ public final class WarmWorkers {
     public record Launch(
             String name, List<String> command, WorkerEnv env, String prefix, HeapScope.@Nullable Key heapKey) {
 
+        /** The launch without its heap flags: workers of one key differ at most in heap. */
         String key() {
             StringBuilder sb = new StringBuilder();
-            for (String arg : command) sb.append(arg).append('\u0000');
+            for (String arg : command) {
+                if (!WorkerLeases.heapFlag(arg)) sb.append(arg).append('\u0000');
+            }
             sb.append('\u0001').append(new TreeMap<>(env.environment()));
             return sb.toString();
+        }
+
+        /** The {@code -Xmx} asked for, or {@code -1} when the command names none. */
+        long heap() {
+            return WorkerLeases.parseXmx(command);
         }
     }
 
@@ -112,7 +122,7 @@ public final class WarmWorkers {
             throws IOException, InterruptedException {
         PluginLoader.sealNetworkPolicy(spec);
         String key = launch.key();
-        Worker worker = takeIdle(key);
+        Worker worker = takeIdle(key, launch.heap());
         if (worker == null) worker = start(launch, key);
         boolean keep = false;
         try {
@@ -150,19 +160,29 @@ public final class WarmWorkers {
         return pids;
     }
 
-    private static @Nullable Worker takeIdle(String key) {
+    /**
+     * The idle worker of {@code key} with the smallest heap that is at least {@code heap}. A command
+     * that names no heap takes only a worker that names none.
+     */
+    private static @Nullable Worker takeIdle(String key, long heap) {
         synchronized (IDLE) {
             Deque<Worker> idle = IDLE.get(key);
-            while (idle != null && !idle.isEmpty()) {
-                Worker w = idle.pollLast();
-                if (w.process.isAlive()) {
-                    if (idle.isEmpty()) IDLE.remove(key);
-                    return w;
-                }
+            if (idle == null) return null;
+            idle.removeIf(w -> !w.process.isAlive());
+            Worker best = null;
+            for (Worker w : idle) {
+                if (!fits(w.heap, heap)) continue;
+                if (best == null || w.heap < best.heap) best = w;
             }
-            if (idle != null) IDLE.remove(key);
-            return null;
+            if (best != null) idle.remove(best);
+            if (idle.isEmpty()) IDLE.remove(key);
+            return best;
         }
+    }
+
+    /** Whether a worker started with {@code have} can serve a run that asks for {@code want}. */
+    static boolean fits(long have, long want) {
+        return want < 0 ? have < 0 : have >= want;
     }
 
     /**
@@ -171,15 +191,27 @@ public final class WarmWorkers {
      */
     private static void release(Worker w, boolean keep) {
         boolean idle = keep && w.process.isAlive() && !w.retire && !w.yielding && WarmLinger.millis() > 0;
-        if (idle) {
-            synchronized (IDLE) {
-                w.lastUsedNanos = CLOCK.nanos();
-                IDLE.computeIfAbsent(w.key, k -> new ArrayDeque<>()).addLast(w);
-            }
-            w.armReaper();
+        if (!idle) {
+            w.exit();
             return;
         }
-        w.exit();
+        List<Worker> covered = new ArrayList<>();
+        synchronized (IDLE) {
+            Deque<Worker> siblings = IDLE.computeIfAbsent(w.key, k -> new ArrayDeque<>());
+            w.lastUsedNanos = CLOCK.nanos();
+            siblings.addLast(w);
+            if (w.heap >= 0) {
+                long largest = w.heap;
+                for (Worker s : siblings) largest = Math.max(largest, s.heap);
+                for (Worker s : siblings) {
+                    if (s.heap >= 0 && s.heap < largest) covered.add(s);
+                }
+                siblings.removeAll(covered);
+            }
+        }
+        // A bigger idle sibling serves whatever these would: they exit rather than hold a lease.
+        for (Worker s : covered) s.exit();
+        if (!covered.contains(w)) w.armReaper();
     }
 
     /** Remove {@code w} from the idle list. True when it was there, so the caller owns ending it. */
@@ -209,7 +241,7 @@ public final class WarmWorkers {
         } finally {
             HeapScope.restore(previous);
         }
-        Worker w = new Worker(key, process);
+        Worker w = new Worker(key, launch.heap(), process);
         started[0] = w;
         LIVE.add(w);
         registerShutdownHook();
@@ -229,6 +261,10 @@ public final class WarmWorkers {
     /** One served worker process and the lines it has written that no run has read yet. */
     private static final class Worker {
         final String key;
+
+        /** The {@code -Xmx} it was started with, or {@code -1}. */
+        final long heap;
+
         final Process process;
         private final BufferedWriter stdin;
         private final BlockingQueue<String> lines = new LinkedBlockingQueue<>();
@@ -244,8 +280,9 @@ public final class WarmWorkers {
 
         private @Nullable Thread reaper;
 
-        Worker(String key, Process process) {
+        Worker(String key, long heap, Process process) {
             this.key = key;
+            this.heap = heap;
             this.process = process;
             this.stdin = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
             BoundedLineReader out =
