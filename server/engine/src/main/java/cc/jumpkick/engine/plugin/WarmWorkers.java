@@ -58,9 +58,10 @@ public final class WarmWorkers {
      * @param name what the lease ledger and {@code jk engine status} call the worker
      * @param command the full served command line, ending with {@link PluginProtocol#SERVE}
      * @param prefix the plugin's protocol prefix
-     * @param heapKey where the worker's peak is learned when it exits
+     * @param heapKey where the worker's peak is learned when it exits; {@code null} learns nothing
      */
-    public record Launch(String name, List<String> command, WorkerEnv env, String prefix, HeapScope.Key heapKey) {
+    public record Launch(
+            String name, List<String> command, WorkerEnv env, String prefix, HeapScope.@Nullable Key heapKey) {
 
         String key() {
             StringBuilder sb = new StringBuilder();
@@ -197,7 +198,8 @@ public final class WarmWorkers {
         pb.environment().putAll(launch.env().environment());
         Worker[] started = new Worker[1];
         // Bound for the start only: the scope is what files the worker's peak when it exits.
-        HeapScope.Key previous = HeapScope.bind(launch.heapKey());
+        HeapScope.Key heapKey = launch.heapKey();
+        HeapScope.@Nullable Key previous = heapKey != null ? HeapScope.bind(heapKey) : HeapScope.get();
         Process process;
         try {
             process = JobWorkers.startResident(pb, new WorkerLeases.Resident(launch.name(), () -> {

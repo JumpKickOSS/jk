@@ -40,7 +40,7 @@ memory, or from a stored snapshot. `-r` extracts every file again.
 
 The graph is built in its own worker process, so its memory is never the engine's. The worker
 stays up between commands with the graph in memory and exits after 30 idle minutes
-(`JK_WORKER_LINGER_MS`), or sooner when another fork needs its memory.
+(`JK_WORKER_LINGER_MIN`), or sooner when another fork needs its memory.
 
 ## Reading an answer
 

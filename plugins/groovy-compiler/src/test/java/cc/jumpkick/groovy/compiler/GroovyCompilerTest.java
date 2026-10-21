@@ -245,6 +245,93 @@ class GroovyCompilerTest {
 
     // ---------------------------------------------------------------------------------------
 
+    /**
+     * A served worker compiles one module after another in the same JVM: the second compile sees
+     * its own sources and classpath only, never a class the first one loaded or wrote.
+     */
+    @Test
+    void a_second_compile_in_the_same_jvm_sees_nothing_of_the_first(@TempDir Path dir) throws Exception {
+        Path libOut = dir.resolve("lib-classes");
+        Path lib = write(dir.resolve("lib/Extra.groovy"), "class Extra { String v() { 'extra' } }");
+        Run first = compile(dir, sw -> sw.layout(Map.of("classesDir", libOut))
+                .configString("jvmTarget", "25")
+                .source(lib));
+        assertThat(first.exit).as("diagnostics: %s", first.protocol).isZero();
+        Path aOut = dir.resolve("a-classes");
+        Path a = write(dir.resolve("a/Greeter.groovy"), "class Greeter { String greet() { new Extra().v() } }");
+        Run withLib = compile(dir, sw -> sw.layout(Map.of("classesDir", aOut))
+                .configString("jvmTarget", "25")
+                .cp(libOut, PluginProtocol.ROLE_COMPILE)
+                .source(a));
+        assertThat(withLib.exit).as("diagnostics: %s", withLib.protocol).isZero();
+
+        Path bOut = dir.resolve("b-classes");
+        Path b = write(dir.resolve("b/Greeter.groovy"), "class Greeter { String greet() { new Extra().v() } }");
+        Run withoutLib = compile(dir, sw -> sw.layout(Map.of("classesDir", bOut))
+                .configString("jvmTarget", "25")
+                .source(b));
+
+        assertThat(withoutLib.exit).isNotZero();
+        assertThat(withoutLib.protocol).contains("Extra");
+        Path cOut = dir.resolve("c-classes");
+        Path c = write(dir.resolve("c/Greeter.groovy"), "class Greeter { String greet() { 'c' } }");
+        Run fresh = compile(dir, sw -> sw.layout(Map.of("classesDir", cOut))
+                .configString("jvmTarget", "25")
+                .source(c));
+        assertThat(fresh.exit).as("diagnostics: %s", fresh.protocol).isZero();
+        try (URLClassLoader loader =
+                new URLClassLoader(new URL[] {cOut.toUri().toURL()}, GroovyCompilerTest.class.getClassLoader())) {
+            Class<?> greeter = loader.loadClass("Greeter");
+            Object instance = greeter.getConstructor().newInstance();
+            assertThat(greeter.getMethod("greet").invoke(instance)).isEqualTo("c");
+        }
+    }
+
+    /** The pinned Groovy's class-file cache can be cleared, so its worker serves more than one compile. */
+    @Test
+    void the_pinned_groovy_lets_the_worker_stay_warm() {
+        assertThat(GroovyCompiler.forgetClassFiles()).isTrue();
+        assertThat(new GroovyCompiler().reusable()).isTrue();
+    }
+
+    /** A dependency's classes rewritten in place between two compiles in one JVM are read again. */
+    @Test
+    void a_dependency_rewritten_in_place_is_read_again_by_the_next_compile(@TempDir Path dir) throws Exception {
+        Path libOut = dir.resolve("lib-classes");
+        Path lib = write(dir.resolve("lib/Lib.groovy"), "class Lib { String a() { 'a' } }");
+        Run v1 = compile(dir, sw -> sw.layout(Map.of("classesDir", libOut))
+                .configString("jvmTarget", "25")
+                .source(lib));
+        assertThat(v1.exit).as("diagnostics: %s", v1.protocol).isZero();
+        Path app = write(dir.resolve("app/App.groovy"), """
+                import groovy.transform.CompileStatic
+                @CompileStatic
+                class App { String run() { new Lib().a() } }
+                """);
+        Run first = compile(dir, sw -> sw.layout(Map.of("classesDir", dir.resolve("app-1")))
+                .configString("jvmTarget", "25")
+                .cp(libOut, PluginProtocol.ROLE_COMPILE)
+                .source(app));
+        assertThat(first.exit).as("diagnostics: %s", first.protocol).isZero();
+
+        write(lib, "class Lib { String a() { 'a' }\n String b() { 'b' } }");
+        Run v2 = compile(dir, sw -> sw.layout(Map.of("classesDir", libOut))
+                .configString("jvmTarget", "25")
+                .source(lib));
+        assertThat(v2.exit).as("diagnostics: %s", v2.protocol).isZero();
+        write(app, """
+                import groovy.transform.CompileStatic
+                @CompileStatic
+                class App { String run() { new Lib().b() } }
+                """);
+        Run second = compile(dir, sw -> sw.layout(Map.of("classesDir", dir.resolve("app-2")))
+                .configString("jvmTarget", "25")
+                .cp(libOut, PluginProtocol.ROLE_COMPILE)
+                .source(app));
+
+        assertThat(second.exit).as("diagnostics: %s", second.protocol).isZero();
+    }
+
     private record Run(int exit, String protocol) {}
 
     private static Run compile(Path dir, Consumer<SpecWriter> customize) throws Exception {
