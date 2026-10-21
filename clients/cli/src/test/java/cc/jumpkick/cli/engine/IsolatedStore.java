@@ -17,8 +17,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * unique fixture coordinates and keep the shared store's speed.
  *
  * <p>Required of any test that writes into or deletes from the ambient store's {@code repos/central},
- * {@code google} or {@code jumpkick}: those trees are links into the pool every test sandbox on the
- * host shares, so a fake there reaches every worktree's suites.
+ * {@code google} or {@code jumpkick}, or that expects no build tool installed: those trees and
+ * {@code tools/kotlin}, {@code gradle} and {@code maven} are links into the pool every test sandbox
+ * on the host shares, so a fake there reaches every worktree's suites.
  *
  * <p>The state root has its own twin, {@link IsolatedState}; a class may carry both.
  *

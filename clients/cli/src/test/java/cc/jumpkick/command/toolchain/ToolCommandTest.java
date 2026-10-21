@@ -4,6 +4,7 @@ package cc.jumpkick.command.toolchain;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.util.JkOwnership;
@@ -25,6 +26,7 @@ class ToolCommandTest {
     }
 
     @Test
+    @IsolatedStore
     void list_reports_empty_when_nothing_installed(@TempDir Path tempDir) {
         String stdout = Capture.stdout(() -> Jk.execute(
                 "tool",
