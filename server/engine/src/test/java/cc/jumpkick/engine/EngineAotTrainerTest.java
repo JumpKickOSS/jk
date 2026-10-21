@@ -49,6 +49,16 @@ class EngineAotTrainerTest {
         assertThat(marker).exists();
     }
 
+    @Test
+    void the_trainer_engine_is_owned_by_this_engine_and_kept_apart_from_its_state(@TempDir Path dir) {
+        Map<String, String> env = EngineAotTrainer.env(dir, dir.resolve("engine.aot"));
+        assertThat(env)
+                .containsEntry(
+                        OwnerWatchdog.ENV, Long.toString(ProcessHandle.current().pid()))
+                .containsEntry("JK_STATE_DIR", dir.resolve("state").toString())
+                .containsEntry("JK_CACHE_DIR", dir.resolve("cache").toString());
+    }
+
     private static Path script(Path dir, String body) throws Exception {
         Path cli = dir.resolve("jk");
         Files.writeString(cli, "#!/bin/sh\n" + body + "\n");

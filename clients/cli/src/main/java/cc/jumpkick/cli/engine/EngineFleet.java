@@ -272,18 +272,47 @@ public final class EngineFleet {
     }
 
     /**
-     * State dirs worth scanning for an untracked engine's socket: {@code <home>/state} read
-     * straight off the spawn line, then this client's own — which differ only when
-     * {@code JK_STATE_DIR} moved state out of the home tree. Scanning a directory that does not
-     * exist costs nothing ({@link EnginePaths#identitiesIn} returns empty).
+     * State dirs worth scanning for an untracked engine's socket: the engine's own, read off the
+     * spawn line's heap-dump path ({@link #stateFromCommandLine}), which finds an engine started
+     * under any {@code JK_STATE_DIR}; then {@code <home>/state} from the jar path; then this
+     * client's own. Scanning a directory that does not exist costs nothing
+     * ({@link EnginePaths#identitiesIn} returns empty).
      */
     private static List<Path> candidateStateDirs(String commandLine) {
-        List<Path> out = new ArrayList<>(2);
+        List<Path> out = new ArrayList<>(3);
+        Path own = stateFromCommandLine(commandLine);
+        if (own != null) out.add(own);
         Path home = homeFromCommandLine(commandLine);
-        if (home != null) out.add(home.resolve("state"));
-        Path own = JkDirs.state();
-        if (own != null && !out.contains(own)) out.add(own);
+        if (home != null && !out.contains(home.resolve("state"))) out.add(home.resolve("state"));
+        Path client = JkDirs.state();
+        if (client != null && !out.contains(client)) out.add(client);
         return out;
+    }
+
+    /**
+     * The state dir an engine was spawned under: every spawn line names the engine's own directory,
+     * {@code <state>/engine}, as {@code -XX:HeapDumpPath=} ({@link EnginePaths#heapDumpDir}). The
+     * value runs to the next {@code " -"} so a path with a space survives a space-joined argv. Null
+     * when the line carries no such flag.
+     */
+    static @Nullable Path stateFromCommandLine(String commandLine) {
+        if (commandLine == null) return null;
+        String flag = "-XX:HeapDumpPath=";
+        int at = commandLine.indexOf(flag);
+        if (at < 0) return null;
+        int start = at + flag.length();
+        int end = commandLine.indexOf(" -", start);
+        String value = (end < 0 ? commandLine.substring(start) : commandLine.substring(start, end)).strip();
+        if (value.length() > 1 && value.startsWith("\"") && value.endsWith("\"")) {
+            value = value.substring(1, value.length() - 1);
+        }
+        if (value.isEmpty()) return null;
+        try {
+            Path state = Path.of(value).getParent();
+            return state != null && state.isAbsolute() ? state.normalize() : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     /** True when {@code commandLine} is a resident engine JVM. */

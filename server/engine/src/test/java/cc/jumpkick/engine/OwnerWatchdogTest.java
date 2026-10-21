@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -42,6 +43,15 @@ class OwnerWatchdogTest {
         assertThat(OwnerWatchdog.start(null, () -> {}, log::add)).isNull();
         assertThat(OwnerWatchdog.start("  ", () -> {}, log::add)).isNull();
         assertThat(log).isEmpty();
+    }
+
+    @Test
+    void the_property_names_the_owner_and_the_environment_stands_in_for_it() {
+        Map<String, String> props = Map.of(OwnerWatchdog.PROPERTY, "11");
+        Map<String, String> env = Map.of(OwnerWatchdog.ENV, "22");
+        assertThat(OwnerWatchdog.ownerPid(props::get, env::get)).isEqualTo("11");
+        assertThat(OwnerWatchdog.ownerPid(k -> null, env::get)).isEqualTo("22");
+        assertThat(OwnerWatchdog.ownerPid(k -> null, k -> null)).isNull();
     }
 
     @Test

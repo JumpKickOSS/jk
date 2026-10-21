@@ -826,6 +826,7 @@ public final class EngineServer implements AutoCloseable {
         // A tool install cut short by the shutdown leaves its archive and staging tree; reap them.
         ToolInstaller.reapInFlight();
         // A trainer is this engine's child and must not outlive it or keep store jars open.
+        if (!EngineAotTrainer.stop()) log.accept("jk engine: the engine startup-cache recording did not stop in time");
         List<Long> trainers = WorkerAotCache.stopTrainers();
         if (!trainers.isEmpty()) {
             log.accept("jk engine: stopped " + trainers.size() + " startup-cache trainer(s) on shutdown (pid "

@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -18,16 +19,34 @@ import org.jspecify.annotations.Nullable;
  * until someone finds it with {@code ps}. The spawner cannot be the signal (an engine detaches
  * into its own session by design, so its parent is always init), so the owner names itself and
  * the engine polls. The pid's start time is checked too: a recycled pid must not keep a dead
- * owner's engine alive.
+ * owner's engine alive. A startup-cache trainer engine is owned by the engine that records it.
  */
 public final class OwnerWatchdog {
 
     /** System property naming the owning process's pid; forwarded by the spawner as {@code -D}. */
     public static final String PROPERTY = "jk.engine.owner-pid";
 
+    /**
+     * The same, from the environment: an owner that drives the native client, which takes no
+     * {@code -D}, names itself here. {@link #PROPERTY} wins when both are set.
+     */
+    public static final String ENV = "JK_ENGINE_OWNER_PID";
+
     static final Duration POLL = Duration.ofSeconds(2);
 
     private OwnerWatchdog() {}
+
+    /** The owner pid text from {@link #PROPERTY}, else {@link #ENV}; null when neither names one. */
+    static @Nullable String ownerPid(
+            Function<String, @Nullable String> properties, Function<String, @Nullable String> env) {
+        String property = properties.apply(PROPERTY);
+        return property != null && !property.isBlank() ? property : env.apply(ENV);
+    }
+
+    /** Start the watch this process was given, by {@link #PROPERTY} or {@link #ENV}. */
+    public static @Nullable Thread start(Runnable onGone, Consumer<String> log) {
+        return start(ownerPid(System::getProperty, System::getenv), onGone, log);
+    }
 
     /**
      * Start the watch described by {@code pidText} (the {@value #PROPERTY} value), or return

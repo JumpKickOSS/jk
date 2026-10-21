@@ -82,9 +82,16 @@ public final class Jk {
         } catch (CliFailure.WorkingDirectoryGone e) {
             code = CliFailure.workingDirectoryGone(args);
         } catch (Throwable t) {
-            // Nothing below this frame handled it, so nothing below this frame can say it better:
-            // one wedge, the stack in cli.log, and the exit code the docs already promise.
-            code = CliFailure.unhandled(t, args);
+            // A bad override first read by a static initializer arrives wrapped.
+            JkDirs.InvalidOverrideException invalid = invalidOverride(t);
+            if (invalid != null) {
+                System.err.println("jk: invalid environment: " + invalid.getMessage());
+                code = Exit.USAGE;
+            } else {
+                // Nothing below this frame handled it, so nothing below this frame can say it better:
+                // one wedge, the stack in cli.log, and the exit code the docs already promise.
+                code = CliFailure.unhandled(t, args);
+            }
         } finally {
             // Wake any JLine NonBlocking stdin reader before the JVM shutdown hooks run — also
             // on the exception path, where the JVM's default handler still runs those hooks. On
@@ -110,6 +117,14 @@ public final class Jk {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /** The {@link JkDirs.InvalidOverrideException} in {@code t}'s cause chain, or null. */
+    static JkDirs.@Nullable InvalidOverrideException invalidOverride(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            if (c instanceof JkDirs.InvalidOverrideException invalid) return invalid;
+        }
+        return null;
     }
 
     private static int executeInvocation(String... args) {
