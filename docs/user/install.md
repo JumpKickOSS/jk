@@ -153,8 +153,8 @@ Five names, and `JK_HOME` is the only one most people need.
 | `JK_JDK_PROBES` | Comma-separated names of the JDK probes jk may consult (`java-home`, `jk`, `intellij`, `gradle`, `sdkman`, `jbang`, `mise`, `asdf`, `jenv`, `homebrew`, `jabba`, `coursier`, `system`, `maven-toolchains`, `gradle-properties`, `jdk-paths`). Unset is all of them; the test tiers run with `java-home,jk`. |
 | `JK_JDK_PATHS` | Comma-separated JDK homes discovery adds (source `jdk-paths`); each is the home itself, not a directory to search. A missing path is skipped. |
 | `JK_JDK_FROM_ENV` | Comma-separated names of environment variables whose values are JDK homes discovery adds (source `jdk-paths`) |
-| `JK_WORKER_AOT=off` | The java-compiler and kotlinc workers neither map nor record their JEP 514 startup cache (CI and short-lived engines) |
-| `JK_COMPILE_LINGER_MS` | How long the java-compiler worker stays up after a build for the next one, in ms; `0` starts a fresh worker per build. Unset, it follows the gaps between your recent builds (twice the slower quartile, 1–10 min); under `CI` it is 10 min |
+| `JK_WORKER_AOT=off` | The java-compiler, kotlinc, formatter and graph workers neither map nor record their JEP 514 startup cache (CI and short-lived engines) |
+| `JK_WORKER_LINGER_MS` | How long a warm worker (the java-compiler lanes, the formatter, the graph worker, the build-script host) stays up after its last request, in ms. Default 30 min; `0` starts a fresh worker every time. A warm worker still exits at once when another fork needs its memory |
 | `JK_ENGINE_AOT=off` | The engine neither maps nor records its own JEP 514 startup cache. Otherwise an idle engine records one per install (about 10 s, once, skipped under `CI`) and every later engine maps it: a build on a fresh engine starts ~0.4 s sooner |
 | `JK_CANCEL_GRACE_MS` | Shared cancel window for forked workers (default **500** ms, max 5000) |
 | `JK_M2_INTEGRATION` | `false` skips the Maven local repo for third-party jars (same as `[m2] integration = false`) |

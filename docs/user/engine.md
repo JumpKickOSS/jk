@@ -399,14 +399,17 @@ spawn line keep the native side bounded between trims: HotSpot's periodic trim
 (`-XX:TrimNativeHeapInterval`, every 30 s) and a glibc arena cap (`MALLOC_ARENA_MAX=4`,
 inherited from the shell when it sets its own). `jk engine status` shows heap and RSS.
 
-Worker JVMs are job-scoped: compiler lanes, test runners and plugin workers exit when their
-job ends. The build-script host (`.jk/*.kts`) is the one worker that outlives a job, and it
-shuts down after ten idle minutes, or sooner when a queued fork needs its lease. It starts
-with a planned heap of 256 MiB — learned after that, the same way as other planned workers —
-so its lease is that heap plus the usual overhead instead of the unsized 512 MiB default.
-The lease is held while the process is alive and drops when it exits.
+Most worker JVMs are job-scoped: test runners and plugin workers exit when their job ends.
+Four stay warm between requests: the java-compiler lanes, the formatter, the code-graph worker
+and the build-script host (`.jk/*.kts`). A warm worker keeps its JIT, its loaded classes and
+what it caches (the formatter its step chains, the graph worker the loaded graph), and shuts
+down after 30 idle minutes (`JK_WORKER_LINGER_MS`), or at once when a queued fork needs its
+lease. The build-script host starts with a planned heap of 256 MiB — learned after that, the
+same way as other planned workers — so its lease is that heap plus the usual overhead instead
+of the unsized 512 MiB default. A warm worker's lease is held while the process is alive and
+drops when it exits.
 
-`jk format` forks one worker, so it runs on every core. Its heap is learned per project like
+`jk format` runs on one worker, so it runs on every core. Its heap is learned per project like
 the compilers' (below): the first run starts at the generous first heap, later runs at the
 peak it reached, and a worker that runs out of heap climbs the retry ladder. A re-run
 formats every file again but counts each file once.

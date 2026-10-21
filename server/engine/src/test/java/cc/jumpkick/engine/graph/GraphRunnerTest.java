@@ -3,6 +3,7 @@ package cc.jumpkick.engine.graph;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.plugin.WarmWorkers;
 import cc.jumpkick.wire.protocol.GraphAck;
 import cc.jumpkick.wire.protocol.GraphProgress;
 import cc.jumpkick.wire.protocol.GraphRequest;
@@ -11,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import javax.tools.ToolProvider;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -18,6 +20,11 @@ import org.junit.jupiter.api.io.TempDir;
 /** The engine half and the forked graph worker together: facts indexes in, graph and answers out. */
 @Tag("integration")
 class GraphRunnerTest {
+
+    @AfterAll
+    static void stopWorkers() {
+        WarmWorkers.shutdown();
+    }
 
     private static Path workspace(Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """

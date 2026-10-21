@@ -97,6 +97,15 @@ public final class PluginProtocol {
     /** Pull-protocol slot: the worker can accept one COMPILE/PLAN (or DONE). */
     public static final String READY = "ready";
 
+    /**
+     * {@code PluginMain --serve}: the worker stays up between specs. It says {@link #READY}, reads
+     * {@code RUN <spec-file>} or {@code DONE} from stdin, runs each spec and answers {@link #EXITED}.
+     */
+    public static final String SERVE = "--serve";
+
+    /** A served run's end: {@code {code, retire}}; {@code retire} means the worker exits next. */
+    public static final String EXITED = "exited";
+
     public static final String ERROR = "error"; // {code,message}
 
     // ---- common field names ---------------------------------------------------------------

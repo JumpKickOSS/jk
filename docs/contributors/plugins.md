@@ -308,6 +308,13 @@ protocol-prefix = "##FOO:"   # worker JSONL marker; must match Plugin.manifest()
 The process entry is always the SDK's `PluginMain` — do not put `[application]` on a plugin
 `jk.toml`. Presence of `jk-plugin.toml` (or a `Plugin` service registration) is the worker flag.
 
+`PluginMain --serve` keeps a worker up between specs: it says `ready`, reads `RUN <spec-file>`
+(or `DONE`) from stdin, runs `Plugin.run` on the spec and answers `exited` with the run's code.
+The engine's `WarmWorkers` keeps such workers per launch for the warm-worker linger; the
+formatter and the graph worker run this way. A plugin that caches across runs keeps that cache
+in static state, and returns `false` from `Plugin.reusable()` after a run that left something
+behind (a thread it could not stop) so the worker retires instead of serving again.
+
 Workers speak the same JSONL style as compiler plugins: one shared `SpecWriter` builds every
 spec, and the engine reads worker replies through a bounded line reader. Prefer the harness in
 `plugin-sdk` (`BuildPlugin`, `TaskSpec`/`TaskContribution` task and packager SPIs) over

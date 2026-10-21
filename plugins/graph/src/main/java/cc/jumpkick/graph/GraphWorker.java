@@ -17,9 +17,10 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * The {@code jk-graph} worker: one graph operation per fork, so the graph's memory is the worker's
- * and never the engine's. Reads the operation from the spec's config, streams {@code progress}
- * events while it refreshes, and ends with one {@code answer} (or {@code error}) event.
+ * The {@code jk-graph} worker: one graph operation per run, so the graph's memory is the worker's
+ * and never the engine's. Served, it keeps the last workspace's graph between runs ({@link
+ * GraphMemory}). Reads the operation from the spec's config, streams {@code progress} events while
+ * it refreshes, and ends with one {@code answer} (or {@code error}) event.
  */
 public final class GraphWorker implements Plugin {
 

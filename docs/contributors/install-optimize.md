@@ -54,7 +54,7 @@ shrunk mid-chore.
 
 ## Worker startup caches
 
-The java-compiler, kotlinc and formatter workers (`java … PluginMain`) map a JEP 514 cache under
+The java-compiler, kotlinc, formatter and graph workers (`java … PluginMain`) map a JEP 514 cache under
 `~/.jk/state/aot/<tool>-<jk-version>-<jdk tag>-<key>.aot` (`WorkerAotCache`). The rule is one file
 per tool, recorded only for the JDK jk itself runs on: a worker forked on a project's own JDK
 runs without a cache, a landing cache deletes the tool's other caches, and the engine deletes

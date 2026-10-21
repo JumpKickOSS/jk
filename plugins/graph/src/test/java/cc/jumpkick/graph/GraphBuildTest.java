@@ -11,6 +11,7 @@ import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -175,6 +176,39 @@ class GraphBuildTest {
         assertThat(third.changed()).isTrue();
         assertThat(edge(third.graph(), "readme_shop", "pricecalculator_pricecalculator", "references"))
                 .isTrue();
+    }
+
+    @Test
+    void aServedWorkerAnswersAnUnchangedRefreshFromMemory(@TempDir Path dir) throws IOException {
+        GraphMemory.clear();
+        Path root = workspace(dir);
+        GraphBuild.Result first = refresh(root, false);
+        GraphBuild.Result second = refresh(root, false);
+        assertThat(second.changed()).isFalse();
+        assertThat(second.graph()).isSameAs(first.graph());
+    }
+
+    @Test
+    void aGraphAnotherProcessWroteIsReadAgain(@TempDir Path dir) throws IOException {
+        GraphMemory.clear();
+        Path root = workspace(dir);
+        GraphBuild.Result first = refresh(root, false);
+        Path bin = first.dir().resolve(GraphOutputs.SNAPSHOT);
+        Files.setLastModifiedTime(
+                bin, FileTime.fromMillis(Files.getLastModifiedTime(bin).toMillis() + 5_000));
+        GraphBuild.Result second = refresh(root, false);
+        assertThat(second.changed()).isFalse();
+        assertThat(second.graph()).isNotSameAs(first.graph());
+        assertThat(second.graph().size()).isEqualTo(first.graph().size());
+    }
+
+    @Test
+    void anotherWorkspaceDropsTheFirstFromMemory(@TempDir Path dir) throws IOException {
+        GraphMemory.clear();
+        Path a = workspace(Files.createDirectories(dir.resolve("a")));
+        GraphBuild.Result first = refresh(a, false);
+        refresh(workspace(Files.createDirectories(dir.resolve("b"))), false);
+        assertThat(refresh(a, false).graph()).isNotSameAs(first.graph());
     }
 
     @Test

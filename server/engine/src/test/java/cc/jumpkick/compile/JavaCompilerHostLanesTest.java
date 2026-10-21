@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.WarmLinger;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -30,14 +31,14 @@ class JavaCompilerHostLanesTest {
     /** These are the job's own lanes; {@link WarmLanesTest} has the ones that outlive it. */
     @BeforeEach
     void jobScopedLanes() {
-        WarmLanes.lingerForTests(0);
+        WarmLinger.forTests(0);
     }
 
     @AfterEach
     void clearSharedPlan() {
         JvmOptions.resetSharedPlanForTests();
         JavaCompilerHost.overrideLaneBudgetForTests(0);
-        WarmLanes.lingerForTests(-1);
+        WarmLinger.forTests(-1);
     }
 
     @Test

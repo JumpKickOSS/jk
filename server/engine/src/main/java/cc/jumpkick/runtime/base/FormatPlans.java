@@ -389,15 +389,17 @@ public final class FormatPlans {
                             o.optimizeImports(),
                             o.importOrder(),
                             o.removeUnusedImports())));
-            if (!javaFiles.isEmpty()) extra.addAll(JAVAC_EXPORTS);
-            // The run's only fork, so it gets every core rather than the build-shaped 1/jobs share
+            // Whatever this run's languages, so one project's runs share a warm worker.
+            extra.addAll(JAVAC_EXPORTS);
+            // The run's only worker, so it gets every core rather than the build-shaped 1/jobs share
             // the process-wide plan hands every worker; its heap is learned per project.
             extra.addAll(JvmOptions.soleWorkerCpuFlags());
             LearnedHeaps heaps = LearnedHeaps.engine();
             HeapScope.Key key = FormatWorker.heapKey(o.projectDir());
             FormatWorker.runWorker(
                     ctx,
-                    heap -> FormatWorker.atHeap(PluginLaunch.javaCommand(workerJar, extra, spec), heap),
+                    heap -> FormatWorker.atHeap(PluginLaunch.serveCommand(workerJar, extra), heap),
+                    spec,
                     FormatWorker.startHeap(heaps, key),
                     key,
                     heaps,
@@ -593,7 +595,7 @@ public final class FormatPlans {
         List<String> jvmFlags = new ArrayList<>();
         jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
         jvmFlags.addAll(JvmOptions.batchFlags(1));
-        if (!javaFiles.isEmpty()) jvmFlags.addAll(JAVAC_EXPORTS);
+        jvmFlags.addAll(JAVAC_EXPORTS);
         return PluginLoader.command(
                 hostJavaHome, workerCp, jvmFlags, List.of(spec.toAbsolutePath().toString()));
     }
