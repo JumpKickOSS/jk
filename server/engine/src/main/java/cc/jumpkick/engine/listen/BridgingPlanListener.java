@@ -39,6 +39,9 @@ public final class BridgingPlanListener implements BuildPlanListener {
 
         /** A line a step's fork printed outside its protocol; journal-only, never a wire event. */
         default void forkOutput(String dir, String step, String line) {}
+
+        /** A test class finished, as it goes to the wire. */
+        default void testClass(String dir, String step, TestClassResult result) {}
     }
 
     private final String dir;
@@ -180,6 +183,7 @@ public final class BridgingPlanListener implements BuildPlanListener {
     @Override
     public void testClass(String step, TestClassResult result) {
         sink.emit(new EngineEvent.ClassFinish(dir, step, result));
+        hooks.testClass(dir, step, result);
     }
 
     private TestFailureInfo redactFailureHoisted(TestFailureInfo f) {

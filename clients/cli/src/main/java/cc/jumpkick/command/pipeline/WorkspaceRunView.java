@@ -12,6 +12,7 @@ import cc.jumpkick.cli.run.JsonlListener;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.run.LiveProgress;
 import cc.jumpkick.cli.run.SessionMirrorListener;
+import cc.jumpkick.cli.run.SlowestTestsBlock;
 import cc.jumpkick.cli.run.TestFailureHighlight;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -20,6 +21,7 @@ import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.SlowestTests;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -125,6 +127,9 @@ final class WorkspaceRunView {
     private final AtomicInteger withSuite = new AtomicInteger();
     private final AtomicInteger notSelected = new AtomicInteger();
 
+    /** The run's slowest tests, ranked when the verb asked for them ({@code jk test}); else null. */
+    private volatile @Nullable SlowestTests slowest;
+
     /**
      * @param session transcript to mirror module events into, or null when the verb keeps none
      * @param toStdout {@code -O jsonl}: JSONL events go to stdout as well as the transcript
@@ -162,6 +167,27 @@ final class WorkspaceRunView {
     /** Prerequisites an {@code --exclusive} run compiled without running their suites. */
     int prerequisitesNotTested() {
         return notSelected.get();
+    }
+
+    /**
+     * Rank the run's slowest test classes and methods: the block prints above the settle wedge and
+     * a {@code slowest-tests} event precedes {@code workspace-finish}. Called before the run starts.
+     */
+    void rankSlowestTests() {
+        slowest = new SlowestTests();
+    }
+
+    /**
+     * The slowest-tests block for the settle, its event emitted when there is one; empty when the
+     * verb ranks none or nothing was slow.
+     */
+    private List<String> settleSlowest() {
+        SlowestTests ranked = slowest;
+        if (ranked == null) return List.of();
+        SlowestTests.Ranking ranking = ranked.ranking();
+        if (ranking.isEmpty()) return List.of();
+        event(JsonlShape.slowest(ranking));
+        return SlowestTestsBlock.lines(ranking);
     }
 
     /** Buffered module output in completion order, painted. Empty for non-buffered chrome. */
@@ -372,6 +398,7 @@ final class WorkspaceRunView {
             Consumer<Settled> after) {
         absorb(agg, result);
         List<String> above = deferredOutput();
+        above.addAll(settleSlowest());
         if (result.cancelled()) {
             view.finishBuildPlanCancelled(above);
             if (session != null) session.wedge(chrome.planName() + " job was cancelled");
@@ -429,6 +456,12 @@ final class WorkspaceRunView {
      */
     int settleHeadless(WorkspaceResult result, long elapsedMs, Tails tails, Consumer<Settled> after) {
         absorb(null, result);
+        List<String> slow = settleSlowest();
+        if (!toStdout) {
+            synchronized (OUT_LOCK) {
+                for (String line : slow) CliOutput.out(line);
+            }
+        }
         if (result.cancelled()) {
             int code = settleHeadlessCancelled(elapsedMs);
             after.accept(Settled.CANCELLED);
@@ -563,9 +596,16 @@ final class WorkspaceRunView {
         return session == null ? lis : CompositeBuildPlanListener.of(lis, new SessionMirrorListener(session));
     }
 
-    /** {@code lis} with this module's served-from-cache tally beside it; see {@link #servedFromCache()}. */
+    /**
+     * {@code lis} with this module's served-from-cache tally beside it ({@link #servedFromCache()}),
+     * and the slowest-tests ranking when the verb keeps one.
+     */
     private BuildPlanListener counting(BuildPlanListener lis) {
-        return CompositeBuildPlanListener.of(lis, new ServedTally(served, withSuite, notSelected));
+        BuildPlanListener tally = new ServedTally(served, withSuite, notSelected);
+        SlowestTests ranked = slowest;
+        if (ranked == null) return CompositeBuildPlanListener.of(lis, tally);
+        return CompositeBuildPlanListener.of(
+                lis, CompositeBuildPlanListener.of(tally, SlowestTestsBlock.ranking(ranked)));
     }
 
     /**

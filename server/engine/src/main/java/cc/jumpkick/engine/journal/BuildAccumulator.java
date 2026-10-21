@@ -9,6 +9,7 @@ import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.SlowestTests;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.CacheBenefit;
 import cc.jumpkick.runtime.base.ChromeTimeline;
@@ -68,6 +69,8 @@ public final class BuildAccumulator {
      * runner thread for the request's life, drained once when the record is written.
      */
     private final RunResults results = new RunResults();
+
+    private final SlowestTests slowest = new SlowestTests();
 
     // Plain lists under their own monitor (snapshot to iterate): CopyOnWriteArrayList copied the
     // whole backing array per append — O(n²) array churn for a build with many modules or
@@ -202,6 +205,11 @@ public final class BuildAccumulator {
 
     public @Nullable String journalId() {
         return journalId;
+    }
+
+    /** The slowest test classes and methods this request ran, fed as each class finishes. */
+    public SlowestTests slowest() {
+        return slowest;
     }
 
     public RunResults results() {

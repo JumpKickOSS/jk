@@ -37,6 +37,7 @@ class JsonlRecordRoundTripTest {
             ErrorLine.class,
             TestFailureErrorLine.class,
             ClassFinishLine.class,
+            SlowestTestsLine.class,
             TaskFinishLine.class,
             PlanFinishLine.class,
             WorkspaceProgressLine.class,
@@ -107,6 +108,13 @@ class JsonlRecordRoundTripTest {
         if (type == int.class) return n;
         if (type == long.class) return 1_000L + n;
         if (type == boolean.class) return n % 2 == 0;
+        if (type.isRecord()) {
+            try {
+                return populated(type);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
         if (type == List.class) {
             Class<?> element = (Class<?>) ((ParameterizedType) generic).getActualTypeArguments()[0];
             return List.of(value(element, element, seq), value(element, element, seq));

@@ -213,7 +213,7 @@ public final class CommandManagerListener implements BuildPlanListener {
         // All diagnostics print ABOVE the result line (which stays last) — warnings
         // first, then errors nearest the line — so the failure route reads just like
         // the success route and the outcome is the last thing on screen.
-        List<String> above = new ArrayList<>();
+        List<String> above = new ArrayList<>(spec.above().get());
         for (BuildPlanResult.Diagnostic d : result.warnings()) {
             above.add(ConsoleSpec.renderWarning(d));
         }
