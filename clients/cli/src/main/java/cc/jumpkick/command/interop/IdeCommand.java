@@ -24,7 +24,7 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk ide} — generate IntelliJ + VS Code project files ({@code --idea}/{@code --vscode}
+ * {@code jk ide} — generate IntelliJ + VS Code project files ({@code -i}/{@code -s}
  * narrow to one) and always refresh {@code .bsp/jk.json} for BSP clients. Lock, sync and the model
  * are engine-hosted; the shared {@link IdeGenerators} write the files here, under this command's
  * chrome.
@@ -56,13 +56,14 @@ public final class IdeCommand implements CliCommand {
     public List<Opt> options() {
         List<Opt> opts = new ArrayList<>();
         if (forced == null) {
-            opts.add(Opt.flag("Only generate IntelliJ IDEA files (.idea/ + *.iml).", "--idea"));
-            opts.add(Opt.flag("Only generate VS Code files (.vscode/ + Eclipse metadata).", "--vscode"));
+            opts.add(Opt.flag("Only generate IntelliJ IDEA files (.idea/ + *.iml).", "-i", "--idea"));
+            opts.add(Opt.flag("Only generate VS Code files (.vscode/ + Eclipse metadata).", "-s", "--vscode"));
         }
-        opts.add(Opt.flag("Print engine ide-model JSON only (no files).", "--print-model"));
+        opts.add(Opt.flag("Print engine ide-model JSON only (no files).", "-p", "--print-model"));
         opts.add(Opt.value(
                         "<dir>",
                         "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.jk/cache.",
+                        "-d",
                         "--cache-dir")
                 .hide());
         opts.add(CommonOpts.jdksDir());

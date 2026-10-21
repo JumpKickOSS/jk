@@ -229,7 +229,7 @@ public final class TrustCommand extends GroupCommand {
         @Override
         public List<Opt> options() {
             return List.of(
-                    Opt.flag("Import from JBang's trusted-sources.json.", "--jbang"),
+                    Opt.flag("Import from JBang's trusted-sources.json.", "-b", "--jbang"),
                     Opt.value("<file>", "Override the file to import (for tests).", "--file")
                             .hide(),
                     stateDirOpt());

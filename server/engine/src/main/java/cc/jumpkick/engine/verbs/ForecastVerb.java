@@ -75,7 +75,7 @@ public final class ForecastVerb implements HostedVerb {
                     }
                     List<String> dirty = new ArrayList<>();
                     // Read-only: a forecast that stored the dirty memo recreated target/.jk
-                    // right after jk clean --force wiped it.
+                    // right after jk clean -F wiped it.
                     for (Path d : BuildService.forecastDirtyDirsReadOnly(graph, cache, skipTests, entryDir))
                         dirty.add(d.toString());
                     boolean lockStale =

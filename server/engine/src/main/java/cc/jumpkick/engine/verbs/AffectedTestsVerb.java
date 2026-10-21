@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
-/** {@code jk test --affected} / {@code --affected-since} — ranked list, no test run. */
+/** {@code jk test -f} / {@code -e} — ranked list, no test run. */
 public final class AffectedTestsVerb implements HostedVerb {
 
     private final VerbHost host;

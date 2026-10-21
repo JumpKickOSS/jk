@@ -216,7 +216,7 @@ public final class BaselineFile {
 
     public static String render(Baseline b) {
         StringBuilder sb = new StringBuilder();
-        sb.append("# Engine-owned. Tightened on every jk build; grown only by `jk guard freeze <id> --reason`.\n");
+        sb.append("# Engine-owned. Tightened on every jk build; grown only by `jk guard freeze <id> -W`.\n");
         sb.append(
                 "# Never edit by hand: an entry without a reason is a suppression, and there is no suppression syntax.\n");
         for (var e : b.rules().entrySet()) {

@@ -11,7 +11,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code jk new --plugin} pins the SDK a new plugin compiles against at jk's own version: the SDK
+ * {@code jk new -P} pins the SDK a new plugin compiles against at jk's own version: the SDK
  * rides the release train, and {@code jk install} shelves it under that version, so a scaffold
  * pinning anything else resolves an SDK nobody published.
  */

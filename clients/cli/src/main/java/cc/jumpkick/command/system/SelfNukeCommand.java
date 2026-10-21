@@ -131,12 +131,12 @@ public final class SelfNukeCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
-                Opt.flag("Nuke every target (default when none named).", "--all"),
-                Opt.flag("Nuke the cache tier only (action outputs).", "--cache"),
-                Opt.flag("Nuke the artifact store (repos, tools, templates, completions).", "--store"),
-                Opt.flag("Nuke engine state, builds, tmp, and installed tools.", "--state"),
-                Opt.flag("Nuke user config.", "--config"));
+                Opt.flag("Print what would be removed; touch nothing.", "-U", "--dry-run"),
+                Opt.flag("Nuke every target (default when none named).", "-A", "--all"),
+                Opt.flag("Nuke the cache tier only (action outputs).", "-c", "--cache"),
+                Opt.flag("Nuke the artifact store (repos, tools, templates, completions).", "-S", "--store"),
+                Opt.flag("Nuke engine state, builds, tmp, and installed tools.", "-s", "--state"),
+                Opt.flag("Nuke user config.", "-n", "--config"));
     }
 
     /**

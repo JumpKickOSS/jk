@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.toolchain;
 
-import cc.jumpkick.cli.api.BuildOptions;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
@@ -14,8 +13,9 @@ import cc.jumpkick.cli.run.DebugAttach;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.command.ToolTargets;
 import cc.jumpkick.command.VariantSelection;
+import cc.jumpkick.command.pipeline.BuildFlags;
 import cc.jumpkick.command.pipeline.InstallCommand;
-import cc.jumpkick.command.pipeline.RunCommand;
+import cc.jumpkick.command.pipeline.RunVerb;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TomlScan;
@@ -75,23 +75,18 @@ public final class ToolRunCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         List<Opt> opts = List.of(
-                Opt.value("<class>", "Override Main-Class (coordinate targets)", "--main"),
-                Opt.value("<coord>", "Extra dependency on tool classpath", "--with")
+                Opt.value("<class>", "Override Main-Class (coordinate targets)", "-T", "--main"),
+                Opt.value("<coord>", "Extra dependency on tool classpath", "-w", "--with")
                         .repeat(),
-                Opt.value("<port>", "Debug app JVM (JDWP; 5005, 0=free)", "--debug-jvm")
+                Opt.value("<port>", "Debug app JVM (JDWP; 5005, 0=free)", "-U", "--debug-jvm")
                         .withFallback(""),
-                Opt.value(
-                                "<dir>",
-                                "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.jk/cache.",
-                                "--cache-dir")
-                        .hide(),
                 Opt.value("<dir>", "Override the jk state directory.", "--state-dir")
                         .hide(),
-                CommonOpts.jdksDir(),
                 Opt.value("<url>", "Override the Maven repository URL (for tests).", "--repo-url")
                         .hide());
         var all = new ArrayList<>(opts);
-        all.addAll(VariantSelection.options()); // project targets only; tool/script targets ignore them
+        // A project target builds (tests skipped) before it runs: the core build options.
+        all.addAll(BuildFlags.options(BuildFlags.Reach.COMPILE, BuildFlags.Affected.MODULES));
         return all;
     }
 
@@ -134,6 +129,9 @@ public final class ToolRunCommand implements CliCommand {
 
     List<String> toolArgs = new ArrayList<>();
     GlobalOptions global;
+
+    /** The invocation a project target's build takes its options from. */
+    Invocation invocation = Invocation.builder().build();
     // Set by a JBang alias whose script-ref is a coordinate: the alias's dependencies and
     // java-options ride the normal coordinate flow (extra deps + exec JVM args).
     List<String> aliasDeps = List.of();
@@ -253,13 +251,7 @@ public final class ToolRunCommand implements CliCommand {
      */
     private int runDirectory(Path dir, List<String> args) throws IOException, InterruptedException {
         if (Files.isRegularFile(ManifestPaths.manifestIn(dir))) {
-            BuildOptions buildOpts = new BuildOptions();
-            buildOpts.skipTests = true;
-            RunCommand delegate = new RunCommand(global, buildOpts);
-            delegate.cacheDirOverride = cacheDirOverride;
-            delegate.jdksDir = jdksDir;
-            delegate.debugJvm = debugJvm;
-            return delegate.runProject(dir, args);
+            return RunVerb.runProject(invocation, dir, args, debugJvm);
         }
         if (debugJvm != null) return refuseDebug();
         if (Files.isRegularFile(dir.resolve("jbang-catalog.json"))) {
@@ -408,6 +400,7 @@ public final class ToolRunCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
+        this.invocation = in;
         List<String> positionals = in.positionals();
         // No target = the current project (the `.` directory rules: jk.toml → build + exec). A
         // first positional after `--` is the program's argument, never a target: `jk run -- x`.

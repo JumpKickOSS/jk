@@ -31,10 +31,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk publish --central} against a stub Central Portal on loopback: the upload hands out a
+ * {@code jk publish -c} against a stub Central Portal on loopback: the upload hands out a
  * deployment id, the status endpoint walks the Portal's states, and one variant fails validation
  * with two errors. The token comes from the {@code central} entry of the credential store, bound
- * to the stub's origin the way {@code jk repo login central --url …} binds it.
+ * to the stub's origin the way {@code jk repo login central -U …} binds it.
  */
 @Tag("integration")
 @SysProps.TempRoots("jk.m2.local")

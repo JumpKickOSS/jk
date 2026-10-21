@@ -20,7 +20,7 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk new --template <local-path|short-name|git-uri|owner/repo>} — the third mode of
+ * {@code jk new -t <local-path|short-name|git-uri|owner/repo>} — the third mode of
  * {@code jk new}, beside the wizard and the flag path.
  *
  * <p>It is a mode, not a variation: the giter8 parameter map <em>is</em> the project definition, so

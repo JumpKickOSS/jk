@@ -9,7 +9,7 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * Pure JDK selection for {@code jk new}: parse {@code --jdk}, decide whether to prompt, pick an
+ * Pure JDK selection for {@code jk new}: parse {@code -J}, decide whether to prompt, pick an
  * auto candidate. Wizard pins are always bare majors.
  */
 final class NewJdkPlan {

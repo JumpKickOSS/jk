@@ -482,7 +482,7 @@ public final class ImageBuilder {
 
     /** Convert parsed HOCON data into an {@link ImageConfig}. */
     public static ImageConfig fromParsed(Map<String, Object> envMap, ImageConfig defaults) {
-        return defaults; // placeholder — see ImageCommand for the bridge.
+        return defaults; // placeholder — the jk image verb (ImageVerb) is the bridge.
     }
 
     /**

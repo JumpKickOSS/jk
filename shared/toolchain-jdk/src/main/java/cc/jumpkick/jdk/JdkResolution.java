@@ -13,7 +13,7 @@ import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Canonical JDK resolution shared by the build plan and {@code jk activate}. Order: {@code --jdk},
+ * Canonical JDK resolution shared by the build plan and {@code jk activate}. Order: {@code -J},
  * {@code JK_JDK}, {@code .jdk-version}, a lock requirement, {@code jdk}, a lock suggestion,
  * java-release floor, the inventory default, {@code JAVA_HOME}/{@code GRAALVM_HOME}, then {@code PATH}. {@link #resolve} stops on an
  * uninstalled named pin with {@code wouldInstall}; {@link #resolveForHook} never installs and falls through.

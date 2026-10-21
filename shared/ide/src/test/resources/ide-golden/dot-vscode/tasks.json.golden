@@ -12,7 +12,7 @@
     {
       "label": "jk: test all",
       "type": "shell",
-      "command": "jk test --all",
+      "command": "jk test -A",
       "group": "test",
       "presentation": { "reveal": "always", "panel": "shared" },
       "problemMatcher": []

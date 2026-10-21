@@ -15,20 +15,20 @@ Product stance and event names: [Machine output](machine-output.md). MCP tool re
 ```text
 0. Playbook                  jk skill             or MCP skill
 1. Name the project          register MCP as `jk mcp` (pinned to the project; no dir), or cd and use the CLI
-2. What happened?            MCP run (the reply is the verdict) or jk --agent test
-3. Past the cap              jk results --all      or MCP diagnostics
-4. Raw step log (optional)   jk results --details  or MCP details
-5. Rebuild                   same selection as the failure (jk test, not --all)
+2. What happened?            MCP run (the reply is the verdict) or jk -a test
+3. Past the cap              jk results -A      or MCP diagnostics
+4. Raw step log (optional)   jk results -d  or MCP details
+5. Rebuild                   same selection as the failure (jk test, not -A)
 6. Graph / ETA               jk why / jk explain   or MCP why / explain (extended tools/list)
 7. Stalled                   jk jobs / jk cancel   or MCP status, then cancel (extended tools/list)
 ```
 
-Read the **verdict** first. `run` returns it; `jk --agent` prints the same text. The human
+Read the **verdict** first. `run` returns it; `jk -a` prints the same text. The human
 markdown at `target/jk-results.md` is for a person, or for an agent with neither MCP nor
 `--agent`. The verdict is one line when the run is OK. A `run` that answers `TIMEOUT … jid=N`
 is still going: `run(jid=N)` waits on it again and returns its verdict ([MCP](mcp.md#waits-and-keep-alive)).
 
-After an edit, MCP **`affected_tests`** (or `jk test --affected`) writes
+After an edit, MCP **`affected_tests`** (or `jk test -f`) writes
 `target/jk-tests-affected.md` — a short ranked list of test classes for the working tree.
 That file is not the last-job report. `--affected` and `--affected-since` cannot be combined.
 
@@ -39,11 +39,11 @@ Default **`jk test` is the unit suite only.** That is the inner loop. Do not pas
 
 | When | Command |
 |------|---------|
-| Which tests did this edit touch? | `jk test --affected` / `--affected-since` (table; does not run) |
+| Which tests did this edit touch? | `jk test -f` / `--affected-since` (table; does not run) |
 | Editing a class / fixing a unit assertion | `jk test` |
-| About to push, or the change crossed DB / HTTP / FS | `jk test --guard` |
+| About to push, or the change crossed DB / HTTP / FS | `jk test -g` |
 | UI / compose / contract change, or reproducing CI | `jk test -s e2e` |
-| Never as a habit | `jk test --all` |
+| Never as a habit | `jk test -A` |
 
 Write new tests in the lowest suite that can fail for the reason you care about
 (`src/test`, `src/integration`, `src/e2e` — or the simple-layout columns). Tag cost
@@ -64,7 +64,7 @@ for “unit + integration + optional house-rule scripts.” [Why](why.md#test-ru
 | **`target/jk-results.md`** | Human report when MCP and `--agent` are both off |
 | **`jk://runs/latest/results`** | Latest verdict, same text as `run` |
 | **`-O jsonl`** | Live events on stdout (CI, watchers) |
-| **`jk results --details`** | Full `details.jsonl`. MCP `details` is a budgeted tail (`jk://runs/latest/details`) |
+| **`jk results -d`** | Full `details.jsonl`. MCP `details` is a budgeted tail (`jk://runs/latest/details`) |
 | **`target/jk-profile.json`** | Timings (Perfetto / `chrome://tracing`), not failure triage |
 
 Do **not** set `TERM=dumb` and scrape wedges. Do **not** use `-v` / `--verbose` as the

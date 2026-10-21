@@ -132,7 +132,7 @@ these):
 | File | When |
 |------|------|
 | `after-build.groovy` / `.kts` | Once per build, after **every member module** has built |
-| `guard.groovy` / `.kts` | Share-the-commit bar: `jk test --guard` / `jk test --scripts-only`. Not on inner `jk test` / `jk build`. |
+| `guard.groovy` / `.kts` | Share-the-commit bar: `jk test -g` / `jk test -P`. Not on inner `jk test` / `jk build`. |
 
 `after-build` is the always-on workspace-wide step: every member's sources and outputs
 are on disk, and the script runs once rather than once per module. Ordering comes from
@@ -146,7 +146,7 @@ loop does not pay them; house rules themselves are `jk-guards.toml`, not a scrip
 (`jk guard explain` walks them). A standalone project root is the invocation root and the
 module at once, so it carries the module stems (`before-compile`, `after-compile`,
 `after-resources`, `before-package`) and `guard` side by side, and `jk build`, `jk guard`
-and `jk test --guard` all accept that same set. `after-build` stays a sourceless workspace
+and `jk test -g` all accept that same set. `after-build` stays a sourceless workspace
 root's stem — a standalone project has no members to be after. A workspace **member** may
 not use `guard`.
 
@@ -154,7 +154,7 @@ not use `guard`.
 `--no-scripts` runs `--guard` tests without the extra scripts. Combining the two flags is
 a config error. `--scripts-only` with no `guard` stem is a config error naming the paths
 looked for (`jk/guard.{kts,groovy}`, `.jk/guard.{kts,groovy}` at the root).
-`jk build --guard --skip-tests` packages, then runs guard scripts (no JUnit).
+`jk build -g -S` packages, then runs guard scripts (no JUnit).
 `--guard --scripts-only` is the same as `--scripts-only`.
 
 The two sets do not mix, in either direction, and using the wrong one **fails the build**

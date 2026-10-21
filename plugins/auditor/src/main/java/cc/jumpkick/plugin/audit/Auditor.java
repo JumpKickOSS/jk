@@ -64,7 +64,7 @@ public final class Auditor implements Plugin {
 
         // An audit IS a network query — there is no cached answer to fall back on, and a "clean"
         // report produced without asking OSV would be a lie about safety. Refuse, naming the
-        // endpoint. `jk audit --offline` is also refused client-side; this covers the web/MCP
+        // endpoint. `jk audit -o` is also refused client-side; this covers the web/MCP
         // trigger, which never passes through that check.
         if (spec.offline()) {
             URI endpoint = batchUrl != null ? batchUrl : OsvClient.DEFAULT_BATCH;

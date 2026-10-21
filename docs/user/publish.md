@@ -1,12 +1,12 @@
 # Publish and supply chain
 
 ```bash
-jk publish --repo-url https://repo.example.com/releases/
-jk publish --sign --key-file ~/.gnupg/release.asc
-jk publish --sigstore
-jk publish --slsa
-jk publish --sbom
-jk publish --central --sign --key-file ~/.gnupg/release.asc   # Maven Central, via the Portal
+jk publish -l https://repo.example.com/releases/
+jk publish -I -f ~/.gnupg/release.asc
+jk publish -g
+jk publish -L
+jk publish -S
+jk publish -c -I -f ~/.gnupg/release.asc   # Maven Central, via the Portal
 jk verify                 # rebuild in a scratch dir and diff artifact hashes
 jk audit                  # OSV
 jk deny                   # apply [deny.sources]
@@ -44,16 +44,16 @@ scm = { url = "https://github.com/example/widget",
 
 ## Maven Central
 
-`jk publish --central` publishes through the Sonatype Central Portal: one signed bundle — jar,
+`jk publish -c` publishes through the Sonatype Central Portal: one signed bundle — jar,
 POM, sources jar, javadoc jar, a detached GPG `.asc` on each, `.md5` and `.sha1` beside each — is
 uploaded to the Portal's API, and jk polls the deployment until the Portal rules.
 
 ```bash
 # once: the Portal user token (central.sonatype.com → account → Generate User Token)
-printf '%s' "$TOKEN_PASSWORD" | jk repo login central --url https://central.sonatype.com --username "$TOKEN_NAME"
+printf '%s' "$TOKEN_PASSWORD" | jk repo login central -U https://central.sonatype.com -s "$TOKEN_NAME"
 
 jk build                                                   # the four artefacts
-jk publish --central --sign --key-file ~/.gnupg/release.asc   # JK_GPG_PASSPHRASE or --key-passphrase
+jk publish -c -I -f ~/.gnupg/release.asc   # JK_GPG_PASSPHRASE or -p
 #   Published com.example:widget:1.0.0 to the Central Portal (16 files)
 #     deployment 28570f16-… · VALIDATED — release it from the Portal, or publish with --publishing-type automatic
 ```
@@ -71,7 +71,7 @@ on disk, when `[publish]` lacks a key Central requires, or when `--sign` is abse
 `PENDING → VALIDATING → VALIDATED` (`→ PUBLISHING → PUBLISHED` with `automatic`); a `FAILED`
 deployment fails the run and prints every validation error the Portal listed.
 
-The credential is the `central` entry: `jk repo login central --url https://central.sonatype.com`
+The credential is the `central` entry: `jk repo login central -U https://central.sonatype.com`
 with the token's name as `--username` and its password on stdin (jk sends the Portal the base64
 `name:password` it documents), or a token already encoded, on stdin without `--username`. From
 CI, `JK_REPO_CENTRAL_USERNAME` + `JK_REPO_CENTRAL_PASSWORD` (or `JK_REPO_CENTRAL_TOKEN`) with
@@ -85,13 +85,13 @@ count, and for Central the deployment id, the state the poll ended in and every 
 
 ## SBOM
 
-`jk publish --sbom` uploads a CycloneDX 1.6 and an SPDX 2.3 document beside the artifact and
+`jk publish -S` uploads a CycloneDX 1.6 and an SPDX 2.3 document beside the artifact and
 writes the same two files under the module's `target/` — `target/sbom/<name>-<version>.cdx.json`
 and `target/sbom/<name>-<version>.spdx.json` — printing their paths. With `--dry-run` nothing is uploaded and no
 `--repo-url` is needed, so a release script takes the bill of materials from disk:
 
 ```bash
-jk publish --sbom --dry-run
+jk publish -S -U
 #   wrote target/sbom/widget-1.0.0.cdx.json
 #   wrote target/sbom/widget-1.0.0.spdx.json
 ```
@@ -123,7 +123,7 @@ exclusive repository groups — [Repositories](repositories.md).
 
 ```bash
 jk audit                       # report everything, gate at LOW
-jk audit --severity HIGH       # gate at HIGH and above
+jk audit -s HIGH       # gate at HIGH and above
 jk audit -O jsonl              # one JSON line per finding
 ```
 
@@ -136,7 +136,7 @@ cannot classify. A finding covered by an unexpired `[audit] ignore` entry is rep
 counted. `--offline` is refused before anything is queried: an audit has no cached answer, and a
 clean report produced without asking OSV would be a claim about safety nobody made.
 
-A CI gate is `jk audit --severity HIGH` and a non-zero exit.
+A CI gate is `jk audit -s HIGH` and a non-zero exit.
 jk's own repository runs exactly that in its self-host job, after the lock-drift check: the
 `-O jsonl` lines are kept as an artifact and each finding becomes one annotation
 (`scripts/ci-audit-annotate.sh`, one `::error` per blocking advisory), and the nightly run reports

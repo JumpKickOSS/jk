@@ -84,11 +84,11 @@ final class TestVerb implements BuildVerb {
     public List<Opt> ownOptions() {
         return List.of(
                 Opt.flag(EXCLUSIVE_HELP, "-X", "--exclusive"),
-                Opt.value("<name>", "Classes or Class#method (repeatable)", "--class")
+                Opt.value("<name>", "Classes or Class#method (repeatable)", "-S", "--class")
                         .repeat(),
-                Opt.value("<port>", "Debug test JVM (JDWP; 5005, 0=free)", "--debug-jvm")
+                Opt.value("<port>", "Debug test JVM (JDWP; 5005, 0=free)", "-U", "--debug-jvm")
                         .withFallback(""),
-                Opt.flag("JaCoCo agent; jacoco.xml per module", "--coverage"));
+                Opt.flag("JaCoCo agent; jacoco.xml per module", "-T", "--coverage"));
     }
 
     @Override
@@ -118,11 +118,12 @@ final class TestVerb implements BuildVerb {
     }
 
     @Override
-    public void selected(BuildRun run, List<String> moduleDirs) {
-        if (!exclusive) return;
+    public int selected(BuildRun run, List<String> moduleDirs) {
+        if (!exclusive) return -1;
         run.flags(run.flags().withTestSelection(run.flags().testSelection().withOnlyModules(moduleDirs)));
         SessionContext.install(
                 SessionContext.current().withTestSelection(run.flags().testSelection()));
+        return -1;
     }
 
     @Override

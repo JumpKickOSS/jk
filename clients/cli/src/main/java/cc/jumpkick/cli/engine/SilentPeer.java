@@ -146,7 +146,7 @@ public final class SilentPeer {
         return "the build engine (pid " + life.pid() + ") is alive and busy — " + life.describe()
                 + " — but has not answered a handshake in " + human(waited)
                 + "; it is not displaced, since that would kill the jobs it runs for other terminals."
-                + " Retry in a moment; `jk engine status` shows its jobs, and `jk engine stop --now` stops it"
+                + " Retry in a moment; `jk engine status` shows its jobs, and `jk engine stop -n` stops it"
                 + " regardless";
     }
 

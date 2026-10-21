@@ -6,8 +6,8 @@ jk new -t cli my-app
 jk new -t spring-boot/hello my-api
 jk new -t quarkus/hello my-api
 jk new -t grails/hello my-svc
-jk new -t spring-boot/webmvc --layout simple my-api
-jk new --param key=value          # repeatable; non-interactive props
+jk new -t spring-boot/webmvc -L simple my-api
+jk new -p key=value          # repeatable; non-interactive props
 jk init -t hello
 ```
 
@@ -23,7 +23,7 @@ build against; `jk update` moves it — [Lockfile](lockfile.md#jk-update).
 
 `--lang` defaults to **java**. For a `framework/name` ref, a miss on that language walks
 java → kotlin → groovy → scala until a hit (`jk new -t grails/hello` lands on groovy).
-`jk new --lang scala` scaffolds a Scala 3 app (mixed Java+Scala compiles in one Zinc
+`jk new -l scala` scaffolds a Scala 3 app (mixed Java+Scala compiles in one Zinc
 session).
 
 Layout (`traditional` vs `simple`) is **file placement**, not a `jk.toml` key —
@@ -40,7 +40,7 @@ templates that are not a framework (`cli`, `ktor-3`, …).
 | Invocation | Resolves to |
 |------------|-------------|
 | `jk new -t hello` | `java/none/hello` |
-| `jk new -t hello --lang kotlin` | `kotlin/none/hello` |
+| `jk new -t hello -l kotlin` | `kotlin/none/hello` |
 | `jk new -t spring-boot/hello` | `java/spring-boot/hello` when java exists |
 | `jk new -t grails/hello` | miss java/kotlin, hit `groovy/grails/hello` |
 | `jk new -t java/spring-boot/hello` | exact id |
@@ -96,8 +96,8 @@ as below; the default stays the offline Vite/React one.
 ## Node front ends (`--lang node`)
 
 ```bash
-jk new --lang node -t vite-react web     # web/ with jk.toml (node = the newest LTS) and the starter
-jk new -t webapp --frontend angular shop # the webapp template with an Angular web/
+jk new -l node -t vite-react web     # web/ with jk.toml (node = the newest LTS) and the starter
+jk new -t webapp -f angular shop # the webapp template with an Angular web/
 ```
 
 jk writes only `jk.toml` and `.gitignore`. The tree is the framework's own starter, made by its

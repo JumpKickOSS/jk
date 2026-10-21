@@ -105,7 +105,7 @@ final class CorePlan {
             if (!jkBuild.plugins().isEmpty() && PluginDescriptorOps.ensureMaterialized(in.dir(), in.cache())) {
                 jkBuild = JkBuildParser.reparse(in.buildFile());
             }
-            // CLI packaging override (jk assemble --minified / --fat) wins over jk.toml for this run.
+            // CLI packaging override (jk assemble -W / -U) wins over jk.toml for this run.
             // Read from Inputs.session (not ambient SessionContext) — single-build constructs the
             // plan outside SessionContext.where.
             jkBuild = BuildPlanner.applyAssemblyOverride(jkBuild, in.session());

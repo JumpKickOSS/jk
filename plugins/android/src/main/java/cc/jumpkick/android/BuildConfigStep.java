@@ -9,7 +9,7 @@ import java.nio.file.Path;
  * The {@code android-buildconfig} step ({@code [android] build-config = true} — an explicit
  * toggle, deliberately not AGP's default-on grab-bag): a generated {@code BuildConfig.java}
  * under the module's namespace, contributed to the compiler's source set. {@code DEBUG} reflects
- * the selected build type ({@code jk build --release} → false); {@code APPLICATION_ID} carries
+ * the selected build type ({@code jk build -R} → false); {@code APPLICATION_ID} carries
  * the variant's {@code application-id-suffix} when one applies.
  */
 final class BuildConfigStep {

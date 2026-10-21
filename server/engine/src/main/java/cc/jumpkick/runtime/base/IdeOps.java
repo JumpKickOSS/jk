@@ -463,7 +463,7 @@ public final class IdeOps {
             Path jar = locator.locate(pkg).orElse(null);
             if (jar == null) continue; // not yet synced / non-Maven dep
 
-            // Whatever `jk sync --sources` (or ~/.m2) holds for this row, pinned or not.
+            // Whatever `jk sync -s` (or ~/.m2) holds for this row, pinned or not.
             Path sourcesPath = locator.locateSources(pkg).orElse(null);
 
             String libName = pkg.name() + ":" + pkg.version();

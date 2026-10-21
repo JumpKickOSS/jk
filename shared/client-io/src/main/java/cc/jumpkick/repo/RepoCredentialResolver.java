@@ -176,7 +176,7 @@ public final class RepoCredentialResolver {
         if (fromInline.isPresent()) return fromInline.get();
 
         // Sources 2–4 are keyed by repo id; skip them when there's no declared
-        // name (e.g. `jk publish --repo-url <url>` with no matching repo). Each is sent only when
+        // name (e.g. `jk publish -l <url>` with no matching repo). Each is sent only when
         // the name is bound to the URL's origin; a refused source falls through to the next.
         if (repoId != null && !repoId.isBlank()) {
             Binding binding = bindingOf(repoId, url);
@@ -200,7 +200,7 @@ public final class RepoCredentialResolver {
                             url,
                             "the `jk repo login " + repoId + "` store",
                             Binding.mismatch("`jk repo login " + repoId + "` stored it for " + origin + ", not "
-                                    + originText(url) + "; run `jk repo login " + repoId + " --url "
+                                    + originText(url) + "; run `jk repo login " + repoId + " -U "
                                     + SafeUri.forMessage(url) + "` if the repository has moved there"));
                 } else if (binding.bound()) {
                     return entry.credential();
@@ -330,7 +330,7 @@ public final class RepoCredentialResolver {
                     + "] with this URL and the ${VAR} reference in ~/.jk/config.toml, export " + prefix + "TOKEN (or "
                     + prefix + "USERNAME + " + prefix + "PASSWORD) with " + prefix + "HOST="
                     + (url == null || url.getHost() == null ? "<host>" : hostPort(url)) + ", or run `jk repo login "
-                    + repoId + " --url " + SafeUri.forMessage(url) + "`. See repositories.md § Credentials.";
+                    + repoId + " -U " + SafeUri.forMessage(url) + "`. See repositories.md § Credentials.";
         });
     }
 
@@ -440,7 +440,7 @@ public final class RepoCredentialResolver {
                     + "project, not by ~/.jk/config.toml. To send it, declare [repositories." + repoId
                     + "] with this URL in ~/.jk/config.toml, set " + prefix + "HOST="
                     + (url == null || url.getHost() == null ? "<host>" : hostPort(url)) + " in your shell, or run "
-                    + "`jk repo login " + repoId + " --url " + SafeUri.forMessage(url) + "`.";
+                    + "`jk repo login " + repoId + " -U " + SafeUri.forMessage(url) + "`.";
         });
     }
 

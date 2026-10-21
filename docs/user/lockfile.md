@@ -9,10 +9,10 @@ auto-refreshes when the lock is missing or out of sync with manifests.
 ```bash
 jk lock          # resolve → write jk-lock.toml, keeping every version it already holds
 jk lock -F       # same, but move opt-in selectors (^ ~ ranges latest) to their newest match
-jk sync          # materialize cache / --offline-prepare
+jk sync          # materialize cache / -p
 jk outdated      # read-only: Current / Compatible / Latest
 jk update        # bump declared pins in jk.toml to the newest stable on the same major, relock
-jk update --major  # allow a major-line jump
+jk update -m  # allow a major-line jump
 jk tree / jk why
 ```
 
@@ -52,12 +52,12 @@ stale lock on `jk build`, or any command that needs a current lock — always ke
 ```bash
 jk update                      # every declared Maven coordinate → newest stable on its major
 jk update jackson2-databind    # only the named handle(s); also --dep <name>
-jk update --major              # allow a major-line jump (2.22.2 → 3.x)
-jk update --git [name]         # advance git dependencies to their current ref instead
-jk update --platform=floor     # relock with BOM pins as lower bounds — Platforms
+jk update -m              # allow a major-line jump (2.22.2 → 3.x)
+jk update -g [name]         # advance git dependencies to their current ref instead
+jk update -p floor     # relock with BOM pins as lower bounds — Platforms
 ```
 
-| Declared | `jk update` | `jk update --major` |
+| Declared | `jk update` | `jk update -m` |
 |----------|-------------|---------------------|
 | `"2.18.0"` (exact) | writes `"2.18.2"`, the newest stable **2.x** | may write `"3.0.0"` |
 | `"^2.18"` / `"~2.18"` / range / `"latest"` | the lock takes the newest match inside that selector; the text stays | same, unless the selector itself excludes the new major |
@@ -94,10 +94,10 @@ platform BOM that manages the package down.
 
 ```bash
 jk outdated                 # one row per coordinate an update would move
-jk outdated --by-module     # one row per module and dependency instead
-jk outdated --all           # every declared dependency, up to date included
+jk outdated -b     # one row per module and dependency instead
+jk outdated -A           # every declared dependency, up to date included
 jk outdated -O jsonl
-jk outdated --offline
+jk outdated -o
 ```
 
 Every row is a live repository read, so a workspace takes seconds: the terminal shows an
@@ -109,7 +109,7 @@ the table takes the bar's place when the report lands. `-O jsonl`, a pipe and
 |--------|---------|
 | **Current** | Version pinned in `jk-lock.toml` (empty if unlocked) |
 | **Compatible** | Newest version the declared selector still admits — for an exact pin, the same as Current |
-| **Latest** | Newest stable in the repo; what `jk update` (same major) or `jk update --major` would write |
+| **Latest** | Newest stable in the repo; what `jk update` (same major) or `jk update -m` would write |
 | **Tip** | With `--show-tip`: prerelease / git frontier ahead of Latest |
 
 A row prints when Compatible or Latest is strictly ahead of Current, or when Current is unknown
@@ -523,7 +523,7 @@ engine is jk 0.13.7 (build 4ee07400a592 of 2026-09-16T13:12:00Z), an older build
 version that does not know its key(s) artifact[].mirror — a relock with it would drop them …
 ```
 
-Install the jk that wrote the lock (`jk self update`, or `jk install --skip-tests` from its
+Install the jk that wrote the lock (`jk self update`, or `jk install -S` from its
 checkout) and run `jk engine stop` so the next command starts it; `jk lock -F` rewrites the
 lock with the running jk anyway. A newer jk always may relock, and a lock the same build wrote is
 never in question. A key whose *meaning* changed is not this check's to catch: the lock's `jk-min`

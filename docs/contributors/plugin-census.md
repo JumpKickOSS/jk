@@ -102,14 +102,14 @@ it is outer-loop work and is designed after 1.0.
 | 17 | `maven-failsafe-plugin` | 106,496 | core | integration suite |
 | 18 | `maven-site-plugin` | 102,144 | no | site generation |
 | 19 | `build-helper-maven-plugin` | 75,520 | core | extra-src; other goals row |
-| 20 | `maven-gpg-plugin` | 70,144 | core | jk publish --sign |
+| 20 | `maven-gpg-plugin` | 70,144 | core | jk publish -I |
 | 21 | `maven-checkstyle-plugin` | 69,888 | planned | lint step |
 | 22 | `maven-bundle-plugin` | 66,560 | no | OSGi |
 | 23 | `maven-enforcer-plugin` | 65,664 | core | java =, jk deny, guards |
 | 24 | `maven-antrun-plugin` | 65,536 | built in | build-logic hatch |
 | 25 | `javafx-maven-plugin` | 65,280 | contrib | `[javafx]` |
 | 26 | `maven-release-plugin` | 45,440 | gap | release flow (bump, tag) |
-| 27 | `nexus-staging-maven-plugin` | 35,968 | core | jk publish --central |
+| 27 | `nexus-staging-maven-plugin` | 35,968 | core | jk publish -c |
 | 28 | `quarkus-maven-plugin` | 34,624 | core | quarkus battery |
 | 29 | `kotlin-maven-plugin` | 29,184 | core | kotlin-compiler |
 | 30 | `jib-maven-plugin` | 26,752 | core | jk image |
@@ -124,7 +124,7 @@ it is outer-loop work and is designed after 1.0.
 | 39 | `os-maven-plugin` | 17,536 | core | host-detected properties |
 | 40 | `spotbugs-maven-plugin` | 16,896 | planned | lint step |
 | 41 | `scala-maven-plugin` | 16,480 | contrib | Scala 3 via Zinc |
-| 42 | `central-publishing-maven-plugin` | 15,840 | core | jk publish --central |
+| 42 | `central-publishing-maven-plugin` | 15,840 | core | jk publish -c |
 | 43 | `license-maven-plugin` | 15,264 | gap | licence headers/report |
 | 44 | `versions-maven-plugin` | 12,672 | core | jk outdated / update |
 | 45 | `git-commit-id-plugin` | 11,536 | core | `[build-info]`: git.properties resource |
@@ -174,7 +174,7 @@ it is outer-loop work and is designed after 1.0.
 | 25 | `org.openjfx.javafxplugin` | 11,956 | contrib | `[javafx]`: module path for tests and run |
 | 26 | `org.jetbrains.intellij` | 11,376 | no | IDE plugin development |
 | 27 | `org.sonarqube` | 11,208 | no | SaaS analysis; report upload is CI's job |
-| 28 | `com.vanniktech.maven.publish` | 11,168 | core | jk publish --central |
+| 28 | `com.vanniktech.maven.publish` | 11,168 | core | jk publish -c |
 | 29 | `org.jlleitschuh.gradle.ktlint` | 10,960 | core | jk format (ktlint) |
 | 30 | `io.freefair.lombok` | 10,936 | core | processor discovery on classpath |
 | 31 | `com.github.ben-manes.versions` | 9,008 | core | jk outdated / jk update |
@@ -196,7 +196,7 @@ it is outer-loop work and is designed after 1.0.
 | 47 | `com.github.node-gradle.node` | 3,535 | core | [dev.sidecars] + resource module (frontend) |
 | 48 | `org.beryx.jlink` | 3,500 | gap | jlink runtime image; jk native/image cover the ship path differently |
 | 49 | `org.jetbrains.kotlin.plugin.jpa` | 3,428 | core | [[kotlin-plugins]] noarg preset |
-| 50 | `io.github.gradle-nexus.publish-plugin` | 3,292 | core | jk publish --central |
+| 50 | `io.github.gradle-nexus.publish-plugin` | 3,292 | core | jk publish -c |
 
 | Coverage | Share of file hits |
 |---|--:|
@@ -230,7 +230,7 @@ it is outer-loop work and is designed after 1.0.
 | 17 | `org.openjfx.javafxplugin` | 11,956 | contrib | `[javafx]`: module path for tests and run |
 | 18 | `org.jetbrains.intellij` | 11,376 | no | IDE plugin development |
 | 19 | `org.sonarqube` | 11,208 | no | SaaS analysis; report upload is CI's job |
-| 20 | `com.vanniktech.maven.publish` | 11,168 | core | jk publish --central |
+| 20 | `com.vanniktech.maven.publish` | 11,168 | core | jk publish -c |
 | 21 | `org.jlleitschuh.gradle.ktlint` | 10,960 | core | jk format (ktlint) |
 | 22 | `io.freefair.lombok` | 10,936 | core | processor discovery on classpath |
 | 23 | `com.github.ben-manes.versions` | 9,008 | core | jk outdated / jk update |
@@ -252,7 +252,7 @@ it is outer-loop work and is designed after 1.0.
 | 39 | `com.github.node-gradle.node` | 3,535 | core | [dev.sidecars] + resource module (frontend) |
 | 40 | `org.beryx.jlink` | 3,500 | gap | jlink runtime image; jk native/image cover the ship path differently |
 | 41 | `org.jetbrains.kotlin.plugin.jpa` | 3,428 | core | [[kotlin-plugins]] noarg preset |
-| 42 | `io.github.gradle-nexus.publish-plugin` | 3,292 | core | jk publish --central |
+| 42 | `io.github.gradle-nexus.publish-plugin` | 3,292 | core | jk publish -c |
 | 43 | `org.openapi.generator` | 3,130 | core | openapi battery |
 | 44 | `io.micronaut.application` | 3,082 | core | micronaut battery |
 | 45 | `com.adarshr.test-logger` | 3,032 | built in | jk test output |

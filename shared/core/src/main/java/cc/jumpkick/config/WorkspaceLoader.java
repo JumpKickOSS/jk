@@ -182,7 +182,7 @@ public final class WorkspaceLoader {
      * table itself was only ever read off the manifest being built. The tag half already behaved:
      * the CLI rehomes to the root before it scans them. The other half did not, so naming a
      * profile the root alone declares failed the build on the first member that did not:
-     * {@code jk test --profile integration} died with "no profile named `integration`" against a
+     * {@code jk test -p integration} died with "no profile named `integration`" against a
      * root whose {@code jk.toml} defines it, and the documented pre-merge command could not run.
      *
      * <p>Not a {@code key.workspace = true} inherit: those are opt-in per field because they say

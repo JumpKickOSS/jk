@@ -55,7 +55,7 @@ public final class IdeSourceRoots {
     }
 
     /**
-     * The suites {@code jk test --suite} can name in this module: the directory suites on disk, then
+     * The suites {@code jk test -s} can name in this module: the directory suites on disk, then
      * its {@code [test.suites]} class-pattern suites. A manifest that does not parse adds none.
      */
     public static List<String> suites(Path moduleDir) {

@@ -486,7 +486,7 @@ public final class BuildLayout {
         return artifactDir().resolve(artifact + ".oci.tar");
     }
 
-    /** {@code <moduleTargetDir>/sbom/} — the CycloneDX and SPDX documents {@code jk publish --sbom} writes. */
+    /** {@code <moduleTargetDir>/sbom/} — the CycloneDX and SPDX documents {@code jk publish -S} writes. */
     public Path sbomDir() {
         return moduleTargetDir().resolve("sbom");
     }

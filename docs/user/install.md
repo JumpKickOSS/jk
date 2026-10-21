@@ -33,7 +33,7 @@ own trust metadata.
 
 Windows PATH install dir: `%USERPROFILE%\.jk\bin` — the same `bin/` every other platform
 uses. `install.ps1` prepends it to your **User PATH** (visible from cmd and PowerShell) and runs
-`jk activate --yes` for profile hooks. When a new session's execution policy would be
+`jk activate -y` for profile hooks. When a new session's execution policy would be
 `Restricted`/`AllSigned` (so `$PROFILE` hooks cannot load), the installer prints
 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` for you to run; it applies that command
 itself only with `-SetExecutionPolicy` or `JK_SET_EXECUTION_POLICY=1`, because a persistent
@@ -41,7 +41,7 @@ policy change is nothing an uninstall reverts. Group Policy that locks the polic
 with a note — ask an admin.
 
 Local dogfood from this repository needs a jk to build it; the hosted `jk.exe` the installer
-puts in place is one. With it installed, `jk build --skip-tests` writes `target\dist\jk.exe` and
+puts in place is one. With it installed, `jk build -S` writes `target\dist\jk.exe` and
 `.\install.cmd target\dist\jk.exe` installs it (Smart App Control blocks an unsigned `jk.exe`;
 released natives are signed).
 
@@ -122,7 +122,7 @@ rm -rf ~/.jk/store     # re-download everything, slow
 ```
 
 `creds/`, `bin/` and `lib/` are separate roots on purpose: they are the deletion units, so
-`jk self nuke --store` cannot log you out or remove the engine you are running.
+`jk self nuke -S` cannot log you out or remove the engine you are running.
 
 The live engine jar is `~/.jk/lib/jk-engine/jk-engine-<version>.jar` (or
 `jk-engine-<version>.<epoch>.jar` when that name is already occupied), with the live pointer
@@ -173,7 +173,7 @@ default home, `$HOME/.jk`. With `JK_HOME` pointing anywhere else they leave `~/.
 `~/.bashrc` and `$PROFILE` alone (and, on Windows, the User PATH) and print the line that
 activates that install in the current shell — `eval "$("$JK_HOME/bin/jk" activate zsh)"` — so a
 scratch build or a hermetic test home never becomes the jk every new shell runs. `bash install.sh
---rc`, `install.ps1 -Rc` (`JK_RC=1` for `irm | iex`) and `jk activate --rc` ask for the block on a
+--rc`, `install.ps1 -Rc` (`JK_RC=1` for `irm | iex`) and `jk activate -R` ask for the block on a
 non-default home anyway. The root-specific variables win over `JK_HOME`, and they compose:
 `JK_HOME=/tmp/cold JK_STORE_DIR=$HOME/.jk/store` gives you a scratch everything with a warm store.
 
@@ -181,7 +181,7 @@ Cold resolve without wiping your real store:
 
 ```bash
 COLD=$(mktemp -d /tmp/jk-cold-XXXX)
-jk lock --cache-dir "$COLD"
+jk lock -d "$COLD"
 ```
 
 The engine process is keyed by **state directory + store**; isolating only the action
@@ -195,7 +195,7 @@ then the real process environment. The **shell always wins** over files.
 ```bash
 jk env                 # .env keys + JK_* from the process
 jk env -v              # also show file values shadowed by the shell
-jk env --all           # every process env key (noisy)
+jk env -A           # every process env key (noisy)
 jk env -O jsonl
 ```
 
@@ -205,7 +205,7 @@ Values that came from a `.env` file are treated as secrets: shown as `***` and l
 ## Shell integration
 
 ```bash
-jk activate --yes              # PATH + hooks + completions in your shell rc
+jk activate -y              # PATH + hooks + completions in your shell rc
 jk activate bash               # print the eval snippet
 jk deactivate                  # how to drop session env or remove the marker block
 jk completion                  # refresh completion files
@@ -216,7 +216,7 @@ should own: zsh on macOS, bash on Linux, both PowerShell 7 (`pwsh`) and Windows 
 5.1 (`powershell`) on Windows — plus any other supported rc file that already exists
 (`.bashrc` on a zsh Mac, Git Bash, fish, …). Pass a name to print one eval snippet:
 `jk activate zsh`. Under a `JK_HOME` other than `$HOME/.jk` the bare form writes nothing and
-prints those snippets for that home's bin instead; `jk activate --rc` writes the block anyway.
+prints those snippets for that home's bin instead; `jk activate -R` writes the block anyway.
 
 The installer / `jk activate` writes a marker block:
 

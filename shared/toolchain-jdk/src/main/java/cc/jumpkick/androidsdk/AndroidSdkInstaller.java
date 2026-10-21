@@ -89,7 +89,7 @@ public final class AndroidSdkInstaller {
         String licenseText = licenseId.isEmpty() ? null : feed().licenseText(licenseId);
         if (licenseText != null && !sdk.licenseAccepted(licenseId, AndroidRepoFeed.licenseHash(licenseText))) {
             throw new IOException("Android SDK component " + componentPath + " requires accepting the '" + licenseId
-                    + "' license — run `jk android licenses --yes` first");
+                    + "' license — run `jk android licenses -y` first");
         }
 
         if (pinnedRevision != null && !pinnedRevision.equals(component.revision())) {

@@ -104,7 +104,7 @@ public final class StorageCommand extends GroupCommand {
     /**
      * @param skipConfirm when true (multi-target self nuke already confirmed), do not prompt
      * @param sweepOrphans whether this command removes the tool envs and launchers the wipe
-     *     orphans; false for the store leg of {@code jk self nuke --store}, whose own plan table
+     *     orphans; false for the store leg of {@code jk self nuke -S}, whose own plan table
      *     carries and deletes them
      */
     static int runNuke(boolean dryRun, boolean skipConfirm, boolean sweepOrphans, StoreWipe wipe) throws IOException {
@@ -308,8 +308,8 @@ public final class StorageCommand extends GroupCommand {
         @Override
         public List<Opt> options() {
             return List.of(
-                    Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
-                    Opt.flag("Also drop installed plugin workers; next build re-fetches", "--workers"));
+                    Opt.flag("Print what would be removed; touch nothing.", "-U", "--dry-run"),
+                    Opt.flag("Also drop installed plugin workers; next build re-fetches", "-w", "--workers"));
         }
 
         @Override
@@ -428,7 +428,7 @@ public final class StorageCommand extends GroupCommand {
 
         @Override
         public List<Opt> options() {
-            return List.of(Opt.flag("Print what would be removed; touch nothing.", "--dry-run"));
+            return List.of(Opt.flag("Print what would be removed; touch nothing.", "-U", "--dry-run"));
         }
 
         @Override

@@ -320,10 +320,10 @@ public final class LockPlans {
         };
     }
 
-    // ---- jk update --git ----------------------------------------------------
+    // ---- jk update -g ----------------------------------------------------
 
     /**
-     * Outcome of a {@code jk update --git} pass. {@code exitCode == 0} means success and {@code
+     * Outcome of a {@code jk update -g} pass. {@code exitCode == 0} means success and {@code
      * refreshed} counts the git artifacts actually re-pinned; non-zero means the caller should
      * surface {@code error} (a bare, uncolored message — no command prefix) and exit with that code.
      */
@@ -331,7 +331,7 @@ public final class LockPlans {
             int exitCode, int refreshed, @Nullable String error) {}
 
     /**
-     * {@code jk update --git [<name>]}: re-resolve git dependencies only, in {@code root}'s project
+     * {@code jk update -g [<name>]}: re-resolve git dependencies only, in {@code root}'s project
      * and (for a workspace root) each declared module — one dependency by its declared name, or
      * every git dependency when {@code targetLibrary} is {@code null}. Every scope with no matching
      * git dependency is left untouched entirely (its {@code jk-lock.toml} isn't even read).

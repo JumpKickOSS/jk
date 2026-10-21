@@ -13,7 +13,7 @@ Kotlin first (reading Java declarations from source), then Groovy against Kotlin
 (sweeping the Java sources in joint mode), then Java against both. So Groovy and Java may
 reference Kotlin, and Java may reference Groovy; Kotlin cannot reference Groovy. Scala does not
 mix with Kotlin or Groovy in one module.
-`jk new --layout simple` scaffolds the Mill-like columns.
+`jk new -L simple` scaffolds the Mill-like columns.
 
 `--layout` on `jk new` is file placement only. Prefer shaping the tree so detection
 is unambiguous. An optional `layout = "simple"` or `layout = "traditional"` in
@@ -41,7 +41,7 @@ Canonical extra suite names — use these unless you have a reason not to:
 | Suite | Traditional | Simple | Run with |
 |-------|-------------|---------|----------|
 | **unit** (default) | `src/test/…` | `test/src/` | `jk test` |
-| **integration** | `src/integration/…` | `integration/src/` | `jk test --guard` (share-the-commit) |
+| **integration** | `src/integration/…` | `integration/src/` | `jk test -g` (share-the-commit) |
 | **e2e** | `src/e2e/…` | `e2e/src/` | `jk test -s e2e` (CI / judgment) |
 
 Other names (`contract`, `mutation`, …) are discovered the same way. Do not put

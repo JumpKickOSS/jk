@@ -51,16 +51,14 @@ public final class WatchCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        var opts = new ArrayList<>(List.of(
-                CommonOpts.cacheDir(),
-                CommonOpts.jdksDir(),
-                Opt.value(
-                        "<ms>",
-                        "Debounce source changes (default " + SourceWatch.DEBOUNCE_MILLIS + " ms)",
-                        "--debounce-ms"),
-                Opt.flag("Run the app alone, no [dev.sidecars]", "--no-sidecars"),
-                CommonOpts.modules("At a workspace root: members to run (repeatable)")));
-        opts.addAll(VariantSelection.options());
+        // Every watched verb is a build verb: the loop takes the build options and hands them on.
+        var opts = new ArrayList<>(BuildFlags.options(BuildFlags.Reach.DELIVER, BuildFlags.Affected.MODULES));
+        opts.add(Opt.value(
+                "<ms>",
+                "Debounce source changes (default " + SourceWatch.DEBOUNCE_MILLIS + " ms)",
+                "-U",
+                "--debounce-ms"));
+        opts.add(Opt.flag("Run the app alone, no [dev.sidecars]", "-T", "--no-sidecars"));
         return opts;
     }
 
@@ -135,7 +133,7 @@ public final class WatchCommand implements CliCommand {
                                 rebuilder(in, jdksDir),
                                 members(in))
                         .run(projectDir, AppWatchLoop.cache(cacheOverride), rest);
-            case "compile", "test", "build" -> verbLoop(verb, projectDir, global, debounceMs);
+            case "compile", "test", "build" -> verbLoop(verb, in, projectDir, debounceMs);
             default -> {
                 CommandWedge.printFail("Watch", "unknown verb `" + verb + "` (use compile, test, build, or run)");
                 yield Exit.USAGE;
@@ -180,8 +178,8 @@ public final class WatchCommand implements CliCommand {
                 == 0;
     }
 
-    private static int verbLoop(String verb, Path projectDir, GlobalOptions global, long debounceMs) throws Exception {
-        int code = runVerb(verb);
+    private static int verbLoop(String verb, Invocation in, Path projectDir, long debounceMs) throws Exception {
+        int code = runVerb(verb, in);
         if (code != 0) {
             CommandWedge.printFail("Watch", "initial " + verb + " failed (exit " + code + "); watching anyway");
         }
@@ -196,7 +194,7 @@ public final class WatchCommand implements CliCommand {
             while (true) {
                 watch.awaitChange();
                 CommandWedge.printWorking("Watch", "change detected — " + verb);
-                code = runVerb(verb);
+                code = runVerb(verb, in);
                 if (code != 0) {
                     CommandWedge.printFail("Watch", verb + " failed (exit " + code + ")");
                 }
@@ -218,16 +216,16 @@ public final class WatchCommand implements CliCommand {
         }
     }
 
-    private static int runVerb(String verb) throws Exception {
+    /** One pass of {@code verb} with the loop's own options, so {@code jk watch test -m x} tests x. */
+    private static int runVerb(String verb, Invocation in) {
+        Invocation pass = BuildVerbCommand.forward(in, BuildFlags.Reach.DELIVER, b -> {
+            // The loop rebuilds to run the result; it does not gate on a suite.
+            if (verb.equals("build")) b.flag("skip-tests", true);
+        });
         return switch (verb) {
-            case "compile" ->
-                BuildVerbCommand.compile().run(Invocation.builder().build());
-            case "test" -> BuildVerbCommand.test().run(Invocation.builder().build());
-            case "build" -> {
-                Invocation.Builder bb = Invocation.builder();
-                bb.flag("skip-tests", true);
-                yield BuildVerbCommand.build().run(bb.build());
-            }
+            case "compile" -> BuildVerbCommand.run(new CompileVerb(), pass, true);
+            case "test" -> BuildVerbCommand.run(new TestVerb(), pass, true);
+            case "build" -> BuildVerbCommand.run(new PackageVerb(), pass, true);
             default -> Exit.USAGE;
         };
     }

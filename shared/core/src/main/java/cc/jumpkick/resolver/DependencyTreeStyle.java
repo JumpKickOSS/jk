@@ -102,7 +102,7 @@ public final class DependencyTreeStyle {
     private DependencyTreeStyle() {}
 
     /**
-     * Default scopes for {@code jk tree} (and empty {@code --scopes}): production runtime classpath
+     * Default scopes for {@code jk tree} (and empty {@code -s}): production runtime classpath
      * — {@code export}, {@code main}, {@code runtime}. Matches {@code ClasspathResolver.RUNTIME} /
      * the {@code exec}/{@code run} meta-scopes. Use {@link #allScopeOrder()} for every scope.
      */

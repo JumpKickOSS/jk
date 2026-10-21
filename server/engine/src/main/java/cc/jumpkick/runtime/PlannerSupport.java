@@ -734,7 +734,7 @@ public final class PlannerSupport {
             throws IOException {
         // The SESSION selection, not DEFAULT: the forecast must key run-tests exactly like the
         // live run (PlannerTest feeds in.session().testSelection()), or a widened build
-        // (`jk build --all`) forecasts "tests cached" off the unit-tier marker and the whole
+        // (`jk build -A`) forecasts "tests cached" off the unit-tier marker and the whole
         // workspace short-circuits to "up to date" without running the widened tier.
         return NodeTestStamp.testStampExtras(
                 testStampWorkerJars(dir, project),

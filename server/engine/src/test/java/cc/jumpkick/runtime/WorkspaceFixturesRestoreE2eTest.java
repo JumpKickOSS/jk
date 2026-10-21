@@ -30,7 +30,7 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>lib declares {@code [test] fixtures = true}; app takes them with {@code fixtures = true} on
  * its test edge. A tests-enabled build produces both test views. With {@code target/} wiped, a
- * {@code jk install --skip-tests} restores the main outputs and, by design, no test view. The next
+ * {@code jk install -S} restores the main outputs and, by design, no test view. The next
  * tests-enabled build then finds every record hitting and lib's main outputs current — and must
  * still schedule lib, so its fixtures tree is restored before app's test compile is admitted
  * against it, and app, so its own tests are compiled. Through the real preflight, planner, action

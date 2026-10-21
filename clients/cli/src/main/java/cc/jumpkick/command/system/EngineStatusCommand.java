@@ -256,10 +256,10 @@ public final class EngineStatusCommand implements CliCommand {
                 && (life.get().workers() > 0 || life.get().youngerThan(SilentPeer.Grace.DEFAULT.startup()))) {
             return "Engine pid " + stray + " holds this directory's engine state and is alive and busy ("
                     + life.get().describe() + ") but does not answer its socket yet — clients wait for it rather"
-                    + " than displace it; `jk engine stop --now` stops it regardless";
+                    + " than displace it; `jk engine stop -n` stops it regardless";
         }
         return "Engine pid " + stray + " holds this directory's engine state but does not"
-                + " answer — `jk engine stop --now` clears it";
+                + " answer — `jk engine stop -n` clears it";
     }
 
     private static void printFleet(List<EngineFleet.Member> fleet) {
@@ -288,7 +288,7 @@ public final class EngineStatusCommand implements CliCommand {
             CliOutput.out(line.toString());
         }
         CliOutput.out("");
-        CliOutput.out(" Stop this home with `jk engine stop --all`, or one engine with `jk engine stop --pid <pid>`.");
+        CliOutput.out(" Stop this home with `jk engine stop -A`, or one engine with `jk engine stop -p <pid>`.");
     }
 
     /** The `-O jsonl` line for a directory with no engine of its own; the fleet says what else is alive. */

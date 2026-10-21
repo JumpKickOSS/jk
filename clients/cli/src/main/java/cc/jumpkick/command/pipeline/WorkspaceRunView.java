@@ -96,8 +96,15 @@ final class WorkspaceRunView {
         String of(WorkspaceResult result);
     }
 
-    /** The two per-verb strings the shared ladder cannot know. */
-    record Tails(SuccessTail success, FailureTail failure) {}
+    /**
+     * The two per-verb strings the shared ladder cannot know. {@code exec}: a success hands the
+     * terminal to the program the verb launches next ({@code jk run}) instead of settling to a chip.
+     */
+    record Tails(SuccessTail success, FailureTail failure, boolean exec) {
+        Tails(SuccessTail success, FailureTail failure) {
+            this(success, failure, false);
+        }
+    }
 
     /**
      * One print mutex per process: parallel modules finish concurrently and each flushes a
@@ -408,7 +415,8 @@ final class WorkspaceRunView {
         // An empty execute plan (planned == 0) is the engine finding nothing dirty; an explicit
         // empty module selection settles here too, as up to date.
         String okTail = tails.success().of(result, planned());
-        view.finishBuildPlanSuccess(okTail, above);
+        if (tails.exec()) view.finishBuildPlanExec(okTail, above);
+        else view.finishBuildPlanSuccess(okTail, above);
         if (session != null) session.wedge(okTail);
         event(JsonlShape.workspaceFinish(true, elapsedMs, planned()));
         after.accept(Settled.SUCCEEDED);
@@ -453,7 +461,7 @@ final class WorkspaceRunView {
             return result.exitCode() == 0 ? 1 : result.exitCode();
         }
         String okTail = tails.success().of(result, planned());
-        if (!toStdout) CommandWedge.printOk(chrome.planName(), okTail);
+        if (!toStdout && !tails.exec()) CommandWedge.printOk(chrome.planName(), okTail);
         if (session != null) session.wedge(okTail);
         event(JsonlShape.workspaceFinish(true, elapsedMs, planned()));
         after.accept(Settled.SUCCEEDED);

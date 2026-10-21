@@ -43,9 +43,9 @@ public final class EngineStopCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Stop now (abandon jobs)", "--now"),
-                Opt.flag("Stop every engine (not only this dir's)", "--all"),
-                Opt.value("<pid>", "Stop the engine with this pid (see `jk engine status`).", "--pid"));
+                Opt.flag("Stop now (abandon jobs)", "-n", "--now"),
+                Opt.flag("Stop every engine (not only this dir's)", "-A", "--all"),
+                Opt.value("<pid>", "Stop the engine with this pid (see `jk engine status`).", "-p", "--pid"));
     }
 
     @Override
@@ -114,7 +114,7 @@ public final class EngineStopCommand implements CliCommand {
     static String drainingMessage(int jobs, long deadlineMillis) {
         return "Engine is stopping: waiting for " + jobs + " in-flight job" + (jobs == 1 ? "" : "s")
                 + (deadlineMillis > 0 ? " (exits by " + EngineStatusCommand.wallClock(deadlineMillis) + ")" : "")
-                + "; the next build starts a new engine. `jk engine stop --now` stops it now";
+                + "; the next build starts a new engine. `jk engine stop -n` stops it now";
     }
 
     /**
@@ -153,7 +153,7 @@ public final class EngineStopCommand implements CliCommand {
                 : "";
         return "Engine" + (pid > 0 ? " pid " + pid : "") + life
                 + " accepts connections but has not acknowledged the stop; it is not killed, since it may be"
-                + " mid-job for another terminal. Retry in a moment, or `jk engine stop --now` stops it"
+                + " mid-job for another terminal. Retry in a moment, or `jk engine stop -n` stops it"
                 + " regardless.";
     }
 
@@ -180,7 +180,7 @@ public final class EngineStopCommand implements CliCommand {
                         "Engine pid " + pid + " holds this directory's engine state without answering its socket"
                                 + " but shows life (" + pulse.get().life().describe()
                                 + ") — not killed, since it may be mid-job for another terminal. Retry in a"
-                                + " moment, or `jk engine stop --now` stops it regardless.");
+                                + " moment, or `jk engine stop -n` stops it regardless.");
             }
         }
         EngineProcessControl.hardKill(pid);
@@ -276,12 +276,12 @@ public final class EngineStopCommand implements CliCommand {
             msg.append(", ")
                     .append(draining)
                     .append(" draining (will exit once in-flight jobs finish or the drain deadline passes;"
-                            + " `jk engine stop --now` stops now)");
+                            + " `jk engine stop -n` stops now)");
         }
         if (!leftAlone.isEmpty()) {
             msg.append(", ")
                     .append(leftAlone.size())
-                    .append(" not answering but alive, left alone (may be mid-job; `jk engine stop --now`"
+                    .append(" not answering but alive, left alone (may be mid-job; `jk engine stop -n`"
                             + " stops regardless): pid ")
                     .append(leftAlone);
         }

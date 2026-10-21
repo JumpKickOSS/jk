@@ -107,8 +107,8 @@ public final class ImageVerb implements HostedVerb {
                                         wsRoot.get(),
                                         cache,
                                         jdksDir,
-                                        0,
-                                        null,
+                                        session.requestedTestWorkers(),
+                                        session.profile(),
                                         body.skipTests(),
                                         body.verbose(),
                                         0,
@@ -116,6 +116,7 @@ public final class ImageVerb implements HostedVerb {
                                         true,
                                         true)
                                 .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                                .withKeepGoing(session.keepGoing())
                                 .withSpec(WorkspaceSpec.image(
                                         Set.of(entryDir.toAbsolutePath().normalize()),
                                         body.mainClass(),

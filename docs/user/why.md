@@ -262,7 +262,7 @@ JumpKick’s bet is a **pyramid for writing tests** and a **named ladder for run
 |------|----------------|--------------|-------------|
 | **Unit** | `src/test/…` (or `test/src/`) | The class under test | Every inner-loop turn. `jk test`. |
 | **Integration** | `src/integration/…` | One module + nearby collaborators (one Testcontainer is fine) | Before share. Named **`--guard`**. |
-| **E2E** | `src/e2e/…` | The product as a user/CI would: Playwright, compose, full fixtures | CI / nightly. Locally a judgment call. `jk test --all` is not a habit. |
+| **E2E** | `src/e2e/…` | The product as a user/CI would: Playwright, compose, full fixtures | CI / nightly. Locally a judgment call. `jk test -A` is not a habit. |
 
 Cost is a **tag**, not a fourth directory: `@Tag("slow")`, `@Tag("network")`. A 90-second
 Kafka test is still integration *scope*; it is the wrong *budget* for `--guard`.
@@ -374,7 +374,7 @@ external-system model. What is still open, in [the 1.0 plan](../contributors/pla
   spend more turns and tokens than Gradle's ([the second table](#making-the-north-star-true)).
 - **IntelliJ and VS Code are not on their marketplaces.** The IntelliJ plugin is an external
   system packaged from this repository.
-- **The plugin SDK is not on Maven Central.** `jk publish --central` can publish it; a release
+- **The plugin SDK is not on Maven Central.** `jk publish -c` can publish it; a release
   has not put the coordinate there.
 - **Maven top-20 corpus:** 13 of 20 build and 2 of 20 pass their tests (run 16, main
   `30c21270b`, 2026-09-18). The table is in

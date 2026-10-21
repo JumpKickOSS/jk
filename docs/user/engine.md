@@ -94,7 +94,7 @@ out-of-memory exit below.
 
 - A **brief job** — any kind other than `build`, `test`, `compile`, `native` and `image`:
   `format`, `guard`, `lock`, `explain`, `import`, `tree`, `update`, … — is judged that way from
-  the start and does not wait its turn behind queued long jobs. `jk format --check` runs beside
+  the start and does not wait its turn behind queued long jobs. `jk format -c` runs beside
   a running `jk test`.
 - The **head of the queue**, whatever its kind, is judged that way after **five minutes** of
   waiting, so a long job's committed heap alone never holds it back longer than that.
@@ -141,7 +141,7 @@ A drain has a **deadline**, `drain-deadline-ms` (default one hour, see
 [Configuration](#configuration)): a stuck job cannot keep a stopping engine, its workers and its
 memory alive forever. At the deadline the engine cancels what is still running — each job ends
 with an error naming the drain deadline — kills those jobs' workers and exits. `0` waits without
-bound. `jk engine stop --now` stops a draining engine immediately.
+bound. `jk engine stop -n` stops a draining engine immediately.
 
 ### A silent engine
 
@@ -157,14 +157,14 @@ handshake still has not come, fails —
 ```
 the build engine (pid 2945622) is alive and busy — up 3m 12s, 6 worker processes — but has not
 answered a handshake in 2m 00s; it is not displaced, since that would kill the jobs it runs for
-other terminals. Retry in a moment; `jk engine status` shows its jobs, and `jk engine stop --now`
+other terminals. Retry in a moment; `jk engine status` shows its jobs, and `jk engine stop -n`
 stops it regardless
 ```
 
 — rather than kill the jobs the engine runs for other terminals. Only a holder that shows no life
 across two readings — past its startup, no workers, no CPU — is displaced: hard-killed once and
 replaced, with `displacing unresponsive engine (pid N)` in the engine log. `jk engine status` says
-when the engine it cannot reach is alive and busy; `jk engine stop --now` stops it regardless.
+when the engine it cannot reach is alive and busy; `jk engine stop -n` stops it regardless.
 
 `jk engine stop` and `jk doctor` give a silent engine the same patience. A stop whose `bye` misses
 the two-second watchdog reads the engine's status instead: in-flight jobs, or a drain already

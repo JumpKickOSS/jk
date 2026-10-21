@@ -103,7 +103,7 @@ public final class JdkCatalogClient {
      * <p>{@code firstClassOnly} = {@code true} (the default for every resolution / auto-install path)
      * keeps jk's curated set — LTS majors at or above {@link SupportedJdk#MIN_MAJOR} plus the single
      * most-recent major. {@code false} keeps <em>every</em> major at or above the floor, which is
-     * what {@code jk jdk list --all} wants: a complete catalogue of installable vendors / products /
+     * what {@code jk jdk list -A} wants: a complete catalogue of installable vendors / products /
      * majors, not just the recommended ones.
      */
     public JdkCatalog fetch(boolean noCache, boolean firstClassOnly) throws IOException, InterruptedException {
@@ -364,7 +364,7 @@ public final class JdkCatalogClient {
      * SupportedJdk#MIN_MAJOR}. When {@code firstClassOnly} is set, also drops any non-LTS that isn't
      * the single most-recent major in the feed — the JetBrains feed publishes 8 / 11 / 17 / 21 / 23 /
      * 24 / 25 / 26 / …, so that pass keeps {17, 21, 25, latestMajor}. With it cleared, every major at
-     * or above the floor is kept (for {@code jk jdk list --all}).
+     * or above the floor is kept (for {@code jk jdk list -A}).
      *
      * <p>"Latest" is the newest <em>GA</em> major: preview/EA builds are excluded from the
      * computation. Otherwise an early-access next release (e.g. a {@code 27-ea} when 26 is the newest

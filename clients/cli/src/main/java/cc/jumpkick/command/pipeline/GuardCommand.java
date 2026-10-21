@@ -34,7 +34,7 @@ import java.util.Optional;
 /**
  * {@code jk guard} — run every house-rule lane now, cache-aware; non-zero on any red. It is the
  * build with tests skipped and the guard lanes on, so packaging is a cache hit and every guard lane
- * — model, module, workspace, tree, output — runs and reports. {@code jk guard freeze <id> --reason}
+ * — model, module, workspace, tree, output — runs and reports. {@code jk guard freeze <id> -W}
  * accepts a rule's current new violations into the baseline; {@code --retire} drops a removed rule's
  * entries. {@code jk guard explain [<id>]} prints a rule's card or the catalog and {@code --schema
  * <kind>} a kind's keys with one example. There is no {@code list} and no bare {@code freeze}.
@@ -59,8 +59,8 @@ public final class GuardCommand implements CliCommand {
                 "subcommand",
                 Arity.ZERO_OR_MORE,
                 "explain [<rule-id>] prints a rule's card or the catalog;\n"
-                        + "freeze <rule-id> --reason \"…\" accepts its new violations;\n"
-                        + "freeze <rule-id> --accept-scope accepts a shrunk population;\n"
+                        + "freeze <rule-id> -W \"…\" accepts its new violations;\n"
+                        + "freeze <rule-id> -U accepts a shrunk population;\n"
                         + "test proves every fixture-bearing rule bites;\n"
                         + "commit-msg <file> judges a commit message;\n"
                         + "hooks [install] prints or installs the git hooks.\n"
@@ -70,11 +70,11 @@ public final class GuardCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         List<Opt> opts = new ArrayList<>(build.options());
-        opts.add(Opt.value("<text>", "freeze: why these sites are accepted", "--reason"));
-        opts.add(Opt.flag("freeze: drop a removed rule's entries", "--retire"));
-        opts.add(Opt.flag("freeze: accept a shrunk population", "--accept-scope"));
+        opts.add(Opt.value("<text>", "freeze: why these sites are accepted", "-W", "--reason"));
+        opts.add(Opt.flag("freeze: drop a removed rule's entries", "-Z", "--retire"));
+        opts.add(Opt.flag("freeze: accept a shrunk population", "-U", "--accept-scope"));
         opts.add(Opt.value("<kind>", "explain: a kind's keys and example", "--schema"));
-        opts.add(Opt.flag("hooks install: overwrite hooks", "--replace"));
+        opts.add(Opt.flag("hooks install: overwrite hooks", "-X", "--replace"));
         return opts;
     }
 
@@ -128,14 +128,14 @@ public final class GuardCommand implements CliCommand {
             // stdout carries the document alone; the build's lines are noise to a SARIF consumer
             exit = CliOutput.silenced(() -> {
                 try {
-                    return build.run(run);
+                    return BuildVerbCommand.run(new PackageVerb("Guard"), run, true);
                 } catch (Exception e) {
                     CommandWedge.printFail("Guard", e.getMessage());
                     return Exit.SOFTWARE;
                 }
             });
         } else {
-            exit = build.run(run);
+            exit = BuildVerbCommand.run(new PackageVerb("Guard"), run, true);
         }
         Path target = dir.resolve(BuildLayout.TARGET);
         if (sarif) {
@@ -291,8 +291,7 @@ public final class GuardCommand implements CliCommand {
             return 0;
         }
         if (!"install".equals(positionals.get(1))) {
-            CommandWedge.printFail(
-                    "Guard", "hooks takes no argument or `install`: jk guard hooks [install] [--replace]");
+            CommandWedge.printFail("Guard", "hooks takes no argument or `install`: jk guard hooks [install] [-X]");
             return Exit.USAGE;
         }
         GuardHooks.Installed done;
@@ -315,14 +314,14 @@ public final class GuardCommand implements CliCommand {
         boolean acceptScope = in.isSet("accept-scope");
         String reason = in.value("reason").orElse(null);
         if (positionals.size() < 2) {
-            CommandWedge.printFail("Guard", "freeze needs a rule id: jk guard freeze <id> --reason \"…\"");
+            CommandWedge.printFail("Guard", "freeze needs a rule id: jk guard freeze <id> -W \"…\"");
             return Exit.USAGE;
         }
         String id = positionals.get(1);
         if (!retire && (reason == null || reason.isBlank())) {
             CommandWedge.printFail(
                     "Guard",
-                    "freeze needs --reason: an entry without a reason is a suppression, and there is no suppression syntax");
+                    "freeze needs -W: an entry without a reason is a suppression, and there is no suppression syntax");
             return Exit.USAGE;
         }
         GuardFreezeAck ack;

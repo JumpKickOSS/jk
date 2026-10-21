@@ -185,7 +185,7 @@ class RepoCredentialResolverTest {
                 .contains("a credential for that name exists in JK_REPO_OSSRH_TOKEN")
                 .contains("declared by the project, not by ~/.jk/config.toml")
                 .contains("JK_REPO_OSSRH_HOST=attacker.example")
-                .contains("`jk repo login ossrh --url https://attacker.example/m2/`")
+                .contains("`jk repo login ossrh -U https://attacker.example/m2/`")
                 .doesNotContain("victim-token");
     }
 
@@ -486,7 +486,7 @@ class RepoCredentialResolverTest {
                 .contains("[repositories.internal] with this URL and the ${VAR} reference in ~/.jk/config.toml")
                 .contains("JK_REPO_INTERNAL_TOKEN")
                 .contains("JK_REPO_INTERNAL_HOST=repo.example")
-                .contains("`jk repo login internal --url https://repo.example/maven`")
+                .contains("`jk repo login internal -U https://repo.example/maven`")
                 .doesNotContain("/home/victim");
     }
 

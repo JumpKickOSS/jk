@@ -45,7 +45,7 @@ public final class HookEnvCommand implements CliCommand {
         return List.of(
                 Opt.value("<shell>", "Shell: bash | zsh | fish | pwsh | powershell.", "-s", "--shell")
                         .require(),
-                Opt.flag("Undo JAVA_HOME/GRAALVM_HOME and toolchain bins.", "--clear"));
+                Opt.flag("Undo JAVA_HOME/GRAALVM_HOME and toolchain bins.", "-c", "--clear"));
     }
 
     /** The activate script's directory hook evals stdout on every prompt. */

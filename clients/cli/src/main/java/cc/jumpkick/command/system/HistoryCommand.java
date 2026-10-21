@@ -168,7 +168,7 @@ public final class HistoryCommand extends GroupCommand {
 
         @Override
         public List<Opt> options() {
-            return List.of(Opt.value("<N>", "Maximum number of runs to show (default: 50).", "--limit"));
+            return List.of(Opt.value("<N>", "Maximum number of runs to show (default: 50).", "-n", "--limit"));
         }
 
         @Override

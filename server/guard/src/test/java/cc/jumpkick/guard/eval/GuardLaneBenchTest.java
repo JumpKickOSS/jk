@@ -30,7 +30,7 @@ import org.junit.jupiter.api.io.TempDir;
  * The guard lanes on jk's own tree, in process, each the median of {@value #RUNS} runs: the facts
  * index of the largest module built from scratch and rebuilt after a one-class change, that
  * module's lane with each rule's share, and the tree lane. Needs a built checkout; run with
- * {@code jk test -m server/guard --profile bench --class cc.jumpkick.guard.eval.GuardLaneBenchTest}.
+ * {@code jk test -m server/guard -p bench -S cc.jumpkick.guard.eval.GuardLaneBenchTest}.
  */
 @Tag("bench")
 class GuardLaneBenchTest {

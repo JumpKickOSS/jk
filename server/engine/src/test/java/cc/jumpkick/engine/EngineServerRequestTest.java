@@ -613,7 +613,7 @@ class EngineServerRequestTest extends EngineServerHarness {
     }
 
     /**
-     * Engine-hosted {@code jk clean --force} round-trip: a real server over the socket invalidates the
+     * Engine-hosted {@code jk clean -F} round-trip: a real server over the socket invalidates the
      * action-cache entries for a fixture project, matching a record by its qualified-task tag while
      * leaving an unrelated project's record untouched. Also asserts the {@code .prune.lock} guard.
      */

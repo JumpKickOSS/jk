@@ -490,7 +490,7 @@ class JkResultsAgentTest {
                 diag("compile-java", "javac", "f", "src/F.java", 6, 1, 0, List.of(), ""),
                 diag("compile-java", "javac", "g", "src/G.java", 7, 1, 0, List.of(), ""));
         String text = JkResultsAgent.render(record("build", false, false, 100, null, diags, List.of()));
-        assertThat(text).contains("+2 more: jk results --all | diagnostics(file=src/F.java)\n");
+        assertThat(text).contains("+2 more: jk results -A | diagnostics(file=src/F.java)\n");
         assertThat(text).doesNotContain("src/G.java:");
     }
 

@@ -27,7 +27,7 @@ import org.jspecify.annotations.Nullable;
  * "Select a JDK" step, and the silent resolve when that step is skipped — are one decision with one
  * precedence: a spec the user typed wins, then the parent module's major, then the machine's default
  * JDK, then the newest LTS. Kept together because the precedence is only checkable where all three
- * entries are visible; split across the flag path and the wizard path is how {@code jk new --jdk 21}
+ * entries are visible; split across the flag path and the wizard path is how {@code jk new -J 21}
  * and the wizard end up pinning different majors for the same project.
  *
  * <p>Everything here is best-effort against the network: a catalog fetch that fails degrades to

@@ -31,9 +31,9 @@ public final class ExportBomCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<main|test|all>", "Lock scopes to freeze (default: main)", "--scope"),
-                Opt.value("<path>", "Output path (default target/*-bom.pom)", "--out"),
-                Opt.flag("Overwrite an existing file.", "--overwrite"));
+                Opt.value("<main|test|all>", "Lock scopes to freeze (default: main)", "-S", "--scope"),
+                Opt.value("<path>", "Output path (default target/*-bom.pom)", "-t", "--out"),
+                Opt.flag("Overwrite an existing file.", "-e", "--overwrite"));
     }
 
     @Override

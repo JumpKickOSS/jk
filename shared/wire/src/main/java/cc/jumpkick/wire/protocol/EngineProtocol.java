@@ -198,7 +198,7 @@ public final class EngineProtocol {
     public static final String MODULE_FINISH = "module-finish";
 
     /**
-     * Client-side machine output: one guard violation row of the last run ({@code jk guard --output
+     * Client-side machine output: one guard violation row of the last run ({@code jk guard -O
      * json|jsonl}), the same fields as {@code target/jk-guards.jsonl}.
      */
     public static final String GUARD_EVENT = "guard";
@@ -297,7 +297,7 @@ public final class EngineProtocol {
     /** Server → client, terminal for {@link #OUTDATED_REQUEST}. */
     public static final String OUTDATED_ACK = "outdated-ack";
 
-    /** Client → server: ranked tests ({@code jk test --affected} / {@code --affected-since}). */
+    /** Client → server: ranked tests ({@code jk test -f} / {@code -e}). */
     public static final String AFFECTED_TESTS_REQUEST = "affected-tests-request";
 
     /** Server → client, terminal for {@link #AFFECTED_TESTS_REQUEST}. */
@@ -411,7 +411,7 @@ public final class EngineProtocol {
     public static final String EXPLAIN_DONE = "explain-done";
 
     /**
-     * Client → server: module DAG for {@code jk explain --graph} ({@code dot}/{@code mermaid}); one
+     * Client → server: module DAG for {@code jk explain -U} ({@code dot}/{@code mermaid}); one
      * {@link #MODULE_GRAPH_ACK}.
      */
     public static final String MODULE_GRAPH_REQUEST = "module-graph-request";

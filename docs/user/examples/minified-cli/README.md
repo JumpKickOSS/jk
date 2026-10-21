@@ -69,13 +69,13 @@ move under you ([version strings](../../projects.md#version-strings)).
 Output below is real, captured with `--no-ansi` so it pastes cleanly.
 
 ```console
-$ jk build -F --no-ansi
+$ jk build -F -u
 jk: + Build > Build successful. Built target/minified-cli-0.0.1-all.jar - took 3.8s
 
-$ jk build --no-ansi
+$ jk build -u
 jk: + Build > Build successful, project up to date - took 21ms
 
-$ jk test --no-ansi
+$ jk test -u
 + Test Successful: Passed 3 tests - took 11ms
 ```
 
@@ -103,7 +103,7 @@ Both verbs answer, so both by-name lookups survived the shrink.
 `-min.jar`, so run that artifact directly as above:
 
 ```console
-$ jk run --no-ansi
+$ jk run -u
 jk: > Run > Executing `java -jar target/minified-cli-0.0.1-all.jar`
 
 verbs: greet, title
@@ -168,10 +168,10 @@ burned.
 Comment out the `[minified] keep` line and rebuild. Nothing complains:
 
 ```console
-$ jk build --no-ansi
+$ jk build -u
 jk: + Build > Build successful. Built target/minified-cli-0.0.1-all.jar - took 2.1s
 
-$ jk test --no-ansi
+$ jk test -u
 + Test Successful: Passed 3 tests - took 9ms
 ```
 
@@ -278,7 +278,7 @@ documented but not diagnosed. See [Dynamic surface](../../dynamic-surface.md#wha
 `jk-lock.toml` is committed and `jk build` never re-resolves. After editing a version:
 
 ```console
-$ jk lock --no-ansi
+$ jk lock -u
 jk: + Lock > Lock successful. Resolved 12 dependencies - took 40ms
 ```
 

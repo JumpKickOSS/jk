@@ -73,24 +73,24 @@ public final class NewCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<name>", "Project name and target directory leaf.", "--name"),
-                Opt.value("<group>", "Maven groupId (default: from git config).", "--group"),
+                Opt.value("<name>", "Project name and target directory leaf.", "-W", "--name"),
+                Opt.value("<group>", "Maven groupId (default: from git config).", "-U", "--group"),
                 // --jdk rides the GLOBAL option (same canonical key "jdk"); a local
                 // re-declaration would collide with it in the dispatcher.
-                Opt.value("<lang>", "java (default), kotlin, groovy, scala or node", "--lang"),
-                Opt.flag("Executable project (default is a library).", "--executable")
+                Opt.value("<lang>", "java (default), kotlin, groovy, scala or node", "-l", "--lang"),
+                Opt.flag("Executable project (default is a library).", "-e", "--executable")
                         .negate(),
-                Opt.flag("Assembly (fat) jar. Implies --executable.", "--assembly"),
-                Opt.flag("Wire a GraalVM native-image build.", "--native"),
-                Opt.flag("Scaffold a jk build-plugin authoring project.", "--plugin"),
+                Opt.flag("Assembly (fat) jar. Implies --executable.", "-A", "--assembly"),
+                Opt.flag("Wire a GraalVM native-image build.", "-n", "--native"),
+                Opt.flag("Scaffold a jk build-plugin authoring project.", "-P", "--plugin"),
                 Opt.value("<ref>", "Giter8 path, name, framework/name, or URL", "-t", "--template"),
-                Opt.value("<fw>", "Swap web/ for this front end", "--frontend"),
-                Opt.value("<k=v>", "Template property k=v (repeatable)", "--param")
+                Opt.value("<fw>", "Swap web/ for this front end", "-f", "--frontend"),
+                Opt.value("<k=v>", "Template property k=v (repeatable)", "-p", "--param")
                         .repeat(),
-                Opt.value("<deps>", "Curated deps, comma-separated.", "--deps"),
-                Opt.value("<layout>", "Tree: " + Layout.scaffoldHelp() + ".", "--layout"),
-                Opt.value("<module>", "Kotlin module name (-> project.module).", "--kotlin-module"),
-                Opt.flag("Force a standalone project (not a module).", "--no-module"),
+                Opt.value("<deps>", "Curated deps, comma-separated.", "-d", "--deps"),
+                Opt.value("<layout>", "Tree: " + Layout.scaffoldHelp() + ".", "-L", "--layout"),
+                Opt.value("<module>", "Kotlin module name (-> project.module).", "-m", "--kotlin-module"),
+                Opt.flag("Force a standalone project (not a module).", "-N", "--no-module"),
                 Opt.flag("", "--no-member").hide()); // undocumented synonym for --no-module
     }
 

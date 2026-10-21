@@ -52,8 +52,8 @@ public final class RepoLoginCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<USER>", "HTTP Basic username (else stdin = bearer token)", "--username"),
-                Opt.value("<url>", "URL the credential is for (default: the declared URL)", "--url"),
+                Opt.value("<USER>", "HTTP Basic username (else stdin = bearer token)", "-s", "--username"),
+                Opt.value("<url>", "URL the credential is for (default: the declared URL)", "-U", "--url"),
                 Opt.value(
                                 "<dir>",
                                 "Override the credentials directory. Default: <home>/creds/repo.",

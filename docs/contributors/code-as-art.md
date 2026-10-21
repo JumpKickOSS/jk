@@ -479,7 +479,7 @@ Soft caps are a review signal. The hard caps are enforced by the
 1. A baselined file may only shrink: the engine tightens its entry in
    `jk-guards-baseline.toml` on every build that finds it smaller.
 2. An unbaselined file must be at or under its language's hard cap.
-   `jk guard freeze file-size --reason "…"` is the escape hatch, and the
+   `jk guard freeze file-size -W "…"` is the escape hatch, and the
    reason is a reviewable diff.
 3. Re-baselining a number upward is a freeze with a new reason; the old
    reason goes with the old number, in the same diff.
@@ -759,8 +759,8 @@ corpus guard is needed (G0 is subsumed by it).
 
 **When they run.** `jk build` runs the model, module, workspace and output
 lanes on every build that does work; the tree lane (text, metric, parity and
-generated rules) and the fixture proofs run on `jk guard`, `jk test --guard` and
-`jk build --guard`, so an inner `jk build` never pays a tree scan. CI's self-host
+generated rules) and the fixture proofs run on `jk guard`, `jk test -g` and
+`jk build -g`, so an inner `jk build` never pays a tree scan. CI's self-host
 job runs `jk guard` after the build, and `jk guard` is the second step of the
 local gate (`jk format`, `jk guard`, `jk build`, `jk test -p integration`).
 The shell scripts have their lint in the same place: the `shellcheck` guard test

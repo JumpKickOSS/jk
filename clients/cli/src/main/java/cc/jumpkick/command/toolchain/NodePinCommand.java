@@ -52,8 +52,8 @@ public final class NodePinCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.value("<module>", "Pin this workspace member, not the nearest jk.toml", "-m", "--module"),
-                Opt.flag("Also write .node-version for editors and other tools", "--file"),
-                Opt.flag("Write the manifest without relocking", "--no-lock"));
+                Opt.flag("Also write .node-version for editors and other tools", "-f", "--file"),
+                Opt.flag("Write the manifest without relocking", "-n", "--no-lock"));
     }
 
     @Override

@@ -17,8 +17,8 @@ public final class ParallelTestsOpts {
     /** Flag definitions shared by {@code jk build}, {@code jk test}, and {@code jk explain}. */
     public static List<Opt> options() {
         return List.of(
-                Opt.flag("Parallel module tests (default on)", "--parallel-tests"),
-                Opt.flag("Serialize module tests", "--serial-tests", "--no-parallel-tests"));
+                Opt.flag("Parallel module tests (default on)", "-l", "--parallel-tests"),
+                Opt.flag("Serialize module tests", "-L", "--serial-tests", "--no-parallel-tests"));
     }
 
     /**

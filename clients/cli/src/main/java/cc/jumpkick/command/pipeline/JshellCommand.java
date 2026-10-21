@@ -3,7 +3,6 @@ package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
-import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.EnsureFreshLock;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.ProjectContext;
@@ -52,15 +51,10 @@ public final class JshellCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(
-                Opt.flag("Skip build; use existing classes + lock classpath only.", "--no-build"),
-                Opt.value(
-                                "<dir>",
-                                "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.jk/cache.",
-                                "--cache-dir")
-                        .hide(),
-                CommonOpts.jdksDir(),
-                Opt.flag("Skip tests during the preparatory build.", "--skip-tests"));
+        // The preparatory build always skips tests, so jshell takes the core build options only.
+        List<Opt> opts = new ArrayList<>(BuildFlags.options(BuildFlags.Reach.COMPILE, BuildFlags.Affected.MODULES));
+        opts.add(Opt.flag("Skip build; use existing classes + lock classpath only.", "-n", "--no-build"));
+        return opts;
     }
 
     @Override
@@ -90,17 +84,14 @@ public final class JshellCommand implements CliCommand {
         Path cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(JkDirs.cache());
 
         if (!noBuild) {
-            // Quiet preparatory build so classes exist.
-            Invocation.Builder bb = Invocation.builder();
-            bb.flag("skip-tests", true);
-            bb.flag("no-timeline", true);
-            // Preserve -C / working dir for the nested build.
-            bb.putValue("dir", dir.toString());
-            if (in.value("cache-dir").isPresent()) {
-                bb.putValue("cache-dir", cacheDir.toString());
-            }
-            in.value(CommonOpts.JDKS_DIR).ifPresent(v -> bb.putValue(CommonOpts.JDKS_DIR, v));
-            int code = BuildVerbCommand.build().run(bb.build());
+            // A quiet preparatory build so the classes exist; the REPL gates on no suite.
+            int code = BuildVerbCommand.run(
+                    new PackageVerb("JShell"),
+                    BuildVerbCommand.forward(in, BuildFlags.Reach.COMPILE, b -> {
+                        b.flag("skip-tests", true);
+                        b.flag("no-timeline", true);
+                    }),
+                    true);
             if (code != 0) {
                 CommandWedge.printFail(
                         "JShell", "preparatory build failed (exit " + code + "); try --no-build after a green build");

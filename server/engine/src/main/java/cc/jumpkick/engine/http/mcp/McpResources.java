@@ -33,7 +33,7 @@ public final class McpResources {
         rs.add(resource("jk://runs/latest/results", "Latest run verdict (same text as run)", "text/plain"));
         rs.add(resource(
                 "jk://runs/latest/details",
-                "Budgeted tail of latest details.jsonl (same as details; CLI jk results --details dumps the full file)",
+                "Budgeted tail of latest details.jsonl (same as details; CLI jk results -d dumps the full file)",
                 "application/json"));
         rs.add(
                 resource(

@@ -366,11 +366,11 @@ public final class JkResultsAgent {
     /** The continuation for {@code opt}'s report. {@code file} is the first hidden problem's, or empty. */
     private static String next(Options opt, String file) {
         return switch (opt.next) {
-            case ALL -> "jk results --all | diagnostics" + (file.isEmpty() ? "" : "(file=" + file + ")");
+            case ALL -> "jk results -A | diagnostics" + (file.isEmpty() ? "" : "(file=" + file + ")");
             case MARKDOWN -> "jk results";
             case FILE ->
                 opt.file == null
-                        ? "jk results --all | diagnostics"
+                        ? "jk results -A | diagnostics"
                         : "diagnostics(file=" + opt.file + ", limit=" + MAX_ALL + ")";
         };
     }
