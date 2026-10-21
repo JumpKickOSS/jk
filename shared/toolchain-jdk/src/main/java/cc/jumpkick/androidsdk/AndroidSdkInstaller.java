@@ -6,6 +6,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.PoolUse;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -71,6 +72,7 @@ public final class AndroidSdkInstaller {
     public Path ensure(String componentPath, @Nullable String pinnedRevision) throws IOException, InterruptedException {
         Path dir = sdk.componentDir(componentPath);
         if (sdk.installed(componentPath)) {
+            PoolUse.touch(sdk.root(), dir);
             warnOnDrift(componentPath, pinnedRevision);
             return dir;
         }
