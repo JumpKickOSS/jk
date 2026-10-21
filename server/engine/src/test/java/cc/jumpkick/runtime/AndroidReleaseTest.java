@@ -56,7 +56,7 @@ class AndroidReleaseTest {
     void release_build_produces_verified_aab(@TempDir Path tmp) throws Exception {
         Path app = Files.createDirectories(tmp.resolve("relapp"));
         Path cache = TestCaches.dir("android-spike-cache");
-        Path sdkRoot = TestCaches.dir("android-spike-sdk");
+        Path sdkRoot = TestCaches.pooled("android-sdk");
         System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
 
         Path keystore = tmp.resolve("release.jks");

@@ -36,8 +36,8 @@ import org.junit.jupiter.api.io.TempDir;
  * output REPLACES the classes dir (the generic classes-transform SPI); dex consumes the rewritten
  * hierarchy. The transformed superclass is asserted byte-for-byte via the class-file API.
  *
- * <p>Network test (Google Maven + Central); the CAS + SDK persist under build/ so repeat runs
- * are warm (same shared cache as KspRoomHiltTest).
+ * <p>Network test (Google Maven + Central); the artifacts and the SDK come from the host's test
+ * pool, so a repeat run in any worktree is warm.
  */
 @Tag("slow")
 @ExtendWith(SysProps.class)
@@ -47,7 +47,7 @@ class HiltTransformTest {
     void unmodified_hilt_sources_build_and_superclasses_rewrite(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
         Path cache = TestCaches.dir("android-spike-cache");
-        Path sdkRoot = TestCaches.dir("android-spike-sdk");
+        Path sdkRoot = TestCaches.pooled("android-sdk");
         System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
 
         writeProject(project);

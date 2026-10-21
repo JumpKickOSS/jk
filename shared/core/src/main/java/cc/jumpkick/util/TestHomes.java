@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * 260 characters), survives a reboot, and moves with {@code JK_HOME}: an engine already running in a
  * sandbox keeps its own sandboxes inside it rather than writing into the developer's real home. It
  * is <b>warm on purpose</b> — it holds a fetched store, and a per-run home would re-download every
- * dependency on every {@code jk test}. The store's public-origin repository trees are links into a
+ * dependency on every {@code jk test}. The store's public-origin repository trees and tool distributions are links into a
  * pool every slot on the host shares ({@code <home>/test-store}), outside every slot; a slot's
  * delete and size walk see the links, never the pool.
  *

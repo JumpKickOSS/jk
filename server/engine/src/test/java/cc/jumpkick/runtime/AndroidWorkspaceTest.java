@@ -50,7 +50,7 @@ class AndroidWorkspaceTest {
     void library_module_aar_and_non_transitive_r(@TempDir Path tmp) throws Exception {
         Path root = Files.createDirectories(tmp.resolve("ws"));
         Path cache = TestCaches.dir("android-spike-cache");
-        Path sdkRoot = TestCaches.dir("android-spike-sdk");
+        Path sdkRoot = TestCaches.pooled("android-sdk");
         System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
 
         writeWorkspace(root);

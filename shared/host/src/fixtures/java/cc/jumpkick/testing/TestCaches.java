@@ -19,6 +19,24 @@ public final class TestCaches {
 
     private TestCaches() {}
 
+    /**
+     * The directory {@code name} in the host pool every jk test sandbox shares ({@code
+     * -Djk.test.pool.dir}, the launcher's {@code <home>/test-store}), created; outside the sandbox
+     * (an IDE run) it is {@link #dir}. Only for downloads that are verified and published whole, so
+     * suites in several worktrees can fill it at once — a managed Android SDK, never a fixture's
+     * scratch, and never one a test writes fakes or devices into.
+     */
+    public static Path pooled(String name) {
+        String pool = System.getProperty("jk.test.pool.dir");
+        if (pool == null || pool.isBlank()) return dir(name);
+        Path dir = Path.of(pool).resolve(name);
+        try {
+            return Files.createDirectories(dir);
+        } catch (IOException e) {
+            throw new UncheckedIOException("creating pooled test cache " + dir, e);
+        }
+    }
+
     /** The persistent cache directory {@code name}, created. */
     public static Path dir(String name) {
         String shared = System.getProperty("jk.test.cache.dir");

@@ -48,7 +48,7 @@ class RobolectricUnitTest {
     void robolectric_reads_real_resources_through_jk_test(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("robo"));
         Path cache = TestCaches.dir("android-spike-cache");
-        Path sdkRoot = TestCaches.dir("android-spike-sdk");
+        Path sdkRoot = TestCaches.pooled("android-sdk");
         System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
 
         writeProject(project);
