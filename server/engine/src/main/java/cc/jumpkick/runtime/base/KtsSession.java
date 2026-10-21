@@ -7,6 +7,7 @@ import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerLeases;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
@@ -528,7 +529,7 @@ final class KtsSession {
      * derived from a source file that is still on disk, so losing it costs one recompile.
      */
     static Path compiledScriptCache() {
-        return JkDirs.cache().resolve("kts");
+        return CacheTree.KTS.under(JkDirs.cache());
     }
 
     /**

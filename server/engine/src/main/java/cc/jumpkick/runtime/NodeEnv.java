@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.NodeProject;
 import cc.jumpkick.model.JkBuild;
@@ -49,9 +50,10 @@ final class NodeEnv {
                 vars.put("npm_config_store_dir", store);
             }
             case BUN ->
-                vars.put("BUN_INSTALL_CACHE_DIR", in.cache().resolve("bun").toString());
+                vars.put(
+                        "BUN_INSTALL_CACHE_DIR", CacheTree.BUN.under(in.cache()).toString());
             case YARN ->
-                vars.put("YARN_GLOBAL_FOLDER", in.cache().resolve("yarn").toString());
+                vars.put("YARN_GLOBAL_FOLDER", CacheTree.YARN.under(in.cache()).toString());
             case NPM -> {}
         }
         vars.put("npm_config_update_notifier", "false");
