@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
@@ -19,6 +20,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -78,6 +80,9 @@ public final class TestStorePool {
      * integration, slow and network tiers fetch together. {@link #MAX_MB_PROPERTY} overrides it.
      */
     static final long DEFAULT_MAX_BYTES = 4L << 30;
+
+    /** The default on CI, where one runner serves many branches and a cold fetch costs the most. */
+    static final long CI_MAX_BYTES = 8L << 30;
 
     /** The engine property (env {@code JK_TEST_POOL_MAX_MB}) that sets the cap in MiB. */
     public static final String MAX_MB_PROPERTY = "jk.test.pool.max.mb";
@@ -146,15 +151,23 @@ public final class TestStorePool {
         }
     }
 
-    /** The cap in bytes: {@link #MAX_MB_PROPERTY} or {@code JK_TEST_POOL_MAX_MB}, else {@link #DEFAULT_MAX_BYTES}. */
     static long maxBytes() {
-        String raw = System.getProperty(MAX_MB_PROPERTY, System.getenv("JK_TEST_POOL_MAX_MB"));
-        if (raw == null || raw.isBlank()) return DEFAULT_MAX_BYTES;
+        return maxBytes(System.getProperty(MAX_MB_PROPERTY), System::getenv);
+    }
+
+    /**
+     * The cap in bytes: {@code property}, else {@code JK_TEST_POOL_MAX_MB}, else {@link
+     * #CI_MAX_BYTES} on CI and {@link #DEFAULT_MAX_BYTES} elsewhere.
+     */
+    static long maxBytes(@Nullable String property, Function<String, @Nullable String> env) {
+        long fallback = EnvValues.isCi(env) ? CI_MAX_BYTES : DEFAULT_MAX_BYTES;
+        String raw = property != null ? property : env.apply("JK_TEST_POOL_MAX_MB");
+        if (raw == null || raw.isBlank()) return fallback;
         try {
             return Math.max(0, Long.parseLong(raw.trim())) << 20;
         } catch (NumberFormatException e) {
             Log.debug("TestStorePool: " + MAX_MB_PROPERTY + "=" + raw + " is not a number of MiB; the default holds");
-            return DEFAULT_MAX_BYTES;
+            return fallback;
         }
     }
 

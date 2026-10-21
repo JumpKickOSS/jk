@@ -272,7 +272,8 @@ into it, Node and the other tools, JDKs, state, locks and ledgers. The pool sits
 and the reaper's size walk does not count the pool against a slot.
 
 The pool has a reaper of its own, bounded by a cap of 4 GiB: about twice what the integration,
-slow and network tiers fetch together (1.9 GiB in about 4,500 units). Set `JK_TEST_POOL_MAX_MB`
+slow and network tiers fetch together (1.9 GiB in about 4,500 units). On CI (`CI=1` or
+`CI=true`) the cap is 8 GiB, since one runner serves many branches. Set `JK_TEST_POOL_MAX_MB`
 (or `-Djk.test.pool.max.mb`) in the engine's environment to change it.
 
 - **What goes.** Whole units, never single files: an artifact's version directory under
