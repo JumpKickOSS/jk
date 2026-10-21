@@ -60,6 +60,17 @@ public final class GraphReport {
                 md.append("] — ").append(s.why()).append('\n');
             }
         }
+        List<List<String>> cycles = GraphAnalysis.importCycles(graph, 10);
+        if (!cycles.isEmpty()) {
+            md.append("\n## Import cycles\n\n");
+            for (List<String> cycle : cycles) {
+                md.append("- ").append(cycle.size()).append(" files: ");
+                md.append(String.join(
+                        ", ", cycle.stream().limit(6).map(f -> "`" + f + "`").toList()));
+                if (cycle.size() > 6) md.append(", …");
+                md.append('\n');
+            }
+        }
         md.append("\n## Communities\n\n");
         int shown = 0;
         for (Map.Entry<Integer, List<String>> c : communities.entrySet()) {

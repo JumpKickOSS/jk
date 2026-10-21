@@ -48,4 +48,21 @@ class CommunitiesTest {
         assertThat(md).contains("- 10 nodes, 21 edges, 2 communities");
         assertThat(md).contains("1. `A0` — 5 edges");
     }
+
+    @Test
+    void importRingsAreReportedAsCycles() {
+        List<GraphNode> nodes = new ArrayList<>();
+        for (String f : List.of("a.ts", "b.ts", "c.ts", "d.ts"))
+            nodes.add(new GraphNode(GraphIds.file(f), f, "code", f, "L1"));
+        List<GraphEdge> edges = List.of(
+                GraphEdge.of("a", "b", Relations.IMPORTS_FROM, Confidence.EXTRACTED, "a.ts", 1),
+                GraphEdge.of("b", "c", Relations.IMPORTS_FROM, Confidence.EXTRACTED, "b.ts", 1),
+                GraphEdge.of("c", "a", Relations.IMPORTS_FROM, Confidence.EXTRACTED, "c.ts", 1),
+                GraphEdge.of("c", "d", Relations.IMPORTS_FROM, Confidence.EXTRACTED, "c.ts", 2));
+        CodeGraph g = CodeGraph.merge(List.of(new Fragment(nodes, edges)));
+        assertThat(GraphAnalysis.importCycles(g, 10)).containsExactly(List.of("a.ts", "b.ts", "c.ts"));
+        assertThat(GraphReport.write(g, null))
+                .contains("## Import cycles")
+                .contains("- 3 files: `a.ts`, `b.ts`, `c.ts`");
+    }
 }
