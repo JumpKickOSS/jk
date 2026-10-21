@@ -21,6 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -33,6 +34,18 @@ import org.junit.jupiter.api.io.TempDir;
 class TestStorePoolTest {
 
     private static final String JAR = "org/example/lib/1.0/lib-1.0.jar";
+
+    @Test
+    void the_cap_doubles_on_ci_and_an_explicit_size_wins_everywhere() {
+        Map<String, String> ci = Map.of("CI", "true");
+        Map<String, String> ciSized = Map.of("CI", "1", "JK_TEST_POOL_MAX_MB", "512");
+        assertThat(TestStorePool.maxBytes(null, Map.<String, String>of()::get))
+                .isEqualTo(TestStorePool.DEFAULT_MAX_BYTES);
+        assertThat(TestStorePool.maxBytes(null, ci::get)).isEqualTo(TestStorePool.CI_MAX_BYTES);
+        assertThat(TestStorePool.maxBytes(null, ciSized::get)).isEqualTo(512L << 20);
+        assertThat(TestStorePool.maxBytes("256", ciSized::get)).isEqualTo(256L << 20);
+        assertThat(TestStorePool.maxBytes("lots", ci::get)).isEqualTo(TestStorePool.CI_MAX_BYTES);
+    }
 
     @Test
     void what_one_sandbox_stores_under_central_another_reads(@TempDir Path tmp) throws Exception {
