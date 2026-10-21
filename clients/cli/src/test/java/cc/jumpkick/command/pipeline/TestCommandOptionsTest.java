@@ -70,8 +70,8 @@ class TestCommandOptionsTest {
         for (var verb : List.<Supplier<List<Opt>>>of(
                 () -> BuildVerbCommand.build().options(),
                 () -> BuildVerbCommand.test().options(),
-                () -> new ImageCommand().options(),
-                () -> new NativeCommand().options(),
+                () -> BuildVerbCommand.image().options(),
+                () -> BuildVerbCommand.nativeImage().options(),
                 () -> new ToolInstallCommand().options(),
                 () -> new ExplainCommand().options())) {
             assertThat(verb.get().stream()
@@ -94,8 +94,8 @@ class TestCommandOptionsTest {
                 () -> BuildVerbCommand.build().options(),
                 () -> BuildVerbCommand.test().options(),
                 () -> new AssemblyCommand().options(),
-                () -> new ImageCommand().options(),
-                () -> new NativeCommand().options(),
+                () -> BuildVerbCommand.image().options(),
+                () -> BuildVerbCommand.nativeImage().options(),
                 () -> new ToolInstallCommand().options(),
                 () -> new ExplainCommand().options())) {
             assertThat(verb.get().stream()

@@ -524,7 +524,7 @@ public final class EngineRequests {
         }
     }
 
-    /** Everything an engine-hosted {@code jk image} needs — mirrors {@code ImageCommand}'s local fields. */
+    /** Everything an engine-hosted {@code jk image} needs. */
     public record ImageRequest(
             Path entryDir,
             Path cache,
@@ -593,7 +593,7 @@ public final class EngineRequests {
             Path cache,
             @Nullable Path jdksDir,
             @Nullable Path graalHome,
-            @Nullable String profile,
+            @Nullable String trainProfile,
             boolean force,
             boolean skipTests,
             boolean offline,

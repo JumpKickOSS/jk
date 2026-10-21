@@ -71,7 +71,7 @@ public final class ToolInstallCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(
+        List<Opt> opts = new ArrayList<>(List.of(
                 Opt.value("<name>", "PATH launcher name (default: the artifact id)", "--bin"),
                 Opt.value("<class>", "Override Main-Class (from jar manifest)", "--main"),
                 Opt.value("<coord>", "Extra dependency on tool classpath", "--with")
@@ -79,16 +79,8 @@ public final class ToolInstallCommand implements CliCommand {
                 Opt.value("<group>", "Maven groupId (local-cache install mode)", "--group"),
                 Opt.value("<name>", "Maven artifactId for a local-cache file install.", "--name"),
                 Opt.value("<ver>", "Version for a local-cache file install.", "--ver"),
-                Opt.flag("Skip tests for project targets", "--skip-tests"),
-                CommonOpts.guard(),
-                CommonOpts.jdksDir(),
                 Opt.flag("Download a build tool; never link a host install", "--no-discover"),
                 CommonOpts.acceptUnverifiedTool(),
-                Opt.value(
-                                "<dir>",
-                                "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.jk/cache.",
-                                "--cache-dir")
-                        .hide(),
                 Opt.value("<dir>", "Override the tool state directory.", "--state-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the bin directory.", "--bin-dir").hide(),
@@ -96,7 +88,10 @@ public final class ToolInstallCommand implements CliCommand {
                 Opt.value("<dir>", "Override the local Maven repo root (~/.m2).", "--m2-dir")
                         .hide(),
                 Opt.value("<url>", "Override the Maven repository URL (for tests).", "--repo-url")
-                        .hide());
+                        .hide()));
+        // A project target builds through the test stage before it installs: the build options.
+        opts.addAll(BuildFlags.options(BuildFlags.Reach.DELIVER, BuildFlags.Affected.MODULES));
+        return opts;
     }
 
     @Override
@@ -168,14 +163,21 @@ public final class ToolInstallCommand implements CliCommand {
         this.groupFlag = in.value("group").orElse(null);
         this.nameFlag = in.value("name").orElse(null);
         this.verFlag = in.value("ver").orElse(null);
-        this.skipTests = in.isSet("skip-tests");
         this.libDirOverride = in.value("lib-dir").map(CliPaths::abs).orElse(null);
         this.m2DirOverride = in.value("m2-dir").map(CliPaths::abs).orElse(null);
         this.jdksDir = CommonOpts.jdksDirValue(in);
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.global = GlobalOptions.from(in);
-        // A project install builds through the test stage, so --guard means what it means on build.
-        if (!BuildFlags.installSelection(in, "Install")) return Exit.CONFIG;
+        BuildFlags flags;
+        try {
+            flags = BuildFlags.from(in);
+        } catch (IllegalArgumentException e) {
+            CommandWedge.printFail("Install", e.getMessage());
+            return Exit.CONFIG;
+        }
+        // A project install builds through the test stage: every build option means what it means on build.
+        flags.installSession();
+        this.skipTests = flags.skipTests();
 
         Path base = global.workingDir();
         if (in.positionals().isEmpty()) {

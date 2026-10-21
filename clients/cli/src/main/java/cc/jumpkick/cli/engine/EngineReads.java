@@ -404,7 +404,7 @@ final class EngineReads {
             EnginePaths.Paths paths, Path dir, Path cache, String command, List<String> args) throws IOException {
         return request(
                 paths,
-                ProtoSession.withToolchain(
+                ProtoSession.withSessionFields(
                         ProtoSession.withSession(
                                 new PluginCommandRequest(dir.toString(), cache.toString(), command, args).encode(),
                                 SessionContext.current().variant(),
@@ -497,7 +497,7 @@ final class EngineReads {
                 paths,
                 // project-info rides in a session envelope so the engine resolves this project's
                 // layout, test tags and toolchain against the caller's state, not the daemon's own.
-                ProtoSession.withToolchain(
+                ProtoSession.withSessionFields(
                         ProtoSession.withSession(
                                 new ProjectInfoRequest(dir.toString(), modules, affectedSince, affectedWip, counts)
                                         .encode(),
@@ -526,7 +526,7 @@ final class EngineReads {
         try (ProvisionProgressView view = new ProvisionProgressView()) {
             return request(
                     paths,
-                    ProtoSession.withToolchain(
+                    ProtoSession.withSessionFields(
                             ProtoSession.withSession(
                                     new ExecPlanRequest(
                                                     dir.toString(),

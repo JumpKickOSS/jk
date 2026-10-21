@@ -162,7 +162,7 @@ final class BuildRun {
      * transcript, the wedge, and the exit code every build verb reports — 0, 1 for a cancel or a
      * failure, {@link Exit#CONFIG} for a refusal, {@link Exit#TESTS_FAILED} when tests failed.
      */
-    int settleSingle(ConsoleSpec spec, String module, TestSummary @Nullable [] tests, SingleCall call) {
+    int settleSingle(ConsoleSpec spec, String module, @Nullable TestSummary @Nullable [] tests, SingleCall call) {
         BuildPlanConsole.Mode mode = mode();
         BuildPlanResult result;
         try {
@@ -198,6 +198,7 @@ final class BuildRun {
         if (result.cancelled()) return 1;
         for (var d : result.errors()) {
             if ("affected-refuse".equals(d.code())) return Exit.CONFIG;
+            if ("no-main".equals(d.code())) return Exit.USAGE;
         }
         if (tests != null && !tests.allPassed()) return Exit.TESTS_FAILED;
         return 1;

@@ -17,8 +17,13 @@ import org.junit.jupiter.api.Test;
 /** Every build command takes the shared options from one place, once, by how far its goal runs. */
 class BuildVerbCommandTest {
 
-    private static final List<BuildVerbCommand> VERBS =
-            List.of(BuildVerbCommand.compile(), BuildVerbCommand.test(), BuildVerbCommand.build());
+    private static final List<BuildVerbCommand> VERBS = List.of(
+            BuildVerbCommand.compile(),
+            BuildVerbCommand.test(),
+            BuildVerbCommand.build(),
+            BuildVerbCommand.nativeImage(),
+            BuildVerbCommand.image(),
+            BuildVerbCommand.train());
 
     @Test
     void every_build_command_declares_each_option_name_once() {
@@ -55,6 +60,13 @@ class BuildVerbCommandTest {
                 .isInstanceOf(ParseException.class);
         assertThatThrownBy(() -> ArgParser.parse(BuildVerbCommand.test(), List.of("--skip-tests")))
                 .isInstanceOf(ParseException.class);
+    }
+
+    @Test
+    void train_names_its_own_profile_apart_from_the_build_profile() throws Exception {
+        var in = ArgParser.parse(BuildVerbCommand.train(), List.of("-p", "ci", "-T", "startup"));
+        assertThat(in.value("profile")).contains("ci");
+        assertThat(in.value("train-profile")).contains("startup");
     }
 
     @Test

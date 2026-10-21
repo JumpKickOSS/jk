@@ -712,7 +712,7 @@ population = { examined = 4 }
 
 [clock-owner]
 [clock-owner.populations]
-"clients/cli" = { classes = 763, sites = 47533 }
+"clients/cli" = { classes = 763, sites = 47305 }
 "clients/cli-terminal" = { classes = 48, sites = 1630 }
 "plugins/image-builder" = { classes = 13, sites = 1201 }
 "plugins/java-compiler" = { classes = 25, sites = 1420 }
@@ -856,30 +856,6 @@ reason = "pure move: the command split re-keyed the sites into command.pipeline,
 in     = "clients/cli"
 at     = "cc.jumpkick.command.pipeline.FormatCommand#runPlain(Lcc/jumpkick/command/pipeline/FormatCommand$Run;)I -> java.lang.System#currentTimeMillis()J"
 reason = "pure move: the command split re-keyed the sites into command.pipeline, command.system and command.toolchain; same reads, same count"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.pipeline.ImageCommand#runWorkspaceHeadless(Lcc/jumpkick/cli/engine/EngineRequests$ImageRequest;Ljava/nio/file/Path;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.pipeline.ImageCommand#runWorkspaceImage(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/nio/file/Path;)I -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.pipeline.NativeCommand#runWorkspaceHosted(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/util/Map;Ljava/util/List;Lcc/jumpkick/cli/run/BuildPlanConsole$Mode;JIJ)I -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.pipeline.NativeCommand#runWorkspaceNative(Ljava/nio/file/Path;Ljava/nio/file/Path;)I -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.pipeline.RunCommand#buildWorkspaceForRun(Ljava/nio/file/Path;Ljava/nio/file/Path;Lcc/jumpkick/cli/run/BuildPlanConsole$Mode;ZLcc/jumpkick/command/CwdModuleScope$Resolved;Lcc/jumpkick/config/Session;)Lcc/jumpkick/wire/runtime/WorkspaceResult; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.pipeline.RunCommand#runWorkspaceLive(Lcc/jumpkick/wire/runtime/WorkspaceRequest;Ljava/util/List;)Lcc/jumpkick/wire/runtime/WorkspaceResult; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
 at     = "cc.jumpkick.command.pipeline.SelectiveCommand#prepare(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/String;Ljava/nio/file/Path;)I -> java.time.Instant#now()Ljava/time/Instant;"
