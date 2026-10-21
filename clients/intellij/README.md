@@ -87,8 +87,8 @@ Three tiers:
   tests (`HeavyPlatformTestCase`) in one headless IDE: the debounced trigger over real VFS events,
   and the import's task runs and error lines against a stub `jk`;
 - `jk test -m clients/intellij -p network`: `IdeHostedJkTest` runs the two that drive the
-  `jk` on PATH, a released client that fetches its engine from the release site in the sandbox
-  home. `JkWorkspaceImportTest`'s import test imports a two-module workspace through the real
+  `jk` on PATH in the sandbox home, seeded with that client's own installed engine and workers
+  (`InstalledJk`). `JkWorkspaceImportTest`'s import test imports a two-module workspace through the real
   external-system path — link, resolver running that `jk`, platform applying the result — and
   asserts every module, roots, libraries (with sources jars, after a `jk sync -s`), SDKs,
   `target/jdt` outputs and that no `.iml` lands in the workspace; `JkDebugBreakpointTest` is the
