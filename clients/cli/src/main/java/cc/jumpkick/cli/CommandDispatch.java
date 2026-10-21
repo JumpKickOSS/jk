@@ -74,7 +74,7 @@ import cc.jumpkick.command.toolchain.ActivateCommand;
 import cc.jumpkick.command.toolchain.DeactivateCommand;
 import cc.jumpkick.command.toolchain.JdkCommand;
 import cc.jumpkick.command.toolchain.NodeCommand;
-import cc.jumpkick.command.toolchain.NpxCommand;
+import cc.jumpkick.command.toolchain.NodePassthroughCommand;
 import cc.jumpkick.command.toolchain.ShellCommand;
 import cc.jumpkick.command.toolchain.ToolCommand;
 import cc.jumpkick.command.toolchain.ToolInstallCommand;
@@ -161,7 +161,8 @@ public final class CommandDispatch {
             new StorageCommand(),
             new JdkCommand(),
             new NodeCommand(),
-            new NpxCommand(),
+            NodePassthroughCommand.npx(),
+            NodePassthroughCommand.npm(),
             new ToolCommand(),
             new TrustCommand(),
             new LibraryCommand(),
