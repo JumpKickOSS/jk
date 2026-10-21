@@ -2,7 +2,6 @@
 package cc.jumpkick.node;
 
 import cc.jumpkick.compat.BuildTool;
-import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.SearchPath;
 import java.io.IOException;
@@ -44,11 +43,6 @@ public record NodeHome(
         public Path shimDir() {
             return home.resolve(PackageManagerShims.DIR);
         }
-    }
-
-    /** npm's cache under jk's cache root: every npm jk runs, scaffold and build alike, shares it. */
-    public static Path npmCache(Path cacheRoot) {
-        return CacheTree.NPM.under(cacheRoot);
     }
 
     public NodeHome withManager(@Nullable ManagerHome m) {

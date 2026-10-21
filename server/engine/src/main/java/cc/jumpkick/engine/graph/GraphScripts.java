@@ -9,6 +9,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.NodePin;
+import cc.jumpkick.node.NodeCaches;
 import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.runtime.PlannerNodeSetup;
 import cc.jumpkick.util.JkDirs;
@@ -86,10 +87,7 @@ final class GraphScripts {
                         .redirectErrorStream(true)
                         .redirectOutput(ProcessBuilder.Redirect.DISCARD);
                 pb.environment().put("PATH", home.path(pb.environment().get("PATH")));
-                pb.environment()
-                        .put(
-                                "npm_config_cache",
-                                NodeHome.npmCache(JkDirs.cache()).toString());
+                pb.environment().putAll(NodeCaches.env(home.packageManager(), JkDirs.cache(), JkDirs.store()));
                 pb.environment().put("npm_config_update_notifier", "false");
                 Process p = pb.start();
                 if (!p.waitFor(5, TimeUnit.MINUTES)) {

@@ -103,6 +103,15 @@ release by name.
 | `jk node verify` | Check each of jk's installs still runs and reports its version |
 | `jk node update` | Refresh the release index and report the project's pin against the newest of its major (`jk update` moves the lock) |
 
+`jk node exec` and `jk node run` use jk's package-manager caches, the ones `jk new` and the build
+use, so a package `jk node exec -- npx …` fetches is fetched once ([Supply chain](#supply-chain)).
+A cache you set yourself wins: one in the environment (`npm_config_cache` in any case, pnpm's
+`pnpm_config_store_dir` / `npm_config_store_dir`, `YARN_GLOBAL_FOLDER`, `BUN_INSTALL_CACHE_DIR`), or
+in the manager's config file in the directory, a parent of it or your home: `.npmrc` `cache=` (or
+pnpm's `store-dir=`; `npm_config_userconfig` names another user file), `pnpm-workspace.yaml`
+`storeDir`, `.yarnrc.yml` `globalFolder`, `bunfig.toml` / `~/.bunfig.toml` `[install.cache] dir`.
+npm's global `npmrc` is not read. The build always uses jk's caches.
+
 Every command takes `-O jsonl` ([machine output](machine-output.md#jk-node)). With the shell
 hook installed (`jk activate`), entering a project puts its locked Node.js and its package
 manager's shims first on `PATH` (`JK_NODE_HOME`, `JK_NODE_SHIMS`), beside `JAVA_HOME`; leaving takes
@@ -127,7 +136,8 @@ the step sets `allow-unlocked = true`.
 Installs are frozen: the lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`) is
 required and never rewritten, and a missing one is an error with the command to create it. Each
 manager's cache is jk's (`~/.jk/cache/npm`, `~/.jk/cache/bun`, Yarn's global folder
-`~/.jk/cache/yarn`, pnpm's store `~/.jk/store/pnpm-store`), so `jk cache` and `jk storage` see them. Lifecycle scripts run as the project's `.npmrc` says; set `ignore-scripts`
+`~/.jk/cache/yarn`, pnpm's store `~/.jk/store/pnpm-store`), so `jk cache` and `jk storage` see them;
+`jk new` and the `jk node` commands share them. Lifecycle scripts run as the project's `.npmrc` says; set `ignore-scripts`
 there to turn them off.
 
 ## Packaging
