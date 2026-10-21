@@ -14,8 +14,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
@@ -74,8 +76,12 @@ final class FragmentStore {
         fragments.put(key, fragment);
     }
 
-    /** Writes the fragments under {@code live} keys only, so deleted and replaced versions leave. */
+    /**
+     * Writes the fragments under {@code live} keys only, so deleted and replaced versions leave, and
+     * drops the rest from memory too.
+     */
     void save(Path graphDir, Collection<String> live) throws IOException {
+        fragments.keySet().retainAll(live instanceof Set<?> set ? set : new HashSet<>(live));
         Files.createDirectories(graphDir);
         Path tmp = AtomicWrites.staging(graphDir.resolve(FILE));
         try (BufferedWriter out = Files.newBufferedWriter(tmp, StandardCharsets.UTF_8)) {

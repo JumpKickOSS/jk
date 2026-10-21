@@ -7,11 +7,13 @@ import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
-import cc.jumpkick.engine.plugin.PluginClient;
+import cc.jumpkick.engine.plugin.WarmWorkers;
 import cc.jumpkick.engine.plugin.WorkerContainment;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
 import java.io.IOException;
@@ -24,9 +26,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The {@code jk-formatter} worker fork: streams per-file results to a {@link FileObserver}, keeps
- * the run's tallies, and refuses to let the step succeed unless they {@linkplain #reconcile
- * reconcile} with the planned total. {@link FormatPlans} assembles the plan that calls in here.
+ * The {@code jk-formatter} worker, warm between runs ({@link WarmWorkers}): streams per-file
+ * results to a {@link FileObserver}, keeps the run's tallies, and refuses to let the step succeed
+ * unless they {@linkplain #reconcile reconcile} with the planned total. {@link FormatPlans}
+ * assembles the plan that calls in here.
  */
 public final class FormatWorker {
 
@@ -101,7 +104,13 @@ public final class FormatWorker {
         return heaps.choose(key.project(), key.module(), key.kind(), key.jdk(), planned);
     }
 
-    /** The worker command line at a heap, or as planned when the heap is {@code null}. */
+    /** What the lease ledger and {@code jk engine status} call the formatter worker. */
+    static final String WORKER_NAME = "formatter";
+
+    /** The protocol prefix the formatter writes under. */
+    static final String PREFIX = "##JKFMT:";
+
+    /** The served worker command line at a heap, or as planned when the heap is {@code null}. */
     @FunctionalInterface
     interface Launch {
         List<String> command(@Nullable Long heapBytes) throws IOException;
@@ -119,14 +128,14 @@ public final class FormatWorker {
     }
 
     /**
-     * Fork the formatter worker, tally its per-file stream, publish the run's counts — and refuse to
+     * Run {@code spec} on a warm formatter worker, tally its per-file stream, publish the run's counts — and refuse to
      * let the step succeed unless the tally {@linkplain #reconcile reconciles} with {@code total}.
      *
      * <p>Every surface that says whether a format run worked reads {@code BuildPlanResult.success()}
      * — journal and dashboard via {@code FormatVerb}, terminal wedge via {@code FormatCommand}.
      *
-     * <p>A worker that runs out of its own heap is forked again up the {@link HeapLadder}; one the
-     * kernel killed for memory is forked once more at the same heap. A re-run reports every file
+     * <p>A worker that runs out of its own heap is started again up the {@link HeapLadder}; one the
+     * kernel killed for memory is started once more at the same heap. A re-run reports every file
      * again, and only the files no earlier attempt reported are counted. The peak each attempt
      * reached is learned under {@code key}, so the next run starts at a heap that fits.
      *
@@ -139,6 +148,7 @@ public final class FormatWorker {
     static void runWorker(
             TaskContext ctx,
             Launch launch,
+            Path spec,
             @Nullable Long heap,
             HeapScope.Key key,
             LearnedHeaps heaps,
@@ -152,15 +162,15 @@ public final class FormatWorker {
         Attempt last;
         String exhausted = null;
         if (heap == null) {
-            last = tally.attempt(launch.command(null));
+            last = tally.attempt(launch.command(null), spec, key);
         } else {
-            last = scoped(key, () -> tally.attempt(launch.command(heap)));
+            last = scoped(key, () -> tally.attempt(launch.command(heap), spec, key));
             WorkerFate.Cause cause = last.exit() == 0 || last.exit() == 1
                     ? WorkerFate.Cause.OTHER
                     : WorkerFate.classify(last.exit(), last.output());
             if (cause == WorkerFate.Cause.KILLED_FOR_MEMORY) {
                 HeapNotes.note(HeapNotes.line(heap, heap, true));
-                last = scoped(key, () -> tally.attempt(launch.command(heap)));
+                last = scoped(key, () -> tally.attempt(launch.command(heap), spec, key));
             } else if (cause == WorkerFate.Cause.HEAP_EXHAUSTED) {
                 List<Long> ranOut = new ArrayList<>(List.of(heap));
                 while (true) {
@@ -173,7 +183,7 @@ public final class FormatWorker {
                         break;
                     }
                     HeapNotes.note(HeapNotes.line(bigger, failed, false));
-                    last = scoped(key, () -> tally.attempt(launch.command(bigger)));
+                    last = scoped(key, () -> tally.attempt(launch.command(bigger), spec, key));
                     if (!WorkerFate.heapExhausted(last.exit(), last.output())) {
                         heaps.good(key, bigger);
                         break;
@@ -195,7 +205,7 @@ public final class FormatWorker {
         }
     }
 
-    /** One fork's exit and the tail of what it printed besides the protocol. */
+    /** One attempt's exit and the tail of what its worker printed besides the protocol. */
     private record Attempt(int exit, String output) {}
 
     /** The output kept per attempt: enough for the JVM's last words, not a whole run's chatter. */
@@ -230,21 +240,26 @@ public final class FormatWorker {
             this.observer = observer;
         }
 
-        Attempt attempt(List<String> command) throws IOException, InterruptedException {
+        Attempt attempt(List<String> command, Path spec, HeapScope.Key key) throws IOException, InterruptedException {
             StringBuilder tail = new StringBuilder();
-            int exit = new PluginClient("##JKFMT:")
-                    .on("file", this::file)
-                    .passthrough(line -> {
-                        ctx.output(line);
-                        synchronized (tail) {
+            WarmWorkers.Outcome outcome = WarmWorkers.run(
+                    new WarmWorkers.Launch(WORKER_NAME, command, WorkerEnv.strict(), PREFIX, key),
+                    spec,
+                    new WarmWorkers.Listener() {
+                        @Override
+                        public void protocol(String json) {
+                            if (PluginProtocol.FILE.equals(Jsonl.str(json, PluginProtocol.T))) file(json);
+                        }
+
+                        @Override
+                        public void output(String line) {
+                            ctx.output(line);
                             tail.append(line).append('\n');
                             if (tail.length() > OUTPUT_TAIL_CHARS) tail.delete(0, tail.length() - OUTPUT_TAIL_CHARS);
                         }
-                    })
-                    .run(command);
-            synchronized (tail) {
-                return new Attempt(exit, tail.toString());
-            }
+                    },
+                    ctx::cancelled);
+            return new Attempt(outcome.exit(), tail.toString());
         }
 
         private void file(String json) {

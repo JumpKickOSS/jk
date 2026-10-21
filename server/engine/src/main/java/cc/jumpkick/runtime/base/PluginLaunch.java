@@ -5,10 +5,12 @@ import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.PluginLoader;
+import cc.jumpkick.engine.plugin.WarmWorkers;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -48,6 +50,21 @@ public final class PluginLaunch {
     public static List<String> javaCommand(
             Path workerJar, List<String> extraJvmArgs, Path spec, List<Path> extraClasspath) throws IOException {
         PluginLoader.sealNetworkPolicy(spec);
+        return command(
+                workerJar, extraJvmArgs, extraClasspath, spec.toAbsolutePath().toString());
+    }
+
+    /**
+     * As {@link #javaCommand(Path, List, Path)} for a worker that stays up between specs ({@link
+     * PluginProtocol#SERVE}); {@link WarmWorkers} hands it each spec.
+     */
+    public static List<String> serveCommand(Path workerJar, List<String> extraJvmArgs) throws IOException {
+        return command(workerJar, extraJvmArgs, List.of(), PluginProtocol.SERVE);
+    }
+
+    private static List<String> command(
+            Path workerJar, List<String> extraJvmArgs, List<Path> extraClasspath, String programArg)
+            throws IOException {
         Path javaHome = JavaHomes.runningJavaHome();
         List<Path> classpath = new ArrayList<>(WorkerLaunchClasspath.paths(workerJar));
         for (Path extra : extraClasspath) {
@@ -57,11 +74,7 @@ public final class PluginLaunch {
         // binary plus this job's memory flags — the heap plan is what this launcher adds over a
         // bare PluginLoader.command fork, and concurrency=1 is "one requested JVM".
         List<String> command = PluginLoader.command(
-                javaHome,
-                Classpaths.join(classpath),
-                extraJvmArgs,
-                mainClassOf(workerJar),
-                List.of(spec.toAbsolutePath().toString()));
+                javaHome, Classpaths.join(classpath), extraJvmArgs, mainClassOf(workerJar), List.of(programArg));
         return learned(JvmOptions.javaCommand(javaHome, 1, command.subList(1, command.size())));
     }
 

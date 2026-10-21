@@ -4,17 +4,20 @@ package cc.jumpkick.runtime.base;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.plugin.LearnedHeaps;
+import cc.jumpkick.engine.plugin.WarmWorkers;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.runtime.FormatWorkerStub;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -62,6 +65,7 @@ class FormatWorkerCompletenessTest {
                 .execute(ctx -> FormatWorker.runWorker(
                         ctx,
                         heap -> command,
+                        spec(),
                         null,
                         FormatWorker.heapKey(Path.of("").toAbsolutePath()),
                         LearnedHeaps.engine(),
@@ -82,6 +86,16 @@ class FormatWorkerCompletenessTest {
                 .addTask(format)
                 .build();
         return new Run(plan, plan.run(), observed);
+    }
+
+    /** The spec a run hands the stub, which reads none of it. */
+    private static Path spec() throws IOException {
+        return Files.createTempFile("jk-format-", ".spec");
+    }
+
+    @AfterEach
+    void stopWorkers() {
+        WarmWorkers.shutdown();
     }
 
     private static List<Path> sources(Path dir, int n) throws Exception {

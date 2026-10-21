@@ -94,7 +94,7 @@ public final class GraphBuild {
         long start = clock.nanos();
         Path base = root.toAbsolutePath().normalize();
         List<GraphSources.Source> sources = GraphSources.walk(base);
-        StatIndex stats = rebuild ? StatIndex.empty() : StatIndex.open(out);
+        StatIndex stats = rebuild ? StatIndex.empty() : GraphMemory.stats(out);
         long now = clock.millis();
         Map<String, String> shas = new ConcurrentHashMap<>();
         List<GraphSources.Source> stale = new ArrayList<>();
@@ -127,13 +127,16 @@ public final class GraphBuild {
         if (!rebuild && sameFiles) {
             CodeGraph stored = snapshot(out, key);
             if (stored != null) {
-                if (!stale.isEmpty()) stats.save(out, sources);
+                if (!stale.isEmpty()) {
+                    stats.save(out, sources);
+                    GraphMemory.savedStats(out, stats);
+                }
                 sources.forEach(s -> progress.file(s.rel(), false));
                 long millis = (clock.nanos() - start) / 1_000_000;
                 return new Result(stored, sources.size(), 0, classes(indexes), out, millis, false, commit);
             }
         }
-        FragmentStore store = rebuild ? FragmentStore.empty() : FragmentStore.open(out);
+        FragmentStore store = rebuild ? FragmentStore.empty() : GraphMemory.store(out);
         List<String> unread = new ArrayList<>();
         for (GraphSources.Source s : sources) {
             String sha = shas.get(s.rel());
@@ -177,8 +180,11 @@ public final class GraphBuild {
         Communities.assign(graph);
         progress.phase("write graph");
         write(out, graph, key, commit);
+        GraphMemory.sawGraph(out, graph, key);
         stats.save(out, sources);
+        GraphMemory.savedStats(out, stats);
         store.save(out, live);
+        GraphMemory.savedStore(out, store);
         long millis = (clock.nanos() - start) / 1_000_000;
         return new Result(graph, sources.size(), extracted.get(), classes, out, millis, true, commit);
     }
@@ -188,22 +194,27 @@ public final class GraphBuild {
         return FragmentStore.key(rel, sha + scripts.flavor(rel));
     }
 
-    /** The stored graph when its key matches, else {@code null}. */
+    /** The stored graph when its key matches, else {@code null}: from memory while it is current. */
     private static @Nullable CodeGraph snapshot(Path out, GraphSnapshot.Key key) {
+        GraphMemory.Graph held = GraphMemory.graph(out);
+        if (held != null) return sameKey(held.key(), key) ? held.graph() : null;
         Path bin = out.resolve(GraphOutputs.SNAPSHOT);
         if (!Files.isRegularFile(bin)) return null;
         try (InputStream in = Files.newInputStream(bin)) {
             GraphSnapshot.Loaded loaded = GraphSnapshot.read(in);
             if (loaded == null) return null;
-            GraphSnapshot.Key had = loaded.key();
-            boolean same = had.extractors().equals(key.extractors())
-                    && had.files() == key.files()
-                    && had.classes().equals(key.classes());
-            return same ? loaded.graph() : null;
+            GraphMemory.sawGraph(out, loaded.graph(), loaded.key());
+            return sameKey(loaded.key(), key) ? loaded.graph() : null;
         } catch (IOException | RuntimeException unreadable) {
             Log.debug("graph: snapshot unreadable at " + bin, unreadable);
             return null;
         }
+    }
+
+    private static boolean sameKey(GraphSnapshot.Key had, GraphSnapshot.Key key) {
+        return had.extractors().equals(key.extractors())
+                && had.files() == key.files()
+                && had.classes().equals(key.classes());
     }
 
     private static void write(Path out, CodeGraph graph, GraphSnapshot.Key key, @Nullable String commit)

@@ -114,22 +114,16 @@ public final class ToolLauncher {
     }
 
     /**
-     * Exec the env's main class in-process via {@link ProcessBuilder} (the {@code jk exec} path).
-     * Returns the child's exit code.
+     * Start the env's main class with inherited stdio (the {@code jk run} path). The caller waits,
+     * so a Ctrl-C in the CLI can stop this process before the CLI itself halts.
      */
-    public static int execEphemeral(Path javaHome, ToolEnv env, List<String> args)
-            throws IOException, InterruptedException {
-        return execEphemeral(javaHome, env, List.of(), args);
-    }
-
-    /** As above with explicit JVM args (a JBang alias's {@code java-options}). */
-    public static int execEphemeral(Path javaHome, ToolEnv env, List<String> jvmArgs, List<String> args)
-            throws IOException, InterruptedException {
+    public static Process startEphemeral(Path javaHome, ToolEnv env, List<String> jvmArgs, List<String> args)
+            throws IOException {
         if (env.isNativeBinary()) {
             List<String> nativeCmd = new ArrayList<>();
             nativeCmd.add(env.classpath().getFirst().toAbsolutePath().toString());
             nativeCmd.addAll(args);
-            return new ProcessBuilder(nativeCmd).inheritIO().start().waitFor();
+            return new ProcessBuilder(nativeCmd).inheritIO().start();
         }
         List<String> cmd = new ArrayList<>();
         cmd.add(JdkFingerprint.java(javaHome).toString());
@@ -138,7 +132,7 @@ public final class ToolLauncher {
         cmd.add(Classpaths.join(env.classpath()));
         cmd.add(mainClass(env.mainClass()));
         cmd.addAll(args);
-        return new ProcessBuilder(cmd).inheritIO().start().waitFor();
+        return new ProcessBuilder(cmd).inheritIO().start();
     }
 
     private static String renderPosixLauncher(ToolEnv env, Path javaHome, List<String> jvmArgs) {
