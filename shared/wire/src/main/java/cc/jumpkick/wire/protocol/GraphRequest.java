@@ -10,12 +10,13 @@ import org.jspecify.annotations.Nullable;
  * {@code query}, {@code explain}, {@code path}, {@code node}, {@code neighbors}, {@code community},
  * {@code god-nodes}, {@code stats} or {@code report}; {@code args} are its positionals. Every read
  * refreshes the graph first unless {@code noRefresh}; {@code rebuild} discards stored fragments.
+ * {@code mode} is {@code bfs} or {@code dfs}, breadth-first when unset.
  */
 public record GraphRequest(
-        String dir,
-        String op,
+        @Nullable String dir,
+        @Nullable String op,
         List<String> args,
-        String mode,
+        @Nullable String mode,
         int depth,
         int budget,
         List<String> contexts,
@@ -32,17 +33,12 @@ public record GraphRequest(
         contexts = List.copyOf(contexts);
     }
 
-    /** {@code op} with every option at its default. */
-    public static GraphRequest of(String dir, String op, List<String> args) {
-        return new GraphRequest(dir, op, args, "bfs", 3, 2000, List.of(), false, false, 8, 10, null, false, false);
-    }
-
     public String encode() {
         return RequestJson.request(EngineProtocol.GRAPH_REQUEST)
                 .string("dir", dir)
                 .string("op", op)
                 .array("args", args)
-                .string("mode", mode)
+                .optionalString("mode", mode)
                 .number("depth", depth)
                 .number("budget", budget)
                 .array("contexts", contexts)
@@ -56,17 +52,12 @@ public record GraphRequest(
                 .finish();
     }
 
-    private static String mode(String json) {
-        String mode = Jsonl.str(json, "mode");
-        return mode == null ? "bfs" : mode;
-    }
-
     public static GraphRequest decode(String json) {
         return new GraphRequest(
-                Jsonl.requiredStr(json, "dir"),
-                Jsonl.requiredStr(json, "op"),
+                Jsonl.str(json, "dir"),
+                Jsonl.str(json, "op"),
                 Jsonl.strArray(json, "args"),
-                mode(json),
+                Jsonl.str(json, "mode"),
                 Jsonl.intValue(json, "depth", 3),
                 Jsonl.intValue(json, "budget", 2000),
                 Jsonl.strArray(json, "contexts"),

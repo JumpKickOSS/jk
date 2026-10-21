@@ -23,18 +23,14 @@ public final class GraphCommand extends GroupCommand {
 
     @Override
     public String description() {
-        return "Build and query the code graph: symbols, calls, config and docs";
+        return "Build and query the code graph";
     }
 
-    private static final Opt NO_REFRESH =
-            Opt.flag("Answer from the last graph without refreshing it first.", "--no-refresh");
+    private static final Opt NO_REFRESH = Opt.flag("Answer from the last graph; skip the refresh.", "--no-refresh");
     private static final Opt BUDGET = Opt.value("<tokens>", "Answer size in tokens (default 2000).", "--budget");
 
     private final GraphOpCommand build = new GraphOpCommand(
-            "build",
-            "Build or refresh the graph (target/graph/graph.json, GRAPH_REPORT.md); -r extracts every file again",
-            List.of(),
-            List.of());
+            "build", "Build or refresh target/graph/ (-r re-reads every file)", List.of(), List.of());
 
     @Override
     public List<CliCommand> subcommands() {
@@ -44,12 +40,12 @@ public final class GraphCommand extends GroupCommand {
                         "query",
                         "Answer a question with the relevant subgraph",
                         List.of(
-                                Opt.flag("Walk depth-first instead of breadth-first.", "--dfs"),
+                                Opt.flag("Walk depth-first.", "--dfs"),
                                 Opt.value("<n>", "Hops from the matched nodes (default 3).", "--depth"),
                                 BUDGET,
                                 Opt.value(
                                                 "<a,b,...>",
-                                                "Follow only edges with these contexts (call, field, import, ...).",
+                                                "Follow only these edge contexts (call, field, ...).",
                                                 "--context")
                                         .splitOn(","),
                                 NO_REFRESH),
@@ -78,7 +74,7 @@ public final class GraphCommand extends GroupCommand {
                         "neighbors",
                         "A node's direct connections",
                         List.of(
-                                Opt.value("<relation>", "Only these relations (calls, imports, ...).", "--relation"),
+                                Opt.value("<relation>", "Only relations containing this (calls, ...).", "--relation"),
                                 BUDGET,
                                 NO_REFRESH),
                         List.of(Param.of("name", Arity.ONE, "label or node id"))),

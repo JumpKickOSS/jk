@@ -34,6 +34,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 | Import Maven or Gradle | [Migration](migration.md) |
 | Use Spring Boot / Quarkus / Grails / … | [Frameworks](frameworks.md) |
 | Talk to the engine as an agent | [Agents](agents.md), [MCP](mcp.md) |
+| Ask where code is and how it connects | [Code graph](graph.md) |
 
 ## Topic index
 
@@ -90,6 +91,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 
 - [Agents](agents.md)
 - [MCP](mcp.md)
+- [Code graph](graph.md) — `jk graph`: query the code instead of reading it
 - [Machine output](machine-output.md)
 - [CI](ci.md)
 - [Config, CLI chrome, env](config.md)

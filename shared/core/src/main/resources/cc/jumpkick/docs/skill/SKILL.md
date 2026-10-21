@@ -15,12 +15,13 @@ Run, read the verdict, edit, run again. The verdict is the whole answer; do not 
 |---|---|---|
 | test | `jk --agent test` | `run()` |
 | build | `jk --agent build` | `run(kind=build)` |
-| add / remove a dependency | `jk add g:a`, `jk remove g:a` | `deps(action=add, coords=["g:a"])` |
+| add / remove a dep | `jk add g:a`, `jk remove g:a` | `deps(action=add, coords=["g:a"])` |
 | why this version | `jk why g:a` | `why(coord=g:a)` |
-| every problem, with source lines | `jk results --all` | `diagnostics()` (`file=` for one) |
-| one topic of this skill | `jk skill <topic>` | `skill(topic=…)` |
+| find code | `jk graph query "…"` | `skill(topic=graph)` |
+| every problem with its line | `jk results --all` | `diagnostics()` (`file=` for one) |
+| one skill topic | `jk skill <topic>` | `skill(topic=…)` |
 
-A dependency edit relocks in the same call; the next test needs no separate lock. Register MCP as `jk mcp` in the project and the tools take no `dir`; over HTTP, pass `dir` (the project root) on the first call.
+A dependency edit relocks in the same call. Register MCP as `jk mcp` in the project and the tools take no `dir`; over HTTP, pass `dir` (the project root) on the first call.
 
 ## Verdict
 
@@ -35,4 +36,4 @@ One line per problem: `E path:line:col message` (paths relative to the project),
 
 ## Topics
 
-dependencies, tests, workspaces, lockfile, imports, plugins, guards, layout, jdk, engine.
+dependencies, tests, workspaces, lockfile, imports, plugins, guards, layout, jdk, engine, graph.
