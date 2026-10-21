@@ -252,7 +252,7 @@ final class ConfigExtractors {
 
     private static void configKey(FragmentBuilder b, String key, int line) {
         String id = b.node(
-                GraphIds.make(GraphIds.stem(b.relPath()), key),
+                GraphIds.make(GraphIds.base(b.relPath()), key),
                 key,
                 "document",
                 line,

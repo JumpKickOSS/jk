@@ -104,7 +104,7 @@ class ExtractorsTest {
                 .containsExactly("L4");
         assertThat(yml.mentions())
                 .contains(new Mention(
-                        "src_main_resources_application", Mention.Kind.CLASS, "com.acme.shop.PriceCalculator", 6));
+                        "src_main_resources_application_yml", Mention.Kind.CLASS, "com.acme.shop.PriceCalculator", 6));
         Fragment props =
                 ConfigExtractors.properties("src/main/resources/messages.properties", "greeting=Hi ${user.name}\n");
         assertThat(props.nodes()).hasSize(1);

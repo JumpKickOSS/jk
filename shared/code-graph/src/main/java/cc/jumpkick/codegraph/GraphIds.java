@@ -2,14 +2,17 @@
 package cc.jumpkick.codegraph;
 
 import java.text.Normalizer;
+import java.util.Locale;
+import java.util.Set;
 import java.util.StringJoiner;
 
 /**
  * graphify's node-id scheme. An id is the parts joined with {@code _}, case-folded and
  * NFKC-normalized to a fixpoint, with every run of non-word characters collapsed to one {@code _}
- * and the ends trimmed. A file's ids start from its repo-relative path minus the extension, so
- * {@code src/main/java/a/Foo.java} is {@code src_main_java_a_foo} and its class {@code Foo} is
- * {@code src_main_java_a_foo_foo}.
+ * and the ends trimmed. A source or Markdown file's ids start from its repo-relative path minus the
+ * extension, as graphify's do: {@code src/main/java/a/Foo.java} is {@code src_main_java_a_foo} and
+ * its class {@code Foo} is {@code src_main_java_a_foo_foo}. Every other file keeps its extension,
+ * so an Angular component's {@code app.ts}, {@code app.html} and {@code app.css} stay three nodes.
  */
 public final class GraphIds {
 
@@ -56,14 +59,44 @@ public final class GraphIds {
         return dot > slash + 1 && dot < relPath.length() - 1 ? relPath.substring(0, dot) : relPath;
     }
 
+    /** Extensions whose files take graphify's extension-less ids. */
+    private static final Set<String> STEMMED = Set.of(
+            "java",
+            "kt",
+            "kts",
+            "groovy",
+            "gradle",
+            "scala",
+            "js",
+            "jsx",
+            "mjs",
+            "cjs",
+            "ts",
+            "tsx",
+            "mts",
+            "cts",
+            "vue",
+            "md",
+            "markdown",
+            "mdx",
+            "py");
+
+    /** The path a file's ids start from: {@link #stem} for source and Markdown, the whole path otherwise. */
+    public static String base(String relPath) {
+        String stem = stem(relPath);
+        if (stem.length() == relPath.length()) return relPath;
+        String ext = relPath.substring(stem.length() + 1).toLowerCase(Locale.ROOT);
+        return STEMMED.contains(ext) ? stem : relPath;
+    }
+
     /** The id of the file at {@code relPath}. */
     public static String file(String relPath) {
-        return make(stem(relPath));
+        return make(base(relPath));
     }
 
     /** The id of a top-level declaration {@code name} in the file at {@code relPath}. */
     public static String declared(String relPath, String name) {
-        return make(stem(relPath), name);
+        return make(base(relPath), name);
     }
 
     /** The id of member {@code name} of the node {@code ownerId}. */

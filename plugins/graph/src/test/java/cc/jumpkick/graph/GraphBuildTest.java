@@ -75,6 +75,8 @@ class GraphBuildTest {
                     }
                     """);
 
+    private static final ScriptReader NO_NODE = new ScriptReader(null, null);
+
     /** A clock far past every file's mtime, so no file counts as just written. */
     private static final Clock LATER = new Clock() {
         @Override
@@ -121,7 +123,7 @@ class GraphBuildTest {
 
     private static GraphBuild.Result refresh(Path root, boolean rebuild) throws IOException {
         return GraphBuild.refresh(
-                root, root.resolve("target/graph"), indexes(root), rebuild, GraphBuild.Progress.NONE, LATER);
+                root, root.resolve("target/graph"), indexes(root), NO_NODE, rebuild, GraphBuild.Progress.NONE, LATER);
     }
 
     private static boolean edge(CodeGraph g, String from, String to, String relation) {
@@ -191,7 +193,7 @@ class GraphBuildTest {
     }
 
     private static String run(Path root, GraphService.Request r) throws IOException {
-        return GraphService.run(root, root.resolve("target/graph"), indexes(root), r, GraphBuild.Progress.NONE)
+        return GraphService.run(root, root.resolve("target/graph"), indexes(root), NO_NODE, r, GraphBuild.Progress.NONE)
                 .text();
     }
 

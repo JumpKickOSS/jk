@@ -93,7 +93,7 @@ public final class FragmentBuilder {
 
     /** A {@code NOTE:}/{@code WHY:}-style comment as a rationale node pointing at {@code target}. */
     public void rationale(String text, int line, String target) {
-        String id = GraphIds.make(GraphIds.stem(relPath), "rationale", String.valueOf(line));
+        String id = GraphIds.make(GraphIds.base(relPath), "rationale", String.valueOf(line));
         String label = text.strip().replaceAll("\\s+", " ");
         if (label.length() > 120) label = label.substring(0, 117) + "...";
         node(id, label, "rationale", line, Map.of());

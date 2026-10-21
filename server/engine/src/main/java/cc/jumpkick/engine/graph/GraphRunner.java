@@ -76,7 +76,8 @@ public final class GraphRunner {
         lock.lock();
         try {
             List<String> indexes = req.noRefresh() ? List.of() : classIndexes(root);
-            Path spec = spec(root, req, indexes);
+            GraphScripts.Tools scripts = req.noRefresh() ? null : GraphScripts.of(root);
+            Path spec = spec(root, req, indexes, scripts);
             try {
                 return forkWithHeap(root, spec, progress);
             } finally {
@@ -177,7 +178,8 @@ public final class GraphRunner {
                 dir == null ? "" : dir);
     }
 
-    private static Path spec(Path root, GraphRequest r, List<String> indexes) throws IOException {
+    private static Path spec(Path root, GraphRequest r, List<String> indexes, GraphScripts.@Nullable Tools scripts)
+            throws IOException {
         SpecWriter w = new SpecWriter()
                 .op(PluginProtocol.OP_COMMAND, "graph", "jk-graph")
                 .configString("root", root.toString())
@@ -196,6 +198,10 @@ public final class GraphRunner {
                 .configBool("rebuild", r.rebuild())
                 .configBool("noRefresh", r.noRefresh())
                 .configList("classIndexes", indexes);
+        if (scripts != null) {
+            w.configString("node", scripts.node().toString())
+                    .configString("oxc", scripts.oxc().toString());
+        }
         return w.writeTempSpec();
     }
 

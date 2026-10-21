@@ -58,7 +58,7 @@ final class DocExtractors {
                 int level = h.group(1).length();
                 String title = h.group(2);
                 String id = b.node(
-                        GraphIds.make(GraphIds.stem(relPath), title),
+                        GraphIds.make(GraphIds.base(relPath), title),
                         title,
                         "document",
                         n,
