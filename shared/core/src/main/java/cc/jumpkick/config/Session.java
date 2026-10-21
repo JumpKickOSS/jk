@@ -81,9 +81,9 @@ public record Session(
         // Variant selection + client-resolved env (env: indirection for signing secrets).
         String variant,
         @Nullable Map<String, String> clientEnv,
-        /** CLI packaging override: empty, {@code fat}, or {@code minified} ({@code jk assemble --minified}). */
+        /** CLI packaging override: empty, {@code fat}, or {@code minified} ({@code jk assemble -W}). */
         @With String assemblyOverride,
-        /** Test suite / tag selection ({@code jk test --suite}/tags); default = unit suite only. */
+        /** Test suite / tag selection ({@code jk test -s}/tags); default = unit suite only. */
         @With TestSelection testSelection,
         /**
          * {@code --debug-jvm}: start the one JVM under test with a JDWP listener at this address;

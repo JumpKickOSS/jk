@@ -85,13 +85,13 @@ class SuiteClassFilterTest {
         SuiteClassFilter suites = SuiteClassFilter.of(classes, false, List.of("test"), FAILSAFE);
 
         assertThat(suites.classHint(classes, List.of("FooIT")))
-                .isEqualTo("FooIT is in the integration suite (jk test -s integration --class FooIT)");
+                .isEqualTo("FooIT is in the integration suite (jk test -s integration -S FooIT)");
         assertThat(suites.classHint(classes, List.of("*IT")))
-                .isEqualTo("BarIT, FooIT are in the integration suite (jk test -s integration --class *IT)");
+                .isEqualTo("BarIT, FooIT are in the integration suite (jk test -s integration -S *IT)");
         assertThat(suites.classHint(classes, List.of("FooTest"))).isNull();
         assertThat(SuiteClassFilter.of(classes, false, List.of("integration"), FAILSAFE)
                         .classHint(classes, List.of("FooTest")))
-                .isEqualTo("FooTest is in the test suite (jk test -s test --class FooTest)");
+                .isEqualTo("FooTest is in the test suite (jk test -s test -S FooTest)");
     }
 
     @Test

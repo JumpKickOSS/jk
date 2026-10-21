@@ -7,7 +7,7 @@ Declare libraries in `jk.toml`. JumpKick resolves them with PubGrub, writes
 jk add jackson3-databind          # catalog short name; writes today's stable as a pin
 jk add com.acme:mylib:1.2.3       # Maven coordinate, exact version
 jk add com.acme:mylib             # no version: today's stable, written as a number
-jk add org.lwjgl:lwjgl:3.3.6 --classifier natives-linux   # the classified jar, under lwjgl-natives-linux
+jk add org.lwjgl:lwjgl:3.3.6 -c natives-linux   # the classified jar, under lwjgl-natives-linux
 jk add spring-boot-starter-web    # no version under a BOM that manages it: written "managed"
 jk add ./path/to/module           # workspace / path
 jk remove jackson3-databind
@@ -69,7 +69,7 @@ cleanly and silently drop; a `[workspace.dependencies]` entry is held to its own
 import` writes every plain coordinate the same way, and a dependency the same way, versionless, when
 its version under Maven came from a manager the lock reads as a `[platform-dependencies]` row of the
 same manifest — see [`managed`](#managed-the-platforms-version-in-the-string-form) below.
-`jk add --classifier <c>` always writes the inline table, under the handle `<name>-<c>`
+`jk add -c <c>` always writes the inline table, under the handle `<name>-<c>`
 unless `--library` names one. `jk format` never rewrites one spelling into another. A classifier or type in a GAV string
 (`g:a:v:classifier`) is an error — use the inline table. `classifier` names the classified jar of
 the module (`natives-linux`, `linux-x86_64`); the solver and the lock key that edge as
@@ -278,7 +278,7 @@ with one rule:
   declarations or for another dependency's subtree, and an [exclusive group](repositories.md#exclusive-groups-your-internals)
   bound to a declared repository stays bound.
 - A row it serves records it in the lock's `source` (`jitpack.io+https://jitpack.io`), so
-  `jk build` and `jk sync` fetch from it without a `[repositories]` entry, and `jk lock --sources`
+  `jk build` and `jk sync` fetch from it without a `[repositories]` entry, and `jk lock -s`
   asks it for that row's `-sources.jar` too.
 - It is held to the trust rule a project-declared repository meets by default: https and a
   published checksum for every artifact. A POM has no table to opt out with, so a plaintext
@@ -417,7 +417,7 @@ mylib = { git = "https://github.com/acme/mylib", tag = "v1.4.0" }
 local = { path = "../sibling" }   # local project with its own jk.toml
 ```
 
-The lock pins the resolved git SHA. Tag moves fail loudly until `jk update --git`.
+The lock pins the resolved git SHA. Tag moves fail loudly until `jk update -g`.
 
 Workspace siblings: [Workspaces](workspaces.md).
 
@@ -427,9 +427,9 @@ Workspace siblings: [Workspaces](workspaces.md).
 jk tree                  # workspace graph (even from a member dir)
 jk tree :foo             # one module
 jk tree -t               # include transitives
-jk tree --features noshade            # with a feature active beyond the defaults
+jk tree -e noshade            # with a feature active beyond the defaults
 jk why com.foo:bar       # why a pin is on the graph, and what each step declared for the next
-jk why --no-default-features com.foo:bar
+jk why -n com.foo:bar
 ```
 
 Both read the closure jk builds with: an optional dependency a `[features]` entry names is drawn,

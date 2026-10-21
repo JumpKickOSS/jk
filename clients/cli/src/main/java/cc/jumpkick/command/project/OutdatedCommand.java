@@ -70,9 +70,9 @@ public final class OutdatedCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Show Tip column (prerelease / git HEAD)", "--show-tip"),
-                Opt.flag("Every dependency, up to date included", "--all"),
-                Opt.flag("A row per module and dependency, not per coordinate", "--by-module"),
+                Opt.flag("Show Tip column (prerelease / git HEAD)", "-s", "--show-tip"),
+                Opt.flag("Every dependency, up to date included", "-A", "--all"),
+                Opt.flag("A row per module and dependency, not per coordinate", "-b", "--by-module"),
                 Opt.value("<url>", "Override declared repos with a single URL.", "--repo-url")
                         .hide(),
                 CommonOpts.cacheDir());
@@ -145,7 +145,7 @@ public final class OutdatedCommand implements CliCommand {
         for (String line : table) CliOutput.out(line);
         // Footer: lockfile-respecting workflow + graph inspection.
         CliOutput.out("Next: review with `jk why <coord>` / `jk tree`; `jk update [name…]` moves the declared"
-                + " pins to Compatible and relocks, `jk update --major` to Latest.");
+                + " pins to Compatible and relocks, `jk update -m` to Latest.");
         printReportFile(dir);
         return Exit.SUCCESS;
     }

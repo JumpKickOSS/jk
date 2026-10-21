@@ -7,7 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** {@code jk ide --print-model} output, decoded without a JSON library: the shapes the plugin meets. */
+/** {@code jk ide -p} output, decoded without a JSON library: the shapes the plugin meets. */
 class JkWireModelTest {
 
     private static final String MODEL = "{\"type\":\"ide-model-ack\",\"error\":null,\"wsRoot\":\"/w/app\","

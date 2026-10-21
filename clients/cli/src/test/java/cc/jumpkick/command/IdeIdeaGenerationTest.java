@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * End-to-end coverage for {@code jk ide --idea}'s JDK/SDK wiring and source roots. Uses {@code
+ * End-to-end coverage for {@code jk ide -i}'s JDK/SDK wiring and source roots. Uses {@code
  * --jdks-dir}/{@code --ide-config-dir} overrides so nothing touches the developer's real product
  * layout or IntelliJ config.
  */

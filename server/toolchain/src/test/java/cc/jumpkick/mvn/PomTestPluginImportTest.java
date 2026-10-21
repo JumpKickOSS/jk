@@ -51,8 +51,7 @@ class PomTestPluginImportTest {
                 .as("failsafe's argLine differs from surefire's, and [test] jvm-args is one list")
                 .anyMatch(m -> m.startsWith("`maven-failsafe-plugin` `<argLine>` -Xmx2g —")
                         && m.contains("Surefire's -Xmx1g -Dfile.encoding=UTF-8 is in it"));
-        assertThat(messages)
-                .anyMatch(m -> m.startsWith("`jacoco-maven-plugin` —") && m.contains("`jk test --coverage`"));
+        assertThat(messages).anyMatch(m -> m.startsWith("`jacoco-maven-plugin` —") && m.contains("`jk test -T`"));
         assertThat(messages).noneMatch(m -> m.contains("skip tests"));
         assertThat(messages)
                 .as("surefire, failsafe and jacoco each have their own rows, never the generic one")
@@ -139,7 +138,7 @@ class PomTestPluginImportTest {
         assertThat(messages)
                 .anyMatch(m ->
                         m.startsWith("`maven-surefire-plugin` `<groups>fast & !flaky</groups>` is a tag expression"));
-        assertThat(messages).anyMatch(m -> m.contains("skip tests") && m.contains("`jk build --skip-tests`"));
+        assertThat(messages).anyMatch(m -> m.contains("skip tests") && m.contains("`jk build -S`"));
         assertThat(JkBuildRenderer.render(result.jkBuild())).doesNotContain("[test]");
     }
 

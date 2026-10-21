@@ -148,6 +148,8 @@ class ConfigShapeTest {
                 new Wither("withCoverage", new Object[] {true}, List.of("coverage")),
                 new Wither("withTestFailures", new Object[] {TestFailureMode.REPORT}, List.of("testFailures")),
                 new Wither("withSkipNode", new Object[] {true}, List.of("skipNode")),
+                new Wither("withProfile", new Object[] {"ci"}, List.of("profile")),
+                new Wither("withKeepGoing", new Object[] {true}, List.of("keepGoing")),
                 new Wither("withAffected", new Object[] {false}, List.of("affected")),
                 new Wither("withAffectedChanged", new Object[] {new AffectedChanged()}, List.of("affectedChanged")),
                 new Wither("withIo", new Object[] {new IoLedger()}, List.of("io")),

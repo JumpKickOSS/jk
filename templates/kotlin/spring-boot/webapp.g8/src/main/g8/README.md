@@ -43,7 +43,7 @@ cd app && jk dev
 it as the `web` entry of `[dev.sidecars]`: `npm run dev` in `../web`, with `/api` proxied to `:8080`
 and hot reload for the front end. jk waits for `http://localhost:5173` to answer before printing the
 front door, prefixes the sidecar's output with `web │`, and stops both on Ctrl-C.
-`jk dev --no-sidecars` runs the app alone.
+`jk dev -T` runs the app alone.
 
 ## Tiers and guards
 

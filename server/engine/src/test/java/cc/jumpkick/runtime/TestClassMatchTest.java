@@ -78,7 +78,7 @@ class TestClassMatchTest {
     @Test
     void a_class_another_suite_owns_names_that_suite_first_and_keeps_the_tag_reason() {
         TestSelection fooIt = TestSelection.DEFAULT.withClasses(List.of("FooIT"));
-        String hint = "FooIT is in the integration suite (jk test -s integration --class FooIT)";
+        String hint = "FooIT is in the integration suite (jk test -s integration -S FooIT)";
         assertThat(TestClassMatch.skipLabel(List.of("FooIT"), hint))
                 .isEqualTo("no classes matched --class FooIT — skipped; " + hint);
         assertThat(TestClassMatch.noMatchMessage(fooIt, null, hint))

@@ -273,7 +273,7 @@ class JkBuildParserDependencyTest {
     @Test
     void git_source_rejects_fetch_field() {
         // `fetch` (the branch-tip freshness window) is gone — every git dep is pinned
-        // in jk-lock.toml and only moves on an explicit `jk update --git` / `jk fetch`.
+        // in jk-lock.toml and only moves on an explicit `jk update -g` / `jk fetch`.
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
                 [dependencies]
                 fork = { git = "https://github.com/me/widgets", branch = "main", fetch = "48h" }

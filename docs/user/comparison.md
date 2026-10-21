@@ -130,7 +130,7 @@ When a row is won, change its score here and the matching cell above in the same
 | Category | Who leads today | Winning looks like |
 |---|---|---|
 | **Open the project in an IDE** | Maven and Gradle | Opening a `jk.toml` workspace in IntelliJ or VS Code needs no generated project files and no install-from-disk step. Today the plugin is an external system (live model, gutter run and debug) packaged from this repository. Without it, `jk ide` writes files. |
-| **Plugin ecosystem** | Maven and Gradle | A third-party plugin is as ordinary to add as a dependency. The SDK is publishable with `jk publish --central` and is not on Central yet; a plugin is a pinned jar. There is no marketplace. The common server-side batteries are already first-party. |
+| **Plugin ecosystem** | Maven and Gradle | A third-party plugin is as ordinary to add as a dependency. The SDK is publishable with `jk publish -c` and is not on Central yet; a plugin is a pinned jar. There is no marketplace. The common server-side batteries are already first-party. |
 | **Remote cache** | Gradle, and Maven's Build Cache Extension | A second machine restores an action-cache hit. Local keys are already shaped for that. The remote layer is not a product yet. |
 | **Memory of a test run** | Maven | Peak RSS of the whole process tree on the [petclinic](performance.md) test run at or under Maven's (JumpKick is about 1.5 GiB against 1.2 GiB; builds are already in Maven's range and about a third of Gradle's). |
 | **One-file edit** | Gradle | Median at or under Gradle's 0.62 s on that run (JumpKick is 0.93 s). |

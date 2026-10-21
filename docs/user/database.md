@@ -24,7 +24,7 @@ scripts without a database at all.
 ## Flyway
 
 ```bash
-jk tool install org.flywaydb:flyway-commandline:12.9.0 --main org.flywaydb.commandline.Main \
+jk tool install org.flywaydb:flyway-commandline:12.9.0 -T org.flywaydb.commandline.Main \
   --with org.postgresql:postgresql:42.7.9            # the driver your URL needs
 ```
 

@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk compile} and {@code jk image} consume the shared {@code -m/--modules}
+ * {@code jk compile} and {@code jk image} consume the shared {@code -m/-m}
  * selection they advertise — an invalid selector fails fast instead of being silently ignored,
  * and {@code image} demands exactly one selected module.
  */

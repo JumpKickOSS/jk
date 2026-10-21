@@ -90,7 +90,7 @@ has nothing to say. This section is the one home for release highlights; there i
   locked per platform, `jk node` (alias `jk nvm`) to manage it. A node module, or a front end in
   `src/main/node`, installs, builds, tests and packages as cached steps (`[[node.steps]]` for scripts
   and lockfile-only `npx`); `jk dev` starts its dev servers beside the JVM, a workspace root runs every
-  member, `jk image` writes a Node server image, and `jk new --lang node -t <framework>` scaffolds with
+  member, `jk image` writes a Node server image, and `jk new -l node -t <framework>` scaffolds with
   the framework's own generator. Mirrors, registries and credentials come from `~/.jk/config.toml`
   `[node]`, with Maven's `settings.xml` as the fallback.
 - **Resolution is highest-wins everywhere.** `[resolve] pins` is gone. `jk import` raises a POM pin
@@ -233,11 +233,11 @@ has nothing to say. This section is the one home for release highlights; there i
   `jk build`, then the install lines above one wedge. Installing the product tree twice reaches a
   fixed point, the shelf records which engine packaged each worker, and `jk doctor` compares it
   with the home's engine.
-- **`jk publish --sbom`** writes CycloneDX 1.6 and SPDX documents; every SBOM jk writes comes from
+- **`jk publish -S`** writes CycloneDX 1.6 and SPDX documents; every SBOM jk writes comes from
   one writer, and a release ships the SBOM jk wrote of itself with provenance attestations.
 - **CI and workflows are held by guards**: every action pinned to a commit, every token
   read-only unless a job names the scope it writes, the lock audited at HIGH on every pull request.
-- Smaller: `-m a -m b` accumulates; `jk test --class` names a class its tag filter dropped and the
+- Smaller: `-m a -m b` accumulates; `jk test -S` names a class its tag filter dropped and the
   flag that runs it; `jk dev` waits for the app's own `[dev]` ready probe; the JUnit XML report
   carries each class's console; `jk mvn` and `jk gradle` document the options they keep.
 
@@ -247,8 +247,8 @@ has nothing to say. This section is the one home for release highlights; there i
   OSV's lowest fixed version above the locked one, and prints one JSON line per finding.
   `[audit] ignore` in `jk.toml` accepts an advisory with a reason and an optional expiry.
 - `jk test --coverage` runs every suite under the JaCoCo agent with a report per module, and the
-  coverage ratchet is a `jk-guards.toml` rule. `jk test --class` runs only the named classes;
-  `jk test --debug-jvm` and `jk run --debug-jvm` start the JVM with a JDWP listener.
+  coverage ratchet is a `jk-guards.toml` rule. `jk test -S` runs only the named classes;
+  `jk test -U` and `jk run -U` start the JVM with a JDWP listener.
 - The engine logs through one leveled facade to a capped log that rolls itself; `jk engine status`
   reports the log's size and a connection that never speaks is closed and counted.
 - Workers start from an environment allow-list; `[env] inherit` opts a module back in.
@@ -439,7 +439,7 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
    flattens every tree into one (`scripts/flatten-release.sh`; `JK_RELEASE_PLATFORMS` names the
    matrix rows and linux-aarch64, and a tree short of one, or a platform-neutral jar whose bytes differ
    between platforms, is refused), re-signs the combined `SHA256SUMS`, and takes the CycloneDX
-   SBOM the linux-x86_64 build wrote of the engine (`jk publish --sbom --dry-run` in
+   SBOM the linux-x86_64 build wrote of the engine (`jk publish -S -U` in
    `server/engine`, which leaves `server/engine/target/sbom/jk-engine-<version>.cdx.json` — the
    document the engine jar embeds under `META-INF/sbom/`, derived from
    `jk-lock.toml`) as `out/sbom/jk-<version>.cdx.json` — beside the tree, so the signed
@@ -488,7 +488,7 @@ program (`cc.jumpkick.cli.Jk`, published as `cc.jumpkick:jk-cli:<version>` with 
 native client it runs from that closure on a JVM, and `jk install` on this checkout writes it as
 `bin/jk-jvm` ([self-host](self-host.md#the-jvm-client)). The closure must be published for the
 same version as the hosted engine: a JVM client pairs only with its own version's engine, and
-`repo/` at 0.13.2 beside `releases/` at 0.13.3 pairs with nothing. `jk build --skip-tests` then
+`repo/` at 0.13.2 beside `releases/` at 0.13.3 pairs with nothing. `jk build -S` then
 writes the native client for the host under `target/dist`, `DIST_DIR=target/dist
 scripts/assemble-release-dir.sh` assembles it, and it is signed and uploaded beside the other
 platforms' artifacts. Once
@@ -519,7 +519,7 @@ done. The pointer publish is one copy.
 
 Before any of it, the tree is built and installed in the order the CI lane keeps: the
 **previous** release's client and engine — the ones the home names before the bump — run
-`jk install --skip-tests` on the new tree. That pass shelves the new version's workers, installs
+`jk install -S` on the new tree. That pass shelves the new version's workers, installs
 the new engine and client into the home, and re-shelves under the new engine (the fixed point);
 only then can the new engine compile anything, because it looks for workers of its own version
 and the repository does not serve them yet. (`install.sh target/dist/jk` shelves the dist's
@@ -559,7 +559,7 @@ head -n 2 LATEST                                                                
 #    starts the workflow (`gh release create v0.13.6 --draft`); GH_TOKEN must be able to write
 #    releases. Publish the draft last.
 scripts/release-notes.sh 0.13.6 > RELEASE_NOTES.md
-(cd server/engine && jk publish --sbom --dry-run)   # prints the path it wrote, under the root's target/
+(cd server/engine && jk publish -S -U)   # prints the path it wrote, under the root's target/
 cp server/engine/target/sbom/jk-engine-0.13.6.cdx.json jk-0.13.6.cdx.json
 scripts/publish-github-release.sh 0.13.6 RELEASE_NOTES.md target/release/0.13.6/* jk-0.13.6.cdx.json
 ```
@@ -576,7 +576,7 @@ alone; Central serves plugin authors who build with Maven or Gradle.
 
 `release.yml` does it in three steps of `scripts/publish-central.sh`:
 
-1. **bundle** — the linux-x86_64 build runs `jk publish --central --sign --dry-run` in
+1. **bundle** — the linux-x86_64 build runs `jk publish -c -I -U` in
    `shared/host` and `shared/plugin-sdk`: each module's jar, POM, sources and javadoc jars, every
    file signed with the release GPG key, as one Portal bundle per module.
 2. **upload** — the publish job, once `repo/` is live and both POMs answer on jumpkick.build,
@@ -591,7 +591,7 @@ run the first two steps by hand against the real Portal with `JK_CENTRAL_VALIDAT
 deployment is parked user-managed, polled to `VALIDATED` and then dropped.
 
 ```bash
-jk build --skip-tests -m shared/plugin-sdk
+jk build -S -m shared/plugin-sdk
 JK_CENTRAL_GPG_KEY_FILE=/owner-only/path/release-gpg.asc JK_GPG_PASSPHRASE=… \
   scripts/publish-central.sh bundle target/central
 JK_REPO_CENTRAL_USERNAME=… JK_REPO_CENTRAL_PASSWORD=… JK_CENTRAL_VALIDATE_ONLY=1 \
@@ -620,7 +620,7 @@ it, for a look before the first real upload.
 ## Local dry-run
 
 ```bash
-jk build --skip-tests    # target/dist/jk + lib/jk-engine-<ver>.jar + lib/jk-<ver>.jar + lib/jk-maven-spy-<ver>.jar
+jk build -S    # target/dist/jk + lib/jk-engine-<ver>.jar + lib/jk-<ver>.jar + lib/jk-maven-spy-<ver>.jar
 export JK_RELEASE_RSA_SIGNING_KEY_FILE=/owner-only/path/release-key.pem
 DIST_DIR=target/dist scripts/assemble-release-dir.sh
 # inspect target/release/0.13.6/

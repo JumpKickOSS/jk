@@ -9,7 +9,7 @@ import java.nio.file.Path;
 
 /**
  * A two-module workspace on disk plus the {@code ide-model} JSON the CLI prints for it, captured
- * from {@code jk ide --print-model} with its absolute paths templated: {@code core} is SIMPLE
+ * from {@code jk ide -p} with its absolute paths templated: {@code core} is SIMPLE
  * layout with an {@code integration} suite, {@code app} is TRADITIONAL with Lombok as a
  * processor and a tests-kind edge onto {@code core}.
  */

@@ -164,7 +164,7 @@ class ThirdPartyPluginExampleTest {
         assertThat(carriesMethodParameters(appClass)).as("second build").isTrue();
     }
 
-    /** {@code jk build --skip-tests} of {@code app}, its output the message when the exit is not 0. */
+    /** {@code jk build -S} of {@code app}, its output the message when the exit is not 0. */
     private static void buildGreen(Path app, String which) throws Exception {
         int[] exit = new int[1];
         Capture.Streams streams = Capture.both(

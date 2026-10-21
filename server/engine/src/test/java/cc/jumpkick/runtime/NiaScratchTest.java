@@ -92,7 +92,7 @@ class NiaScratchTest {
                 .isEmpty();
     }
 
-    /** The release finish: jk build --release of :app → R8 full mode + a signed AAB. */
+    /** The release finish: jk build -R of :app → R8 full mode + a signed AAB. */
     @Test
     void app_release_aab() throws Exception {
         Path module = NIA.resolve("app");

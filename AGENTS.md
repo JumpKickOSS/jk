@@ -114,13 +114,13 @@ After code changes, reinstall the **local** JumpKick so dogfood uses the build y
 (client on PATH under `~/.jk/bin`, engine jar under `~/.jk/lib/jk-engine/`):
 
 ```bash
-jk build --skip-tests && jk install --skip-tests
+jk build -S && jk install -S
 ```
 
 | Step | What it does |
 |---|---|
-| `jk build --skip-tests` | Every module compiled and packaged; `target/dist/jk` (native CLI) + `target/dist/lib/jk-engine-<version>.jar` |
-| `jk install --skip-tests` | Shelves every library and worker jar under `~/.jk/store/repos/jk-local` (bytes into the artifact CAS first), materializes the engine jar into `~/.jk/lib/jk-engine/`, pins the shelved jars to that engine by sha in `~/.jk/lib/jk-engine/jk-shelf.toml` and swaps the native client into `~/.jk/bin/jk`. The next invocation takes over the resident engine; every fork of an engine runs the workers its own install pinned, so a second worktree's install never swaps a worker under a running engine, and the displaced engine drains with its own |
+| `jk build -S` | Every module compiled and packaged; `target/dist/jk` (native CLI) + `target/dist/lib/jk-engine-<version>.jar` |
+| `jk install -S` | Shelves every library and worker jar under `~/.jk/store/repos/jk-local` (bytes into the artifact CAS first), materializes the engine jar into `~/.jk/lib/jk-engine/`, pins the shelved jars to that engine by sha in `~/.jk/lib/jk-engine/jk-shelf.toml` and swaps the native client into `~/.jk/bin/jk`. The next invocation takes over the resident engine; every fork of an engine runs the workers its own install pinned, so a second worktree's install never swaps a worker under a running engine, and the displaced engine drains with its own |
 | `./install.sh target/dist/jk` | The same ship layout onto a machine with no jk yet |
 | `scripts/reinstall-chain.sh` | The same two steps when the installed jk is too old to build the checkout: installs stepping stones from a scratch worktree first ([self-host](docs/contributors/self-host.md#the-bootstrap-chain)) |
 
@@ -131,7 +131,7 @@ Then verify on PATH (or the install dir):
 ```bash
 jk engine status          # engine answers, no version-skew crash; `Source` names this checkout
 # simple smoke project (any temp dir; `jk init` takes no directory — it initializes the cwd):
-jk new smoke-app --lang java && cd smoke-app && jk build
+jk new smoke-app -l java && cd smoke-app && jk build
 ```
 
 Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIBUTING.md)). Module and class filters are fine mid-ticket; the full gate (`jk format`, `jk guard`, `jk build`, `jk test -p integration`) and the reinstall smoke are required **before moving a code-changing ticket to done**.
@@ -184,7 +184,7 @@ Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not**
    - **Also** green `jk test -p integration` — the pre-merge bar — and `jk test -p slow` when the ticket touches a framework or language plugin.
    - Mid-ticket, narrow with `-m <module>` and `--class <fqcn>`; do not treat a 20+ minute full e2e as the only loop.
    - Do not land on `main` with a red or un-run test suite for areas you changed. A broken main is a stop-the-line defect: fix tests first, then resume tickets.
-2. **Reinstall** — `jk build --skip-tests && jk install --skip-tests`.
+2. **Reinstall** — `jk build -S && jk install -S`.
 3. **Engine smoke** — `jk engine status` succeeds (engine up or able to start; no immediate failure).
 4. **Project smoke** — a simple project builds with the reinstalled binary, e.g. `jk init … && jk build` (or equivalent lock/build path the ticket affects).
 

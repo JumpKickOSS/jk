@@ -38,7 +38,7 @@ public final class CentralPortal {
     public static final URI DEFAULT_URL = URI.create("https://central.sonatype.com/");
 
     /**
-     * The credential id {@code jk publish --central} reads from the store and the environment: the
+     * The credential id {@code jk publish -c} reads from the store and the environment: the
      * repository's own name, so the Portal's token lives where Central's does.
      */
     public static final String CREDENTIAL_ID = RepositorySpec.CENTRAL;
@@ -121,7 +121,7 @@ public final class CentralPortal {
             case RepoCredential.Anonymous ignored ->
                 throw new IOException(
                         "the Central Portal needs a user token: run `jk repo login "
-                                + CREDENTIAL_ID + " --url " + DEFAULT_URL
+                                + CREDENTIAL_ID + " -U " + DEFAULT_URL
                                 + "` with the token's name as --username and its password on stdin (or export JK_REPO_CENTRAL_USERNAME / JK_REPO_CENTRAL_PASSWORD with JK_REPO_CENTRAL_HOST=central.sonatype.com)");
         };
     }

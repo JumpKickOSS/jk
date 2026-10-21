@@ -13,7 +13,7 @@ exhaustive step log; this file points at it rather than duplicating it.
 
 ```bash
 jk results              # latest jk-results.md
-jk results --details    # that run's details.jsonl
+jk results -d    # that run's details.jsonl
 ```
 
 On disk:
@@ -27,7 +27,7 @@ The two files are the same report. Prefer the command over `cat` so you do not h
 know the state-dir path.
 
 **Agents:** run `jk skill` once. Then MCP `run` (the reply is the verdict) or
-`jk --agent`. Do not scrape the TTY. Do not turn on `--verbose` as your primary API.
+`jk -a`. Do not scrape the TTY. Do not turn on `--verbose` as your primary API.
 
 JUnit XML for CI stays at `target/surefire-reports/` (`target/failsafe-reports/` for the integration suite); each class's
 `<system-out>` there holds what it printed, passing or not ([Test](test.md#what-a-test-printed)). Failed-test stacks are in
@@ -59,8 +59,8 @@ Agent playbook: [Agents](agents.md).
 
 ```bash
 # Verdict for an agent (the human report is `jk results`):
-jk --agent test
-jk --agent build
+jk -a test
+jk -a build
 
 # Rebuild / retest:
 jk test
@@ -97,8 +97,8 @@ Disable the transcript with `JK_CLI_DETAILS=off`. Chrome tracing (timings, not f
 | “Build #N already running” | another `jk` in this checkout, through this engine or another on the machine (`target/.jk/build.lock`) | `jk jobs` then `jk cancel`; or wait. Worktrees are separate slots |
 | Disk / CAS full | `jk cache usage` / `jk storage usage` | `jk cache clean` first; [Cache](cache.md) |
 | Engine won’t start / version skew | `jk engine status` | `jk engine stop` then retry; [Engine](engine.md) |
-| Plugin worker dies with `NoSuchMethodError` / `NoClassDefFoundError` (`jk image`, `jk test`, a compiler) | `jk doctor -v` — the `worker:` line names the jar’s source repo and lists the launch classpath | A `jk-local` worker was installed from a checkout and shadows the published one: `jk storage clean --workers`, then rerun; [Cache](cache.md#plugin-workers) |
-| Format check failed | `jk format --check` | `jk format` (no `--check`); [Format](format.md) |
+| Plugin worker dies with `NoSuchMethodError` / `NoClassDefFoundError` (`jk image`, `jk test`, a compiler) | `jk doctor -v` — the `worker:` line names the jar’s source repo and lists the launch classpath | A `jk-local` worker was installed from a checkout and shadows the published one: `jk storage clean -w`, then rerun; [Cache](cache.md#plugin-workers) |
+| Format check failed | `jk format -c` | `jk format` (no `--check`); [Format](format.md) |
 | Windows: `jk.exe` blocked by Application Control | toast / “An Application Control policy has blocked this file” | Use the thin client (`jk.bat`); [Install](install.md). Released natives are signed when published. Turning Smart App Control off is optional for contributors who run an unsigned local build. |
 
 ## Cancel a stuck job
@@ -119,7 +119,7 @@ Default `jk test` overlaps **module** suites and may shard classes across worker
 
 ```bash
 jk test -w1              # one test JVM per module
-jk test --serial-tests   # one module’s tests at a time
+jk test -L   # one module’s tests at a time
 ```
 
 Pin a hermetic module with `[test] workers = 1`. See [Test](test.md).

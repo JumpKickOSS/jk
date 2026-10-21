@@ -211,7 +211,7 @@ class RunCommandTest {
     }
 
     /**
-     * Runs {@code jk run -C <tempDir> --cache-dir <shared>}, capturing stdout + stderr for content
+     * Runs {@code jk run -C <tempDir> -d <shared>}, capturing stdout + stderr for content
      * assertions. The plan-chip result line (success or failure) settles on stdout — same stream as
      * the live progress region it replaces — while ad hoc {@code CliOutput.err} messages go to
      * stderr; capture both since callers don't need to care which one a given message rides.

@@ -88,7 +88,7 @@ class EngineStopCommandTest {
             assertThat(settled.streams().err())
                     .contains("pid " + holder.pid())
                     .contains("not killed")
-                    .contains("jk engine stop --now");
+                    .contains("jk engine stop -n");
             assertThat(holder.isAlive()).isTrue();
         } finally {
             holder.destroyForcibly();
@@ -158,7 +158,7 @@ class EngineStopCommandTest {
         Capture.Streams settled = NoAnsi.forced(() -> Capture.both(() ->
                 assertThat(new EngineStopCommand().report(List.of(leftAlone))).isEqualTo(Exit.FAILURE)));
 
-        assertThat(settled.err()).contains("left alone").contains("pid [4242]").contains("jk engine stop --now");
+        assertThat(settled.err()).contains("left alone").contains("pid [4242]").contains("jk engine stop -n");
     }
 
     @Test

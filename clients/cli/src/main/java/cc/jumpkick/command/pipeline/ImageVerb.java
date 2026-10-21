@@ -63,12 +63,12 @@ final class ImageVerb implements BuildVerb {
     @Override
     public List<Opt> ownOptions() {
         return List.of(
-                Opt.value("<class>", "Main class to set as the image entrypoint.", "--main"),
-                Opt.value("<registry>", "Override image.registry from jk.toml.", "--registry"),
-                Opt.value("<tag>", "Override image.tag from jk.toml.", "--tag"),
-                Opt.value("<path>", "Write an OCI tarball instead of pushing.", "--tarball")
+                Opt.value("<class>", "Main class to set as the image entrypoint.", "-T", "--main"),
+                Opt.value("<registry>", "Override image.registry from jk.toml.", "-U", "--registry"),
+                Opt.value("<tag>", "Override image.tag from jk.toml.", "-W", "--tag"),
+                Opt.value("<path>", "Write an OCI tarball instead of pushing.", "-Z", "--tarball")
                         .withFallback(""),
-                Opt.value("<exe>", "Docker/Podman binary (default: auto)", "--docker-executable"));
+                Opt.value("<exe>", "Docker/Podman binary (default: auto)", "-X", "--docker-executable"));
     }
 
     @Override

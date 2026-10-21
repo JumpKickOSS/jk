@@ -63,7 +63,7 @@ class GuardMessagesAcceptTest {
         RuleReport r = report(dir, rule, recorded);
         assertThat(r.outcome()).isEqualTo(Outcome.SCOPE_SHRUNK);
         assertThat(GuardMessages.render(r))
-                .contains("Accept:   jk guard freeze r --accept-scope --reason")
+                .contains("Accept:   jk guard freeze r -U -W")
                 .doesNotContain("Exempt:");
     }
 
@@ -71,7 +71,7 @@ class GuardMessagesAcceptTest {
     void a_baseline_rule_s_first_red_names_the_freeze(@TempDir Path dir) throws Exception {
         RuleReport r = report(dir, rule(dir, "signatures = [\"java.lang.ref.SoftReference\"]\nbaseline = true\n"));
         assertThat(r.outcome()).isEqualTo(Outcome.VIOLATIONS);
-        assertThat(GuardMessages.render(r)).contains("Accept:   jk guard freeze r --reason");
+        assertThat(GuardMessages.render(r)).contains("Accept:   jk guard freeze r -W");
     }
 
     @Test

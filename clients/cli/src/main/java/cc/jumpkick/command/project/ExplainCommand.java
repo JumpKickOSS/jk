@@ -78,11 +78,11 @@ public final class ExplainCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         var opts = new ArrayList<Opt>();
-        opts.add(Opt.flag("Build the plan instead of printing it", "--run"));
+        opts.add(Opt.flag("Build the plan instead of printing it", "-X", "--run"));
         // Forecasting `jk build <flags>` means accepting the flags the build does.
         opts.addAll(BuildVerbCommand.build().options());
-        opts.add(Opt.value("<fmt>", "Emit module DAG as dot or mermaid", "--graph"));
-        opts.add(Opt.value("<file>", "Write --graph output to this file", "--graph-out"));
+        opts.add(Opt.value("<fmt>", "Emit module DAG as dot or mermaid", "-U", "--graph"));
+        opts.add(Opt.value("<file>", "Write --graph output to this file", "-W", "--graph-out"));
         return opts;
     }
 
@@ -96,7 +96,7 @@ public final class ExplainCommand implements CliCommand {
         return in.value("graph-out").filter(s -> !s.isBlank());
     }
 
-    /** {@code jk explain --graph dot} pipes a graph source into {@code dot} or an editor preview. */
+    /** {@code jk explain -U dot} pipes a graph source into {@code dot} or an editor preview. */
     @Override
     public boolean scriptMode(Invocation in) {
         // With --graph-out the graph lands in a file and stdout carries only the human settle.
@@ -765,7 +765,7 @@ public final class ExplainCommand implements CliCommand {
     }
 
     /**
-     * {@code jk explain --graph dot|mermaid} — module dependency DAG (engine-hosted).
+     * {@code jk explain -U dot|mermaid} — module dependency DAG (engine-hosted).
      */
     private static int emitModuleGraph(
             Path startDir,

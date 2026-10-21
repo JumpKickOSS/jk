@@ -175,7 +175,7 @@ final class EngineReads {
                 });
     }
 
-    /** The module DAG behind {@code jk explain --graph}. */
+    /** The module DAG behind {@code jk explain -U}. */
     static ModuleGraphAck moduleGraph(
             EnginePaths.Paths paths,
             Path dir,

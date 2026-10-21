@@ -73,14 +73,14 @@ public final class AddCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         List<Opt> opts = new ArrayList<>(List.of(
-                Opt.value("<handle>", "Manifest key; defaults to the dependency name.", "--library"),
-                Opt.value("<group>", "Maven groupId. Required for a bare short name.", "--group"),
-                Opt.value("<name>", "Maven artifactId; defaults to the library handle.", "--name"),
+                Opt.value("<handle>", "Manifest key; defaults to the dependency name.", "-l", "--library"),
+                Opt.value("<group>", "Maven groupId. Required for a bare short name.", "-U", "--group"),
+                Opt.value("<name>", "Maven artifactId; defaults to the library handle.", "-W", "--name"),
                 // --version collides with the global --version, so jk uses --ver.
-                Opt.value("<ver>", "Version selector, e.g. \"3.4.0\", \"^3.4\", \"~3.4.0\".", "--ver"),
-                Opt.value("<c>", "Maven classifier; the handle defaults to name-<c>.", "--classifier")));
+                Opt.value("<ver>", "Version selector, e.g. \"3.4.0\", \"^3.4\", \"~3.4.0\".", "-e", "--ver"),
+                Opt.value("<c>", "Maven classifier; the handle defaults to name-<c>.", "-c", "--classifier")));
         opts.addAll(DepScopeFlags.options());
-        opts.add(Opt.flag("Check the dep is reachable without adding it.", "--ping"));
+        opts.add(Opt.flag("Check the dep is reachable without adding it.", "-i", "--ping"));
         return List.copyOf(opts);
     }
 

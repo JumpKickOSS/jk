@@ -43,8 +43,8 @@ public final class ResultsCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Print every problem of the latest run in the agent format.", "--all"),
-                Opt.flag("Print the latest run's details.jsonl transcript instead.", "--details"));
+                Opt.flag("Print every problem of the latest run in the agent format.", "-A", "--all"),
+                Opt.flag("Print the latest run's details.jsonl transcript instead.", "-d", "--details"));
     }
 
     @Override

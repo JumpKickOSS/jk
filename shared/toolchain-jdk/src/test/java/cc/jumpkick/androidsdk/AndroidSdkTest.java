@@ -92,7 +92,7 @@ class AndroidSdkTest {
             AndroidSdkInstaller installer = new AndroidSdkInstaller(sdk);
             assertThatThrownBy(() -> installer.ensure("platforms;android-28"))
                     .isInstanceOf(IOException.class)
-                    .hasMessageContaining("jk android licenses --yes");
+                    .hasMessageContaining("jk android licenses -y");
             assertThatThrownBy(() -> installer.ensure("platforms;android-999"))
                     .isInstanceOf(IOException.class)
                     .hasMessageContaining("not in Google's repository feed");

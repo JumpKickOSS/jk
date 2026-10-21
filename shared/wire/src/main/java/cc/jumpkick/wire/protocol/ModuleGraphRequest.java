@@ -5,7 +5,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Module dependency DAG export ({@code jk explain --graph dot|mermaid}); {@code modules} and {@code
+ * Module dependency DAG export ({@code jk explain -U dot|mermaid}); {@code modules} and {@code
  * affectedSince} filter the workspace graph the same way build selectors do, and ride only when
  * set.
  */

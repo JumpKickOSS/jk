@@ -67,7 +67,7 @@ class ResultsCommandTest {
         Path proj = project();
         ProjectBuilds.RunDir run = open(proj);
         Files.writeString(run.resultsFile(), "# human\n");
-        Files.writeString(run.runDir().resolve(ProjectBuilds.AGENT), "FAIL build app\n+2 more: jk results --all\n");
+        Files.writeString(run.runDir().resolve(ProjectBuilds.AGENT), "FAIL build app\n+2 more: jk results -A\n");
         Files.writeString(run.runDir().resolve(ProjectBuilds.AGENT_ALL), "E src/A.java:1:1 a\nE src/F.java:6:1 f\n");
 
         String out = Capture.stdout(() -> Jk.execute("-C", proj.toString(), "results", "--all"));

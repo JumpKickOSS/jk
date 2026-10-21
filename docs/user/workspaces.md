@@ -284,11 +284,11 @@ A sibling's version is no floor for a member: where a versionless root under a s
 puts `commons-logging` 1.3.6 on the workspace's row, a `spring-context` module whose graph declares
 1.3.5 reads 1.3.5 from a row of its own, as under Maven. A floating selector on the member's own
 root — `latest`, a caret, the Jupiter the test runner adds to a member that declares no test
-dependencies — asks the workspace for its answer and never disagrees with it. A `jk lock --features` name reaches each unit
+dependencies — asks the workspace for its answer and never disagrees with it. A `jk lock -e` name reaches each unit
 whose `[features]` declares it — the root's merged solve where the root declares it, a member's
 declarations in that solve and its own solve where the member does — and is left out for the units
 that lack it; a name no unit of the workspace declares is refused as `unknown feature`. So
-`jk lock --features noshade` at hadoop's root activates `hadoop-client-integration-tests`' feature
+`jk lock -e noshade` at hadoop's root activates `hadoop-client-integration-tests`' feature
 though the root has no `[features]` table.
 
 `jk why <coord>` lists every version the lock carries for the coordinate, each with the members it
@@ -356,10 +356,10 @@ jk explain -m '{api,worker}'
 jk build -m jk-engine
 jk build -m :server:engine          # Gradle-style colon path
 
-jk build --affected-since=origin/main
-jk test --affected-since=origin/main  # ranked test classes (does not run)
-jk build --affected                 # working-tree module cone (not a git ref)
-jk test --affected                  # ranked test classes as a table (does not run)
+jk build -e origin/main
+jk test -e origin/main  # ranked test classes (does not run)
+jk build -f                 # working-tree module cone (not a git ref)
+jk test -f                  # ranked test classes as a table (does not run)
 
 # Intersection when both flags set
 jk build -m 'libs/*' --affected-since=origin/main
@@ -374,7 +374,7 @@ the cone includes test/dev workspace deps. `--skip-tests` uses production scopes
 ## Selective CI plan
 
 ```bash
-jk selective prepare --since=origin/main
+jk selective prepare -S origin/main
 jk selective run test
 jk selective resolve -m 'api,worker'   # dry list
 ```

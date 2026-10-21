@@ -7,7 +7,7 @@ How JumpKick talks to **agents, scripts, and CI**. Humans at a TTY get a terse v
 |----------|-----------------|
 | Human at a TTY | Terse visual CLI |
 | Human debugging | `jk results` first; `--details` / `-v` if needed |
-| Agents | **`jk skill`** once, then the verdict: MCP `run`, or `jk --agent` / `JK_AGENT=1` |
+| Agents | **`jk skill`** once, then the verdict: MCP `run`, or `jk -a` / `JK_AGENT=1` |
 | Scripts / CI | **`target/jk-results.md`** / `jk results`, or `-O jsonl` |
 | Web dashboard | Engine HTTP + SSE (`/api/events`) |
 | MCP clients | Tools, resources, SSE — same facts, not a second build model |
@@ -23,8 +23,8 @@ JUnit pass rate. Written so you do not need to tail the TTY.
 
 ```bash
 jk results              # print the latest report
-jk results --all        # every problem, with source lines, in the agent format
-jk results --details    # print that run's details.jsonl
+jk results -A        # every problem, with source lines, in the agent format
+jk results -d    # print that run's details.jsonl
 ```
 
 Every hosted verb that journals a run — `jk build`, `jk test`, `jk lock`, `jk sync`, `jk update`, …
@@ -51,7 +51,7 @@ claude-code 3f9a` for an agent's connection (`bsp · IntelliJ-BSP 7b2c` for an I
 `tokens ≈ N`: the whole file's size at a fixed 3.6 characters per token, so an agent can decide
 between this file and `details.jsonl` before reading either.
 
-A coverage run (`jk test --coverage`, or a module with `[test] coverage = true`) adds a
+A coverage run (`jk test -T`, or a module with `[test] coverage = true`) adds a
 `Coverage:` line to the headline and a `## Coverage` table after `## Tests`: one row per module —
 `| Module | Lines | Branches |` as `85.2% (1204/1413)` — an `**all**` row for a workspace, and,
 when the journal holds an earlier coverage run of the project, `_Δ vs run #N_` with a `Δ` column
@@ -113,7 +113,7 @@ is written, so every module that had started is in it — the same failure produ
 however the siblings were timed. Their unfinished steps are one
 line under `## Failed steps` — `_N steps stopped by the failure._` — the module reads `SKIPPED`
 in `## Modules` and in the `Modules:` count, and a test run that was stopped is not a failure
-under `## Failures`. `jk build --continue` runs every module to the end instead. One verdict is
+under `## Failures`. `jk build -c` runs every module to the end instead. One verdict is
 the workspace's own rather than a step's: `built nothing` (`jk build` on a workspace with no module
 that has sources), `FAIL` with `exit 2` and the one-line reason naming the modules — the project's
 shape, not a red step. A `jk test` with no tests to run is green. [Workspaces](workspaces.md#nothing-to-build).
@@ -291,7 +291,7 @@ is one JSONL stream from the first byte to the last; on a terminal the app owns 
 Ordering is arrival order across processes; nothing is buffered beyond line assembly. Session
 teardown — Ctrl-C, or the app ending the loop — does not emit `sidecar-exited` for the processes it
 stops itself, and once the session is finished no event follows: an app killed by Ctrl-C has no
-`app-exited`, and stdout carries exactly the dev events its `details.jsonl` does. `jk dev --no-sidecars` emits no `sidecar-*` events at all. [Run](run.md#sidecars-devsidecars).
+`app-exited`, and stdout carries exactly the dev events its `details.jsonl` does. `jk dev -T` emits no `sidecar-*` events at all. [Run](run.md#sidecars-devsidecars).
 
 ## `details.jsonl`
 
@@ -318,7 +318,7 @@ same file, so a session with twenty rebuilds is one `details.jsonl` rather than 
 build order. The dev events carry no `progress`.
 
 With `-v`, the CLI prints `Details: <path>` and `Results: <target/jk-results.md>` after a
-run. `jk results -v` / `jk results --details -v` print the path on stderr, then the file. MCP
+run. `jk results -v` / `jk results -d -v` print the path on stderr, then the file. MCP
 `details` (resource `jk://runs/latest/details`) is a **budgeted tail**; the CLI flag dumps
 the whole file.
 
@@ -358,7 +358,7 @@ sample frames) is **not** sent on MCP SSE.
 Every run that evaluates a guard lane leaves `target/jk-guards.sarif` (SARIF 2.1.0: `ruleId`,
 `partialFingerprints`, `baselineState` `new`/`unchanged`, `suppressions` with the baseline reason
 as `justification`, `invocations[0].executionSuccessful` false on any `scanner-failed`) and
-`target/jk-guards.jsonl` (every violation row). `jk guard --output sarif` prints the SARIF file
+`target/jk-guards.jsonl` (every violation row). `jk guard -O sarif` prints the SARIF file
 whole; `-O jsonl` streams the rows as `guard` events. `target/jk-results.md` stays the
 agent view. Upload the SARIF to code scanning from CI — [CI](ci.md#guards).
 

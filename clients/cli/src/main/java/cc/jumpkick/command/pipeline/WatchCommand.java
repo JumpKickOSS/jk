@@ -54,8 +54,11 @@ public final class WatchCommand implements CliCommand {
         // Every watched verb is a build verb: the loop takes the build options and hands them on.
         var opts = new ArrayList<>(BuildFlags.options(BuildFlags.Reach.DELIVER, BuildFlags.Affected.MODULES));
         opts.add(Opt.value(
-                "<ms>", "Debounce source changes (default " + SourceWatch.DEBOUNCE_MILLIS + " ms)", "--debounce-ms"));
-        opts.add(Opt.flag("Run the app alone, no [dev.sidecars]", "--no-sidecars"));
+                "<ms>",
+                "Debounce source changes (default " + SourceWatch.DEBOUNCE_MILLIS + " ms)",
+                "-U",
+                "--debounce-ms"));
+        opts.add(Opt.flag("Run the app alone, no [dev.sidecars]", "-T", "--no-sidecars"));
         return opts;
     }
 

@@ -148,7 +148,7 @@ public final class LockPipeline {
 
     /** What an offline pass does with the lock already on disk. */
     private enum OfflineReuse {
-        /** {@code jk lock --offline}: the pinned graph verbatim, or a hard failure naming what is missing. */
+        /** {@code jk lock -o}: the pinned graph verbatim, or a hard failure naming what is missing. */
         REQUIRED,
         /** A freshen: reuse the pinned graph when it is entirely local, else solve from the warm store. */
         PREFERRED,
@@ -769,7 +769,7 @@ public final class LockPipeline {
 
     /**
      * Refuse when the lock on disk was written by a newer jk than this one, unless the session is
-     * forced ({@code jk lock --force}). Plans call it before the resolve so the refusal costs
+     * forced ({@code jk lock -F}). Plans call it before the resolve so the refusal costs
      * nothing; {@link #write} calls it again as the choke point every entry shares.
      */
     public void refuseOlderWriter() {

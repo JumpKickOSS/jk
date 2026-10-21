@@ -174,7 +174,7 @@ class JkDirsTest {
 
     /**
      * Credentials are a root, not a corner of the store. That is what makes
-     * {@code jk self nuke --store} unable to log the user out: the tokens are not in the tree it
+     * {@code jk self nuke -S} unable to log the user out: the tokens are not in the tree it
      * deletes, so no exclusion has to be remembered.
      */
     @Test

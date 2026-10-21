@@ -17,7 +17,7 @@ public final class DetailsTool implements McpTool {
         return new Spec(
                 "details",
                 "Budgeted tail of a run's details.jsonl transcript (default: last-fail, error + "
-                        + "task-finish, 80 events). Same facts as CLI `jk results --details`, which "
+                        + "task-finish, 80 events). Same facts as CLI `jk results -d`, which "
                         + "prints the full file. Start with run. Resource: jk://runs/latest/details.",
                 McpSchemas.object(Map.of(
                         "run",

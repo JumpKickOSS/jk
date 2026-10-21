@@ -53,7 +53,7 @@ public final class JshellCommand implements CliCommand {
     public List<Opt> options() {
         // The preparatory build always skips tests, so jshell takes the core build options only.
         List<Opt> opts = new ArrayList<>(BuildFlags.options(BuildFlags.Reach.COMPILE, BuildFlags.Affected.MODULES));
-        opts.add(Opt.flag("Skip build; use existing classes + lock classpath only.", "--no-build"));
+        opts.add(Opt.flag("Skip build; use existing classes + lock classpath only.", "-n", "--no-build"));
         return opts;
     }
 

@@ -8,7 +8,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * The engine's {@code ide-model} as {@code jk ide --print-model} prints it, decoded without a JSON
+ * The engine's {@code ide-model} as {@code jk ide -p} prints it, decoded without a JSON
  * library so the plugin stays wire-only. Per-module data arrives as parallel arrays indexed like
  * {@code moduleDirs}; cross-module rows are {@code moduleIndex|…} strings. Jar and JDK paths are
  * absolute. A non-null {@link #error} means the engine could not compute the model.

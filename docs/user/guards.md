@@ -10,11 +10,11 @@ jk guard                          # every lane now; exit 1 on any new violation
 jk guard explain                  # the catalog: every rule, its last verdict, its baseline
 jk guard explain <id>             # one rule's card: what, instead, why, where it came from
 jk guard explain --schema forbid  # a kind's keys and one example
-jk guard freeze <id> --reason "…" # accept a rule's current sites into the baseline
-jk guard freeze <id> --accept-scope --reason "…" # accept a rule's smaller population as its floor
+jk guard freeze <id> -W "…" # accept a rule's current sites into the baseline
+jk guard freeze <id> -U -W "…" # accept a rule's smaller population as its floor
 jk guard hooks install            # commit-msg and pre-commit hooks
 jk guard test                     # every fixture bites; judged from the compiled guard suite
-jk guard --output sarif           # print target/jk-guards.sarif
+jk guard -O sarif           # print target/jk-guards.sarif
 ```
 
 ## A rule
@@ -209,7 +209,7 @@ Every key the loader accepts, by kind; `common` keys apply to every kind.
 A baselined `metric` with `min` and no `cap` is a floor: a unit is red when it falls more than
 `band` below its entry, and the entry rises when the unit climbs more than `band` above it. That is
 the shape of a coverage ratchet — `measure = "coverage.line"`, `min = 100`, `band = 0.5` — read from
-the `jacoco.xml` a `jk test --coverage` run leaves under each module's reports. A baselined `metric`
+the `jacoco.xml` a `jk test -T` run leaves under each module's reports. A baselined `metric`
 with `cap` is the mirror: `measure = "lint.findings"`, `cap = 0`, `baseline = true` counts the
 findings in the XML reports the [`[lint]`](lint.md) steps leave under each module's
 `target/…/plugin/lint-<tool>/` — Checkstyle's and detekt's `<error>` rows, PMD's `<violation>`s and
@@ -242,7 +242,7 @@ and both are the user's call. Machine readers get the same rows as SARIF and JSO
 
 A rule with `baseline = true` can tolerate the violations that exist when it lands and refuses
 new ones. Landing is an explicit act: the first run reports today's sites red, with an
-`Accept:` line naming `jk guard freeze <id> --reason "…"`, and that freeze records them. The
+`Accept:` line naming `jk guard freeze <id> -W "…"`, and that freeze records them. The
 accepted sites live in **`jk-guards-baseline.toml`**, which only the engine writes: it tightens
 on its own as sites disappear, and grows only through a freeze, which records the reason beside
 the sites. A freeze writes the named rule's new entries and nothing else: stale entries, other

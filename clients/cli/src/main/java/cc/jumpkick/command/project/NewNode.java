@@ -26,7 +26,7 @@ import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk new --lang node -t <framework>}: the framework's own generator, run under the newest
+ * {@code jk new -l node -t <framework>}: the framework's own generator, run under the newest
  * Active LTS Node.js jk provisions, then the {@code jk.toml} that pins it. Also the {@code
  * --frontend} swap of a template's {@code web} module.
  */
@@ -63,7 +63,7 @@ final class NewNode {
         if (name == null || name.equals(".")) {
             CommandWedge.printFail(
                     WEDGE,
-                    "name the project: jk new --lang node -t " + framework.get().id() + " <name>");
+                    "name the project: jk new -l node -t " + framework.get().id() + " <name>");
             return Exit.USAGE;
         }
         Path target = NewWizard.resolveTarget(a.directory(), a.cwd(), name);

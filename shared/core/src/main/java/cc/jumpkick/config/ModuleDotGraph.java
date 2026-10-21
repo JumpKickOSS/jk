@@ -17,7 +17,7 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Emit a module dependency DAG for {@code jk explain --graph} and the engine dashboard.
+ * Emit a module dependency DAG for {@code jk explain -U} and the engine dashboard.
  * Formats: Graphviz DOT, Mermaid flowchart, and a structured {@link GraphData} model (JSON for
  * the web client). Same edges as {@link ModuleOrder} / {@link AffectedModules#edgesFor}. No
  * external binary required — users pipe DOT to {@code dot -Tsvg} or open Mermaid in any renderer.
@@ -106,7 +106,7 @@ public final class ModuleDotGraph {
     }
 
     /**
-     * Load the module DAG for a project directory (same rules as {@code jk explain --graph}):
+     * Load the module DAG for a project directory (same rules as {@code jk explain -U}):
      * workspace root → all modules; standalone project → one node. Missing / unparseable
      * {@code jk.toml} → empty non-workspace graph (never throws for absent files).
      */

@@ -266,7 +266,7 @@ class BaselineTest {
         assertThat(Baselines.ciMode(k -> "true")).isTrue();
         assertThat(Baselines.ciMode(k -> "false")).isFalse();
         assertThat(Baselines.ciMode(k -> null)).isFalse();
-        assertThat(Baselines.freezeRefusal("", false)).contains("--reason");
+        assertThat(Baselines.freezeRefusal("", false)).contains("-W");
         assertThat(Baselines.freezeRefusal("why", true)).contains("CI");
         assertThat(Baselines.freezeRefusal("why", false)).isNull();
     }

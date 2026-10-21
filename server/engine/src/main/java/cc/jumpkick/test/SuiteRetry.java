@@ -27,7 +27,7 @@ final class SuiteRetry {
 
     private SuiteRetry() {}
 
-    /** True when jk chose the suite heap: no {@code --ram-percent} and no heap flag in {@code userArgs}. */
+    /** True when jk chose the suite heap: no {@code -K} and no heap flag in {@code userArgs}. */
     static boolean planned(List<String> userArgs) {
         if (!JvmOptions.autoHeapEnabled()) return false;
         if (userArgs == null) return true;

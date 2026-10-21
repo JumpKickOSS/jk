@@ -71,16 +71,17 @@ public final class UpdateCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<a,b,...>", "Activate listed features beyond defaults.", "--features")
+                Opt.value("<a,b,...>", "Activate listed features beyond defaults.", "-e", "--features")
                         .splitOn(","),
-                Opt.flag("Don't activate the project's defaults.", "--no-default-features"),
-                Opt.value("<name>", "Limit to this handle or group:artifact", "--dep")
+                Opt.flag("Don't activate the project's defaults.", "-n", "--no-default-features"),
+                Opt.value("<name>", "Limit to this handle or group:artifact", "-E", "--dep")
                         .repeat(),
-                Opt.flag("Allow a pin to cross its Maven major", "--major"),
-                Opt.value("[<name>]", "Re-resolve git dep(s) by name", "--git").withFallback("*"),
+                Opt.flag("Allow a pin to cross its Maven major", "-m", "--major"),
+                Opt.value("[<name>]", "Re-resolve git dep(s) by name", "-g", "--git")
+                        .withFallback("*"),
                 Opt.value("<url>", "Override declared repos with a single URL.", "--repo-url")
                         .hide(),
-                Opt.value("<enforced|floor>", "BOM policy: enforced or floor (lower bounds)", "--platform"),
+                Opt.value("<enforced|floor>", "BOM policy: enforced or floor (lower bounds)", "-p", "--platform"),
                 CommonOpts.cacheDir());
     }
 

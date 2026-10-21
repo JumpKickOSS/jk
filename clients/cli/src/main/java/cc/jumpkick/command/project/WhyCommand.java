@@ -43,9 +43,9 @@ public final class WhyCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<a,b,...>", "Activate listed features beyond the defaults.", "--features")
+                Opt.value("<a,b,...>", "Activate listed features beyond the defaults.", "-e", "--features")
                         .splitOn(","),
-                Opt.flag("Don't activate the project's default features.", "--no-default-features"));
+                Opt.flag("Don't activate the project's default features.", "-n", "--no-default-features"));
     }
 
     @Override

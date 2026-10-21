@@ -2,7 +2,7 @@
 
 ```bash
 jk web                 # ensure engine, print URL, open browser
-jk web --no-open       # print only
+jk web -n       # print only
 ```
 
 The resident engine serves a small dashboard (thin renderer; the engine owns all build
@@ -60,7 +60,7 @@ run recorded no tests, shows the comparisons it has.
 
 ## Coverage
 
-A coverage run (`jk test --coverage`, or a module with `[test] coverage = true`) adds a
+A coverage run (`jk test -T`, or a module with `[test] coverage = true`) adds a
 **coverage** strip under the run's header: covered lines and branches as percentages, the module
 count for a workspace, and `Δ vs run #N` when an earlier run of the project measured coverage.
 Clicking the strip opens the table the results file prints under `## Coverage` — one row per

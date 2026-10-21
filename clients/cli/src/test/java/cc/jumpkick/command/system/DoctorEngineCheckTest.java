@@ -76,7 +76,7 @@ class DoctorEngineCheckTest {
             DoctorCommand.Check check = DoctorCommand.checkEngine(socket, QUICK, YOUNG);
 
             assertThat(check.status()).isEqualTo(DoctorCommand.Status.FAIL);
-            assertThat(check.detail()).contains("likely wedged").contains("jk engine stop --now");
+            assertThat(check.detail()).contains("likely wedged").contains("jk engine stop -n");
         }
     }
 

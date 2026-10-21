@@ -47,7 +47,7 @@ class AffectedTestsComputeTest {
         assertThat(tests).extracting(TestClassIndex.Entry::className).containsExactly("com.acme.FooTest");
     }
 
-    /** A class-pattern suite's classes are its own: plain jk test leaves them out, --suite runs only them. */
+    /** A class-pattern suite's classes are its own: plain jk test leaves them out, -s runs only them. */
     @Test
     void tests_for_honours_class_pattern_suites(@TempDir Path dir) throws Exception {
         Path pkg = Files.createDirectories(dir.resolve("src/test/java/com/acme"));

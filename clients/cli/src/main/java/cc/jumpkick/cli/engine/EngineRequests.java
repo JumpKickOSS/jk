@@ -433,7 +433,7 @@ public final class EngineRequests {
 
     /**
      * A lock/update request's terminal outcome. {@code errors} carries pre-plan failures (manifest
-     * parse, workspace module load) as plain text; {@code refreshed} is {@code jk update --git}'s
+     * parse, workspace module load) as plain text; {@code refreshed} is {@code jk update -g}'s
      * refreshed count ({@code -1} otherwise). {@code exitCode} is authoritative — computed
      * engine-side from the step statuses (resolve failure exits 6, config problems 2).
      */
@@ -774,7 +774,7 @@ public final class EngineRequests {
     /**
      * Everything an engine-hosted cache maintenance op needs ({@code op} = {@code prune}/{@code
      * purge}/{@code sweep}/{@code clear} — {@code jk cache clean}/{@code nuke}, {@code jk storage
-     * clean}, {@code jk clean --force}). Ops ignore the fields they don't use; {@code projectRoot}
+     * clean}, {@code jk clean -F}). Ops ignore the fields they don't use; {@code projectRoot}
      * is {@code null} for everything but {@code clear}.
      */
     public record CacheMaintRequest(

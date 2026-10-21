@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk build --redo} reruns tests but must still store the green marker under the normal
+ * {@code jk build -r} reruns tests but must still store the green marker under the normal
  * content key — the next {@code jk explain} / build forecast has to see run-tests CACHED, not a
  * phantom retest (same parity contract as compile and package-jar).
  *

@@ -71,7 +71,7 @@ asked; the human report is `target/jk-results.md` and [Web](web.md). `details` a
 ## Verdict
 
 An OK run is one line. A failure adds one line per problem, capped at five, then
-`+K more: jk results --all | diagnostics(file=<path>)`: the shell command, then this tool. With no
+`+K more: jk results -A | diagnostics(file=<path>)`: the shell command, then this tool. With no
 `file`, `diagnostics` returns every problem with its source lines (the same text as `jk results
 --all`); with `file`, that file's.
 
@@ -159,7 +159,7 @@ The whole registry:
 | **`cancel`** | Cancel by **`jid`**, or every live job for a `dir` |
 | **`history`** | Recent runs as **summaries** (filters: dir, projectId, success, kind, limit, next). Avoid `view=full` |
 | **`diagnostics`** | Problems past the verdict cap, or one file with full snippets (`file`) |
-| **`details`** | Budgeted tail of `details.jsonl` (default last-fail, `error` + `task-finish`, 80 events). CLI `jk results --details` dumps the full file |
+| **`details`** | Budgeted tail of `details.jsonl` (default last-fail, `error` + `task-finish`, 80 events). CLI `jk results -d` dumps the full file |
 | **`why`** | The dependency path and the rule that picked the version, at most five lines (`coord`) |
 | **`explain`** | Forecast next build |
 | **`affected_tests`** | WIP module cone + advisory ranked test classes; writes `target/jk-tests-affected.md` |

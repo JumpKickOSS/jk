@@ -126,7 +126,7 @@ public final class Freezer {
                         "`" + ruleId + "` examines less than its baseline recorded (" + shrunk
                                 + (slice.isEmpty() ? "" : " in " + slice)
                                 + "); a shrink is a question, not a fact — `jk guard freeze " + ruleId
-                                + " --accept-scope --reason \"…\"` records the smaller population as the floor",
+                                + " -U -W \"…\"` records the smaller population as the floor",
                         0,
                         baseline.entryCount(),
                         0);

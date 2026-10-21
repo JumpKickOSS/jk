@@ -282,7 +282,7 @@ class SelfNukeCommandTest {
         }
 
         assertThat(unaccounted)
-                .as("JkDirs grew a root that `jk self nuke --all` neither deletes nor keeps on"
+                .as("JkDirs grew a root that `jk self nuke -A` neither deletes nor keeps on"
                         + " purpose. Add a row for it in SelfNukeCommand.plan(), or name it in"
                         + " KEPT_ROOTS here with the reason it survives.")
                 .isEmpty();

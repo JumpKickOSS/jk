@@ -75,7 +75,7 @@ public final class ActivateCommand implements CliCommand {
     public List<Opt> options() {
         // Global -y/--yes skips the interactive installer prompt (see Confirm / GlobalOptions).
         // Only the default home ($HOME/.jk) claims the rc block unasked; --rc asks for it elsewhere.
-        return List.of(Opt.flag("Write the rc block for a non-default JK_HOME too", "--rc"));
+        return List.of(Opt.flag("Write the rc block for a non-default JK_HOME too", "-R", "--rc"));
     }
 
     /** True for {@code jk activate <shell>}, false for the bare rc-block installer. */
@@ -210,7 +210,7 @@ public final class ActivateCommand implements CliCommand {
             CliOutput.out(
                     "    " + Theme.colorize(line, t.shell()) + "  " + Theme.colorize("# " + shell.name(), t.path()));
         }
-        CliOutput.out("  To write the rc block for this home anyway: " + Theme.colorize("jk activate --rc", t.shell()));
+        CliOutput.out("  To write the rc block for this home anyway: " + Theme.colorize("jk activate -R", t.shell()));
         return 0;
     }
 

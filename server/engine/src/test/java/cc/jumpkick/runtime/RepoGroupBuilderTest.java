@@ -243,7 +243,7 @@ class RepoGroupBuilderTest {
         // Each remedy is a binding, spelled for this repository: following it must not land in the
         // refusal warning next.
         assertThat(warning)
-                .contains("`jk repo login nexus --url https://nexus.example.com/repo/`")
+                .contains("`jk repo login nexus -U https://nexus.example.com/repo/`")
                 .contains("[repositories.nexus] table with this URL and a ${VAR} credential in ~/.jk/config.toml")
                 .contains("JK_REPO_NEXUS_TOKEN")
                 .contains("JK_REPO_NEXUS_USERNAME + JK_REPO_NEXUS_PASSWORD")

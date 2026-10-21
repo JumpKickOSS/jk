@@ -18,7 +18,7 @@ import org.jspecify.annotations.Nullable;
  *     then by unit ({@code classes}, {@code files}, …) — the scope-shrunk floor
  * @param entries the tolerated violations, every lane's
  * @param scopeReasons by lane, the reason a human gave when a smaller population was accepted as
- *     the floor ({@code jk guard freeze --accept-scope}); a lane with no population carries none
+ *     the floor ({@code jk guard freeze -U}); a lane with no population carries none
  */
 public record RuleBaseline(
         Map<String, Map<String, Long>> populations, List<Entry> entries, Map<String, String> scopeReasons) {

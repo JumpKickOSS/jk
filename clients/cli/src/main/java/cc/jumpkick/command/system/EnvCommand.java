@@ -42,7 +42,7 @@ public final class EnvCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         // Shadowed-file values ride the global -v/--verbose (a local flag would collide).
-        return List.of(Opt.flag("Include all process environment keys (not only .env and JK_*).", "--all"));
+        return List.of(Opt.flag("Include all process environment keys (not only .env and JK_*).", "-A", "--all"));
     }
 
     @Override

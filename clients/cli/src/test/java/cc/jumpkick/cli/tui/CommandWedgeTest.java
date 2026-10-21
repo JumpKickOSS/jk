@@ -66,7 +66,7 @@ class CommandWedgeTest {
     @Test
     void analyzing_stdout_is_suppressed_when_stdout_is_machine_consumed() {
         // : `jk bsp serve` hands stdout to BspServer as the JSON-RPC frame channel, and
-        // `jk explain --graph` writes graph source there. A spinner would put cursor ANSI in both.
+        // `jk explain -U` writes graph source there. A spinner would put cursor ANSI in both.
         var out = new ByteArrayOutputStream();
         var prev = System.out;
         try {

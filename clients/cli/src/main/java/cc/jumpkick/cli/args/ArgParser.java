@@ -31,9 +31,9 @@ public final class ArgParser {
     }
 
     /**
-     * @param passthroughUnknown when true, unrecognized options are treated as positional arguments
-     *     rather than errors — needed for passthrough commands like {@code jk mvn} / {@code jk
-     *     gradle} that forward unknown flags to a child process.
+     * @param passthroughUnknown when true, unrecognized options and every short option are positional
+     *     arguments rather than jk's — passthrough commands like {@code jk mvn} / {@code jk gradle}
+     *     forward them to a child process and take only their own options' long spellings.
      */
     public static Invocation parse(Command command, List<String> args, boolean passthroughUnknown)
             throws ParseException {
@@ -60,8 +60,12 @@ public final class ArgParser {
 
             if (tok.startsWith("--")) {
                 i = parseLong(command, byName, out, args, i, tok, passthroughUnknown);
+            } else if (passthroughUnknown) {
+                // A short option after a passthrough command's name is the child tool's: `jk mvn
+                // install -X` is Maven's debug flag, whatever letter jk's own options carry.
+                out.addPositional(tok);
             } else {
-                i = parseShort(byName, out, args, i, tok, passthroughUnknown);
+                i = parseShort(byName, out, args, i, tok);
             }
         }
 
@@ -126,15 +130,9 @@ public final class ArgParser {
 
     // --- short options: -n value, -nvalue, -qv (bundled flags) ---------------
 
-    private static int parseShort(
-            Map<String, Opt> byName,
-            Invocation.Builder out,
-            List<String> args,
-            int i,
-            String tok,
-            boolean passthroughUnknown)
+    private static int parseShort(Map<String, Opt> byName, Invocation.Builder out, List<String> args, int i, String tok)
             throws ParseException {
-        if (!passthroughUnknown && JVM_FLAG.matcher(tok).matches()) {
+        if (JVM_FLAG.matcher(tok).matches()) {
             throw new ParseException(
                     ParseException.Kind.JVM_OPTION,
                     tok,
@@ -146,10 +144,6 @@ public final class ArgParser {
             String shortName = "-" + tok.charAt(c);
             Opt opt = byName.get(shortName);
             if (opt == null) {
-                if (passthroughUnknown) {
-                    out.addPositional(tok); // treat whole cluster as passthrough
-                    return i;
-                }
                 throw new ParseException(
                         ParseException.Kind.UNKNOWN_OPTION, shortName, "unrecognized option " + shortName);
             }

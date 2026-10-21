@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk build --aot-cache} rewrites the app jar into {@code target/aot-cache/} with a
+ * {@code jk build -T} rewrites the app jar into {@code target/aot-cache/} with a
  * {@code Class-Path} manifest. That rewrite is an archive jk produces, so it obeys the same rule as
  * every other: entries carry the one pinned instant, 1980-02-01T00:00:00Z, via
  * {@link ZipEntry#setTimeLocal}. Left unpinned, the staged jar changed on every run — which both

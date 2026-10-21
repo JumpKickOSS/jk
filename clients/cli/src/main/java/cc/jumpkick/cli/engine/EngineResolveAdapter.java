@@ -51,7 +51,7 @@ final class EngineResolveAdapter {
     private EngineResolveAdapter() {}
 
     /**
-     * Ranked tests ({@code jk test --affected} / {@code --affected-since}): one synchronous request,
+     * Ranked tests ({@code jk test -f} / {@code -e}): one synchronous request,
      * one {@code affected-tests-ack}. Read-only — no compile, no test run.
      */
     static AffectedTestsReport runAffectedTests(
@@ -141,7 +141,7 @@ final class EngineResolveAdapter {
     }
 
     /**
-     * Run {@code jk update --git [<name>]} against the engine. No plan events stream — the engine
+     * Run {@code jk update -g [<name>]} against the engine. No plan events stream — the engine
      * splices the lock and replies with just the terminal, whose {@code refreshed} count and plain
      * {@code errors} the command renders.
      */

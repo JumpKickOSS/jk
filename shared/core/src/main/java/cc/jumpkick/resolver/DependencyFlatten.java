@@ -18,7 +18,7 @@ import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk tree --flatten}: each scope's full transitive closure as one deduplicated, sorted list.
+ * {@code jk tree -f}: each scope's full transitive closure as one deduplicated, sorted list.
  *
  * <p>A separate owner from {@link DependencyTree} because it is a separate traversal with a
  * separate invariant. The nested render's correctness rests on revisit-<em>marking</em> — a node

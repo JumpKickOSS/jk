@@ -72,7 +72,7 @@ class SilentPeerTest {
                 .isEqualTo("the build engine (pid 4242) is alive and busy — up 3m 12s, 6 worker processes — but has"
                         + " not answered a handshake in 2m 00s; it is not displaced, since that would kill the jobs"
                         + " it runs for other terminals. Retry in a moment; `jk engine status` shows its jobs, and"
-                        + " `jk engine stop --now` stops it regardless");
+                        + " `jk engine stop -n` stops it regardless");
         assertThat(life(Duration.ofSeconds(45), 1, Duration.ZERO).describe()).isEqualTo("up 45s, 1 worker process");
         assertThat(SilentPeer.human(Duration.ofSeconds(7_500))).isEqualTo("2h 05m");
     }

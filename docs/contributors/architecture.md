@@ -88,7 +88,7 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   identity hash because two invocations can share a state dir while disagreeing about where downloads
   belong; without it, `JK_STORE_DIR` silently did nothing. A machine can therefore hold several
   engines: `jk engine status` lists every resident engine this user owns (including other
-  `JK_HOME`s and draining/ghost pids). `jk engine stop --all` stops **this home only** so a
+  `JK_HOME`s and draining/ghost pids). `jk engine stop -A` stops **this home only** so a
   nested test suite cannot kill the host engine. `--pid` stops one explicitly.
 - **Versioning** — one live engine under `~/.jk/lib/jk-engine/`, with the live pointer in
   `jk-engine.toml` beside the jars, paired with
@@ -122,7 +122,7 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
 | **Engine log** | The spawner redirects the engine's stderr to `<state>/engine/<key>.log`; at each spawn it moves `.1` to `.2` and the log to `.1`, unless the log's header names a spawn less than 15 s old — a second spawner racing the first — in which case it appends. The engine writes through a byte-counting sink on the same file and rolls it to `.1` itself when it reaches the cap, so a warning loop cannot fill the disk. Two generations are kept. `jk engine status` shows the size and the last roll. Lines are leveled and redacted — see [Logging](#logging) | `[engine] log-max-mb` / `JK_ENGINE_LOG_MAX_MB` (default **16** MiB; `0` = no cap); `[engine] log-level` / `JK_LOG_LEVEL` (default **info**) |
 
 If a stream goes idle, the client fails closed with a clear error (tune with `JK_STREAM_IDLE_MS`;
-recover with `jk engine stop --now`). Heartbeats keep long quiet compiles honest against the
+recover with `jk engine stop -n`). Heartbeats keep long quiet compiles honest against the
 idle timer. Huge monorepos leave `JK_ENGINE_JOB_DEADLINE_MS` at `0`; CI can set a wall cap. A
 dashboard or agent whose builds legitimately run past an hour raises `detached-deadline-ms`, or
 passes a deadline on the submission itself.
@@ -363,7 +363,7 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
 - **Algorithm:** PubGrub (same family as Dart `pub` / `uv`).
 - **Conflict policy:** bare POM versions are highest-wins floors (not Maven nearest-wins).
   **With** a platform BOM and default policy **enforced**, BOM-map GAs use the BOM pin
-  exactly; opt-in **`[resolve] platform = "floor"`** / `jk update --platform=floor` treats
+  exactly; opt-in **`[resolve] platform = "floor"`** / `jk update -p floor` treats
   BOM-map pins as lower bounds only. GAs the BOM does not manage keep highest-wins mediation
   by default; **`[resolve] unmapped = "strict"`** makes their fills exact. Explicit
   Maven ranges stay open.
@@ -630,7 +630,7 @@ generators need `toolchain-jdk`); `core` cannot see the wire record at all.
 
 - **VS Code:** `clients/vscode/` — VSIX, tasks/commands via `jk`, BSP install.
 - **IntelliJ:** `clients/intellij/` — install-from-disk zip. **Sync project**
-  uses `jk ide --print-model` (structured model) + `jk ide --idea` (shared generator apply) +
+  uses `jk ide -p` (structured model) + `jk ide -i` (shared generator apply) +
   `jk bsp install` (dual-path with JetBrains BSP). Open-project activity offers/auto Sync when
   `jk.toml` is present. No engine jars on the plugin classpath. BSP: run, cancel,
   outputPaths, sources jars, publishDiagnostics.

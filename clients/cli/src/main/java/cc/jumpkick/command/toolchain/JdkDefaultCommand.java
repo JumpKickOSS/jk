@@ -45,7 +45,8 @@ public final class JdkDefaultCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Pick the latest installed LTS JDK (Temurin preferred).", "--lts"), CommonOpts.jdksDir());
+                Opt.flag("Pick the latest installed LTS JDK (Temurin preferred).", "-l", "--lts"),
+                CommonOpts.jdksDir());
     }
 
     @Override
@@ -98,7 +99,7 @@ public final class JdkDefaultCommand implements CliCommand {
             if (m != null && JdkLts.isLtsMajor(m)) ltsHits.add(hit);
         }
         if (ltsHits.isEmpty()) {
-            err.println("jk jdk default --lts: no LTS JDK installed (try `jk jdk install --lts`).");
+            err.println("jk jdk default -l: no LTS JDK installed (try `jk jdk install --lts`).");
             return false;
         }
         ltsHits.sort(Comparator.comparingInt((JdkHit h) ->

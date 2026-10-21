@@ -96,7 +96,7 @@ class FreezerTest {
     @Test
     void refusals_no_reason_unknown_rule_and_retire(@TempDir Path dir) throws Exception {
         Path p = project(dir);
-        assertThat(Freezer.freeze(p, "one-digest", "", false, false).error()).contains("--reason");
+        assertThat(Freezer.freeze(p, "one-digest", "", false, false).error()).contains("-W");
         assertThat(Freezer.freeze(p, "nope", "r", false, false).error())
                 .contains("no rule `nope`")
                 .contains("one-digest");
@@ -120,7 +120,7 @@ class FreezerTest {
         Path file = GuardsPresence.baselineFile(p);
         BaselineFile.write(file, Baseline.EMPTY.with("one-digest", RuleBaseline.of(Map.of("classes", 10L), List.of())));
         Freezer.Result plain = Freezer.freeze(p, "one-digest", "sites", false, false);
-        assertThat(plain.error()).contains("classes: 10 → ").contains("jk guard freeze one-digest --accept-scope");
+        assertThat(plain.error()).contains("classes: 10 → ").contains("jk guard freeze one-digest -U");
         assertThat(BaselineFile.read(file).of("one-digest").population())
                 .as("a refused freeze writes nothing")
                 .containsEntry("classes", 10L);

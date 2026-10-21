@@ -175,7 +175,7 @@ public final class PlannerTest {
 
     /**
      * The suites this run compiles, or null after marking the step skipped. A workspace run names
-     * a suite that need not exist in EVERY module — the IDE-generated {@code jk test --suite
+     * a suite that need not exist in EVERY module — the IDE-generated {@code jk test -s
      * integration} config must run where the suite exists and skip the rest, not fail the
      * workspace. Single-module runs keep the hard error (typo protection).
      */

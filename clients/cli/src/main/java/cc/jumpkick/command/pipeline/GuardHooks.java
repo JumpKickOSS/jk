@@ -70,7 +70,7 @@ final class GuardHooks {
                     rm -f "$git_dir/jk-guard-freeze"
                   else
                     echo "jk guard: jk-guards-baseline.toml is staged but no 'jk guard freeze' wrote it;" >&2
-                    echo "  the baseline grows only through 'jk guard freeze <id> --reason ...', never by hand" >&2
+                    echo "  the baseline grows only through 'jk guard freeze <id> -W ...', never by hand" >&2
                     exit 1
                   fi
                 fi

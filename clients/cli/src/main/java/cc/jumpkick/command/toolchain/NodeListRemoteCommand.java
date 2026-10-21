@@ -43,9 +43,9 @@ public final class NodeListRemoteCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Only LTS releases", "--lts"),
-                Opt.value("<N>", "Every release of this major", "--major"),
-                Opt.flag("Every release, not only the newest of each major", "--all"));
+                Opt.flag("Only LTS releases", "-l", "--lts"),
+                Opt.value("<N>", "Every release of this major", "-m", "--major"),
+                Opt.flag("Every release, not only the newest of each major", "-A", "--all"));
     }
 
     @Override

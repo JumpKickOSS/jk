@@ -31,7 +31,7 @@ public final class CommonOpts {
      */
     public static Opt cacheDir() {
         // Keep ≤ ~36 chars: build-family help pads the flag column wide (78-col budget).
-        return Opt.value("<dir>", "Override cache-tier root (not store)", "--cache-dir");
+        return Opt.value("<dir>", "Override cache-tier root (not store)", "-d", "--cache-dir");
     }
 
     /** Hidden variant for internal / rarely-needed commands. */
@@ -45,7 +45,7 @@ public final class CommonOpts {
      * install} share. Held under HelpWidthTest's 78-column budget beside the longest flag name.
      */
     public static Opt acceptUnverifiedTool() {
-        return Opt.flag("Accept a distribution no checksum vouches for", ToolRegistry.ACCEPT_FLAG);
+        return Opt.flag("Accept a distribution no checksum vouches for", "-Z", ToolRegistry.ACCEPT_FLAG);
     }
 
     /**
@@ -73,14 +73,14 @@ public final class CommonOpts {
      */
     public static List<Opt> moduleSelection() {
         return moduleSelection(
-                Opt.flag("WIP working-tree change set", "--affected"),
-                Opt.value("<git-ref>", "Modules changed since this git ref", "--affected-since"));
+                Opt.flag("WIP working-tree change set", "-f", "--affected"),
+                Opt.value("<git-ref>", "Modules changed since this git ref", "-e", "--affected-since"));
     }
 
     /** Like {@link #moduleSelection()} with a command-specific {@code --affected} help string. */
     public static List<Opt> moduleSelection(Opt affected) {
         return moduleSelection(
-                affected, Opt.value("<git-ref>", "Modules changed since this git ref", "--affected-since"));
+                affected, Opt.value("<git-ref>", "Modules changed since this git ref", "-e", "--affected-since"));
     }
 
     /** Like {@link #moduleSelection()} with command-specific {@code --affected} / {@code --affected-since} help. */
@@ -138,12 +138,12 @@ public final class CommonOpts {
 
     /** Skip compiling and running tests — shared by build / native / install-style verbs. */
     public static Opt skipTests() {
-        return Opt.flag("Skip tests; guards too unless --guard.", "--skip-tests");
+        return Opt.flag("Skip tests; guards too unless --guard.", "-S", "--skip-tests");
     }
 
     /** {@code --test-failures <mode>}: over every module's {@code [test] failures}. */
     public static Opt testFailures() {
-        return Opt.value("<MODE>", "fail (default) or report test failures", "--test-failures");
+        return Opt.value("<MODE>", "fail (default) or report test failures", "-t", "--test-failures");
     }
 
     /** {@code JK_TEST_FAILURES}: the default for {@code --test-failures}. */
@@ -165,7 +165,7 @@ public final class CommonOpts {
 
     /** {@code --skip-node}: no module's node steps run; a node output already on disk is used as it is. */
     public static Opt skipNode() {
-        return Opt.flag("Skip node builds and tests", "--skip-node");
+        return Opt.flag("Skip node builds and tests", "-N", "--skip-node");
     }
 
     /** {@code JK_SKIP_NODE}: the default for {@code --skip-node}. */
@@ -182,12 +182,12 @@ public final class CommonOpts {
      * flag wherever a build is asked for.
      */
     public static Opt guard() {
-        return Opt.flag("Guards + integration: share the commit", "--guard");
+        return Opt.flag("Guards + integration: share the commit", "-g", "--guard");
     }
 
     /** {@code --continue}: finish the graph and report every failure, not just the first. */
     public static Opt keepGoing() {
-        return Opt.flag("Keep going; report all failures", "--continue");
+        return Opt.flag("Keep going; report all failures", "-c", "--continue");
     }
 
     /**

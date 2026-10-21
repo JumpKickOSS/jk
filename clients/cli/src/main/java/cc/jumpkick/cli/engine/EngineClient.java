@@ -178,7 +178,7 @@ public final class EngineClient {
         return EngineReads.newProject(paths, req);
     }
 
-    /** Module DAG for {@code jk explain --graph}. */
+    /** Module DAG for {@code jk explain -U}. */
     public static ModuleGraphAck moduleGraph(
             EnginePaths.Paths paths,
             Path dir,
@@ -417,7 +417,7 @@ public final class EngineClient {
     }
 
     /**
-     * Run {@code jk update --git [<name>]} against the engine ({@code gitTarget == null} refreshes
+     * Run {@code jk update -g [<name>]} against the engine ({@code gitTarget == null} refreshes
      * every git dependency) — see {@link EngineResolveAdapter#runUpdateGitOnly}.
      */
     public static EngineRequests.LockOutcome runUpdateGitOnly(

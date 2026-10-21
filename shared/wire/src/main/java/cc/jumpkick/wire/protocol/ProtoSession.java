@@ -153,7 +153,7 @@ public final class ProtoSession {
 
     /**
      * Session envelope including optional {@code assemblyOverride} ({@code fat} / {@code minified}) for
-     * {@code jk assemble --minified} one-offs.
+     * {@code jk assemble -W} one-offs.
      */
     public static String withSession(
             String request,

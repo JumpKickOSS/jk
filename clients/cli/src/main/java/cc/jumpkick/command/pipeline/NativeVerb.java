@@ -70,7 +70,7 @@ final class NativeVerb implements BuildVerb {
 
     @Override
     public List<Opt> ownOptions() {
-        return List.of(Opt.value("<class>", "Main class (jk.toml image.main / main)", "--main"));
+        return List.of(Opt.value("<class>", "Main class (jk.toml image.main / main)", "-T", "--main"));
     }
 
     @Override
