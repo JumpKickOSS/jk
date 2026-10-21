@@ -1,6 +1,6 @@
 # Graph
 
-`jk graph` maps the workspace: classes, methods, files, config keys, doc headings, and the calls, imports, inheritance and references between them. Ask it before grepping or opening files; every line it answers carries `file:line`. The MCP tools below are on the extended `tools/list`.
+`jk graph` maps the workspace: classes, methods, files, config keys, doc headings, and the calls, imports, inheritance and references between them. Ask it before grepping or opening files; every line it answers carries `file:line`. `query_graph`, `get_neighbors` and `shortest_path` are on the default MCP `tools/list`; the rest are extended.
 
 | | Shell | MCP |
 |---|---|---|

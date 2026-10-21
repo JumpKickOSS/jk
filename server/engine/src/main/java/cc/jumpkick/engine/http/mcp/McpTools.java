@@ -59,10 +59,12 @@ public final class McpTools {
     public static final String BIND = "bind";
 
     /**
-     * The default {@code tools/list}: what one fix-and-rerun loop needs, in reading order.
-     * Everything else is an extended {@code tools/list}.
+     * The default {@code tools/list}: what one fix-and-rerun loop needs, and the code graph calls
+     * that find code without grepping and reading files, in reading order. Everything else is an
+     * extended {@code tools/list}.
      */
-    public static final List<String> LOOP = List.of("run", "diagnostics", "deps", "why", "skill");
+    public static final List<String> LOOP =
+            List.of("run", "diagnostics", "deps", "why", "query_graph", "get_neighbors", "shortest_path", "skill");
 
     /** Which rows {@code tools/list} answers. */
     public enum Surface {
@@ -93,7 +95,9 @@ public final class McpTools {
                         ? "Loop: run() tests and returns the verdict → edit → run() again. "
                         : "Loop: run(dir=<project>) tests and returns the verdict → edit → run again. ")
                 + "diagnostics is every problem past the cap (file= for one). deps adds, removes, or pins and relocks. "
-                + "why(coord) is the path and the rule that picked the version. skill is the playbook. "
+                + "why(coord) is the path and the rule that picked the version. "
+                + "query_graph answers a question about the code with file:line, instead of grep and reads; "
+                + "get_neighbors and shortest_path follow a symbol from there. skill is the playbook. "
                 + (pinned ? "" : "The first call that carries dir binds the connection. ")
                 + "Other tools: tools/list with extended=true.";
     }

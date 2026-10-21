@@ -173,8 +173,17 @@ class McpContractTest {
     @Test
     void tools_list_is_the_loop_set_until_the_engine_opts_into_every_card() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");
-        assertThat(body).contains("\"run\"", "\"diagnostics\"", "\"deps\"", "\"why\"", "\"skill\"");
-        assertThat(body).doesNotContain("\"history\"", "\"bind\"", "\"manifest\"", "\"jdk\"");
+        assertThat(body)
+                .contains(
+                        "\"run\"",
+                        "\"diagnostics\"",
+                        "\"deps\"",
+                        "\"why\"",
+                        "\"query_graph\"",
+                        "\"get_neighbors\"",
+                        "\"shortest_path\"",
+                        "\"skill\"");
+        assertThat(body).doesNotContain("\"history\"", "\"bind\"", "\"manifest\"", "\"jdk\"", "\"god_nodes\"");
 
         mcp.surface(McpTools.Surface.ALL);
         String all = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");

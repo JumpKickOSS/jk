@@ -39,15 +39,14 @@ public final class CodeGraphTool implements McpTool {
                 new CodeGraphTool(
                         spec(
                                 "query_graph",
-                                "Answer a question about the code within a token budget instead of grepping and "
-                                        + "reading files. Same as jk graph query.",
+                                "Answer a question about the code in a token budget, with file:line, instead of "
+                                        + "grep and reads.",
                                 props(Map.of(
-                                        "question", McpSchemas.string("Words or symbol names"),
+                                        "question", McpSchemas.string(),
                                         "mode", McpSchemas.oneOf("bfs", "dfs"),
-                                        "depth", McpSchemas.integer("Hops from the matched nodes (default 3, max 6)"),
-                                        "token_budget", McpSchemas.integer("Answer size in tokens (default 2000)"),
-                                        "context_filter",
-                                                McpSchemas.strings("Edge contexts to follow: call, field, import, …"))),
+                                        "depth", McpSchemas.integer(),
+                                        "token_budget", McpSchemas.integer(),
+                                        "context_filter", McpSchemas.strings("call, field, import, …"))),
                                 List.of("question")),
                         "query",
                         in -> List.of(required(in, "question"))),
@@ -62,12 +61,11 @@ public final class CodeGraphTool implements McpTool {
                 new CodeGraphTool(
                         spec(
                                 "get_neighbors",
-                                "A node's direct connections with relation, confidence and file:line. Same as jk graph neighbors.",
+                                "A symbol's direct connections with relation and file:line.",
                                 props(Map.of(
                                         "label", McpSchemas.string(),
                                         "node_id", McpSchemas.string(),
-                                        "relation_filter",
-                                                McpSchemas.string("Only relations containing this: calls, imports, …"),
+                                        "relation_filter", McpSchemas.string("calls, imports, …"),
                                         "token_budget", McpSchemas.integer())),
                                 List.of()),
                         "neighbors",
@@ -100,12 +98,11 @@ public final class CodeGraphTool implements McpTool {
                 new CodeGraphTool(
                         spec(
                                 "shortest_path",
-                                "How two things connect: the shortest path, following edge direction unless "
-                                        + "undirected. Same as jk graph path.",
+                                "How two symbols connect: the shortest path along edge direction unless undirected.",
                                 props(Map.of(
                                         "source", McpSchemas.string(),
                                         "target", McpSchemas.string(),
-                                        "max_hops", McpSchemas.integer("Longest path to report (default 8)"),
+                                        "max_hops", McpSchemas.integer(),
                                         "undirected", McpSchemas.bool())),
                                 List.of("source", "target")),
                         "path",
@@ -153,7 +150,7 @@ public final class CodeGraphTool implements McpTool {
     /** {@code props} plus the {@code dir} every tool takes. */
     private static Map<String, Object> props(Map<String, Object> props) {
         Map<String, Object> out = new LinkedHashMap<>(props);
-        out.put("dir", McpSchemas.string(McpSchemas.BOUND_ROOT));
+        out.put("dir", McpSchemas.string());
         return out;
     }
 
