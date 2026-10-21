@@ -110,6 +110,9 @@ modules = [
 # ---------------------------------------------------------------------------
 [test]
 exclude-tags = ["integration", "slow", "network", "bench"]
+# Every member's fast tier: a method slower than this is a warning naming it. The slowest fast
+# methods take about 6s alone; a method that needs more belongs in a slower tier.
+fast-method-budget = "10s"
 
 # Part of the documented pre-merge bar, alongside the fast tier.
 [profiles.integration]

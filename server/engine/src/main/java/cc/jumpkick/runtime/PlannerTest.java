@@ -10,7 +10,9 @@ import static cc.jumpkick.runtime.PlannerSupport.testStampWorkerJars;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
@@ -19,6 +21,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -675,7 +678,14 @@ public final class PlannerTest {
             boolean auto = !debug && TestLaunch.autoDispatch(in, projectUnderTest.build(), pluginDecls);
             int testWorkers = debug ? 1 : TestLaunch.dispatchWorkers(in, projectUnderTest.build(), pluginDecls);
             tagExcluded = new TagExcludedCapture(TestSupport.bridgeListener(
-                    ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets, suites));
+                    ctx,
+                    testWorkers,
+                    in.verbose(),
+                    moduleLabel,
+                    in.dir(),
+                    snippets,
+                    suites,
+                    TestTier.of(effectiveSel, in.profileName(), fastMethodBudget(projectUnderTest, in.dir()))));
             // The module path is read off the runtime classpath, which the stamp already keys.
             List<String> forkJvmArgs = new ArrayList<>(testJvmArgs);
             forkJvmArgs.addAll(JvmModulePath.args(projectUnderTest, in.dir(), runtimeCp));
@@ -704,6 +714,18 @@ public final class PlannerTest {
         TagExcludedSuite.note(ctx, effectiveSel, in.profileName(), affected != null, result);
         ctx.put(TEST_RESULT, result);
         TestLaunch.recordOutcome(ctx, in, actionCache, testTaskId, stampKey, result, !testSrcs.isEmpty(), snippets);
+    }
+
+    /**
+     * {@code [test] fast-method-budget} in milliseconds: the module's own, else its workspace
+     * root's, so one line at the root holds every member to it; 0 when neither sets one.
+     */
+    static long fastMethodBudget(JkBuild module, Path moduleDir) throws IOException {
+        long own = module.build().testFastMethodBudgetMs();
+        if (own > 0) return own;
+        Path root = WorkspaceScan.owningRoot(moduleDir).orElse(null);
+        if (root == null || root.normalize().equals(moduleDir.normalize())) return 0;
+        return JkBuildParser.parseLocal(ManifestPaths.manifestIn(root)).build().testFastMethodBudgetMs();
     }
 
     /**

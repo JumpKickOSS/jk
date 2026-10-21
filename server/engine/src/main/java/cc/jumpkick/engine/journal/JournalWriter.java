@@ -13,6 +13,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.mvn.PomCoord;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.CacheBenefit;
@@ -188,6 +189,12 @@ public final class JournalWriter {
         if (a != null && publish != null) a.addPublish(publish);
     }
 
+    /** A test class that ran; the run's slowest classes and methods rank from these. */
+    public void accTestClass(long requestId, TestClassResult result) {
+        BuildAccumulator a = sessions.accumulator(requestId);
+        if (a != null) a.slowest().add(result);
+    }
+
     public void accTests(long requestId, @Nullable TestSummary tests) {
         BuildAccumulator a = sessions.accumulator(requestId);
         if (a != null && tests != null) a.addTests(tests);
@@ -283,7 +290,8 @@ public final class JournalWriter {
                 else reportedKind.remove(a.dir());
             }
             try {
-                JkResultsMarkdown.write(record, runDir, latest, tests, previous);
+                JkResultsMarkdown.write(
+                        record, runDir, latest, tests, previous, a.slowest().ranking());
             } catch (IOException | RuntimeException e) {
                 log.accept("jk engine: jk-results.md write failed: " + e);
             }

@@ -203,6 +203,12 @@ public final class EngineProtocol {
      */
     public static final String GUARD_EVENT = "guard";
 
+    /**
+     * Client-side machine output: a {@code jk test} run's slowest classes and methods, once, as
+     * the run settles — ranked from the {@link #CLASS_FINISH} lines it carried.
+     */
+    public static final String SLOWEST_TESTS = "slowest-tests";
+
     /** Server → client, terminal: {@code onWorkspaceFinish}. */
     public static final String WORKSPACE_FINISH = "workspace-finish";
 

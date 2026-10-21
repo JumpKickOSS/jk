@@ -123,7 +123,8 @@ class EngineEventDecoderStreamTest {
         BufferedReader reader = stream(
                 ProtoLifecycle.jobStart(44, "test", "/proj", 9),
                 ProtoEvents.planDone(0),
-                ProtoEvents.classFinish("/proj", "run-tests", new TestClassResult("g:a", "demo.A", 3, 1, 1, 40)),
+                ProtoEvents.classFinish(
+                        "/proj", "run-tests", new TestClassResult("g:a", "demo.A", 3, 1, 1, 40, "", List.of())),
                 ProtoEvents.planFinish("/proj", false, false));
 
         EngineEventDecoder.streamSingleBuildPlanEvents(
@@ -137,7 +138,8 @@ class EngineEventDecoderStreamTest {
                 null,
                 null);
 
-        assertThat(seen).containsExactly("run-tests " + new TestClassResult("g:a", "demo.A", 3, 1, 1, 40));
+        assertThat(seen)
+                .containsExactly("run-tests " + new TestClassResult("g:a", "demo.A", 3, 1, 1, 40, "", List.of()));
     }
 
     /**

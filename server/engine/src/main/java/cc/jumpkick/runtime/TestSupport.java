@@ -21,6 +21,8 @@ import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
+import cc.jumpkick.run.SlowestTests;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestFailureInfo;
@@ -462,7 +464,7 @@ public final class TestSupport {
      * 100% on success.
      */
     public static TestProgressListener bridgeListener(TaskContext ctx, int workerCount, boolean verbose) {
-        return bridgeListener(ctx, workerCount, verbose, "", null, null, SuiteClassFilter.NONE);
+        return bridgeListener(ctx, workerCount, verbose, "", null, null, SuiteClassFilter.NONE, TestTier.UNKNOWN);
     }
 
     /**
@@ -471,22 +473,30 @@ public final class TestSupport {
      */
     public static TestProgressListener bridgeListener(
             TaskContext ctx, int workerCount, boolean verbose, String moduleLabel) {
-        return bridgeListener(ctx, workerCount, verbose, moduleLabel, null, null, SuiteClassFilter.NONE);
+        return bridgeListener(ctx, workerCount, verbose, moduleLabel, TestTier.UNKNOWN);
+    }
+
+    /** As {@link #bridgeListener(TaskContext, int, boolean, String)} for a suite running as {@code tier}. */
+    static TestProgressListener bridgeListener(
+            TaskContext ctx, int workerCount, boolean verbose, String moduleLabel, TestTier tier) {
+        return bridgeListener(ctx, workerCount, verbose, moduleLabel, null, null, SuiteClassFilter.NONE, tier);
     }
 
     /**
      * Full bridge: module coord + project dir so source snippets attach to structured test-failure
      * diagnostics (web Activity / details.jsonl), a snippet cache shared with {@link
-     * #renderFailures}, and each failure tagged with the suite {@code suites} says its class runs in.
+     * #renderFailures}, each failure tagged with the suite {@code suites} says its class runs in, and
+     * each finished class tagged with {@code tier}. A test over the tier's budget is a warning.
      */
-    public static TestProgressListener bridgeListener(
+    static TestProgressListener bridgeListener(
             TaskContext ctx,
             int workerCount,
             boolean verbose,
             @Nullable String moduleLabel,
             @Nullable Path moduleDir,
             TestFailureSource.@Nullable Cache cache,
-            SuiteClassFilter suites) {
+            SuiteClassFilter suites,
+            TestTier tier) {
         String module = moduleLabel == null ? "" : moduleLabel.trim();
         Path dir = moduleDir;
         TestFailureSource.Cache snippets = cache != null ? cache : new TestFailureSource.Cache();
@@ -495,7 +505,7 @@ public final class TestSupport {
             // about the root arrives once per fork; the run reports it once.
             private final Set<String> warned = ConcurrentHashMap.newKeySet();
 
-            private final TestClassTally classes = new TestClassTally(module);
+            private final TestClassTally classes = new TestClassTally(module, tier.name());
 
             @Override
             public void onDiscoveryTotal(int classes, int tests) {
@@ -533,7 +543,8 @@ public final class TestSupport {
                     classes.containerFinished(id, status, durationMs).ifPresent(ctx::testClass);
                     return;
                 }
-                classes.finished(id, status);
+                classes.finished(id, status, durationMs);
+                if (tier.overBudget(durationMs)) ctx.warn(BUDGET_CODE, overBudget(id, durationMs, tier.budgetMs()));
                 if (wasStatic) ctx.progress(1);
                 // Keep the label in sync on finish for fast suites (start+finish race); also
                 // covers engines that omit start events for some nodes.
@@ -617,6 +628,17 @@ public final class TestSupport {
                 if (warned.add(c + '\n' + message)) ctx.warn(c, message);
             }
         };
+    }
+
+    /** The warning code of a fast-tier test over {@code [test] fast-method-budget}. */
+    static final String BUDGET_CODE = "test-budget";
+
+    /** The budget warning: which test, its wall, and the budget it went over. */
+    static String overBudget(String uniqueId, long millis, long budgetMs) {
+        String method = SlowestTests.methodName(JUnitUniqueIds.methodOf(uniqueId));
+        String test = JUnitLauncher.classFromUniqueId(uniqueId) + (method.isEmpty() ? "" : "#" + method);
+        return test + " took " + SlowestTests.duration(millis) + ", over the fast-tier budget of "
+                + SlowestTests.duration(budgetMs) + " ([test] fast-method-budget)";
     }
 
     /**

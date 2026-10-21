@@ -94,6 +94,11 @@ public record BuildBlock(
         /** {@code [test] failures}: whether a test failure fails the run. Default {@link TestFailureMode#FAIL}. */
         TestFailureMode testFailures,
         /**
+         * {@code [test] fast-method-budget}: the wall, in milliseconds, a fast-tier test method may
+         * take before the run warns about it; 0 means no budget.
+         */
+        long testFastMethodBudgetMs,
+        /**
          * {@code [resolve] platform}: how BOM managed pins constrain the graph. Default
          * {@link PlatformPolicy#ENFORCED}.
          */
@@ -197,6 +202,7 @@ public record BuildBlock(
             true,
             false,
             TestFailureMode.FAIL,
+            0,
             PlatformPolicy.ENFORCED,
             UnmappedPolicy.MEDIATE,
             List.of(),
@@ -222,6 +228,7 @@ public record BuildBlock(
         kspOptions = kspOptions == null ? List.of() : List.copyOf(kspOptions);
         javac = javac == null ? JavacConfig.EMPTY : javac;
         testFailures = testFailures == null ? TestFailureMode.FAIL : testFailures;
+        if (testFastMethodBudgetMs < 0) testFastMethodBudgetMs = 0;
         extraSrc = extraSrc == null ? List.of() : List.copyOf(new LinkedHashSet<>(extraSrc));
         testExtraSrc = testExtraSrc == null ? List.of() : List.copyOf(testExtraSrc);
         if (fixtures != null && fixtures.isBlank()) fixtures = null;

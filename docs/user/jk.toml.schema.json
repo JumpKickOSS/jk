@@ -306,6 +306,10 @@
           "type": "boolean",
           "description": "Run every forked test JVM with -ea, as Surefire and Gradle do. Default true; false runs the suite with Java and Kotlin assert statements disabled. A run-tests input: flipping it re-runs the suite."
         },
+        "fast-method-budget": {
+          "type": ["string", "integer"],
+          "description": "A fast-tier (untagged) test method that takes longer than this is a warning naming the method and its time; the run still passes. A duration (\"1s\", \"500ms\", \"2m\") or seconds. Set at the workspace root it holds every member; a member's own value wins. Absent: no budget."
+        },
         "failures": { "type": "string", "enum": ["fail", "report"], "description": "Whether a failing test fails the run. \"report\" keeps every failure in jk-results.md and the JUnit XML and lets the run succeed (Maven's maven.test.failure.ignore); a compile error, a crashed test JVM or a timeout still fails. Default \"fail\". --test-failures and JK_TEST_FAILURES override it."},
         "exclude-classes": {
           "type": "array",

@@ -61,6 +61,7 @@ final class ManifestBuildTable {
         boolean testAssertions = true;
         boolean testCoverage = false;
         TestFailureMode testFailures = TestFailureMode.FAIL;
+        long testFastMethodBudgetMs;
         final List<String> testTools = new ArrayList<>();
         final List<String> testJvmArgs = new ArrayList<>();
         final Map<String, String> testSystemProperties = new LinkedHashMap<>();
@@ -262,6 +263,11 @@ final class ManifestBuildTable {
             String raw = test.get("failures") instanceof String str ? str : "";
             s.testFailures = TestFailureMode.parse(raw)
                     .orElseThrow(() -> new JkBuildParseException("[test].failures must be \"fail\" or \"report\""));
+        }
+        // [test] fast-method-budget — a fast-tier test method over this wall is a warning.
+        if (test.contains("fast-method-budget")) {
+            s.testFastMethodBudgetMs =
+                    ManifestBuild.durationMillis(test.get(List.of("fast-method-budget")), "[test].fast-method-budget");
         }
         // [test] tools — external executables the suite shells out to, by the bare name the tests
         // invoke; each one's PATH location and --version become run-tests inputs. A path is refused:

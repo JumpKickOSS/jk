@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestClassResult;
@@ -68,7 +69,7 @@ class TestClassEventsTest {
             while (reported.isEmpty() && System.nanoTime() < deadline) Thread.sleep(20);
 
             assertThat(run.isDone()).as("the suite JVM is still running").isFalse();
-            assertThat(reported).containsExactly(new TestClassResult("g:app", "demo.A", 3, 1, 1, 40));
+            assertThat(reported).containsExactly(new TestClassResult("g:app", "demo.A", 3, 1, 1, 40, "", List.of()));
 
             Files.writeString(dir.resolve("stop"), "");
             run.get(30, TimeUnit.SECONDS);
@@ -77,7 +78,7 @@ class TestClassEventsTest {
         }
         assertThat(reported)
                 .as("B started but never finished")
-                .containsExactly(new TestClassResult("g:app", "demo.A", 3, 1, 1, 40));
+                .containsExactly(new TestClassResult("g:app", "demo.A", 3, 1, 1, 40, "", List.of()));
     }
 
     @Test
@@ -88,7 +89,7 @@ class TestClassEventsTest {
         bridge.onTestFinished(A, "A", "FAILED", false, true, 5, 1);
         bridge.onTestFinished(A + "/[test-template:t(int)]", "t", "SUCCESSFUL", false, true, 3, 1);
 
-        assertThat(reported).containsExactly(new TestClassResult("g:app", "demo.A", 0, 1, 0, 5));
+        assertThat(reported).containsExactly(new TestClassResult("g:app", "demo.A", 0, 1, 0, 5, "", List.of()));
     }
 
     @Test
@@ -102,10 +103,80 @@ class TestClassEventsTest {
         bridge.onTestFinished(B + "/[method:b()]", "b()", "SUCCESSFUL", true, true, 1, 1);
         bridge.onTestFinished(A, "A", "SUCCESSFUL", false, true, 9, 1);
 
-        assertThat(reported).containsExactly(new TestClassResult("g:app", "demo.A", 1, 0, 0, 9));
+        assertThat(reported).containsExactly(new TestClassResult("g:app", "demo.A", 1, 0, 0, 9, "", List.of()));
+    }
+
+    @Test
+    void a_class_carries_its_tier_and_its_slowest_methods_longest_first() {
+        List<TestClassResult> reported = new CopyOnWriteArrayList<>();
+        TestProgressListener bridge =
+                TestSupport.bridgeListener(recording(reported), 1, false, "g:app", new TestTier("fast", 0));
+        bridge.onTestFinished(A + "/[method:quick()]", "quick()", "SUCCESSFUL", true, true, 12, 1);
+        bridge.onTestFinished(A + "/[method:boots(java.nio.file.Path)]", "boots", "SUCCESSFUL", true, true, 1_500, 1);
+        String template = A + "/[test-template:each(int)]";
+        bridge.onTestFinished(template + "/[test-template-invocation:#2]", "[2]", "SUCCESSFUL", true, false, 4_200, 1);
+        bridge.onTestFinished(A, "A", "SUCCESSFUL", false, true, 6_000, 1);
+
+        assertThat(reported)
+                .containsExactly(new TestClassResult(
+                        "g:app",
+                        "demo.A",
+                        3,
+                        0,
+                        0,
+                        6_000,
+                        "fast",
+                        List.of(
+                                new TestClassResult.SlowMethod("each[#2]", 4_200),
+                                new TestClassResult.SlowMethod("boots", 1_500))));
+    }
+
+    @Test
+    void a_fast_tier_method_over_the_budget_warns_with_its_name_and_time() {
+        List<String> warned = new CopyOnWriteArrayList<>();
+        TestProgressListener bridge = TestSupport.bridgeListener(
+                recording(new CopyOnWriteArrayList<>(), warned), 1, false, "g:app", new TestTier("fast", 1_000));
+        bridge.onTestFinished(A + "/[method:under()]", "under()", "SUCCESSFUL", true, true, 1_000, 1);
+        bridge.onTestFinished(A + "/[method:over()]", "over()", "FAILED", true, true, 2_345, 1);
+
+        assertThat(warned)
+                .containsExactly("test-budget: demo.A#over took 2.3s, over the fast-tier budget of 1.0s"
+                        + " ([test] fast-method-budget)");
+    }
+
+    @Test
+    void without_a_budget_or_outside_the_fast_tier_nothing_warns() {
+        List<String> warned = new CopyOnWriteArrayList<>();
+        var ctx = recording(new CopyOnWriteArrayList<>(), warned);
+        for (TestTier tier : List.of(
+                TestTier.UNKNOWN,
+                new TestTier("fast", 0),
+                TestTier.of(TestSelection.DEFAULT.withIncludeTags(List.of("integration")), "integration", 1_000))) {
+            TestSupport.bridgeListener(ctx, 1, false, "g:app", tier)
+                    .onTestFinished(A + "/[method:slow()]", "slow()", "SUCCESSFUL", true, true, 60_000, 1);
+        }
+        assertThat(warned).isEmpty();
+    }
+
+    @Test
+    void the_tier_is_fast_without_an_include_tag_else_the_profile_or_its_tags() {
+        assertThat(TestTier.name(List.of(), List.of("integration"), false, null))
+                .isEqualTo("fast");
+        assertThat(TestTier.name(List.of(), List.of("integration"), false, "ci"))
+                .isEqualTo("fast");
+        assertThat(TestTier.name(List.of(), List.of(), true, null)).isEqualTo("all");
+        assertThat(TestTier.name(List.of("integration"), List.of("slow"), false, "integration"))
+                .isEqualTo("integration");
+        assertThat(TestTier.name(List.of("slow", "network"), List.of(), false, null))
+                .isEqualTo("slow+network");
+        assertThat(TestTier.of(TestSelection.DEFAULT, null, 750).budgetMs()).isEqualTo(750);
     }
 
     private static TaskContext recording(List<TestClassResult> into) {
+        return recording(into, new CopyOnWriteArrayList<>());
+    }
+
+    private static TaskContext recording(List<TestClassResult> into, List<String> warned) {
         return new TaskContext() {
             @Override
             public void progress(int delta) {}
@@ -120,7 +191,9 @@ class TestClassEventsTest {
             public void output(@Nullable String line) {}
 
             @Override
-            public void warn(String code, String message) {}
+            public void warn(String code, String message) {
+                warned.add(code + ": " + message);
+            }
 
             @Override
             public void error(String code, String message) {}

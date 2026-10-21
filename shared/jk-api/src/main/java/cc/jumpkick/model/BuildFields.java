@@ -47,6 +47,7 @@ final class BuildFields {
     boolean testAssertions;
     boolean testCoverage;
     TestFailureMode testFailures;
+    long testFastMethodBudgetMs;
     PlatformPolicy platformPolicy;
     UnmappedPolicy unmappedPolicy;
     List<EnvDecl> testEnv;
@@ -94,6 +95,7 @@ final class BuildFields {
         testAssertions = b.testAssertions();
         testCoverage = b.testCoverage();
         testFailures = b.testFailures();
+        testFastMethodBudgetMs = b.testFastMethodBudgetMs();
         platformPolicy = b.platformPolicy();
         unmappedPolicy = b.unmappedPolicy();
         testEnv = b.testEnv();
@@ -135,6 +137,7 @@ final class BuildFields {
                 testAssertions,
                 testCoverage,
                 testFailures,
+                testFastMethodBudgetMs,
                 platformPolicy,
                 unmappedPolicy,
                 testEnv,

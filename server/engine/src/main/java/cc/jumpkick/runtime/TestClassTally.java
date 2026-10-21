@@ -2,10 +2,15 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
+import cc.jumpkick.run.SlowestTests;
 import cc.jumpkick.run.TestClassResult;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Each test class's outcomes as its tests finish, closed into a {@link TestClassResult} when the
@@ -14,17 +19,34 @@ import java.util.concurrent.ConcurrentHashMap;
 final class TestClassTally {
 
     private final String module;
+    private final String tier;
 
-    /** Per class: tests, failed, skipped so far. */
-    private final Map<String, int[]> counts = new ConcurrentHashMap<>();
+    private final Map<String, Counts> counts = new ConcurrentHashMap<>();
 
-    TestClassTally(String module) {
+    TestClassTally(String module, String tier) {
         this.module = module;
+        this.tier = tier;
+    }
+
+    /** Per class: tests, failed and skipped so far, and its methods at or over the slow floor. */
+    private static final class Counts {
+        int tests;
+        int failed;
+        int skipped;
+        final List<TestClassResult.SlowMethod> slow = new ArrayList<>();
     }
 
     /** A test finished with the runner's {@code status}; {@code ABORTED} counts as skipped. */
-    void finished(String id, String status) {
-        count(id, "FAILED".equals(status) ? 1 : 0, "ABORTED".equals(status) ? 1 : 0);
+    void finished(String id, String status, long durationMs) {
+        Counts c = count(id, "FAILED".equals(status) ? 1 : 0, "ABORTED".equals(status) ? 1 : 0);
+        if (c == null || durationMs < SlowestTests.SLOW_MS) return;
+        synchronized (c) {
+            c.slow.add(
+                    new TestClassResult.SlowMethod(SlowestTests.methodName(JUnitUniqueIds.methodOf(id)), durationMs));
+            c.slow.sort(
+                    Comparator.comparingLong(TestClassResult.SlowMethod::millis).reversed());
+            if (c.slow.size() > SlowestTests.TOP) c.slow.removeLast();
+        }
     }
 
     void skipped(String id) {
@@ -39,25 +61,35 @@ final class TestClassTally {
     Optional<TestClassResult> containerFinished(String id, String status, long durationMs) {
         String cls = JUnitUniqueIds.classOf(id);
         if (cls.isEmpty() || !JUnitUniqueIds.methodOf(id).isEmpty()) return Optional.empty();
-        int[] c = counts.remove(cls);
+        Counts c = counts.remove(cls);
         boolean setupFailed = "FAILED".equals(status);
         if (c == null) {
-            return setupFailed ? Optional.of(new TestClassResult(module, cls, 0, 1, 0, durationMs)) : Optional.empty();
+            return setupFailed
+                    ? Optional.of(new TestClassResult(module, cls, 0, 1, 0, durationMs, tier, List.of()))
+                    : Optional.empty();
         }
         synchronized (c) {
-            return Optional.of(
-                    new TestClassResult(module, cls, c[0], Math.max(c[1], setupFailed ? 1 : 0), c[2], durationMs));
+            return Optional.of(new TestClassResult(
+                    module,
+                    cls,
+                    c.tests,
+                    Math.max(c.failed, setupFailed ? 1 : 0),
+                    c.skipped,
+                    durationMs,
+                    tier,
+                    c.slow));
         }
     }
 
-    private void count(String id, int failed, int skipped) {
+    private @Nullable Counts count(String id, int failed, int skipped) {
         String cls = JUnitUniqueIds.classOf(id);
-        if (cls.isEmpty()) return;
-        int[] c = counts.computeIfAbsent(cls, k -> new int[3]);
+        if (cls.isEmpty()) return null;
+        Counts c = counts.computeIfAbsent(cls, k -> new Counts());
         synchronized (c) {
-            c[0]++;
-            c[1] += failed;
-            c[2] += skipped;
+            c.tests++;
+            c.failed += failed;
+            c.skipped += skipped;
         }
+        return c;
     }
 }

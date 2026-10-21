@@ -219,6 +219,51 @@ cache` over an unchanged tree; a run that replayed nothing reads `Tests passed f
 plain project's tail says the same of its one suite: `Passed 12 tests (served from cache)` is a
 replayed green marker, `Passed 12 tests` a run, and `No tests` a project with no test sources.
 
+## The slowest tests (`[test] fast-method-budget`)
+
+`jk test` ends with the run's slowest test classes and methods, above the result line: the top
+five of each that took **1s or more**, longest first, with the module and the tier the run
+executed. A suite where nothing takes a second prints nothing.
+
+```
+Slowest tests
+  classes  12.3s  OrderFlowTest                  com.acme:orders · fast
+            4.1s  InvoiceRendererTest            com.acme:billing · fast
+  methods   9.8s  OrderFlowTest#ships_overnight  com.acme:orders · fast
+            2.2s  InvoiceRendererTest#pdf        com.acme:billing · fast
+```
+
+A class's time is its wall, setup and teardown included; a method's is the test itself. The tier is
+`fast` for a run that includes no tag (a bare `jk test`), the profile's name for `-p <profile>`
+and `all` for `-A`. Only what ran this time is timed: a module whose suite was served from cache
+has no row. The same ranking is a `slowest-tests` line under `-O jsonl`, just before
+`workspace-finish` ([Machine output](machine-output.md#event-vocabulary)), each `class-finish`
+line carries `tier` and its class's `slow` methods, and `jk results` has a **Slowest tests**
+table.
+
+What to do with a slow one, cheapest first:
+
+- **Share the fixture.** Start the expensive thing (a container, an application context, a
+  generated project) once per class in `@BeforeAll`, not per method.
+- **Seam the wait.** A test that sleeps, polls or waits out a timeout takes that long every run.
+  Inject a clock, a latch or a shorter timeout so the test decides when time has passed.
+- **Move it to a tier.** A test that is slow because it is end to end belongs out of the inner
+  loop: tag it `@Tag("integration")` (or `slow`) and run it with `jk test -p integration`
+  ([Tag filters](#tag-filters)).
+
+To hold the inner loop to a time, give the fast tier a budget:
+
+```toml
+[test]
+fast-method-budget = "1s"   # "500ms", "2m", or a number of seconds
+```
+
+A fast-tier method over the budget is a warning against the module's `run-tests` step, naming the
+method and its time: `demo.OrderFlowTest#ships_overnight took 9.8s, over the fast-tier budget of
+1.0s ([test] fast-method-budget)`. It does not fail the run, a run with `-p <profile>` is not held
+to it, and there is no budget unless one is set. At the workspace root it holds every member; a
+member's own `fast-method-budget` wins over the root's.
+
 ## What a test printed
 
 Everything a test class prints while it runs, on stdout or stderr, passing or failing, lands in

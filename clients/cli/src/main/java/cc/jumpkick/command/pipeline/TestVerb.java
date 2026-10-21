@@ -8,6 +8,7 @@ import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.CompositeBuildPlanListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.DebugAttach;
+import cc.jumpkick.cli.run.SlowestTestsBlock;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.RenderContext;
@@ -20,6 +21,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.SlowestTests;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.AffectedTestsReport;
@@ -73,6 +75,11 @@ final class TestVerb implements BuildVerb {
     @Override
     public BuildFlags.Reach reach() {
         return BuildFlags.Reach.TEST;
+    }
+
+    @Override
+    public boolean ranksSlowestTests() {
+        return true;
     }
 
     @Override
@@ -159,8 +166,15 @@ final class TestVerb implements BuildVerb {
         // Counts the suite's replay from its green marker, so the tail can say the tests were served
         // from cache and not run.
         ServedTally served = new ServedTally();
+        SlowestTests slowest = new SlowestTests();
         ConsoleSpec spec = new ConsoleSpec(
-                WORDS.name(), r -> testSummary(tests[0], r, served.served() > 0), r -> testFailureMessage(tests[0], r));
+                WORDS.name(),
+                r -> testSummary(tests[0], r, served.served() > 0),
+                r -> testFailureMessage(tests[0], r),
+                false,
+                false,
+                null,
+                () -> SlowestTestsBlock.lines(slowest.ranking()));
         String module = ProjectInfos.buildTarget(ManifestPaths.manifestIn(dir), dir);
         BuildFlags flags = run.flags();
         var session = SessionContext.current();
@@ -184,7 +198,9 @@ final class TestVerb implements BuildVerb {
                 listeners -> EngineClient.runTest(
                         EnginePaths.current(),
                         request,
-                        steps -> CompositeBuildPlanListener.of(listeners.apply(steps), served),
+                        steps -> CompositeBuildPlanListener.of(
+                                SlowestTestsBlock.standalone(slowest, run.mode()),
+                                CompositeBuildPlanListener.of(listeners.apply(steps), served)),
                         tests));
     }
 
