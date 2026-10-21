@@ -521,7 +521,7 @@ public final class TaskForecaster {
 
     /**
      * The {@link BuildPlanner.Inputs} a real {@code jk build} constructs for one module — the
-     * single factory both {@code jk build} ({@code BuildCommand.prepareModule}) and {@code jk
+     * single factory both {@code jk build} and {@code jk
      * explain}'s ETA use, so the two can't drift in what they feed the effort-weight prediction.
      * The {@code jdksDir} default of {@code null} is load-bearing: it routes {@link
      * cc.jumpkick.runtime.EffortWeights#jdkWeight} through the full JDK probe chain (PATH /

@@ -7,7 +7,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.run.DebugAttach;
-import cc.jumpkick.command.pipeline.TestCommand;
+import cc.jumpkick.command.pipeline.BuildFlags;
+import cc.jumpkick.command.pipeline.BuildVerbCommand;
 import cc.jumpkick.command.toolchain.ToolRunCommand;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.model.command.Command;
@@ -61,7 +62,7 @@ class DebugJvmFlagTest {
         };
     }
 
-    private static final Command TEST = command("test", new TestCommand().options(), List.of());
+    private static final Command TEST = command("test", BuildVerbCommand.test().options(), List.of());
     private static final Command RUN =
             command("run", new ToolRunCommand().options(), new ToolRunCommand().parameters());
 
@@ -116,10 +117,9 @@ class DebugJvmFlagTest {
                 version = "0.0.1"
                 java = 25
                 """);
-        var sel = TestCommand.resolveTestSelection(
-                test("-C", dir.toString(), "--class", "FooTest", "--class=com.acme.*IT"));
+        var sel = BuildFlags.testSelection(test("-C", dir.toString(), "--class", "FooTest", "--class=com.acme.*IT"));
         assertThat(sel.classes()).containsExactly("FooTest", "com.acme.*IT");
-        assertThat(TestCommand.resolveTestSelection(test("-C", dir.toString())).classes())
+        assertThat(BuildFlags.testSelection(test("-C", dir.toString())).classes())
                 .isEmpty();
     }
 

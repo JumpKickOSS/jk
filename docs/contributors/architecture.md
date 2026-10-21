@@ -693,7 +693,7 @@ project model. No manifest migration; the loop arrives first, the `jk.toml` late
 **Where the POM enters: a shadow manifest, not a second loader.** The engine has no manifest
 abstraction; about forty sites resolve `dir/jk.toml` on their own (`PlannerSetup`, `PreflightMemo`,
 `BuildGraph`, `ProjectCard`, `GraphOps`, `LockManifestDigest`, `WorkspaceLoader`, `ModuleLayout`,
-…), and `BuildCommand` / `LockFlow` / `PreflightMemo` gate on the file existing. Virtualising all of
+…), and the build verbs / `LockFlow` / `PreflightMemo` gate on the file existing. Virtualising all of
 them is churn without a product gain. Instead:
 
 - `ManifestPaths.manifestIn(dir)` is the one way to name a module's manifest. It answers

@@ -584,8 +584,8 @@ public final class InstallCommand {
         EnginePrewarm.ensure();
         long start = Clock.SYSTEM.nanos();
         JkManager view = JkManager.plan(CliOutput.stdout(), "Install", animate);
-        view.setPlanCoord(BuildCommand.projectGaLabel(pass.wsRoot()));
-        view.setWindowTitle("JumpKick - Installing " + BuildCommand.projectGavLabel(pass.wsRoot()) + "...");
+        view.setPlanCoord(BuildRun.projectGaLabel(pass.wsRoot()));
+        view.setWindowTitle("JumpKick - Installing " + BuildRun.projectGavLabel(pass.wsRoot()) + "...");
         AggregateContext agg = new AggregateContext(view);
         var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Install", true), pass.wsRoot(), null, false);
         WorkspaceResult result;

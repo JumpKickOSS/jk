@@ -20,9 +20,8 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Pure source-set helpers shared by the build plan and the git-source builder. Extracted out of
- * the CLI's {@code CompileCommand} so embedders can drive compilation inputs without depending on
- * {@code :cli}.
+ * Pure source-set helpers shared by the build plan and the git-source builder, so embedders can
+ * drive compilation inputs without depending on {@code :cli}.
  */
 public final class CompileSupport {
 

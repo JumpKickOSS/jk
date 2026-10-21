@@ -12,8 +12,8 @@ import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.command.ToolTargets;
+import cc.jumpkick.command.pipeline.BuildFlags;
 import cc.jumpkick.command.pipeline.InstallCommand;
-import cc.jumpkick.command.pipeline.TestCommand;
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
@@ -175,7 +175,7 @@ public final class ToolInstallCommand implements CliCommand {
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.global = GlobalOptions.from(in);
         // A project install builds through the test stage, so --guard means what it means on build.
-        if (!TestCommand.installSelection(in, "Install")) return Exit.CONFIG;
+        if (!BuildFlags.installSelection(in, "Install")) return Exit.CONFIG;
 
         Path base = global.workingDir();
         if (in.positionals().isEmpty()) {

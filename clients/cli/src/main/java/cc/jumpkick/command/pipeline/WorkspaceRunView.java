@@ -13,8 +13,11 @@ import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.run.LiveProgress;
 import cc.jumpkick.cli.run.SessionMirrorListener;
 import cc.jumpkick.cli.run.TestFailureHighlight;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
+import cc.jumpkick.cli.tui.JkWedge;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
@@ -23,6 +26,7 @@ import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -409,6 +413,62 @@ final class WorkspaceRunView {
         event(JsonlShape.workspaceFinish(true, elapsedMs, planned()));
         after.accept(Settled.SUCCEEDED);
         return 0;
+    }
+
+    /**
+     * The same four-arm ladder for a run with no region ({@code -O jsonl}, {@code --verbose}, a
+     * pipe): the wedge prints as a line, and under {@code -O jsonl} only the events speak.
+     */
+    int settleHeadless(WorkspaceResult result, long elapsedMs, Tails tails, Consumer<Settled> after) {
+        absorb(null, result);
+        if (result.cancelled()) {
+            int code = settleHeadlessCancelled(elapsedMs);
+            after.accept(Settled.CANCELLED);
+            return code;
+        }
+        if (!result.errors().isEmpty()) {
+            String tail = errorsTail(result);
+            if (!toStdout) {
+                for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine(errorStep(result), err));
+                CommandWedge.printFail(chrome.planName(), tail);
+            }
+            if (session != null) session.wedge(tail);
+            event(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
+            after.accept(Settled.GRAPH_ERRORS);
+            return result.exitCode();
+        }
+        if (!result.success()) {
+            String failTail = tails.failure().of(result);
+            if (!toStdout) {
+                // --continue: the wedge names a count, so the roll-call has to name the modules.
+                List<String> failed = failedCoords(result);
+                if (failed.size() > 1) {
+                    for (String coord : failed) CliOutput.err(ConsoleSpec.errorLine("failed", coord));
+                }
+                CommandWedge.printFail(chrome.planName(), failTail);
+            }
+            if (session != null) session.wedge(failTail);
+            event(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
+            after.accept(Settled.FAILED);
+            return result.exitCode() == 0 ? 1 : result.exitCode();
+        }
+        String okTail = tails.success().of(result, planned());
+        if (!toStdout) CommandWedge.printOk(chrome.planName(), okTail);
+        if (session != null) session.wedge(okTail);
+        event(JsonlShape.workspaceFinish(true, elapsedMs, planned()));
+        after.accept(Settled.SUCCEEDED);
+        return 0;
+    }
+
+    /** A headless run the user cancelled: the cancelled line, the terminal event, exit 1. */
+    int settleHeadlessCancelled(long elapsedMs) {
+        if (!toStdout) {
+            String took = ConsoleSpec.took(Duration.ofMillis(elapsedMs));
+            CommandWedge.printLine(JkWedge.cancelledJobLine(chrome.planName(), GlobalConfig.nerdFont(), false, took));
+        }
+        if (session != null) session.wedge(chrome.planName() + " job was cancelled");
+        event(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
+        return 1;
     }
 
     /** Mirror the run's modules and errors into the transcript, once, before the ladder picks an arm. */

@@ -5,13 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import cc.jumpkick.cli.CommandDispatch;
-import cc.jumpkick.cli.api.GlobalOptions;
-import cc.jumpkick.cli.api.PlanOptions;
 import cc.jumpkick.cli.args.ArgParser;
-import cc.jumpkick.command.pipeline.BuildCommand;
-import cc.jumpkick.command.pipeline.TestCommand;
+import cc.jumpkick.command.pipeline.BuildFlags;
+import cc.jumpkick.command.pipeline.BuildVerbCommand;
 import cc.jumpkick.command.project.ExplainCommand;
 import cc.jumpkick.config.BuildLogicToml;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -20,13 +19,14 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * {@code jk build} and {@code jk explain} feed the shared forecast the same plan-affecting options.
- * The argv under test is derived from {@link PlanOptions#options()} itself — every name of every
+ * The argv under test is derived from {@link BuildFlags#options} itself — every name of every
  * option, valued ones in both spellings — so a flag added there is exercised against both commands
  * without anyone remembering to list it here.
  */
@@ -34,7 +34,7 @@ class BuildExplainPlanOptionsParityTest {
 
     /**
      * A workspace with a guard script, because {@code --scripts-only} is rejected outright by
-     * {@code TestCommand.resolveTestSelection} on a project that declares none.
+     * {@link BuildFlags#testSelection} on a project that declares none.
      */
     @TempDir
     static Path project;
@@ -47,7 +47,7 @@ class BuildExplainPlanOptionsParityTest {
                 "// a guard script, so --scripts-only resolves\n");
         List<List<String>> cases = new ArrayList<>();
         cases.add(List.of());
-        for (Opt opt : PlanOptions.options()) {
+        for (Opt opt : BuildFlags.options(BuildFlags.Reach.DELIVER, BuildFlags.Affected.MODULES)) {
             for (String name : opt.allNames()) {
                 if (!opt.takesValue()) {
                     cases.add(List.of(name));
@@ -60,7 +60,7 @@ class BuildExplainPlanOptionsParityTest {
         }
         // Reachable only through the `=` form (bare `-w -3` parses -3 as an option); both floor it.
         cases.add(List.of("--workers=-3"));
-        // The globals PlanOptions.from reads.
+        // The globals the forecast reads.
         cases.add(List.of("-j", "1"));
         cases.add(List.of("-j", "8"));
         cases.add(List.of("--redo"));
@@ -80,6 +80,11 @@ class BuildExplainPlanOptionsParityTest {
             case "include-tags" -> "fast";
             case "exclude-tags" -> "slow";
             case "jdks-dir" -> project.resolve("jdks").toString();
+            case "cache-dir" -> project.resolve("cache").toString();
+            case "test-failures" -> "report";
+            case "modules" -> "app";
+            case "affected-since" -> "HEAD";
+            case "variant" -> "type=release";
             default -> throw new AssertionError("no sample value for --" + option);
         };
     }
@@ -89,20 +94,43 @@ class BuildExplainPlanOptionsParityTest {
     void build_and_explain_derive_the_same_plan_options(List<String> argv) {
         assertThat(planOptions(new ExplainCommand(), argv))
                 .as("jk explain %s must forecast what jk build %s would run", argv, argv)
-                .isEqualTo(planOptions(new BuildCommand(), argv));
+                .isEqualTo(planOptions(BuildVerbCommand.build(), argv));
     }
 
     /** Every derived argv is one both commands accept — an option on only one of them fails here. */
     @ParameterizedTest(name = "jk {0}")
     @MethodSource("plan_affecting_argv")
     void both_commands_accept_every_plan_affecting_flag(List<String> argv) {
-        assertThatCode(() -> parse(new BuildCommand(), argv)).doesNotThrowAnyException();
+        assertThatCode(() -> parse(BuildVerbCommand.build(), argv)).doesNotThrowAnyException();
         assertThatCode(() -> parse(new ExplainCommand(), argv)).doesNotThrowAnyException();
     }
 
-    private static PlanOptions planOptions(CliCommand command, List<String> argv) {
-        Invocation in = parse(command, argv);
-        return PlanOptions.from(in, GlobalOptions.from(in), TestCommand.resolveTestSelection(in));
+    /** The inputs {@code jk explain} prices a build with, as {@link BuildFlags} derives them. */
+    record PlanInputs(
+            int workers,
+            boolean skipTests,
+            @Nullable String profile,
+            @Nullable Path jdksDir,
+            boolean parallelTests,
+            int jobs,
+            boolean verbose,
+            boolean rebuild,
+            Path cache,
+            TestSelection selection) {}
+
+    private static PlanInputs planOptions(CliCommand command, List<String> argv) {
+        BuildFlags flags = BuildFlags.from(parse(command, argv));
+        return new PlanInputs(
+                flags.workers(),
+                flags.skipTests(),
+                flags.profile(),
+                flags.jdksDir(),
+                flags.parallelTests(),
+                flags.jobs(),
+                flags.global().verbose,
+                flags.rebuild(),
+                flags.cache(),
+                flags.testSelection());
     }
 
     private static Invocation parse(CliCommand command, List<String> argv) {

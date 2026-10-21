@@ -200,8 +200,8 @@ final class EngineJobs {
     }
 
     /**
-     * Run a single (non-workspace) project's real build plan against the engine — the counterpart of
-     * {@code BuildCommand.runForDir}. Same shape as {@link #runTest}, plus {@code buildOutcomeOut}
+     * Run a single (non-workspace) project's real build plan against the engine ({@code jk build} on
+     * a standalone project). Same shape as {@link #runTest}, plus {@code buildOutcomeOut}
      * (populated with {@code PlannerPackage.BUILD_OUTCOME}, if the plan reported one, before the
      * terminal {@code plan-finish} reaches {@code listenerFactory}'s listener) so the caller's
      * summary line (e.g. "project up to date" vs "project built") can match the in-process path.
@@ -329,10 +329,12 @@ final class EngineJobs {
                 envelope(new CompileRequest(
                                 req.entryDir().toString(),
                                 req.cache().toString(),
+                                req.jdksDir() == null ? null : req.jdksDir().toString(),
                                 req.profile(),
                                 req.offline(),
                                 req.force(),
                                 req.verbose(),
+                                req.keepGoing(),
                                 req.modules())
                         .encode()),
                 req.cache(),

@@ -127,7 +127,7 @@ public final class GlobalOptions {
             raw = SessionContext.current().config().dirOr(Path.of(""));
         }
         // Canonicalize symlinks (macOS /tmp → /private/tmp, symlinked checkouts): action-cache
-        // task pointers hash this path's TEXT, and BuildCommand already realpaths its dir
+        // task pointers hash this path's TEXT, and the build verbs already realpath their dir
         // a command that didn't (explain) queried a different identity than the build stored,
         // reporting a full rebuild right after a green build.
         Path abs = raw.toAbsolutePath().normalize();

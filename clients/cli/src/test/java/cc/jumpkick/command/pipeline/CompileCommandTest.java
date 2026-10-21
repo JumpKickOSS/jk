@@ -129,7 +129,7 @@ class CompileCommandTest {
 
         assertThat(exit).isEqualTo(0);
         String out = stdout.toString(StandardCharsets.UTF_8);
-        assertThat(out).contains("nothing selected to compile");
+        assertThat(out).contains("nothing affected since HEAD");
         assertThat(out).doesNotContain("Compiled");
     }
 

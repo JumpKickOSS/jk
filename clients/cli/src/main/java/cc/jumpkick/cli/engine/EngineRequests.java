@@ -18,7 +18,7 @@ import org.jspecify.annotations.Nullable;
 public final class EngineRequests {
     private EngineRequests() {}
 
-    /** Everything an engine-hosted {@code jk test} run needs — mirrors {@code TestCommand}'s own local fields. */
+    /** Everything an engine-hosted {@code jk test} run needs. */
     public record TestRequest(
             Path entryDir,
             Path cache,
@@ -137,7 +137,7 @@ public final class EngineRequests {
         }
     }
 
-    /** Everything an engine-hosted single-project {@code jk build} needs — mirrors {@code BuildCommand}'s local fields. */
+    /** Everything an engine-hosted single-project {@code jk build} needs. */
     public record SingleBuildRequest(
             Path entryDir,
             Path cache,
@@ -575,22 +575,17 @@ public final class EngineRequests {
 
     // ---- hosted plan commands ----------------------------------------------------------------
 
-    /** Everything an engine-hosted {@code jk compile} needs — mirrors {@code CompileCommand}'s local fields. */
+    /** Everything an engine-hosted {@code jk compile} needs. */
     public record CompileRequest(
             Path entryDir,
             Path cache,
+            @Nullable Path jdksDir,
             @Nullable String profile,
             boolean offline,
             boolean force,
             boolean verbose,
-            List<String> modules) {
-
-        /** No module selection (entry dir / whole graph). */
-        public CompileRequest(
-                Path entryDir, Path cache, @Nullable String profile, boolean offline, boolean force, boolean verbose) {
-            this(entryDir, cache, profile, offline, force, verbose, List.of());
-        }
-    }
+            boolean keepGoing,
+            List<String> modules) {}
 
     /** Everything an engine-hosted {@code jk train} needs. */
     public record TrainRequest(

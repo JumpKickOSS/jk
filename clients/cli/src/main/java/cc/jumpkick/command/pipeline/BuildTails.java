@@ -18,8 +18,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * Every line the build cluster settles on: the module completion tail, the workspace success wedge,
  * the single-project tail and the failure tail. Six verbs render these ({@code build}, {@code test},
- * {@code run}, {@code compile}, {@code image}, {@code native}), which is precisely why they are not
- * on {@code BuildCommand} — a renderer other verbs import is not a facade, it is a shared surface,
+ * {@code run}, {@code compile}, {@code image}, {@code native}), so they live on no one verb — a
+ * renderer other verbs import is not a facade, it is a shared surface,
  * and the numbers inside it (the zero-padded {@code [k of N]} bracket, the green strikethrough on a
  * finished coordinate, the bright-black {@code took …}) have to agree across all six or the same
  * build reads differently depending on which verb was typed.

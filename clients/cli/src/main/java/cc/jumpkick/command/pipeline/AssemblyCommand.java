@@ -30,7 +30,7 @@ import java.util.List;
  */
 public final class AssemblyCommand implements CliCommand {
 
-    private final BuildCommand build = new BuildCommand();
+    private final BuildVerbCommand build = BuildVerbCommand.build();
 
     @Override
     public String name() {

@@ -418,7 +418,8 @@ class EngineServerRequestTest extends EngineServerHarness {
         String planFinish = null;
         String buildError = null;
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            c.sendLine(new CompileRequest(project.toString(), cache.toString(), null, false, false, false, List.of())
+            c.sendLine(new CompileRequest(
+                            project.toString(), cache.toString(), null, null, false, false, false, false, List.of())
                     .encode());
             String line;
             while ((line = c.readLine()) != null) {
@@ -626,7 +627,7 @@ class EngineServerRequestTest extends EngineServerHarness {
                 version = "0.1.0"
                 java = 25
                 """);
-        // Cache clear realpaths the module root (matches BuildCommand); seed tags the same way.
+        // Cache clear realpaths the module root (matches the build verbs); seed tags the same way.
         Path projectReal = project.toRealPath();
         String tag = ActionKey.taskTag(BuildLayout.of(projectReal, JkBuildParser.parse(projectReal.resolve("jk.toml")))
                 .classesDir());

@@ -323,7 +323,7 @@ public final class CachePlans {
 
     /** The current project dir plus, if it's in a workspace, every {@code [workspace]} module dir. */
     private static List<Path> resolveModuleDirs(Path projectDir) {
-        // Prefer realpath so tags/INPUT prefixes match BuildCommand (which realpaths before build).
+        // Prefer realpath so tags/INPUT prefixes match the build verbs (which realpath before building).
         // macOS /var → /private/var (and similar symlink roots) otherwise miss every action-cache key.
         Path here;
         try {

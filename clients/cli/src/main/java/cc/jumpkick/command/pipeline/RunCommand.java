@@ -422,7 +422,7 @@ public final class RunCommand {
      */
     private @Nullable WorkspaceResult runWorkspaceLive(WorkspaceRequest request, List<String> scopeNames) {
         var view = JkManager.plan(CliOutput.stdout(), "Run", true);
-        view.setPlanCoord(BuildCommand.projectGaLabel(request.entryDir()));
+        view.setPlanCoord(BuildRun.projectGaLabel(request.entryDir()));
         ModuleScopeHint.apply(view, "building", scopeNames);
         var agg = new AggregateContext(view);
         // Live arm only (never -O jsonl), so events reach the transcript and not stdout.

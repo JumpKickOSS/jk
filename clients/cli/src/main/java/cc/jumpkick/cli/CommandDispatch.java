@@ -25,8 +25,7 @@ import cc.jumpkick.command.interop.McpCommand;
 import cc.jumpkick.command.interop.MvnCommand;
 import cc.jumpkick.command.interop.VscodeCommand;
 import cc.jumpkick.command.pipeline.AssemblyCommand;
-import cc.jumpkick.command.pipeline.BuildCommand;
-import cc.jumpkick.command.pipeline.CompileCommand;
+import cc.jumpkick.command.pipeline.BuildVerbCommand;
 import cc.jumpkick.command.pipeline.DevCommand;
 import cc.jumpkick.command.pipeline.FormatCommand;
 import cc.jumpkick.command.pipeline.GuardCommand;
@@ -35,7 +34,6 @@ import cc.jumpkick.command.pipeline.JshellCommand;
 import cc.jumpkick.command.pipeline.NativeCommand;
 import cc.jumpkick.command.pipeline.PublishCommand;
 import cc.jumpkick.command.pipeline.SelectiveCommand;
-import cc.jumpkick.command.pipeline.TestCommand;
 import cc.jumpkick.command.pipeline.TrainCommand;
 import cc.jumpkick.command.pipeline.WatchCommand;
 import cc.jumpkick.command.project.AddCommand;
@@ -175,15 +173,15 @@ public final class CommandDispatch {
             // `run` and `install` are also mounted under `jk tool` (one implementation, two mounts).
             new ToolRunCommand(),
             new ToolInstallCommand(),
-            new CompileCommand(),
+            BuildVerbCommand.compile(),
             new DevCommand(),
             new WatchCommand(),
-            new BuildCommand(),
+            BuildVerbCommand.build(),
             new AssemblyCommand(),
             new BspCommand(),
             new McpCommand(),
             new SelectiveCommand(Jk::execute),
-            new TestCommand(),
+            BuildVerbCommand.test(),
             new FormatCommand(),
             new NativeCommand(),
             new TrainCommand(),

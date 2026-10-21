@@ -100,7 +100,7 @@ public final class JshellCommand implements CliCommand {
                 bb.putValue("cache-dir", cacheDir.toString());
             }
             in.value(CommonOpts.JDKS_DIR).ifPresent(v -> bb.putValue(CommonOpts.JDKS_DIR, v));
-            int code = new BuildCommand().run(bb.build());
+            int code = BuildVerbCommand.build().run(bb.build());
             if (code != 0) {
                 CommandWedge.printFail(
                         "JShell", "preparatory build failed (exit " + code + "); try --no-build after a green build");

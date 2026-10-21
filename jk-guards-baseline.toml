@@ -712,7 +712,7 @@ population = { examined = 4 }
 
 [clock-owner]
 [clock-owner.populations]
-"clients/cli" = { classes = 756, sites = 47311 }
+"clients/cli" = { classes = 763, sites = 47533 }
 "clients/cli-terminal" = { classes = 48, sites = 1630 }
 "plugins/image-builder" = { classes = 13, sites = 1201 }
 "plugins/java-compiler" = { classes = 25, sites = 1420 }
@@ -842,18 +842,6 @@ at     = "cc.jumpkick.cli.watch.SourceWatch#pollChange(JLjava/util/concurrent/Ti
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.pipeline.BuildCommand#runForDir(Ljava/nio/file/Path;)I -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.pipeline.BuildCommand#runGraphParallel(Ljava/nio/file/Path;)I -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.pipeline.BuildCommand#runWorkspaceHeadless(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
 at     = "cc.jumpkick.command.pipeline.BuildTails#elapsedMsSince(J)J -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
@@ -895,14 +883,6 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 [[clock-owner.entries]]
 in     = "clients/cli"
 at     = "cc.jumpkick.command.pipeline.SelectiveCommand#prepare(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/String;Ljava/nio/file/Path;)I -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.pipeline.TestCommand#runWorkspaceTestsHeadless(Ljava/nio/file/Path;Ljava/nio/file/Path;ILjava/util/List;)I -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.pipeline.TestCommand#runWorkspaceTestsLive(Ljava/nio/file/Path;Ljava/nio/file/Path;ILjava/util/List;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
