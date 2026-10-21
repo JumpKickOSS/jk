@@ -84,6 +84,7 @@ test-plugin-jars = [
   "groovy-compiler",
   "cc.jumpkick:jk-quarkus",
   "micronaut",
+  "graph",
   # Rule packs the shipped templates declare: staged into the test sandbox store, where a
   # scaffolded project's lock looks for a first-party pack.
   "cc.jumpkick.guards:spring",

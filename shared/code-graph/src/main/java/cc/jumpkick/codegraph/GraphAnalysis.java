@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.codegraph;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 
 /** graphify's structural highlights: the most-connected entities and the edges least expected. */
 public final class GraphAnalysis {
@@ -94,6 +102,104 @@ public final class GraphAnalysis {
                 .thenComparing(s -> s.edge().source())
                 .thenComparing(s -> s.edge().target()));
         return out.subList(0, Math.min(topN, out.size()));
+    }
+
+    /**
+     * Files that import each other in a ring, smallest rings first: every strongly connected set of
+     * two or more files over {@code imports} and {@code imports_from} edges, each a sorted path list.
+     */
+    public static List<List<String>> importCycles(CodeGraph graph, int limit) {
+        Map<String, Set<String>> deps = new TreeMap<>();
+        for (GraphEdge e : graph.edges()) {
+            if (!e.relation().equals(Relations.IMPORTS) && !e.relation().equals(Relations.IMPORTS_FROM)) continue;
+            GraphNode from = graph.node(e.source());
+            GraphNode to = graph.node(e.target());
+            if (from == null
+                    || to == null
+                    || from.sourceFile().isEmpty()
+                    || to.sourceFile().isEmpty()) continue;
+            if (from.sourceFile().equals(to.sourceFile())) continue;
+            deps.computeIfAbsent(from.sourceFile(), k -> new TreeSet<>()).add(to.sourceFile());
+        }
+        List<List<String>> cycles = new ArrayList<>();
+        new Tarjan(deps, cycles).run();
+        cycles.sort(Comparator.comparingInt((List<String> c) -> c.size()).thenComparing(c -> c.getFirst()));
+        return cycles.subList(0, Math.min(limit, cycles.size()));
+    }
+
+    /** Tarjan's strongly connected components, iterative so a long import chain cannot overflow the stack. */
+    private static final class Tarjan {
+        private final Map<String, Set<String>> deps;
+        private final List<List<String>> out;
+        private final Map<String, Integer> index = new HashMap<>();
+        private final Map<String, Integer> low = new HashMap<>();
+        private final Deque<String> stack = new ArrayDeque<>();
+        private final Set<String> onStack = new HashSet<>();
+        private int next;
+
+        Tarjan(Map<String, Set<String>> deps, List<List<String>> out) {
+            this.deps = deps;
+            this.out = out;
+        }
+
+        void run() {
+            for (String v : deps.keySet()) {
+                if (!index.containsKey(v)) visit(v);
+            }
+        }
+
+        private void visit(String root) {
+            Deque<Map.Entry<String, Iterator<String>>> work = new ArrayDeque<>();
+            enter(root, work);
+            while (!work.isEmpty()) {
+                Map.Entry<String, Iterator<String>> top = work.peek();
+                String v = top.getKey();
+                if (top.getValue().hasNext()) {
+                    String w = top.getValue().next();
+                    if (!index.containsKey(w)) {
+                        enter(w, work);
+                    } else if (onStack.contains(w)) {
+                        low.put(v, Math.min(low(v), idx(w)));
+                    }
+                    continue;
+                }
+                work.pop();
+                if (!work.isEmpty()) {
+                    String parent = work.peek().getKey();
+                    low.put(parent, Math.min(low(parent), low(v)));
+                }
+                if (low(v) == idx(v)) {
+                    List<String> component = new ArrayList<>();
+                    String w;
+                    do {
+                        w = stack.pop();
+                        onStack.remove(w);
+                        component.add(w);
+                    } while (!w.equals(v));
+                    if (component.size() > 1) {
+                        component.sort(null);
+                        out.add(component);
+                    }
+                }
+            }
+        }
+
+        private int low(String v) {
+            return low.getOrDefault(v, 0);
+        }
+
+        private int idx(String v) {
+            return index.getOrDefault(v, 0);
+        }
+
+        private void enter(String v, Deque<Map.Entry<String, Iterator<String>>> work) {
+            index.put(v, next);
+            low.put(v, next);
+            next++;
+            stack.push(v);
+            onStack.add(v);
+            work.push(Map.entry(v, deps.getOrDefault(v, Set.of()).iterator()));
+        }
     }
 
     /** A file node, a concept stub, or a method that only its owner touches. */
