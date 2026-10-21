@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
@@ -181,9 +182,9 @@ public final class GraphRunner {
                 .op(PluginProtocol.OP_COMMAND, "graph", "jk-graph")
                 .configString("root", root.toString())
                 .configString("out", outputDir(root).toString())
-                .configString("op", r.op())
+                .configString("op", Objects.requireNonNull(r.op()))
                 .configList("args", r.args())
-                .configString("mode", r.mode())
+                .configString("mode", r.mode() == null ? "bfs" : r.mode())
                 .configInt("depth", r.depth())
                 .configInt("budget", r.budget())
                 .configList("contexts", r.contexts())

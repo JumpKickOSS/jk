@@ -6,6 +6,7 @@ import cc.jumpkick.engine.http.ProgressTokenRegistry;
 import cc.jumpkick.engine.http.mcp.tools.AffectedTestsTool;
 import cc.jumpkick.engine.http.mcp.tools.BindTool;
 import cc.jumpkick.engine.http.mcp.tools.CancelTool;
+import cc.jumpkick.engine.http.mcp.tools.CodeGraphTool;
 import cc.jumpkick.engine.http.mcp.tools.ConfigTool;
 import cc.jumpkick.engine.http.mcp.tools.DepsTool;
 import cc.jumpkick.engine.http.mcp.tools.DetailsTool;
@@ -126,63 +127,63 @@ public final class McpTools {
     }
 
     public static McpTools standard() {
-        return new McpTools(
-                List.of(
-                        new SkillTool(),
-                        new StatusTool(),
-                        new TriggerTool(
-                                "build",
-                                "build",
-                                "Start a workspace/module build for dir (async). Returns jid; stream progress "
-                                        + "via GET /mcp?jid=N (or ?progressToken=T with _meta.progressToken) "
-                                        + "Accept: text/event-stream. Same as POST /api/build."),
-                        new TriggerTool(
-                                "test",
-                                "test",
-                                "Start a true test-only job for dir (async; compile + tests, no package — same as "
-                                        + "jk test). Journal kind test. Progress: GET /mcp?jid=N. Returns jid."),
-                        new TriggerTool(
-                                "lock",
-                                "lock",
-                                "Resolve dependencies and write jk-lock.toml for dir (async). Progress: GET /mcp?jid=N."),
-                        new CancelTool(),
-                        new BindTool(),
-                        new ProjectTool(),
-                        new HistoryTool(),
-                        new DiagnosticsTool(),
-                        new DetailsTool(),
-                        new RunTool(),
-                        new WhyTool(),
-                        new ExplainTool(),
-                        new AffectedTestsTool(),
-                        new OutdatedTool(),
-                        new UpdateTool(),
-                        new DepsTool(),
-                        new WorkspaceTool(),
-                        new ManifestTool(),
-                        new ConfigTool(),
-                        new DiskTool(),
-                        new JdkTool(),
-                        new NodeTool(),
-                        new NewTool(),
-                        new RunAliasTool(
-                                "publish",
-                                "publish",
-                                "Validate the publish bundle — ALWAYS a dry-run (same planner as jk publish; "
-                                        + "credentials never enter the engine). Real uploads: jk publish CLI.",
-                                McpSchemas.BOUND_ROOT),
-                        new InstallTool(),
-                        new RunAliasTool(
-                                "import",
-                                "import",
-                                "Import a Maven/Gradle build into jk.toml (auto-detects build.gradle.kts / "
-                                        + "build.gradle / pom.xml). Same importer as jk import.",
-                                "Checkout with the foreign build (default: bound dir)"),
-                        new ExportTool(),
-                        new IdeTool(),
-                        new GraphTool(),
-                        new DoctorTool()),
-                LOOP);
+        List<McpTool> tools = new ArrayList<>(List.of(
+                new SkillTool(),
+                new StatusTool(),
+                new TriggerTool(
+                        "build",
+                        "build",
+                        "Start a workspace/module build for dir (async). Returns jid; stream progress "
+                                + "via GET /mcp?jid=N (or ?progressToken=T with _meta.progressToken) "
+                                + "Accept: text/event-stream. Same as POST /api/build."),
+                new TriggerTool(
+                        "test",
+                        "test",
+                        "Start a true test-only job for dir (async; compile + tests, no package — same as "
+                                + "jk test). Journal kind test. Progress: GET /mcp?jid=N. Returns jid."),
+                new TriggerTool(
+                        "lock",
+                        "lock",
+                        "Resolve dependencies and write jk-lock.toml for dir (async). Progress: GET /mcp?jid=N."),
+                new CancelTool(),
+                new BindTool(),
+                new ProjectTool(),
+                new HistoryTool(),
+                new DiagnosticsTool(),
+                new DetailsTool(),
+                new RunTool(),
+                new WhyTool(),
+                new ExplainTool(),
+                new AffectedTestsTool(),
+                new OutdatedTool(),
+                new UpdateTool(),
+                new DepsTool(),
+                new WorkspaceTool(),
+                new ManifestTool(),
+                new ConfigTool(),
+                new DiskTool(),
+                new JdkTool(),
+                new NodeTool(),
+                new NewTool(),
+                new RunAliasTool(
+                        "publish",
+                        "publish",
+                        "Validate the publish bundle — ALWAYS a dry-run (same planner as jk publish; "
+                                + "credentials never enter the engine). Real uploads: jk publish CLI.",
+                        McpSchemas.BOUND_ROOT),
+                new InstallTool(),
+                new RunAliasTool(
+                        "import",
+                        "import",
+                        "Import a Maven/Gradle build into jk.toml (auto-detects build.gradle.kts / "
+                                + "build.gradle / pom.xml). Same importer as jk import.",
+                        "Checkout with the foreign build (default: bound dir)"),
+                new ExportTool(),
+                new IdeTool(),
+                new GraphTool(),
+                new DoctorTool()));
+        tools.addAll(CodeGraphTool.all());
+        return new McpTools(tools, LOOP);
     }
 
     /** Every tool name, in registration order. */
