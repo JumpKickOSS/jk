@@ -4,20 +4,16 @@ package cc.jumpkick.runtime.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.runtime.BuildGraph;
-import cc.jumpkick.runtime.Calibration;
+import cc.jumpkick.runtime.SettledHostCalibration;
 import cc.jumpkick.test.TestWorkers;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -25,40 +21,8 @@ import org.junit.jupiter.api.io.TempDir;
  * ({@link BuildService#estimateEtaMillis}) with the same defaults. If these diverge, the feature
  * is actively misleading — see docs/perf/progress-contract.md.
  */
+@ExtendWith(SettledHostCalibration.class)
 class ExplainBuildEtaParityTest {
-
-    @TempDir
-    Path hostStateDir;
-
-    private @Nullable String prevStateDir;
-
-    /**
-     * A settled host calibration in a private state dir, so the ETA's {@link Calibration#ensure}
-     * returns at once instead of running the multi-second hardware probe.
-     */
-    @BeforeEach
-    void settledHostCalibration() throws Exception {
-        prevStateDir = System.getProperty("jk.env.JK_STATE_DIR");
-        System.setProperty("jk.env.JK_STATE_DIR", hostStateDir.toString());
-        Path file = JkDirs.builds().resolve("host-metrics.toml");
-        Files.createDirectories(file.getParent());
-        Files.writeString(file, """
-                [calibration]
-                schema        = 1
-                ms-per-weight = 120.0
-                measured      = true
-                jk-version    = "%s"
-                updated       = %d
-                """.formatted(JkVersion.VERSION, System.currentTimeMillis()));
-        Calibration.invalidateMemo();
-    }
-
-    @AfterEach
-    void restoreHostState() {
-        if (prevStateDir == null) System.clearProperty("jk.env.JK_STATE_DIR");
-        else System.setProperty("jk.env.JK_STATE_DIR", prevStateDir);
-        Calibration.invalidateMemo();
-    }
 
     @Test
     void auto_workers_resolve_wider_than_forced_serial() {
