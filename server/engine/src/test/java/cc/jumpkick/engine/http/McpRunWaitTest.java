@@ -200,6 +200,8 @@ class McpRunWaitTest {
                 List::of,
                 jid -> jid == JID && !live.get() ? FINISHED_OK : null,
                 () -> live.get() ? List.of(running) : List.of());
+        // The job never finishes during the first call, so its one-second budget can only run out.
+        mcp.waitSecondMs(100);
         assertThat(textOf(runJid(mcp, 1))).isEqualTo("TIMEOUT test jid=45\nrun(jid=45)\n");
         live.set(false);
         assertThat(textOf(runJid(mcp, 2))).startsWith("OK build a ·");

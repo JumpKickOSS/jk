@@ -456,6 +456,19 @@ final class PlannerGuards {
                 .weight(1)
                 .ticks(1)
                 .execute(ctx -> {
+                    // A proof over unchanged rules, fixtures and suites is a proof still: only a
+                    // green run is recorded, so a red one runs again.
+                    String taskId = ActionKey.qualifiedTaskId(TaskNames.GUARD_FIXTURES, g.root());
+                    List<String> tokens = GuardFixtures.keyTokens(g.root(), cx.cas());
+                    String key = tokens == null ? null : GuardKeys.laneKey(taskId, tokens, "fixtures");
+                    var session = cx.in().session().config();
+                    boolean useCache = !session.forceOr(false) && !session.rebuildOr(false);
+                    if (key != null && useCache && cx.actionCache().lookup(key).isPresent()) {
+                        ctx.label("every rule bites (cached)");
+                        ctx.cached();
+                        ctx.progress(1);
+                        return;
+                    }
                     GuardFixtures.Result r = GuardFixtures.run(g.root(), cx.cas());
                     if (r.verdicts().isEmpty() && r.loadErrors().isEmpty()) {
                         ctx.label("no fixtures");
@@ -465,6 +478,9 @@ final class PlannerGuards {
                                 + (r.ok() ? " · every rule bites" : " · " + r.failures() + " not proven"));
                     }
                     if (!r.ok()) throw new GuardsRed(r.failures() + " fixture(s) not proven");
+                    if (key != null && tokens != null) {
+                        cx.actionCache().storeVerdict(taskId, key, inputsOf(tokens, "fixtures"));
+                    }
                     ctx.progress(1);
                 })
                 .build();

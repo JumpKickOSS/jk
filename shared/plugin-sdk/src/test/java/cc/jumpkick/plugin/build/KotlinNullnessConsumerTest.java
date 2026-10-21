@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
 class KotlinNullnessConsumerTest {
 
     @Test
+    @Tag("integration") // forks kotlinc
     void nullable_sdk_results_compile_as_kotlin_nullable_types(@TempDir Path temp) throws Exception {
         Path source = temp.resolve("ValidConsumer.kt");
         Files.writeString(source, """
@@ -41,6 +43,7 @@ class KotlinNullnessConsumerTest {
     }
 
     @Test
+    @Tag("integration") // forks kotlinc
     void nullable_sdk_results_cannot_flow_into_kotlin_non_null_types(@TempDir Path temp) throws Exception {
         Path source = temp.resolve("InvalidConsumer.kt");
         Files.writeString(source, """
@@ -59,21 +62,18 @@ class KotlinNullnessConsumerTest {
     }
 
     @Test
-    void a_child_that_stops_using_cpu_is_given_up_on(@TempDir Path temp) throws Exception {
-        Path sleeper = temp.resolve("Sleeper.java");
-        Files.writeString(sleeper, """
-                class Sleeper {
-                    public static void main(String[] args) throws Exception {
-                        Thread.sleep(600_000);
-                    }
-                }
-                """);
-        Process process = new ProcessBuilder(javaExecutable().toString(), sleeper.toString()).start();
+    void a_child_that_stops_using_cpu_is_given_up_on() throws Exception {
+        Process process = new ProcessBuilder(
+                        javaExecutable().toString(),
+                        "-cp",
+                        System.getProperty("java.class.path"),
+                        Sleeper.class.getName())
+                .start();
         try {
             assertThat(cpuTime(process)).as("child CPU time").isPresent();
             long start = System.nanoTime();
-            assertThat(awaitWhileWorking(process, Duration.ofSeconds(3), Duration.ofMinutes(1)))
-                    .contains("used no CPU for 3 seconds");
+            assertThat(awaitWhileWorking(process, Duration.ofMillis(500), Duration.ofMinutes(1)))
+                    .contains("used no CPU for 500 ms");
             assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofMinutes(2));
         } finally {
             process.destroyForcibly();
@@ -117,15 +117,17 @@ class KotlinNullnessConsumerTest {
     /**
      * Wait for {@code process} while it keeps using CPU: a full build starves it of time, not of
      * progress. Null when it exited; otherwise why it was given up on. Where no CPU time can be
-     * read, only the ceiling applies.
+     * read, only the ceiling applies. CPU is sampled five times per {@code stall}, at most once a
+     * second.
      */
     private static @Nullable String awaitWhileWorking(Process process, Duration stall, Duration ceiling)
             throws InterruptedException {
         long start = System.nanoTime();
         long lastProgress = start;
+        long pollMillis = Math.min(1000, stall.toMillis() / 5);
         Duration lastCpu = Duration.ZERO;
         boolean cpuKnown = false;
-        while (!process.waitFor(1, TimeUnit.SECONDS)) {
+        while (!process.waitFor(pollMillis, TimeUnit.MILLISECONDS)) {
             long now = System.nanoTime();
             Optional<Duration> cpu = cpuTime(process);
             if (cpu.isPresent()) {
@@ -136,7 +138,7 @@ class KotlinNullnessConsumerTest {
                 }
             }
             if (cpuKnown && now - lastProgress > stall.toNanos()) {
-                return "used no CPU for " + stall.toSeconds() + " seconds";
+                return "used no CPU for " + stall.toMillis() + " ms";
             }
             if (now - start > ceiling.toNanos()) return "did not exit within " + ceiling.toMinutes() + " minutes";
         }
@@ -240,4 +242,11 @@ class KotlinNullnessConsumerTest {
     }
 
     private record CompileResult(int exit, String output) {}
+
+    /** A child JVM that starts and then uses no CPU. */
+    static final class Sleeper {
+        public static void main(String[] args) throws InterruptedException {
+            Thread.sleep(600_000);
+        }
+    }
 }

@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.guard.eval.Evaluation;
 import cc.jumpkick.guard.eval.FixtureCheck;
@@ -29,6 +30,7 @@ import cc.jumpkick.model.GuardsConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.base.GuardSuiteLibrary;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.FileHashMemo;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -37,11 +39,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
@@ -97,6 +102,7 @@ public final class GuardFixtures {
         List<FixtureCheck.Verdict> verdicts = new ArrayList<>();
         // text rules: snippets, no compile
         Map<String, List<FixtureCheck.Case>> byModule = new LinkedHashMap<>();
+        List<Callable<FixtureCheck.Verdict>> trees = new ArrayList<>();
         for (FixtureCheck.Case c : cases) {
             if (!Files.isDirectory(c.dir())) {
                 verdicts.add(new FixtureCheck.Verdict(
@@ -105,7 +111,7 @@ public final class GuardFixtures {
             }
             List<FixtureCheck.Source> sources = FixtureCheck.sources(c.dir());
             if (sources.stream().anyMatch(FixtureCheck.Source::tree)) {
-                verdicts.add(treeVerdict(root, c, sources, cas));
+                trees.add(() -> treeVerdict(root, c, sources, cas));
                 continue;
             }
             if (!c.compiled()) {
@@ -114,9 +120,52 @@ public final class GuardFixtures {
             }
             byModule.computeIfAbsent(c.module(), k -> new ArrayList<>()).add(c);
         }
+        // Each case forks the guard suite in a work directory of its own, so the cases run side by side.
+        verdicts.addAll(parallel(trees));
         for (var e : byModule.entrySet()) verdicts.addAll(compiledVerdicts(root, e.getKey(), e.getValue(), cas));
         verdicts.sort((a, b) -> a.id().compareTo(b.id()));
         return new Result(loadErrors, verdicts, FixtureCheck.render(verdicts, loadErrors));
+    }
+
+    /**
+     * Everything a verdict reads, as lane-key tokens: the rules, every fixture file, each guard
+     * suite's compiled index, the suite library, the lock, and the classes a compiled fixture is
+     * built against. The engine build rides every lane key already. Null when the rules do not
+     * load, so the run reports the errors instead of keying them.
+     */
+    static @Nullable List<String> keyTokens(Path root, Cas cas) throws IOException {
+        GuardsConfig cfg;
+        try {
+            cfg = JkBuildParser.guardsConfig(ManifestPaths.manifestIn(root));
+        } catch (RuntimeException e) {
+            cfg = GuardsConfig.ABSENT;
+        }
+        LoadResult load = GuardRules.load(root, cfg);
+        if (!load.errors().isEmpty()) return null;
+        List<String> tokens = new ArrayList<>();
+        GuardKeys.addRuleTokens(tokens, load);
+        Map<String, GuardSuites.Located> guards = GuardSuites.declaredAcrossWorkspace(root);
+        Set<Path> owners = new TreeSet<>();
+        for (FixtureCheck.Case c : FixtureCheck.cases(root, load.rules(), guards)) {
+            if (!Files.isDirectory(c.dir())) continue;
+            List<Path> files = new ArrayList<>();
+            PathUtil.forEachRegularFile(c.dir(), (f, attrs) -> files.add(f));
+            files.sort(null);
+            for (Path f : files) tokens.add("fixture:" + root.relativize(f) + ":" + FileHashMemo.contentHash(f));
+            owners.add(c.module().isEmpty() ? root : root.resolve(c.module()));
+        }
+        for (Path m : owners) {
+            Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(m), "guard");
+            tokens.add(GuardKeys.fileToken("guard-suite:" + root.relativize(m), idx));
+            for (Path p : compileClasspath(root, m, cas)) tokens.add("cp:" + ClasspathFingerprint.entry(p));
+        }
+        // Only a guard suite forks against the suite library; rules alone never read it.
+        if (!guards.isEmpty()) {
+            tokens.add(GuardKeys.fileToken(
+                    "suite-library", GuardSuiteLibrary.locate(root, cas).path()));
+        }
+        tokens.add(GuardKeys.fileToken("lock", root.resolve(ManifestPaths.LOCK)));
+        return tokens;
     }
 
     /**
@@ -256,71 +305,138 @@ public final class GuardFixtures {
         }
         FactsIndexing.Ensured ensured = FactsIndexing.ensure(outDir, outDir.resolveSibling("fixtures-guard.idx"));
         FactsIndex all = FactsIndexing.load(ensured);
+        Set<String> decided = new HashSet<>();
+        for (FixtureCheck.Verdict v : out) decided.add(v.id());
+        List<Callable<FixtureCheck.Verdict>> judged = new ArrayList<>();
         for (FixtureCheck.Case c : cases) {
-            if (out.stream().anyMatch(v -> v.id().equals(c.id()))) continue;
-            Set<String> bad = new TreeSet<>();
-            Set<String> ok = new TreeSet<>();
-            List<Path> badText = new ArrayList<>();
-            List<Path> okText = new ArrayList<>();
-            int badFiles = 0;
-            int okFiles = 0;
-            for (FixtureCheck.Source s : sources.getOrDefault(c, List.of())) {
-                if (s.bad()) {
-                    badFiles++;
-                    bad.addAll(s.classes());
-                    badText.add(s.file());
-                } else {
-                    okFiles++;
-                    ok.addAll(s.classes());
-                    okText.add(s.file());
-                }
-            }
-            bad.addAll(stubs.getOrDefault(c, Set.of()));
-            ok.addAll(stubs.getOrDefault(c, Set.of()));
-            FactsIndex badSlice = FixtureCheck.slice(all, bad);
-            FactsIndex okSlice = FixtureCheck.slice(all, ok);
-            int badSites;
-            int okSites;
-            if (c.guardTest()) {
-                Path work = BuildLayout.moduleTargetDir(moduleDir)
-                        .resolve("jk-guards")
-                        .resolve("fixtures")
-                        .resolve(c.id());
-                Path badWork = work.resolve("bad");
-                Path okWork = work.resolve("ok");
-                SuiteAnswer overBad = guardEvaluation(
-                        root, module, moduleDir, c, badSlice, sliceText(badWork, badText), false, badWork, cas);
-                SuiteAnswer overOk = okFiles == 0
-                        ? SuiteAnswer.NONE
-                        : guardEvaluation(
-                                root, module, moduleDir, c, okSlice, sliceText(okWork, okText), false, okWork, cas);
-                SuiteAnswer silent =
-                        overBad.evaluation() == null ? overBad : overOk.evaluation() == null ? overOk : null;
-                if (silent != null) {
-                    out.add(new FixtureCheck.Verdict(
-                            c.id(), "error", "the guard suite did not run over the fixture: " + silent.problem()));
-                    continue;
-                }
-                badSites = overBad.sites();
-                okSites = overOk.sites();
-            } else {
-                var badEval = FixtureCheck.evaluate(c, root, badSlice, c.rule().kind() == Kind.TIERS ? badSlice : null);
-                var okEval = FixtureCheck.evaluate(c, root, okSlice, c.rule().kind() == Kind.TIERS ? okSlice : null);
-                // Anything but a verdict over the slice (blind, owner-missing, not-evaluated, a
-                // scanner failure) is the rule's condition, not the fixture's silence: say which.
-                if (badEval.outcome() != Outcome.CLEAN && badEval.outcome() != Outcome.VIOLATIONS) {
-                    out.add(new FixtureCheck.Verdict(
-                            c.id(),
-                            "error",
-                            "Bad evaluated " + badEval.outcome().id() + ": " + badEval.note()));
-                    continue;
-                }
-                badSites = badEval.observations().size();
-                okSites = okEval.observations().size();
-            }
-            out.add(FixtureCheck.verdict(c.id(), badFiles, badSites, okFiles, okSites));
+            if (decided.contains(c.id())) continue;
+            judged.add(() -> judge(root, module, moduleDir, c, sources, stubs, all, cas));
         }
+        out.addAll(parallel(judged));
         return out;
+    }
+
+    /** One compiled case's verdict over its slices of the module's fixture index. */
+    private static FixtureCheck.Verdict judge(
+            Path root,
+            String module,
+            Path moduleDir,
+            FixtureCheck.Case c,
+            Map<FixtureCheck.Case, List<FixtureCheck.Source>> sources,
+            Map<FixtureCheck.Case, Set<String>> stubs,
+            FactsIndex all,
+            Cas cas)
+            throws IOException {
+        Set<String> bad = new TreeSet<>();
+        Set<String> ok = new TreeSet<>();
+        List<Path> badText = new ArrayList<>();
+        List<Path> okText = new ArrayList<>();
+        int badFiles = 0;
+        int okFiles = 0;
+        for (FixtureCheck.Source s : sources.getOrDefault(c, List.of())) {
+            if (s.bad()) {
+                badFiles++;
+                bad.addAll(s.classes());
+                badText.add(s.file());
+            } else {
+                okFiles++;
+                ok.addAll(s.classes());
+                okText.add(s.file());
+            }
+        }
+        bad.addAll(stubs.getOrDefault(c, Set.of()));
+        ok.addAll(stubs.getOrDefault(c, Set.of()));
+        FactsIndex badSlice = FixtureCheck.slice(all, bad);
+        FactsIndex okSlice = FixtureCheck.slice(all, ok);
+        int badSites;
+        int okSites;
+        if (c.guardTest()) {
+            Path work = BuildLayout.moduleTargetDir(moduleDir)
+                    .resolve("jk-guards")
+                    .resolve("fixtures")
+                    .resolve(c.id());
+            Path badWork = work.resolve("bad");
+            Path okWork = work.resolve("ok");
+            SuiteAnswer overBad = guardEvaluation(
+                    root, module, moduleDir, c, badSlice, sliceText(badWork, badText), false, badWork, cas);
+            SuiteAnswer overOk = okFiles == 0
+                    ? SuiteAnswer.NONE
+                    : guardEvaluation(
+                            root, module, moduleDir, c, okSlice, sliceText(okWork, okText), false, okWork, cas);
+            SuiteAnswer silent = overBad.evaluation() == null ? overBad : overOk.evaluation() == null ? overOk : null;
+            if (silent != null) {
+                return new FixtureCheck.Verdict(
+                        c.id(), "error", "the guard suite did not run over the fixture: " + silent.problem());
+            }
+            badSites = overBad.sites();
+            okSites = overOk.sites();
+        } else {
+            var badEval = FixtureCheck.evaluate(c, root, badSlice, c.rule().kind() == Kind.TIERS ? badSlice : null);
+            var okEval = FixtureCheck.evaluate(c, root, okSlice, c.rule().kind() == Kind.TIERS ? okSlice : null);
+            // Anything but a verdict over the slice (blind, owner-missing, not-evaluated, a
+            // scanner failure) is the rule's condition, not the fixture's silence: say which.
+            if (badEval.outcome() != Outcome.CLEAN && badEval.outcome() != Outcome.VIOLATIONS) {
+                return new FixtureCheck.Verdict(
+                        c.id(), "error", "Bad evaluated " + badEval.outcome().id() + ": " + badEval.note());
+            }
+            badSites = badEval.observations().size();
+            okSites = okEval.observations().size();
+        }
+        return FixtureCheck.verdict(c.id(), badFiles, badSites, okFiles, okSites);
+    }
+
+    /** At most this many guard-suite forks at once: each is a JVM of its own. */
+    private static final int MAX_FORKS =
+            Math.max(1, Math.min(8, Runtime.getRuntime().availableProcessors() / 2));
+
+    /**
+     * Run {@code jobs} side by side, at most {@link #MAX_FORKS} at once, each under this request's
+     * session, and return their verdicts in submission order.
+     */
+    static List<FixtureCheck.Verdict> parallel(List<Callable<FixtureCheck.Verdict>> jobs) throws IOException {
+        if (jobs.isEmpty()) return List.of();
+        if (jobs.size() == 1) return List.of(call(jobs.getFirst()));
+        Semaphore forks = new Semaphore(MAX_FORKS);
+        FixtureCheck.Verdict[] verdicts = new FixtureCheck.Verdict[jobs.size()];
+        Exception[] failures = new Exception[jobs.size()];
+        List<Thread> threads = new ArrayList<>();
+        for (int n = 0; n < jobs.size(); n++) {
+            int at = n;
+            threads.add(SessionContext.startVirtual("jk-guard-fixture-" + at, () -> {
+                try {
+                    forks.acquire();
+                    try {
+                        verdicts[at] = jobs.get(at).call();
+                    } finally {
+                        forks.release();
+                    }
+                } catch (Exception e) {
+                    failures[at] = e;
+                }
+            }));
+        }
+        try {
+            for (Thread t : threads) t.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("interrupted while proving fixtures", e);
+        }
+        for (Exception e : failures) {
+            if (e instanceof IOException io) throw io;
+            if (e instanceof RuntimeException re) throw re;
+            if (e != null) throw new IOException(e);
+        }
+        return List.of(verdicts);
+    }
+
+    private static FixtureCheck.Verdict call(Callable<FixtureCheck.Verdict> job) throws IOException {
+        try {
+            return job.call();
+        } catch (IOException | RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException(e);
+        }
     }
 
     /** The slice's files copied under {@code work/text}, so the guard's text view sees Bad without Ok and Ok without Bad. */

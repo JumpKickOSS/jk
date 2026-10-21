@@ -337,8 +337,9 @@ class JobEnvelopeTest {
         assertThat(started.await(10, TimeUnit.SECONDS)).isTrue();
         try {
             now.addAndGet(2 * JobLimits.DEFAULT_DETACHED_DEADLINE_MS);
-            // Longer than the deadline-only watchdog tick, so a deadline arm that existed would fire.
-            Thread.sleep(1_500);
+            // Long enough for an arm that read the moved clock to fire: a watchdog or join that had
+            // a deadline would find it already passed.
+            Thread.sleep(200);
             assertThat(host.accumulator.wasCancelled()).isFalse();
             assertThat(host.journalWritten).isFalse();
         } finally {
@@ -487,7 +488,7 @@ class JobEnvelopeTest {
         String project = checkout.toString().replace('\\', '/');
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", project, null, "web");
-        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 0L, 100L, 0L, 0L));
+        JobEnvelope env = quickJoins(host, new JobLimits(0L, 0L, 0L, 0L, 50L, 0L, 0L));
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
 
@@ -936,7 +937,7 @@ class JobEnvelopeTest {
     @Test
     void eof_before_the_body_finishes_is_a_disconnect_and_cancels_it() {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
-        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
+        JobEnvelope env = quickJoins(host, JobLimits.DEFAULTS);
         AtomicBoolean interrupted = new AtomicBoolean();
         StringWriter out = new StringWriter();
         env.submit(
@@ -953,6 +954,12 @@ class JobEnvelopeTest {
                 new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
         assertThat(interrupted).isTrue();
         assertThat(out.toString()).contains("\"cancelled\":true");
+    }
+
+    /** An envelope whose connections wait 50 ms for a terminal and add nothing to the cancel grace. */
+    private static JobEnvelope quickJoins(FakeEnvelopeHost host, JobLimits limits) {
+        return new JobEnvelope(
+                host, limits, MemoryAdmission.forRuntime(limits.queueWaitMs(), host::nowMillis), 50L, 0L);
     }
 
     /** The detached tail runs on its own thread; the idle boundary is its last effect. */

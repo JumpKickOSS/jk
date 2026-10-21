@@ -47,6 +47,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 /**
  * The {@code jk-publisher} plugin: the terminal {@link PublishExtension} goal for Maven publishing.
@@ -63,6 +64,17 @@ import java.util.UUID;
 public final class Publisher implements Plugin, PublishExtension {
 
     private static final String PREFIX = "##JKPU:";
+
+    /** The transport a repository upload goes through; a test hands in one without the retry ladder. */
+    private final Supplier<Http> http;
+
+    public Publisher() {
+        this(Http::new);
+    }
+
+    Publisher(Supplier<Http> http) {
+        this.http = http;
+    }
 
     @Override
     public PluginManifest manifest() {
@@ -230,7 +242,7 @@ public final class Publisher implements Plugin, PublishExtension {
                     null,
                     null,
                     null);
-            MavenPublisher publisher = MavenPublisher.withObjectStore(repoUrl, cred, objectStore);
+            MavenPublisher publisher = MavenPublisher.withObjectStore(repoUrl, cred, objectStore, http.get());
 
             MavenPublisher.Result result = publisher.publish(project.project(), artifacts, signing);
             for (Map.Entry<String, Integer> e : result.statusByPath().entrySet()) {

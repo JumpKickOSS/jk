@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -41,22 +42,23 @@ class OfficialTemplatesFreshenTest {
         // Holds stdout open and sleeps forever.
         Path script = script("#!/bin/sh\nsleep 600\n");
         long start = System.nanoTime();
-        IOException e =
-                assertThrows(IOException.class, () -> OfficialTemplatesFreshen.runGit(List.of(script.toString()), 2));
+        IOException e = assertThrows(
+                IOException.class,
+                () -> OfficialTemplatesFreshen.runGit(List.of(script.toString()), Duration.ofMillis(200)));
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
         // Prefix plus containment, not equality — same contract as the exit-code message: what
         // went wrong, then which invocation.
         String message = String.valueOf(e.getMessage());
         assertTrue(
-                message.startsWith("git timed out after 2s"),
+                message.startsWith("git timed out after 200ms"),
                 () -> "expected the timeout and its budget up front, got: " + message);
         assertTrue(
                 message.contains(script.toString()), () -> "expected the stalled command to be named, got: " + message);
-        // LIVENESS, not performance: the script sleeps 600s and runGit was given a 2s timeout, so
+        // LIVENESS, not performance: the script sleeps 600s and runGit was given a 200ms timeout, so
         // anything under 30s proves the timeout fired rather than the read blocking to EOF.
         assertTrue(
                 elapsedMs < 30_000,
-                "LIVENESS: the 2s git timeout did not fire — the call took " + elapsedMs
+                "LIVENESS: the git timeout did not fire — the call took " + elapsedMs
                         + "ms against a helper that sleeps 600s");
     }
 
@@ -138,7 +140,9 @@ class OfficialTemplatesFreshenTest {
     void runGitKillsTheDescendantsOfATimedOutGit() throws Exception {
         // 599, not 600: a marker no other test's sleeper carries.
         Path script = script("#!/bin/sh\nsleep 599 &\nwait\n");
-        assertThrows(IOException.class, () -> OfficialTemplatesFreshen.runGit(List.of(script.toString()), 1));
+        assertThrows(
+                IOException.class,
+                () -> OfficialTemplatesFreshen.runGit(List.of(script.toString()), Duration.ofMillis(500)));
 
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         while (sleeper599Alive() && System.nanoTime() < deadline) {

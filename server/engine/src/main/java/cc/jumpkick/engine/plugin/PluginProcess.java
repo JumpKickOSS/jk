@@ -253,7 +253,35 @@ public final class PluginProcess {
             throws IOException, InterruptedException {
         ProcessBuilder pb = builder(command, env);
         if (workDir != null && Files.isDirectory(workDir)) pb.directory(workDir.toFile());
-        return converse(pb, prefix, onProtocol, onPassthrough, closeStdinImmediately, idleTimeoutMs, heaps);
+        return converse(
+                pb,
+                prefix,
+                onProtocol,
+                onPassthrough,
+                closeStdinImmediately,
+                idleTimeoutMs,
+                heaps,
+                ORPHAN_DRAIN_GRACE_MS);
+    }
+
+    /** As the watchdog overload with the orphan drain grace given in millis (tests). */
+    static int converse(
+            List<String> command,
+            WorkerEnv env,
+            String prefix,
+            BiConsumer<String, Conversation> onProtocol,
+            long idleTimeoutMs,
+            long orphanDrainGraceMs)
+            throws IOException, InterruptedException {
+        return converse(
+                builder(command, env),
+                prefix,
+                onProtocol,
+                null,
+                false,
+                idleTimeoutMs,
+                LearnedHeaps.engine(),
+                orphanDrainGraceMs);
     }
 
     /**
@@ -277,7 +305,14 @@ public final class PluginProcess {
             long idleTimeoutMs)
             throws IOException, InterruptedException {
         return converse(
-                pb, prefix, onProtocol, onPassthrough, closeStdinImmediately, idleTimeoutMs, LearnedHeaps.engine());
+                pb,
+                prefix,
+                onProtocol,
+                onPassthrough,
+                closeStdinImmediately,
+                idleTimeoutMs,
+                LearnedHeaps.engine(),
+                ORPHAN_DRAIN_GRACE_MS);
     }
 
     private static int converse(
@@ -287,7 +322,8 @@ public final class PluginProcess {
             @Nullable Consumer<String> onPassthrough,
             boolean closeStdinImmediately,
             long idleTimeoutMs,
-            LearnedHeaps heaps)
+            LearnedHeaps heaps,
+            long orphanDrainGraceMs)
             throws IOException, InterruptedException {
         // Every worker forks through here, so this is where it loses the engine's terminal.
         pb.command(WorkerSession.detached(pb.command()));
@@ -388,10 +424,10 @@ public final class PluginProcess {
                     // to deliver the lines the fork wrote before it died, and only then is the
                     // parent's read end closed (best effort; a pump parked on the orphan's pipe
                     // stays parked until the orphan exits, and reads nothing more for the job).
-                    if (!pumpDone.await(ORPHAN_DRAIN_GRACE_MS, TimeUnit.MILLISECONDS)) {
+                    if (!pumpDone.await(orphanDrainGraceMs, TimeUnit.MILLISECONDS)) {
                         abandoned.set(true);
                         JobWorkers.destroyTree(process);
-                        pumpDone.await(ORPHAN_DRAIN_GRACE_MS, TimeUnit.MILLISECONDS);
+                        pumpDone.await(orphanDrainGraceMs, TimeUnit.MILLISECONDS);
                         forceStop(process);
                     }
                     break;

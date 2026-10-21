@@ -10,7 +10,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
@@ -27,9 +26,6 @@ import org.junit.jupiter.api.Test;
  * still-running state.
  */
 class BuildPlanFirstReadyTest {
-
-    /** How long a "slow" step blocks. Long enough to be unambiguous, short enough for CI. */
-    private static final Duration SLOW = Duration.ofSeconds(2);
 
     @Test
     void native_image_starts_while_run_tests_is_still_running() throws Exception {
@@ -82,8 +78,9 @@ class BuildPlanFirstReadyTest {
     @Test
     void package_assembly_starts_while_run_tests_is_still_running() throws Exception {
         CountDownLatch testsRunning = new CountDownLatch(1);
-        AtomicReference<Instant> assemblyStart = new AtomicReference<>();
-        AtomicReference<Instant> testsEnd = new AtomicReference<>();
+        CountDownLatch assemblyStarted = new CountDownLatch(1);
+        AtomicBoolean testsStillRunningWhenAssemblyStarted = new AtomicBoolean();
+        AtomicBoolean testsDone = new AtomicBoolean();
 
         var plan = BuildPlan.builder("assembly-shaped")
                 .addTask(Task.builder("package-jar")
@@ -94,10 +91,9 @@ class BuildPlanFirstReadyTest {
                         .kind(TaskKind.CPU)
                         .execute(ctx -> {
                             testsRunning.countDown();
-                            // Real time: this task's simulated work. The property is which task the scheduler
-                            // starts first while another is running, and only real threads show that.
-                            Thread.sleep(SLOW.toMillis());
-                            testsEnd.set(Instant.now());
+                            // Hold until assembly has started, but never hang the suite.
+                            assemblyStarted.await(10, TimeUnit.SECONDS);
+                            testsDone.set(true);
                         })
                         .build())
                 .addTask(Task.builder("package-assembly")
@@ -105,7 +101,8 @@ class BuildPlanFirstReadyTest {
                         .requires("package-jar")
                         .execute(ctx -> {
                             assertThat(testsRunning.await(10, TimeUnit.SECONDS)).isTrue();
-                            assemblyStart.set(Instant.now());
+                            testsStillRunningWhenAssemblyStarted.set(!testsDone.get());
+                            assemblyStarted.countDown();
                         })
                         .build())
                 .build();
@@ -113,9 +110,9 @@ class BuildPlanFirstReadyTest {
         BuildPlanResult r = plan.run();
 
         assertThat(r.success()).isTrue();
-        assertThat(assemblyStart.get())
+        assertThat(testsStillRunningWhenAssemblyStarted)
                 .as("assembly requires package-jar only, so it must start before the suite ends")
-                .isBefore(testsEnd.get());
+                .isTrue();
     }
 
     /**

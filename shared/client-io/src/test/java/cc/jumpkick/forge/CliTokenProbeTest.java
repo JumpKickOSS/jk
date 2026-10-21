@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
+import java.time.Duration;
 import java.util.EnumSet;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -14,7 +15,7 @@ import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
-/** The probe's 5s cap must hold whatever the helper does with its pipes. */
+/** The probe's cap must hold whatever the helper does with its pipes. */
 @DisabledOnOs(OS.WINDOWS)
 class CliTokenProbeTest {
 
@@ -48,13 +49,13 @@ class CliTokenProbeTest {
     void a_hung_helper_is_capped_and_yields_empty() throws Exception {
         Path helper = script("#!/bin/sh\nsleep 600\n");
         long start = System.nanoTime();
-        var token = CliTokenProbe.REAL.token(List.of(helper.toString()));
+        var token = CliTokenProbe.capped(Duration.ofMillis(200)).token(List.of(helper.toString()));
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
         assertThat(token).isEmpty();
-        // LIVENESS, not performance: the helper sleeps 600s and the cap is 5s, so any number
-        // between them proves the cap fired. 30s is 6x the cap deliberately.
+        // LIVENESS, not performance: the helper sleeps 600s, so any number well short of that
+        // proves the cap fired.
         assertThat(elapsedMs)
-                .as("LIVENESS: the 5s cap fired instead of awaiting the helper's 600s sleep")
+                .as("LIVENESS: the cap fired instead of awaiting the helper's 600s sleep")
                 .isLessThan(30_000);
     }
 

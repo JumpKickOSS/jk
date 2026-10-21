@@ -4,6 +4,8 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.compile.JavaCompilerHost;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.run.BuildPlanKey;
@@ -18,6 +20,10 @@ import java.util.Map;
 import java.util.Optional;
 import javax.tools.ToolProvider;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -33,9 +39,38 @@ class CompileTestProcessorTest {
     private static final String TEST_SRC =
             "package app; @gen.Gen public class WidgetTest { final Object g = new WidgetTestGen(); }";
 
+    /** The processor every case compiles against, built once: its fixture javac is not what is under test. */
+    private static Path procDir;
+
+    /** One job scope for the class, so every case compiles on the warm worker a build's compile-test uses. */
+    private static JavaCompilerHost.Scope job;
+
+    private @Nullable Long previousScope;
+
+    @BeforeAll
+    static void buildProcessor(@TempDir Path shared) throws IOException {
+        procDir = sourceGenProcessor(shared);
+        job = JavaCompilerHost.open();
+        JobWorkers.close();
+    }
+
+    @AfterAll
+    static void endJob() {
+        job.close();
+    }
+
+    @BeforeEach
+    void bindJob() {
+        previousScope = JobWorkers.bind(job.id());
+    }
+
+    @AfterEach
+    void unbindJob() {
+        JobWorkers.restore(previousScope);
+    }
+
     @Test
     void processorRunsOverTestSources_whenProcessorPathProvided(@TempDir Path dir) throws Exception {
-        Path procDir = sourceGenProcessor(dir);
         Path testSrc = dir.resolve("test").resolve("src");
         write(testSrc, "app/WidgetTest.java", TEST_SRC);
         Path out = dir.resolve("out");
@@ -68,7 +103,6 @@ class CompileTestProcessorTest {
     void classpathProcessorRuns_whenNoProcessorPathIsDeclared(@TempDir Path dir) throws Exception {
         // The processor is registered on the test classpath and nothing is declared: the request
         // builder discovers it, so WidgetTestGen is generated and the test source compiles.
-        Path procDir = sourceGenProcessor(dir);
         Path testSrc = dir.resolve("test").resolve("src");
         write(testSrc, "app/WidgetTest.java", TEST_SRC);
         Path out = dir.resolve("out");
@@ -83,7 +117,6 @@ class CompileTestProcessorTest {
     void declaredProcessorPathShadowsClasspathProcessor(@TempDir Path dir) throws Exception {
         // A declared processor path that names something else is searched alone: the classpath's
         // processor stays silent, WidgetTestGen is never generated and the compile fails.
-        Path procDir = sourceGenProcessor(dir);
         Path silent = Files.createDirectories(dir.resolve("silent"));
         Path testSrc = dir.resolve("test").resolve("src");
         write(testSrc, "app/WidgetTest.java", TEST_SRC);
@@ -121,9 +154,9 @@ class CompileTestProcessorTest {
 
     /** Source-generating processor: emits {@code <Type>Gen} for each {@code @gen.Gen} type. */
     private static Path sourceGenProcessor(Path dir) throws IOException {
-        Path procDir = dir.resolve("proc");
+        Path proc = dir.resolve("proc");
         compile(
-                procDir,
+                proc,
                 Map.of(
                         "gen.Gen", """
                         package gen;
@@ -159,10 +192,10 @@ class CompileTestProcessorTest {
                         }
                         """));
         Files.writeString(
-                Files.createDirectories(procDir.resolve("META-INF/services"))
+                Files.createDirectories(proc.resolve("META-INF/services"))
                         .resolve("javax.annotation.processing.Processor"),
                 "gen.GenProc\n");
-        return procDir;
+        return proc;
     }
 
     private static void write(Path root, String rel, String body) throws IOException {

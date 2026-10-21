@@ -74,7 +74,7 @@ public final class EngineStopCommand implements CliCommand {
     int stop(Path socket, boolean now, EngineProbe.Patience patience, SilentPeer.Grace grace) {
         Optional<EngineProbe.Status> before = EngineProbe.statusPatiently(socket, patience);
         if (before.isEmpty()) {
-            if (EngineProbe.reachable(socket)) return stopSilent(socket, now);
+            if (EngineProbe.reachable(socket)) return stopSilent(socket, now, patience);
             return stopHolder(socket, now, patience, grace);
         }
         long pid = before.get().pid();
@@ -134,10 +134,10 @@ public final class EngineStopCommand implements CliCommand {
      * that is a refusal, never a kill: a coordinator mid-build answers seconds or minutes late, and
      * killing it abandons every other terminal's jobs. {@code --now} is the operator's override.
      */
-    private int stopSilent(Path socket, boolean now) {
+    private int stopSilent(Path socket, boolean now, EngineProbe.Patience patience) {
         long pid = EngineProcessControl.unresponsiveHolderPid(socket);
         if (!now) return settle(Exit.FAILURE, silentRefusal(pid));
-        if (!EngineProcessControl.forceStop(socket)) EngineProcessControl.hardKill(pid);
+        if (!EngineProcessControl.forceStop(socket, patience.replyTimeoutMillis())) EngineProcessControl.hardKill(pid);
         if (pid <= 0 || EngineFleet.waitForExit(pid)) {
             return settle(Exit.SUCCESS, "Engine stopped now; it had not been answering its socket.");
         }

@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
@@ -31,6 +32,9 @@ class EngineStopCommandTest {
     private static final String VERSION = "9.9.9";
 
     private static final EngineProbe.Patience QUICK = new EngineProbe.Patience(200, 2, Duration.ofMillis(20));
+
+    /** For an engine that never answers: the reply wait only has to elapse, so it can be short. */
+    private static final EngineProbe.Patience SILENT = new EngineProbe.Patience(50, 2, Duration.ofMillis(20));
 
     /** Young for the whole test: a loading or busy coordinator. */
     private static final SilentPeer.Grace YOUNG = new SilentPeer.Grace(
@@ -46,9 +50,14 @@ class EngineStopCommandTest {
     private record Settled(int exit, Capture.Streams streams) {}
 
     private static Settled stop(Path socket, boolean now, SilentPeer.Grace grace) throws Exception {
+        return stop(socket, now, QUICK, grace);
+    }
+
+    private static Settled stop(Path socket, boolean now, EngineProbe.Patience patience, SilentPeer.Grace grace)
+            throws Exception {
         int[] exit = new int[1];
         Capture.Streams streams = NoAnsi.forced(
-                () -> Capture.both(() -> exit[0] = new EngineStopCommand().stop(socket, now, QUICK, grace)));
+                () -> Capture.both(() -> exit[0] = new EngineStopCommand().stop(socket, now, patience, grace)));
         return new Settled(exit[0], streams);
     }
 
@@ -82,7 +91,7 @@ class EngineStopCommandTest {
         try (ScriptedEngine ignored = ScriptedEngine.silent(socket)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(holder.pid()));
 
-            Settled settled = stop(socket, false, YOUNG);
+            Settled settled = stop(socket, false, SILENT, YOUNG);
 
             assertThat(settled.exit()).isEqualTo(Exit.FAILURE);
             assertThat(settled.streams().err())
@@ -96,14 +105,16 @@ class EngineStopCommandTest {
         }
     }
 
+    /** Waits out the stop's real death wait for a JVM that never exits on request. */
     @Test
+    @Tag("integration")
     void now_stops_a_silent_engine_regardless() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
         Process holder = SleepMain.spawn(60_000);
         try (ScriptedEngine ignored = ScriptedEngine.silent(socket)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(holder.pid()));
 
-            Settled settled = stop(socket, true, YOUNG);
+            Settled settled = stop(socket, true, SILENT, YOUNG);
 
             assertThat(settled.exit()).isEqualTo(Exit.SUCCESS);
             assertThat(settled.streams().out()).contains("stopped now");
@@ -138,7 +149,7 @@ class EngineStopCommandTest {
         try {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(holder.pid()));
             // Let the JVM's own start-up CPU settle, so two readings apart show no step.
-            Thread.sleep(1_500);
+            SleepMain.awaitIdle(holder);
 
             Settled settled = stop(socket, false, NO_GRACE);
 

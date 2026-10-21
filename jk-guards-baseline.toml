@@ -1,4 +1,4 @@
-# Engine-owned. Tightened on every jk build; grown only by `jk guard freeze <id> --reason`.
+# Engine-owned. Tightened on every jk build; grown only by `jk guard freeze <id> -W`.
 # Never edit by hand: an entry without a reason is a suppression, and there is no suppression syntax.
 
 [archive-instant-owner]
@@ -1613,7 +1613,7 @@ population = { files = 2203 }
 population = { files = 4230 }
 
 [no-fqcn]
-population = { units = 4174 }
+population = { units = 4510 }
 [[no-fqcn.entries]]
 unit   = "clients/cli-terminal/src/main/java/cc/jumpkick/terminal/package-info.java"
 value  = 1
@@ -1757,10 +1757,6 @@ reason = "pure move: four workspace tests moved with their classes into runtime.
 [[no-fqcn.entries]]
 unit   = "server/engine/src/test/java/cc/jumpkick/runtime/workspace/BuildServiceEtaTest.java"
 value  = 1
-reason = "pure move: four workspace tests moved with their classes into runtime.workspace; same references, same count"
-[[no-fqcn.entries]]
-unit   = "server/engine/src/test/java/cc/jumpkick/runtime/workspace/ExplainBuildEtaParityTest.java"
-value  = 2
 reason = "pure move: four workspace tests moved with their classes into runtime.workspace; same references, same count"
 [[no-fqcn.entries]]
 unit   = "server/resolver/src/test/java/cc/jumpkick/resolver/LockOrchestratorBomTest.java"

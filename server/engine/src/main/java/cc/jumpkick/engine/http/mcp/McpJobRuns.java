@@ -84,7 +84,7 @@ public final class McpJobRuns {
             return in.text(McpAgentText.running(spec.kind(), jid));
         }
         // Parked waits yield their RPC admission permit — 16 waiting agents must not 503 the surface.
-        boolean done = ctx.admissionYield().yielding(() -> waitUntilGone(ctx, jid, timeoutS * 1000L));
+        boolean done = ctx.admissionYield().yielding(() -> waitUntilGone(ctx, jid, timeoutS * ctx.waitSecondMs()));
         if (!done) {
             return in.text(McpAgentText.timeout(spec.kind(), jid));
         }
@@ -103,7 +103,7 @@ public final class McpJobRuns {
         String progressToken = in.progressToken();
         if (progressToken != null) ctx.progressTokens().bind(progressToken, jid);
         int timeoutS = timeoutS(in);
-        boolean done = ctx.admissionYield().yielding(() -> waitUntilGone(ctx, jid, timeoutS * 1000L));
+        boolean done = ctx.admissionYield().yielding(() -> waitUntilGone(ctx, jid, timeoutS * ctx.waitSecondMs()));
         if (!done) {
             return in.text(McpAgentText.timeout(McpVitals.liveKind(ctx, jid), jid));
         }

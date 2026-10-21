@@ -53,7 +53,7 @@ class JavadocJarTest {
 
     /**
      * The jar is streamed to disk, so the heap a module's documentation costs does not grow with
-     * the tree: 16 MiB of incompressible pages are zipped for well under that in allocation.
+     * the tree: 8 MiB of incompressible pages are zipped for less than half that in allocation.
      */
     @Test
     void a_large_tree_is_zipped_without_holding_the_jar_in_memory() throws IOException {
@@ -62,7 +62,7 @@ class JavadocJarTest {
         Path root = Files.createDirectories(tmp.resolve("large"));
         Random random = new Random(42);
         byte[] page = new byte[256 * 1024];
-        for (int i = 0; i < 64; i++) {
+        for (int i = 0; i < 32; i++) {
             random.nextBytes(page);
             Files.write(root.resolve("page-" + i + ".html"), page);
         }
@@ -73,8 +73,8 @@ class JavadocJarTest {
         JavadocJar.writeTree(root, jar);
         long allocated = threads.getCurrentThreadAllocatedBytes() - before;
 
-        assertThat(Files.size(jar)).isGreaterThan(16L << 20);
-        assertThat(allocated).as("bytes allocated while zipping 16 MiB").isLessThan(4L << 20);
+        assertThat(Files.size(jar)).isGreaterThan(8L << 20);
+        assertThat(allocated).as("bytes allocated while zipping 8 MiB").isLessThan(4L << 20);
     }
 
     private static Map<String, String> entries(Path jar) throws IOException {

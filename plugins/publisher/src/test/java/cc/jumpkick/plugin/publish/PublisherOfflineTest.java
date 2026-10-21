@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.publish;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.http.Http;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -26,10 +27,9 @@ import org.junit.jupiter.api.io.TempDir;
  * An offline publish does not upload.
  *
  * <p>This is the one worker in the tree whose unguarded network call has a side effect on someone
- * else's server, and its own comment used to claim the transport carried the guard. It did not:
- * {@code Http.checkOffline} reads the ambient session, and a forked worker JVM starts on
- * {@code Session.defaults()}, where offline is false. So the flag reached the engine, the engine
- * forked the publisher, and the publisher PUT.
+ * else's server. {@code Http.checkOffline} reads the ambient session, and a forked worker JVM
+ * starts on {@code Session.defaults()}, where offline is false, so the worker installs the spec's
+ * offline decision itself.
  *
  * <p>The assertion is on <strong>connections the destination accepted</strong>, not on the exit
  * code or the error text alone. A publish that fails for any reason exits non-zero, and a socket
@@ -99,7 +99,9 @@ class PublisherOfflineTest {
 
         var buffer = new ByteArrayOutputStream();
         ProtocolWriter out = new ProtocolWriter(new PrintStream(buffer, true, StandardCharsets.UTF_8), "##JKPU:");
-        int exit = new Publisher().run(List.of(spec.toString()), out);
+        // No retry ladder: the online upload fails on the listener's silence, and one attempt is
+        // the connection the control counts.
+        int exit = new Publisher(Http::failFast).run(List.of(spec.toString()), out);
         return new Result(exit, buffer.toString(StandardCharsets.UTF_8));
     }
 

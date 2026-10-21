@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
@@ -96,9 +97,11 @@ class ActionTreeTest {
             scanned.add(file);
             String rel = root.relativize(file).toString().replace('\\', '/');
             String code = stripComments(Files.readString(file));
+            Set<String> pathArgs =
+                    PATH_ARG.matcher(code).results().map(m -> m.group(1)).collect(Collectors.toSet());
             List<String> found = new ArrayList<>();
             for (String name : names) {
-                boolean pathShaped = PATH_ARG.matcher(code).results().anyMatch(m -> name.equals(m.group(1)));
+                boolean pathShaped = pathArgs.contains(name);
                 boolean bare = NO_HOMONYM.contains(name) && code.contains('"' + name + '"');
                 if (pathShaped || bare) found.add(name);
             }

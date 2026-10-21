@@ -3,6 +3,7 @@ package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.host.Os;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,5 +28,25 @@ public final class SleepMain {
                 java, "-cp", System.getProperty("java.class.path"), SleepMain.class.getName(), Long.toString(ms)));
         cmd.addAll(List.of(trailingArgs));
         return new ProcessBuilder(cmd).start();
+    }
+
+    /**
+     * Wait until {@code jvm} has finished starting up: two consecutive readings {@code 100 ms} apart
+     * show its CPU time standing still, so a later pair of readings sees no start-up step.
+     */
+    public static void awaitIdle(Process jvm) throws InterruptedException {
+        Duration last = cpu(jvm);
+        int quiet = 0;
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        while (quiet < 2 && System.nanoTime() < deadline) {
+            Thread.sleep(100);
+            Duration now = cpu(jvm);
+            quiet = now.minus(last).compareTo(Duration.ofMillis(5)) < 0 ? quiet + 1 : 0;
+            last = now;
+        }
+    }
+
+    private static Duration cpu(Process jvm) {
+        return jvm.info().totalCpuDuration().orElse(Duration.ZERO);
     }
 }

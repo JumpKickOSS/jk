@@ -19,9 +19,13 @@ import org.junit.jupiter.api.Test;
 /** The EOF watch and the three join budgets, driven without an engine. */
 class ConnectionWatchTest {
 
+    /** The join buffer past the cancel grace, shortened from the production default. */
+    private static final long JOIN_BUFFER_MS = 50L;
+
     @Test
     void eof_while_the_job_runs_is_one_disconnect_and_leaves_no_interrupt_behind() {
-        ConnectionWatch watch = new ConnectionWatch(System::currentTimeMillis, s -> {});
+        ConnectionWatch watch =
+                new ConnectionWatch(System::currentTimeMillis, s -> {}, 50L, ConnectionWatch.JOIN_BUFFER_MS);
         AtomicInteger disconnects = new AtomicInteger();
         watch.watchForEof(
                 new BufferedReader(new StringReader("")),
@@ -83,7 +87,7 @@ class ConnectionWatchTest {
             returned.countDown();
         });
         try {
-            assertThat(returned.await(1, TimeUnit.SECONDS))
+            assertThat(returned.await(200, TimeUnit.MILLISECONDS))
                     .as("a silent client must not hold the connection thread")
                     .isFalse();
             done.countDown();
@@ -100,7 +104,8 @@ class ConnectionWatchTest {
     @Test
     void after_a_cancel_the_join_is_bounded_and_a_runner_that_ignores_it_is_force_killed() {
         List<String> log = new ArrayList<>();
-        ConnectionWatch watch = new ConnectionWatch(System::currentTimeMillis, log::add);
+        ConnectionWatch watch = new ConnectionWatch(
+                System::currentTimeMillis, log::add, ConnectionWatch.TERMINAL_GRACE_MS, JOIN_BUFFER_MS);
         AtomicInteger kills = new AtomicInteger();
         long start = System.nanoTime();
         watch.awaitRunner(
@@ -115,7 +120,7 @@ class ConnectionWatchTest {
                 kills::incrementAndGet);
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(5));
         assertThat(kills).hasValue(1);
-        assertThat(log).singleElement().asString().contains("still running after cancel+2750ms");
+        assertThat(log).singleElement().asString().contains("still running after cancel+500ms");
     }
 
     /**
@@ -127,13 +132,15 @@ class ConnectionWatchTest {
     @Test
     void a_runner_that_ends_at_its_next_cancel_check_after_the_join_budget_is_not_written_off() throws Exception {
         List<String> log = new ArrayList<>();
-        ConnectionWatch watch = new ConnectionWatch(System::currentTimeMillis, log::add);
+        ConnectionWatch watch = new ConnectionWatch(
+                System::currentTimeMillis, log::add, ConnectionWatch.TERMINAL_GRACE_MS, JOIN_BUFFER_MS);
         AtomicInteger kills = new AtomicInteger();
         CountDownLatch done = new CountDownLatch(1);
-        // The join budget is 50 + 500 ms; the runner reaches its next check 300 ms past it.
+        // The join budget is 50 + 50 ms; the runner reaches its next check 150 ms past it, well
+        // inside the four budgets it is given.
         Thread runner = Thread.ofVirtual().start(() -> {
             try {
-                Thread.sleep(850L);
+                Thread.sleep(250L);
             } catch (InterruptedException ignored) {
                 // the test ends first
             }

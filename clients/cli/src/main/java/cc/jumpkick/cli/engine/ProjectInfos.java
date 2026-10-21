@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.nio.file.Path;
@@ -31,6 +32,7 @@ public final class ProjectInfos {
      * project (memoised for the calls that follow) or when no engine answered.
      */
     public static @Nullable String refusal(Path dir) {
+        if (!ManifestPaths.describesProject(dir)) return noManifest(dir);
         String key = key(dir, null, null, false, false);
         if (MEMO.containsKey(key)) return null;
         try {
@@ -45,6 +47,8 @@ public final class ProjectInfos {
 
     /** As {@link #orNull(Path)}; {@code counts=true} adds source/test tree counts. */
     public static @Nullable ProjectInfo orNull(Path dir, boolean counts) {
+        // A directory with no manifest has nothing to summarize; the engine would say so.
+        if (!ManifestPaths.describesProject(dir)) return null;
         String key = key(dir, null, null, false, counts);
         ProjectInfo cached = MEMO.get(key);
         if (cached != null) return cached;
@@ -65,6 +69,7 @@ public final class ProjectInfos {
 
     public static ProjectInfo orError(
             Path dir, @Nullable String modules, @Nullable String affectedSince, boolean affectedWip) {
+        if (!ManifestPaths.describesProject(dir)) return ProjectInfo.error(noManifest(dir));
         String key = key(dir, modules, affectedSince, affectedWip, false);
         ProjectInfo cached = MEMO.get(key);
         if (cached != null) return cached;
@@ -79,6 +84,11 @@ public final class ProjectInfos {
     }
 
     /** Drop memoized summaries — call after a lock refresh or any manifest edit mid-run. */
+    /** The engine's own answer for a directory with no manifest, given without asking it. */
+    private static String noManifest(Path dir) {
+        return "no jk.toml in " + dir;
+    }
+
     public static void forget() {
         MEMO.clear();
     }

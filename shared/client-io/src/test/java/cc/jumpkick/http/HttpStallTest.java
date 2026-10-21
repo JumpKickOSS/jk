@@ -60,7 +60,7 @@ class HttpStallTest {
             exchange.close();
         });
         Http http = new Http(Http.standardClient(), new Duration[] {Duration.ofMillis(10), Duration.ofMillis(10)})
-                .withRequestTimeout(Duration.ofSeconds(2));
+                .withRequestTimeout(Duration.ofMillis(500));
         URI uri = base.resolve("/never/answers.pom");
 
         AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -83,7 +83,7 @@ class HttpStallTest {
         assertThat(failure.get())
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining(uri.toString())
-                .hasMessageContaining("got no answer within 2 s");
+                .hasMessageContaining("got no answer within 500 ms");
         awaitCalls(calls);
         assertThat(calls.get()).as("a silent server is not asked again").isEqualTo(1);
         assertThat(InFlightRequests.waitingOn())
@@ -116,7 +116,7 @@ class HttpStallTest {
     @Test
     @Timeout(30)
     void a_streamed_body_slower_than_the_timeout_still_arrives() throws Exception {
-        Duration timeout = Duration.ofSeconds(3);
+        Duration timeout = Duration.ofMillis(750);
         byte[] head = "slow ".getBytes(StandardCharsets.UTF_8);
         byte[] tail = "body".getBytes(StandardCharsets.UTF_8);
         server.createContext("/slow/body.jar", exchange -> {
@@ -124,7 +124,7 @@ class HttpStallTest {
             try (var out = exchange.getResponseBody()) {
                 out.write(head);
                 out.flush();
-                Thread.sleep(timeout.toMillis() + 500);
+                Thread.sleep(timeout.toMillis() + 250);
                 out.write(tail);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();

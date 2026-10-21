@@ -20,6 +20,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.Signature;
 import java.security.interfaces.RSAPublicKey;
 import java.util.ArrayList;
@@ -36,6 +37,7 @@ import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.regex.Pattern;
 import javax.tools.ToolProvider;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -260,7 +262,7 @@ class WrapperTemplateTest {
     @Test
     void posix_wrapper_refuses_an_unreachable_malformed_or_foreign_signed_pointer(@TempDir Path tmp) throws Exception {
         if (Os.isWindows()) return;
-        KeyPair release = rsa3072();
+        KeyPair release = Keys.RELEASE;
         Path repo = materialize(tmp.resolve("repo"), spki(release));
         Path empty = Files.createDirectories(tmp.resolve("empty-path"));
 
@@ -285,7 +287,7 @@ class WrapperTemplateTest {
         assertThat(hostile.stderr()).contains("is not a release pointer").doesNotContain("fetching jk");
         assertThat(hostile.stdout()).doesNotContain("pwned");
 
-        signedPointer(latest, "version 1.0.0\nissued 1\n", rsa3072());
+        signedPointer(latest, "version 1.0.0\nissued 1\n", Keys.FOREIGN);
         Run foreign = runWrapper(repo, tmp, empty, releases);
         assertThat(foreign.exit()).isEqualTo(1);
         assertThat(foreign.stderr()).contains("signature verification failed").doesNotContain("fetching jk");
@@ -394,6 +396,7 @@ class WrapperTemplateTest {
      * so only the lock's age could break it.
      */
     @Test
+    @Tag("integration") // the wrapper's lock loop polls once a second
     void posix_wrapper_waits_on_the_download_lock_then_runs_what_its_holder_installed(@TempDir Path tmp)
             throws Exception {
         if (Os.isWindows()) return;
@@ -404,10 +407,10 @@ class WrapperTemplateTest {
         Path empty = Files.createDirectories(tmp.resolve("empty-path"));
 
         Process waiter = startWrapper(repo, empty, "file://" + tmp.resolve("no-such-releases"), home);
-        Thread.sleep(2_000);
-        assertThat(waiter.isAlive())
-                .as("the wrapper waits while the lock is held")
-                .isTrue();
+        // The wrapper's first stderr line is its wait notice; read it before the lock is released.
+        String notice = firstLine(waiter.getErrorStream());
+        assertThat(notice).as("the wrapper waits while the lock is held").contains("waiting for it");
+        assertThat(waiter.isAlive()).isTrue();
         Path installed = home.resolve("bin/jk");
         Files.writeString(installed, "#!/bin/sh\necho \"installed jk: $*\"\n");
         Files.setPosixFilePermissions(installed, PosixFilePermissions.fromString("rwxr-xr-x"));
@@ -416,7 +419,7 @@ class WrapperTemplateTest {
 
         Run run = finish(waiter);
         assertThat(run.exit()).as(run.stderr()).isZero();
-        assertThat(run.stderr()).contains("waiting for it").doesNotContain("could not read");
+        assertThat(run.stderr()).doesNotContain("could not read");
         assertThat(run.stdout()).contains("installed jk: --version");
         assertThat(lock).doesNotExist();
     }
@@ -430,7 +433,7 @@ class WrapperTemplateTest {
     void posix_wrapper_installs_the_jvm_client_where_the_release_lists_no_native_one(@TempDir Path tmp)
             throws Exception {
         if (Os.isWindows()) return;
-        KeyPair key = rsa3072();
+        KeyPair key = Keys.RELEASE;
         Path repo = materialize(tmp.resolve("repo"), spki(key));
         String releases = jvmClientRelease(tmp.resolve("releases"), "1.0.0", key, tmp);
         Path empty = Files.createDirectories(tmp.resolve("empty-path"));
@@ -461,6 +464,7 @@ class WrapperTemplateTest {
 
     /** A lock whose owner on this host is gone is broken at once, not waited on for ten minutes. */
     @Test
+    @Tag("integration") // the wrapper's lock loop polls once a second
     void posix_wrapper_breaks_a_lock_whose_owner_is_gone(@TempDir Path tmp) throws Exception {
         if (Os.isWindows()) return;
         Path repo = materialize(tmp.resolve("repo"));
@@ -489,7 +493,7 @@ class WrapperTemplateTest {
     void windows_wrapper_installs_the_jvm_client_where_the_release_lists_no_native_one(@TempDir Path tmp)
             throws Exception {
         if (!Os.isWindows()) return;
-        KeyPair key = rsa3072();
+        KeyPair key = Keys.RELEASE;
         Path repo = materializeBat(tmp.resolve("repo"), key);
         String releases = jvmClientRelease(tmp.resolve("releases"), "1.0.0", key, tmp);
         Path empty = Files.createDirectories(tmp.resolve("empty-path"));
@@ -537,7 +541,7 @@ class WrapperTemplateTest {
     @Test
     void windows_wrappers_started_together_download_once(@TempDir Path tmp) throws Exception {
         if (!Os.isWindows()) return;
-        KeyPair key = rsa3072();
+        KeyPair key = Keys.RELEASE;
         Path repo = materializeBat(tmp.resolve("repo"), key);
         String releases = jvmClientRelease(tmp.resolve("releases"), "1.0.0", key, tmp);
         Path home = Files.createDirectories(tmp.resolve("home"));
@@ -565,7 +569,7 @@ class WrapperTemplateTest {
     @Test
     void windows_wrapper_breaks_a_lock_whose_owner_is_gone(@TempDir Path tmp) throws Exception {
         if (!Os.isWindows()) return;
-        KeyPair key = rsa3072();
+        KeyPair key = Keys.RELEASE;
         Path repo = materializeBat(tmp.resolve("repo"), key);
         String releases = jvmClientRelease(tmp.resolve("releases"), "1.0.0", key, tmp);
         Path home = Files.createDirectories(tmp.resolve("home"));
@@ -596,10 +600,20 @@ class WrapperTemplateTest {
         return text.split(Pattern.quote(needle), -1).length - 1;
     }
 
-    private static KeyPair rsa3072() throws Exception {
-        KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA");
-        gen.initialize(3072);
-        return gen.generateKeyPair();
+    /** Generated once per run; an RSA-3072 key pair costs more than most wrapper runs. */
+    private static final class Keys {
+        static final KeyPair RELEASE = rsa3072();
+        static final KeyPair FOREIGN = rsa3072();
+    }
+
+    private static KeyPair rsa3072() {
+        try {
+            KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA");
+            gen.initialize(3072);
+            return gen.generateKeyPair();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /** The public key as the wrapper bakes it in: base64 of the X.509 SubjectPublicKeyInfo. */
@@ -820,6 +834,13 @@ class WrapperTemplateTest {
         byte[] bytes = n.toByteArray();
         if (bytes.length > 1 && bytes[0] == 0) bytes = Arrays.copyOfRange(bytes, 1, bytes.length);
         return Base64.getEncoder().encodeToString(bytes);
+    }
+
+    /** One line read a byte at a time, so the rest of {@code in} is left for {@link #finish}. */
+    private static String firstLine(InputStream in) throws IOException {
+        var line = new ByteArrayOutputStream();
+        for (int b = in.read(); b >= 0 && b != '\n'; b = in.read()) line.write(b);
+        return line.toString(StandardCharsets.UTF_8);
     }
 
     private static byte[] readAll(InputStream in) {

@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -75,6 +76,7 @@ class PlannerJavadocTest {
      * {@code ~/.jdks} whose javadoc is present (a 21 sits beside the 25 on a dev machine).
      */
     @Test
+    @Tag("integration")
     void a_malformed_comment_documents_under_the_lenient_default_and_fails_only_strict(@TempDir Path tmp)
             throws Exception {
         Path src = Files.createDirectories(tmp.resolve("src/com/ex"));

@@ -7,6 +7,7 @@ import cc.jumpkick.gradle.GradleResolver;
 import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.mvn.MavenResolver;
 import java.util.List;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -32,10 +33,27 @@ class BuildToolDistributionsTest {
 
     @Test
     void an_absent_or_blank_version_means_the_same_as_latest() throws Exception {
-        for (BuildTool tool : BuildTool.values()) {
-            assertThat(BuildToolDistributions.of(tool, null)).isEqualTo(BuildToolDistributions.of(tool, "latest"));
-            assertThat(BuildToolDistributions.of(tool, "  ")).isEqualTo(BuildToolDistributions.of(tool, "LATEST"));
+        for (BuildTool tool : OFFLINE_DEFAULTS) {
+            assertAbsentAndBlankMeanLatest(tool);
         }
+    }
+
+    /** Node's default and the package managers' ask a remote catalog. */
+    @Test
+    @Tag("network")
+    void an_absent_or_blank_version_means_the_same_as_latest_for_catalog_tools() throws Exception {
+        for (BuildTool tool : BuildTool.values()) {
+            if (!OFFLINE_DEFAULTS.contains(tool)) assertAbsentAndBlankMeanLatest(tool);
+        }
+    }
+
+    /** The tools whose default distribution is known without the network. */
+    private static final List<BuildTool> OFFLINE_DEFAULTS =
+            List.of(BuildTool.MAVEN, BuildTool.GRADLE, BuildTool.KOTLIN);
+
+    private static void assertAbsentAndBlankMeanLatest(BuildTool tool) throws Exception {
+        assertThat(BuildToolDistributions.of(tool, null)).isEqualTo(BuildToolDistributions.of(tool, "latest"));
+        assertThat(BuildToolDistributions.of(tool, "  ")).isEqualTo(BuildToolDistributions.of(tool, "LATEST"));
     }
 
     @Test
@@ -63,7 +81,7 @@ class BuildToolDistributionsTest {
             assertThat(BuildTool.bySlug(tool.slug())).contains(tool);
             assertThat(BuildTool.slugs()).contains(tool.slug());
         }
-        for (BuildTool tool : List.of(BuildTool.MAVEN, BuildTool.GRADLE, BuildTool.KOTLIN)) {
+        for (BuildTool tool : OFFLINE_DEFAULTS) {
             assertThat(BuildToolDistributions.of(tool, BuildTool.LATEST).tool()).isEqualTo(tool);
         }
         assertThat(BuildTool.bySlug("not-a-build-tool")).isEmpty();

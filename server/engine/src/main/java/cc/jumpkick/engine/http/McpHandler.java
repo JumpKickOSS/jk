@@ -115,8 +115,13 @@ public final class McpHandler {
     }
 
     /** Shrink the journal-write settle budget; tests only. */
-    void journalSettleMs(long ms) {
+    public void journalSettleMs(long ms) {
         ctx.journalSettleMs(ms);
+    }
+
+    /** Shrink one second of a wait's {@code timeout_s}; tests only. */
+    void waitSecondMs(long ms) {
+        ctx.waitSecondMs(ms);
     }
 
     /** Forget a connection ({@code DELETE /mcp}). */

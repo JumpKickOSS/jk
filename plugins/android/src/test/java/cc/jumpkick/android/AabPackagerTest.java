@@ -24,6 +24,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -137,6 +138,7 @@ class AabPackagerTest {
      * goes red.
      */
     @Test
+    @Tag("integration") // forks keytool and jarsigner
     void the_debug_identity_signs_the_bundle_under_the_configured_store_dir(@TempDir Path tmp) throws Exception {
         Path storeDir = tmp.resolve("android-home");
         FakeBuildIo io = release(tmp);

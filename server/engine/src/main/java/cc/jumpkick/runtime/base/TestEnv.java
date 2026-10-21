@@ -168,6 +168,19 @@ public final class TestEnv {
      * <p>A module that sets {@code JK_HOME} itself wins — the sandbox is a default, not an override.
      */
     public static WorkerEnv forModule(JkBuild project, Path moduleDir, BuildLayout layout) throws IOException {
+        return forModule(project, moduleDir, layout, true);
+    }
+
+    /**
+     * {@link #forModule} without seeding the sandbox store: the same environment for a caller that
+     * launches no suite into it and only asks what it is.
+     */
+    public static WorkerEnv forModuleUnseeded(JkBuild project, Path moduleDir, BuildLayout layout) throws IOException {
+        return forModule(project, moduleDir, layout, false);
+    }
+
+    private static WorkerEnv forModule(JkBuild project, Path moduleDir, BuildLayout layout, boolean seed)
+            throws IOException {
         Path target = layout.moduleTargetDir();
         Map<String, String> out = new LinkedHashMap<>();
         // Caller's PATH/HOME/… first so a declared [test] env entry can still replace them.
@@ -178,7 +191,7 @@ public final class TestEnv {
         // preparation may run meanwhile.
         Path sandboxHome = TestHomes.prepare(moduleDir);
         Path m2 = sandboxM2(moduleDir);
-        warmStore(sandboxHome, m2);
+        if (seed) warmStore(sandboxHome, m2);
         out.put(JK_HOME, sandboxHome.toString());
         out.put(JK_STATE_DIR, sandboxHome.resolve("state").toString());
         out.put(JK_STORE_DIR, sandboxHome.resolve("store").toString());

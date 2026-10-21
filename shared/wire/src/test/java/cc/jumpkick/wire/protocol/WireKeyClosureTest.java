@@ -180,6 +180,7 @@ class WireKeyClosureTest {
     /** Every key read as a string literal — the second argument of a {@code Jsonl} reader call. */
     private static Set<String> readKeys(String body) {
         Set<String> keys = new LinkedHashSet<>();
+        if (!body.contains("Jsonl.")) return keys;
         Matcher m = READER.matcher(body);
         while (m.find()) {
             List<String> args = arguments(body, m.end());
@@ -192,10 +193,15 @@ class WireKeyClosureTest {
 
     private static Set<String> writtenKeys(String body) {
         Set<String> keys = new LinkedHashSet<>();
-        Matcher literal = JSON_KEY_LITERAL.matcher(body);
-        while (literal.find()) keys.add(literal.group(1));
-        Matcher put = MAP_PUT.matcher(body);
-        while (put.find()) keys.add(put.group(1));
+        // Each pattern starts with a fixed fragment; a file without it is skipped before the regex.
+        if (body.contains("\\\"")) {
+            Matcher literal = JSON_KEY_LITERAL.matcher(body);
+            while (literal.find()) keys.add(literal.group(1));
+        }
+        if (body.contains(".put(")) {
+            Matcher put = MAP_PUT.matcher(body);
+            while (put.find()) keys.add(put.group(1));
+        }
         Matcher requestField = REQUEST_FIELD.matcher(body);
         while (requestField.find()) keys.add(requestField.group(1));
         return keys;

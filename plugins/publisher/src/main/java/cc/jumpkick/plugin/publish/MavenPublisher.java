@@ -28,7 +28,7 @@ public final class MavenPublisher {
 
     /** Authenticate with an explicit credential (anonymous → no auth header). */
     public MavenPublisher(URI repoBase, RepoCredential credential) {
-        this(repoBase, credential, ObjectStoreConfig.EMPTY);
+        this(repoBase, credential, ObjectStoreConfig.EMPTY, new Http());
     }
 
     /** Convenience for HTTP Basic auth; a blank username means anonymous. */
@@ -48,13 +48,19 @@ public final class MavenPublisher {
      */
     public static MavenPublisher withObjectStore(
             URI repoBase, RepoCredential credential, ObjectStoreConfig objectStore) {
-        return new MavenPublisher(repoBase, credential, objectStore);
+        return withObjectStore(repoBase, credential, objectStore, new Http());
     }
 
-    private MavenPublisher(URI repoBase, RepoCredential credential, ObjectStoreConfig objectStore) {
+    /** As {@link #withObjectStore(URI, RepoCredential, ObjectStoreConfig)}, over {@code http}. */
+    static MavenPublisher withObjectStore(
+            URI repoBase, RepoCredential credential, ObjectStoreConfig objectStore, Http http) {
+        return new MavenPublisher(repoBase, credential, objectStore, http);
+    }
+
+    private MavenPublisher(URI repoBase, RepoCredential credential, ObjectStoreConfig objectStore, Http http) {
         this.repoBase = normalize(Objects.requireNonNull(repoBase, "repoBase"));
         this.credential = Objects.requireNonNull(credential, "credential");
-        this.transport = RepoTransports.forUrl(this.repoBase, new Http(), objectStore);
+        this.transport = RepoTransports.forUrl(this.repoBase, http, objectStore);
     }
 
     public record Artifact(String filenameSuffix, byte[] body) {

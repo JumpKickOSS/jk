@@ -55,17 +55,16 @@ class PluginProcessWatchdogTest {
         // The shell exits at once, leaving a backgrounded sleep that inherited the stdout write
         // end. Reparented on Linux, it is invisible to descendants() and produces no EOF — the
         // root-exit drain grace must unwedge the conversation instead of blocking until the
-        // orphan dies. No idle timeout: this is the non-watchdog path.
+        // orphan dies. No idle timeout: this is the non-watchdog path. The grace is shortened from
+        // the production default; the path taken is the same.
         Instant start = Instant.now();
         int exit = PluginProcess.converse(
                 List.of(sh.toString(), "-c", "echo '##JKT:{\"event\":\"hello\"}'; sleep 30 & exit 0"),
                 WorkerEnv.strict(),
-                null,
                 "##JKT:",
                 (json, convo) -> {},
-                null,
-                false,
-                0L);
+                0L,
+                200L);
 
         assertThat(exit).isZero();
         // LIVENESS, not performance: with no watchdog (0L) the guard being tested is that an orphan

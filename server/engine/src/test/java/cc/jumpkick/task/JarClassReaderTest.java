@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -73,10 +74,17 @@ class JarClassReaderTest {
         Path jar = dir.resolve("big.jar");
         int total = 70_000;
         byte[] payload = {1};
-        try (ZipOutputStream out = new ZipOutputStream(Files.newOutputStream(jar))) {
-            out.setLevel(0);
+        CRC32 crc = new CRC32();
+        crc.update(payload);
+        // Stored entries: no deflater per entry, which is most of the cost of 70,000 of them.
+        try (ZipOutputStream out = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(jar), 1 << 16))) {
             for (int i = 0; i < total; i++) {
-                out.putNextEntry(new ZipEntry("z/E" + i + ".class"));
+                ZipEntry entry = new ZipEntry("z/E" + i + ".class");
+                entry.setMethod(ZipEntry.STORED);
+                entry.setSize(payload.length);
+                entry.setCompressedSize(payload.length);
+                entry.setCrc(crc.getValue());
+                out.putNextEntry(entry);
                 out.write(payload);
                 out.closeEntry();
             }

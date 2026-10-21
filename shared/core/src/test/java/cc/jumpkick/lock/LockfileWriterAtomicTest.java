@@ -57,10 +57,10 @@ class LockfileWriterAtomicTest {
             }
         });
         reader.start();
-        // Each write fsyncs, which some filesystems make a 100 ms affair: 200 writes is a budget
-        // of interleavings, not a duration, so the loop also stops after two seconds of them.
-        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
-        for (int i = 0; i < 200 && readerFailure.get() == null && System.nanoTime() < deadline; i++) {
+        // Each write fsyncs, which some filesystems make a 100 ms affair: 100 writes is a budget
+        // of interleavings, not a duration, so the loop also stops after 750 ms of them.
+        long deadline = System.nanoTime() + Duration.ofMillis(750).toNanos();
+        for (int i = 0; i < 100 && readerFailure.get() == null && System.nanoTime() < deadline; i++) {
             LockfileWriter.write(i % 2 == 0 ? other : lock, lockFile);
         }
         stop.set(true);

@@ -83,7 +83,7 @@ class PubGrubStallTest {
     @Timeout(60)
     void a_slow_solve_that_keeps_advancing_is_never_stopped() throws Exception {
         int chain = 30;
-        long readMs = 100;
+        long readMs = 20;
         PackageSource slow = new PackageSource() {
             @Override
             public List<String> versions(String pkg) {
@@ -98,7 +98,7 @@ class PubGrubStallTest {
             }
         };
         // The whole solve takes chain × readMs, several windows long; each read is progress.
-        PubGrubSolver solver = new PubGrubSolver(slow, 100_000, /* stallWindowMs */ 1_000);
+        PubGrubSolver solver = new PubGrubSolver(slow, 100_000, /* stallWindowMs */ 200);
         Map<String, String> solution =
                 solver.solve("root", "1.0", List.of(Term.positive("p0", VersionSet.exact("1.0"))));
         assertThat(solution).hasSize(chain + 1);

@@ -104,9 +104,15 @@ class RepoGroupLegSlotsTest {
 
         List<Thread> callers = fetchAll(group, fetches);
         int peak = 0;
+        // Sample until the slots fill, then a while longer to catch any leg past them; the
+        // deadline only bounds a run that never fills them.
         long until = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(1500);
-        while (System.nanoTime() < until) {
+        long settled = Long.MAX_VALUE;
+        while (System.nanoTime() < Math.min(until, settled)) {
             peak = Math.max(peak, RepoLegs.legsInFlight());
+            if (peak >= width && settled == Long.MAX_VALUE) {
+                settled = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(250);
+            }
             Thread.sleep(5);
         }
         open.countDown();

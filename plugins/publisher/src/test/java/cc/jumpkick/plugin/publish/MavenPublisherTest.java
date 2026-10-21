@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.http.Http;
+import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.plugin.publish.testkit.GpgTestFixture;
 import cc.jumpkick.repo.MavenMetadata;
@@ -91,11 +93,13 @@ class MavenPublisherTest {
     }
 
     private void publishVersion(String version) throws Exception {
-        new MavenPublisher(base, null, null)
-                .publish(
-                        new Project("com.example", "widget", version, 21),
-                        List.of(new MavenPublisher.Artifact(
-                                ".jar", ("jar-" + version).getBytes(StandardCharsets.UTF_8))));
+        publishVersion(version, new MavenPublisher(base, null, null));
+    }
+
+    private void publishVersion(String version, MavenPublisher publisher) throws Exception {
+        publisher.publish(
+                new Project("com.example", "widget", version, 21),
+                List.of(new MavenPublisher.Artifact(".jar", ("jar-" + version).getBytes(StandardCharsets.UTF_8))));
     }
 
     @AfterEach
@@ -268,7 +272,8 @@ class MavenPublisherTest {
      * the publish must abort with the old list still standing.
      *
      * <p>A 5xx that outlives {@code Http}'s retry ladder — the transient blip that actually reaches
-     * the publisher, since anything shorter the transport rides out on its own.
+     * the publisher, since anything shorter the transport rides out on its own. A transport with no
+     * ladder delivers the same 5xx without waiting one out.
      */
     @Test
     void a_transient_metadata_get_failure_aborts_without_truncating_the_version_list() throws Exception {
@@ -277,7 +282,9 @@ class MavenPublisherTest {
         String before = metadataOnServer();
 
         getFailureStatus = 503;
-        assertThatThrownBy(() -> publishVersion("0.3.0"))
+        MavenPublisher noRetries = MavenPublisher.withObjectStore(
+                base, RepoCredential.ANONYMOUS, ObjectStoreConfig.EMPTY, Http.failFast());
+        assertThatThrownBy(() -> publishVersion("0.3.0", noRetries))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("maven-metadata.xml")
                 .hasMessageContaining("503");

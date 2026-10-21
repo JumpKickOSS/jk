@@ -34,7 +34,7 @@ class AvdCommandBootTest {
         // command no longer reads still takes it, and the marker records that the write succeeded.
         Path emulator = script(tmp.resolve("emulator"), """
                 echo "emulator: INFO: boot completed"
-                sleep 1
+                sleep 0.3
                 echo "emulator: INFO: adb connected" || exit 3
                 : > '%s'
                 """.formatted(marker));
