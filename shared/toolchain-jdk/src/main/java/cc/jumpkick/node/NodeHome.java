@@ -45,6 +45,11 @@ public record NodeHome(
         }
     }
 
+    /** npm's cache under jk's cache root: every npm jk runs, scaffold and build alike, shares it. */
+    public static Path npmCache(Path cacheRoot) {
+        return cacheRoot.resolve("npm");
+    }
+
     public NodeHome withManager(@Nullable ManagerHome m) {
         return new NodeHome(home, version, source, m);
     }

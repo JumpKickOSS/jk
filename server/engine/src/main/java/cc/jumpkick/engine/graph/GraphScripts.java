@@ -87,7 +87,9 @@ final class GraphScripts {
                         .redirectOutput(ProcessBuilder.Redirect.DISCARD);
                 pb.environment().put("PATH", home.path(pb.environment().get("PATH")));
                 pb.environment()
-                        .put("npm_config_cache", JkDirs.cache().resolve("npm").toString());
+                        .put(
+                                "npm_config_cache",
+                                NodeHome.npmCache(JkDirs.cache()).toString());
                 pb.environment().put("npm_config_update_notifier", "false");
                 Process p = pb.start();
                 if (!p.waitFor(5, TimeUnit.MINUTES)) {

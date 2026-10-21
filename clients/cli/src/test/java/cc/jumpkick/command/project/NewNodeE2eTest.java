@@ -9,10 +9,12 @@ import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.docs.JkSkill;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.node.NodePlatform;
 import cc.jumpkick.testing.FakeNodeDist;
 import cc.jumpkick.testing.FakePrograms;
 import cc.jumpkick.testing.LoopbackHttp;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -89,7 +91,10 @@ class NewNodeE2eTest {
         assertThat(exit).isZero();
         Path web = dir.resolve("web");
         assertThat(lines(dir.resolve("npx-args.txt")))
-                .isEqualTo("--yes\ncreate-vite@latest\nweb\n--template\nreact-ts\n--no-interactive\n");
+                .isEqualTo("--yes\ncreate-vite@latest\nweb\n--template\nreact-ts\n--no-interactive\n--no-immediate\n");
+        assertThat(Files.readString(dir.resolve("npx-cache.txt")).strip())
+                .as("the generator runs against the npm cache the build installs from")
+                .isEqualTo(NodeHome.npmCache(JkDirs.cache()).toString());
         assertThat(Files.readString(web.resolve("jk.toml")))
                 .isEqualTo("name = \"web\"\ngroup = \"com.acme\"\nversion = \"0.1.0\"\n\nnode = 99\n");
         assertThat(Files.readString(web.resolve(".gitignore")))
@@ -201,6 +206,7 @@ class NewNodeE2eTest {
         String nodeCmd = "if \"%~1\"==\"--version\" (echo v" + VERSION + "& exit /b 0)";
         String npx = """
                 printf '%s\\n' "$@" > npx-args.txt
+                printf '%s' "$npm_config_cache" > npx-cache.txt
                 for a in "$@"; do
                   case "$a" in -*|*@latest|new|create) ;; *) dir="$a"; break ;; esac
                 done
@@ -211,6 +217,7 @@ class NewNodeE2eTest {
         String npxCmd = """
                 setlocal enabledelayedexpansion
                 type nul > npx-args.txt
+                > npx-cache.txt echo(%npm_config_cache%
                 set "d="
                 :next
                 if "%~1"=="" goto done
