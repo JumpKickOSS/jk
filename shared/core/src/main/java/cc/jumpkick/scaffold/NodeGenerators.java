@@ -10,7 +10,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * The front-end frameworks {@code jk new -l node -t <framework>} scaffolds, each by running the
  * framework's own generator non-interactively, so a new project is always the framework's newest
- * starter and nothing of jk's rots.
+ * starter and nothing of jk's rots. No generator installs: jk resolves the lockfile after it, and
+ * the first {@code jk build}'s frozen install is the only one.
  */
 public final class NodeGenerators {
 
@@ -46,7 +47,8 @@ public final class NodeGenerators {
                             "--app",
                             "--use-npm",
                             "--yes",
-                            "--disable-git")),
+                            "--disable-git",
+                            "--skip-install")),
             new Framework(
                     "angular",
                     Shape.STATIC,
@@ -59,7 +61,8 @@ public final class NodeGenerators {
                             "--defaults",
                             "--skip-git",
                             "--package-manager=npm",
-                            "--ssr=false")),
+                            "--ssr=false",
+                            "--skip-install")),
             new Framework(
                     "nuxt",
                     Shape.SERVER,
@@ -70,7 +73,8 @@ public final class NodeGenerators {
                             DIR,
                             "--template=minimal",
                             "--packageManager=npm",
-                            "--gitInit=false")),
+                            "--gitInit=false",
+                            "--no-install")),
             new Framework(
                     "sveltekit",
                     Shape.SERVER,
@@ -85,7 +89,7 @@ public final class NodeGenerators {
                             // adapter-node: the default adapter-auto writes no server jk can run.
                             "--add",
                             "sveltekit-adapter=adapter:node",
-                            "--install=npm")),
+                            "--no-install")),
             new Framework(
                     "astro",
                     Shape.STATIC,
@@ -96,10 +100,9 @@ public final class NodeGenerators {
                             DIR,
                             "--template",
                             "basics",
-                            "--install",
+                            "--no-install",
                             "--no-git",
                             "--yes")),
-            // Its own install spawns `npm` without a shell, which Windows cannot run; jk installs after it.
             new Framework(
                     "react-router",
                     Shape.SERVER,
@@ -121,13 +124,22 @@ public final class NodeGenerators {
                             DIR,
                             "--package-manager",
                             "npm",
-                            "--no-git")));
+                            "--no-git",
+                            "--no-install")));
 
     private static Framework vite(String template) {
         return new Framework(
                 "vite-" + template,
                 Shape.STATIC,
-                List.of("npx", "--yes", "create-vite@latest", DIR, "--template", template + "-ts", "--no-interactive"));
+                List.of(
+                        "npx",
+                        "--yes",
+                        "create-vite@latest",
+                        DIR,
+                        "--template",
+                        template + "-ts",
+                        "--no-interactive",
+                        "--no-immediate"));
     }
 
     /** Every framework, in the order help lists them. */
