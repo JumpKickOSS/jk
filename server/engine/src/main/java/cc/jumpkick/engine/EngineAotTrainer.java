@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.compile.JavacTrainingSources;
 import cc.jumpkick.config.EngineAotCache;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.engine.plugin.WarmLinger;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.PathUtil;
@@ -239,7 +240,7 @@ final class EngineAotTrainer {
         env.put("JK_HTTP_ENABLED", "false");
         env.put("JK_WORKER_AOT", "off");
         env.put("JK_AUTO_WARMUP", "off");
-        env.put("JK_COMPILE_LINGER_MS", "0");
+        env.put(WarmLinger.ENV, "0");
         env.put(OwnerWatchdog.ENV, Long.toString(ProcessHandle.current().pid()));
         return env;
     }

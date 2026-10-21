@@ -25,4 +25,13 @@ public interface Plugin extends Extension {
      * (0 = success).
      */
     int run(List<String> args, ProtocolWriter out) throws Exception;
+
+    /**
+     * Whether a served worker ({@code --serve}) may take another run after the one that just ended.
+     * False when that run left something behind the next one must not inherit, such as a thread it
+     * could not stop.
+     */
+    default boolean reusable() {
+        return true;
+    }
 }

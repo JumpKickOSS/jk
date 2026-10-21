@@ -4,10 +4,15 @@ package cc.jumpkick.plugin.process;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
+import cc.jumpkick.plugin.protocol.PluginProtocol;
+import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -61,11 +66,53 @@ public final class PluginMain {
                 StandardCharsets.UTF_8);
         ProtocolWriter writer = new ProtocolWriter(out, plugin.manifest().protocolPrefix());
 
+        if (args.length == 1 && PluginProtocol.SERVE.equals(args[0])) {
+            try {
+                System.exit(serve(
+                        plugin, writer, new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))));
+            } catch (IOException e) {
+                Log.error(plugin.manifest().id() + ": stdin: " + e.getMessage(), e);
+                System.exit(Exit.FAILURE);
+            }
+            return;
+        }
         try {
             System.exit(plugin.run(List.of(args), writer));
         } catch (Exception e) {
             Log.error(plugin.manifest().id() + ": " + e.getMessage(), e);
             System.exit(Exit.FAILURE);
+        }
+    }
+
+    /**
+     * The {@link PluginProtocol#SERVE} loop: {@code READY}, then one {@code RUN <spec-file>} at a
+     * time, each answered {@link PluginReply#exited} with the run's exit code, until {@code DONE},
+     * end of input, or a run after which the plugin is no longer {@linkplain Plugin#reusable
+     * reusable}. A run that throws is that run's {@link Exit#FAILURE}; the worker stays up. An
+     * {@link Error} is not caught: the worker dies with it, as a one-shot worker would.
+     */
+    static int serve(Plugin plugin, ProtocolWriter out, BufferedReader in) throws IOException {
+        while (true) {
+            out.emit(PluginReply.ready());
+            String line = in.readLine();
+            if (line == null) return Exit.SUCCESS;
+            String cmd = line.strip();
+            if (cmd.isEmpty()) continue;
+            if ("DONE".equals(cmd)) return Exit.SUCCESS;
+            if (!cmd.startsWith("RUN ")) {
+                out.emit(PluginReply.error("usage", "RUN <spec-file> | DONE, not: " + cmd));
+                continue;
+            }
+            int code;
+            try {
+                code = plugin.run(List.of(cmd.substring(4).strip()), out);
+            } catch (Exception e) {
+                Log.error(plugin.manifest().id() + ": " + e.getMessage(), e);
+                code = Exit.FAILURE;
+            }
+            boolean retire = !plugin.reusable();
+            out.emit(PluginReply.exited(code, retire));
+            if (retire) return Exit.SUCCESS;
         }
     }
 

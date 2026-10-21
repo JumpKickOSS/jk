@@ -9,6 +9,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
+import cc.jumpkick.engine.plugin.WarmWorkers;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
@@ -31,6 +32,7 @@ class FormatHeapRetryTest {
 
     @AfterEach
     void reset() {
+        WarmWorkers.shutdown();
         HeapNotes.clear();
         SessionContext.reset();
     }
@@ -109,6 +111,7 @@ class FormatHeapRetryTest {
                 .execute(ctx -> FormatWorker.runWorker(
                         ctx,
                         h -> FormatWorker.atHeap(base, h),
+                        Files.createTempFile("jk-format-", ".spec"),
                         heap,
                         key,
                         heaps,
@@ -131,9 +134,9 @@ class FormatHeapRetryTest {
     }
 
     /**
-     * A {@code java} that reports {@code files} clean files. Below 256 MiB it reports the first and
-     * exits 3 as {@code -XX:+ExitOnOutOfMemoryError} does; {@code always} does that at every heap.
-     * A heap that suffices logs a 180 MiB peak to the GC log jk asked for.
+     * A served {@code java} that reports {@code files} clean files per run. Below 256 MiB it reports
+     * the first and exits 3 as {@code -XX:+ExitOnOutOfMemoryError} does; {@code always} does that at
+     * every heap. A heap that suffices logs a 180 MiB peak to the GC log jk asked for.
      */
     private static Path fakeJava(Path dir, String mode, int files) throws Exception {
         assumeTrue(Files.isExecutable(Path.of("/bin/sh")), "POSIX shell required");
@@ -154,18 +157,22 @@ class FormatHeapRetryTest {
                 case "$mx" in
                   -Xmx128m|-Xmx64m) small=1 ;;
                 esac
-                if [ "MODE" = "always" ] || [ "$small" = 1 ]; then
-                  printf '%s\\n' '##JKFMT:{"t":"file","path":"F0.java","status":"clean"}'
-                  echo "Terminating due to java.lang.OutOfMemoryError: Java heap space"
-                  exit 3
-                fi
-                if [ -n "$gc" ]; then
+                if [ -n "$gc" ] && [ "$small" = 0 ]; then
                   printf '%s\\n' '[0.2s][info][gc] GC(0) Pause Young (Normal) (G1 Evacuation Pause) 180M->20M(256M) 1.0ms' > "$gc"
                 fi
-                i=0
-                while [ "$i" -lt FILES ]; do
-                  printf '##JKFMT:{"t":"file","path":"F%s.java","status":"clean"}\\n' "$i"
-                  i=$((i + 1))
+                while read -r cmd; do
+                  [ "$cmd" = "DONE" ] && exit 0
+                  if [ "MODE" = "always" ] || [ "$small" = 1 ]; then
+                    printf '%s\\n' '##JKFMT:{"t":"file","path":"F0.java","status":"clean"}'
+                    echo "Terminating due to java.lang.OutOfMemoryError: Java heap space"
+                    exit 3
+                  fi
+                  i=0
+                  while [ "$i" -lt FILES ]; do
+                    printf '##JKFMT:{"t":"file","path":"F%s.java","status":"clean"}\\n' "$i"
+                    i=$((i + 1))
+                  done
+                  printf '%s\\n' '##JKFMT:{"t":"exited","code":0,"retire":false}'
                 done
                 exit 0
                 """;

@@ -5,6 +5,7 @@ import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
+import cc.jumpkick.engine.plugin.WarmLinger;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Classpaths;
@@ -46,7 +47,7 @@ import org.jspecify.annotations.Nullable;
  * The host belongs to the engine, not to the build that happened to start it. It is forked outside
  * the request's worker scope — a request's end kills the workers it registered, and a host that
  * outlives builds must not be one of them — and three owners end it: a reaper that shuts it down
- * once it has sat {@link #IDLE_TIMEOUT} without a script, the worker lease ledger when a waiting fork
+ * once it has sat the {@link WarmLinger linger} without a script, the worker lease ledger when a waiting fork
  * needs the host's memory (after the script in flight), and the JVM shutdown hook that drains it
  * when the engine stops. Nothing else does, so a build finishing while another build's script is
  * running is not an event the host notices.
@@ -100,9 +101,6 @@ import org.jspecify.annotations.Nullable;
  */
 final class KtsSession {
 
-    /** How long the host may sit without a script before the reaper shuts it down. */
-    static final Duration IDLE_TIMEOUT = Duration.ofMinutes(10);
-
     /** First {@code -Xmx} when this host has no learned peak yet. */
     static final long FIRST_HEAP_BYTES = 256L << 20;
 
@@ -130,7 +128,6 @@ final class KtsSession {
     private static final Object LOCK = new Object();
     private static @Nullable KtsSession current;
     private static boolean hookRegistered;
-    private static long idleTimeoutNanos = IDLE_TIMEOUT.toNanos();
     private static volatile Clock clock = Clock.SYSTEM;
 
     private final Process process;
@@ -248,13 +245,6 @@ final class KtsSession {
     static long hostPid() {
         synchronized (LOCK) {
             return current != null && current.process.isAlive() ? current.process.pid() : -1;
-        }
-    }
-
-    /** Test seam: shorten the idle timeout; applies to hosts started afterwards. */
-    static void idleTimeoutForTests(Duration timeout) {
-        synchronized (LOCK) {
-            idleTimeoutNanos = timeout.toNanos();
         }
     }
 
@@ -471,6 +461,7 @@ final class KtsSession {
     private static void reap(KtsSession session) {
         while (true) {
             long wait;
+            long idleTimeoutNanos = TimeUnit.MILLISECONDS.toNanos(WarmLinger.millis());
             synchronized (LOCK) {
                 if (current != session) return; // replaced or shut down by someone else
                 if (!session.process.isAlive()) {

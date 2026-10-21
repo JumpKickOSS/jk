@@ -11,10 +11,15 @@ import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.WarmWorkers;
+import cc.jumpkick.engine.plugin.WorkerAotCache;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerFate;
+import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -42,7 +47,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Runs one {@code jk graph} operation: brings every module's main and test facts index current
- * (only changed class files are read), then forks the graph worker with their paths. Operations on
+ * (only changed class files are read), then hands the graph worker their paths. The worker stays
+ * warm between operations ({@link WarmWorkers}) with the graph in its memory. Operations on
  * one workspace run one at a time, since each may rewrite the stored graph.
  */
 public final class GraphRunner {
@@ -88,12 +94,16 @@ public final class GraphRunner {
         }
     }
 
+    /** What the lease ledger and {@code jk engine status} call the graph worker. */
+    static final String WORKER_NAME = "graph worker";
+
     /** One attempt's answer, exit code and the tail of what the worker printed besides the protocol. */
     private record Attempt(@Nullable GraphAck ack, int exit, String tail) {}
 
     /**
-     * Forks at this workspace's learned heap; a worker that runs out of heap is forked again up the
-     * {@link HeapLadder}, and the heap that fit is remembered for next time.
+     * Runs on a warm graph worker at this workspace's learned heap, mapping the worker's startup
+     * cache when there is one. A worker that runs out of heap is started again up the {@link
+     * HeapLadder}, and the heap that fit is remembered for next time.
      */
     private static GraphAck forkWithHeap(Path root, Path spec, Consumer<GraphProgress> progress)
             throws IOException, InterruptedException {
@@ -101,11 +111,22 @@ public final class GraphRunner {
                 root, "graph", HeapScope.PLUGIN, Runtime.version().feature());
         LearnedHeaps heaps = LearnedHeaps.engine();
         Path jar = PluginJar.GRAPH.locate(JkStores.storeCas());
-        List<String> command = scoped(key, () -> PluginLaunch.javaCommand(jar, List.of(), spec));
+        Path hostJava = JavaHomes.runningJavaHome();
+        String workerCp = WorkerLaunchClasspath.resolve(jar);
+        List<String> aot = WorkerAotCache.flags(
+                "graph",
+                hostJava,
+                workerCp,
+                List.of(),
+                (aotOutput, scratch) -> GraphTraining.command(hostJava, workerCp, aotOutput, scratch));
+        List<String> command = scoped(key, () -> PluginLaunch.serveCommand(jar, aot));
         List<Long> ranOut = new ArrayList<>();
         while (true) {
             List<String> attemptCommand = command;
-            Attempt a = scoped(key, () -> fork(attemptCommand, progress));
+            Attempt a = attempt(
+                    new WarmWorkers.Launch(WORKER_NAME, attemptCommand, WorkerEnv.strict(), PREFIX, key),
+                    spec,
+                    progress);
             if (a.ack() != null) {
                 if (!ranOut.isEmpty()) heaps.good(key, WorkerLeases.parseXmx(attemptCommand));
                 return a.ack();
@@ -137,29 +158,36 @@ public final class GraphRunner {
         }
     }
 
-    private static Attempt fork(List<String> command, Consumer<GraphProgress> progress)
+    private static Attempt attempt(WarmWorkers.Launch launch, Path spec, Consumer<GraphProgress> progress)
             throws IOException, InterruptedException {
         AtomicReference<GraphAck> answer = new AtomicReference<>();
         StringBuilder tail = new StringBuilder();
-        int exit = new PluginClient(PREFIX)
-                .on(
-                        "progress",
-                        json -> progress.accept(new GraphProgress(
-                                Jsonl.intValue(json, "done", 0),
-                                Jsonl.intValue(json, "total", 0),
-                                String.valueOf(Jsonl.str(json, "label")))))
-                .on("answer", json -> answer.set(ack(json)))
-                .on("error", json -> answer.set(GraphAck.error(String.valueOf(Jsonl.str(json, "msg")))))
-                .passthrough(line -> {
-                    synchronized (tail) {
+        WarmWorkers.Outcome outcome = WarmWorkers.run(
+                launch,
+                spec,
+                new WarmWorkers.Listener() {
+                    @Override
+                    public void protocol(String json) {
+                        switch (String.valueOf(Jsonl.str(json, PluginClient.TYPE))) {
+                            case "progress" ->
+                                progress.accept(new GraphProgress(
+                                        Jsonl.intValue(json, "done", 0),
+                                        Jsonl.intValue(json, "total", 0),
+                                        String.valueOf(Jsonl.str(json, "label"))));
+                            case "answer" -> answer.set(ack(json));
+                            case "error" -> answer.set(GraphAck.error(String.valueOf(Jsonl.str(json, "msg"))));
+                            default -> {}
+                        }
+                    }
+
+                    @Override
+                    public void output(String line) {
                         tail.append(line).append('\n');
                         if (tail.length() > 8_192) tail.delete(0, tail.length() - 8_192);
                     }
-                })
-                .run(command);
-        synchronized (tail) {
-            return new Attempt(answer.get(), exit, tail.toString().strip());
-        }
+                },
+                () -> false);
+        return new Attempt(answer.get(), outcome.exit(), tail.toString().strip());
     }
 
     private static GraphAck ack(String json) {
@@ -180,6 +208,12 @@ public final class GraphRunner {
 
     private static Path spec(Path root, GraphRequest r, List<String> indexes, GraphScripts.@Nullable Tools scripts)
             throws IOException {
+        return specWriter(root, r, indexes, scripts).writeTempSpec();
+    }
+
+    /** The spec of one operation on {@code root}: the worker's whole input. */
+    static SpecWriter specWriter(
+            Path root, GraphRequest r, List<String> indexes, GraphScripts.@Nullable Tools scripts) {
         SpecWriter w = new SpecWriter()
                 .op(PluginProtocol.OP_COMMAND, "graph", "jk-graph")
                 .configString("root", root.toString())
@@ -202,7 +236,7 @@ public final class GraphRunner {
             w.configString("node", scripts.node().toString())
                     .configString("oxc", scripts.oxc().toString());
         }
-        return w.writeTempSpec();
+        return w;
     }
 
     /**

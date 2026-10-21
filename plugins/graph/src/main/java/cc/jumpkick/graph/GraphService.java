@@ -61,23 +61,21 @@ public final class GraphService {
         return new Answer(text(build, r), build);
     }
 
-    /** The last graph written, without looking at the tree: {@code graph.bin}, else {@code graph.json}. */
+    /**
+     * The last graph written, without looking at the tree: the one in memory while it is current,
+     * else {@code graph.bin}, else {@code graph.json}.
+     */
     private static GraphBuild.@Nullable Result stored(Path out) {
+        GraphMemory.Graph held = GraphMemory.graph(out);
+        if (held != null) return storedResult(held.graph(), held.key(), out);
         try {
             Path bin = out.resolve(GraphOutputs.SNAPSHOT);
             if (Files.isRegularFile(bin)) {
                 try (InputStream in = Files.newInputStream(bin)) {
                     GraphSnapshot.Loaded loaded = GraphSnapshot.read(in);
                     if (loaded != null) {
-                        return new GraphBuild.Result(
-                                loaded.graph(),
-                                loaded.key().files(),
-                                0,
-                                0,
-                                out,
-                                0,
-                                false,
-                                loaded.key().commit());
+                        GraphMemory.sawGraph(out, loaded.graph(), loaded.key());
+                        return storedResult(loaded.graph(), loaded.key(), out);
                     }
                 }
             }
@@ -87,6 +85,10 @@ public final class GraphService {
         } catch (IOException | IllegalArgumentException unreadable) {
             return null;
         }
+    }
+
+    private static GraphBuild.Result storedResult(CodeGraph graph, GraphSnapshot.Key key, Path out) {
+        return new GraphBuild.Result(graph, key.files(), 0, 0, out, 0, false, key.commit());
     }
 
     static String text(GraphBuild.Result build, Request r) {
