@@ -7,6 +7,7 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.JavaHomes;
@@ -179,7 +180,7 @@ final class ScriptRunner {
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();
-        return p.waitFor();
+        return ProcessTrees.awaitExit(p);
     }
 
     // --- .jar ------------------------------------------------------------
@@ -217,7 +218,7 @@ final class ScriptRunner {
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();
-        return p.waitFor();
+        return ProcessTrees.awaitExit(p);
     }
 
     // --- shared helpers --------------------------------------------------
@@ -278,6 +279,6 @@ final class ScriptRunner {
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();
-        return p.waitFor();
+        return ProcessTrees.awaitExit(p);
     }
 }
