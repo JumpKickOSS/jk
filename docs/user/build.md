@@ -3,10 +3,10 @@
 ```bash
 jk compile              # type-check
 jk build                # compile + package + default (unit) tests
-jk build --guard         # guards + unit + integration green; the same flag on assemble / image / native / install
-jk build --guard --skip-tests   # package graph + guard scripts, no JUnit
-jk build --scripts-only        # guard scripts, no JUnit (same as test --scripts-only)
-jk build --skip-tests
+jk build -g         # guards + unit + integration green; the same flag on assemble / image / native / install
+jk build -g -S   # package graph + guard scripts, no JUnit
+jk build -P        # guard scripts, no JUnit (same as test -P)
+jk build -S
 jk build -r                    # ignore action cache (full rebuild): every step runs, plugin steps too
 jk clean                # delete target/; unchanged inputs restore from cache
 jk clean -F                    # also invalidate this project's action-cache entries
@@ -320,7 +320,7 @@ Free RAM may still reduce live worker JVMs.
 
 ```bash
 jk build -m api,worker
-jk build --affected-since=origin/main
+jk build -e origin/main
 ```
 
 [Workspaces](workspaces.md#select-modules).
@@ -337,7 +337,7 @@ crashed holder releases it with its process.
 ## JVM startup cache (app AOT / CDS)
 
 ```bash
-jk build --aot-cache       # target/aot-cache/ — trained cache + run.sh
+jk build -T       # target/aot-cache/ — trained cache + run.sh
 ./target/aot-cache/run.sh
 ```
 
@@ -349,7 +349,7 @@ The cache is valid only for:
 - the **jars themselves** (a changing build drops the cache and says so)
 
 A mismatch is not a hard error at process start — the JVM silently starts cold — but
-`jk build --aot-cache` starts the app once with the cache and **fails** if the JVM
+`jk build -T` starts the app once with the cache and **fails** if the JVM
 refuses it, so a cache that exists is a cache that loads.
 
 JVM options: `JK_JAVA_OPTS` (`"$@"` reaches the application). Flags that change the
@@ -366,7 +366,7 @@ Every `jk build` / `jk test` writes Chrome Trace Event JSON at `target/jk-profil
 Open it in Perfetto or `chrome://tracing`. Archive it in CI.
 
 ```bash
-jk build --no-timeline
+jk build -M
 JK_CHROME_PROFILE=off jk build
 JK_CHROME_PROFILE=/tmp/trace.json jk build
 ```

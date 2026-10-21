@@ -2,10 +2,10 @@
 
 ```bash
 jk ide                       # .idea + .vscode + .bsp/jk.json
-jk ide --idea
-jk ide --vscode
+jk ide -i
+jk ide -s
 jk bsp install               # .bsp/jk.json only
-jk ide --print-model         # ide-model JSON on stdout (no writes)
+jk ide -p         # ide-model JSON on stdout (no writes)
 ```
 
 `jk ide` / `jk idea` / `jk vscode` always refresh `.bsp/jk.json` so Metals and JetBrains
@@ -44,12 +44,12 @@ jk's own compile, so the next `jk build` is still a cache hit.
 
 The `ide-model` names a sources jar for every library whose `-sources.jar` the store or the Maven
 local repository holds, pinned in the lock or not, and every consumer attaches it: the IntelliJ
-plugin's project libraries, `jk ide --idea` / `--vscode` files, BSP `dependencyModules`.
-`jk sync --sources` fetches one for every library in the lock that publishes it (a library without
+plugin's project libraries, `jk ide -i` / `--vscode` files, BSP `dependencyModules`.
+`jk sync -s` fetches one for every library in the lock that publishes it (a library without
 one is skipped, not an error); in IntelliJ, **Tools → JumpKick → Sync dependencies and sources**
 runs the same command, and the next resolve attaches them. A resolve alone never fetches sources —
 it lists what is already on disk — so a workspace navigates into decompiled classes until that one
-sync has run. `jk lock --sources` additionally pins each sources jar's checksum in the lock, and a
+sync has run. `jk lock -s` additionally pins each sources jar's checksum in the lock, and a
 pinned jar is verified against it.
 
 ## BSP
@@ -142,16 +142,16 @@ Wire-level BSP notes: [Architecture](../contributors/architecture.md).
   clients/intellij` writes the installable zip under its `target/`. It is an IntelliJ *external system*: opening a project with
   `jk.toml` links it and resolves modules, every source and test-suite root, libraries with
   sources ([above](#library-sources)), per-module JDKs and the `target/jdt` compiler outputs from the engine `ide-model`
-  (`jk ide --print-model`), with no `*.iml` or `.idea/modules.xml` written. A change to
+  (`jk ide -p`), with no `*.iml` or `.idea/modules.xml` written. A change to
   `jk.toml` or `jk-lock.toml` — from the editor or a terminal `jk add` — re-resolves after a
   2 s quiet window; **Tools → JumpKick → Sync project** re-resolves on demand with progress in
   the Build tool window. The gutter's **Run** and **Debug** on a test class or method — or on a
-  `main` method — create a **JumpKick** run configuration: `jk test -m <module> --class <fqcn>`
+  `main` method — create a **JumpKick** run configuration: `jk test -m <module> -S <fqcn>`
   for a class, `--class <fqcn>#<method>` for one test method (or `jk run <module>`) from the
   workspace root, its output in the Run tool window. **Debug**
   passes `--debug-jvm=localhost:<port>` with a port the plugin picks and attaches the Java
   debugger to it once jk has built the module and started the JVM; a breakpoint stops as usual,
-  with no Remote JVM Debug configuration of your own. `jk ide --idea` is the export for an IDE
+  with no Remote JVM Debug configuration of your own. `jk ide -i` is the export for an IDE
   without the plugin.
 - **VS Code** — `clients/vscode/` in the JumpKick repo; package with
   `./scripts/package-vscode.sh`

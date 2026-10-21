@@ -108,10 +108,10 @@ jk test -j0 -w0
 jk test -s integration -j0 -w0                  # skip if the tree has no integration suite
 # or a subset:
 jk test -m 'api,worker'
-# jk test --affected / --affected-since=HEAD~2  # ranked list only; does not run
+# jk test -f / -e HEAD~2  # ranked list only; does not run
 ```
 
-Do **not** make the PR job `jk test --all`. That is the nightly / release job.
+Do **not** make the PR job `jk test -A`. That is the nightly / release job.
 Do **not** clear `[test] exclude-tags` on CI just because `CI` is set — that pulls
 `slow` / `network` / `bench` into a gate that should stay cheap and deterministic.
 [Test](test.md) · [Why](why.md#test-rungs-the-execute-moat).
@@ -119,14 +119,14 @@ Do **not** clear `[test] exclude-tags` on CI just because `CI` is set — that p
 Nightly:
 
 ```bash
-jk test --all -j0 -w0          # every suite; still keep bench out of a red gate
+jk test -A -j0 -w0          # every suite; still keep bench out of a red gate
 ```
 
-Format gate: `jk format --check`. Outdated deps: `jk outdated -O jsonl` is a non-empty
+Format gate: `jk format -c`. Outdated deps: `jk outdated -O jsonl` is a non-empty
 array exactly when a dependency can move (exit code is always 0 on success). Archive `target/jk-results.md` and
 `target/jk-profile.json` as artifacts.
 
-Vulnerabilities: `jk audit --severity HIGH -O jsonl | tee target/jk-audit.jsonl` under
+Vulnerabilities: `jk audit -s HIGH -O jsonl | tee target/jk-audit.jsonl` under
 `set -o pipefail` — the exit status is the verdict, the JSON lines are the artifact to annotate
 from, and `[audit] ignore` with a reason is the only accepted silence ([Publish](publish.md#audit)).
 
@@ -139,7 +139,7 @@ A project with `jk-guards.toml` ([Guards](guards.md)) runs its house rules insid
 GitHub code scanning reads unchanged:
 
 ```yaml
-- run: jk guard --no-ansi
+- run: jk guard -u
 - uses: github/codeql-action/upload-sarif@v3
   if: always()
   with:
@@ -147,7 +147,7 @@ GitHub code scanning reads unchanged:
     category: jk-guard
 ```
 
-`jk guard --output sarif` prints the same document; `-O jsonl` streams one `guard` event per
+`jk guard -O sarif` prints the same document; `-O jsonl` streams one `guard` event per
 violation — [Machine output](machine-output.md#guards). Baselined sites arrive as suppressed
 results with the baseline's reason, so the code-scanning view shows what the team accepted and why.
 

@@ -50,9 +50,9 @@ public final class AssemblyCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         List<Opt> opts = new ArrayList<>(build.options());
-        opts.add(Opt.flag("One-off fat jar (this run only)", "--fat"));
-        opts.add(Opt.flag("One-off minified jar (this run only)", "--minified"));
-        opts.add(Opt.flag("Write assembly mode into jk.toml", "--write-config"));
+        opts.add(Opt.flag("One-off fat jar (this run only)", "-U", "--fat"));
+        opts.add(Opt.flag("One-off minified jar (this run only)", "-W", "--minified"));
+        opts.add(Opt.flag("Write assembly mode into jk.toml", "-X", "--write-config"));
         return opts;
     }
 
@@ -104,12 +104,12 @@ public final class AssemblyCommand implements CliCommand {
                         jk assemble: no bundled artifact is configured — pick one:
 
                           One-off (this run only):
-                            jk assemble --fat
-                            jk assemble --minified
+                            jk assemble -U
+                            jk assemble -W
 
                           Persist in jk.toml:
-                            jk assemble --fat --write-config
-                            jk assemble --minified --write-config
+                            jk assemble -U -X
+                            jk assemble -W -X
 
                           Or edit manually:
                             [application]
@@ -131,7 +131,7 @@ public final class AssemblyCommand implements CliCommand {
             CliOutput.err("""
                     jk assemble: one-off packaging override — %s for this run only
                       (not written to jk.toml; action cache keys include the packaging mode)
-                      make it permanent: jk assemble --%s --write-config
+                      make it permanent: jk assemble --%s -X
                     """.formatted(minified ? "minified (R8, beside the fat jar)" : "fat", overrideLabel)
                     .stripIndent()
                     .trim());

@@ -17,7 +17,7 @@ import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk activate --yes} writes a marker-bounded installer block without the interactive wizard.
+ * {@code jk activate -y} writes a marker-bounded installer block without the interactive wizard.
  */
 @DisabledOnOs(OS.WINDOWS)
 @Tag("integration")
@@ -91,7 +91,7 @@ class ActivateCommandTest {
         assertThat(printed)
                 .contains("the shell rc files are left alone")
                 .contains("scratch-jk/bin/jk\" activate")
-                .contains("jk activate --rc");
+                .contains("jk activate -R");
         assertThat(printed).doesNotContain("configured");
     }
 

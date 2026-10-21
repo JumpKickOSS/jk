@@ -44,7 +44,7 @@ public final class JdkFingerprint {
      * SHA-256 of the empty manifest — what {@link #compute} returns for a tool home holding no
      * regular files. A caller that gets this back hashed <em>nothing</em>, and that is worth saying
      * out loud rather than printing as a digest: until it was the only value
-     * {@code jk doctor --verify-linked} could ever produce, because a symlinked root was handed to
+     * {@code jk doctor -l} could ever produce, because a symlinked root was handed to
      * {@code visitFile} and rejected there. Named so a test can assert it deliberately and a caller
      * can tell "empty tree" from "this tree hashes to X".
      */
@@ -56,7 +56,7 @@ public final class JdkFingerprint {
      *
      * <p>The root is resolved with {@link Path#toRealPath} first, so a symlinked tool home
      * fingerprints the tree it points at and {@code compute(link)} equals {@code compute(target)} —
-     * that is the whole of {@code jk doctor --verify-linked}, and jk symlinks a tool home whenever
+     * that is the whole of {@code jk doctor -l}, and jk symlinks a tool home whenever
      * it discovers a host install instead of downloading one. Symlinks <em>inside</em> the tree are
      * still not followed: the pointer is not the install, and hashing through one would make the
      * digest depend on a tree jk does not own.

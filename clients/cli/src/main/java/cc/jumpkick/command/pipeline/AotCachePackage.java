@@ -35,7 +35,7 @@ import java.util.jar.Manifest;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk build --aot-cache}: extract the app under {@code target/aot-cache/} and train a JVM
+ * {@code jk build -T}: extract the app under {@code target/aot-cache/} and train a JVM
  * startup cache (JEP 514 AOT on JDK 25+; AppCDS otherwise). Training needs a JVM that exits
  * (Boot uses {@code -Dspring.context.exit=onRefresh}; others get a watchdog).
  */
@@ -299,7 +299,7 @@ public final class AotCachePackage {
         // pins the dependency closure the lib/ copies came from for the same reason.
         String appSha = Files.isRegularFile(sourceJar) ? Hashing.sha256Hex(sourceJar) : "";
         Files.writeString(outDir.resolve(MANIFEST), """
-                # Written by `jk build --aot-cache`. The cache is void if this directory moves, the
+                # Written by `jk build -T`. The cache is void if this directory moves, the
                 # jars change, or a JVM other than the one below runs it — the JVM reports none of
                 # that at default log level, so check here rather than trusting a fast start.
                 cache        = "%s"

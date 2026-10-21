@@ -234,7 +234,7 @@ final class LauncherPath {
     }
 
     /**
-     * Naming a class is the strongest selection {@code jk test} has, so a class the {@code --class}
+     * Naming a class is the strongest selection {@code jk test} has, so a class the {@code -S}
      * filter matched and the tag filter then dropped is reported by name — with the tags that
      * dropped it and the flag that runs it — instead of vanishing into a green run that ran
      * nothing of what was named. Found by discovering the named classes once more without the

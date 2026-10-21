@@ -40,7 +40,7 @@ public final class PluginCommands {
     }
 
     /**
-     * As above with the request's variant selection — a deploy command after {@code jk run --release}
+     * As above with the request's variant selection — a deploy command after {@code jk run -R}
      * must resolve the release packaging (the AAB) and its config, not the debug default's.
      */
     public static PluginCommandReport run(

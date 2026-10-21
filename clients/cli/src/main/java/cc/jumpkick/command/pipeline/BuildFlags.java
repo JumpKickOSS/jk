@@ -76,18 +76,18 @@ public record BuildFlags(
         List<Opt> opts = new ArrayList<>();
         opts.add(Opt.value("<name>", "Build profile (default auto)", "-p", "--profile"));
         if (reach != Reach.COMPILE) {
-            opts.add(Opt.flag("Skip profile tag filters", "--no-profile"));
+            opts.add(Opt.flag("Skip profile tag filters", "-n", "--no-profile"));
             opts.add(Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers"));
             if (reach == Reach.DELIVER) opts.add(CommonOpts.skipTests());
             opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
                     .repeat());
-            opts.add(Opt.flag("Run every test suite (tags included)", "--all"));
+            opts.add(Opt.flag("Run every test suite (tags included)", "-A", "--all"));
             opts.add(CommonOpts.guard());
-            opts.add(Opt.flag("Guard scripts, no JUnit", "--scripts-only"));
-            opts.add(Opt.flag("Skip guard scripts", "--no-scripts"));
-            opts.add(Opt.value("<tags>", "JUnit tags to include (CSV)", "--include-tags")
+            opts.add(Opt.flag("Guard scripts, no JUnit", "-P", "--scripts-only"));
+            opts.add(Opt.flag("Skip guard scripts", "-b", "--no-scripts"));
+            opts.add(Opt.value("<tags>", "JUnit tags to include (CSV)", "-I", "--include-tags")
                     .splitOn(","));
-            opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "--exclude-tags")
+            opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "-E", "--exclude-tags")
                     .splitOn(","));
             opts.addAll(ParallelTestsOpts.options());
             opts.add(CommonOpts.testFailures());
@@ -100,8 +100,8 @@ public record BuildFlags(
                 affected == Affected.MODULES
                         ? CommonOpts.moduleSelection()
                         : CommonOpts.moduleSelection(
-                                Opt.flag("Ranked WIP tests (does not run)", "--affected"),
-                                Opt.value("<git-ref>", "Ranked tests since ref (no run)", "--affected-since")));
+                                Opt.flag("Ranked WIP tests (does not run)", "-f", "--affected"),
+                                Opt.value("<git-ref>", "Ranked tests since ref (no run)", "-e", "--affected-since")));
         opts.addAll(VariantSelection.options());
         return opts;
     }

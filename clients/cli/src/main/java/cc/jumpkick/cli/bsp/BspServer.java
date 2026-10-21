@@ -343,7 +343,7 @@ public final class BspServer {
     /**
      * A test target for {@code suite} of the module {@code moduleId} names: no sources and no
      * languages of its own (the module's target owns them), so testing it is the one thing it does,
-     * {@code jk test --suite <suite>} for that module.
+     * {@code jk test -s <suite>} for that module.
      */
     static String suiteTargetJson(String moduleId, String display, String suite) {
         return JsonFields.object()

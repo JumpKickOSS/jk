@@ -8,7 +8,7 @@ jk gradle build                # real Gradle
 jk import pom.xml              # → jk.toml + fidelity report
 jk import pom.xml -P default   # with a Maven profile activated by name, as mvn -P does
 jk import settings.gradle.kts  # Gradle evaluates the build in a fork; every module imports
-jk import --dry-run            # the report and every file it would write or move; changes nothing
+jk import -U            # the report and every file it would write or move; changes nothing
 jk export maven                # publishable POM
 jk export gradle
 jk export idea | vscode
@@ -230,7 +230,7 @@ removes it.
 
 ```bash
 cd my-maven-repo          # pom.xml, src/main/java, src/test/java — no jk.toml
-jk build --skip-tests     # compiles into target/classes
+jk build -S     # compiles into target/classes
 jk test                   # runs the JUnit suite; target/jk-results.md
 jk explain                # the same steps a jk.toml module gets
 ```
@@ -285,7 +285,7 @@ lowers a count is a regression.
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | import with no Tier-3 row | 15 | 13 | 11 | 12 | 12 | 13 | 13 | 12 | 11 | 12 | 12 | 11 | 11 | 11 | 11 | 11 |
 | `jk lock` succeeds | 2 | 6 | 6 | 4 | 10 | 9 | 14 | 14 | 14 | 16 | 16 | 16 | 15 | 18 | 19 | 18 |
-| `jk build --skip-tests` compiles something | 1 | 3 | 3 | 2 | 4 | 4 | 8 | 7 | 10 | 9 | 11 | 11 | 9 | 9 | 11 | 13 |
+| `jk build -S` compiles something | 1 | 3 | 3 | 2 | 4 | 4 | 8 | 7 | 10 | 9 | 11 | 11 | 9 | 9 | 11 | 13 |
 | `jk test` runs and passes | 0 | 0 | 0 | 1 | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 1 | 1 | 2 | 2 |
 
 The lock and build counts moved because the effective-POM import resolved every managed version;
@@ -398,7 +398,7 @@ neither runs on 25) and read from a fork whose whole evaluation stayed inside th
 
 | Repository | Build | Import | What the manifest carries |
 |---|---|---|---:|
-| spring-guides/gs-multi-module `complete/` | Gradle 9.3.1, 2 modules, Boot + dependency-management | 54 s, lossless | root `[workspace]`, `library.workspace = true`, `[spring-boot] version`, Boot BOM as the library's platform; `jk build --skip-tests` compiles both modules |
+| spring-guides/gs-multi-module `complete/` | Gradle 9.3.1, 2 modules, Boot + dependency-management | 54 s, lossless | root `[workspace]`, `library.workspace = true`, `[spring-boot] version`, Boot BOM as the library's platform; `jk build -S` compiles both modules |
 | square/moshi | Gradle 9.5.1, 11 modules, Kotlin DSL, version catalog, KSP, dokka, japicmp | 10 s, 18 Tier-2 rows | one manifest per module, sibling edges, `[provided-dependencies]`, `[processor-dependencies]`, two `japicmp` modules named by path; rows name the `checkLegacyAbi` tasks, the `java16` source set, the japicmp `baseline`/`latest` configurations and the publish plugin |
 | spring-petclinic/spring-petclinic-kotlin | Gradle 9.7.0, Kotlin, Boot 4 | 16 s, 3 rows | `kotlin = "2.4.10"`, `[spring-boot]`, `bootstrap = "…:5.3.8"` and `webjars-locator-lite = "…:1.1.4"` from the script's `val`s; rows name the Jib and allopen plugins |
 | junit-pioneer/junit-pioneer | Gradle 8.14.2 on JDK 21 | 37 s | `junit-bom = "org.junit:junit-bom:6.1.0"` from `gradle.properties`, `jimfs = "…:1.3.0"` |
@@ -432,8 +432,8 @@ relates to the Maven one.
 | maven-javadoc-plugin | 22 | a library ships the javadoc jar by default; `<failOnError>true` or a `<doclint>` other than `none` → `javadoc = "strict"`; `<doclint>none` or `<failOnError>false` stays lenient | exact |
 | maven-source-plugin | 19 | `sources = "always"` — the sources jar on every `jk build` | exact |
 | maven-resources-plugin | 19 | `<resources>` / `<testResources>` → `[resources]`: a directory outside the layout → `dirs`, a filtering one → `filtered`, and every name its files reference → `[resources.properties]` with the effective POM's value; names only Maven's runtime knows (environment, settings), `<includes>`/`<excludes>` and `<targetPath>` → row | approximate |
-| jacoco-maven-plugin | 17 | `jk test --coverage` is a run flag, not a manifest key → row | manual |
-| maven-gpg-plugin | 17 | `jk publish --sign` | exact |
+| jacoco-maven-plugin | 17 | `jk test -T` is a run flag, not a manifest key → row | manual |
+| maven-gpg-plugin | 17 | `jk publish -I` | exact |
 | maven-assembly-plugin | 17 | `jar-with-dependencies` → `[application] assembly = true` (needs a `<mainClass>`, else a row); other descriptors → row | approximate |
 | maven-enforcer-plugin | 17 | `requireJavaVersion` → `java =`; banned deps → `jk deny`; rest → row | approximate |
 | build-helper-maven-plugin | 16 | `add-source` → `[build] extra-src`, `add-test-source` → `[test] extra-src`; a root inside a generator's output (`target/generated-sources/openapi/…`) is that generator's contribution and is not written; other goals → row | approximate |
@@ -447,7 +447,7 @@ relates to the Maven one.
 | maven-shade-plugin | 12 | `[application] assembly = true`, `Main-Class` from the manifest transformer; a whole-package `<relocation>` → `[application] relocate` (see [Packaging § Package relocation](packaging.md#package-relocation)); a shaded member with no main — neo4j's `lucene9-shaded`, nacos's `client` — → `[library] assembly = true` with the same `relocate`, and the members that import its shaded packages keep their workspace edge and compile against its `-all.jar` ([Workspaces § Shaded siblings](workspaces.md#shaded-siblings)); a relocation narrowed by `<includes>`/`<excludes>`, spelled as a path or doubled as a `<rawString>` twin → rules where they agree with the whole-package rule on every class (nacos's `io.grpc` exclude-and-relocate pair), else rows naming the construct; filters, other transformers and `minimizeJar` → rows | approximate |
 | kotlin-maven-plugin | 12 | `kotlin =` on the module at the plugin's version, or at jk's floor (2.4.10) with a row when the plugin's version is below it; when the main source directory also carries `.java` files (Kotlin tests beside a Java main tree, a `test-compile`-only plugin, or both languages in main) the module is mixed and `java =` is written beside it, so javac compiles the Java tree against kotlinc's output and the Kotlin test tree sees both — a row says so | exact |
 | maven-release-plugin | 11 | nothing (release flow) | manual |
-| central-publishing-maven-plugin | 11 | `jk publish --central` | exact |
+| central-publishing-maven-plugin | 11 | `jk publish -c` | exact |
 | spotbugs-maven-plugin | 10 | `[lint] spotbugs = true`, `<excludeFilterFile>` and `<excludeFilterFiles>` → the `spotbugs-exclude` list, `<effort>` → `spotbugs-effort`, `<threshold>` → `spotbugs-threshold` (`High` → `high`, `Low` / `Exp` → `low`; `Default` is the step's own `medium`), `<maxRank>` → `spotbugs-max-rank`, `<omitVisitors>` / `<visitors>` → `spotbugs-omit-visitors` / `spotbugs-visitors`, `<plugins>` (fb-contrib, find-sec-bugs) → `spotbugs-plugins`, `<includeTests>` → `sources` + `src/test/java` — each parameter read from the `<configuration>` or from the `spotbugs.<name>` user property the POM sets, as the plugin reads it — the plugin version minus its last digit → `spotbugs-version`, SpotBugs's threshold `warning` — `spotbugs:check` fails on any bug at the confidence threshold — or `never` under `<failOnError>false` (written as `fail-on` when the module's tools agree, else `spotbugs-fail-on`) | approximate |
 | spotless-maven-plugin | 10 | `jk format` | approximate |
 | maven-antrun-plugin | 10 | build logic script → row | manual |

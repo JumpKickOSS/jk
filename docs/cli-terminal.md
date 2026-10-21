@@ -1639,7 +1639,7 @@ Pre-1.0, private repo, no user feature flag. The flag *is* the branch.
    JLine is off the `:cli` classpath **and** `docs/contributors/tui.md` matches (commit **6**).
 2. Stacked commits, each independently reviewable (see **PR Plan**). Intermediate
    JLine+`:cli-terminal` on the `:cli` classpath is **branch-only**.
-3. After merge: `jk install --skip-tests && jk engine stop`
+3. After merge: `jk install -S && jk engine stop`
 4. Smoke: `jk engine status`; `jk init smoke-app && cd smoke-app && jk build`; interactive
    `jk init` wizard; `jk build` Ctrl-O; Ctrl-C mid-build (halt backup, cooked restore);
    `jk run` inheritIO echo; `jk foo | less` (no animation, still promptable where applicable).
@@ -1927,7 +1927,7 @@ signature change. Theme/`AttributedStyle` stays 5a. Dual-path remains **branch-o
 
 Done criteria (ticket, when one exists): `jk test -m jk-cli` green; `jk test -m jk-cli-terminal`
 green; integration profile if wire-adjacent tests were touched (they should not be);
-`jk install --skip-tests && jk engine stop`; `jk engine status`; `jk init` + `jk build` smoke;
+`jk install -S && jk engine stop`; `jk engine status`; `jk init` + `jk build` smoke;
 interactive wizard + Ctrl-C + Ctrl-O + `jk run` echo on a real TTY; Done greps above;
 `tui.md` no longer mentions JLine's reader before status `done`; record `stat target/dist/jk`
 before/after (verify, not a design unknown).

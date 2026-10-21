@@ -5,7 +5,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk guard freeze <id> --reason "…"} / {@code --retire} / {@code --accept-scope}: grow the
+ * {@code jk guard freeze <id> -W "…"} / {@code --retire} / {@code --accept-scope}: grow the
  * baseline for one rule, drop a retired rule's entries, or accept a rule's smaller population as its
  * floor. Refused engine-side without a reason or under CI.
  */

@@ -44,7 +44,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Cache-maintenance plans for {@code jk cache clean}, {@code jk cache nuke}, {@code jk storage
- * clean}, and project-scoped invalidation ({@code jk clean --force}). These mutate caches that
+ * clean}, and project-scoped invalidation ({@code jk clean -F}). These mutate caches that
  * other plans read concurrently — the engine runs them only at idle boundaries.
  */
 public final class CachePlans {
@@ -243,7 +243,7 @@ public final class CachePlans {
     }
 
     /**
-     * Project-scoped action-cache invalidation ({@code jk clean --force}): drop action-cache
+     * Project-scoped action-cache invalidation ({@code jk clean -F}): drop action-cache
      * keys/tasks/incremental state for {@code projectDir} and its workspace modules (match by
      * output {@link ActionKey#taskTag} or INPUT path under a module). CAS blobs are left for a later
      * {@code jk cache clean}.

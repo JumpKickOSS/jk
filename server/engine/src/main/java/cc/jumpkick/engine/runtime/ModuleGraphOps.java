@@ -16,7 +16,7 @@ import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
-/** Module DAG for {@code jk explain --graph}. */
+/** Module DAG for {@code jk explain -U}. */
 public final class ModuleGraphOps {
 
     private ModuleGraphOps() {}

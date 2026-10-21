@@ -43,7 +43,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>{@code --central} switches the target to the Sonatype Central Portal: one signed bundle of
  * jar, POM, sources and javadoc jars uploaded to the Portal's API, then polled to its verdict. The
- * token comes from the {@code central} credential ({@code jk repo login central --url
+ * token comes from the {@code central} credential ({@code jk repo login central -U
  * https://central.sonatype.com}, or {@code JK_REPO_CENTRAL_*}); {@code --repo-url} names another
  * Portal; a dry run writes the bundle under {@code target/publish/} and lists it.
  */
@@ -62,22 +62,22 @@ public final class PublishCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         var opts = new ArrayList<Opt>(List.of(
-                Opt.value("<url>", "Target Maven repository URL (none on --dry-run).", "--repo-url"),
-                Opt.flag("Signed bundle to the Sonatype Central Portal.", "--central"),
-                Opt.value("<type>", "Central: user-managed (default) or automatic.", "--publishing-type"),
-                Opt.value("<user>", "HTTP Basic username (PUBLISH_USER env).", "--user"),
-                Opt.value("<pass>", "HTTP Basic password (PUBLISH_PASSWORD env).", "--password"),
-                Opt.value("<REGION>", "Object-store region for s3:// / gs://.", "--region"),
-                Opt.value("<URL>", "Object-store endpoint override for s3://.", "--endpoint"),
-                Opt.value("<file>", "Override the main jar path.", "--jar"),
-                Opt.flag("Permit publishing -SNAPSHOT versions.", "--allow-snapshot"),
-                Opt.flag("Print the upload plan; no HTTP requests.", "--dry-run"),
-                Opt.flag("Detached .asc GPG signature per artifact.", "--sign"),
-                Opt.value("<file>", "GPG secret key path. Required with --sign.", "--key-file"),
-                Opt.value("<pass>", "Key passphrase (JK_GPG_PASSPHRASE env).", "--key-passphrase"),
-                Opt.flag("Sign with Sigstore keyless OIDC (.sigstore).", "--sigstore"),
-                Opt.flag("Emit a SLSA v1 in-toto provenance statement.", "--slsa"),
-                Opt.flag("Emit CycloneDX 1.6 and SPDX 2.3 SBOMs.", "--sbom")));
+                Opt.value("<url>", "Target Maven repository URL (none on --dry-run).", "-l", "--repo-url"),
+                Opt.flag("Signed bundle to the Sonatype Central Portal.", "-c", "--central"),
+                Opt.value("<type>", "Central: user-managed (default) or automatic.", "-t", "--publishing-type"),
+                Opt.value("<user>", "HTTP Basic username (PUBLISH_USER env).", "-b", "--user"),
+                Opt.value("<pass>", "HTTP Basic password (PUBLISH_PASSWORD env).", "-P", "--password"),
+                Opt.value("<REGION>", "Object-store region for s3:// / gs://.", "-E", "--region"),
+                Opt.value("<URL>", "Object-store endpoint override for s3://.", "-e", "--endpoint"),
+                Opt.value("<file>", "Override the main jar path.", "-A", "--jar"),
+                Opt.flag("Permit publishing -SNAPSHOT versions.", "-s", "--allow-snapshot"),
+                Opt.flag("Print the upload plan; no HTTP requests.", "-U", "--dry-run"),
+                Opt.flag("Detached .asc GPG signature per artifact.", "-I", "--sign"),
+                Opt.value("<file>", "GPG secret key path. Required with --sign.", "-f", "--key-file"),
+                Opt.value("<pass>", "Key passphrase (JK_GPG_PASSPHRASE env).", "-p", "--key-passphrase"),
+                Opt.flag("Sign with Sigstore keyless OIDC (.sigstore).", "-g", "--sigstore"),
+                Opt.flag("Emit a SLSA v1 in-toto provenance statement.", "-L", "--slsa"),
+                Opt.flag("Emit CycloneDX 1.6 and SPDX 2.3 SBOMs.", "-S", "--sbom")));
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -351,7 +351,7 @@ public final class PublishCommand implements CliCommand {
         RepoCredential cred = new RepoCredentialResolver().resolve(CENTRAL_CREDENTIAL, portal, Optional.empty());
         if (cred.isAnonymous()) {
             throw new IllegalStateException("no Central Portal token: run `jk repo login " + CENTRAL_CREDENTIAL
-                    + " --url " + portal + " --username <token-name>` with the token's password on stdin, or export"
+                    + " -U " + portal + " -s <token-name>` with the token's password on stdin, or export"
                     + " JK_REPO_CENTRAL_USERNAME + JK_REPO_CENTRAL_PASSWORD with JK_REPO_CENTRAL_HOST="
                     + portal.getHost()
                     + " (a user token from https://central.sonatype.com/account).");

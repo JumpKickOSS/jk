@@ -28,8 +28,8 @@ public final class VariantSelection {
 
     public static List<Opt> options() {
         return List.of(
-                Opt.flag("Use release build type", "--release"),
-                Opt.value("<dim>=<value>", "Select a variant value (repeatable)", "--variant")
+                Opt.flag("Use release build type", "-R", "--release"),
+                Opt.value("<dim>=<value>", "Select a variant value (repeatable)", "-i", "--variant")
                         .repeat());
     }
 

@@ -47,8 +47,8 @@ prepare, schedule). Add a `WorkspaceTarget` + module filter. See
 ```bash
 curl -fsSL https://jumpkick.build/install.sh | bash   # the released jk, once per machine
 export PATH="$HOME/.jk/bin:$PATH"
-jk build --skip-tests        # every module; native client + engine jar → target/dist/
-jk install --skip-tests      # this checkout's client, engine and workers take over ~/.jk
+jk build -S        # every module; native client + engine jar → target/dist/
+jk install -S      # this checkout's client, engine and workers take over ~/.jk
 ```
 
 From then on the engine running your builds is the one you just compiled; the long form is
@@ -93,7 +93,7 @@ jk-templates. `scripts/templates-sync.sh --check` names every drifted file; the 
 ### Formatting
 
 jk formats itself. Run `jk format` before you commit. There is no pre-commit hook or CI
-format job — `jk format --check` is the local gate (required before every commit; see
+format job — `jk format -c` is the local gate (required before every commit; see
 [AGENTS.md](AGENTS.md#code-formatting-mandatory-before-every-commit)).
 
 ### Code as Art
@@ -151,7 +151,7 @@ JaCoCo agent stays off unless asked for, so the fast tier does not pay for it.
 **Reproduce locally**
 
 ```bash
-jk format --check
+jk format -c
 jk guard
 jk build
 jk test -p integration
@@ -174,7 +174,7 @@ worker runs the one this build produced. CLI integration tests spawn a real engi
 assembly the same step names (`-Djk.engine.jar`), in an isolated sandbox `JK_HOME` — no in-process
 dual path. The fast tier (`jk test`) is the pure unit tier (TUI/args/jsonl) with no engine spawn.
 
-Use `-m` and `--class` mid-ticket (`jk test -m clients/cli --class cc.jumpkick.cli.engine.EngineClientTest -p integration`);
+Use `-m` and `--class` mid-ticket (`jk test -m clients/cli -S cc.jumpkick.cli.engine.EngineClientTest -p integration`);
 the pre-merge bar is the whole integration profile. Tier model:
 [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md).
 
@@ -186,7 +186,7 @@ Multi-module sample under
 [`docs/user/examples/workspace-showcase/`](docs/user/examples/workspace-showcase/):
 
 ```bash
-jk build --skip-tests && jk install --skip-tests
+jk build -S && jk install -S
 
 cd docs/user/examples/workspace-showcase
 jk lock && jk build && jk test -m app

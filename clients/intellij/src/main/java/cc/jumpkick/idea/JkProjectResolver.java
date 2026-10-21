@@ -19,7 +19,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * The sync: {@code jk ide --print-model} in the linked directory, decoded by {@link JkWireModel},
+ * The sync: {@code jk ide -p} in the linked directory, decoded by {@link JkWireModel},
  * SDKs registered, and the {@link JkProjectGraph} handed to the platform, which applies it and
  * shows the run in the Build tool window. A failing CLI surfaces as one line: its first error
  * line. Wire-only: nothing of the engine is loaded into the IDE process.
@@ -73,13 +73,13 @@ public final class JkProjectResolver implements ExternalSystemProjectResolver<Jk
         if (indicator.isCanceled()) throw new ExternalSystemException("JumpKick sync cancelled");
         if (!run.ok()) {
             throw new ExternalSystemException(JkCliLines.firstErrorLine(
-                    run.stderr(), run.stdout(), "jk ide --print-model failed (exit " + run.exitCode() + ")"));
+                    run.stderr(), run.stdout(), "jk ide -p failed (exit " + run.exitCode() + ")"));
         }
         JkWireModel model;
         try {
             model = JkWireModel.parse(run.stdout());
         } catch (IllegalArgumentException e) {
-            throw new ExternalSystemException("jk ide --print-model printed no model: " + e.getMessage(), e);
+            throw new ExternalSystemException("jk ide -p printed no model: " + e.getMessage(), e);
         }
         if (model.error != null) throw new ExternalSystemException(model.error);
         return model;

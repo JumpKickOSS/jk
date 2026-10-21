@@ -49,7 +49,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk tree} — print the resolved dependency tree, read under the same feature selection
- * {@code jk lock} takes ({@code --features}, {@code --no-default-features}).
+ * {@code jk lock} takes ({@code -e}, {@code -n}).
  */
 public final class TreeCommand implements CliCommand {
 
@@ -71,9 +71,9 @@ public final class TreeCommand implements CliCommand {
                 Opt.flag("Flatten each scope to a sorted, deduped list.", "-f", "--flatten"),
                 Opt.flag("Blend all scopes into one tree, one badge row.", "-S", "--stack"),
                 Opt.value("<scopes>", "Scopes to show, in order; meta: exec/run/all.", "-s", "--scopes"),
-                Opt.value("<a,b,...>", "Activate listed features beyond the defaults.", "--features")
+                Opt.value("<a,b,...>", "Activate listed features beyond the defaults.", "-e", "--features")
                         .splitOn(","),
-                Opt.flag("Don't activate the project's default features.", "--no-default-features"));
+                Opt.flag("Don't activate the project's default features.", "-n", "--no-default-features"));
     }
 
     @Override

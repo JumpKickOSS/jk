@@ -38,7 +38,7 @@ The SDK resolves like any first-party coordinate, from `https://jumpkick.build/r
 sample's committed `jk-lock.toml` pins it there: jk never asks Maven Central for `cc.jumpkick`, so
 a look-alike there cannot stand in for it. Each release also puts the SDK on Maven Central, at the
 same version, for a plugin built with Maven or Gradle. The integration test that drives this sample end
-to end (`ThirdPartyPluginExampleTest`) publishes the SDK a checkout built — `jk publish --repo-url
+to end (`ThirdPartyPluginExampleTest`) publishes the SDK a checkout built — `jk publish -l
 file:///tmp/sdk-repo` from `shared/host` and `shared/plugin-sdk` — and relocks the sample against
 that repository, so the bytes under test are the checkout's own.
 

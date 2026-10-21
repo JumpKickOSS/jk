@@ -53,7 +53,7 @@ public final class BuildVerbCommand implements CliCommand {
     private BuildVerbCommand(Supplier<BuildVerb> verbs) {
         this.verbs = verbs;
         this.shape = verbs.get();
-        requireNoSharedOptions(shape.name(), shape.affected(), shape.ownOptions());
+        requireNoSharedOptions(shape.name(), shape.reach(), shape.affected(), shape.ownOptions());
     }
 
     /** {@code jk compile}. */
@@ -90,9 +90,10 @@ public final class BuildVerbCommand implements CliCommand {
      * A verb's own options never repeat a shared one: a second declaration is a second help string
      * and a second parse, which is how the build commands drifted apart.
      */
-    static void requireNoSharedOptions(String command, BuildFlags.Affected affected, List<Opt> own) {
+    static void requireNoSharedOptions(
+            String command, BuildFlags.Reach reach, BuildFlags.Affected affected, List<Opt> own) {
         Set<String> shared = new HashSet<>();
-        for (Opt opt : BuildFlags.options(BuildFlags.Reach.DELIVER, affected)) shared.addAll(opt.names());
+        for (Opt opt : BuildFlags.options(reach, affected)) shared.addAll(opt.names());
         for (Opt opt : own) {
             for (String name : opt.names()) {
                 if (shared.contains(name)) {

@@ -42,8 +42,8 @@ import org.jspecify.annotations.Nullable;
  * — Mill-style selective prepare / resolve / run over git-affected + module selectors.
  *
  * <pre>
- * jk selective resolve --since=origin/main
- * jk selective prepare --since=origin/main
+ * jk selective resolve -S origin/main
+ * jk selective prepare -S origin/main
  * jk selective run build
  * jk selective run test
  * </pre>
@@ -71,10 +71,10 @@ public final class SelectiveCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<git-ref>", "Modules changed since this git ref", "--since", "--affected-since"),
+                Opt.value("<git-ref>", "Modules changed since this git ref", "-S", "--since", "--affected-since"),
                 CommonOpts.modules("Module selector (globs; repeatable)"),
-                Opt.flag("Machine-readable module list", "--json"),
-                Opt.value("<file>", "Plan file path (selective)", "--plan"));
+                Opt.flag("Machine-readable module list", "-s", "--json"),
+                Opt.value("<file>", "Plan file path (selective)", "-p", "--plan"));
     }
 
     @Override
@@ -91,7 +91,7 @@ public final class SelectiveCommand implements CliCommand {
                 : in.positionals().getFirst().trim().toLowerCase(Locale.ROOT);
     }
 
-    /** {@code jk selective resolve} prints one module path per line (or {@code --json}) for a CI step to read. */
+    /** {@code jk selective resolve} prints one module path per line (or {@code -s}) for a CI step to read. */
     @Override
     public boolean scriptMode(Invocation in) {
         // prepare/run reuse resolve() as a helper and settle with a human wedge, so the mode cannot

@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 
 /**
  * Map changed paths onto workspace modules and close over reverse dependency edges (dependents).
- * Used by {@code jk build --affected-since=&lt;ref&gt;}.
+ * Used by {@code jk build -e &lt;ref&gt;}.
  */
 public final class AffectedModules {
 

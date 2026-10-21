@@ -30,7 +30,7 @@ public final class Baselines {
     public static @Nullable String freezeRefusal(@Nullable String reason, boolean ci) {
         if (ci) return "jk guard freeze is refused under CI: accept violations locally and commit the baseline";
         if (reason == null || reason.isBlank())
-            return "jk guard freeze needs --reason: an entry without a reason is a suppression";
+            return "jk guard freeze needs -W: an entry without a reason is a suppression";
         return null;
     }
 }

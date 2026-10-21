@@ -24,7 +24,7 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * The gutter's Run and Debug on a JumpKick module route through {@code jk}: a class under a test
- * root becomes {@code jk test --class <fqcn>}, an annotated method in it {@code --class
+ * root becomes {@code jk test -S <fqcn>}, an annotated method in it {@code -S
  * <fqcn>#<method>}, a class with a {@code main} method under a source root becomes {@code jk
  * run}. Preferred over the bundled JUnit and Application producers on these modules, which keep
  * their own configurations in the list.

@@ -348,7 +348,7 @@ public final class RepoGroupBuilder {
         return head + "No other credential resolved for `" + repoId
                 + "`, so it will be accessed anonymously and a private repository will answer 401. A credential "
                 + "travels only to the origin its name is bound to, so supply it through one of the bindings: "
-                + "`jk repo login " + repoId + " --url " + safeUrl + "`; a [repositories." + repoId
+                + "`jk repo login " + repoId + " -U " + safeUrl + "`; a [repositories." + repoId
                 + "] table with this URL and a ${VAR} credential in ~/.jk/config.toml; or " + prefix + "TOKEN (or "
                 + prefix + "USERNAME + " + prefix + "PASSWORD) with " + prefix + "HOST=" + host
                 + " in your shell. A <server> in ~/.m2/settings.xml needs one of those bindings too. "

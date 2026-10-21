@@ -64,8 +64,8 @@ public final class SyncCommand implements CliCommand {
                 CommonOpts.jdksDir(),
                 Opt.value("<url>", "Override declared repos with a single URL (for tests).", "--repo-url")
                         .hide(),
-                Opt.flag("Prepare for an offline build.", "--offline-prepare"),
-                Opt.flag("Also fetch every library's sources JAR (for the IDE).", "--sources"));
+                Opt.flag("Prepare for an offline build.", "-p", "--offline-prepare"),
+                Opt.flag("Also fetch every library's sources JAR (for the IDE).", "-s", "--sources"));
     }
 
     @Override

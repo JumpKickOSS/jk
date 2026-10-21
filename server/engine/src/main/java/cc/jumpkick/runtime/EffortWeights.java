@@ -983,7 +983,7 @@ public final class EffortWeights {
                 // NOT re-download blobs already present: the CAS is content-addressed (a stored
                 // sha256 is byte-identical), so a forced build resolves entirely from local disk
                 // it even succeeds offline. Reserving a per-artifact download here for cached deps
-                // was the bug that made `jk explain --force` predict tens of seconds of phantom fetch.
+                // was the bug that made `jk explain -F` predict tens of seconds of phantom fetch.
                 String hex = a.checksumHex();
                 if (hex == null || !cas.contains(hex)) fetches++;
             }

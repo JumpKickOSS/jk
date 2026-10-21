@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk explain --verbose} names, on a compile step, the annotation processors its processor
+ * {@code jk explain -v} names, on a compile step, the annotation processors its processor
  * path registers — each class with the jar it comes from — beside the javac plugins it invokes. A
  * path that registers none leaves the step's text alone.
  */

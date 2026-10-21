@@ -52,7 +52,7 @@ and after every restart, so a fetch on `dev-ready` never races the JVM.
 ## Run it
 
 ```console
-$ jk dev --no-ansi
+$ jk dev -u
 + Watch Successful: Built - took 46.0s
 
 jk watch run: watching src -- process restart on change. Ctrl-C stops.
@@ -78,7 +78,7 @@ Edit `Api.java`: jk recompiles and restarts the JVM; Vite is untouched and keeps
 Edit `web/main.js`: Vite hot-reloads the page; the JVM is untouched. Ctrl-C stops the JVM and Vite
 together — nothing is left on 8080 or 5173.
 
-`jk dev --no-sidecars` runs the JVM alone; the `ready ·` line then carries `[dev] ready`'s address.
+`jk dev -T` runs the JVM alone; the `ready ·` line then carries `[dev] ready`'s address.
 `jk dev -O jsonl` turns every line into an event with its source (`sidecar-output`,
 `app-output`) — [Machine output](../../machine-output.md#jk-dev). A dev server jk does not build is
 declared by hand under `[dev.sidecars]` ([Run § Sidecars](../../run.md#sidecars-devsidecars)).
@@ -86,10 +86,10 @@ declared by hand under `[dev.sidecars]` ([Run § Sidecars](../../run.md#sidecars
 ## Build and test
 
 ```console
-$ jk build --no-ansi
+$ jk build -u
 jk: + Build > Build successful. Built target/vite-sidecar-0.0.1.jar - took 12.0s
 
-$ jk test --no-ansi
+$ jk test -u
 + Test Successful: Passed 1 test - took 29ms
 ```
 

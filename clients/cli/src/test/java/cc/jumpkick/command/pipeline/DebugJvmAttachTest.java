@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk test --debug-jvm=0} forks a test JVM that really listens where the CLI said it would.
+ * {@code jk test -U 0} forks a test JVM that really listens where the CLI said it would.
  * No IDE: a plain socket to the announced port, the JDWP handshake bytes, the 14-byte echo, then a
  * {@code VirtualMachine.Resume} so the suspended suite runs to its normal green exit.
  */

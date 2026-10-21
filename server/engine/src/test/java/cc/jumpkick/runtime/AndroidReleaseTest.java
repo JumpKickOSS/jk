@@ -30,7 +30,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * android-plan Step 3 acceptance ("release"): {@code jk build --release} on an app module
+ * android-plan Step 3 acceptance ("release"): {@code jk build -R} on an app module
  * produces a Play-uploadable AAB —
  *
  * <ul>

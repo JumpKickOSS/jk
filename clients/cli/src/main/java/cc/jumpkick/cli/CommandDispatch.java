@@ -113,7 +113,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Handles both leaf commands and parent groups (a {@link CliCommand} with subcommands) — {@code jk
  * jdk install …} descends into the parent, finds the sub-command, and dispatches it; {@code jk
- * jdk}/{@code jk jdk --help} prints the parent's command list.
+ * jdk}/{@code jk jdk -h} prints the parent's command list.
  */
 public final class CommandDispatch {
 

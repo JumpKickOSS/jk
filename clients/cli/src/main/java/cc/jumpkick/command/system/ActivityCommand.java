@@ -56,7 +56,7 @@ public final class ActivityCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<N>", "Maximum number of runs to show (default: " + DEFAULT_LIMIT + ").", "--limit", "-n"));
+                Opt.value("<N>", "Maximum number of runs to show (default: " + DEFAULT_LIMIT + ").", "-n", "--limit"));
     }
 
     @Override

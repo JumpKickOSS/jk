@@ -42,7 +42,7 @@ public final class WebCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.flag("Print the URL only; do not open a browser", "--no-open"));
+        return List.of(Opt.flag("Print the URL only; do not open a browser", "-n", "--no-open"));
     }
 
     @Override

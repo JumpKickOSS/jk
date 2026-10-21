@@ -508,7 +508,7 @@ public final class RepoArtifactStore {
 
     /**
      * Every {@code group:artifact} tracked by this store, with the versions held for each. Powers
-     * offline cache search ({@code jk repo search}, {@code jk library search --offline}). Empty
+     * offline cache search ({@code jk repo search}, {@code jk library search -o}). Empty
      * for {@link #NONE} or a cold store. Versions are in directory-listing order — callers wanting
      * newest-first should sort.
      */

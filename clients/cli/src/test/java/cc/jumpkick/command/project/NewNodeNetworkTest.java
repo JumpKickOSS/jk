@@ -25,7 +25,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
- * Every {@code jk new --lang node} template, against the real generator from the npm registry under
+ * Every {@code jk new -l node} template, against the real generator from the npm registry under
  * a Node.js from nodejs.org: it generates without a prompt, builds, builds again from the cache, and
  * a server template's {@code jk run} answers {@code GET /}. A generator that changes the flags it
  * needs without a terminal fails here, not for a user.
@@ -43,7 +43,7 @@ class NewNodeNetworkTest {
         NodeGenerators.Framework framework = NodeGenerators.find(id).orElseThrow();
         Path app = dir.resolve("app");
         assertThat(run("new", "--lang", "node", "-t", id, "--group", "com.acme", app.toString()))
-                .as("jk new --lang node -t %s", id)
+                .as("jk new -l node -t %s", id)
                 .isZero();
         assertThat(Files.readString(app.resolve("jk.toml"))).contains("node = ");
         assertThat(NodeGenerators.LOCKFILES.stream().anyMatch(l -> Files.exists(app.resolve(l))))

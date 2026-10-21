@@ -75,7 +75,7 @@ public final class CommandWedge {
 
     /**
      * {@link #analyzing} on stdout, or {@code null} when this invocation's stdout is machine-consumed
-     * ({@link CliOutput#scriptMode()}) — BSP's JSON-RPC frames, {@code jk explain --graph}, a path, a
+     * ({@link CliOutput#scriptMode()}) — BSP's JSON-RPC frames, {@code jk explain -U}, a path, a
      * token. Cursor-movement ANSI and pulse frames must never enter a stream a program is parsing,
      * and the interactivity gate callers use gives no cover: it asks whether stdout is a terminal,
      * which a pty-allocating IDE or CI runner answers yes to while still parsing every byte.

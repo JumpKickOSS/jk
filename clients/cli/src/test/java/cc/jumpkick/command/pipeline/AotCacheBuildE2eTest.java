@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Protects the user-facing {@code jk build --aot-cache}: the build trains {@code
+ * Protects the user-facing {@code jk build -T}: the build trains {@code
  * target/aot-cache/app.aot}, the JVM the manifest names maps it without refusal, and a build that
  * changes the application discards the now-void cache.
  */

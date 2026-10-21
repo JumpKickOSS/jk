@@ -159,9 +159,9 @@ without it. Layers, defaults and inheritance: [Images § Node modules](images.md
 `vite.config` hack that pointed `build.outDir` into a resource directory goes, since jk places the
 output.
 
-`jk new --lang node -t <framework> <name>` runs the framework's own generator under the newest LTS
+`jk new -l node -t <framework> <name>` runs the framework's own generator under the newest LTS
 Node.js and writes the `jk.toml` that pins it ([Templates](templates.md#node-front-ends---lang-node)).
-`jk new -t webapp --frontend <framework>` swaps the webapp template's front end.
+`jk new -t webapp -f <framework>` swaps the webapp template's front end.
 
 A standalone project gets jk's `AGENTS.md`. When the generator wrote one of its own, jk's guide goes
 on top and the generator's text stays below it; Next.js's managed block keeps its markers, so `next
@@ -197,7 +197,7 @@ Where the build lands depends on where its bundler (webpack's `output.path`, Vit
   old output path as its `webapp-root` or `classpath-root`.
 
 Either way the bundler config is rewritten to write `dist/`, and jk places the output; nothing is
-built into `src/`. `jk import --dry-run` prints every move and rewrite and changes nothing. Bower and
+built into `src/`. `jk import -U` prints every move and rewrite and changes nothing. Bower and
 the task-runner goals (grunt, gulp, karma, webpack, ember, jspm) are not imported: run them from an
 npm script or an `npx` step. Yarn 1 is not supported: a project on it imports with `[node] skip =
 true` and a row with the migration, so the rest of the project locks and builds while the module

@@ -72,7 +72,7 @@ plugins jk has no counterpart for.
 
 | Tool | Build command | Test command |
 |---|---|---|
-| jk 0.13.7 | `jk build --skip-tests` (`-r` in the clean row) | `jk test -r` |
+| jk 0.13.7 | `jk build -S` (`-r` in the clean row) | `jk test -r` |
 | Gradle, `bench/tools.toml` | `gradle classes jar --configuration-cache --build-cache -I bench/wall/wall.init.gradle` | `gradle test --rerun` with the same flags |
 | Maven, `bench/tools.toml` | `mvn -q -o -Dmaven.test.skip -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip package` | the same properties minus `maven.test.skip`, goal `test` |
 

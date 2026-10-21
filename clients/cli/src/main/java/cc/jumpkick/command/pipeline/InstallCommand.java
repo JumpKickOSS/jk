@@ -162,7 +162,7 @@ public final class InstallCommand {
      * from {@code META-INF/maven/.../pom.properties} for {@code .jar} files; {@code --group}, {@code
      * --name}, and {@code --ver} override or supply missing fields.
      */
-    /** Package-private: `jk tool install <file> --group/--name/--ver` delegates here. */
+    /** Package-private: `jk tool install <file> -U/-W/--ver` delegates here. */
     public int installFromFile(Path filePath) throws IOException {
         if (!Files.exists(filePath)) {
             CommandWedge.printFail("Install", PathDisplay.styled(filePath) + ": no such file");

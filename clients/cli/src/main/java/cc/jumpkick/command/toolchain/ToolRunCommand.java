@@ -75,10 +75,10 @@ public final class ToolRunCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         List<Opt> opts = List.of(
-                Opt.value("<class>", "Override Main-Class (coordinate targets)", "--main"),
-                Opt.value("<coord>", "Extra dependency on tool classpath", "--with")
+                Opt.value("<class>", "Override Main-Class (coordinate targets)", "-T", "--main"),
+                Opt.value("<coord>", "Extra dependency on tool classpath", "-w", "--with")
                         .repeat(),
-                Opt.value("<port>", "Debug app JVM (JDWP; 5005, 0=free)", "--debug-jvm")
+                Opt.value("<port>", "Debug app JVM (JDWP; 5005, 0=free)", "-U", "--debug-jvm")
                         .withFallback(""),
                 Opt.value("<dir>", "Override the jk state directory.", "--state-dir")
                         .hide(),

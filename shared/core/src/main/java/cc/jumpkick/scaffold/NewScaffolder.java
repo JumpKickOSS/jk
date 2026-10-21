@@ -81,7 +81,7 @@ public final class NewScaffolder {
         }
     }
 
-    // jk new --plugin: a build-plugin AUTHORING project (jk-plugin.toml at the jar root; PluginMain
+    // jk new -P: a build-plugin AUTHORING project (jk-plugin.toml at the jar root; PluginMain
     // is implied by that file).
 
     private static void writePluginProject(NewInputs inputs, boolean standalone, ScaffoldVersions versions)
@@ -307,7 +307,7 @@ public final class NewScaffolder {
         return """
                 # %1$s — a jk build plugin
 
-                Built with `jk new --plugin`. A build plugin teaches jk a new `jk.toml` table
+                Built with `jk new -P`. A build plugin teaches jk a new `jk.toml` table
                 (here `[%1$s]`) and shapes the standard commands around it. Full guide:
                 docs/authoring-plugins.md.
 

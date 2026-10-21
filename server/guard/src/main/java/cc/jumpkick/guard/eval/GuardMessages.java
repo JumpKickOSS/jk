@@ -61,7 +61,7 @@ public final class GuardMessages {
             if (rule.baseline() && Evaluators.acceptsBaseline(rule)) {
                 sb.append("  Accept:   jk guard freeze ")
                         .append(rule.id())
-                        .append(" --reason \"…\" records today's sites; the baseline only shrinks after\n");
+                        .append(" -W \"…\" records today's sites; the baseline only shrinks after\n");
             }
             sb.append("  Exempt:   ask the user to add [guards.")
                     .append(rule.id())
@@ -70,7 +70,7 @@ public final class GuardMessages {
         if (r.outcome() == Outcome.SCOPE_SHRUNK) {
             sb.append("  Accept:   jk guard freeze ")
                     .append(rule.id())
-                    .append(" --accept-scope --reason \"…\" records the smaller population as the floor, if the corpus")
+                    .append(" -U -W \"…\" records the smaller population as the floor, if the corpus")
                     .append(" legitimately shrank; a silent shrink stays red\n");
         }
         sb.append("  Explain:  jk guard explain ").append(rule.id());

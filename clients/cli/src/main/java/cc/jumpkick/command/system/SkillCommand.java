@@ -33,7 +33,7 @@ public final class SkillCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.flag("List topic names", "--list"));
+        return List.of(Opt.flag("List topic names", "-l", "--list"));
     }
 
     /** A topic name, or {@code install} and an optional directory. */
@@ -77,7 +77,7 @@ public final class SkillCommand implements CliCommand {
         String text = JkSkill.topic(pos.get(0));
         if (text == null) {
             CliOutput.err("unknown skill topic: " + pos.get(0));
-            CliOutput.err("jk skill --list");
+            CliOutput.err("jk skill -l");
             return Exit.USAGE;
         }
         CliOutput.outRaw(text);

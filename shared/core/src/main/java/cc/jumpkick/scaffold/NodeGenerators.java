@@ -8,7 +8,7 @@ import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The front-end frameworks {@code jk new --lang node -t <framework>} scaffolds, each by running the
+ * The front-end frameworks {@code jk new -l node -t <framework>} scaffolds, each by running the
  * framework's own generator non-interactively, so a new project is always the framework's newest
  * starter and nothing of jk's rots.
  */

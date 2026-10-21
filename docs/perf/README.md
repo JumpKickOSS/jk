@@ -52,7 +52,7 @@ never land in its counters. For a no-op and a one-file edit it records:
 | `disk-write-bytes` | `/proc/<pid>/io` `write_bytes` of every process carrying the private state dir: file bytes only, native copies included |
 | `target-files-touched` | files under `target/` created, deleted or rewritten (inode, size, mtime) |
 | `files-written`, `file-write-bytes`, `file-read-bytes` | a JFR recording on the engine (`jdk.FileWrite`, `jdk.FileRead`; `/proc` and `/sys` reads left out) |
-| `output-bytes` | what `jk build --no-ansi` printed |
+| `output-bytes` | what `jk build -u` printed |
 
 Counting stops at a quiet point: the engine finishes part of a job after its reply (the idle
 boundary flushes the hash memo; the journal completes the run record), so each window waits until
@@ -79,7 +79,7 @@ client as the baseline. A side installed in its own home runs from that home, sh
 store and cache:
 
 ```bash
-jk build --skip-tests && JK_BIN=target/dist/jk bench/scoreboard --dim paired
+jk build -S && JK_BIN=target/dist/jk bench/scoreboard --dim paired
 JK_HOME="$JK_BENCH_HOME/release-0.15.2" JK_VERSION=0.15.2 bash install.sh
 bench/scoreboard --dim paired --baseline "$JK_BENCH_HOME/release-0.15.2/bin/jk"
 ```
@@ -150,5 +150,5 @@ version string changing length inside the SBOM, not for noise. The current table
 decision are in [docs/user/packaging.md](../user/packaging.md#fat-jar-size-against-shadow-and-shade).
 
 ```bash
-jk test -p bench -m server/engine --class cc.jumpkick.compile.JarSizeBenchTest
+jk test -p bench -m server/engine -S cc.jumpkick.compile.JarSizeBenchTest
 ```

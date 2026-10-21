@@ -39,7 +39,7 @@ push) and the **push** itself. Credentials are looked up by the registry **host*
 same chain `jk publish` uses:
 
 ```bash
-echo "$GITHUB_TOKEN" | jk repo login ghcr.io --username "$GITHUB_USER"
+echo "$GITHUB_TOKEN" | jk repo login ghcr.io -s "$GITHUB_USER"
 export JK_REPO_GHCR_IO_USERNAME=… JK_REPO_GHCR_IO_PASSWORD=…   # or JK_REPO_GHCR_IO_TOKEN
 ```
 
@@ -151,7 +151,7 @@ App-local AOT without an image: [Build](build.md#jvm-startup-cache-app-aot--cds)
 worker's POM at launch. If every mode fails inside Jib before it touches your image — a
 `NoSuchMethodError` in `com.google.cloud.tools.jib`, a `NoClassDefFoundError` — the worker is
 running on the wrong jar, not your project. `jk doctor -v` shows which store repo the worker
-came from and every entry on its launch classpath; `jk storage clean --workers` drops the
+came from and every entry on its launch classpath; `jk storage clean -w` drops the
 installed workers so the next `jk image` fetches the published plugin again.
 See [Cache](cache.md#plugin-workers).
 

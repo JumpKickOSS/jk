@@ -8,7 +8,7 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code jk format --check} exits 1 on drift, so its closing wedge has to agree with its
+ * {@code jk format -c} exits 1 on drift, so its closing wedge has to agree with its
  * exit code.
  */
 class FormatSummaryTest {

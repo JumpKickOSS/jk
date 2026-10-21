@@ -102,7 +102,7 @@ public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
                 false, true, true, requireNonNull(LocalFileSystem.getInstance().refreshAndFindFileByNioFile(ws)));
 
         JkCliRunner.Result sources = JkCliRunner.run(ws.toFile(), "sync", "--sources");
-        assertTrue("jk sync --sources: " + sources.stderr(), sources.ok());
+        assertTrue("jk sync -s: " + sources.stderr(), sources.ok());
 
         JkImport.Result result = JkImport.importProject(getProject(), ws.toFile());
         assertNull("sync failed: " + result.failure(), result.failure());
@@ -179,10 +179,10 @@ public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
                 }
             }
         }
-        // After `jk sync --sources` the model lists a sources jar for every library that publishes
+        // After `jk sync -s` the model lists a sources jar for every library that publishes
         // one, and each becomes a SOURCES root of its project library.
         assertEquals("libraries with sources jars", modelWithSources, withSources);
-        assertTrue("libraries with sources jars after jk sync --sources: " + withSources, withSources > 0);
+        assertTrue("libraries with sources jars after jk sync -s: " + withSources, withSources > 0);
 
         Sdk projectSdk =
                 requireNonNull(ProjectRootManager.getInstance(getProject()).getProjectSdk(), "project SDK set");
@@ -197,7 +197,7 @@ public class JkWorkspaceImportTest extends HeavyPlatformTestCase {
 
     /**
      * A test class of an imported module resolves, from its PSI alone, to a JumpKick run
-     * configuration: {@code jk test -m <module> --class <fqcn>} from the workspace root, and under
+     * configuration: {@code jk test -m <module> -S <fqcn>} from the workspace root, and under
      * Debug the same command with the JDWP address the debugger attaches to.
      */
     private void assertGutterRoutesThroughJk(Path ws) throws Exception {

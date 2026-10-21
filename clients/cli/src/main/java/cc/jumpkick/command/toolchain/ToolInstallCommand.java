@@ -73,13 +73,13 @@ public final class ToolInstallCommand implements CliCommand {
     public List<Opt> options() {
         List<Opt> opts = new ArrayList<>(List.of(
                 Opt.value("<name>", "PATH launcher name (default: the artifact id)", "--bin"),
-                Opt.value("<class>", "Override Main-Class (from jar manifest)", "--main"),
+                Opt.value("<class>", "Override Main-Class (from jar manifest)", "-T", "--main"),
                 Opt.value("<coord>", "Extra dependency on tool classpath", "--with")
                         .repeat(),
-                Opt.value("<group>", "Maven groupId (local-cache install mode)", "--group"),
-                Opt.value("<name>", "Maven artifactId for a local-cache file install.", "--name"),
+                Opt.value("<group>", "Maven groupId (local-cache install mode)", "-U", "--group"),
+                Opt.value("<name>", "Maven artifactId for a local-cache file install.", "-W", "--name"),
                 Opt.value("<ver>", "Version for a local-cache file install.", "--ver"),
-                Opt.flag("Download a build tool; never link a host install", "--no-discover"),
+                Opt.flag("Download a build tool; never link a host install", "-X", "--no-discover"),
                 CommonOpts.acceptUnverifiedTool(),
                 Opt.value("<dir>", "Override the tool state directory.", "--state-dir")
                         .hide(),

@@ -63,7 +63,7 @@ public final class StatusCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.flag("Only machine-wide totals and cache", "--global"));
+        return List.of(Opt.flag("Only machine-wide totals and cache", "-g", "--global"));
     }
 
     @Override

@@ -21,7 +21,7 @@ needed. Project *language level* is a separate knob (`java = 25` by default) —
 Optional shell integration (PATH, `JAVA_HOME` hooks, completions):
 
 ```bash
-jk activate --yes
+jk activate -y
 ```
 
 ## Create a project
@@ -67,7 +67,7 @@ versions on purpose: `jk outdated`, then `jk update` rewrites the pins and reloc
 jk run -- args…
 ```
 
-Needs `[application] main = "…"` (the `jk new --executable` / app templates set this).
+Needs `[application] main = "…"` (the `jk new -e` / app templates set this).
 See [Run](run.md).
 
 ## What just happened

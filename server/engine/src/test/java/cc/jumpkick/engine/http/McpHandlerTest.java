@@ -478,7 +478,7 @@ class McpHandlerTest {
         mcp.surface(McpTools.Surface.ALL);
         String every = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":30,\"method\":\"tools/list\"}");
         assertThat(every).contains("details");
-        assertThat(every).contains("jk results --details");
+        assertThat(every).contains("jk results -d");
         assertThat(every).contains("jk://runs/latest/details");
         String resources = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":31,\"method\":\"resources/list\"}");
         assertThat(resources).contains("jk://runs/latest/results");

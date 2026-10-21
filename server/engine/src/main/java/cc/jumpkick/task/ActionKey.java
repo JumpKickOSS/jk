@@ -572,7 +572,7 @@ public final class ActionKey {
 
     /**
      * The 12-hex-char tag {@link #qualifiedTaskId} appends after {@code @}. Exposed so cache
-     * maintenance ({@code jk clean --force}) can recompute the tags for a project's output dirs and
+     * maintenance ({@code jk clean -F}) can recompute the tags for a project's output dirs and
      * match every {@code tasks/<base>@<tag>} pointer that belongs to it.
      */
     public static String taskTag(@Nullable Path outputDir) {

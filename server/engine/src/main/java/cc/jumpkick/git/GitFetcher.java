@@ -14,7 +14,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Git resolver facade over {@link GitBackend}: prefer {@code git} on PATH, else JGit ({@code
- * JK_GIT_BACKEND}=auto|cli|jgit). Refs are pinned in {@code jk-lock.toml}; only {@code jk update --git}/
+ * JK_GIT_BACKEND}=auto|cli|jgit). Refs are pinned in {@code jk-lock.toml}; only {@code jk update -g}/
  * {@code jk fetch} re-resolve. Cache: bare clones under {@code db/}, checkouts under {@code co/}.
  */
 public final class GitFetcher {

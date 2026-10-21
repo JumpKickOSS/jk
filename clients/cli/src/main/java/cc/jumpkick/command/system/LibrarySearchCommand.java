@@ -36,12 +36,13 @@ public final class LibrarySearchCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<N>", "Cap results shown (default: no cap)", "--limit"),
-                Opt.flag("Append the source layer to each row.", "--show-layer"),
-                Opt.flag("Group results under a heading per source layer.", "--group-by-layer"),
+                Opt.value("<N>", "Cap results shown (default: no cap)", "-n", "--limit"),
+                Opt.flag("Append the source layer to each row.", "-s", "--show-layer"),
+                Opt.flag("Group results under a heading per source layer.", "-g", "--group-by-layer"),
                 Opt.value(
                                 "<dir>",
                                 "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.jk/cache.",
+                                "-d",
                                 "--cache-dir")
                         .hide());
     }

@@ -14,4 +14,4 @@ A version in `jk.toml` is an exact pin. `jk add g:a` writes today's stable as a 
 
 CLI: `jk add` and `jk remove`. The reply is the `jk.toml` change, then `lock ok` or the resolve failure. The next `run()` needs no lock step.
 
-`java = N` is the language level (`--release`). Do not set `jdk = 17` or `jdk = 21` to emit older bytecode. `jk update` bumps pins on the same major. `jk update --major` crosses one. Do not hand-edit versions inside a BOM.
+`java = N` is the language level (`--release`). Do not set `jdk = 17` or `jdk = 21` to emit older bytecode. `jk update` bumps pins on the same major. `jk update -m` crosses one. Do not hand-edit versions inside a BOM.

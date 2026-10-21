@@ -776,7 +776,7 @@ final class PlannerGuards {
                     orphan,
                     "GUARD " + orphan
                             + "  rule-removed\n  Observed: the baseline carries entries for a rule no source declares\n"
-                            + "  Instead:  restore the rule, or `jk guard freeze --retire " + orphan
+                            + "  Instead:  restore the rule, or `jk guard freeze -Z " + orphan
                             + " --reason \"…\"`");
         }
         return orphans;
@@ -787,7 +787,7 @@ final class PlannerGuards {
      * when the tree holds them and this run is not the one writing them: modules finish in any
      * order, and the root's lane would otherwise judge whatever subset exists mid-run. A plain
      * build with no report asked no coverage question and leaves the rules aside; {@code jk guard}
-     * after {@code jk test --coverage} reads every module's report.
+     * after {@code jk test -T} reads every module's report.
      */
     private static boolean coverageAsked(LaneEnv env, EvalContext ectx) {
         if (env.in().session().coverage()) return false;

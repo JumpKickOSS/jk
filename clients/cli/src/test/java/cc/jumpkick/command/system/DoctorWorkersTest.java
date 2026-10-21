@@ -31,7 +31,7 @@ class DoctorWorkersTest {
             + " is the jk-grails worker but its root jk-plugin.toml describes plugin `spring-boot` (table"
             + " [spring-boot], worker jk-spring-boot) — a vendored sibling's descriptor took the jar root; the"
             + " jar is not registered. Reinstall it so its own descriptor sits at the root: `jk install` from"
-            + " the jk checkout, or `jk storage clean --workers` and let the next build fetch the published jar.";
+            + " the jk checkout, or `jk storage clean -w` and let the next build fetch the published jar.";
 
     @Test
     void each_installed_worker_is_one_row_naming_its_source_and_classpath_size() {
@@ -93,7 +93,7 @@ class DoctorWorkersTest {
                 .startsWith("warn:")
                 .contains("jk-grails 0.13.3 from jk-local")
                 .contains("describes plugin `spring-boot` (table [spring-boot], worker jk-spring-boot)")
-                .contains("`jk install` from the jk checkout, or `jk storage clean --workers`");
+                .contains("`jk install` from the jk checkout, or `jk storage clean -w`");
         assertThat(DoctorCommand.workersJson(workers))
                 .contains("\"refused\":\"")
                 .contains("describes plugin `spring-boot`");
@@ -159,7 +159,7 @@ class DoctorWorkersTest {
                 .contains("workers")
                 .contains("engine not running")
                 .contains("`jk engine start`")
-                .contains("`jk doctor --engine`");
+                .contains("`jk doctor -e`");
         assertThat(DoctorCommand.workersJson(down)).contains("\"error\":\"engine not running");
 
         RepoStores.Stores repos = DoctorCommand.queryRepos(() -> {

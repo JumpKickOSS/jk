@@ -65,7 +65,7 @@ class StorageCommandTest {
      * An installed tool execs jars under {@code <store>/sha256/…}. A store wipe that left its env
      * and launcher would keep it in {@code jk tool list} with a launcher that fails "could not find
      * or load main class"; the wipe takes both, names the tool at the confirm, and counts it on the
-     * settle line — the same rule {@code jk self nuke --store} applies.
+     * settle line — the same rule {@code jk self nuke -S} applies.
      */
     @Test
     void a_store_nuke_removes_the_tool_envs_it_orphans_and_their_launchers_and_says_so() throws Exception {
@@ -120,7 +120,7 @@ class StorageCommandTest {
     }
 
     /**
-     * The store leg of {@code jk self nuke --store} carries the orphaned tools in its own plan
+     * The store leg of {@code jk self nuke -S} carries the orphaned tools in its own plan
      * table, so the shared nuke leaves them to it rather than sweeping them a second time.
      */
     @Test

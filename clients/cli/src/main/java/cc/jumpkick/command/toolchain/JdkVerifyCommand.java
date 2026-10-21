@@ -31,7 +31,7 @@ public final class JdkVerifyCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Rewrite the inventory from trees on disk (rehash, drop missing).", "--repair"),
+                Opt.flag("Rewrite the inventory from trees on disk (rehash, drop missing).", "-R", "--repair"),
                 CommonOpts.jdksDir());
     }
 
@@ -75,7 +75,7 @@ public final class JdkVerifyCommand implements CliCommand {
             CommandWedge.printOk(
                     "JDK",
                     anyUnhashed
-                            ? "verified; some fingerprints not baselined yet (run `jk jdk verify --repair` to record them)."
+                            ? "verified; some fingerprints not baselined yet (run `jk jdk verify -R` to record them)."
                             : (findings.size() == 1
                                     ? "1 managed JDK verified."
                                     : findings.size() + " managed JDKs verified."));
@@ -85,7 +85,7 @@ public final class JdkVerifyCommand implements CliCommand {
                 "JDK",
                 repair
                         ? "inventory repaired; re-run `jk jdk verify` if findings remain."
-                        : "one or more managed JDKs failed verification (try `jk jdk verify --repair`).");
+                        : "one or more managed JDKs failed verification (try `jk jdk verify -R`).");
         return 1;
     }
 }

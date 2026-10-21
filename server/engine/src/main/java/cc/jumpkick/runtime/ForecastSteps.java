@@ -73,7 +73,7 @@ final class ForecastSteps {
 
     /**
      * Map a {@link JavaCompile.Prediction} to a step, honoring upstream dirtiness. A request that
-     * invokes javac plugins names them in the step's text, so {@code jk explain --verbose} shows
+     * invokes javac plugins names them in the step's text, so {@code jk explain -v} shows
      * that input beside the outcome.
      */
     static TaskForecast.Task compileStep(

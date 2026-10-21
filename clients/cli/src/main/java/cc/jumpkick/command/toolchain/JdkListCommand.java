@@ -77,7 +77,7 @@ public final class JdkListCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Also list downloadable JDKs from the feed", "--all"),
+                Opt.flag("Also list downloadable JDKs from the feed", "-A", "--all"),
                 CommonOpts.jdksDir(),
                 Opt.value("<url>", "Override the JetBrains JDK feed URL (for tests).", "--feed-url")
                         .hide(),

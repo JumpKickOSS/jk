@@ -73,13 +73,17 @@ public final class DoctorCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<dir>", "Override the tools install root. Default: $JK_STORE_DIR/tools.", "--tools-dir")
+                Opt.value(
+                                "<dir>",
+                                "Override the tools install root. Default: $JK_STORE_DIR/tools.",
+                                "-t",
+                                "--tools-dir")
                         .hide(),
                 // Kept under HelpWidthTest's 78-column budget: 20 columns go to the indent and the
                 // flag itself, so this string has 58 to spend.
-                Opt.flag("Fingerprint each linked install and report drift", "--verify-linked"),
-                Opt.flag("Start the engine if needed for worker/repo rows", "--engine"),
-                Opt.flag("Skip the engine-answered worker/repo rows", "--no-engine"));
+                Opt.flag("Fingerprint each linked install and report drift", "-l", "--verify-linked"),
+                Opt.flag("Start the engine if needed for worker/repo rows", "-e", "--engine"),
+                Opt.flag("Skip the engine-answered worker/repo rows", "-n", "--no-engine"));
     }
 
     @Override
@@ -226,7 +230,7 @@ public final class DoctorCommand implements CliCommand {
 
     /** What the engine-answered rows say when no engine is running and none was to be started. */
     static final String ENGINE_NOT_RUNNING = "engine not running — start it with `jk engine start`, or run"
-            + " `jk doctor --engine` to start one for this check";
+            + " `jk doctor -e` to start one for this check";
 
     /** One engine inventory query; {@code ifRunning} asks only an engine that is already up. */
     private static CacheInventoryAck queryInventory(String query, boolean ifRunning) throws IOException {
@@ -518,9 +522,7 @@ public final class DoctorCommand implements CliCommand {
                             + " --now` stops it regardless");
         }
         return new Check(
-                Status.FAIL,
-                "engine",
-                "listening but " + silence + " — likely wedged; `jk engine stop --now` stops it");
+                Status.FAIL, "engine", "listening but " + silence + " — likely wedged; `jk engine stop -n` stops it");
     }
 
     /**

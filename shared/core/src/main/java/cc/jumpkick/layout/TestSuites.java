@@ -47,7 +47,7 @@ public final class TestSuites {
 
     /**
      * The guard suite: {@code src/guard/java} holds guard tests, compiled by {@code compile-guard}
-     * and run by the guard lanes — never by {@code jk test}, {@code --all} or the gate. Reserved,
+     * and run by the guard lanes — never by {@code jk test}, {@code -A} or the gate. Reserved,
      * like {@code fixtures}: discovery does not return it and a {@code --suite guard} is an error.
      */
     public static final String GUARD = "guard";

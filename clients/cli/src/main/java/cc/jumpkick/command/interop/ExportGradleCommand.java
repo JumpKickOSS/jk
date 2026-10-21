@@ -33,7 +33,7 @@ public final class ExportGradleCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.flag("Overwrite existing Gradle build files.", "--overwrite"));
+        return List.of(Opt.flag("Overwrite existing Gradle build files.", "-e", "--overwrite"));
     }
 
     @Override

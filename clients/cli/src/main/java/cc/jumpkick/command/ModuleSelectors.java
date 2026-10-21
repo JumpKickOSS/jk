@@ -41,7 +41,7 @@ public final class ModuleSelectors {
 
     /**
      * True when any module selector is active. Every build-family command guards its selection
-     * resolution with this — a hand-rolled disjunction is how {@code jk native --affected} shipped
+     * resolution with this — a hand-rolled disjunction is how {@code jk native -f} shipped
      * accepting the flag and ignoring it.
      */
     public static boolean anySelector(

@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk image --offline} splits on whether the base is digest-pinned. Pinned + warm packaging
+ * {@code jk image -o} splits on whether the base is digest-pinned. Pinned + warm packaging
  * cache is the one offline image path that works: the tarball restores and no worker forks. A tag
  * base (or a cache miss) refuses in the engine, before the fork — the worker's own refusal
  * ({@code OciImageBuilder}) produces a similar failure only after the whole upstream pipeline ran,

@@ -9,7 +9,7 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Read-only ranked test list for {@code jk test --affected} ({@link
+ * Read-only ranked test list for {@code jk test -f} ({@link
  * EngineProtocol#AFFECTED_TESTS_REQUEST}). A refuse is discriminated by the {@code refused}
  * boolean — never by the message being non-empty, which turned an empty-message refuse into a
  * silent success. {@code rows} is the execute-set ranking; wire rows are

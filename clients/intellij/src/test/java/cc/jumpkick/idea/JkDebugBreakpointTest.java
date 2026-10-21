@@ -45,7 +45,7 @@ import org.jetbrains.annotations.NotNull;
 /**
  * The gutter's Debug end to end: a project {@code jk new} scaffolds is imported, a line breakpoint
  * is set in its test, and the JumpKick run configuration the producer builds for that class runs
- * under the Debug executor. {@code jk test --debug-jvm} builds and starts the suspended JVM,
+ * under the Debug executor. {@code jk test -U} builds and starts the suspended JVM,
  * {@link JkDebugRunner} attaches, the session pauses on the breakpoint's line, and after a resume
  * the run exits 0. Skips when no {@code jk} is on PATH.
  */
