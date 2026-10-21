@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -30,6 +31,7 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code forecast-key-parity} guard test in {@code server/engine/src/guard}, which reads the
  * real token bags.
  */
+@ExtendWith(SettledHostCalibration.class)
 class TaskForecasterPackageKeyTest {
 
     @Test

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.SettledHostCalibration;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import java.nio.file.Files;
@@ -16,6 +17,7 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -23,6 +25,7 @@ import org.junit.jupiter.api.io.TempDir;
  * prerequisites — and nothing beside it. The cone's modules keep the verdicts the whole-graph
  * forecast gives them, so the totals are the ones the build's own countdown seed is computed from.
  */
+@ExtendWith(SettledHostCalibration.class)
 class ExplainSelectionConeTest {
 
     @AfterEach
