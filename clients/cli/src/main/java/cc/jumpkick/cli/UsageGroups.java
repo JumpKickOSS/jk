@@ -43,7 +43,7 @@ public final class UsageGroups {
                             "audit", "verify")),
             new CommandGroup(
                     "Toolchain commands:",
-                    List.of("jdk", "node", "npx", "tool", "trust", "shell", "activate", "deactivate")),
+                    List.of("jdk", "node", "npx", "npm", "tool", "trust", "shell", "activate", "deactivate")),
             new CommandGroup("Interop commands:", List.of("import", "mvn", "gradle", "export", "ide", "bsp", "mcp")),
             new CommandGroup(
                     "System commands:",

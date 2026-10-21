@@ -100,11 +100,12 @@ release by name.
 | `jk node exec -- <cmd…>` | Run a command with the project's Node.js and package manager first on `PATH`, installing them if missing; `--node <spec>` uses another once |
 | `jk node run <script>` | Run a `package.json` script with the project's package manager |
 | `jk npx <args…>` | `jk node exec -- npx <args…>`: every argument is npx's, so `jk npx create-foo my-app` or `jk npx -y cowsay hi` needs no `--`; jk's own globals go before `npx` |
+| `jk npm <args…>` | `jk node exec -- npm <args…>` the same way (`jk npm install -D vitest`, `jk npm outdated`); npm whatever package manager the project uses |
 | `jk node pin [spec]` | Write `node =` (or `[node] version` when the module has a `[node]` table) into the nearest `jk.toml` and relock. With no spec: what `.nvmrc`, `.node-version` or `package.json` names, else the newest LTS. `-m <module>` pins a member; `--file` also writes `.node-version` for editors; `--no-lock` skips the relock |
 | `jk node verify` | Check each of jk's installs still runs and reports its version |
 | `jk node update` | Refresh the release index and report the project's pin against the newest of its major (`jk update` moves the lock) |
 
-`jk node exec`, `jk node run` and `jk npx` use jk's package-manager caches, the ones `jk new` and the build
+`jk node exec`, `jk node run`, `jk npx` and `jk npm` use jk's package-manager caches, the ones `jk new` and the build
 use, so a package `jk npx …` fetches is fetched once ([Supply chain](#supply-chain)).
 A cache you set yourself wins: one in the environment (`npm_config_cache` in any case, pnpm's
 `pnpm_config_store_dir` / `npm_config_store_dir`, `YARN_GLOBAL_FOLDER`, `BUN_INSTALL_CACHE_DIR`), or
