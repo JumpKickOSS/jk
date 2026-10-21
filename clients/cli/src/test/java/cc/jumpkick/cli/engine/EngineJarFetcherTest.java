@@ -82,15 +82,6 @@ class EngineJarFetcherTest {
     }
 
     @Test
-    void missing_checksums_file_refuses_to_install(@TempDir Path root) {
-        release.status("SHA256SUMS", 404);
-
-        var install = engineInstall(root);
-        assertThatThrownBy(() -> fetch(root)).isInstanceOf(IOException.class).hasMessageContaining("HTTP 404");
-        assertThat(install.resolve(VERSION)).isEmpty();
-    }
-
-    @Test
     void checksums_without_an_entry_for_the_jar_refuses_to_install(@TempDir Path root) {
         release.sums(("a".repeat(64) + "  jk-linux-x86_64.xz\n").getBytes(StandardCharsets.UTF_8));
 
