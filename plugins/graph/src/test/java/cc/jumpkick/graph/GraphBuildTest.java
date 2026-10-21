@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.codegraph.CodeGraph;
 import cc.jumpkick.codegraph.GraphEdge;
 import cc.jumpkick.codegraph.GraphJson;
+import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -110,6 +111,19 @@ class GraphBuildTest {
         return dir;
     }
 
+    /** The engine's half: the root module's facts index, brought current from target/classes. */
+    private static List<GraphBuild.ClassIndex> indexes(Path root) throws IOException {
+        Path classes = root.resolve("target/classes");
+        FactsIndexing.Ensured e =
+                FactsIndexing.ensure(classes, FactsIndexing.indexPath(root.resolve("target"), "main"));
+        return List.of(new GraphBuild.ClassIndex(e.index(), "", e.bodyDigest(), e.classes()));
+    }
+
+    private static GraphBuild.Result refresh(Path root, boolean rebuild) throws IOException {
+        return GraphBuild.refresh(
+                root, root.resolve("target/graph"), indexes(root), rebuild, GraphBuild.Progress.NONE, LATER);
+    }
+
     private static boolean edge(CodeGraph g, String from, String to, String relation) {
         return g.edges().stream()
                 .anyMatch(e -> e.source().endsWith(from)
@@ -119,7 +133,7 @@ class GraphBuildTest {
 
     @Test
     void compiledCallsResolveThroughTheHierarchyAndLambdas(@TempDir Path dir) throws IOException {
-        GraphBuild.Result r = GraphBuild.refresh(workspace(dir), GraphBuild.Progress.NONE);
+        GraphBuild.Result r = refresh(workspace(dir), false);
         CodeGraph g = r.graph();
         assertThat(r.classes()).isGreaterThanOrEqualTo(4);
         assertThat(edge(g, "orderservice_total", "orderservice_audit", "calls")).isTrue();
@@ -146,14 +160,43 @@ class GraphBuildTest {
     @Test
     void anUnchangedTreeExtractsNothingAndAnEditExtractsOneFile(@TempDir Path dir) throws IOException {
         Path root = workspace(dir);
-        GraphBuild.Result first = GraphBuild.refresh(root, GraphBuild.Progress.NONE, LATER);
+        GraphBuild.Result first = refresh(root, false);
         assertThat(first.extracted()).isEqualTo(first.files());
-        GraphBuild.Result second = GraphBuild.refresh(root, GraphBuild.Progress.NONE, LATER);
+        GraphBuild.Result second = refresh(root, false);
         assertThat(second.extracted()).isZero();
+        assertThat(second.changed()).isFalse();
+        assertThat(second.graph().size()).isEqualTo(first.graph().size());
+        assertThat(second.graph().edges()).hasSameSizeAs(first.graph().edges());
         Files.writeString(root.resolve("README.md"), "# Shop\n\nSee `PriceCalculator`.\n");
-        GraphBuild.Result third = GraphBuild.refresh(root, GraphBuild.Progress.NONE, LATER);
+        GraphBuild.Result third = refresh(root, false);
         assertThat(third.extracted()).isEqualTo(1);
+        assertThat(third.changed()).isTrue();
         assertThat(edge(third.graph(), "readme_shop", "pricecalculator_pricecalculator", "references"))
                 .isTrue();
+    }
+
+    @Test
+    void theServiceAnswersEveryOperationFromOneRefresh(@TempDir Path dir) throws IOException {
+        Path root = workspace(dir);
+        assertThat(run(root, request("query", "how is the order total computed")))
+                .contains("NODE ")
+                .contains(".total()");
+        assertThat(run(root, request("path", "OrderService", "BaseService"))).startsWith("Shortest path (1 hops):");
+        assertThat(run(root, request("explain", "PriceCalculator"))).contains("Node: PriceCalculator");
+        assertThat(run(root, request("stats"))).startsWith("Nodes: ");
+        assertThat(run(root, request("god-nodes"))).startsWith("God nodes (most connected):");
+        GraphService.Request stored = new GraphService.Request(
+                "stats", List.of(), "bfs", 3, 2000, List.of(), false, false, 8, 10, null, false, true);
+        assertThat(run(root, stored)).startsWith("Nodes: ");
+    }
+
+    private static String run(Path root, GraphService.Request r) throws IOException {
+        return GraphService.run(root, root.resolve("target/graph"), indexes(root), r, GraphBuild.Progress.NONE)
+                .text();
+    }
+
+    private static GraphService.Request request(String op, String... args) {
+        return new GraphService.Request(
+                op, List.of(args), "bfs", 3, 2000, List.of(), false, false, 8, 10, null, false, false);
     }
 }

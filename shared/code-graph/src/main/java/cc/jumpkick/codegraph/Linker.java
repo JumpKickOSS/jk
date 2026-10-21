@@ -26,15 +26,16 @@ public final class Linker {
     private static final List<String> MODULE_SUFFIXES =
             List.of("", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".vue", "/index.ts", "/index.tsx", "/index.js");
 
-    private final CodeGraph graph;
+    private final Map<String, GraphNode> nodes;
+    private final Map<String, List<String>> supertypes = new HashMap<>();
     private final Map<String, String> classes = new HashMap<>();
     private final Map<String, List<String>> symbols = new HashMap<>();
     private final Map<String, String> files = new HashMap<>();
     private final Map<String, List<String>> keys = new HashMap<>();
 
-    private Linker(CodeGraph graph) {
-        this.graph = graph;
-        for (GraphNode n : graph.nodes()) {
+    private Linker(Map<String, GraphNode> nodes) {
+        this.nodes = nodes;
+        for (GraphNode n : nodes.values()) {
             if (n.extra().get(QUALIFIED_NAME) instanceof String fqcn) classes.put(fqcn.replace('$', '.'), n.id());
             if (CONFIG_KEY.equals(n.extra().get("node_kind"))) {
                 keys.computeIfAbsent(relaxed(n.label()), k -> new ArrayList<>()).add(n.id());
@@ -47,25 +48,36 @@ public final class Linker {
     }
 
     /**
-     * The graph {@code fragments} merge into, with their mentions resolved to edges. Two passes:
-     * method calls resolve last, against a graph whose inheritance edges are already linked, so a
-     * call to an inherited method finds the supertype declaring it.
+     * The graph {@code fragments} merge into, with their mentions resolved to edges. Method calls
+     * resolve last, once every inheritance edge is known, so a call to an inherited method finds
+     * the supertype declaring it. The graph itself is built once, at the end.
      */
     public static CodeGraph link(List<Fragment> fragments) {
-        CodeGraph merged = CodeGraph.merge(fragments);
+        Linker linker = new Linker(CodeGraph.mergeNodes(fragments));
+        Fragment types = linker.edges(fragments, false);
+        for (Fragment f : fragments) linker.supertypes(f.edges());
+        linker.supertypes(types.edges());
+        Fragment calls = linker.edges(fragments, true);
         List<Fragment> all = new ArrayList<>(fragments);
-        all.add(edges(new Linker(merged), fragments, false));
-        CodeGraph typed = CodeGraph.merge(all);
-        all.add(edges(new Linker(typed), fragments, true));
+        all.add(types);
+        all.add(calls);
         return CodeGraph.merge(all);
     }
 
-    private static Fragment edges(Linker linker, List<Fragment> fragments, boolean members) {
+    private void supertypes(List<GraphEdge> edges) {
+        for (GraphEdge e : edges) {
+            if (e.relation().equals(Relations.INHERITS) || e.relation().equals(Relations.IMPLEMENTS)) {
+                supertypes.computeIfAbsent(e.source(), k -> new ArrayList<>()).add(e.target());
+            }
+        }
+    }
+
+    private Fragment edges(List<Fragment> fragments, boolean members) {
         Map<String, GraphEdge> edges = new LinkedHashMap<>();
         for (Fragment f : fragments) {
             for (Mention m : f.mentions()) {
                 if ((m.kind() == Mention.Kind.MEMBER) != members) continue;
-                for (GraphEdge e : linker.resolve(m)) {
+                for (GraphEdge e : resolve(m)) {
                     if (!e.source().equals(e.target())) {
                         edges.putIfAbsent(e.source() + '\u0000' + e.target() + '\u0000' + e.relation(), e);
                     }
@@ -76,7 +88,7 @@ public final class Linker {
     }
 
     private List<GraphEdge> resolve(Mention m) {
-        GraphNode from = graph.node(m.source());
+        GraphNode from = nodes.get(m.source());
         if (from == null) return List.of();
         List<String> targets =
                 switch (m.kind()) {
@@ -124,14 +136,8 @@ public final class Linker {
             List<String> next = new ArrayList<>();
             for (String type : frontier) {
                 String id = GraphIds.member(type, name);
-                if (graph.has(id)) return id;
-                for (GraphEdge e : graph.incident(type)) {
-                    if (e.source().equals(type)
-                            && (e.relation().equals(Relations.INHERITS)
-                                    || e.relation().equals(Relations.IMPLEMENTS))) {
-                        next.add(e.target());
-                    }
-                }
+                if (nodes.containsKey(id)) return id;
+                next.addAll(supertypes.getOrDefault(type, List.of()));
             }
             frontier = next;
         }

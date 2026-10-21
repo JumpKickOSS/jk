@@ -2,6 +2,7 @@
 package cc.jumpkick.codegraph.extract;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.codegraph.CodeGraph;
 import cc.jumpkick.codegraph.Fragment;
@@ -109,7 +110,7 @@ class ExtractorsTest {
         assertThat(props.nodes()).hasSize(1);
         assertThat(props.mentions())
                 .extracting(Mention::kind, Mention::text)
-                .containsExactly(org.assertj.core.groups.Tuple.tuple(Mention.Kind.CONFIG_KEY, "user.name"));
+                .containsExactly(tuple(Mention.Kind.CONFIG_KEY, "user.name"));
     }
 
     @Test
@@ -166,8 +167,8 @@ class ExtractorsTest {
         assertThat(ts.mentions())
                 .extracting(Mention::kind, Mention::text)
                 .contains(
-                        org.assertj.core.groups.Tuple.tuple(Mention.Kind.MODULE, "web/src/app/services/cart.service"),
-                        org.assertj.core.groups.Tuple.tuple(Mention.Kind.FILE, "./cart.component.html"));
+                        tuple(Mention.Kind.MODULE, "web/src/app/services/cart.service"),
+                        tuple(Mention.Kind.FILE, "./cart.component.html"));
         assertThat(ts.nodes()).anyMatch(n -> n.fileType().equals("rationale"));
     }
 

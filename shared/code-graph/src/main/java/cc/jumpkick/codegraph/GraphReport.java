@@ -10,6 +10,9 @@ public final class GraphReport {
 
     private GraphReport() {}
 
+    /** Communities listed by size before the rest are summarized in one line. */
+    static final int MAX_COMMUNITIES = 40;
+
     /** The report for {@code graph}, communities already assigned; {@code commit} the HEAD built from. */
     public static String write(CodeGraph graph, @Nullable String commit) {
         StringBuilder md = new StringBuilder("# Graph report\n\n## Summary\n\n");
@@ -58,8 +61,15 @@ public final class GraphReport {
             }
         }
         md.append("\n## Communities\n\n");
+        int shown = 0;
         for (Map.Entry<Integer, List<String>> c : communities.entrySet()) {
             if (c.getValue().size() < 3) continue;
+            if (shown++ == MAX_COMMUNITIES) {
+                md.append("- … ")
+                        .append(communities.size() - MAX_COMMUNITIES)
+                        .append(" smaller communities: `jk graph community <id>`\n");
+                break;
+            }
             String name = graph.communityName(c.getKey());
             md.append("- **")
                     .append(c.getKey())

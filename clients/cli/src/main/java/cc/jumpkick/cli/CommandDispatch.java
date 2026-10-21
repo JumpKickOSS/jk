@@ -40,6 +40,7 @@ import cc.jumpkick.command.project.AddCommand;
 import cc.jumpkick.command.project.AuditCommand;
 import cc.jumpkick.command.project.DenyCommand;
 import cc.jumpkick.command.project.ExplainCommand;
+import cc.jumpkick.command.project.GraphCommand;
 import cc.jumpkick.command.project.InitCommand;
 import cc.jumpkick.command.project.LockCommand;
 import cc.jumpkick.command.project.NewCommand;
@@ -136,6 +137,7 @@ public final class CommandDispatch {
             new StatusCommand(),
             new TreeCommand(),
             new WhyCommand(),
+            new GraphCommand(),
             new ExplainCommand(),
             new TasksCommand(),
             new ShowCommand(),

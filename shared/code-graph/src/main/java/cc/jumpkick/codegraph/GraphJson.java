@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.codegraph;
 
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
+import java.io.IOException;
+import java.io.StringWriter;
+import java.io.UncheckedIOException;
+import java.io.Writer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -42,30 +47,68 @@ public final class GraphJson {
 
     /** The document for {@code graph}; {@code generator} names the writer, {@code commit} the HEAD built from. */
     public static String write(CodeGraph graph, String generator, @Nullable String commit) {
+        StringWriter out = new StringWriter();
+        try {
+            write(graph, generator, commit, out);
+        } catch (IOException impossible) {
+            throw new UncheckedIOException(impossible);
+        }
+        return out.toString();
+    }
+
+    /**
+     * {@link #write(CodeGraph, String, String)} streamed to {@code out} one node and one link at a
+     * time, so a large graph is never one string in memory.
+     */
+    public static void write(CodeGraph graph, String generator, @Nullable String commit, Writer out)
+            throws IOException {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("schema_version", SCHEMA_VERSION);
         meta.put("generator", generator);
-        Map<String, Object> doc = new LinkedHashMap<>();
-        doc.put("directed", false);
-        doc.put("multigraph", false);
-        doc.put("graph", meta);
-        doc.put(
-                "nodes",
-                graph.nodes().stream()
-                        .sorted(Comparator.comparing(GraphNode::id))
-                        .map(n -> node(graph, n))
-                        .toList());
-        doc.put(
-                "links",
-                graph.edges().stream()
-                        .sorted(Comparator.comparing(GraphEdge::source)
-                                .thenComparing(GraphEdge::target)
-                                .thenComparing(GraphEdge::relation))
-                        .map(GraphJson::edge)
-                        .toList());
-        doc.put("hyperedges", List.of());
-        if (commit != null) doc.put("built_at_commit", commit);
-        return MiniJson.write(doc) + "\n";
+        out.write('{');
+        key(out, "directed", true);
+        out.write("false");
+        key(out, "multigraph", false);
+        out.write("false");
+        key(out, "graph", false);
+        out.write(MiniJson.write(meta));
+        key(out, "nodes", false);
+        out.write('[');
+        boolean first = true;
+        for (GraphNode n : graph.nodes().stream()
+                .sorted(Comparator.comparing(GraphNode::id))
+                .toList()) {
+            if (!first) out.write(',');
+            first = false;
+            out.write(MiniJson.write(node(graph, n)));
+        }
+        out.write(']');
+        key(out, "links", false);
+        out.write('[');
+        first = true;
+        for (GraphEdge e : graph.edges().stream()
+                .sorted(Comparator.comparing(GraphEdge::source)
+                        .thenComparing(GraphEdge::target)
+                        .thenComparing(GraphEdge::relation))
+                .toList()) {
+            if (!first) out.write(',');
+            first = false;
+            out.write(MiniJson.write(edge(e)));
+        }
+        out.write(']');
+        key(out, "hyperedges", false);
+        out.write("[]");
+        if (commit != null) {
+            key(out, "built_at_commit", false);
+            out.write(Jsonl.quote(commit));
+        }
+        out.write("}\n");
+    }
+
+    private static void key(Writer out, String name, boolean first) throws IOException {
+        if (!first) out.write(',');
+        out.write(Jsonl.quote(name));
+        out.write(':');
     }
 
     /** The graph {@code json} holds; throws {@link IllegalArgumentException} on a document that is not one. */

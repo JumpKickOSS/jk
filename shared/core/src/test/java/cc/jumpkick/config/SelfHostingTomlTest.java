@@ -71,7 +71,6 @@ class SelfHostingTomlTest {
                         "shared/wire",
                         "shared/ide",
                         "server/guard",
-                        "server/graph",
                         "server/engine",
                         "server/guard/packs/spring",
                         "server/guard/packs/quarkus",
@@ -110,7 +109,8 @@ class SelfHostingTomlTest {
                         "plugins/micronaut",
                         "plugins/hibernate",
                         "plugins/intellij",
-                        "plugins/javafx");
+                        "plugins/javafx",
+                        "plugins/graph");
     }
 
     @Test

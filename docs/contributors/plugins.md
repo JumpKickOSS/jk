@@ -93,6 +93,12 @@ The guarded exceptions each carry a current product invariant:
 - `minified → dynamic-surface`: R8 keep rules and native reachability share one model.
 - `grails → spring-boot`: a Grails package is a Boot jar, so the plugin composes the Boot
   packager.
+- `graph → code-graph`: the graph worker builds and queries the graph model the engine and
+  every surface share.
+- `graph → guard-api`: the graph worker reads the class facts indexes the engine keeps current,
+  in their one on-disk format.
+- `graph → core`: the graph worker walks with the workspace's skip rules and writes its outputs
+  atomically.
 
 Publisher may use `core` test fixtures, and image-builder may use `host` test fixtures. These
 test-only edges do not enter worker publication or runtime classpaths.

@@ -2,6 +2,7 @@
 package cc.jumpkick.graph;
 
 import cc.jumpkick.codegraph.extract.Extractors;
+import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.WalkSkip;
 import java.io.IOException;
@@ -28,7 +29,7 @@ public final class GraphSources {
     private static final Set<String> SKIP_DIRS =
             Set.of("dist", "out", "coverage", "bower_components", "jspm_packages", "vendor", "__pycache__", "venv");
     private static final Set<String> SKIP_FILES =
-            Set.of("package-lock.json", "yarn.lock", "pnpm-lock.yaml", "jk-lock.toml", "npm-shrinkwrap.json");
+            Set.of("package-lock.json", "yarn.lock", "pnpm-lock.yaml", ManifestNames.LOCK, "npm-shrinkwrap.json");
 
     /** One source file: repo-relative path with {@code /} separators, size and modification time. */
     public record Source(String rel, Path path, long size, long mtimeMillis) {}

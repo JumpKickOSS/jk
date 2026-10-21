@@ -50,6 +50,15 @@ class GraphQueryTest {
     }
 
     @Test
+    void adjacentWordsSpellingASymbolSeedOnThatSymbol() throws IOException {
+        CodeGraph g = GraphJsonTest.shop();
+        assertThat(new GraphSearch(g).compounds(List.of("price", "calculator", "sum")))
+                .containsExactly("pricecalculator", "sum");
+        assertThat(new GraphQuery(g).query("where is the price calculator", GraphQuery.Mode.BFS, 1, 2000, List.of()))
+                .contains("Start: [PriceCalculator]");
+    }
+
+    @Test
     void callQuestionsFollowOnlyCallEdges() throws IOException {
         CodeGraph g = GraphJsonTest.shop();
         String out = new GraphQuery(g).query("who calls log", GraphQuery.Mode.BFS, 2, 2000, List.of());

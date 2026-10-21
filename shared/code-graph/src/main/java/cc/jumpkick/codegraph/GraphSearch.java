@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Lexical node search, graphify's scorer: per query term an exact label match is worth 1000, a
@@ -94,15 +95,56 @@ public final class GraphSearch {
         return score(queryTerms(question)).ranked().stream().map(Scored::id).toList();
     }
 
-    /** At most three seeds within 20% of the top score, then one per term that has a match. */
+    /**
+     * At most three seeds within 20% of the top score, then one per term that has a match. Two or
+     * three adjacent words that spell a symbol's name together ({@code format worker} for {@code
+     * FormatWorker}) count as that one term: in camel-cased code the compound is what was meant.
+     */
     List<String> seeds(String question) {
-        Scores s = score(queryTerms(question));
+        List<String> terms = compounds(queryTerms(question));
+        Scores s = score(terms);
         Map<String, String> best = new HashMap<>(s.bestByTerm());
-        List<String> terms = queryTerms(question);
         boolean intent = best.keySet().stream().anyMatch(RELATIONAL::contains);
         if (intent && terms.stream().anyMatch(t -> !RELATIONAL.contains(t)))
             best.keySet().removeIf(RELATIONAL::contains);
         return pickSeeds(s.ranked(), best, s.termOrder());
+    }
+
+    /** {@code terms} with every run of two or three that names a symbol joined into one. */
+    List<String> compounds(List<String> terms) {
+        if (terms.size() < 2) return terms;
+        Set<String> labels = labels();
+        List<String> out = new ArrayList<>();
+        int i = 0;
+        while (i < terms.size()) {
+            int taken = 1;
+            for (int width = Math.min(3, terms.size() - i); width >= 2; width--) {
+                String joined = String.join("", terms.subList(i, i + width));
+                if (labels.contains(joined)) {
+                    out.add(joined);
+                    taken = width;
+                    break;
+                }
+            }
+            if (taken == 1) out.add(terms.get(i));
+            i += taken;
+        }
+        return out;
+    }
+
+    private @Nullable Set<String> labels;
+
+    /** Every code node's label folded and stripped of {@code .} and {@code ()}. */
+    private Set<String> labels() {
+        Set<String> have = labels;
+        if (have != null) return have;
+        Set<String> built = new HashSet<>();
+        for (GraphNode n : graph.nodes()) {
+            String l = stripParens(n.normLabel());
+            built.add(l.startsWith(".") ? l.substring(1) : l);
+        }
+        labels = built;
+        return built;
     }
 
     Scores score(List<String> terms) {
