@@ -106,6 +106,15 @@ function facts(rel) {
         return;
       case 'ExportNamedDeclaration':
         if (node.source) imported(node.source.value, node, 'reexport', []);
+        if (owner < 0 && node.declaration && node.declaration.type === 'VariableDeclaration') {
+          for (const d of node.declaration.declarations) {
+            const fn = d.init && (d.init.type === 'ArrowFunctionExpression' || d.init.type === 'FunctionExpression');
+            if (d.id && d.id.type === 'Identifier' && !fn) {
+              const idx = declare(d.id.name, 'variable', d, -1);
+              if (d.init) walk(d.init, idx);
+            }
+          }
+        }
         break;
       case 'ImportExpression':
         if (node.source && node.source.type === 'Literal') imported(String(node.source.value), node, 'dynamic', []);

@@ -11,7 +11,8 @@ import java.util.StringJoiner;
  * NFKC-normalized to a fixpoint, with every run of non-word characters collapsed to one {@code _}
  * and the ends trimmed. A source or Markdown file's ids start from its repo-relative path minus the
  * extension, as graphify's do: {@code src/main/java/a/Foo.java} is {@code src_main_java_a_foo} and
- * its class {@code Foo} is {@code src_main_java_a_foo_foo}. Every other file keeps its extension,
+ * its class {@code Foo} is {@code src_main_java_a_foo_foo}; so does JSON, which graphify reads too.
+ * Every other file keeps its extension,
  * so an Angular component's {@code app.ts}, {@code app.html} and {@code app.css} stay three nodes.
  */
 public final class GraphIds {

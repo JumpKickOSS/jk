@@ -17,6 +17,7 @@ import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.facts.FieldFacts;
 import cc.jumpkick.guard.facts.MethodFacts;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,12 @@ final class JvmFacts {
     private static final int ACC_INTERFACE = 0x0200;
     private static final int ACC_SYNTHETIC = 0x1000;
     private static final int ACC_BRIDGE = 0x0040;
+    private static final int ACC_ENUM = 0x4000;
+
+    /** Members the compiler writes for every record or enum: not the author's API, so not nodes. */
+    private static final Set<String> RECORD_GENERATED = Set.of("equals", "hashCode", "toString");
+
+    private static final Set<String> ENUM_GENERATED = Set.of("values", "valueOf");
 
     /** Library packages never declared in a workspace: not worth a mention the linker would drop. */
     private static final List<String> PLATFORM =
@@ -71,16 +78,26 @@ final class JvmFacts {
             if (rel == null) continue;
             Owner owner = owner(c, rel, nodes, edges);
             if (owner == null) continue;
+            Set<String> generated = generated(c);
             if (owner.named()) {
                 supertypes(c, owner.id(), rel, mentions);
                 annotations(c.annotations(), owner.id(), mentions);
                 for (FieldFacts f : c.fields()) {
                     if ((f.access() & ACC_SYNTHETIC) != 0) continue;
+                    if ((f.access() & ACC_ENUM) != 0) {
+                        String constant = GraphIds.member(owner.id(), f.name());
+                        nodes.putIfAbsent(constant, new GraphNode(constant, f.name(), "code", rel, ""));
+                        edges.add(GraphEdge.of(owner.id(), constant, Relations.CONTAINS, Confidence.EXTRACTED, rel, 0));
+                        continue;
+                    }
                     typeMention(f.desc(), owner.id(), 0, "field", mentions);
                     annotations(f.annotations(), owner.id(), mentions);
                 }
             }
-            for (MethodFacts m : c.methods()) method(c, m, owner, rel, nodes, edges, mentions, signatures);
+            for (MethodFacts m : c.methods()) {
+                if (generated.contains(m.name())) continue;
+                method(c, m, owner, rel, nodes, edges, mentions, signatures);
+            }
         }
         signatures.forEach((id, sigs) -> {
             GraphNode n = nodes.get(id);
@@ -92,6 +109,16 @@ final class JvmFacts {
             }
         });
         return new Fragment(List.copyOf(nodes.values()), edges, mentions);
+    }
+
+    /** The method names the compiler wrote for {@code c}: a record's accessors and object methods, an enum's lookups. */
+    private static Set<String> generated(ClassFacts c) {
+        if ("java/lang/Record".equals(c.superName())) {
+            Set<String> out = new HashSet<>(RECORD_GENERATED);
+            for (FieldFacts f : c.fields()) out.add(f.name());
+            return out;
+        }
+        return "java/lang/Enum".equals(c.superName()) ? ENUM_GENERATED : Set.of();
     }
 
     /**
@@ -132,7 +159,7 @@ final class JvmFacts {
             }
             if (i > 0) {
                 parent = id;
-                id = GraphIds.member(id, seg);
+                id = GraphIds.declared(rel, seg);
                 qualified = qualified + "$" + seg;
             }
         }
@@ -174,13 +201,15 @@ final class JvmFacts {
                     ? lambda.group(1)
                     : lambda.group(2) != null ? lambda.group(2) : lambda.group(3);
         }
+        if (owner.facade()) name = property(c, name);
         String from;
         if (name.equals("<init>") || !owner.named() && !owner.facade() || synthetic && !lambda.matches()) {
             from = owner.id();
         } else {
             from = GraphIds.member(owner.id(), name);
             if (!synthetic) {
-                String label = owner.facade() ? name + "()" : "." + name + "()";
+                boolean property = owner.facade() && !name.equals(m.name());
+                String label = property ? name : owner.facade() ? name + "()" : "." + name + "()";
                 nodes.putIfAbsent(from, new GraphNode(from, label, "code", rel, GraphNode.location(m.firstLine())));
                 edges.add(GraphEdge.of(
                         owner.id(),
@@ -200,12 +229,33 @@ final class JvmFacts {
             if (site.name().equals("<init>")) {
                 mentions.add(new Mention(from, Mention.Kind.CLASS, target, site.line(), Relations.CALLS, "call"));
             } else if (!site.name().startsWith("access$")) {
-                mentions.add(new Mention(from, Mention.Kind.MEMBER, target + "#" + site.name(), site.line()));
+                String callee = site.name().endsWith("$default")
+                        ? site.name().substring(0, site.name().length() - "$default".length())
+                        : site.name();
+                mentions.add(new Mention(from, Mention.Kind.MEMBER, target + "#" + callee, site.line()));
             }
         }
         for (CallSite site : m.calls()) {
             for (String literal : site.literals()) configKeys(literal, from, site.line(), mentions);
         }
+    }
+
+    /**
+     * A Kotlin top-level property's accessor named as the property, as source names it: {@code
+     * getAppModule} is {@code appModule} when the facade holds that field. Any other name is kept.
+     */
+    static String property(ClassFacts c, String method) {
+        for (String prefix : List.of("get", "is")) {
+            if (method.length() <= prefix.length() || !method.startsWith(prefix)) continue;
+            char first = method.charAt(prefix.length());
+            if (!Character.isUpperCase(first)) continue;
+            String field =
+                    prefix.equals("is") ? method : Character.toLowerCase(first) + method.substring(prefix.length() + 1);
+            for (FieldFacts f : c.fields()) {
+                if (f.name().equals(field)) return field;
+            }
+        }
+        return method;
     }
 
     private static void supertypes(ClassFacts c, String id, String rel, List<Mention> mentions) {
