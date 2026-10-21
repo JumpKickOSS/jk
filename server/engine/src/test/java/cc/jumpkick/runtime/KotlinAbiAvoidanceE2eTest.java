@@ -255,6 +255,7 @@ class KotlinAbiAvoidanceE2eTest {
                 name    = "app"
                 version = "1.0.0"
                 java    = 25
+                javadoc = false
                 kotlin  = "^2.4.10"
 
                 [repositories]
@@ -402,6 +403,7 @@ class KotlinAbiAvoidanceE2eTest {
                 name    = "app"
                 version = "1.0.0"
                 java    = 25
+                javadoc = false
                 kotlin  = "^2.4.10"
 
                 [dependencies]
@@ -424,6 +426,7 @@ class KotlinAbiAvoidanceE2eTest {
                 name    = "lib"
                 version = "1.0.0"
                 java    = 25
+                javadoc = false
                 kotlin  = "^2.4.10"
 
                 [repositories]
@@ -453,6 +456,7 @@ class KotlinAbiAvoidanceE2eTest {
                 name    = "lib"
                 version = "1.0.0"
                 java    = 25
+                javadoc = false
 
                 [repositories]
                 central = "https://repo.maven.apache.org/maven2/"

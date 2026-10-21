@@ -207,6 +207,7 @@ class KotlinDependencyApiChangeE2eTest {
                 name    = "lib"
                 version = "1.0.0"
                 java    = 25
+                javadoc = false
                 kotlin  = "^2.4.10"
 
                 [test-dependencies]
@@ -231,6 +232,7 @@ class KotlinDependencyApiChangeE2eTest {
                 name    = "app"
                 version = "1.0.0"
                 java    = 25
+                javadoc = false
                 kotlin  = "^2.4.10"
 
                 [dependencies]

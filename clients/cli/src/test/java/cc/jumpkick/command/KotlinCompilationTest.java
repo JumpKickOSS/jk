@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -23,7 +24,7 @@ class KotlinCompilationTest {
 
     @Test
     void check_passes_for_pure_kotlin_project(@TempDir Path tempDir) throws IOException {
-        run("new", "--lang", "kotlin", tempDir.toString());
+        newKotlinProject(tempDir, "--lang", "kotlin");
         ScaffoldTestSupport.writeEmptyLock(tempDir); // jk new no longer locks; check needs a lock
         Path src = tempDir.resolve("src/main/kotlin/example/Hello.kt");
         Files.createDirectories(src.getParent());
@@ -44,7 +45,7 @@ class KotlinCompilationTest {
 
     @Test
     void build_packages_kotlin_classes_into_jar(@TempDir Path tempDir) throws IOException {
-        run("new", "--name", "widget", "--lang", "kotlin", tempDir.toString());
+        newKotlinProject(tempDir, "--name", "widget", "--lang", "kotlin");
         Path src = tempDir.resolve("src/main/kotlin/example/Hello.kt");
         Files.createDirectories(src.getParent());
         Files.writeString(src, """
@@ -71,7 +72,7 @@ class KotlinCompilationTest {
 
     @Test
     void second_build_skips_kotlin_compile_when_nothing_changed(@TempDir Path tempDir) throws IOException {
-        run("new", "--name", "widget", "--lang", "kotlin", tempDir.toString());
+        newKotlinProject(tempDir, "--name", "widget", "--lang", "kotlin");
         Path src = tempDir.resolve("src/main/kotlin/example/Hello.kt");
         Files.createDirectories(src.getParent());
         Files.writeString(src, """
@@ -98,7 +99,7 @@ class KotlinCompilationTest {
 
     @Test
     void editing_a_kotlin_source_recompiles(@TempDir Path tempDir) throws IOException {
-        run("new", "--name", "widget", "--lang", "kotlin", tempDir.toString());
+        newKotlinProject(tempDir, "--name", "widget", "--lang", "kotlin");
         Path src = tempDir.resolve("src/main/kotlin/example/Hello.kt");
         Files.createDirectories(src.getParent());
         Files.writeString(src, """
@@ -130,7 +131,7 @@ class KotlinCompilationTest {
 
     @Test
     void check_fails_on_kotlin_syntax_error(@TempDir Path tempDir) throws IOException {
-        run("new", "--lang", "kotlin", tempDir.toString());
+        newKotlinProject(tempDir, "--lang", "kotlin");
         ScaffoldTestSupport.writeEmptyLock(tempDir); // jk new no longer locks; check needs a lock
         Path src = tempDir.resolve("src/main/kotlin/Broken.kt");
         Files.createDirectories(src.getParent());
@@ -147,7 +148,7 @@ class KotlinCompilationTest {
 
     @Test
     void mixed_java_and_kotlin_compile_together(@TempDir Path tempDir) throws IOException {
-        run("new", "--name", "mixed", "--lang", "kotlin", "--layout", "traditional", tempDir.toString());
+        newKotlinProject(tempDir, "--name", "mixed", "--lang", "kotlin", "--layout", "traditional");
         // Java type that Kotlin will use.
         Path javaSrc = tempDir.resolve("src/main/java/example/Hub.java");
         Files.createDirectories(javaSrc.getParent());
@@ -183,7 +184,7 @@ class KotlinCompilationTest {
     void java_calls_kotlin_compiles_together(@TempDir Path tempDir) throws IOException {
         // The reorder (Kotlin first, then javac against Kotlin's output) makes
         // Java → Kotlin references resolve within a single module.
-        run("new", "--name", "mixed", "--lang", "kotlin", "--layout", "traditional", tempDir.toString());
+        newKotlinProject(tempDir, "--name", "mixed", "--lang", "kotlin", "--layout", "traditional");
         Path ktSrc = tempDir.resolve("src/main/kotlin/example/Greeter.kt");
         Files.createDirectories(ktSrc.getParent());
         Files.writeString(ktSrc, """
@@ -219,7 +220,7 @@ class KotlinCompilationTest {
     void check_passes_for_java_calling_kotlin(@TempDir Path tempDir) throws IOException {
         // jk check → jk compile, which also compiles Kotlin-first so Java can
         // reference Kotlin within the module.
-        run("new", "--name", "mixed", "--lang", "kotlin", "--layout", "traditional", tempDir.toString());
+        newKotlinProject(tempDir, "--name", "mixed", "--lang", "kotlin", "--layout", "traditional");
         ScaffoldTestSupport.writeEmptyLock(tempDir); // jk new no longer locks; check needs a lock
         Path ktSrc = tempDir.resolve("src/main/kotlin/example/Greeter.kt");
         Files.createDirectories(ktSrc.getParent());
@@ -244,5 +245,19 @@ class KotlinCompilationTest {
                 "--cache-dir",
                 TestCaches.dir("shared-cache").toString());
         assertThat(exit).isEqualTo(0);
+    }
+    /**
+     * Scaffold with {@code jk new} into {@code dir}, minus what no assertion here reads: the sample
+     * test suite and the javadoc jar. The compile and package steps under test are unchanged.
+     */
+    private static void newKotlinProject(Path dir, String... args) throws IOException {
+        String[] argv = new String[args.length + 2];
+        argv[0] = "new";
+        System.arraycopy(args, 0, argv, 1, args.length);
+        argv[argv.length - 1] = dir.toString();
+        assertThat(run(argv)).as("jk new").isEqualTo(0);
+        PathUtil.deleteRecursively(dir.resolve("src/test"));
+        Path toml = dir.resolve("jk.toml");
+        Files.writeString(toml, "javadoc = false\n" + Files.readString(toml));
     }
 }
