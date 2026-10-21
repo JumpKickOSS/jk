@@ -51,7 +51,7 @@ No Kotlin compiler plugins are wired: `Application` is `open` itself because `@S
 is a `@Configuration` Spring subclasses at runtime.
 
 
-`jk test` is the fast tier; `jk test --profile integration` (or `network`, `slow`, `bench`) runs the
+`jk test` is the fast tier; `jk test -p integration` (or `network`, `slow`, `bench`) runs the
 tests tagged with that cost. House rules come from the `spring` pack plus the `monorepo` pack's
 workspace-shaped rules (`jk-guards.toml`); `jk guard explain` lists them, and a failure's `Instead:`
 line says what to do.

@@ -18,7 +18,7 @@ if [[ ! -x "$JK_BIN" ]] && ! command -v "$JK_BIN" >/dev/null 2>&1; then
 fi
 
 status_json() {
- "$JK_BIN" engine status --output json 2>/dev/null || echo '{"running":false}'
+ "$JK_BIN" engine status -O jsonl 2>/dev/null || echo '{"running":false}'
 }
 
 field() {

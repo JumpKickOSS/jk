@@ -37,7 +37,7 @@ import org.jspecify.annotations.Nullable;
  * {@code jk engine status} — pings first (the same liveness authority every engine-aware command
  * uses, never a bare pidfile read) and reports pid/version/source checkout/uptime/active requests
  * and best-effort memory usage (heap used/committed/max, plus OS RSS where readable), or "not running"
- * with a non-zero exit so scripts can branch on it. {@code --output json} emits one flat object
+ * with a non-zero exit so scripts can branch on it. {@code -O jsonl} emits one flat object
  * instead, for scripts/CI that want to parse the result rather than scrape text ({@code -1} =
  * that number couldn't be observed).
  */
@@ -291,7 +291,7 @@ public final class EngineStatusCommand implements CliCommand {
         CliOutput.out(" Stop this home with `jk engine stop --all`, or one engine with `jk engine stop --pid <pid>`.");
     }
 
-    /** The `--output json` line for a directory with no engine of its own; the fleet says what else is alive. */
+    /** The `-O jsonl` line for a directory with no engine of its own; the fleet says what else is alive. */
     public static String notRunningJson(long unresponsivePid, List<EngineFleet.Member> fleet) {
         return JsonFields.object()
                 .bool("running", false)
@@ -300,7 +300,7 @@ public final class EngineStatusCommand implements CliCommand {
                 .finish();
     }
 
-    /** The `--output json` line for a running engine. */
+    /** The `-O jsonl` line for a running engine. */
     public static String runningJson(EngineProbe.Status s, long uptimeSeconds, List<EngineFleet.Member> fleet) {
         JsonFields json = JsonFields.object()
                 .bool("running", true)

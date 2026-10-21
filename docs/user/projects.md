@@ -168,7 +168,7 @@ jvm-args = ["-Dprobe=1", "-Xmx1g"]  # every forked test JVM (jk test, and the te
 exclude-tags = ["slow"]             # replaces the [test] list when present
 ```
 
-`jvm-args` are a test input: `--profile probe` re-runs a suite a plain run left green, and `jk
+`jvm-args` are a test input: `-p probe` re-runs a suite a plain run left green, and `jk
 explain` keys the step the same way. They do not reach `jk run` — an application's JVM flags are
 its own, not a profile's. Tag precedence and the `ci` auto-profile: [Test](test.md#tag-filters).
 

@@ -256,7 +256,7 @@ jobs:
         id: audit
         run: |
           set -euo pipefail
-          jk audit --severity HIGH --no-ansi --output json | tee target/jk-audit.jsonl
+          jk audit --severity HIGH --no-ansi -O jsonl | tee target/jk-audit.jsonl
 
       - name: Upload the audit report
         if: always()

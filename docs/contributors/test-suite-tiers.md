@@ -10,17 +10,17 @@ subset of the tag vocabulary, that each is run by exactly one tier, and **G52** 
 renders the same tables into the block below, so the two cannot drift
 ([self-host](self-host.md#test-tiers)).
 
-`jk build` runs every module's fast tier; `jk test --profile integration` is the pre-merge bar. The
+`jk build` runs every module's fast tier; `jk test -p integration` is the pre-merge bar. The
 house rules run under `jk build` and `jk guard` ([self-host](self-host.md#house-rule-gate)).
 
 <!-- test-tiers:start -->
 | Command | Includes | Excludes |
 |---------|----------|----------|
 | `jk test` | untagged | `integration`, `slow`, `network`, `bench` |
-| `jk test --profile integration` | `integration` | `slow`, `network`, `bench` |
-| `jk test --profile slow` | `slow` | `network`, `bench` |
-| `jk test --profile network` | `network` | `bench` |
-| `jk test --profile bench` | `bench` | — |
+| `jk test -p integration` | `integration` | `slow`, `network`, `bench` |
+| `jk test -p slow` | `slow` | `network`, `bench` |
+| `jk test -p network` | `network` | `bench` |
+| `jk test -p bench` | `bench` | — |
 <!-- test-tiers:end -->
 
 Tag new heavy tests at class level:
@@ -58,13 +58,13 @@ spawn, worker, workspace, install or lock regression could merge with a determin
 test — sitting in the nightly profile — that would have caught it.
 
 `scripts/curated-integration.sh` closes that gap. It reads `curated-integration.txt` at the
-checkout root and runs one `jk test --profile integration -m <module> --class …` per module the
+checkout root and runs one `jk test -p integration -m <module> --class …` per module the
 registry names, as the last step of the self-host job on every pull request. jk fails a run in
 which no class matched, so a renamed or deleted entry fails the lane instead of shrinking it.
 
 **Curated membership is a duplicate execution policy, not a tag.** Every listed class is
 `@Tag("integration")` and still runs in the nightly profile; nothing is reclassified to make the
-branch gate cheap, and the lane never replaces `jk test --profile integration`.
+branch gate cheap, and the lane never replaces `jk test -p integration`.
 
 The registry has one line per class:
 
@@ -101,7 +101,7 @@ refuse.
 ### Why `network` is off the merge gate
 
 The gate must not depend on the network. Sonatype enforces a per-IP quota on Maven Central, so a
-gate that needs a remote fails for reasons the change did not cause. `jk test --profile network`
+gate that needs a remote fails for reasons the change did not cause. `jk test -p network`
 runs nightly in `ci-nightly.yml`, where a transient failure costs a re-run instead of a blocked
 merge.
 
@@ -168,8 +168,8 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
   fast tier and every house-rule lane, run by the checkout's own jk; then the curated integration
   lane and `jk audit --severity HIGH` over the lock), the shell fixtures, the workflow lint and the
   commit-authorship scan. No coverage, no benches.
-- **Nightly (`ci-nightly.yml`):** `jk test --profile integration`, `--profile slow`,
-  `--profile network`, `--profile bench`, the coverage ratchet (`jk test --coverage`, `jk guard`),
+- **Nightly (`ci-nightly.yml`):** `jk test -p integration`, `-p slow`,
+  `-p network`, `-p bench`, the coverage ratchet (`jk test --coverage`, `jk guard`),
   the heap guard, the doc examples, the [jk-examples](https://github.com/JumpKickOSS/jk-examples)
   `web/` scenarios and the audit at `LOW` on Linux; the product smoke on macOS.
 - **Examples job:** every `docs/user/examples/*` sample and every jk-examples `web/*` scenario is
@@ -180,14 +180,14 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
   same two scripts run locally against a sibling checkout:
   `scripts/example-dev-smoke.sh --examples ../jk-examples` and
   `scripts/examples-lock-drift.sh . ../jk-examples`.
-- Local gate: `jk format`, `jk guard`, `jk build`, `jk test --profile integration`;
+- Local gate: `jk format`, `jk guard`, `jk build`, `jk test -p integration`;
   `scripts/curated-integration.sh` runs what the pull request's boundary lane will run.
 - Never the `network` or `bench` profile as a merge gate.
 
 ## Measuring integration wall time
 
 ```bash
-jk test --profile integration
+jk test -p integration
 # per-step walls: target/jk-profile.json; per-class times: **/target/surefire-reports/TEST-*.xml
 ```
 
@@ -202,7 +202,7 @@ user has. Run the one class alone on a quiet host:
 
 ```bash
 JK_NIA_OVERLAY=~/src/oss/jk-examples/android/nowinandroid/overlay \
-  jk test --profile network -m server/resolver -w 1 \
+  jk test -p network -m server/resolver -w 1 \
     --class cc.jumpkick.resolver.NiaWarmLockTimingTest
 # JVM_CPUS=… HOST_CPUS=… LOADAVG=… names the machine the numbers were taken on
 ```
@@ -216,7 +216,7 @@ Many integration tests start a nested engine that runs a whole build, and each e
 compiler pool, so jk's full integration tier holds far more forked JVMs than any user build: on a
 15 GiB host it peaked at 13.8 GiB, 6.6 GiB of it in 18 compiler workers and 4 GiB in 26 test JVMs.
 Two such runs at once, or one beside another heavy job, can exhaust the host. Run one heavy job
-per machine: `jk test --profile integration`, an uncached full `jk build`, or a benchmark
+per machine: `jk test -p integration`, an uncached full `jk build`, or a benchmark
 (`bench/agent-loop`, `bench/wall`, [`bench/memory`](../../bench/memory/README.md), the jk-examples corpus). Benchmarks also need the host otherwise
 idle, because they measure wall time and memory. Editing, narrow `-m` / `--class` runs and
 `jk guard` in parallel worktrees are fine.
@@ -277,11 +277,11 @@ CLI tier leaves no slot per fixture behind. A slot a live launch holds is never 
 | Intent | Command |
 |--------|---------|
 | Fast / default | `jk test` (suite `test` only; `[test] exclude-tags`) |
-| Extra suite | `jk test --suite integration` or put e2e under `integration/` |
+| Extra suite | `jk test -s integration` or put e2e under `integration/` |
 | Everything | `jk test --all` / `jk build --all` (all suites, config tag excludes cleared) |
 | Tag filter | `jk test --exclude-tags slow` / `--include-tags smoke` |
-| One class | `jk test -m <module> --class <fqcn>` (`--profile integration` for a tagged one) |
-| CI profile | `[profiles.ci] exclude-tags = […]` (overrides `[test]`) + `--profile ci` (auto on CI) |
+| One class | `jk test -m <module> --class <fqcn>` (`-p integration` for a tagged one) |
+| CI profile | `[profiles.ci] exclude-tags = […]` (overrides `[test]`) + `-p ci` (auto on CI) |
 
 Prefer **directory suites** for structural separation (Mill-shaped); use **JUnit tags** for
 cross-cutting cost filters inside a suite.

@@ -163,7 +163,7 @@ public final class LockRewriteGuard {
                 + " — a relock with it would drop them, and the tree that carries the lock may not build"
                 + " from the result. Install the jk that wrote it (`jk self update`, or"
                 + " `jk install --skip-tests` from its checkout) and run `jk engine stop`, or pass"
-                + " `jk lock --force` to rewrite the lock with this engine anyway";
+                + " `jk lock -F` to rewrite the lock with this engine anyway";
     }
 
     /** {@code " (build 4ee07400a592 of 2026-09-17T15:57:16Z)"}, or {@code ""} for no build. */

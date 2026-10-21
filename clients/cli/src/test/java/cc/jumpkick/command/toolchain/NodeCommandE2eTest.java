@@ -32,7 +32,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@code jk node} (and {@code jk nvm}) against a stub Node.js distribution: every verb, its
- * {@code --output json} row, and the locked Node.js first on {@code PATH} for {@code exec} and
+ * {@code -O jsonl} row, and the locked Node.js first on {@code PATH} for {@code exec} and
  * {@code run}.
  */
 @Tag("integration")

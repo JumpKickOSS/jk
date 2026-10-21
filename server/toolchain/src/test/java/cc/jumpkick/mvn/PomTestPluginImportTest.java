@@ -353,7 +353,7 @@ class PomTestPluginImportTest {
         assertThat(result.jkBuild().build().testClassSuites())
                 .containsExactly(Map.entry("integration", ClassSuite.of(List.of("IT*", "*IT", "*ITCase"))));
         assertThat(TestImporters.messages(result))
-                .anyMatch(m -> m.startsWith("test classes named `IT*`") && m.contains("jk test --suite integration"));
+                .anyMatch(m -> m.startsWith("test classes named `IT*`") && m.contains("jk test -s integration"));
     }
 
     @Test

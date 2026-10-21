@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 class BuildAccumulatorRunErrorsTest {
 
     private static final String WHY = "--class named 1 class the tag filter excluded: a.BenchTest [bench];"
-            + " pass --include-tags bench (or a --profile that includes it) to run it";
+            + " pass --include-tags bench (or a -p profile that includes it) to run it";
 
     @Test
     void a_run_level_verdict_is_an_error_row_both_reports_name() {

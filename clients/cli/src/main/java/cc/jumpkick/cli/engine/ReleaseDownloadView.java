@@ -23,7 +23,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Output modes follow the stream, as {@link JdkInstallView}'s do: a terminal animates the bar;
  * plain mode (no ANSI) gets a {@code Downloading …} line from {@link ProgressRow}; a
- * machine-consumed stdout ({@code --output json}) keeps the human line on stderr so the JSONL
+ * machine-consumed stdout ({@code -O jsonl}) keeps the human line on stderr so the JSONL
  * stream stays parseable. {@link AutoCloseable} so a failed fetch still wipes the active bar.
  */
 public final class ReleaseDownloadView implements ReleaseArtifacts.Progress, AutoCloseable {

@@ -80,7 +80,7 @@ End-to-end scenarios and early-adopter samples live in **[JumpKickOSS/jk-example
 (`target/dist/lib/jk-engine-<version>.jar`). The engine runs as a normal JVM app on a
 jk-managed JDK — never as a native image.
 
-`jk test --profile network` talks to Maven Central; keep it off rate-limited environments.
+`jk test -p network` talks to Maven Central; keep it off rate-limited environments.
 
 ### Template catalog (sibling repo)
 
@@ -126,7 +126,7 @@ The client never embeds the engine. Spawning uses
 jk format                                    # before every commit
 jk guard                                     # every house-rule lane, fixtures included
 jk build                                     # every module, fast tier included
-jk test --profile integration                # the pre-merge bar
+jk test -p integration                       # the pre-merge bar
 ```
 
 On Windows the same gate is expected to pass, so a red test there is a finding, not the platform.
@@ -142,7 +142,7 @@ paths.
 | Lane | When | What |
 |---|---|---|
 | **Push / PR** (`ci.yml`) | Every push to `main` and every PR | Commit-authorship scan; the shell fixtures (on Linux and macOS); the self-host job: `jk build`, `jk install`, `jk guard`, `jk test`, the curated integration lane, the lock diff |
-| **Nightly** (`ci-nightly.yml`) | Daily cron + manual `workflow_dispatch` | `jk test --profile integration`, `slow`, `network`, `bench`; the coverage ratchet (`jk test --coverage`, `jk guard`); heap guard; doc examples. macOS: product smoke (`scripts/ci-product-smoke.sh`). |
+| **Nightly** (`ci-nightly.yml`) | Daily cron + manual `workflow_dispatch` | `jk test -p integration`, `slow`, `network`, `bench`; the coverage ratchet (`jk test --coverage`, `jk guard`); heap guard; doc examples. macOS: product smoke (`scripts/ci-product-smoke.sh`). |
 
 Native multi-OS **images** stay on the **release** matrix (`release.yml`). Coverage is a
 per-module ratchet (`jk test --coverage`, then `jk guard`; G91) with no percentage target, and the
@@ -154,14 +154,14 @@ JaCoCo agent stays off unless asked for, so the fast tier does not pay for it.
 jk format --check
 jk guard
 jk build
-jk test --profile integration
+jk test -p integration
 scripts/curated-integration.sh               # what the pull request's boundary lane runs
 scripts/shellcheck.sh                        # CI's shell lint: installers, scripts/, the wrapper (skipped on Windows; skips with a notice when shellcheck is absent)
 for f in scripts/test-*.sh; do bash "$f"; done  # CI's shell fixtures (installer, wrapper bootstrap, Maven repo, release version, flatten, example lock drift, curated lane, reinstall chain)
 actionlint .github/workflows/*.yml
-jk test --profile slow                       # nightly framework / language e2e
-jk test --profile network                    # nightly, talks to real remotes
-jk test --profile bench                      # nightly microbenchmarks
+jk test -p slow                                 # nightly framework / language e2e
+jk test -p network                              # nightly, talks to real remotes
+jk test -p bench                                # nightly microbenchmarks
 jk test --coverage && jk guard               # nightly coverage ratchet (G91)
 ./scripts/ci-product-smoke.sh                # nightly macOS smoke (jk on PATH)
 ```
@@ -174,7 +174,7 @@ worker runs the one this build produced. CLI integration tests spawn a real engi
 assembly the same step names (`-Djk.engine.jar`), in an isolated sandbox `JK_HOME` — no in-process
 dual path. The fast tier (`jk test`) is the pure unit tier (TUI/args/jsonl) with no engine spawn.
 
-Use `-m` and `--class` mid-ticket (`jk test -m clients/cli --class cc.jumpkick.cli.engine.EngineClientTest --profile integration`);
+Use `-m` and `--class` mid-ticket (`jk test -m clients/cli --class cc.jumpkick.cli.engine.EngineClientTest -p integration`);
 the pre-merge bar is the whole integration profile. Tier model:
 [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md).
 
@@ -189,8 +189,8 @@ Multi-module sample under
 jk build --skip-tests && jk install --skip-tests
 
 cd docs/user/examples/workspace-showcase
-jk lock && jk build && jk test --modules app
-# optional: jk build --modules app
+jk lock && jk build && jk test -m app
+# optional: jk build -m app
 ```
 
 ## Project layout

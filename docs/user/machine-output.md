@@ -8,7 +8,7 @@ How JumpKick talks to **agents, scripts, and CI**. Humans at a TTY get a terse v
 | Human at a TTY | Terse visual CLI |
 | Human debugging | `jk results` first; `--details` / `-v` if needed |
 | Agents | **`jk skill`** once, then the verdict: MCP `run`, or `jk --agent` / `JK_AGENT=1` |
-| Scripts / CI | **`target/jk-results.md`** / `jk results`, or `--output json`/`jsonl` |
+| Scripts / CI | **`target/jk-results.md`** / `jk results`, or `-O jsonl` |
 | Web dashboard | Engine HTTP + SSE (`/api/events`) |
 | MCP clients | Tools, resources, SSE — same facts, not a second build model |
 
@@ -155,9 +155,8 @@ renders the same comparison as the run's iteration strip ([Web dashboard](web.md
 ## Live JSONL
 
 ```bash
-jk build --output json
-jk test  --output jsonl          # identical to json
-export JK_OUTPUT=json
+jk build -O jsonl
+export JK_OUTPUT=jsonl     # the same for every command
 ```
 
 - One JSON object per line, flushed promptly.
@@ -237,13 +236,13 @@ goes out, and the stream opens with a one-task **`toolchain`** plan ahead of the
 - A failed install emits an `error` line (`task:"ensure-jdk"`, `code:"jdk"`), ends the plan
   with `buildplan-finish` `success:false`, and jk exits without opening a build envelope.
 
-`jk jdk install --output json` streams its own **`jdk-install`** plan in the same shape
+`jk jdk install -O jsonl` streams its own **`jdk-install`** plan in the same shape
 (`fetch-catalog`, `select`, `install`, `set-default` tasks; the `install` task carries the same
 `downloading …` / `installing …` labels).
 
 ### `jk node`
 
-Each `jk node` command under `--output json` prints one line per row, in the usual envelope, and
+Each `jk node` command under `-O jsonl` prints one line per row, in the usual envelope, and
 nothing else on stdout:
 
 | `type` | Command | Fields |
@@ -265,7 +264,7 @@ nothing else on stdout:
 
 ### `jk dev`
 
-`jk dev --output json` (and `jk watch run`) keeps the workspace envelope for every build the loop
+`jk dev -O jsonl` (and `jk watch run`) keeps the workspace envelope for every build the loop
 runs — the first one and each recompile after a change — and between builds the stream carries
 the session's processes, every line with its source. The app is piped under this mode, so stdout
 is one JSONL stream from the first byte to the last; on a terminal the app owns stdout itself.
@@ -300,7 +299,7 @@ stops itself, and once the session is finished no event follows: an app killed b
 ~/.jk/state/builds/projects/<key>/runs/<build-number>/details.jsonl
 ```
 
-Same event shape as `--output json`. Default **on**; disable with `JK_CLI_DETAILS=off`
+Same event shape as `-O jsonl`. Default **on**; disable with `JK_CLI_DETAILS=off`
 (or `0`). Appended live (`tail -F`). Opens with `session-start` (command, argv, and the
 run's origin: `trigger`, plus `session` when the requester has one), a `job` meta line after
 admit, ends with `session-finish`. Includes **jid**, **buildNumber**, and **etaMs** when
@@ -311,7 +310,7 @@ A run with no CLI behind it — MCP `run`, the dashboard's `POST /api/build` —
 
 A `jk dev` session keeps a transcript too, whatever the output mode: `session-start` (command
 `dev`), every build the loop runs, the [`jk dev`](#jk-dev) events — `sidecar-*`, `app-started` /
-`app-exited`, `dev-ready`; `app-output` only under `--output json`, since on a terminal the app
+`app-exited`, `dev-ready`; `app-output` only under `-O jsonl`, since on a terminal the app
 owns stdout — and `session-finish`, on Ctrl-C as well (`exit` 130). The loop's builds are engine
 runs, but the transcript is the session's: it lives in the first build's run dir and stays there,
 and every later build adds its own `job` line (jid, build number, that run's `detailsPath`) to the
@@ -360,7 +359,7 @@ Every run that evaluates a guard lane leaves `target/jk-guards.sarif` (SARIF 2.1
 `partialFingerprints`, `baselineState` `new`/`unchanged`, `suppressions` with the baseline reason
 as `justification`, `invocations[0].executionSuccessful` false on any `scanner-failed`) and
 `target/jk-guards.jsonl` (every violation row). `jk guard --output sarif` prints the SARIF file
-whole; `--output json|jsonl` streams the rows as `guard` events. `target/jk-results.md` stays the
+whole; `-O jsonl` streams the rows as `guard` events. `target/jk-results.md` stays the
 agent view. Upload the SARIF to code scanning from CI — [CI](ci.md#guards).
 
 ## Timeline

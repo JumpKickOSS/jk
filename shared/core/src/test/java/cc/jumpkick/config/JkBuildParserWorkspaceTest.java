@@ -472,7 +472,7 @@ class JkBuildParserWorkspaceTest {
     }
 
     /**
-     * `jk test --profile integration` is the documented pre-merge command, and it died on the
+     * `jk test -p integration` is the documented pre-merge command, and it died on the
      * first member that did not declare the profile itself — against a root whose jk.toml does.
      * The tag half of the rule was already right (the CLI rehomes to the root before scanning
      * profile tags); the table a member carries was not.

@@ -46,7 +46,7 @@ junit-jupiter = "6.1.3"
 under `static/`. Under `jk dev`, jk runs `web/`'s `dev` script beside the JVM as the dev server
 `vite-sidecar-node`, probes Vite's port and makes it the front door — the sidecar a hand-written
 `[dev.sidecars]` entry would have spelled out. `[dev] ready` is the JVM's own probe: the `ready ·`
-line (and `dev-ready` under `--output json`) waits until `/api/hello` answers, after the first start
+line (and `dev-ready` under `-O jsonl`) waits until `/api/hello` answers, after the first start
 and after every restart, so a fetch on `dev-ready` never races the JVM.
 
 ## Run it
@@ -79,7 +79,7 @@ Edit `web/main.js`: Vite hot-reloads the page; the JVM is untouched. Ctrl-C stop
 together — nothing is left on 8080 or 5173.
 
 `jk dev --no-sidecars` runs the JVM alone; the `ready ·` line then carries `[dev] ready`'s address.
-`jk dev --output json` turns every line into an event with its source (`sidecar-output`,
+`jk dev -O jsonl` turns every line into an event with its source (`sidecar-output`,
 `app-output`) — [Machine output](../../machine-output.md#jk-dev). A dev server jk does not build is
 declared by hand under `[dev.sidecars]` ([Run § Sidecars](../../run.md#sidecars-devsidecars)).
 

@@ -17,7 +17,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * The bytes the commands' {@code --output json} shapes had when they were string concatenation,
+ * The bytes the commands' {@code -O jsonl} shapes had when they were string concatenation,
  * spelled out. The builders now write through {@code JsonFields}; a reordered field, a changed null
  * spelling or a dropped optional is a different line to every script that parses these.
  */

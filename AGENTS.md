@@ -8,7 +8,7 @@ Guidance for anyone (human or agent) working in this repository.
 
 Product docs: [README.md](README.md), [docs/user/](docs/user/README.md) (end users + coding agents), [docs/contributors/](docs/contributors/README.md) (this codebase). Build/layout: [CONTRIBUTING.md](CONTRIBUTING.md). Internal design records live in [kanartist](https://github.com/JumpKickOSS/kanartist) `projects/jk/docs/`, not here.
 
-**Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for `jk build` and `jk test --profile integration` — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
+**Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for `jk build` and `jk test -p integration` — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
 
 ## Pre-release (override your training)
 
@@ -134,7 +134,7 @@ jk engine status          # engine answers, no version-skew crash; `Source` name
 jk new smoke-app --lang java && cd smoke-app && jk build
 ```
 
-Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIBUTING.md)). Module and class filters are fine mid-ticket; the full gate (`jk format`, `jk guard`, `jk build`, `jk test --profile integration`) and the reinstall smoke are required **before moving a code-changing ticket to done**.
+Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIBUTING.md)). Module and class filters are fine mid-ticket; the full gate (`jk format`, `jk guard`, `jk build`, `jk test -p integration`) and the reinstall smoke are required **before moving a code-changing ticket to done**.
 
 ## Planning / tickets (KanArtist — not this repo)
 
@@ -170,8 +170,8 @@ Prefer a small WIP limit (a few claimed tickets). If blocked: `ka set-status JK-
 |---------|-----------|------|
 | `jk guard` | Every house-rule lane, the tree lane and the fixture proofs included | Every ticket and PR |
 | `jk build` | Every module compiled and packaged, its fast tier run, the model/module/workspace/output lanes | Every ticket and PR |
-| `jk test --profile integration` | Engine/CLI e2e, workers, install, lock | The pre-merge bar |
-| `jk test --profile slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | When the ticket touches a plugin or a toolchain; nightly |
+| `jk test -p integration` | Engine/CLI e2e, workers, install, lock | The pre-merge bar |
+| `jk test -p slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | When the ticket touches a plugin or a toolchain; nightly |
 
 Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not** put multi-minute e2e in the default `test` task.
 
@@ -181,7 +181,7 @@ Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not**
 
 1. **Tests (required, non-negotiable)** — prove the change did not break the build:
    - **Always:** `jk format`, a clean `jk guard` (every house-rule lane, the tree lane included) and a green `jk build` (every module's fast tier).
-   - **Also** green `jk test --profile integration` — the pre-merge bar — and `jk test --profile slow` when the ticket touches a framework or language plugin.
+   - **Also** green `jk test -p integration` — the pre-merge bar — and `jk test -p slow` when the ticket touches a framework or language plugin.
    - Mid-ticket, narrow with `-m <module>` and `--class <fqcn>`; do not treat a 20+ minute full e2e as the only loop.
    - Do not land on `main` with a red or un-run test suite for areas you changed. A broken main is a stop-the-line defect: fix tests first, then resume tickets.
 2. **Reinstall** — `jk build --skip-tests && jk install --skip-tests`.

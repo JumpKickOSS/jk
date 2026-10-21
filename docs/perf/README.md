@@ -48,7 +48,7 @@ never land in its counters. For a no-op and a one-file edit it records:
 
 | counter | source |
 |---|---|
-| `tasks-run`, `tasks-skipped` | `task-finish` statuses from `--output json` |
+| `tasks-run`, `tasks-skipped` | `task-finish` statuses from `-O jsonl` |
 | `disk-write-bytes` | `/proc/<pid>/io` `write_bytes` of every process carrying the private state dir: file bytes only, native copies included |
 | `target-files-touched` | files under `target/` created, deleted or rewritten (inode, size, mtime) |
 | `files-written`, `file-write-bytes`, `file-read-bytes` | a JFR recording on the engine (`jdk.FileWrite`, `jdk.FileRead`; `/proc` and `/sys` reads left out) |
@@ -131,7 +131,7 @@ schtasks /Create /TN "jk scoreboard night" /SC DAILY /ST 01:30 /TR ^
 
 ## Microbenchmarks
 
-The nightly bench profile (`jk test --profile bench`, `@Tag("bench")`) reports each bench's median through
+The nightly bench profile (`jk test -p bench`, `@Tag("bench")`) reports each bench's median through
 `cc.jumpkick.testing.BenchBand`. A bench with a `dim = "bench"` row in `scoreboard.toml` (subject the
 bench's name, value in `ms`) fails when its median exceeds the banked value by 15 %; one without
 prints its number as `unbaselined` so it can be banked from the job log. The `BenchBand` unit test
@@ -150,5 +150,5 @@ version string changing length inside the SBOM, not for noise. The current table
 decision are in [docs/user/packaging.md](../user/packaging.md#fat-jar-size-against-shadow-and-shade).
 
 ```bash
-jk test --profile bench -m server/engine --class cc.jumpkick.compile.JarSizeBenchTest
+jk test -p bench -m server/engine --class cc.jumpkick.compile.JarSizeBenchTest
 ```

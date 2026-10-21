@@ -12,7 +12,7 @@ import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** {@code jk audit}'s exit decision and the shape of its {@code --output json} lines. */
+/** {@code jk audit}'s exit decision and the shape of its {@code -O jsonl} lines. */
 class AuditCommandGateTest {
 
     private static Finding finding(String id, Severity severity) {

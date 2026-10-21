@@ -103,7 +103,7 @@ release by name.
 | `jk node verify` | Check each of jk's installs still runs and reports its version |
 | `jk node update` | Refresh the release index and report the project's pin against the newest of its major (`jk update` moves the lock) |
 
-Every command takes `--output json` ([machine output](machine-output.md#jk-node)). With the shell
+Every command takes `-O jsonl` ([machine output](machine-output.md#jk-node)). With the shell
 hook installed (`jk activate`), entering a project puts its locked Node.js and its package
 manager's shims first on `PATH` (`JK_NODE_HOME`, `JK_NODE_SHIMS`), beside `JAVA_HOME`; leaving takes
 them off. `jk shell` does the same for a subshell.

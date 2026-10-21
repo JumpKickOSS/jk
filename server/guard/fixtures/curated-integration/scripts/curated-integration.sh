@@ -9,5 +9,5 @@ while IFS= read -r line; do
   [[ "$line" != *"|"* ]] && continue
   module="$(cut -d'|' -f1 <<<"$line" | tr -d ' ')"
   class="$(cut -d'|' -f2 <<<"$line" | tr -d ' ')"
-  jk test --profile integration -m "$module" --class "$class"
+  jk test -p integration -m "$module" --class "$class"
 done < "$REGISTRY"

@@ -425,7 +425,7 @@ public final class RunCommand {
         view.setPlanCoord(BuildCommand.projectGaLabel(request.entryDir()));
         ModuleScopeHint.apply(view, "building", scopeNames);
         var agg = new AggregateContext(view);
-        // Live arm only (never --output json), so events reach the transcript and not stdout.
+        // Live arm only (never -O jsonl), so events reach the transcript and not stdout.
         var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Run", true), request.entryDir(), null, false);
         long start = System.nanoTime();
         WorkspaceResult wr;

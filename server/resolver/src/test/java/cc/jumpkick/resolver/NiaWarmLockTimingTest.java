@@ -49,7 +49,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
  *
  * <pre>{@code
  * JK_NIA_OVERLAY=/path/to/nowinandroid/overlay \
- *   jk test --profile network -m server/resolver -w 1 \
+ *   jk test -p network -m server/resolver -w 1 \
  *     --class cc.jumpkick.resolver.NiaWarmLockTimingTest
  * }</pre>
  *

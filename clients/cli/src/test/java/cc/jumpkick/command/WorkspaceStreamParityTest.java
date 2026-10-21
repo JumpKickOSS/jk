@@ -14,7 +14,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * One {@code --output jsonl} envelope for every build-kind verb. {@code jk build}, {@code test},
+ * One {@code -O jsonl} envelope for every build-kind verb. {@code jk build}, {@code test},
  * {@code compile}, {@code image} and {@code native} are the same operation with a different phase
  * selection — the verb says which stages the build includes, not what kind of job it is — so an
  * agent that can parse one can parse all of them. {@code jk run} is the outlier only at its tail:
@@ -45,10 +45,10 @@ class WorkspaceStreamParityTest {
                         .isEqualTo(0));
 
         assertThat(countType(out, "workspace-start"))
-                .as("%s --output jsonl must open the stream exactly once", verb)
+                .as("%s -O jsonl must open the stream exactly once", verb)
                 .isEqualTo(1);
         assertThat(countType(out, "workspace-finish"))
-                .as("%s --output jsonl must terminate the stream exactly once", verb)
+                .as("%s -O jsonl must terminate the stream exactly once", verb)
                 .isEqualTo(1);
         // Pairing, not a count: how many modules this fixture has is a fixture detail, but a
         // module the stream opens and never closes is a parser hanging on a module that finished.

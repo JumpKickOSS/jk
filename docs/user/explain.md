@@ -10,8 +10,8 @@ Prefer this over Gradle build scans for day-to-day “why did this rebuild?” q
 
 ```bash
 jk explain                   # phase rollup + rebuild-surface table + ETA
-jk explain --verbose         # expand every task under each module (a compile step names its -Xplugin:s and processors)
-jk explain --redo            # forecast full rebuild (same as jk build --redo)
+jk explain -v                # expand every task under each module (a compile step names its -Xplugin:s and processors)
+jk explain -r                # forecast full rebuild (same as jk build -r)
 ```
 
 When the lock is missing or stale, `jk explain` refreshes it first (same as `jk build`) so
@@ -26,7 +26,7 @@ The ETA seed matches bare `jk build` bit-for-bit (same `-w` auto, `-j`, flags).
 jk explain --graph dot > modules.dot
 dot -Tsvg modules.dot -o modules.svg
 jk explain --graph mermaid > build.mmd
-jk explain --graph mermaid --modules 'libs/*' --graph-out filtered.mmd
+jk explain --graph mermaid -m 'libs/*' --graph-out filtered.mmd
 ```
 
 Interactive DAG: engine dashboard → Project → Dependencies ([Web](web.md)).
@@ -39,7 +39,7 @@ First-party task catalog (Mill resolve-lite):
 jk tasks                         # list tasks
 jk show package-jar              # primary jar path for this module
 jk inspect compile-java          # phase + path + on-disk status
-jk tasks show package-jar --modules 'libs/*'
+jk tasks show package-jar -m 'libs/*'
 ```
 
 Stages are a closed set, in pipeline order: `resolve`, `generate`, `compile`, `test`,

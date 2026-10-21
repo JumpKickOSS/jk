@@ -49,7 +49,7 @@ public final class DevCommand implements CliCommand {
 
     /**
      * The same invocation with {@code run} as its first positional: every option and flag the user
-     * put on {@code jk dev} — {@code --output json}, {@code --no-sidecars}, {@code --cache-dir},
+     * put on {@code jk dev} — {@code -O jsonl}, {@code --no-sidecars}, {@code --cache-dir},
      * the variant selection — reaches {@code WatchCommand} exactly as if typed after {@code watch run}.
      */
     static Invocation asWatchRun(Invocation in) {

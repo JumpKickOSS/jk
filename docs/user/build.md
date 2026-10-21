@@ -7,9 +7,9 @@ jk build --guard         # guards + unit + integration green; the same flag on a
 jk build --guard --skip-tests   # package graph + guard scripts, no JUnit
 jk build --scripts-only        # guard scripts, no JUnit (same as test --scripts-only)
 jk build --skip-tests
-jk build --redo         # ignore action cache (full rebuild): every step runs, plugin steps too
+jk build -r                    # ignore action cache (full rebuild): every step runs, plugin steps too
 jk clean                # delete target/; unchanged inputs restore from cache
-jk clean --force        # also invalidate this project's action-cache entries
+jk clean -F                    # also invalidate this project's action-cache entries
 ```
 
 `jk build` uses [`jk-lock.toml`](lockfile.md) and does **not** re-resolve. Packaging
@@ -40,7 +40,7 @@ each dependency's ABI (signatures, supertypes, inlined constants, annotations; f
 inline function bodies and `const val`s), never its method bodies. An implementation-only change
 in a dependency recompiles and re-packages that dependency and re-runs the tests that load it,
 but leaves every consumer's compile cached: no compiler forks. A change to a public signature, an
-inlined constant or an inline function recompiles the consumers, and `jk explain --verbose` names
+inlined constant or an inline function recompiles the consumers, and `jk explain -v` names
 the dependency whose API moved. Annotation processors are keyed on their full content, so a
 processor jar change always recompiles the modules that run it. A jar's ABI is read from its
 central directory as a stream, a window of names at a time, so a bundle jar of several hundred
@@ -59,7 +59,7 @@ incremental state over when a restore lays down a tree other than the one that s
 The record a compile stores is the swept tree, so a later restore of it cannot bring a deleted
 test back to the runner or a deleted class into the jar.
 
-`jk build --redo` (`-r`) runs every step of the modules it enters without reading the action
+`jk build -r` (`-r`) runs every step of the modules it enters without reading the action
 cache — compile, package, tests, and the steps plugins contribute, a lint or a generator among
 them — and stores each step's record again, so the build after it is served as before. Nothing
 is re-fetched; `--force` re-fetches too.
@@ -99,7 +99,7 @@ the tests alone. Both tables' entries are solved in the processor graph, apart f
 test graphs, and a `[test-processor-dependencies]` row in `jk-lock.toml` carries the
 `test-processor` scope.
 
-`jk explain --verbose` names what a compile step runs: each processor class on the step's
+`jk explain -v` names what a compile step runs: each processor class on the step's
 processor path with the jar it comes from (`processors: org.mapstruct.ap.MappingProcessor
 (mapstruct-processor-1.6.3.jar)`), discovered or declared alike, after the `-Xplugin:` names.
 `jk import` makes the intent explicit for a Maven module that relies on discovery: Lombok,
@@ -167,7 +167,7 @@ export is documented, not reported as a missing package.
 `compile-main` and `compile-test` run the same plugins, and every plugin and option is part
 of the compile action key — bumping a severity recompiles. A `[javac.test]` table with the
 same two keys replaces `[javac]` for `compile-test` alone; an empty one (`plugins = {}`) turns
-the plugins off for a suite that hands null to parsers on purpose while production stays checked. `jk explain --verbose` names the
+the plugins off for a suite that hands null to parsers on purpose while production stays checked. `jk explain -v` names the
 plugins a compile step invokes. Unknown keys under `[javac]` fail the parse. Lint
 (`[build] lint`), plugin-contributed and profile `javac` args come first in the argv, then the
 plugins, then `args`.
@@ -289,7 +289,7 @@ under `JK_STORE_DIR`.
 `--skip-node` (or `JK_SKIP_NODE=1`, or `[node] skip = true`) runs no node step, on `jk build` and
 `jk test`: the output already on disk is used as it is. `[test] failures = "report"` covers a node
 test step as it does a JVM suite. `jk clean` removes the output directory and keeps
-`node_modules`; `jk clean --force` removes it too.
+`node_modules`; `jk clean -F` removes it too.
 
 ## Parallelism (`-j`)
 

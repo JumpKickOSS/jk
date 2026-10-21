@@ -318,7 +318,7 @@ public final class VscodeIdeGenerator implements IdeGenerator {
             }
         }
         for (String suite : extra) {
-            tasks.add(taskEntry("jk: test · " + suite, "jk test --suite " + suite));
+            tasks.add(taskEntry("jk: test · " + suite, "jk test -s " + suite));
         }
         return "{\n  \"version\": \"2.0.0\",\n  \"tasks\": [\n" + String.join(",\n", tasks) + "\n  ]\n}\n";
     }

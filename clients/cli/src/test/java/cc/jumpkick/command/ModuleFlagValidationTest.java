@@ -67,7 +67,7 @@ class ModuleFlagValidationTest {
 
     @Test
     void build_headless_rejects_an_unknown_selector(@TempDir Path dir) throws Exception {
-        // the CI shape `jk build -m … --output json` validates the selector (and honors
+        // the CI shape `jk build -m … -O jsonl` validates the selector (and honors
         // it) instead of silently building everything.
         workspace(dir);
         Run r = run("build", "-C", dir.toString(), "-m", "bogus", "--output", "json");

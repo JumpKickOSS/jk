@@ -20,7 +20,7 @@
     {
       "label": "jk: test · integration",
       "type": "shell",
-      "command": "jk test --suite integration",
+      "command": "jk test -s integration",
       "group": "test",
       "presentation": { "reveal": "always", "panel": "shared" },
       "problemMatcher": []

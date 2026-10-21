@@ -83,10 +83,10 @@ Three tiers:
 - `jk test -m clients/intellij`: unit tests over the reader, the wire model, root discovery and the
   graph (a captured two-module `ide-model` under `src/test/resources`), the debouncer and the
   manifest filter;
-- `jk test -m clients/intellij --profile integration`: `IdeHostedTest` runs the IntelliJ Platform
+- `jk test -m clients/intellij -p integration`: `IdeHostedTest` runs the IntelliJ Platform
   tests (`HeavyPlatformTestCase`) in one headless IDE: the debounced trigger over real VFS events,
   and the import's task runs and error lines against a stub `jk`;
-- `jk test -m clients/intellij --profile network`: `IdeHostedJkTest` runs the two that drive the
+- `jk test -m clients/intellij -p network`: `IdeHostedJkTest` runs the two that drive the
   `jk` on PATH, a released client that fetches its engine from the release site in the sandbox
   home. `JkWorkspaceImportTest`'s import test imports a two-module workspace through the real
   external-system path — link, resolver running that `jk`, platform applying the result — and

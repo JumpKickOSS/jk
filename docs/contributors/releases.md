@@ -38,7 +38,7 @@ has nothing to say. This section is the one home for release highlights; there i
   remembered, and the lock's JDK pin prints as `temurin 25.0.4.1`.
 - **OpenJFX.** A contrib `[javafx]` battery puts the project's OpenJFX modules on the module path
   of the test JVM and `jk run`.
-- **`jk test --exclusive` (`-X`)** compiles the selected modules' prerequisites and runs only those
+- **`jk test -X` (`-X`)** compiles the selected modules' prerequisites and runs only those
   modules' suites.
 - **Smaller:** Grails templates, docs and tests pin Grails 8.0.0; Ctrl-C cancels a job whose start
   arrives after the signal; a test JVM that exits 0 before its plan finishes fails the run; a
@@ -202,7 +202,7 @@ has nothing to say. This section is the one home for release highlights; there i
 - **Every JDK or GraalVM jk installs for you shows the `jk jdk install` experience.** The installer's
   engine warm-up, a build that pins a JDK not yet in the store, and a native build's GraalVM all
   render the same download bar, install phase and "installed at" line, then continue; plain mode
-  prints the phases, `--output json` emits a `toolchain` plan ahead of the build's.
+  prints the phases, `-O jsonl` emits a `toolchain` plan ahead of the build's.
 - **The Windows installer works on Windows PowerShell 5.1**: its architecture probe no longer dies
   on a runtime without `RuntimeInformation`, native programs' stderr (`java -version`) is read as
   text instead of ending the run, and when a release has no Windows native client yet it installs

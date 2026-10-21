@@ -105,9 +105,9 @@ this way, with a guard that refuses a version spelled in a workflow
 ```bash
 # PR / push: the cheap share-the-commit bar (unit + integration if it exists).
 jk test -j0 -w0
-jk test --suite integration -j0 -w0   # skip if the tree has no integration suite
+jk test -s integration -j0 -w0                  # skip if the tree has no integration suite
 # or a subset:
-jk test --modules 'api,worker'
+jk test -m 'api,worker'
 # jk test --affected / --affected-since=HEAD~2  # ranked list only; does not run
 ```
 
@@ -122,11 +122,11 @@ Nightly:
 jk test --all -j0 -w0          # every suite; still keep bench out of a red gate
 ```
 
-Format gate: `jk format --check`. Outdated deps: `jk outdated --output json` is a non-empty
+Format gate: `jk format --check`. Outdated deps: `jk outdated -O jsonl` is a non-empty
 array exactly when a dependency can move (exit code is always 0 on success). Archive `target/jk-results.md` and
 `target/jk-profile.json` as artifacts.
 
-Vulnerabilities: `jk audit --severity HIGH --output json | tee target/jk-audit.jsonl` under
+Vulnerabilities: `jk audit --severity HIGH -O jsonl | tee target/jk-audit.jsonl` under
 `set -o pipefail` — the exit status is the verdict, the JSON lines are the artifact to annotate
 from, and `[audit] ignore` with a reason is the only accepted silence ([Publish](publish.md#audit)).
 
@@ -147,7 +147,7 @@ GitHub code scanning reads unchanged:
     category: jk-guard
 ```
 
-`jk guard --output sarif` prints the same document; `--output json` streams one `guard` event per
+`jk guard --output sarif` prints the same document; `-O jsonl` streams one `guard` event per
 violation — [Machine output](machine-output.md#guards). Baselined sites arrive as suppressed
 results with the baseline's reason, so the code-scanning view shows what the team accepted and why.
 

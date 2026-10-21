@@ -302,7 +302,7 @@ public final class JdkInstallCommand implements CliCommand {
         // download + extract are owned by JdkService.install; the CLI keeps only
         // the presentation — the shared JdkInstallView drives the download bar and
         // the installing spinner off the facade's listener events and prints the
-        // done lines, while JdkEnsureProgress labels the step for --output json.
+        // done lines, while JdkEnsureProgress labels the step for -O jsonl.
         // Merged into one step because install() is a single atomic call;
         // interactive plans render via SilentListener, so step labels aren't
         // shown and the bars/done-lines are the only visible output.

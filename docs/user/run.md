@@ -142,7 +142,7 @@ listening on http://localhost:8080
 web exited with 1
 ```
 
-Under `--output json` every line is an event with its source — `sidecar-output` with `name`,
+Under `-O jsonl` every line is an event with its source — `sidecar-output` with `name`,
 `stream`, and `line`; `sidecar-started`, `sidecar-ready`, `sidecar-exited` for the lifecycle;
 `dev-ready` for the `ready ·` line — and the app is piped too, as `app-output`, so stdout stays one
 JSONL stream. Field by field:

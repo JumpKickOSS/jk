@@ -220,7 +220,7 @@ class WorkspaceRunViewTest {
     @Test
     void a_run_level_verdict_over_green_modules_is_the_failure_line_itself() {
         String why = "--class named 1 class the tag filter excluded: a.BenchTest [bench];"
-                + " pass --include-tags bench (or a --profile that includes it) to run it";
+                + " pass --include-tags bench (or a -p profile that includes it) to run it";
         var verdict = new WorkspaceResult(
                 false, 4, List.of(new ModuleOutcome("g:fmt", Path.of("/ws/fmt"), true, 0, 1, true)), List.of(why));
         assertThat(WorkspaceRunView.errorStep(verdict)).isEqualTo("test");

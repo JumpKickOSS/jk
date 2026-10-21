@@ -96,7 +96,7 @@ class TagExcludedSuiteE2eTest {
         assertThat(tests.failed()).isZero();
     }
 
-    /** The plan of {@code jk test --profile nightly}: the profile's tags resolved onto the session. */
+    /** The plan of {@code jk test -p nightly}: the profile's tags resolved onto the session. */
     private static BuildPlan lockAndPlan(Path project) throws Exception {
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         Path cache = TestCaches.dir("tag-excluded-suite-cache");

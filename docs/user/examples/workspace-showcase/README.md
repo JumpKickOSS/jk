@@ -47,13 +47,13 @@ lines appear with real compile times. `--redo` forces the work either way, which
 order shows: `lib` is compiled before the `app` that depends on it.
 
 ```console
-$ jk build --redo
+$ jk build -r
 ✓ [1 of 2] com.example:lib took 1.2s
 ✓ [2 of 2] com.example:app took 454ms
  ✓ Build   Build successful for 2 modules took 1.3s
 ```
 
-Both modules have tests, and `jk test --redo` runs all four —
+Both modules have tests, and `jk test -r` runs all four —
 `target/jk-results.md` records `Tests: **100%** pass · 4 passed (4 total)`.
 
 ## What the manifests say

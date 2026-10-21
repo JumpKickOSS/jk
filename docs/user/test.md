@@ -9,8 +9,8 @@ jk test                              # unit rung — default suite only. Inner l
 jk test --guard                       # share-the-commit: unit + integration (if present) + guard scripts
 jk test --scripts-only               # guard scripts, no JUnit
 jk test --guard --no-scripts          # guard suites, skip extra scripts
-jk test --suite integration          # -s is the short form. Climb one named suite.
-jk test --suite e2e                  # UI / compose / contract; not a habit
+jk test -s integration              # climb one named suite
+jk test -s e2e                      # UI / compose / contract; not a habit
 jk test --all                        # every suite; tag excludes cleared. Nightly / release.
 jk test --exclude-tags slow,bench
 jk test --include-tags smoke
@@ -70,7 +70,7 @@ paths: Failsafe's `**/*IT.java` is `*IT` here, and `jk import` writes the mappin
 
 - The suite's classes are the classes of the default suite's sources (`src/test/java`,
   `test/src/`, …) its patterns match. **Plain `jk test` leaves every one of them out**, and
-  `jk test --suite integration` runs them and nothing else. `--guard` runs both, `--all` every
+  `jk test -s integration` runs them and nothing else. `--guard` runs both, `--all` every
   suite. Both runs read the one `compile-test` output, so switching between them recompiles
   nothing.
 - A suite that also has a directory (`src/integration/java`) runs that directory's classes too,
@@ -84,11 +84,11 @@ paths: Failsafe's `**/*IT.java` is `*IT` here, and `jk import` writes the mappin
   --suite integration --class FooIT)`, or a `class-in-other-suite` warning when other classes
   matched. `--affected` ranks only the selected suites' classes.
 - The run-tests output names the suites it ran, for instance `test suites: test — left out:
-  integration (IT*, *IT, *ITCase), run with jk test --suite <name>`, and the patterns are part of the
-  run's stamp. Each test failure carries the suite it ran in (`suite` in `--output jsonl`,
+  integration (IT*, *IT, *ITCase), run with jk test -s <name>`, and the patterns are part of the
+  run's stamp. Each test failure carries the suite it ran in (`suite` in `-O jsonl`,
   `details.jsonl` and MCP diagnostics; `(integration suite)` beside the test in
   `target/jk-results.md` for any suite but `test`).
-- `jk ide` writes a `jk test --suite <name>` run configuration (VS Code: a task) for a pattern suite
+- `jk ide` writes a `jk test -s <name>` run configuration (VS Code: a task) for a pattern suite
   as for a directory suite, and MCP `affected_tests` and the progress estimate count only the
   selected suites' classes.
 
@@ -104,7 +104,7 @@ same facts, model and text the declarative rules in `jk-guards.toml` read (see
 the test compile classpath (so ArchUnit or Konsist come from `[test-dependencies]`; there is no
 `[guard-dependencies]`) and `cc.jumpkick:jk-guards-junit` at the installed jk's version, which jk
 provisions from its local store and pins in `jk-lock.toml` — nothing to declare. Discovery never
-returns `guard`: `jk test`, `--all` and `--guard` do not collect it, `--suite guard` is an error
+returns `guard`: `jk test`, `--all` and `--guard` do not collect it, `-s guard` is an error
 that says so, and the guard lanes run it. `jk ide` exports the directory as a test root so a guard
 test has a debugger. The rules themselves, their kinds and their baseline: [Guards](guards.md).
 
@@ -135,7 +135,7 @@ drops one of those classes, the module fails with the class, its tags and the pr
 it, whatever else ran:
 
 ```
---class named 1 class the tag filter excluded: com.example.OrdersIT [integration]; pass --include-tags integration (or a --profile that includes it) to run it; --profile integration runs it
+--class named 1 class the tag filter excluded: com.example.OrdersIT [integration]; pass --include-tags integration (or a -p profile that includes it) to run it; -p integration runs it
 ```
 
 Run it again with that `--profile` (or `--include-tags`). `--no-profile` lifts only a profile's
@@ -233,7 +233,7 @@ still names every class that completed ([Machine output](machine-output.md#event
 read one benchmark's table:
 
 ```bash
-jk test --profile bench --class com.example.FormatBenchTest
+jk test -p bench --class com.example.FormatBenchTest
 cat target/surefire-reports/TEST-com.example.FormatBenchTest.xml
 ```
 

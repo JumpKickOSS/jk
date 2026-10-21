@@ -36,7 +36,7 @@ force = false
 verdict on stdout and skip progress, colour, and OSC. Shapes are in [MCP](mcp.md#verdict).
 The same text is selected when stdout is not a terminal and the process carries a variable a
 coding-agent CLI sets on commands it spawns. A pipe or a CI log without that variable keeps
-today's output. `--output json` stays the live event stream unless `--agent` or `JK_AGENT=1`
+today's output. `-O jsonl` stays the live event stream unless `--agent` or `JK_AGENT=1`
 is set.
 
 **`notify`:** `auto` (default) sends an OSC desktop notification when a build’s ETA **or**

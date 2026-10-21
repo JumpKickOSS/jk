@@ -13,5 +13,5 @@ jk publish       # dry-run by default; see `jk skill`
 The javadoc jar is Dokka's javadoc-format output, the form a Maven Central release expects;
 `[dokka] version` names the Dokka release and `jk update` moves it.
 
-`jk test` is the fast tier; `jk test --profile integration` (or `network`, `slow`, `bench`) runs the
+`jk test` is the fast tier; `jk test -p integration` (or `network`, `slow`, `bench`) runs the
 tests tagged with that cost.

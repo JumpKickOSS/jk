@@ -17,12 +17,12 @@ is done:
 jk format                        # formats; `jk format --check` is the same verdict without writing
 jk guard                         # every house-rule lane, the tree lane and the fixture proofs included
 jk build                         # every module compiled, packaged and its fast test tier run
-jk test --profile integration    # the pre-merge bar: engine, e2e and worker suites
+jk test -p integration           # the pre-merge bar: engine, e2e and worker suites
 ```
 
 `jk build` must not rewrite the committed `jk-lock.toml`: the manifests pin exactly, so a build
 that moves the lock means a pin drifted or the lock writer put something non-deterministic in the
-file. `jk test --profile slow` is due when a change touches a framework or language plugin; the
+file. `jk test -p slow` is due when a change touches a framework or language plugin; the
 `network` and `bench` profiles are nightly and gate nothing.
 
 The shell fixtures and lints are part of the same bar when a script or a workflow moves:
@@ -45,8 +45,8 @@ eight minutes). A guard failure is annotated with the rule that owns it.
 | What produces the `jk` under test | the hosted release the pin names bootstraps; `jk install` then swaps in the checkout's own client, engine and workers |
 | Where CI installs it | `$GITHUB_WORKSPACE/../jk-home`, beside the checkout so no guard lane walks the store — never the runner's `~/.jk` |
 | What proves the graph is honest | `jk build` must not rewrite the committed `jk-lock.toml`; `cmp` of `target/dist/jk` against `$JK_HOME/bin/jk` and the engine sha against `jk-engine.toml` prove the takeover |
-| What audits the graph | `jk audit --severity HIGH --output json` over the committed lock, after the drift check, by the checkout's own jk: HIGH, CRITICAL and unlabelled advisories fail the job, `scripts/ci-audit-annotate.sh` names each one, the JSON is the `jk-audit` artifact; a pin bump or an `[audit] ignore` with a reason is the fix, never a skipped step |
-| What runs nightly | `jk test --profile integration`, `--profile slow`, `--profile network`, `--profile bench`, the coverage ratchet (`jk test --coverage`, `jk guard`), the heap guard, the doc examples, the audit at `LOW` (informational), the macOS product smoke and the JVM client smoke on a runner with a plain JDK and no GraalVM (`ci-nightly.yml`) |
+| What audits the graph | `jk audit --severity HIGH -O jsonl` over the committed lock, after the drift check, by the checkout's own jk: HIGH, CRITICAL and unlabelled advisories fail the job, `scripts/ci-audit-annotate.sh` names each one, the JSON is the `jk-audit` artifact; a pin bump or an `[audit] ignore` with a reason is the fix, never a skipped step |
+| What runs nightly | `jk test -p integration`, `-p slow`, `-p network`, `-p bench`, the coverage ratchet (`jk test --coverage`, `jk guard`), the heap guard, the doc examples, the audit at `LOW` (informational), the macOS product smoke and the JVM client smoke on a runner with a plain JDK and no GraalVM (`ci-nightly.yml`) |
 | Wall-clock series | `bench/scoreboard --tier night` on the reference host, banked in `scoreboard.toml` ([perf](../perf/README.md)) |
 
 Guard **G57** (`ci-cadence`) keeps the self-host job, its isolated `JK_HOME`, the four verbs it
@@ -106,7 +106,7 @@ When the tree already carries a format the pinned release cannot read — it hap
 `clients/web` started writing a `[node]` lock table — CI bridges it until a release that reads the
 tree is hosted. `.jk/ci-bootstrap-reader` names a bridge commit (one full sha) that the pinned
 release can build and whose jk reads the tree; `scripts/ci-bootstrap.sh` checks it out beside the
-job, has the pinned release relock it in its own format (`jk lock --force`: the bridge checkout is
+job, has the pinned release relock it in its own format (`jk lock -F`: the bridge checkout is
 thrown away, never committed) and build and install it, and every later step of the job builds the
 tree with the bridge. A bridge that adds a plugin and uses it in the same tree is built without the
 members that open a table the pinned release's plugins do not own, so the release builds that plugin
@@ -225,7 +225,7 @@ jk lock
 jk build --skip-tests
 jk install
 jk test                          # the fast tier, every module
-jk test --profile integration    # the pre-merge bar
+jk test -p integration           # the pre-merge bar
 ```
 
 Workspace members: libraries, `clients/cli`, `clients/cli-terminal`, `clients/web`, `server/engine`
@@ -275,10 +275,10 @@ tier:
 
 ```bash
 jk test                          # fast tier, untagged only
-jk test --profile integration    # the pre-merge bar
-jk test --profile slow           # framework / language e2e (nightly)
-jk test --profile network        # talks to a real remote (nightly)
-jk test --profile bench          # microbenchmarks (nightly)
+jk test -p integration           # the pre-merge bar
+jk test -p slow                  # framework / language e2e (nightly)
+jk test -p network               # talks to a real remote (nightly)
+jk test -p bench                 # microbenchmarks (nightly)
 jk test --all                    # everything, no tag filter
 ```
 
@@ -356,7 +356,7 @@ fork next. The engine therefore names its workers by content, not by path:
 Two worktrees installing in turn therefore leave the live engine the last installer's, every fork
 of it running that installer's workers, and the displaced engine draining with the workers it was
 installed with. `jk engine status` prints the checkout the hosted engine's shelf came from as its
-`Source` row (`installSource` in `--output json` and `GET /api/status`), and the install's summary
+`Source` row (`installSource` in `-O jsonl` and `GET /api/status`), and the install's summary
 says how many jars it pinned and to which engine. An engine run from a classes directory has no
 jar identity and pins nothing.
 

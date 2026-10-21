@@ -561,7 +561,7 @@ public final class TestSupport {
                     int workerId) {
                 // Code "test-failure" (not "test") marks a per-test failure that is
                 // already shown in full by the run-tests renderFailures block. The
-                // diagnostic still flows to JSON consumers (details.jsonl / --output json),
+                // diagnostic still flows to JSON consumers (details.jsonl / -O jsonl),
                 // but human listeners suppress the text banner so the same failure isn't
                 // printed twice. Test *infra* errors keep code "test" and still surface.
                 String methodLabel = method != null && !method.isBlank() ? method : label;

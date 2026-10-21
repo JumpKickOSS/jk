@@ -449,7 +449,7 @@ public final class NewProjectOps {
                     + ref
                     + " (looked under $JK_TEMPLATES, "
                     + JkDirs.templates()
-                    + ", monorepo templates/; try `jk new --template "
+                    + ", monorepo templates/; try `jk new -t "
                     + ref
                     + "` once to populate the store, or drop a .g8 with .jk-template.toml under "
                     + JkDirs.templates().resolve("<lang>").resolve("<framework>")

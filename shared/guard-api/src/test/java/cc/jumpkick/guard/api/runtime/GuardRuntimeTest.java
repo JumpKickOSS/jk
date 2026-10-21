@@ -99,7 +99,7 @@ class GuardRuntimeTest {
         Files.writeString(model, """
                 {"modules":["","lib"],"deps":{"lib":{"dependencies":[{"coordinate":"org.x:y","version":"^1","workspace":false}]}},
                  "lock":[{"coordinate":"org.x:y","version":"1.2","repository":"central","scopes":["main"]}],
-                 "tiers":{"tiers":[{"name":"jk test","include":[],"exclude":["slow"]},{"name":"jk test --profile slow","include":["slow"],"exclude":[]}]},
+                 "tiers":{"tiers":[{"name":"jk test","include":[],"exclude":["slow"]},{"name":"jk test -p slow","include":["slow"],"exclude":[]}]},
                  "toolchain":{"java":{"":25},"kotlin":null,"repositories":["central"]}}
                 """);
         Path report = root.resolve("target/guard/report.jsonl");

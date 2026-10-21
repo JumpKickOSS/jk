@@ -124,7 +124,7 @@ final class ParityRules {
 
     /**
      * The tiers in manifest order: {@code [test]} is {@code jk test}, and every {@code [profiles.<name>]}
-     * but {@code ci} (the fast tier under another name, auto-selected on CI) is {@code jk test --profile
+     * but {@code ci} (the fast tier under another name, auto-selected on CI) is {@code jk test -p
      * <name>}. The engine's {@code tiers} validation reads the same tables; this renders them.
      */
     private static List<Tier> tiers(List<String> manifest) {
@@ -142,7 +142,7 @@ final class ParityRules {
                 if (h.matches()) {
                     String profile = h.group(2);
                     if (profile == null) command = "jk test";
-                    else if (!profile.equals("ci")) command = "jk test --profile " + profile;
+                    else if (!profile.equals("ci")) command = "jk test -p " + profile;
                     include = new ArrayList<>();
                     exclude = new ArrayList<>();
                 }
@@ -360,10 +360,10 @@ final class ParityRules {
     private static final Pattern COMMIT_SHA = Pattern.compile("[0-9a-f]{40}");
     /** The tiers a nightly run owns: each is one `jk test` invocation the workflow must spell. */
     private static final List<String> NIGHTLY_TIERS = List.of(
-            "jk test --profile integration",
-            "jk test --profile slow",
-            "jk test --profile network",
-            "jk test --profile bench",
+            "jk test -p integration",
+            "jk test -p slow",
+            "jk test -p network",
+            "jk test -p bench",
             "jk test --coverage");
 
     private static final Pattern RELEASE_VERSION = Pattern.compile("\\d+\\.\\d+\\.\\d+");
@@ -406,7 +406,7 @@ final class ParityRules {
                         NIGHTLY
                                 + "'s jvm-client job must run scripts/ci-product-smoke.sh with `JK_BIN=jk-jvm` — a sample built through the installed engine by the JVM client");
         }
-        if (branch.contains("--coverage") || branch.contains("--profile bench"))
+        if (branch.contains("--coverage") || branch.contains("-p bench"))
             problems.add(CI + " must not run coverage or benches (they are nightly, non-gating)");
         Map<String, String> jobs = jobs(branch);
         String selfHost = jobs.get("self-host");
@@ -1093,19 +1093,19 @@ final class ParityRules {
         }
         String lane = textOrNull(text, LANE);
         if (lane == null) v.add(new TextSite(LANE, 0, "missing"), LANE + " is missing — the registry has no runner");
-        else if (!lane.contains(REGISTRY) || !lane.contains("--profile integration"))
+        else if (!lane.contains(REGISTRY) || !lane.contains("-p integration"))
             v.add(
                     new TextSite(LANE, 0, "registry"),
-                    LANE + " must read " + REGISTRY + " and run its classes under `jk test --profile integration`");
+                    LANE + " must read " + REGISTRY + " and run its classes under `jk test -p integration`");
         if (!HouseRules.owner(text, CI).contains(LANE))
             v.add(
                     new TextSite(CI, 0, LANE),
                     CI + " must run " + LANE + " — a registry no pull request executes is documentation, not a gate");
-        if (!HouseRules.owner(text, NIGHTLY).contains("jk test --profile integration"))
+        if (!HouseRules.owner(text, NIGHTLY).contains("jk test -p integration"))
             v.add(
                     new TextSite(NIGHTLY, 0, "integration"),
                     NIGHTLY
-                            + " must still run the full `jk test --profile integration`; the curated lane is a subset, never a replacement");
+                            + " must still run the full `jk test -p integration`; the curated lane is a subset, never a replacement");
         String doc = text(text, TIERS_DOC);
         if (!doc.contains(REGISTRY))
             v.add(new TextSite(TIERS_DOC, 0, "registry"), TIERS_DOC + " must name " + REGISTRY);

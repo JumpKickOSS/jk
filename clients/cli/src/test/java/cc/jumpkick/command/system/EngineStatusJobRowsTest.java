@@ -7,7 +7,7 @@ import cc.jumpkick.cli.engine.EngineProbe;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** The job rows under {@code Live Jobs} and {@code Queued}, and their {@code --output json} array. */
+/** The job rows under {@code Live Jobs} and {@code Queued}, and their {@code -O jsonl} array. */
 class EngineStatusJobRowsTest {
 
     private static final long NOW = 1_700_007_500_000L;

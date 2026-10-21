@@ -88,7 +88,7 @@ class TierPartitionTest {
                 """);
         assertThat(t.tiers())
                 .extracting(TierPartition.Tier::name)
-                .containsExactly("jk test", "jk test --profile network", "jk test --profile slow");
+                .containsExactly("jk test", "jk test -p network", "jk test -p slow");
         assertThat(t.vocabulary()).containsExactly("network", "slow");
         assertThat(TierPartition.partitionFaults(t)).isEmpty();
     }
@@ -124,7 +124,7 @@ class TierPartitionTest {
                 include-tags = ["slow"]
                 """);
         assertThat(TierPartition.partitionFaults(t)).singleElement().satisfies(f -> assertThat(f.observed())
-                .contains("@Tag[slow] — run by 2 tiers: [jk test --profile a, jk test --profile b]"));
+                .contains("@Tag[slow] — run by 2 tiers: [jk test -p a, jk test -p b]"));
     }
 
     @Test

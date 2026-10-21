@@ -36,7 +36,7 @@ import org.jspecify.annotations.Nullable;
  * token, wire JSON) dispatch begins the command in script mode: no leading or trailing blank on
  * stdout and no {@link PlainAscii} rewrite of it, so the payload is byte-exact. stderr keeps full
  * human treatment — it is for the person at the terminal even when stdout is piped. Commands
- * declare the mode via {@code CliCommand.scriptMode(Invocation)}; {@code --output json}/{@code
+ * declare the mode via {@code CliCommand.scriptMode(Invocation)}; {@code -O jsonl}/{@code
  * jsonl} enters it too.
  *
  * <h2>Encoding</h2>
@@ -104,7 +104,7 @@ public final class CliOutput {
 
     /**
      * Per-command flags {@link #beginCommand} owns. Captured/restored by the test boundary so a
-     * script-mode leaf (or {@code --output json}) cannot leave {@link #scriptMode()} true for the
+     * script-mode leaf (or {@code -O jsonl}) cannot leave {@link #scriptMode()} true for the
      * next class in the same worker — Spinner and ProgressRow treat that flag as silence.
      */
     record State(

@@ -44,7 +44,7 @@ Register the engine once with an MCP client that speaks Streamable HTTP. The thr
 URL, the bearer header, and HTTP transport:
 
 ```bash
-jk engine status --output json   # mcpUrl
+jk engine status -O jsonl   # mcpUrl
 # token file: ~/.jk/state/engine/<key>.http-token
 ```
 
@@ -97,7 +97,7 @@ A failure with no failed step, test or source error carries its reason on the he
 ` — `: the run-level error that decided it, or else the warning the run left.
 
 ```
-FAIL test jk · 9.5s — --class named 1 class the tag filter excluded: com.example.FormatThreadsBenchTest [bench]; pass --include-tags bench (or a --profile that includes it) to run it; --profile bench runs it
+FAIL test jk · 9.5s — --class named 1 class the tag filter excluded: com.example.FormatThreadsBenchTest [bench]; pass --include-tags bench (or a -p profile that includes it) to run it; -p bench runs it
 ```
 
 Paths are relative to the project directory. A quoted source row is its line number, `|`, a
@@ -128,7 +128,7 @@ call answers with the cancelled verdict. Over HTTP, send the cancel with the cal
 
 The CLI prints the same text with `--agent` or `JK_AGENT=1`, and when stdout is not a terminal
 and the process was spawned by a coding-agent CLI. Human terminals keep today's output.
-`--output json` stays the live event stream.
+`-O jsonl` stays the live event stream.
 
 ## Tools
 
@@ -152,7 +152,7 @@ The whole registry:
 |------|------|
 | **`skill`** | JumpKick skill (markdown). Same as CLI `jk skill`. Resource: `jk://skill`. `topic` loads one page |
 | **`bind`** | Set or switch the connection's project dir; returns a project card. Not on the default list: the first call that carries `dir` binds |
-| **`status`** | Engine vitals (pid, version, heap) and the `jobs` array — every live and queued job as the same row `jk engine status --output json` and `GET /api/status` carry (`jid`, `kind`, `dir`, `state`, `since`, `workers`, `lastEventAt`, `ahead`) |
+| **`status`** | Engine vitals (pid, version, heap) and the `jobs` array — every live and queued job as the same row `jk engine status -O jsonl` and `GET /api/status` carry (`jid`, `kind`, `dir`, `state`, `since`, `workers`, `lastEventAt`, `ahead`) |
 | **`project`** | Project card (coord, java, members, last run) |
 | **`run`** | Start a job and, by default, wait. The reply is the verdict (see above). `jid` waits on a job already started instead. `kind` is `test` (default) \| `build` \| `guard` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `import`. Publish is **always a dry-run**. `only` limits modules. `run=<id>` with no `kind` reads an earlier verdict. Optional `modules`/`suites`/`include_tags`/`exclude_tags`/`skip_tests`/`timeout_s` (default 240). `deadline_s` caps the job's wall time; default is the engine's `detached-deadline-ms` (1 hour), `0` = none. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit |
 | **`build`** / **`test`** / **`lock`** | Async convenience aliases (return `jid` immediately) |

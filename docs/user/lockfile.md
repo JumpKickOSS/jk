@@ -96,13 +96,13 @@ platform BOM that manages the package down.
 jk outdated                 # one row per coordinate an update would move
 jk outdated --by-module     # one row per module and dependency instead
 jk outdated --all           # every declared dependency, up to date included
-jk outdated --output json
+jk outdated -O jsonl
 jk outdated --offline
 ```
 
 Every row is a live repository read, so a workspace takes seconds: the terminal shows an
 Outdated wedge with a progress bar counting dependencies checked while the engine fetches, and
-the table takes the bar's place when the report lands. `--output json`, a pipe and
+the table takes the bar's place when the report lands. `-O jsonl`, a pipe and
 `--no-progress` paint nothing until the report.
 
 | Column | Meaning |
@@ -135,7 +135,7 @@ module** table with the rows behind it, and an **Up to date** list. The CLI prin
 line naming the file; read it instead of running the command again.
 
 Exit code is always `0` on a successful report. There is no `--fail-if-outdated` — lockfile
-changes stay intentional. For CI “fail if drift”, `--output json` is a non-empty array exactly
+changes stay intentional. For CI “fail if drift”, `-O jsonl` is a non-empty array exactly
 when something can move.
 
 `--offline` uses only local cache / repo mirrors. Unreachable remotes look empty on
@@ -524,7 +524,7 @@ version that does not know its key(s) artifact[].mirror — a relock with it wou
 ```
 
 Install the jk that wrote the lock (`jk self update`, or `jk install --skip-tests` from its
-checkout) and run `jk engine stop` so the next command starts it; `jk lock --force` rewrites the
+checkout) and run `jk engine stop` so the next command starts it; `jk lock -F` rewrites the
 lock with the running jk anyway. A newer jk always may relock, and a lock the same build wrote is
 never in question. A key whose *meaning* changed is not this check's to catch: the lock's `jk-min`
 floor refuses a jk too old to read it right.

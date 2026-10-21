@@ -10,5 +10,5 @@ jk build         # jar with git.properties, plus sources and javadoc jars, under
 jk publish       # dry-run by default; see `jk skill`
 ```
 
-`jk test` is the fast tier; `jk test --profile integration` (or `network`, `slow`, `bench`) runs the
+`jk test` is the fast tier; `jk test -p integration` (or `network`, `slow`, `bench`) runs the
 tests tagged with that cost.

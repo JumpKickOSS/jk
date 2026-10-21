@@ -100,7 +100,7 @@ public final class TierPartition {
                     continue;
                 }
                 tiers.add(new Tier(
-                        "jk test --profile " + e.getKey(),
+                        "jk test -p " + e.getKey(),
                         new LinkedHashSet<>(e.getValue().includeTags()),
                         new LinkedHashSet<>(e.getValue().excludeTags())));
             }

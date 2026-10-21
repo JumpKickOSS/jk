@@ -44,7 +44,7 @@ class IdeSuiteRunConfigTest {
         assertThat(Files.isRegularFile(runDir.resolve("jk_test_integration.xml")))
                 .isTrue();
         String integ = Files.readString(runDir.resolve("jk_test_integration.xml"));
-        assertThat(integ).contains("jk test --suite integration");
+        assertThat(integ).contains("jk test -s integration");
     }
 
     @Test
@@ -89,6 +89,6 @@ class IdeSuiteRunConfigTest {
         String tasks = VscodeIdeGenerator.tasksJson(model);
         assertThat(tasks).contains("jk: test");
         assertThat(tasks).contains("jk test --all");
-        assertThat(tasks).contains("jk test --suite integration");
+        assertThat(tasks).contains("jk test -s integration");
     }
 }

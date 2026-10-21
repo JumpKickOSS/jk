@@ -4,7 +4,7 @@ Default `jk test` and `run(kind=test)` run the unit suite only. That is the inne
 
 - Fixing a unit: `jk test`
 - About to push, or the change touches DB, HTTP, or the filesystem: `jk test --guard`
-- One named suite: `jk test --suite integration`
+- One named suite: `jk test -s integration`
 - Not as a habit: `jk test --all`
 
 MCP climbs with `suites=["integration"]`. Do not pass every suite. Replay the same selection after a failure.

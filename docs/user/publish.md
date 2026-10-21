@@ -124,7 +124,7 @@ exclusive repository groups — [Repositories](repositories.md).
 ```bash
 jk audit                       # report everything, gate at LOW
 jk audit --severity HIGH       # gate at HIGH and above
-jk audit --output json         # one JSON line per finding
+jk audit -O jsonl              # one JSON line per finding
 ```
 
 ### Exit status
@@ -138,13 +138,13 @@ clean report produced without asking OSV would be a claim about safety nobody ma
 
 A CI gate is `jk audit --severity HIGH` and a non-zero exit.
 jk's own repository runs exactly that in its self-host job, after the lock-drift check: the
-`--output json` lines are kept as an artifact and each finding becomes one annotation
+`-O jsonl` lines are kept as an artifact and each finding becomes one annotation
 (`scripts/ci-audit-annotate.sh`, one `::error` per blocking advisory), and the nightly run reports
 at `LOW` without gating ([CI](ci.md)).
 
 ### JSON
 
-With `--output json` every finding is one line in the [machine envelope](machine-output.md)
+With `-O jsonl` every finding is one line in the [machine envelope](machine-output.md)
 (`schema` 1, `ts`, `type`), after the run's own plan events:
 
 ```json

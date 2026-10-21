@@ -195,7 +195,7 @@ class TestClassSelectionE2eTest {
     }
 
     private static final String BENCH_EXCLUDED = "--class named 1 class the tag filter excluded:"
-            + " com.example.BenchTest [bench]; pass --include-tags bench (or a --profile that includes it) to run it";
+            + " com.example.BenchTest [bench]; pass --include-tags bench (or a -p profile that includes it) to run it";
 
     @Test
     void serial_tagged_classes_alone_satisfy_the_pattern(@TempDir Path tmp) throws Exception {

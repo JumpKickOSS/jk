@@ -31,7 +31,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * What the {@code jk node} verbs share beyond {@link NodeInstalls}: an engine-hosted install of what
- * is missing, running a command under a Node.js home, and the {@code --output json} rows.
+ * is missing, running a command under a Node.js home, and the {@code -O jsonl} rows.
  */
 public final class NodeCli {
 
@@ -168,7 +168,7 @@ public final class NodeCli {
         return program;
     }
 
-    /** One {@code --output json} row of {@code type}: the envelope, then what {@code fields} adds. */
+    /** One {@code -O jsonl} row of {@code type}: the envelope, then what {@code fields} adds. */
     static void row(String type, Consumer<JsonFields> fields) {
         JsonFields line = JsonlEnvelope.open(Clock.SYSTEM.millis(), type);
         fields.accept(line);

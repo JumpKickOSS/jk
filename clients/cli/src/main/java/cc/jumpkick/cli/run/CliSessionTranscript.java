@@ -29,7 +29,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Incremental CLI session transcript as {@code details.jsonl} under the project run dir
  * ({@code ~/.jk/state/builds/projects/&lt;key&gt;/runs/&lt;id&gt;/details.jsonl}). Same event shape as
- * {@code --output json}/{@code jsonl} ({@link JsonlShape}, schema 1), appended live so agents can
+ * {@code -O jsonl} ({@link JsonlShape}, schema 1), appended live so agents can
  * {@code tail -F} mid-run.
  *
  * <p>On open the session buffers until {@link #bindJob} (from engine {@code job-start}) points at the

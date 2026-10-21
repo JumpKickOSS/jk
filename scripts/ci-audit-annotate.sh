@@ -3,7 +3,7 @@
 #
 # Usage:
 #   scripts/ci-audit-annotate.sh <audit.jsonl> <threshold>
-# <audit.jsonl> is the stdout of `jk audit --output json` (plan events and one `audit-finding` line
+# <audit.jsonl> is the stdout of `jk audit -O jsonl` (plan events and one `audit-finding` line
 # per finding); <threshold> is the --severity the audit gated at (CRITICAL|HIGH|MEDIUM|LOW). A
 # finding at or above the threshold that no unexpired [audit] ignore entry covers is an ::error
 # — the ones that failed the step, each attributed to its advisory; one below the threshold is a
@@ -54,7 +54,7 @@ while IFS=$'\t' read -r id pkg version severity summary fixed_in is_ignored reas
     rows+=("| $id | $where | $severity | ignored: $reason |")
   elif [[ "$(rank "$severity")" -ge "$floor" ]]; then
     blocking=$((blocking + 1))
-    echo "::error title=$id::$where $detail; jk audit --output json prints the finding, [audit] ignore in jk.toml accepts it with a reason"
+    echo "::error title=$id::$where $detail; jk audit -O jsonl prints the finding, [audit] ignore in jk.toml accepts it with a reason"
     rows+=("| $id | $where | $severity | **blocking** |")
   else
     below=$((below + 1))

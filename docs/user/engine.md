@@ -38,7 +38,7 @@ the running build and refuses with its number.
 
 `jk engine status` prints the engine's version and, when the engine was installed by
 `jk install` from a checkout, a `Source` row naming that checkout — the one whose workers this
-engine forks (`installSource` in `--output json` and `GET /api/status`; see
+engine forks (`installSource` in `-O jsonl` and `GET /api/status`; see
 [install](install.md#on-disk-layout)). It lists every job the engine holds under its `Live Jobs`
 and `Queued` rows — jid, kind, project directory, when it was admitted or arrived, its live worker
 processes and how long since its last task event:
@@ -51,7 +51,7 @@ processes and how long since its last task event:
             #742 format /home/me/tool · behind 1 · waiting 4m
 ```
 
-`--output json` carries the same rows as `jobs` (`jid`, `kind`, `dir`, `state` = `live` |
+`-O jsonl` carries the same rows as `jobs` (`jid`, `kind`, `dir`, `state` = `live` |
 `queued`, `since`, `workers`, `lastEventAt`, `ahead`); `GET /api/status`, the socket status
 frame, the dashboard's live `status` frame and the MCP `status` tool carry the identical array,
 and `POST /api/cancel {"jid":N}` takes any jid it lists.
@@ -64,7 +64,7 @@ finishes. A queued job is not an error and never dies for lack of memory: the CL
 `waiting for engine memory (2 jobs ahead); live: test /home/me/app since 22:36` when it joins the
 queue and `queued behind 2 jobs for 5m, live: test /home/me/app since 22:36` once a minute while
 it waits, then proceeds as usual; `jk engine status` shows `Queued: N (waiting for engine
-memory)` and the rows above while any job waits (`--output json`: `queuedBuildPlans`, `jobs`);
+memory)` and the rows above while any job waits (`-O jsonl`: `queuedBuildPlans`, `jobs`);
 the dashboard's Activity feed shows the card as *Queued for memory* until it turns live. Ctrl-C
 and `jk cancel` dequeue a waiting job the same way they cancel a running one.
 
@@ -130,7 +130,7 @@ its last job finishes. While it drains it still answers its own socket:
 jk: x Engine > Engine is stopping (pid 19518): draining 1 job, exits by 09:17
 ```
 
-`jk engine status` and `--output json` (`draining`, `drainDeadline` in epoch millis, `jobs`) show
+`jk engine status` and `-O jsonl` (`draining`, `drainDeadline` in epoch millis, `jobs`) show
 it and its job rows, `jk cancel` reaches its jobs, and a build started meanwhile does not wait for
 it: the client starts a new engine, which takes over the endpoint while the old one finishes. Once
 that has happened, `jk engine status` lists the old engine as
@@ -245,7 +245,7 @@ and anything it started have exited. Where the memory controller cannot be hande
 below `workers`, workers share that one group. `jk engine status` reads
 `cgroup (max 13.5 GiB, 10.1 GiB per worker)` when each worker has its own group, naming the
 cap a worker at the smallest lease gets, and `cgroup (max 13.5 GiB)` when they share one.
-`--output json` carries that cap in bytes as `workerCap`, `-1` when workers share one group
+`-O jsonl` carries that cap in bytes as `workerCap`, `-1` when workers share one group
 or there is no cgroup.
 
 If that setup cannot be done (the cgroup is shared with other processes, it is not
@@ -275,7 +275,7 @@ line needs and who holds the memory, largest first:
 `job #7 needs 3.4 GiB (2.9 GiB free); held by job #3 6.1 GiB in 9 forks, build-script host 608 MiB (asked to exit)`.
 While a worker is far over its lease (below), an Over lease line names it, largest first:
 `test JVM pid 4242 (job #7) using 12.2 GiB, leased 6.7 GiB`. A resident engine keeps the environment it was started with, so
-that is how a stale override shows up. `--output json` carries the same facts as
+that is how a stale override shows up. `-O jsonl` carries the same facts as
 `workerBudgetBytes`, `workerBudgetSource` (`host`, `cgroup`, or `override`),
 `workerLeasedBytes`, `workerOverbookedBytes`, `workerQueued`, `workerRunningJvms`,
 `workerCpuCap`, `overbookingOff`, `workerWaiting` (the Waiting line, `""` when nothing
@@ -499,7 +499,7 @@ to the first — share one log: the second spawn appends to the first's rather t
 again. The running engine rolls the log to `.1` on its own when it reaches `log-max-mb` (default
 16 MiB; `0` = no cap), so a resident engine that warns in a loop for weeks cannot fill the disk.
 `jk engine status` prints a `Log` row with the current size and when this engine last rolled it;
-`--output json` carries `logBytes` and `logRolledAt` (epoch millis, `-1` = never).
+`-O jsonl` carries `logBytes` and `logRolledAt` (epoch millis, `-1` = never).
 
 Every line is leveled: `HH:mm:ss.SSS LEVEL message key=value …`, with `LEVEL` one of `DEBUG`,
 `INFO`, `WARN`, `ERROR`. `log-level` (or `JK_LOG_LEVEL`) sets the threshold, default `info`; it
@@ -513,7 +513,7 @@ are masked as `***` at every level.
 A client that connects and never sends a request is closed after 10 seconds; one that has sent
 a request is held to the same `JK_STREAM_IDLE_MS` bound the client applies to the engine (off
 while a build owns the connection). `jk engine status` prints the count as a `Dropped` row;
-`--output json` and `GET /api/status` carry it as `idleDropped`.
+`-O jsonl` and `GET /api/status` carry it as `idleDropped`.
 
 A client that stops reading — a pipe nobody drains, a process stopped without Ctrl-Z — costs the
 other clients nothing. Each connection is served on its own thread and its lines are written by
@@ -582,7 +582,7 @@ had those signals *ignored* — a background job of a script, `nohup` — would 
 ignore down to the engine and from there to every worker, test JVM and `jk dev` sidecar it forks,
 and their Ctrl-C would do nothing. The engine therefore resets both to the default disposition
 before it forks anything, and logs the mask it inherited. `jk engine status` prints a `Signals`
-row only when an ignore survived that reset; `--output json` carries it as `ignoredSignals`
+row only when an ignore survived that reset; `-O jsonl` carries it as `ignoredSignals`
 (`""` = none).
 
 HTTP / MCP knobs are `[http]` / `[mcp]`: [Config](config.md), [Web](web.md), [MCP](mcp.md).

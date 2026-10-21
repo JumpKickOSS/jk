@@ -518,7 +518,7 @@ public final class InstallCommand {
                                 : WorkspaceSpec.install(selected, graalByDir, m2Dir()));
         // The shared workspace renderer, exactly as build/test/native drive it, on the same mode
         // axis they choose on: a live region for a terminal, the append-only block for
-        // --output json / --verbose. A hand-rolled listener here is what made a failed workspace
+        // -O jsonl / --verbose. A hand-rolled listener here is what made a failed workspace
         // install print nothing at all on either stream; the headless listener on a terminal is
         // what made a succeeding one look like a log instead of a build.
         boolean json = global.outputIsJson();
@@ -622,7 +622,7 @@ public final class InstallCommand {
     }
 
     /**
-     * Workspace install without a region ({@code --output json} / {@code --verbose}): the
+     * Workspace install without a region ({@code -O jsonl} / {@code --verbose}): the
      * append-only block per module {@code jk build} prints in those modes, then the copy step's
      * lines and one wedge.
      */

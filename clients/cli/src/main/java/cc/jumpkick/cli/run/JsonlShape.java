@@ -43,7 +43,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Stable wire format for plan events as one-JSON-object-per-line text. Shared by {@link
- * JsonlListener} (stdout for {@code --output json}/{@code jsonl}) and {@link CliSessionTranscript}
+ * JsonlListener} (stdout for {@code -O jsonl}) and {@link CliSessionTranscript}
  * ({@code details.jsonl}). Every line is a record in {@link cc.jumpkick.cli.run.jsonl}; the methods
  * here stamp the clock and hand over. Centralising the shape means agents, CI, and future MCP tools
  * share one schema — see {@code docs/machine-output.md}.
@@ -222,7 +222,7 @@ public final class JsonlShape {
     }
 
     /**
-     * Enriched test-failure error for details.jsonl / --output json: module, engine, class, method,
+     * Enriched test-failure error for details.jsonl / -O jsonl: module, engine, class, method,
      * exceptionClass, and a single top-level stack (no nested throwable duplicate). With {@code
      * texts}, a message and stack the stream already carried are sent as {@code sameText}.
      */
@@ -318,7 +318,7 @@ public final class JsonlShape {
     }
 
     /**
-     * One guard violation row of the last run, as {@code jk guard --output json|jsonl} streams them
+     * One guard violation row of the last run, as {@code jk guard -O jsonl} streams them
      * after the build: the fields of {@code target/jk-guards.jsonl} under the envelope. The row is
      * already an object, so this is the other splice: the envelope's fields ahead of the row's own.
      */

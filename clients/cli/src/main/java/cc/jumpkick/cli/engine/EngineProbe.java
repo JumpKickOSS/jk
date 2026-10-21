@@ -258,7 +258,7 @@ public final class EngineProbe {
             return out;
         }
 
-        /** The row as {@code --output json} carries it, the engine's own field names. */
+        /** The row as {@code -O jsonl} carries it, the engine's own field names. */
         public String toJson() {
             return JsonFields.object()
                     .number("jid", jid)

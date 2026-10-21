@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fixtures for scripts/ci-audit-annotate.sh over a `jk audit --output json` transcript: a plan
+# Fixtures for scripts/ci-audit-annotate.sh over a `jk audit -O jsonl` transcript: a plan
 # event is skipped, a finding at or above the threshold is an ::error, one below it a ::warning,
 # one an [audit] ignore entry covers a ::notice with the reason, an expired entry counts again,
 # an unlabelled severity blocks at every threshold, the summary table is written, a missing report

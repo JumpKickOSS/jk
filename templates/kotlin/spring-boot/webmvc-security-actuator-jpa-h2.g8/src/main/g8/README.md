@@ -27,7 +27,7 @@ newer stable. Use `=4.1.0` / `=2.4.10` to freeze.
 
 ## Tiers, guards, image
 
-`jk test` is the fast tier; `jk test --profile integration` (or `network`, `slow`, `bench`) runs the
+`jk test` is the fast tier; `jk test -p integration` (or `network`, `slow`, `bench`) runs the
 tests tagged with that cost. `jk-guards.toml` holds the house rules — `jk guard explain` lists them,
 and a failure's `Instead:` line says what to do. `jk image` builds an OCI image on a JRE base with an
 AOT cache trained at build time (`[image]` in `jk.toml`).
