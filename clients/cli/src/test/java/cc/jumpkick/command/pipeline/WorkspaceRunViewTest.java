@@ -9,6 +9,7 @@ import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -175,6 +176,76 @@ class WorkspaceRunViewTest {
         var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Compile", false), Path.of("/ws"), null, false);
         String out = Capture.stdout(() -> run.finishEvent(true, 3));
         assertThat(out).doesNotContain("workspace-finish");
+    }
+
+    private static final WorkspaceRunView.Tails TAILS =
+            new WorkspaceRunView.Tails((r, n) -> "Tests passed", r -> "failed");
+
+    private static TestClassResult slowClass(String name) {
+        return new TestClassResult(
+                "g:a", name, 2, 0, 0, 3_000, "fast", List.of(new TestClassResult.SlowMethod("boots", 2_500)));
+    }
+
+    @Test
+    void a_test_run_prints_its_slowest_tests_above_the_wedge() {
+        var run = headlessView();
+        run.rankSlowestTests();
+        WorkspaceBuildListener lis = run.headless();
+        Path a = Path.of("/ws/a");
+        WorkspaceResult ok =
+                new WorkspaceResult(true, 0, List.of(new ModuleOutcome("g:a", a, true, 0, 5, true)), List.of());
+        String out = TestAnsi.strip(Capture.stdout(() -> {
+            var mod = lis.onModuleStart(module("g:a", a));
+            mod.testClass(TaskNames.RUN_TESTS, slowClass("demo.SlowTest"));
+            mod.testClass(
+                    TaskNames.RUN_TESTS, new TestClassResult("g:a", "demo.QuickTest", 9, 0, 0, 40, "fast", List.of()));
+            lis.onModuleFinish(new ModuleOutcome("g:a", a, true, 0, 5, true));
+            run.settleHeadless(ok, 10, TAILS, s -> {});
+        }));
+        assertThat(out)
+                .contains("Slowest tests\n  classes  3.0s  SlowTest        g:a · fast\n"
+                        + "  methods  2.5s  SlowTest#boots  g:a · fast\n")
+                .doesNotContain("QuickTest");
+        assertThat(out.indexOf("Slowest tests")).isLessThan(out.indexOf("Tests passed"));
+    }
+
+    @Test
+    void the_json_stream_carries_the_slowest_tests_once_before_workspace_finish() {
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Test", true), Path.of("/ws"), null, true);
+        run.rankSlowestTests();
+        WorkspaceBuildListener lis = run.headless();
+        Path a = Path.of("/ws/a");
+        WorkspaceResult ok =
+                new WorkspaceResult(true, 0, List.of(new ModuleOutcome("g:a", a, true, 0, 5, true)), List.of());
+        String out = Capture.stdout(() -> {
+            lis.onModuleStart(module("g:a", a)).testClass(TaskNames.RUN_TESTS, slowClass("demo.SlowTest"));
+            lis.onModuleFinish(new ModuleOutcome("g:a", a, true, 0, 5, true));
+            run.settleHeadless(ok, 10, TAILS, s -> {});
+        });
+        assertThat(countType(out, "slowest-tests")).isEqualTo(1);
+        assertThat(out.indexOf("\"type\":\"slowest-tests\"")).isLessThan(out.indexOf("\"type\":\"workspace-finish\""));
+        assertThat(out)
+                .contains("\"methods\":[{\"module\":\"g:a\",\"testClass\":\"demo.SlowTest\",\"method\":\"boots\"");
+    }
+
+    @Test
+    void a_verb_that_does_not_rank_and_a_quick_suite_print_no_block() {
+        for (boolean ranks : List.of(false, true)) {
+            var run = headlessView();
+            if (ranks) run.rankSlowestTests();
+            WorkspaceBuildListener lis = run.headless();
+            Path a = Path.of("/ws/a");
+            String out = Capture.stdout(() -> {
+                lis.onModuleStart(module("g:a", a))
+                        .testClass(
+                                TaskNames.RUN_TESTS,
+                                ranks
+                                        ? new TestClassResult("g:a", "demo.QuickTest", 1, 0, 0, 40, "fast", List.of())
+                                        : slowClass("demo.SlowTest"));
+                run.settleHeadless(new WorkspaceResult(true, 0, List.of(), List.of()), 10, TAILS, s -> {});
+            });
+            assertThat(out).doesNotContain("Slowest tests");
+        }
     }
 
     private static int countType(String stream, String type) {

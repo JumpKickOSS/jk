@@ -8,6 +8,7 @@ import cc.jumpkick.run.TestClassResult;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -36,7 +37,7 @@ class JsonlListenerTest {
     void a_finished_test_class_is_written_as_its_own_line() {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         JsonlListener lis = new JsonlListener(new PrintStream(buf, true, StandardCharsets.UTF_8));
-        lis.testClass("run-tests", new TestClassResult("g:a", "demo.A", 3, 1, 1, 40));
+        lis.testClass("run-tests", new TestClassResult("g:a", "demo.A", 3, 1, 1, 40, "", List.of()));
         assertThat(buf.toString(StandardCharsets.UTF_8))
                 .contains("\"type\":\"class-finish\"")
                 .contains("\"testClass\":\"demo.A\",\"tests\":3,\"failed\":1,\"skipped\":1,\"millis\":40");

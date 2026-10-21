@@ -53,6 +53,11 @@ sealed interface BuildVerb permits CompileVerb, TestVerb, PackageVerb, NativeVer
         return BuildFlags.Affected.MODULES;
     }
 
+    /** True for a verb whose settle lists the run's slowest test classes and methods. */
+    default boolean ranksSlowestTests() {
+        return false;
+    }
+
     /** Options no other build verb has; never one of {@link BuildFlags#options}. */
     default List<Opt> ownOptions() {
         return List.of();

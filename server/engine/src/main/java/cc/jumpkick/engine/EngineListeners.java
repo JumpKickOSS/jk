@@ -17,6 +17,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.workspace.BuildService;
@@ -187,6 +188,11 @@ public final class EngineListeners {
             @Override
             public void stepLabel(String d, String step, String label) {
                 journal.accStepLabel(rid, d, step, label);
+            }
+
+            @Override
+            public void testClass(String d, String step, TestClassResult result) {
+                journal.accTestClass(rid, result);
             }
         };
     }

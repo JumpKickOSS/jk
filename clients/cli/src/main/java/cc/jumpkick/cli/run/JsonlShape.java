@@ -15,6 +15,7 @@ import cc.jumpkick.cli.run.jsonl.PlanStartLine;
 import cc.jumpkick.cli.run.jsonl.PreflightLine;
 import cc.jumpkick.cli.run.jsonl.ProgressLine;
 import cc.jumpkick.cli.run.jsonl.SessionFinishLine;
+import cc.jumpkick.cli.run.jsonl.SlowestTestsLine;
 import cc.jumpkick.cli.run.jsonl.TaskFinishLine;
 import cc.jumpkick.cli.run.jsonl.TaskStartLine;
 import cc.jumpkick.cli.run.jsonl.TestFailureErrorLine;
@@ -26,6 +27,7 @@ import cc.jumpkick.cli.run.jsonl.WorkspaceStartLine;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.SlowestTests;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
@@ -267,8 +269,15 @@ public final class JsonlShape {
                         result.tests(),
                         result.failed(),
                         result.skipped(),
-                        result.durationMs())
+                        result.durationMs(),
+                        result.tier(),
+                        result.slow())
                 .encode();
+    }
+
+    /** The run's slowest classes and methods, once, as the run settles; see {@link SlowestTestsLine}. */
+    public static String slowest(SlowestTests.Ranking ranking) {
+        return new SlowestTestsLine(nowMillis(), ranking.classes(), ranking.methods()).encode();
     }
 
     static String stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {

@@ -336,7 +336,8 @@ differs; field **names** match.
 | Label | `label` |
 | User/compiler output | `output` |
 | Warning / error | `warn` / `error` (+ `test`, `exceptionClass`; a test failure adds `module`, `suite`, `class`, `method`, `stack`, `textId` / `sameText`) |
-| Test class | `class-finish` — one per test class as it finishes, in one test JVM or many: `module`, `testClass`, `tests`, `failed`, `skipped`, `millis`. A run stopped part way still has a row for every class that finished |
+| Test class | `class-finish` — one per test class as it finishes, in one test JVM or many: `module`, `testClass`, `tests`, `failed`, `skipped`, `millis`, `tier` (`fast`, a profile name, `all`), and `slow` — the class's methods of 1s or more, longest first, at most five, each `{method, millis}`; absent when none. A run stopped part way still has a row for every class that finished |
+| Slowest tests | `slowest-tests` — once, as a `jk test` run settles, before `workspace-finish` (`buildplan-finish` for a lone project), only when something took 1s or more: `classes` and `methods`, the top five of each, longest first; each row `module`, `testClass`, (`method`), `tier`, `millis`. Ranked from the run's `class-finish` lines, so a suite served from cache has no row — [Test](test.md#the-slowest-tests-test-fast-method-budget) |
 | Plan / ETA | `plan`, `eta` (web; CLI via explain) |
 | Module | `module-start` / `module-finish` (paired) |
 | Workspace end | `workspace-finish` (exactly one, on every outcome) |

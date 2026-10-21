@@ -16,6 +16,7 @@ import cc.jumpkick.cli.run.jsonl.PlanStartLine;
 import cc.jumpkick.cli.run.jsonl.PreflightLine;
 import cc.jumpkick.cli.run.jsonl.ProgressLine;
 import cc.jumpkick.cli.run.jsonl.SessionFinishLine;
+import cc.jumpkick.cli.run.jsonl.SlowestTestsLine;
 import cc.jumpkick.cli.run.jsonl.TaskFinishLine;
 import cc.jumpkick.cli.run.jsonl.TaskStartLine;
 import cc.jumpkick.cli.run.jsonl.TestFailureErrorLine;
@@ -24,6 +25,8 @@ import cc.jumpkick.cli.run.jsonl.WarnLine;
 import cc.jumpkick.cli.run.jsonl.WorkspaceFinishLine;
 import cc.jumpkick.cli.run.jsonl.WorkspaceProgressLine;
 import cc.jumpkick.cli.run.jsonl.WorkspaceStartLine;
+import cc.jumpkick.run.SlowestTests;
+import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.wire.transcript.SessionStartLine;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -57,10 +60,41 @@ class JsonlShapeFrozenBytesTest {
 
     @Test
     void a_finished_test_class_carries_its_counts_and_wall() {
-        assertThat(new ClassFinishLine(TS, "run-tests", "g:a", "demo.A", 3, 1, 1, 40).encode())
+        assertThat(new ClassFinishLine(TS, "run-tests", "g:a", "demo.A", 3, 1, 1, 40, "", List.of()).encode())
                 .isEqualTo(ENV
                         + "class-finish\",\"task\":\"run-tests\",\"module\":\"g:a\",\"testClass\":\"demo.A\","
                         + "\"tests\":3,\"failed\":1,\"skipped\":1,\"millis\":40}");
+        assertThat(new ClassFinishLine(
+                                TS,
+                                "run-tests",
+                                "g:a",
+                                "demo.A",
+                                2,
+                                0,
+                                0,
+                                4_000,
+                                "fast",
+                                List.of(new TestClassResult.SlowMethod("boots", 3_100)))
+                        .encode())
+                .as("the tier rides after the wall, the slow methods last")
+                .isEqualTo(ENV
+                        + "class-finish\",\"task\":\"run-tests\",\"module\":\"g:a\",\"testClass\":\"demo.A\","
+                        + "\"tests\":2,\"failed\":0,\"skipped\":0,\"millis\":4000,\"tier\":\"fast\","
+                        + "\"slow\":[{\"method\":\"boots\",\"millis\":3100}]}");
+    }
+
+    @Test
+    void the_slowest_tests_line_lists_classes_then_methods_with_module_tier_and_wall() {
+        var classes = List.of(new SlowestTests.Row("g:a", "demo.SlowTest", "", "fast", 12_300));
+        var methods = List.of(new SlowestTests.Row("g:a", "demo.SlowTest", "boots", "fast", 4_200));
+        String line = new SlowestTestsLine(TS, classes, methods).encode();
+        assertThat(line)
+                .isEqualTo(ENV
+                        + "slowest-tests\","
+                        + "\"classes\":[{\"module\":\"g:a\",\"testClass\":\"demo.SlowTest\",\"tier\":\"fast\",\"millis\":12300}],"
+                        + "\"methods\":[{\"module\":\"g:a\",\"testClass\":\"demo.SlowTest\",\"method\":\"boots\","
+                        + "\"tier\":\"fast\",\"millis\":4200}]}");
+        assertThat(SlowestTestsLine.decode(line)).isEqualTo(new SlowestTestsLine(TS, classes, methods));
     }
 
     @Test

@@ -117,6 +117,7 @@ public final class JkBuildRenderer {
                 && build.testExcludeSrc().isEmpty()
                 && build.testExcludeDependencies().isEmpty()
                 && build.testFailures() == TestFailureMode.FAIL
+                && build.testFastMethodBudgetMs() == 0
                 && build.testJvm().isEmpty()) {
             return;
         }
@@ -140,6 +141,11 @@ public final class JkBuildRenderer {
         if (build.testFailures() != TestFailureMode.FAIL)
             sb.append("failures = ")
                     .append(quote(build.testFailures().wireName()))
+                    .append('\n');
+        long budget = build.testFastMethodBudgetMs();
+        if (budget > 0)
+            sb.append("fast-method-budget = ")
+                    .append(quote(budget % 1000 == 0 ? budget / 1000 + "s" : budget + "ms"))
                     .append('\n');
         if (!build.testJvm().jvmArgs().isEmpty())
             sb.append("jvm-args = ").append(list(build.testJvm().jvmArgs())).append('\n');

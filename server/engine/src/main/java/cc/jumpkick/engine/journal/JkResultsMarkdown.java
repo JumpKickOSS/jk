@@ -3,6 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.run.SlowestTests;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.test.MarkdownTestReport;
@@ -69,20 +70,24 @@ public final class JkResultsMarkdown {
             @Nullable Path latestPath,
             List<MarkdownTestReport.ModuleRun> tests)
             throws IOException {
-        write(record, runDir, latestPath, tests, null);
+        write(record, runDir, latestPath, tests, null, SlowestTests.Ranking.EMPTY);
     }
 
-    /** As above with {@code previous}, the earlier run the Coverage block shows deltas against. */
+    /**
+     * As above with {@code previous}, the earlier run the Coverage block shows deltas against, and
+     * {@code slowest}, the classes and methods the run ranked.
+     */
     public static void write(
             BuildRecord record,
             @Nullable Path runDir,
             @Nullable Path latestPath,
             List<MarkdownTestReport.ModuleRun> tests,
-            @Nullable BuildRecord previous)
+            @Nullable BuildRecord previous,
+            SlowestTests.Ranking slowest)
             throws IOException {
         if (record == null) return;
         Path details = runDir == null ? null : runDir.resolve(ProjectBuilds.DETAILS);
-        String md = render(record, details, latestPath, tests, previous);
+        String md = render(record, details, latestPath, tests, previous, slowest);
         if (runDir != null) {
             MarkdownReports.write(runDir.resolve(FILE_NAME), md);
         }
@@ -104,16 +109,17 @@ public final class JkResultsMarkdown {
             @Nullable Path detailsPath,
             @Nullable Path latestPath,
             List<MarkdownTestReport.ModuleRun> tests) {
-        return render(record, detailsPath, latestPath, tests, null);
+        return render(record, detailsPath, latestPath, tests, null, SlowestTests.Ranking.EMPTY);
     }
 
-    /** As above with {@code previous}, the earlier run the Coverage block shows deltas against. */
+    /** As above with {@code previous} and {@code slowest}; see {@link #write}. */
     public static String render(
             BuildRecord record,
             @Nullable Path detailsPath,
             @Nullable Path latestPath,
             List<MarkdownTestReport.ModuleRun> tests,
-            @Nullable BuildRecord previous) {
+            @Nullable BuildRecord previous,
+            SlowestTests.Ranking slowest) {
         if (tests == null) tests = List.of();
         StringBuilder sb = new StringBuilder(2_048);
         String outcome = outcome(record);
@@ -126,6 +132,7 @@ public final class JkResultsMarkdown {
         appendFailures(sb, record, !tests.isEmpty());
         appendGuards(sb, record);
         JkResultsTestsSection.append(sb, record, tests);
+        JkResultsSlowestSection.append(sb, slowest);
         appendPublish(sb, record);
         JkResultsCoverageSection.append(sb, record, previous);
         JkResultsDeliverablesSection.append(sb, record);

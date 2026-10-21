@@ -3,6 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.run.SlowestTests;
 import cc.jumpkick.testing.ShortTempDirs;
 import java.nio.file.Path;
 import java.util.List;
@@ -60,7 +61,7 @@ class JkResultsCoverageSectionTest {
     }
 
     private static String render(BuildRecord r, @Nullable BuildRecord previous) {
-        return JkResultsMarkdown.render(r, null, null, List.of(), previous);
+        return JkResultsMarkdown.render(r, null, null, List.of(), previous, SlowestTests.Ranking.EMPTY);
     }
 
     @Test

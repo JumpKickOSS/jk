@@ -292,6 +292,7 @@ public final class BuildVerbCommand implements CliCommand {
         AggregateContext agg = new AggregateContext(view);
         var runView =
                 new WorkspaceRunView(new WorkspaceRunView.Chrome(run.name(), true), entryDir, run.session(), false);
+        if (verb.ranksSlowestTests()) runView.rankSlowestTests();
         WorkspaceResult result;
         try {
             result = verb.workspace(run, entryDir, modules, runView.live(view, agg));
@@ -323,6 +324,7 @@ public final class BuildVerbCommand implements CliCommand {
         boolean json = run.global().outputIsJson();
         var runView =
                 new WorkspaceRunView(new WorkspaceRunView.Chrome(run.name(), true), entryDir, run.session(), json);
+        if (verb.ranksSlowestTests()) runView.rankSlowestTests();
         long start = Clock.SYSTEM.nanos();
         WorkspaceResult result;
         try {

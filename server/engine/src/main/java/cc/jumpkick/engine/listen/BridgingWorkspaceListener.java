@@ -8,6 +8,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkModel;
@@ -156,6 +157,11 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
             @Override
             public void planDiagnostics(String d, BuildPlanResult result) {
                 nested.planDiagnostics(d, result);
+            }
+
+            @Override
+            public void testClass(String d, String step, TestClassResult result) {
+                nested.testClass(d, step, result);
             }
         };
         return new CoalescingBuildPlanListener(new BridgingPlanListener(dir, sink, planHooks));

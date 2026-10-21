@@ -8,12 +8,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Console presentation for a simple-task command: spinner label plus success/failure tails from
  * {@link BuildPlanResult}. Optional {@code softFailure} forces a failure chip after a successful
- * plan (e.g. {@code jk run} with nothing executable). Duration suffix is appended by the framework.
+ * plan (e.g. {@code jk run} with nothing executable). {@code above} supplies the command's own
+ * lines the settle prints above its result line, read once the plan finished. Duration suffix is
+ * appended by the framework.
  */
 public record ConsoleSpec(
         String command,
@@ -21,7 +24,18 @@ public record ConsoleSpec(
         Function<BuildPlanResult, @Nullable String> onFailure,
         boolean chip,
         boolean exec,
-        @Nullable Function<BuildPlanResult, @Nullable String> softFailure) {
+        @Nullable Function<BuildPlanResult, @Nullable String> softFailure,
+        Supplier<List<String>> above) {
+
+    public ConsoleSpec(
+            String command,
+            Function<BuildPlanResult, @Nullable String> onSuccess,
+            Function<BuildPlanResult, @Nullable String> onFailure,
+            boolean chip,
+            boolean exec,
+            @Nullable Function<BuildPlanResult, @Nullable String> softFailure) {
+        this(command, onSuccess, onFailure, chip, exec, softFailure, List::of);
+    }
 
     /** Default generic success/failure finish ({@code chip}/{@code exec} false). */
     public ConsoleSpec(
