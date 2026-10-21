@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Supplier;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -20,7 +20,10 @@ import org.jspecify.annotations.Nullable;
  * a Zinc warm-up and a cold javac, which on petclinic is 50 ms against 590 ms.
  *
  * <p>A warm pool is keyed by everything a running worker cannot be given — JDK, worker jar, the
- * environment it was started with, heap and the module's own JVM flags — and not by job. Each lane
+ * environment it was started with and the module's own JVM flags — and by heap, and not by job.
+ * A compile goes on the pool of its family with the smallest heap at least its own, and a pool
+ * that a bigger one of its family covers retires as soon as it has no work, so a family settles
+ * on one warm pool at the largest heap it needed. Each lane
  * runs under a {@link JobWorkers} scope of its own, never a job's, so job teardown leaves it be,
  * and a lane still compiling for a job that has ended is stopped alone: that job's caller is gone,
  * and its compile must not go on writing the module's classes under the next build's.
@@ -62,14 +65,23 @@ final class WarmLanes {
     }
 
     /**
-     * The warm pool for {@code key}, built by {@code make} when there is none, with {@code item}
-     * counted against it until the item settles: a pool with an item on it is never retired, so
-     * an enqueue cannot land on a pool its reaper has just closed.
+     * The warm pool of {@code family} that fits {@code heap}, built by {@code make} at that heap
+     * when there is none, with {@code item} counted against it until the item settles: a pool with
+     * an item on it is never retired, so an enqueue cannot land on a pool its reaper has just
+     * closed. {@code null} is a pinned heap, which only a pool with no planned heap fits.
      */
-    static Lanes lanes(String key, Supplier<Lanes> make, CompileWork item) {
+    static Lanes lanes(String family, @Nullable Long heap, Function<@Nullable Long, Lanes> make, CompileWork item) {
+        Warm fit = fitting(family, heap, false);
+        @Nullable Long at = fit != null ? fit.heap : heap;
+        String key = key(family, at);
         Warm[] held = new Warm[1];
+        boolean[] created = {false};
         POOLS.compute(key, (k, w) -> {
-            Warm pool = w != null ? w : new Warm(k, make.get());
+            Warm pool = w;
+            if (pool == null) {
+                pool = new Warm(k, family, at, make.apply(at));
+                created[0] = true;
+            }
             pool.items++;
             held[0] = pool;
             return pool;
@@ -78,13 +90,47 @@ final class WarmLanes {
         item.compile.whenComplete((r, e) -> pool.settled());
         pool.armReaper();
         registerShutdownHook();
+        if (created[0]) {
+            for (Warm w : List.copyOf(POOLS.values())) {
+                if (covers(pool, w)) w.retireIfIdle();
+            }
+        }
         return pool.lanes;
     }
 
-    /** Whether the warm pool for {@code key} has a worker running now. */
-    static boolean running(String key) {
-        Warm w = POOLS.get(key);
-        return w != null && w.lanes.liveLanes() > 0;
+    /** Whether a warm pool of {@code family} that fits {@code heap} has a worker running now. */
+    static boolean running(String family, @Nullable Long heap) {
+        return fitting(family, heap, true) != null;
+    }
+
+    /** The pool of {@code family} with the smallest heap that fits {@code heap}; {@code live} wants a running worker. */
+    private static @Nullable Warm fitting(String family, @Nullable Long heap, boolean live) {
+        Warm best = null;
+        for (Warm w : POOLS.values()) {
+            if (!w.family.equals(family) || !fits(w.heap, heap)) continue;
+            if (live && w.lanes.liveLanes() == 0) continue;
+            if (best == null || (w.heap != null && best.heap != null && w.heap < best.heap)) best = w;
+        }
+        return best;
+    }
+
+    /** Whether a pool started with {@code have} can compile an item that asks for {@code want}. */
+    static boolean fits(@Nullable Long have, @Nullable Long want) {
+        if (want == null) return have == null;
+        return have != null && have >= want;
+    }
+
+    /** Whether {@code big} serves everything {@code small} would: same family, a larger heap. */
+    private static boolean covers(Warm big, Warm small) {
+        return big != small
+                && big.family.equals(small.family)
+                && big.heap != null
+                && small.heap != null
+                && big.heap > small.heap;
+    }
+
+    private static String key(String family, @Nullable Long heap) {
+        return family + "|" + (heap == null ? "" : heap);
     }
 
     /** {@code job} has ended: stop every warm lane still working on one of its items. */
@@ -134,13 +180,17 @@ final class WarmLanes {
     /** One warm pool and its reaper. {@link #items} is guarded by {@link #POOLS}' compute on {@link #key}. */
     private static final class Warm {
         final String key;
+        final String family;
+        final @Nullable Long heap;
         final Lanes lanes;
         int items;
         volatile long lastUsedNanos = CLOCK.nanos();
         private @Nullable Thread reaper;
 
-        Warm(String key, Lanes lanes) {
+        Warm(String key, String family, @Nullable Long heap, Lanes lanes) {
             this.key = key;
+            this.family = family;
+            this.heap = heap;
             this.lanes = lanes;
         }
 
@@ -152,6 +202,27 @@ final class WarmLanes {
                 }
                 return w;
             });
+            for (Warm w : List.copyOf(POOLS.values())) {
+                if (covers(w, this)) {
+                    retireIfIdle();
+                    return;
+                }
+            }
+        }
+
+        /**
+         * Retire when no item is on this pool; a pool with work keeps it. The lanes are closed off
+         * the caller's thread, which may be one of theirs finishing its last item.
+         */
+        void retireIfIdle() {
+            boolean[] retired = {false};
+            POOLS.computeIfPresent(key, (k, w) -> {
+                if (w != this || items > 0) return w;
+                retired[0] = true;
+                return null;
+            });
+            // Closes a covered pool's lanes; reads no session.
+            if (retired[0]) Thread.ofVirtual().name("jk-javac-covered").start(this::retire);
         }
 
         synchronized void armReaper() {
