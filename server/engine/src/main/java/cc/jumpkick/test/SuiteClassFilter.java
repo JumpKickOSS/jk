@@ -134,7 +134,7 @@ public final class SuiteClassFilter {
         StringBuilder out = new StringBuilder("test suites: ").append(String.join(", ", selected));
         if (!ran.isEmpty()) out.append(" — ").append(String.join("; ", ran));
         if (!left.isEmpty() && selected.contains(TestSuites.DEFAULT)) {
-            out.append(" — left out: ").append(String.join("; ", left)).append(", run with jk test --suite <name>");
+            out.append(" — left out: ").append(String.join("; ", left)).append(", run with jk test -s <name>");
         }
         return out.toString();
     }
@@ -173,11 +173,11 @@ public final class SuiteClassFilter {
         }
         if (bySuite.isEmpty()) return null;
         List<String> parts = new ArrayList<>();
-        bySuite.forEach((suite, classes) -> parts.add(String.join(
-                        ", ", classes.stream().limit(3).toList())
-                + (classes.size() > 3 ? " and " + (classes.size() - 3) + " more" : "")
-                + (classes.size() == 1 ? " is" : " are") + " in the " + suite + " suite (jk test --suite " + suite
-                + " --class " + String.join(" --class ", classPatterns) + ")"));
+        bySuite.forEach((suite, classes) ->
+                parts.add(String.join(", ", classes.stream().limit(3).toList())
+                        + (classes.size() > 3 ? " and " + (classes.size() - 3) + " more" : "")
+                        + (classes.size() == 1 ? " is" : " are") + " in the " + suite + " suite (jk test -s " + suite
+                        + " --class " + String.join(" --class ", classPatterns) + ")"));
         return String.join("; ", parts);
     }
 

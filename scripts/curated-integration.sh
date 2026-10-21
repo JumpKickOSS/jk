@@ -72,7 +72,7 @@ fi
 failed=0
 for i in "${!MODULES[@]}"; do
   module="${MODULES[$i]}"
-  cmd=("$JK" test --profile integration --no-ansi -m "$module")
+  cmd=("$JK" test -p integration --no-ansi -m "$module")
   # shellcheck disable=SC2206 # the value is the space-separated `--class <fqcn>` flags built above
   cmd+=(${CLASSES[$i]})
   if [[ "$MODE" == "--print" ]]; then

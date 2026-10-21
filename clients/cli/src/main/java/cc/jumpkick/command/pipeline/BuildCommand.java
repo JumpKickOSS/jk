@@ -271,7 +271,7 @@ public final class BuildCommand implements CliCommand {
         boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
 
         // --modules / --affected-since resolve identically for live and headless paths:
-        // the CI-shaped `jk build -m api --output json` must not silently build everything.
+        // the CI-shaped `jk build -m api -O jsonl` must not silently build everything.
         Selection sel = null;
         if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
             sel = resolveSelection(entryDir);
@@ -298,7 +298,7 @@ public final class BuildCommand implements CliCommand {
         this.graalHomes = graal.get();
 
         if (!live) {
-            // --output json / --verbose: buffered, non-animated path. The engine drives the whole
+            // -O jsonl / --verbose: buffered, non-animated path. The engine drives the whole
             // workspace build (BuildService.buildWorkspace — resolve graph, memory plan, schedule,
             // run each module's plan); WorkspaceRunView renders the append-only block + [k/N] line.
             if (sel != null && sel.error() != null) {
@@ -417,7 +417,7 @@ public final class BuildCommand implements CliCommand {
     }
 
     /**
-     * Non-animated workspace build ({@code --output json} / {@code --verbose}). The engine
+     * Non-animated workspace build ({@code -O jsonl} / {@code --verbose}). The engine
      * ({@link cc.jumpkick.runtime.workspace.BuildService#buildWorkspace}) owns the whole loop and
      * {@link WorkspaceRunView#headless} renders it; this method owns only {@code jk build}'s own
      * settle vocabulary, which has one arm the live ladder does not — a workspace that declares no

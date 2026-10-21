@@ -36,7 +36,7 @@ base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
 aot-cache = true
 
 # Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
-# test runs in exactly one tier (`jk test --profile integration`).
+# test runs in exactly one tier (`jk test -p integration`).
 [test]
 exclude-tags = ["integration", "network", "slow", "bench"]
 

@@ -404,7 +404,7 @@ class JkResultsAgentTest {
     @Test
     void a_class_the_tag_filter_excluded_is_named_on_the_fail_line() {
         String why = "--class named 1 class the tag filter excluded: cc.jumpkick.format.FormatThreadsBenchTest"
-                + " [bench]; pass --include-tags bench (or a --profile that includes it) to run it";
+                + " [bench]; pass --include-tags bench (or a -p profile that includes it) to run it";
         BuildRecord.Diag warning =
                 new BuildRecord.Diag("warning", "/ws/rest-service", "run-tests", "tag-excluded", why, null, null);
         BuildRecord.Diag verdict = new BuildRecord.Diag("error", "", null, "run-error", why, null, null);

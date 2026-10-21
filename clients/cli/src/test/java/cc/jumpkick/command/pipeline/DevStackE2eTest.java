@@ -278,7 +278,7 @@ class DevStackE2eTest {
 
     // --- session --------------------------------------------------------------------------------
 
-    /** One spawned {@code jk dev --output json} and its two output files. */
+    /** One spawned {@code jk dev -O jsonl} and its two output files. */
     private record Session(Process jk, Path out, Path errFile) {
 
         static Session spawn(Path project, Path dir, String... options) throws IOException {

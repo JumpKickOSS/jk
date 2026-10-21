@@ -24,7 +24,7 @@ import org.jspecify.annotations.Nullable;
  * <tr><td>ansi</td><td>ansi, no PUA axis granted</td><td>colored chip + trailing bg space, Unicode glyphs, no PUA</td></tr>
  * <tr><td>plain</td><td>NO_COLOR / --no-ansi</td><td>{@code +}/{@code !}/{@code *} prefixes</td></tr>
  * <tr><td>verbose</td><td>{@code -v}</td><td>same wedge + extra post-wedge detail (caller)</td></tr>
- * <tr><td>json</td><td>{@code --output json}</td><td>no wedge — structured events only</td></tr>
+ * <tr><td>jsonl</td><td>{@code -O jsonl}</td><td>no wedge — structured events only</td></tr>
  * </table>
  *
  * <h2>Blank-line envelope</h2>

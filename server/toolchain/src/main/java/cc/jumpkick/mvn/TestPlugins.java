@@ -389,7 +389,7 @@ final class TestPlugins {
                 if (value != null) {
                     report.warning("`maven-failsafe-plugin` `<" + element + ">" + value + "</" + element
                             + ">` — jk's tag filters apply to every suite, not to `integration` alone; tag the"
-                            + " integration classes and select with `jk test --suite integration --include-tags`.");
+                            + " integration classes and select with `jk test -s integration --include-tags`.");
                 }
             }
         }
@@ -420,7 +420,7 @@ final class TestPlugins {
         if (!found) return null;
         report.warning("test classes named `IT*`, `*IT` or `*ITCase` run under no Failsafe in this build, so"
                 + " `mvn test` leaves them out; they are jk's `integration` suite, which `jk test` leaves out"
-                + " too — run them with `jk test --suite integration`.");
+                + " too — run them with `jk test -s integration`.");
         return new ClassSuite(classPatterns(FAILSAFE_DEFAULT_INCLUDES, "<includes>", "classes", report), List.of());
     }
 

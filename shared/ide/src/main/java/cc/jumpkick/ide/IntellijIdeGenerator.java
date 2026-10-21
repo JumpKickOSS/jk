@@ -362,7 +362,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         }
         for (String suite : extraSuites) {
             String file = "jk_test_" + sanitize(suite) + ".xml";
-            out.file(runDir.resolve(file), shellRunConfigXml("jk test · " + suite, "jk test --suite " + suite, wsRoot));
+            out.file(runDir.resolve(file), shellRunConfigXml("jk test · " + suite, "jk test -s " + suite, wsRoot));
         }
     }
 

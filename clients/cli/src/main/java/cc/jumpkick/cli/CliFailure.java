@@ -20,7 +20,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * The last catch in the CLI. A throwable no verb handled reaches the user as one Error wedge
  * carrying its message, reaches {@code $JK_STATE_DIR/cli.log} with the full stack, and exits {@link
- * Exit#SOFTWARE}; under {@code --output json} the wedge is one machine line instead, and {@code -v}
+ * Exit#SOFTWARE}; under {@code -O jsonl} the wedge is one machine line instead, and {@code -v}
  * adds the stack to the human stream. The resident engine keeps its own log for daemon internals;
  * this is the slim client's durable record of its own failures, so a stack that scrolled off a
  * terminal is still somewhere.

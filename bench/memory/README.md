@@ -14,7 +14,7 @@ peak RSS by class: engine, nested engine (an `EngineMain` whose command contains
 compiler worker, test JVM, other jk worker, Gradle, Maven, other Java, other. The JSON file keeps
 every sample.
 
-`run` is one heavy job. Leave the host otherwise idle. It runs `jk test --redo` in
+`run` is one heavy job. Leave the host otherwise idle. It runs `jk test -r` in
 spring-petclinic, then the same command in four projects at once, and writes a markdown table:
 wall, exit, the `jk engine status` Workers line at the busiest sample, the workers cgroup
 `memory.events` delta (`oom_kill`, `oom`, `high`, `max`), and per-class peak RSS.

@@ -78,7 +78,7 @@ class TestClassMatchTest {
     @Test
     void a_class_another_suite_owns_names_that_suite_first_and_keeps_the_tag_reason() {
         TestSelection fooIt = TestSelection.DEFAULT.withClasses(List.of("FooIT"));
-        String hint = "FooIT is in the integration suite (jk test --suite integration --class FooIT)";
+        String hint = "FooIT is in the integration suite (jk test -s integration --class FooIT)";
         assertThat(TestClassMatch.skipLabel(List.of("FooIT"), hint))
                 .isEqualTo("no classes matched --class FooIT — skipped; " + hint);
         assertThat(TestClassMatch.noMatchMessage(fooIt, null, hint))
@@ -171,22 +171,22 @@ class TestClassMatchTest {
                 "all", new Profile("all", null, List.of(), List.of(), List.of(), List.of()),
                 "args", Profile.of("args")));
         String integration = "--class named 1 class the tag filter excluded: a.OrdersIT [integration];"
-                + " pass --include-tags integration (or a --profile that includes it) to run it";
+                + " pass --include-tags integration (or a -p profile that includes it) to run it";
 
         assertThat(TestClassMatch.namingProfiles(integration, profiles, null))
-                .isEqualTo(integration + "; --profile all or --profile integration runs it");
+                .isEqualTo(integration + "; -p all or -p integration runs it");
         assertThat(TestClassMatch.namingProfiles(integration, profiles, "all"))
                 .as("the active profile is the one that dropped it")
-                .isEqualTo(integration + "; --profile integration runs it");
+                .isEqualTo(integration + "; -p integration runs it");
         assertThat(TestClassMatch.namingProfiles(TAG_EXCLUDED, profiles, null))
-                .isEqualTo(TAG_EXCLUDED + "; --profile all or --profile bench runs it");
+                .isEqualTo(TAG_EXCLUDED + "; -p all or -p bench runs it");
         assertThat(TestClassMatch.namingProfiles(integration, Profiles.empty(), null))
                 .isEqualTo(integration);
         assertThat(TestClassMatch.namingProfiles(null, profiles, null)).isNull();
     }
 
     private static final String TAG_EXCLUDED = "--class named 1 class the tag filter excluded:"
-            + " a.FormatThreadsBenchTest [bench]; pass --include-tags bench (or a --profile that includes it)"
+            + " a.FormatThreadsBenchTest [bench]; pass --include-tags bench (or a -p profile that includes it)"
             + " to run it";
 
     @Test

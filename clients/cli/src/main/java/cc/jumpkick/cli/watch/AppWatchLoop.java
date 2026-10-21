@@ -37,7 +37,7 @@ import org.jspecify.annotations.Nullable;
  * when the engine returns a deploy command.
  *
  * <p>On a terminal the app owns stdout and stderr and every sidecar line is prefixed with its
- * name. Under {@code --output json} the app is piped too, so stdout stays one JSONL stream: its
+ * name. Under {@code -O jsonl} the app is piped too, so stdout stays one JSONL stream: its
  * lines become {@code app-output} events beside the sidecars' {@code sidecar-output}, and its
  * starts and exits {@code app-started} / {@code app-exited}. {@code dev-ready} says the whole stack
  * is up — every sidecar's probe and, when {@code [dev] ready} or {@code ready-pattern} names one,
@@ -85,7 +85,7 @@ public final class AppWatchLoop {
     private boolean over;
 
     /**
-     * Where every event goes: the session transcript always, stdout under {@code --output json}.
+     * Where every event goes: the session transcript always, stdout under {@code -O jsonl}.
      * Nothing after the session finishes, so stdout never carries an event its transcript lacks.
      */
     private final Consumer<String> events = line -> {
@@ -345,7 +345,7 @@ public final class AppWatchLoop {
         return report.exit();
     }
 
-    /** Sidecar lines prefixed on a terminal and recorded as events, or events alone under {@code --output json}. */
+    /** Sidecar lines prefixed on a terminal and recorded as events, or events alone under {@code -O jsonl}. */
     Sidecars.Listener sidecarListener() {
         Sidecars.Listener recorder = SidecarOutput.jsonl(events, Clock.SYSTEM);
         return json() ? recorder : SidecarOutput.both(SidecarOutput.terminal(CliOutput::err), recorder);
@@ -395,7 +395,7 @@ public final class AppWatchLoop {
                 new ProcessBuilder(command).directory(Path.of(plan.workingDir()).toFile());
         pb.environment().putAll(plan.appEnv());
         pb.environment().putAll(DevUrls.forApp(appName, exports));
-        // Under --output json stdout is a JSONL stream, so the app is piped and its lines ride the
+        // Under -O jsonl stdout is a JSONL stream, so the app is piped and its lines ride the
         // stream as events, after its app-started; stdin is still the user's. A pattern probe pipes
         // the app on a terminal too — a probe cannot read a terminal the app owns — and relays each
         // line as it arrives. Otherwise the app owns the terminal — no skipTrailingBlank: watch
@@ -436,7 +436,7 @@ public final class AppWatchLoop {
     }
 
     /**
-     * The app's exit as an event: stdout under {@code --output json}, the transcript always. On a
+     * The app's exit as an event: stdout under {@code -O jsonl}, the transcript always. On a
      * terminal the loop's own line says it.
      */
     private void appExited(Process app) {

@@ -63,7 +63,7 @@ class GuardModelSnapshotTest {
         assertThat(MiniJson.str(main.get(1), "version")).isEqualTo("^33");
         List<Object> tiers = (List<Object>) Objects.requireNonNull(MiniJson.get(MiniJson.get(doc, "tiers"), "tiers"));
         assertThat(tiers).hasSize(2);
-        assertThat(MiniJson.str(tiers.get(1), "name")).isEqualTo("jk test --profile slow");
+        assertThat(MiniJson.str(tiers.get(1), "name")).isEqualTo("jk test -p slow");
         Map<String, Object> java =
                 (Map<String, Object>) Objects.requireNonNull(MiniJson.get(MiniJson.get(doc, "toolchain"), "java"));
         assertThat(((Number) Objects.requireNonNull(java.get(""))).intValue()).isEqualTo(21);

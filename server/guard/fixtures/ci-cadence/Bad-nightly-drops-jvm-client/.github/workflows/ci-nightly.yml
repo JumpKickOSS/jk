@@ -10,25 +10,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: jk test --profile integration --continue --no-ansi
+      - run: jk test -p integration --continue --no-ansi
 
   slow:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: jk test --profile slow --continue --no-ansi
+      - run: jk test -p slow --continue --no-ansi
 
   network:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: jk test --profile network --continue --no-ansi
+      - run: jk test -p network --continue --no-ansi
 
   bench:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: jk test --profile bench --continue --no-ansi
+      - run: jk test -p bench --continue --no-ansi
 
   # Coverage is measured nightly, never in the branch gate: the ratchet reads what the agent wrote.
   coverage:

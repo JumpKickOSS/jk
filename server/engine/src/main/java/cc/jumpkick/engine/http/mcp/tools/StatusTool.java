@@ -15,7 +15,7 @@ public final class StatusTool implements McpTool {
         return new Spec(
                 "status",
                 "Engine vitals (pid, version, heap, active jobs). Same facts as GET /api/status and "
-                        + "jk engine status --output json.",
+                        + "jk engine status -O jsonl.",
                 McpSchemas.object(Map.of()));
     }
 

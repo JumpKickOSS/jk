@@ -196,7 +196,7 @@ then the real process environment. The **shell always wins** over files.
 jk env                 # .env keys + JK_* from the process
 jk env -v              # also show file values shadowed by the shell
 jk env --all           # every process env key (noisy)
-jk env --output json
+jk env -O jsonl
 ```
 
 Values that came from a `.env` file are treated as secrets: shown as `***` and labeled

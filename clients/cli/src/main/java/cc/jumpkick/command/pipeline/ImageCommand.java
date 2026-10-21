@@ -316,7 +316,7 @@ public final class ImageCommand implements CliCommand {
     }
 
     /**
-     * Non-animated workspace image ({@code --output json} / {@code --verbose}), rendering through
+     * Non-animated workspace image ({@code -O jsonl} / {@code --verbose}), rendering through
      * {@link WorkspaceRunView#headless} exactly as {@code jk build} does — same events, same
      * per-module block, no {@link JkManager} region.
      */

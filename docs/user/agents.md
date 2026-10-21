@@ -42,7 +42,7 @@ Default **`jk test` is the unit suite only.** That is the inner loop. Do not pas
 | Which tests did this edit touch? | `jk test --affected` / `--affected-since` (table; does not run) |
 | Editing a class / fixing a unit assertion | `jk test` |
 | About to push, or the change crossed DB / HTTP / FS | `jk test --guard` |
-| UI / compose / contract change, or reproducing CI | `jk test --suite e2e` |
+| UI / compose / contract change, or reproducing CI | `jk test -s e2e` |
 | Never as a habit | `jk test --all` |
 
 Write new tests in the lowest suite that can fail for the reason you care about
@@ -63,7 +63,7 @@ for “unit + integration + optional house-rule scripts.” [Why](why.md#test-ru
 | **`--agent` / `JK_AGENT=1`** | That same text on stdout |
 | **`target/jk-results.md`** | Human report when MCP and `--agent` are both off |
 | **`jk://runs/latest/results`** | Latest verdict, same text as `run` |
-| **`--output json` / `jsonl`** | Live events on stdout (CI, watchers) |
+| **`-O jsonl`** | Live events on stdout (CI, watchers) |
 | **`jk results --details`** | Full `details.jsonl`. MCP `details` is a budgeted tail (`jk://runs/latest/details`) |
 | **`target/jk-profile.json`** | Timings (Perfetto / `chrome://tracing`), not failure triage |
 
@@ -71,9 +71,8 @@ Do **not** set `TERM=dumb` and scrape wedges. Do **not** use `-v` / `--verbose` 
 primary agent API — verbose is for humans and still points at the same files.
 
 ```bash
-jk test --output json
-export JK_OUTPUT=json          # same for any BuildPlan command
-# json and jsonl are the same mode: live events, one JSON object per line
+jk test -O jsonl
+export JK_OUTPUT=jsonl          # same for any BuildPlan command
 ```
 
 Every JSONL object includes at least `schema` (always `1` until jk 1.0), `ts`, and `type`.
@@ -124,7 +123,7 @@ of files an agent must not edit by hand, for harnesses that read one. The hooks 
 ## Config for CI / headless agents
 
 ```bash
-export JK_OUTPUT=json       # if you consume stdout
+export JK_OUTPUT=jsonl       # if you consume stdout
 # optional: JK_CLI_DETAILS=off  to skip writing details.jsonl
 ```
 

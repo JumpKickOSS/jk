@@ -224,7 +224,7 @@ public final class GraalResolver {
                 + GraalLauncher.searchedDirs() + ").");
         // --force is what JdkInstallCommand turns into JdkService's refresh, and refresh is what
         // reinstalls over a tree already sitting at the name.
-        CliOutput.err("  Reinstall it with `jk jdk install --force " + home.getFileName()
+        CliOutput.err("  Reinstall it with `jk jdk install -F " + home.getFileName()
                 + "`, or set $GRAALVM_HOME to a GraalVM that has one.");
         return false;
     }

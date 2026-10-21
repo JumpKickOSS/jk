@@ -288,7 +288,7 @@ bytes / nodes). Last-job totals on `status-ack` (proto 1, additive JSON),
 copied before ledger close. Process-wide counters cannot prove “one walk of
 `src/`” on a resident engine.
 
-`jk engine status --output json` last-job fields (names indicative):
+`jk engine status -O jsonl` last-job fields (names indicative):
 
 ```json
 "vfs": {

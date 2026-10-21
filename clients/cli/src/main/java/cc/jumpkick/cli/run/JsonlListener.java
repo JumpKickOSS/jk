@@ -4,8 +4,8 @@ package cc.jumpkick.cli.run;
 import java.io.PrintStream;
 
 /**
- * Emit one JSON object per event to stdout. Triggered by {@code --output json} or {@code jsonl}
- * (identical). Consumed by agents, CI, and tooling. Wire format: {@link JsonlShape} — see {@code
+ * Emit one JSON object per event to stdout. Triggered by {@code -O jsonl}.
+ * Consumed by agents, CI, and tooling. Wire format: {@link JsonlShape} — see {@code
  * docs/machine-output.md}. Each line carries the aggregate {@code progress} rider and is
  * dual-written to the active {@link CliSessionTranscript} when present.
  */

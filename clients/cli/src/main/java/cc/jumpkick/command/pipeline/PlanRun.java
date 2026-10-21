@@ -326,7 +326,7 @@ final class PlanRun {
     }
 
     /**
-     * Workspace compile without a region ({@code --output json} / {@code --verbose}): the same
+     * Workspace compile without a region ({@code -O jsonl} / {@code --verbose}): the same
      * events and per-module block {@code jk build} renders through {@link WorkspaceRunView#headless}.
      */
     private int runWorkspaceHeadless(Path cache, Labels labels, GlobalOptions global) {

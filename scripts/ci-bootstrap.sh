@@ -7,7 +7,7 @@
 #   JK_HOME     the job's isolated home (required)
 #   JK_CLIENT   passed through to the installer (`jvm` where the release serves no native client)
 # The bridge is a checkout of its own beside the runner's temp dir. The pinned release relocks it in
-# the format that release reads (`jk lock --force`: the bridge is a throwaway checkout, never
+# the format that release reads (`jk lock -F`: the bridge is a throwaway checkout, never
 # committed) and builds it; the bridge's own jk then takes the home over, and every later step of
 # the job builds this tree with it. Each workflow calls this script; no workflow spells a version.
 set -euo pipefail
@@ -72,7 +72,7 @@ users_of_table() {
 }
 stripped=" "
 # The text renderer of a pinned release may drop the reason a lock failed; its JSONL keeps it.
-while ! (cd "$bridge" && jk lock --force --no-ansi --output jsonl) >"$bridge.lock.log" 2>&1; do
+while ! (cd "$bridge" && jk lock -F --no-ansi -O jsonl) >"$bridge.lock.log" 2>&1; do
   cat "$bridge.lock.log"
   table="$(grep -aoE '\[[a-z0-9-]+\] is not owned by any installed plugin' "$bridge.lock.log" | head -n 1 \
     | sed -E 's/^\[([^]]+)\].*/\1/' || true)"

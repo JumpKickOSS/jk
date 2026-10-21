@@ -86,7 +86,7 @@ class WorkspaceRunViewOwnerTest {
 
     /**
      * The {@code workspace-*} vocabulary has one emitter. A verb that hand-rolls even one of these
-     * calls is how {@code jk native --output json} came to emit {@code workspace-progress} with no
+     * calls is how {@code jk native -O jsonl} came to emit {@code workspace-progress} with no
      * {@code workspace-start} and no terminal at all — a stream a parser cannot close.
      */
     @Test

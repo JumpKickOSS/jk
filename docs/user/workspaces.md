@@ -376,7 +376,7 @@ the cone includes test/dev workspace deps. `--skip-tests` uses production scopes
 ```bash
 jk selective prepare --since=origin/main
 jk selective run test
-jk selective resolve --modules 'api,worker'   # dry list
+jk selective resolve -m 'api,worker'   # dry list
 ```
 
 `prepare` records per-module content fingerprints (`jk.toml` + `src/**`). A later

@@ -67,14 +67,14 @@ jk test
 jk build
 
 # Live machine events (one JSON object per line):
-jk test --output json
-# or: export JK_OUTPUT=json
+jk test -O jsonl
+# or: export JK_OUTPUT=jsonl
 
 # Forecast (why would this rebuild?):
 jk explain
 ```
 
-Session log (same JSONL shape as `--output json`), live-appended:
+Session log (same JSONL shape as `-O jsonl`), live-appended:
 
 ```text
 ~/.jk/state/builds/projects/<key>/runs/<build-number>/details.jsonl
@@ -128,6 +128,6 @@ Pin a hermetic module with `[test] workers = 1`. See [Test](test.md).
 
 - `jk doctor` — host health (config, disk, current/login shell hooks, installed plugin workers and
   the classpath each launches on; `-v` lists the entries)
-- `jk explain --verbose` — per-task forecast
+- `jk explain -v` — per-task forecast
 - [Config](config.md) — `NO_COLOR`, `--offline`, `JK_HOME` isolation
 - [Install](install.md) — layout and env

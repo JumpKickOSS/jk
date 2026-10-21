@@ -5,11 +5,11 @@ description: Build and fix Java, Kotlin, and Groovy with JumpKick. Use when the 
 
 # jk
 
-`jk` builds Java, Kotlin, and Groovy. The manifest is `jk.toml`; the lock is `jk-lock.toml` (one file at the workspace root; commit it). Coordinates come from Maven Central. Do not add `pom.xml` or Gradle files, and do not run `mvn` or `gradle`.
+The manifest is `jk.toml`; the lock is `jk-lock.toml` (one per workspace, at its root; commit it). Never add `pom.xml` or Gradle files; never run `mvn` or `gradle`.
 
 ## Loop
 
-Run, read the verdict, edit, run again. The verdict is the whole answer; do not scrape other output or open report files.
+Run, read the verdict, edit, run again. The verdict is the whole answer; do not scrape other output or report files. Use short flags: `-m` modules, `-s` suite, `-r` redo, `-F` force, `-O jsonl`, `-C dir`.
 
 | | Shell | MCP |
 |---|---|---|

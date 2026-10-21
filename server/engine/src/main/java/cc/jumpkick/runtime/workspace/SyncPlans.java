@@ -405,7 +405,7 @@ public final class SyncPlans {
                                         + " — repository serves different bytes than the lock pins"
                                         + " (sha256 " + shortSha(got) + " vs locked " + shortSha(hex)
                                         + "); if the upstream republished, re-lock with"
-                                        + " `jk lock --force`");
+                                        + " `jk lock -F`");
                         ctx.progress(1);
                         continue;
                     }

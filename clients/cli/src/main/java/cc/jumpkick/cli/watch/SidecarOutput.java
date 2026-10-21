@@ -13,7 +13,7 @@ import java.util.function.Consumer;
  * The two ways a {@code jk dev} session shows what its processes say. On a terminal the app's lines
  * are its own — it is the module being developed — and every sidecar line carries {@code name │ }
  * in a colour picked from the name, so two sidecars never share one and the same name is the same
- * colour in every session. Under {@code --output json} every line and every lifecycle change is
+ * colour in every session. Under {@code -O jsonl} every line and every lifecycle change is
  * one JSONL object with its source, so a consumer never has to guess who printed what.
  */
 public final class SidecarOutput {

@@ -67,7 +67,7 @@ final class TestLauncherReport {
                     .append("`; the frames above name where. Loading a test class needs its supertypes on the test"
                             + " classpath (`jk why <artifact>` names who brings one) and, for a framework that boots"
                             + " the application while loading it (`@QuarkusTest`), an application that builds."
-                            + " Rerun with --verbose for the runner's own output.");
+                            + " Rerun with -v for the runner's own output.");
         } else if (engine != null) {
             sb.append("\n\nFix: the ")
                     .append(engine)
@@ -108,13 +108,13 @@ final class TestLauncherReport {
         } else if (!e.rootCause().isEmpty()) {
             sb.append("\n\nFix: the runner did not get to report; the failure is the framework's own — `")
                     .append(e.rootCause())
-                    .append("` — and the frames above name where. Rerun with --verbose for the live stream.");
+                    .append("` — and the frames above name where. Rerun with -v for the live stream.");
         } else if (e.lastLines().isEmpty()) {
-            sb.append("\n\nFix: the fork printed nothing and named no reason; rerun with --verbose for the live"
+            sb.append("\n\nFix: the fork printed nothing and named no reason; rerun with -v for the live"
                     + " stream. The exit is the fork's own, so a launcher that exits before the runner speaks is"
                     + " the place to look: `[test] jvm-args`, the agents the flags load, the test JDK.");
         } else {
-            sb.append("\n\nFix: the runner's full output is above; rerun with --verbose for the live stream.");
+            sb.append("\n\nFix: the runner's full output is above; rerun with -v for the live stream.");
         }
         return sb.toString();
     }

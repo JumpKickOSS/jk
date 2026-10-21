@@ -22,7 +22,7 @@ import org.jspecify.annotations.Nullable;
  * A toolchain jk provisions on the user's behalf — a pinned JDK the build needs, the GraalVM a
  * native build links with — rendered exactly as {@code jk jdk install} renders its own: one
  * {@code ensure-jdk} plan step whose progress is the {@link JdkInstallView} bar on a terminal and
- * {@link JdkEnsureProgress} labels on {@code --output json}, chosen by the caller's {@link
+ * {@link JdkEnsureProgress} labels on {@code -O jsonl}, chosen by the caller's {@link
  * BuildPlanConsole.Mode} the way every other plan chooses. Runs to completion before the caller's
  * own console opens, so the two never share the screen.
  */

@@ -503,28 +503,28 @@ public final class EngineProtocol {
     /** Server → client, repeated: one import progress note ({@code kind} = {@code wrote}/{@code note}). */
     public static final String IMPORT_NOTE = "import-note";
 
-    /** {@code jk node list --output json}: one Node.js install ({@code version}, {@code source}, {@code home}). */
+    /** {@code jk node list -O jsonl}: one Node.js install ({@code version}, {@code source}, {@code home}). */
     public static final String NODE_LIST = "node-list";
 
-    /** {@code jk node list-remote --output json}: one release ({@code version}, {@code lts}, {@code npm}). */
+    /** {@code jk node list-remote -O jsonl}: one release ({@code version}, {@code lts}, {@code npm}). */
     public static final String NODE_REMOTE = "node-remote";
 
-    /** {@code jk node install --output json}: the install ({@code version}, {@code home}, {@code source}). */
+    /** {@code jk node install -O jsonl}: the install ({@code version}, {@code home}, {@code source}). */
     public static final String NODE_INSTALLED = "node-provisioned";
 
-    /** {@code jk node uninstall --output json}: the removed install ({@code version}, {@code home}). */
+    /** {@code jk node uninstall -O jsonl}: the removed install ({@code version}, {@code home}). */
     public static final String NODE_UNINSTALLED = "node-removed";
 
-    /** {@code jk node which --output json}: the project's Node.js ({@code version}, {@code node}, {@code source}). */
+    /** {@code jk node which -O jsonl}: the project's Node.js ({@code version}, {@code node}, {@code source}). */
     public static final String NODE_WHICH = "node-which";
 
-    /** {@code jk node pin --output json}: the written pin ({@code manifest}, {@code spec}). */
+    /** {@code jk node pin -O jsonl}: the written pin ({@code manifest}, {@code spec}). */
     public static final String NODE_PINNED = "node-pinned";
 
-    /** {@code jk node verify --output json}: one checked install ({@code version}, {@code ok}, {@code detail}). */
+    /** {@code jk node verify -O jsonl}: one checked install ({@code version}, {@code ok}, {@code detail}). */
     public static final String NODE_VERIFY = "node-verify";
 
-    /** {@code jk node update --output json}: the pin against the newest of its major. */
+    /** {@code jk node update -O jsonl}: the pin against the newest of its major. */
     public static final String NODE_UPDATE = "node-update";
 
     /** Client → server: provision Maven/Gradle ({@code jk mvn}/{@code jk gradle}). */

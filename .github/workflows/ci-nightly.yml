@@ -51,7 +51,7 @@ jobs:
 
       # A red class is a verdict about its module; --continue reports every module's.
       - name: Integration profile
-        run: jk test --profile integration --continue --no-ansi
+        run: jk test -p integration --continue --no-ansi
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
@@ -86,7 +86,7 @@ jobs:
         run: bash scripts/ci-takeover.sh --build --install-only
 
       - name: Slow profile
-        run: jk test --profile slow --continue --no-ansi
+        run: jk test -p slow --continue --no-ansi
 
   # @Tag("network") lives here and nowhere else. It is off the branch gate on purpose: Sonatype
   # enforces a per-IP quota on Maven Central, so a gate that needs the network fails for reasons
@@ -113,7 +113,7 @@ jobs:
         run: bash scripts/ci-takeover.sh --build --install-only
 
       - name: Network profile
-        run: jk test --profile network --continue --no-ansi
+        run: jk test -p network --continue --no-ansi
 
   # Microbenchmarks print medians and assert nothing about deltas, so they stay off the merge
   # gate. They still have to run somewhere or they rot. The jar-size bench packages its fixtures
@@ -141,7 +141,7 @@ jobs:
         run: bash scripts/ci-takeover.sh --build --install-only
 
       - name: Bench profile
-        run: jk test --profile bench --continue --no-ansi
+        run: jk test -p bench --continue --no-ansi
 
   # jk audits itself at every severity, nightly, and reports. The branch gate fails a pull request
   # at HIGH (ci.yml's self-host job); a LOW or MEDIUM advisory arrives here as an annotation and a
@@ -172,7 +172,7 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          jk audit --severity LOW --no-ansi --output json | tee target/jk-audit.jsonl
+          jk audit --severity LOW --no-ansi -O jsonl | tee target/jk-audit.jsonl
 
       - name: Attribute audit findings
         if: always()

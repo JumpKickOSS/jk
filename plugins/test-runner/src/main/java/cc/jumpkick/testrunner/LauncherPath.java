@@ -304,7 +304,7 @@ final class LauncherPath {
         if (!excludeTags.isEmpty() && !allTags.isEmpty()) {
             sb.append("; pass --include-tags ")
                     .append(String.join(",", allTags))
-                    .append(" (or a --profile that includes ")
+                    .append(" (or a -p profile that includes ")
                     .append(allTags.size() == 1 ? "it" : "them")
                     .append(") to run ")
                     .append(dropped.size() == 1 ? "it" : "them");
@@ -435,7 +435,7 @@ final class LauncherPath {
                 + scanClasspath
                 + " — the test framework's engine is not on the classpath or not on the launcher's"
                 + " Platform line (`jk why org.junit.platform:junit-platform-launcher`), or a framework"
-                + " classloader failed to load the classes; rerun with --verbose for the runner's own output.";
+                + " classloader failed to load the classes; rerun with -v for the runner's own output.";
     }
 
     private static boolean hasTest(TestPlan plan) {

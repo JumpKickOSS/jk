@@ -1,6 +1,6 @@
 # The integration classes that run on every pull request.
 #
-# `jk test --profile integration` runs more than a hundred classes; the branch gate cannot afford all
+# `jk test -p integration` runs more than a hundred classes; the branch gate cannot afford all
 # of them, so it runs this subset (scripts/curated-integration.sh, a step of the self-host job) and
 # the full profile stays nightly. Membership is a duplicate execution policy, not a JUnit tag: every
 # class named here carries `@Tag("integration")` and runs in the nightly profile too, so nothing is

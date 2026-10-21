@@ -320,7 +320,7 @@ public final class LockCommand implements CliCommand {
         }
     }
 
-    /** Hosted plain path (--verbose / --output json): one console listener per cascade module. */
+    /** Hosted plain path (--verbose / -O jsonl): one console listener per cascade module. */
     private int runHostedPlain(Path dir, Path cache, BuildPlanConsole.Mode mode) {
         EngineRequests.LockHandler handler = new EngineRequests.LockHandler() {
             private @Nullable BuildPlanListener current;

@@ -10,7 +10,7 @@
 |----------|---------|------|
 | **Human at a TTY** | CommandWedge, tables, trees, wizards, progress | Fast eyeball success/failure |
 | **Human debugging** | `-v` / `--verbose` + `target/` | Scrollable detail |
-| **Agents / scripts / CI** | `--output jsonl` / `json`, or **script-mode** plain stdout | Parseable lines, no chrome scrape |
+| **Agents / scripts / CI** | `-O jsonl`, or **script-mode** plain stdout | Parseable lines, no chrome scrape |
 | **Restricted terminals** | `--no-ansi` / `NO_COLOR` / `TERM=dumb` / `CI` | ASCII prefixes, no animation |
 
 **Do not** scrape wedges, progress bars, or box tables in scripts. Prefer JSONL or a script-mode command.
@@ -139,7 +139,7 @@ Helpers (wedge *formatting*, not envelope enforcement):
 
 Optional blank lines **between** chrome and follow-up tips (e.g. after `jk add`) are fine — that is content spacing, not the closing envelope.
 
-**Script-mode** commands override `scriptMode(Invocation)` on `CliCommand`. Dispatch consults it once, before `run`, and it suppresses the envelope **and** the Unicode→ASCII rewrite on stdout, so the payload reaches its consumer byte-exact. stderr stays human — spaced and formatted — even then. `--output json` / `jsonl` enters the same mode. `jk --version` writes `System.out` directly and is outside the envelope, as are parse/usage errors and help screens.
+**Script-mode** commands override `scriptMode(Invocation)` on `CliCommand`. Dispatch consults it once, before `run`, and it suppresses the envelope **and** the Unicode→ASCII rewrite on stdout, so the payload reaches its consumer byte-exact. stderr stays human — spaced and formatted — even then. `-O jsonl` enters the same mode. `jk --version` writes `System.out` directly and is outside the envelope, as are parse/usage errors and help screens.
 
 Do **not** write human chrome with raw `System.out.println` — that bypasses `CliOutput` and skips the blank.
 
@@ -277,7 +277,7 @@ returns an empty result and the command falls back to flags.
 
 ## JSONL / quiet
 
-Under `--output json` / `jsonl`, suppress human chrome (no envelope, no wedge). See [machine-output.md](../user/machine-output.md).
+Under `-O jsonl`, suppress human chrome (no envelope, no wedge). See [machine-output.md](../user/machine-output.md).
 
 ## Checklist for new commands
 

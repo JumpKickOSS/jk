@@ -175,7 +175,7 @@ public final class EnvCommand implements CliCommand {
         CliOutput.outRaw(toJson(rows, verbose));
     }
 
-    /** One row per line, two-space indented, inside a bracket pair — the shape `jk env --output json` has always had. */
+    /** One row per line, two-space indented, inside a bracket pair — the shape `jk env -O jsonl` has always had. */
     public static String toJson(List<Row> rows, boolean verbose) {
         StringBuilder sb = new StringBuilder();
         sb.append("[\n");

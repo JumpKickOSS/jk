@@ -132,7 +132,7 @@ public final class GlobalCancel {
         CliOutput.closeEnvelope();
         err.flush();
         // stdout too, not only err: when stdout is not a TTY it is buffered with autoFlush off,
-        // and the halt skips shutdown hooks — so up to a full buffer of `-O json` output was
+        // and the halt skips shutdown hooks — so up to a full buffer of `-O jsonl` output was
         // silently lost on Ctrl-C into a pipe.
         System.out.flush();
     }

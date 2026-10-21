@@ -30,7 +30,7 @@ public record PlanOptions(
     /** The options both commands declare; each {@code options()} adds these, then its own. */
     public static List<Opt> options() {
         List<Opt> opts = new ArrayList<>();
-        opts.add(Opt.value("<name>", "Build profile (default auto)", "--profile"));
+        opts.add(Opt.value("<name>", "Build profile (default auto)", "-p", "--profile"));
         opts.add(Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers"));
         opts.add(CommonOpts.skipTests());
         // Suite/tag widening, the same vocabulary and resolver as `jk test`: the resolved selection

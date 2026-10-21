@@ -8,7 +8,7 @@ never land in these counters and the caches stay warm.
 
 Subjects, per scenario (`inner.<scenario>.<counter>`):
 
-  tasks-run              steps that finished SUCCESS (`--output json` task-finish events)
+  tasks-run              steps that finished SUCCESS (`-O jsonl` task-finish events)
   tasks-skipped          steps that finished SKIPPED
   disk-write-bytes       bytes the engine process tree dirtied in files (/proc/<pid>/io write_bytes):
                          every file write, native copies by workers included; no socket or wakeup

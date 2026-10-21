@@ -60,7 +60,7 @@ public final class AgentMode {
 
     /**
      * {@code explicit} is {@code --agent}. {@code JK_AGENT=0} turns auto-detection off. A json
-     * stdout ({@code --output json}) keeps that stream unless agent mode was asked for explicitly.
+     * stdout ({@code -O jsonl}) keeps that stream unless agent mode was asked for explicitly.
      */
     static boolean requested(
             boolean explicit, Function<String, @Nullable String> env, boolean stdoutTty, boolean jsonStdout) {

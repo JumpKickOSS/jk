@@ -70,8 +70,7 @@ class TestLauncherReportTest {
     void a_jvm_that_printed_nothing_usable_keeps_the_generic_fix() {
         String message = TestLauncherReport.message(
                 TestLauncherFailure.runner("g:app", 1, "Error: could not create the Java Virtual Machine"), null);
-        assertThat(message)
-                .contains("Fix: the runner's full output is above; rerun with --verbose for the live stream.");
+        assertThat(message).contains("Fix: the runner's full output is above; rerun with -v for the live stream.");
     }
 
     @Test

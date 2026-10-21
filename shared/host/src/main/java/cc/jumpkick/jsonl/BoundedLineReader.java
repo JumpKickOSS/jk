@@ -184,7 +184,7 @@ public final class BoundedLineReader extends BufferedReader {
                         "no protocol traffic for "
                                 + formatIdle(idle)
                                 + " — the engine looks dead (set JK_STREAM_IDLE_MS to tune;"
-                                + " try `jk engine stop --force`)",
+                                + " try `jk engine stop --now`)",
                         e);
             }
             throw e;

@@ -89,7 +89,7 @@ public final class TestClassMatch {
         List<String> running = new ArrayList<>();
         for (String name : new TreeSet<>(profiles.byName().keySet())) {
             if (name.equals(active)) continue;
-            if (runs(profiles.resolve(name), tags)) running.add("--profile " + name);
+            if (runs(profiles.resolve(name), tags)) running.add("-p " + name);
         }
         if (running.isEmpty()) return tagExcluded;
         boolean one = !tagExcluded.contains(" classes the tag filter excluded");

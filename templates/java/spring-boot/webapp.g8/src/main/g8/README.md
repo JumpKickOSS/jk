@@ -47,7 +47,7 @@ front door, prefixes the sidecar's output with `web │`, and stops both on Ctrl
 
 ## Tiers and guards
 
-`jk test` is the fast tier; `jk test --profile integration` (or `network`, `slow`, `bench`) runs the
+`jk test` is the fast tier; `jk test -p integration` (or `network`, `slow`, `bench`) runs the
 tests tagged with that cost. House rules come from the `spring` pack plus the `monorepo` pack's
 workspace-shaped rules (`jk-guards.toml`); `jk guard explain` lists them, and a failure's `Instead:`
 line says what to do.

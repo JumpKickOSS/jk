@@ -150,7 +150,7 @@ public final class AuditCommand implements CliCommand {
     }
 
     /**
-     * One {@code --output json} line per finding. {@code fixedIn} rides when OSV named a fixed
+     * One {@code -O jsonl} line per finding. {@code fixedIn} rides when OSV named a fixed
      * version; {@code reason} and {@code until} ride when an ignore entry names the advisory, and
      * {@code ignoreExpired} only when that entry has lapsed — in which case {@code ignored} is
      * {@code false} and the finding counts toward the exit status again.

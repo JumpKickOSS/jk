@@ -154,7 +154,7 @@ class McpHandlerTest {
     }
 
     /**
-     * The {@code jobs} array of {@code status} is the one {@code jk engine status --output json}
+     * The {@code jobs} array of {@code status} is the one {@code jk engine status -O jsonl}
      * and {@code GET /api/status} carry: every live and queued job as its {@link JobRow}, so an agent
      * reads the same rows — and the same field names — whichever surface it asks.
      */

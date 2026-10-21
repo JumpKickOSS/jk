@@ -47,7 +47,7 @@ class LockRewriteGuardTest {
                 .contains("written by jk 0.14.0")
                 .contains("this engine is jk 0.13.7, an older jk that does not know its key(s) jdk.future-key")
                 .contains("`jk engine stop`")
-                .contains("`jk lock --force`");
+                .contains("`jk lock -F`");
     }
 
     @Test

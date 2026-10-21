@@ -100,10 +100,10 @@ modules = [
 # tier — so the routing and the check cannot drift.
 #
 #   jk test                        fast tier, untagged only. The PR gate.
-#   jk test --profile integration  engine / e2e / worker suites. The pre-merge bar.
-#   jk test --profile slow         framework and language e2e. Nightly, never gating.
-#   jk test --profile network      talks to a real remote. Nightly, never gating.
-#   jk test --profile bench        microbenchmarks. On demand, gates nothing.
+#   jk test -p integration         engine / e2e / worker suites. The pre-merge bar.
+#   jk test -p slow                framework and language e2e. Nightly, never gating.
+#   jk test -p network             talks to a real remote. Nightly, never gating.
+#   jk test -p bench               microbenchmarks. On demand, gates nothing.
 #   jk test --all                  everything, every suite, no tag filter.
 # ---------------------------------------------------------------------------
 [test]

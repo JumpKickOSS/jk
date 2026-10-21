@@ -6,7 +6,7 @@ level is **`java = N`** (`--release`). A `jdk =` pin is only for choosing a spec
 installs on your behalf — the engine's own runtime, a pinned JDK a build needs, the GraalVM a
 native build links with — renders the same progress bar and "has been installed to" line as
 `jk jdk install`, then the command that needed it continues ([machine
-output](machine-output.md#toolchain-provisioning) for the `--output json` shape).
+output](machine-output.md#toolchain-provisioning) for the `-O jsonl` shape).
 
 Supported **project** floor: **JDK 17+** (no Java 8 or 11). 17 and 21 compile with the
 host JDK 25 via `--release` — do **not** download those obsolete runtimes for bytecode.

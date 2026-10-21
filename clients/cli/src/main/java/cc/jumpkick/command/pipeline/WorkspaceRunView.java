@@ -41,7 +41,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p><b>Two renderers, not one.</b> {@link #live} paints into a {@link JkManager} region;
  * {@link #headless} appends blocks under a print mutex and never opens a region. They are siblings
- * on the <em>mode</em> axis: every verb picks {@code headless} for {@code --output json} /
+ * on the <em>mode</em> axis: every verb picks {@code headless} for {@code -O jsonl} /
  * {@code --verbose} and {@code live} for a TTY, so no region is ever opened dormant with a JSON
  * stream running through it. {@code buffered} chrome may flush a block with
  * {@link JkManager#writeAbove}; non-buffered chrome owns no output of its own and must not.
@@ -116,7 +116,7 @@ final class WorkspaceRunView {
 
     /**
      * @param session transcript to mirror module events into, or null when the verb keeps none
-     * @param toStdout {@code --output json}: JSONL events go to stdout as well as the transcript
+     * @param toStdout {@code -O jsonl}: JSONL events go to stdout as well as the transcript
      */
     WorkspaceRunView(Chrome chrome, Path entryDir, @Nullable CliSessionTranscript session, boolean toStdout) {
         this.chrome = chrome;
@@ -264,7 +264,7 @@ final class WorkspaceRunView {
     }
 
     /**
-     * Append-only listener for {@code --output json} / {@code --verbose}: no region, one buffered
+     * Append-only listener for {@code -O jsonl} / {@code --verbose}: no region, one buffered
      * block plus a {@code ✓ [k of N]} line per module, printed under the shared mutex.
      */
     WorkspaceBuildListener headless() {
@@ -502,7 +502,7 @@ final class WorkspaceRunView {
 
     /**
      * Write one event to the transcript whatever the output mode. {@link #event} only emits under
-     * {@code --output json}; a fact worth keeping for a later reader has to go here or it exists
+     * {@code -O jsonl}; a fact worth keeping for a later reader has to go here or it exists
      * only for as long as the terminal shows it.
      */
     private void mirror(String line) {

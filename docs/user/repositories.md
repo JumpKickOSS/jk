@@ -193,7 +193,7 @@ whose lock names an unreachable repository still takes the artifact from any rep
 serves the same sha256 — and pays the retry ladder once, not once per artifact: an address that
 answered nothing through a whole ladder is remembered for a minute, and every later request to
 it, from any repository entry or thread, is refused before it dials and falls through to the
-next repository at once. A forced session (`jk lock --force`, `jk sync -F`, `jk build --force`)
+next repository at once. A forced session (`jk lock -F`, `jk sync -F`, `jk build -F`)
 forgets that memory on both its legs, so a repository that came back inside the minute is asked
 again at once.
 

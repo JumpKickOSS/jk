@@ -83,7 +83,7 @@ class CommandWedgeTest {
 
     @Test
     void spinner_and_download_bar_are_silent_in_script_mode() {
-        // : JK_OUTPUT=json puts every command in script mode, but Spinner.show and
+        // : JK_OUTPUT=jsonl puts every command in script mode, but Spinner.show and
         // the download bar gated only on --no-progress — jdk install / clean / new animated
         // cursor ANSI and OSC into a machine-consumed stdout. The rule now lives on the
         // primitives, so no call site can route around it.

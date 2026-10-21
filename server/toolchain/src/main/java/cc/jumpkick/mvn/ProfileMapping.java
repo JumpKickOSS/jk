@@ -312,8 +312,8 @@ final class ProfileMapping {
         if (!jvm.isEmpty()) keys.add("`jvm-args`");
         row(
                 profile,
-                "compiler settings → `[profiles." + id + "]` " + String.join(" and ", keys)
-                        + "; select with `--profile " + id + "`.");
+                "compiler settings → `[profiles." + id + "]` " + String.join(" and ", keys) + "; select with `-p " + id
+                        + "`.");
         return true;
     }
 

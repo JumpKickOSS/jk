@@ -28,7 +28,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * {@code jk audit} end to end — the CLI, a real engine, the forked auditor worker and a mock OSV:
  * one HIGH finding fails the gate, an {@code [audit] ignore} entry naming it passes, and an
- * expired entry fails again, with the finding's state on the {@code --output json} line.
+ * expired entry fails again, with the finding's state on the {@code -O jsonl} line.
  */
 @Tag("integration")
 class AuditCommandE2eTest {

@@ -17,7 +17,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Single entry point CLI commands use to run a {@link BuildPlan} against the right set of console
  * listeners — picks {@link CommandManagerListener} (default TTY), {@link VerboseListener} ({@code
- * --verbose}), {@link JsonlListener} ({@code --output json}), or {@link SilentListener} (non-TTY,
+ * --verbose}), {@link JsonlListener} ({@code -O jsonl}), or {@link SilentListener} (non-TTY,
  * {@code --quiet}, or interactive plan).
  *
  * <p>Ctrl-C during a plan is handled by the app-level {@link cc.jumpkick.cli.tui.GlobalCancel}
@@ -35,7 +35,7 @@ public final class BuildPlanConsole {
         VERBOSE,
         /** Silent (today's {@code --quiet}, or interactive plans). */
         QUIET,
-        /** Live JSONL to stdout ({@code --output json} or {@code jsonl}; identical). */
+        /** Live JSONL to stdout ({@code -O jsonl}). */
         JSON
     }
 
@@ -83,10 +83,10 @@ public final class BuildPlanConsole {
 
     /**
      * Translate {@code GlobalOptions} flags into a {@link Mode}. Lives here so every command picks
-     * the same precedence: {@code --output json} &gt; {@code --quiet} &gt; {@code --no-progress} &gt;
+     * the same precedence: {@code -O jsonl} &gt; {@code --quiet} &gt; {@code --no-progress} &gt;
      * {@code --verbose} &gt; default.
      *
-     * <p>{@code --output json} wins over the visualization flags because it's an explicit "I want
+     * <p>{@code -O jsonl} wins over the visualization flags because it's an explicit "I want
      * machine-readable output" — the user's other preferences don't override that.
      */
     public static Mode modeFor(@Nullable GlobalOptions opts) {
@@ -180,7 +180,7 @@ public final class BuildPlanConsole {
 
     private static BuildPlanListener chooseConsoleListener(BuildPlan plan, Mode mode) {
         // Interactive plans (wizards, download bars) must NOT render a progress bar: the plan's
-        // own chrome owns the terminal. --output json still gets its events — there is no
+        // own chrome owns the terminal. -O jsonl still gets its events — there is no
         // terminal to own, and the structured lines are what the caller asked for. An interactive
         // plan runs ahead of the job it prepares for, so it never owns the aggregate progress
         // rider: its lines carry null, and the fraction it reaches does not leak into the first

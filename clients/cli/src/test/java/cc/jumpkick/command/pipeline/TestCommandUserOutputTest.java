@@ -159,7 +159,7 @@ class TestCommandUserOutputTest {
         assertThat(ctx.errors).hasSize(1);
         // "test-failure" (not "test") so human listeners can suppress the inline
         // echo — the run-tests failure block already prints it in full — while the
-        // diagnostic still reaches --output json / details.jsonl with split identity.
+        // diagnostic still reaches -O jsonl / details.jsonl with split identity.
         assertThat(ctx.errors.get(0).code()).isEqualTo("test-failure");
         assertThat(ctx.errors.get(0).message()).isEqualTo("expected 5 got 4");
         assertThat(ctx.errors.get(0).method()).isEqualTo("brokenTest()");

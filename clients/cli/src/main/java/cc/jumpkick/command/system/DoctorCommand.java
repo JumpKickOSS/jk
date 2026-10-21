@@ -55,7 +55,7 @@ import org.jspecify.annotations.Nullable;
  * {@code jk doctor} — host health checklist. Prints a wedge header plus one row per subsystem
  * (engine, dirs, state, jdk, lock, shell, mvn, tools, workers) and a summary. The worker and repository
  * rows are answered by a running engine only — a health check never starts one unless
- * {@code --engine} asks it to, and {@code --no-engine} skips those rows. {@code --output json}
+ * {@code --engine} asks it to, and {@code --no-engine} skips those rows. {@code -O jsonl}
  * emits machine output.
  */
 public final class DoctorCommand implements CliCommand {
@@ -91,7 +91,7 @@ public final class DoctorCommand implements CliCommand {
 
         // Collect checks first so JSON and human share the same facts. Tools are scanned (and
         // repaired — broken links unlinked, fingerprints written) exactly once, here, so
-        // `--output json` performs the same repair the human view does instead of only reporting it.
+        // `-O jsonl` performs the same repair the human view does instead of only reporting it.
         Check engine = withHeapDump(checkEngine(), EngineHeapDump.find(EnginePaths.current()));
         Check cache = checkDirs();
         Check state = checkStateMode();
@@ -759,7 +759,7 @@ public final class DoctorCommand implements CliCommand {
     /**
      * Scan every installed/linked tool, applying repair as it goes (unlink a broken symlink,
      * fingerprint a verified one) — the single pass both JSON and human output render from, so
-     * {@code --output json} performs the same repair the human view reports.
+     * {@code -O jsonl} performs the same repair the human view reports.
      *
      * <p>Only a symlinked home is fingerprinted, because a link is the only install whose contents
      * jk does not control: {@code ToolProvisioning} links a discovered host install rather than
@@ -877,7 +877,7 @@ public final class DoctorCommand implements CliCommand {
     }
 
     /**
-     * The `--output json` report: the checks, the tool tallies and the scan error, then the
+     * The `-O jsonl` report: the checks, the tool tallies and the scan error, then the
      * installed workers with their launch classpaths, the repository stores and Maven's settings.
      */
     public static String reportJson(

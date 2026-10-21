@@ -356,7 +356,7 @@ public final class JkResultsMarkdown {
                 .append("`\n");
         sb.append("- Step-by-step transcript: `")
                 .append(pathOr(detailsPath, "details.jsonl"))
-                .append("` — JSONL, same shape as `--output json`\n");
+                .append("` — JSONL, same shape as `-O jsonl`\n");
         boolean ranTests = JkResultsTestsSection.hasTestEntries(tests)
                 || (r.tests() != null && r.tests().total() > 0);
         if (ranTests) {

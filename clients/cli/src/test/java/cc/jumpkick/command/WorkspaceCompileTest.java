@@ -14,7 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@code jk compile} over a workspace: at the root, at a member directory, at a nested member,
- * with {@code -m}, and under {@code --output json}.
+ * with {@code -m}, and under {@code -O jsonl}.
  *
  * <p>A workspace compiles through a different orchestrator than a standalone project and settles
  * a different terminal, so a green standalone compile says nothing about this arm.

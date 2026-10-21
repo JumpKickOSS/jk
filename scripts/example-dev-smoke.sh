@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run an example under `jk dev --output json` until it is ready, fetch every front door it names,
+# Run an example under `jk dev -O jsonl` until it is ready, fetch every front door it names,
 # fetch each extra check through the first one, then Ctrl-C the session and require that nothing
 # outlives it and that no committed npm lock moved.
 #
@@ -58,7 +58,7 @@ smoke() {
     # ignored, the JVM leaves that disposition alone, and the Ctrl-C below would reach nothing.
     set -m
     # shellcheck disable=SC2086 # JK_DEV_ARGS is a word list on purpose (e.g. "-m app")
-    "$jk" dev --output json --no-ansi ${JK_DEV_ARGS:-} >"$log" 2>&1 &
+    "$jk" dev -O jsonl --no-ansi ${JK_DEV_ARGS:-} >"$log" 2>&1 &
     jk_pid=$!
     set +m
 

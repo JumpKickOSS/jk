@@ -69,7 +69,7 @@ class TestCommandTailTest {
     }
 
     /**
-     * `jk test --profile <tier>` over modules that carry no such tier: every module finished, none
+     * `jk test -p <tier>` over modules that carry no such tier: every module finished, none
      * had a suite. Green, but not a passing suite — the line must not claim one.
      */
     @Test

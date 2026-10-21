@@ -46,7 +46,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Exit 0 on success whether or not any row can move (a non-empty JSON array is drift). Does not
  * re-resolve or rewrite the lock — use {@code jk update} after review. Machine output: {@code
- * --output json} emits a JSON array of row objects (see guide).
+ * -O jsonl} emits a JSON array of row objects (see guide).
  */
 public final class OutdatedCommand implements CliCommand {
 

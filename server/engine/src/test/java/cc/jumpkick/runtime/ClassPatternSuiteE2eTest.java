@@ -101,7 +101,7 @@ class ClassPatternSuiteE2eTest {
                 .singleElement()
                 .extracting(f -> f.message())
                 .isEqualTo("no test classes matched --class FooIT — FooIT is in the integration suite"
-                        + " (jk test --suite integration --class FooIT)");
+                        + " (jk test -s integration --class FooIT)");
     }
 
     private record Run(BuildPlan plan, BuildPlanResult result) {

@@ -40,7 +40,7 @@ public final class CompileCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         var opts = new ArrayList<Opt>();
-        opts.add(Opt.value("<name>", "Build profile (default auto)", "--profile"));
+        opts.add(Opt.value("<name>", "Build profile (default auto)", "-p", "--profile"));
         opts.add(CommonOpts.cacheDir());
         opts.addAll(CommonOpts.moduleSelection());
         opts.addAll(VariantSelection.options());
