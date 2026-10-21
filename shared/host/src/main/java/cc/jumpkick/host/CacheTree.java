@@ -73,7 +73,7 @@ public enum CacheTree {
 
     /** Tool scripts fetched from a URL, keyed by the hash of that URL. */
     TOOL_SRC("tool-src"),
-    /** npm's own cache ({@code npm_config_cache}), shared by every npm jk runs: scaffold and build alike. */
+    /** npm's own cache ({@code npm_config_cache}), shared by every npm jk runs: scaffold, build and {@code jk node}. */
     NPM("npm"),
     /** bun's install cache ({@code BUN_INSTALL_CACHE_DIR}) for the node builds that use bun. */
     BUN("bun"),

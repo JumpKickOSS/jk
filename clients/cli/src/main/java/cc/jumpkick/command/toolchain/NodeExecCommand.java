@@ -48,6 +48,6 @@ public final class NodeExecCommand implements CliCommand {
             CommandWedge.printFail(NodeCli.WEDGE, "no Node.js declared here — pass --node <spec> or run `jk node pin`");
             return Exit.CONFIG;
         }
-        return NodeCli.exec(home.get(), in.positionals(), dir);
+        return NodeCli.passthrough(home.get(), in.positionals(), dir);
     }
 }

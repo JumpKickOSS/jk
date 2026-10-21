@@ -12,6 +12,7 @@ import cc.jumpkick.docs.JkSkill;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.node.NodeCaches;
 import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.node.NodeInstalls;
 import cc.jumpkick.scaffold.NewGroupGuess;
@@ -21,6 +22,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -175,11 +177,9 @@ final class NewNode {
         Path parent = Objects.requireNonNull(target.toAbsolutePath().getParent(), "target has a parent");
         Files.createDirectories(parent);
         String dir = String.valueOf(target.getFileName());
-        Map<String, String> env = Map.of(
-                "npm_config_cache",
-                NodeHome.npmCache(JkDirs.cache()).toString(),
-                "npm_config_update_notifier",
-                "false");
+        Map<String, String> env =
+                new LinkedHashMap<>(NodeCaches.env(home.packageManager(), JkDirs.cache(), JkDirs.store()));
+        env.put("npm_config_update_notifier", "false");
         int exit = NodeCli.exec(home, NodeGenerators.argv(f, dir, params), parent, env);
         if (exit != 0) {
             CommandWedge.printFail(WEDGE, "the " + f.id() + " generator exited with " + exit);

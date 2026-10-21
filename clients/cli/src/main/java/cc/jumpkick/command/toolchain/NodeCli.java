@@ -7,8 +7,10 @@ import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.JsonFields;
+import cc.jumpkick.node.NodeCaches;
 import cc.jumpkick.node.NodeCatalog;
 import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.node.NodeInstalls;
@@ -144,15 +146,21 @@ public final class NodeCli {
     }
 
     /**
-     * Run {@code argv} in {@code dir} with {@code home}'s shims and binaries first on {@code PATH},
-     * the terminal handed over, and return its exit code. A bare program name is looked up there
-     * first: the JVM resolves one against its own {@code PATH}, not the child's.
+     * Run a command the user asked for ({@code jk node exec}, {@code jk node run}) through {@link
+     * #exec}, its package managers on jk's caches unless the user configured their own.
      */
-    public static int exec(NodeHome home, List<String> argv, Path dir) throws IOException, InterruptedException {
-        return exec(home, argv, dir, Map.of());
+    static int passthrough(NodeHome home, List<String> argv, Path dir) throws IOException, InterruptedException {
+        Map<String, String> env = NodeCaches.passthroughEnv(
+                home.packageManager(), JkDirs.cache(), JkDirs.store(), dir, System.getenv(), PathUtil.userHome());
+        return exec(home, argv, dir, env);
     }
 
-    /** {@link #exec(NodeHome, List, Path)} with {@code env} set over the inherited environment. */
+    /**
+     * Run {@code argv} in {@code dir} with {@code env} set over the inherited environment, {@code
+     * home}'s shims and binaries first on {@code PATH} and the terminal handed over, and return its
+     * exit code. A bare program name is looked up there first: the JVM resolves one against its own
+     * {@code PATH}, not the child's.
+     */
     public static int exec(NodeHome home, List<String> argv, Path dir, Map<String, String> env)
             throws IOException, InterruptedException {
         List<String> command = new ArrayList<>(argv);

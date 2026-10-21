@@ -3,10 +3,10 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.engine.plugin.WorkerEnv;
-import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.NodeProject;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.node.NodeCaches;
 import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -39,23 +39,7 @@ final class NodeEnv {
             boolean production)
             throws IOException {
         Map<String, String> vars = new LinkedHashMap<>();
-        vars.put("npm_config_cache", NodeHome.npmCache(in.cache()).toString());
-        // Each manager's own cache sits under jk's, as npm's does; npm warns about every config it
-        // does not know, so each key goes only to its manager.
-        switch (home.packageManager()) {
-            case PNPM -> {
-                // pnpm 11 and later read only their own pnpm_config_* keys; older ones the npm_config_* one.
-                String store = JkDirs.store().resolve("pnpm-store").toString();
-                vars.put("pnpm_config_store_dir", store);
-                vars.put("npm_config_store_dir", store);
-            }
-            case BUN ->
-                vars.put(
-                        "BUN_INSTALL_CACHE_DIR", CacheTree.BUN.under(in.cache()).toString());
-            case YARN ->
-                vars.put("YARN_GLOBAL_FOLDER", CacheTree.YARN.under(in.cache()).toString());
-            case NPM -> {}
-        }
+        vars.putAll(NodeCaches.env(home.packageManager(), in.cache(), JkDirs.store()));
         vars.put("npm_config_update_notifier", "false");
         vars.putAll(NodeNetwork.env(BuildLayout.moduleTargetDir(moduleDir).resolve("node"), home.packageManager()));
         vars.putAll(keyed(project, node, moduleDir, false));

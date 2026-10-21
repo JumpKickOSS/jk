@@ -49,6 +49,6 @@ public final class NodeRunCommand implements CliCommand {
         List<String> argv = new ArrayList<>(home.get().managerCommand());
         argv.add("run");
         argv.addAll(in.positionals());
-        return NodeCli.exec(home.get(), argv, dir);
+        return NodeCli.passthrough(home.get(), argv, dir);
     }
 }
