@@ -2,6 +2,7 @@
 package cc.jumpkick.http;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -65,8 +66,6 @@ public final class CentralMirror {
     /** Set to {@code off}/{@code false}/{@code 0} to keep using Central even when rate-limited. */
     public static final String ENV_DISABLE = "JK_CENTRAL_MIRROR";
 
-    private static final String STAMP_NAME = "central-rate-limited.stamp";
-
     /**
      * Why the window is open, recorded as the stamp's first line so the note can name it. A stamp
      * without a recognisable first line — one armed by hand with {@code touch} — reads as a rate
@@ -110,7 +109,7 @@ public final class CentralMirror {
      * @param mirrorBase the base URL to route to, no trailing slash (normally {@link #MIRROR_BASE})
      */
     CentralMirror(Path cacheDir, Duration window, boolean enabled, String centralHost, String mirrorBase) {
-        this.stamp = cacheDir.resolve(STAMP_NAME);
+        this.stamp = CacheTree.CENTRAL_RATE_LIMITED.under(cacheDir);
         this.window = window;
         this.enabled = enabled;
         this.centralHost = centralHost;

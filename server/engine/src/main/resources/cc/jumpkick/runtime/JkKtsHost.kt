@@ -144,7 +144,10 @@ fun main() {
                 compilationCache(
                     CompiledScriptJarsCache { source, cfg ->
                         cacheDir.mkdirs()
-                        File(cacheDir, cacheKey(source, cfg) + ".jar")
+                        // A hit stamps the jar, so the retention sweep ages jars by last use.
+                        File(cacheDir, cacheKey(source, cfg) + ".jar").also {
+                            if (it.isFile) it.setLastModified(System.currentTimeMillis())
+                        }
                     }
                 )
             }

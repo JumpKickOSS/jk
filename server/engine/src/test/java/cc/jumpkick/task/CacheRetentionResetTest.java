@@ -4,20 +4,23 @@ package cc.jumpkick.task;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.host.CacheTree;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The two tiers that are cleared rather than ranked. Neither has a clock worth reading — a Kotlin
- * ABI snapshot is written once and never rewritten on reuse, and a {@code jk jshell} alias is a
- * hard link — so the instrument either does nothing at all or takes the tier, and the cost of
- * taking it is one rebuild of something derived.
+ * The tiers that are cleared rather than ranked. None has a clock worth reading — a Kotlin ABI
+ * snapshot is written once and never rewritten on reuse, a {@code jk jshell} alias is a hard link,
+ * and an npm cache hit rewrites nothing — so the instrument either does nothing at all or takes the
+ * tier, and the cost of taking it is one rebuild or re-download.
  */
 class CacheRetentionResetTest {
 
@@ -44,6 +47,32 @@ class CacheRetentionResetTest {
 
         assertThat(snapshot).doesNotExist();
         assertThat(root.resolve("kotlin-cp-snapshots")).doesNotExist();
+    }
+
+    @Test
+    void under_its_budget_the_npm_cache_is_kept_whole_however_old(@TempDir Path root) throws IOException {
+        Path index = sparse(root, "npm/_cacache/index-v5/ab/cd/entry", 1024);
+        Path blob = sparse(root, "npm/_cacache/content-v2/sha512/ab/blob", 512 * MIB);
+        for (Path p : List.of(index, blob)) {
+            Files.setLastModifiedTime(p, FileTime.fromMillis(0));
+        }
+
+        var report = CacheRetention.sweep(root, new Cas(root), Set.of(), false);
+
+        assertThat(index).exists();
+        assertThat(blob).exists();
+        assertThat(report.unknownEntries()).as("npm is a tier, not residue").isEmpty();
+    }
+
+    @Test
+    void over_its_budget_the_npm_cache_goes_whole(@TempDir Path root) throws IOException {
+        Path index = sparse(root, "npm/_cacache/index-v5/ab/cd/entry", 1024);
+        sparse(root, "npm/_cacache/content-v2/sha512/ab/blob", 2049 * MIB);
+
+        CacheRetention.sweep(root, new Cas(root), Set.of(), false);
+
+        assertThat(index).doesNotExist();
+        assertThat(CacheTree.NPM.under(root)).doesNotExist();
     }
 
     /** Aliases are recreated on demand, so there is no budget to be under. */

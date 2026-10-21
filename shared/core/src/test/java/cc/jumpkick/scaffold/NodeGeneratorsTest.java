@@ -43,13 +43,20 @@ class NodeGeneratorsTest {
     void each_generator_is_asked_for_a_typescript_starter_without_prompts() {
         assertThat(argv("vite-react"))
                 .containsExactly(
-                        "npx", "--yes", "create-vite@latest", "web", "--template", "react-ts", "--no-interactive");
+                        "npx",
+                        "--yes",
+                        "create-vite@latest",
+                        "web",
+                        "--template",
+                        "react-ts",
+                        "--no-interactive",
+                        "--no-immediate");
         assertThat(argv("vite-svelte")).contains("svelte-ts");
         assertThat(argv("next")).contains("create-next-app@latest", "--ts", "--use-npm", "--yes");
         assertThat(argv("angular"))
                 .contains("@angular/cli@latest", "new", "web", "--defaults", "--package-manager=npm");
         assertThat(argv("sveltekit"))
-                .contains("sv@latest", "create", "web", "--types=ts", "--install=npm")
+                .contains("sv@latest", "create", "web", "--types=ts", "--no-install")
                 .as("adapter-node, so the build writes a server jk runs")
                 .containsSubsequence("--add", "sveltekit-adapter=adapter:node");
         assertThat(argv("nuxt"))
@@ -57,6 +64,16 @@ class NodeGeneratorsTest {
                 .contains("create-nuxt@latest", "web", "--template=minimal", "--packageManager=npm");
         assertThat(NodeGenerators.find("NEXT")).isPresent();
         assertThat(NodeGenerators.find("gatsby")).isEmpty();
+    }
+
+    @Test
+    void no_generator_installs_so_the_first_build_is_the_only_install() {
+        for (NodeGenerators.Framework f : NodeGenerators.all()) {
+            assertThat(NodeGenerators.argv(f, "web", List.of()))
+                    .as(f.id())
+                    .containsAnyOf("--no-install", "--skip-install", "--no-immediate")
+                    .doesNotContain("--install", "--immediate");
+        }
     }
 
     @Test

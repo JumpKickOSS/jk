@@ -73,6 +73,14 @@ public enum CacheTree {
 
     /** Tool scripts fetched from a URL, keyed by the hash of that URL. */
     TOOL_SRC("tool-src"),
+    /** npm's own cache ({@code npm_config_cache}), shared by every npm jk runs: scaffold and build alike. */
+    NPM("npm"),
+    /** bun's install cache ({@code BUN_INSTALL_CACHE_DIR}) for the node builds that use bun. */
+    BUN("bun"),
+    /** Yarn's global folder ({@code YARN_GLOBAL_FOLDER}) for the node builds that use Yarn. */
+    YARN("yarn"),
+    /** Compiled {@code .kts} build-logic scripts, one jar per script content hash. */
+    KTS("kts"),
 
     /** Cadence bookkeeping for the prune itself: {@code <millis> <finalActionBytes>}. */
     LAST_PRUNED(".last-pruned", "constant-size cadence sentinel"),
@@ -81,7 +89,11 @@ public enum CacheTree {
     PRUNE_LOCK(".prune.lock", "zero-byte lock file held across the prune"),
 
     /** {@code jk status}'s last cache footprint, so a status does not walk the cache every time. */
-    STATUS_USAGE(".status-usage", "one line of three numbers, rewritten by jk status");
+    STATUS_USAGE(".status-usage", "one line of three numbers, rewritten by jk status"),
+    /** Maven Central's rate-limit failover window: its mtime opens the window, its age closes it. */
+    CENTRAL_RATE_LIMITED(
+            "central-rate-limited.stamp",
+            "a failover window whose age is the clock; deleting it ends the window early");
 
     private final String entry;
     private final String bookkeeping;
