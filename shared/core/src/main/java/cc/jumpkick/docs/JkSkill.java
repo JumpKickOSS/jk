@@ -17,8 +17,17 @@ import org.jspecify.annotations.Nullable;
 public final class JkSkill {
 
     /** Topic names, in reading order. Each is a sibling of {@code SKILL.md}. */
-    public static final List<String> TOPICS =
-            List.of("dependencies", "tests", "workspaces", "lockfile", "imports", "plugins", "guards", "layout", "jdk");
+    public static final List<String> TOPICS = List.of(
+            "dependencies",
+            "tests",
+            "workspaces",
+            "lockfile",
+            "imports",
+            "plugins",
+            "guards",
+            "layout",
+            "jdk",
+            "engine");
 
     /**
      * Project-relative skills directory from the Agent Skills layout: {@code <project>/.agents/skills}.
@@ -61,7 +70,7 @@ public final class JkSkill {
 
             ## MCP
 
-            The engine serves MCP on loopback. `jk engine status --output json` includes `mcpUrl`. Pass
+            The engine serves MCP on loopback. `jk engine status -O jsonl` includes `mcpUrl`. Pass
             `dir` on the first call; that binds the connection. Tools: `run`, `diagnostics`, `deps`,
             `why`, `skill`. `deps` edits `jk.toml` and relocks. Other tools: `tools/list` with
             `extended` true.
