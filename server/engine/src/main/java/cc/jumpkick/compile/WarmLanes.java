@@ -32,7 +32,8 @@ import org.jspecify.annotations.Nullable;
  * <p>A lane still yields to the lease ledger and the lane budget exactly as a job's does: an idle
  * warm lane exits when a fork waits for its memory or another pool needs its slot. Scala and the
  * other compiler-classpath requests stay job-scoped; their compiler caches are not worth holding.
- * A linger of {@code 0} turns warm lanes off.
+ * A linger of {@code 0} turns warm lanes off, except on CI, where the most recently used pool
+ * keeps one lane past the linger ({@link WarmLinger#keepsLatest}).
  */
 final class WarmLanes {
 
@@ -45,6 +46,9 @@ final class WarmLanes {
 
     private static volatile boolean hookRegistered;
 
+    /** The pool most recently given an item; under CI it keeps one lane past the linger. */
+    private static volatile @Nullable Warm latest;
+
     private WarmLanes() {}
 
     /** How long a warm pool waits after its last item before its lanes exit. */
@@ -55,7 +59,7 @@ final class WarmLanes {
     /** Whether {@code req} is compiled on a warm pool rather than its job's. */
     static boolean lingers(ForkedJavac.Request req) {
         String scala = req.scalaVersion();
-        return lingerMillis() > 0
+        return (lingerMillis() > 0 || WarmLinger.keepsLatest(WarmLinger.JAVA_COMPILER))
                 && (scala == null || scala.isBlank())
                 && req.compilerClasspath().isEmpty();
     }
@@ -88,6 +92,8 @@ final class WarmLanes {
             return pool;
         });
         Warm pool = held[0];
+        latest = pool;
+        pool.lanes.keepAtMost(Integer.MAX_VALUE);
         item.compile.whenComplete((r, e) -> pool.settled());
         pool.armReaper();
         registerShutdownHook();
@@ -253,7 +259,11 @@ final class WarmLanes {
             while (true) {
                 long linger = TimeUnit.MILLISECONDS.toNanos(Math.max(1L, lingerMillis()));
                 long wait = linger - (CLOCK.nanos() - lastUsedNanos);
-                if (wait <= 0) {
+                if (wait <= 0 && latest == this && WarmLinger.keepsLatest(WarmLinger.JAVA_COMPILER)) {
+                    // Kept on CI: its burst lanes go, one stays until newer work takes another pool.
+                    lanes.keepAtMost(1);
+                    wait = Math.max(linger, TimeUnit.MINUTES.toNanos(1));
+                } else if (wait <= 0) {
                     boolean[] retired = {false};
                     POOLS.computeIfPresent(key, (k, w) -> {
                         if (w != this || items > 0) return w;

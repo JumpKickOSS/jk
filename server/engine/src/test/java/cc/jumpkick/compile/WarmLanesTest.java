@@ -41,6 +41,7 @@ class WarmLanesTest {
     void reset() {
         WarmLanes.closeAllForTests();
         WarmLinger.forTests(-1);
+        WarmLinger.ciForTests(null);
     }
 
     @Test
@@ -133,6 +134,61 @@ class WarmLanesTest {
         awaitTrue(done::closing, "the pool with no work retires");
         assertThat(working.closing()).isFalse();
         open.compile.complete(ok());
+    }
+
+    @Test
+    void on_ci_the_latest_pool_outlives_the_linger_and_an_older_one_does_not(@TempDir Path dir) throws Exception {
+        WarmLinger.ciForTests(true);
+        WarmLinger.forTests(50);
+        Lanes older = idlePool();
+        CompileWork first = item(dir, "a", 1L);
+        WarmLanes.lanes("old", 256L, h -> older, first);
+        first.compile.complete(ok());
+        Lanes newest = idlePool();
+        CompileWork second = item(dir, "b", 2L);
+        WarmLanes.lanes("new", 256L, h -> newest, second);
+        second.compile.complete(ok());
+
+        awaitTrue(older::closing, "the older pool retires at its linger");
+        Thread.sleep(300);
+        assertThat(newest.closing()).as("the latest pool is kept").isFalse();
+        assertThat(WarmLanes.poolCount()).isEqualTo(1);
+    }
+
+    @Test
+    void a_pool_that_keeps_one_lane_lets_its_other_idle_lanes_go(@TempDir Path dir) throws Exception {
+        CountDownLatch bothBusy = new CountDownLatch(2);
+        CountDownLatch release = new CountDownLatch(1);
+        Lanes pool = new Lanes(
+                2,
+                (owner, index) -> new Session(owner, WarmLanes.nextScope(), index, self -> {
+                    CompileWork w;
+                    while ((w = self.takeNext()) != CompileWork.POISON) {
+                        bothBusy.countDown();
+                        release.await();
+                        w.compile.complete(ok());
+                    }
+                }),
+                ForkedJavac::writeSpec,
+                (failed, bigger) -> {},
+                true);
+        try {
+            pool.enqueue(item(dir, "a", 1L));
+            pool.enqueue(item(dir, "b", 2L));
+            assertThat(bothBusy.await(30, TimeUnit.SECONDS)).isTrue();
+            pool.keepAtMost(1);
+            Thread.sleep(200);
+            assertThat(pool.liveLanes()).as("busy lanes are never cut").isEqualTo(2);
+
+            release.countDown();
+
+            awaitTrue(() -> pool.liveLanes() == 1, "the second idle lane leaves");
+            Thread.sleep(300);
+            assertThat(pool.liveLanes()).as("one lane stays").isEqualTo(1);
+        } finally {
+            release.countDown();
+            pool.close();
+        }
     }
 
     @Test
