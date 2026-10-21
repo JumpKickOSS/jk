@@ -54,7 +54,7 @@ shrunk mid-chore.
 
 ## Worker startup caches
 
-The java-compiler, kotlinc, formatter and graph workers (`java … PluginMain`) map a JEP 514 cache under
+The java-compiler, kotlinc, groovyc, formatter and graph workers (`java … PluginMain`) map a JEP 514 cache under
 `~/.jk/state/aot/<tool>-<jk-version>-<jdk tag>-<key>.aot` (`WorkerAotCache`). The rule is one file
 per tool, recorded only for the JDK jk itself runs on: a worker forked on a project's own JDK
 runs without a cache, a landing cache deletes the tool's other caches, and the engine deletes
@@ -62,7 +62,7 @@ every cache for another jk version or another JDK when it starts. The key hashes
 flag, the worker classpath, the module's own JVM flags and, for javac, what the trainer compiled.
 Nothing pre-trains: the first run that misses forks one background trainer (for javac a bundled
 four-file module, `JavacTrainingSources`, compiled at `--release 21` or the module's, whichever is
-higher; a synthetic `Hello.kt` for kotlinc; formatter sources) and the next run maps the result. A recording that fails is not retried until the next engine
+higher; a synthetic `Hello.kt` for kotlinc, `Hello.groovy` for groovyc; formatter sources) and the next run maps the result. A recording that fails is not retried until the next engine
 start. `JK_WORKER_AOT=off` turns mapping and recording off; suite JVMs and CI set it.
 
 ## The engine's startup cache
