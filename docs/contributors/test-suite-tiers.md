@@ -269,11 +269,30 @@ So engines in several sandboxes can fill the pool at once. Everything else stays
 into it, Node and the other tools, JDKs, state, locks and ledgers. The pool sits beside
 `test-homes`, outside every sandbox home, and jk's deletes never follow a link. So `jk self nuke`,
 `jk storage nuke`, `jk clean` and the slot reaper remove a sandbox's links and leave the pool alone,
-and the reaper's size walk does not count the pool against a slot. Preparing a sandbox also sweeps
-what a killed process left staged in the pool for over an hour (a download's `.put-*.tmp`, a tool's
-`jk-tool-stage-*`, an SDK zip under `.downloads`), with one listing per pooled directory and at
-most once per ten minutes. The pool is not otherwise reaped; delete `~/.jk/test-store` to reclaim
-it.
+and the reaper's size walk does not count the pool against a slot.
+
+The pool has a reaper of its own, bounded by a cap of 4 GiB: about twice what the integration,
+slow and network tiers fetch together (1.9 GiB in about 4,500 units). Set `JK_TEST_POOL_MAX_MB`
+(or `-Djk.test.pool.max.mb`) in the engine's environment to change it.
+
+- **What goes.** Whole units, never single files: an artifact's version directory under
+  `repos/<id>`, a tool version under `tools/<slug>`, an Android SDK component (the accepted
+  licenses stay). Over the cap, the least recently used units go first, until the pool fits.
+- **Last use.** Reads leave no trace jk can rely on, since access times are off on many
+  filesystems. So a pooled tree carries a `.jk-pool` marker, and in a marked tree the repository
+  store, the tool registry and the SDK installer set a unit's directory mtime to now when a build
+  uses the unit (`PoolUse`), at most once an hour per unit per process. Trees without the marker,
+  a user's own store among them, are never stamped.
+- **Never under a running suite.** A unit used within the last day is never evicted, over the cap
+  or not, and its mtime is read again just before it goes. An evicted unit is renamed into
+  `.trash` in one step and deleted there, so a reader finds the whole unit or none of it. A miss
+  fetches it again, and a file a reader already has open stays readable until it is closed.
+- **Leaks.** The same walk removes what a killed process left staged for over an hour, at any
+  depth: an artifact's `.*.part` beside its version, a download's `.put-*.tmp`, a tool's
+  `jk-tool-stage-*`, an SDK unpack's `.extract-*`, an SDK zip under `.downloads`, and whatever a
+  killed reap left in `.trash`.
+- **Cost.** Preparing a sandbox reaps the pool at most once an hour per host: `.reaped-at` records
+  the last start, and `.reap.lock` keeps a second process from walking beside the first.
 
 A test that writes fake bytes under a public coordinate or a real tool version, mirrors Central at
 a stub (a `settings.xml` mirror fills the tree of the repository it stands in for), deletes from the
