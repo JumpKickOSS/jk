@@ -185,7 +185,7 @@ reason = "the IntelliJ plugin is wire-only and never loads a jk jar, so Manifest
 [guards.cache-tiers]
 kind     = "vocabulary"
 owner    = "cc.jumpkick.host.CacheTree"
-homonyms = ["sha256", "generated", "projects", "npm"]
+homonyms = ["sha256", "generated", "projects", "npm", "bun", "yarn", "kts"]
 instead  = "CacheTree.<TIER>.under(cacheRoot)"
 why      = "a cache tier is named once; the homonyms each have their own owner"
 

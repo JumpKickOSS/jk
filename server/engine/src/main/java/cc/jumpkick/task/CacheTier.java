@@ -86,9 +86,16 @@ public final class CacheTier {
             // budget the tier goes whole; the next install re-downloads what its lockfile names.
             case NPM -> Bound.files(null, Bound.resetOverBytes(2L * 1024 * 1024 * 1024));
 
+            // The same for bun's and Yarn's caches: their own layouts, no use clock jk can read.
+            case BUN, YARN -> Bound.files(null, Bound.resetOverBytes(2L * 1024 * 1024 * 1024));
+
+            // One self-contained jar per script content hash, stamped by the kts host on every hit, so
+            // mtime is a use clock: a script nobody has run for a month goes, and costs one recompile.
+            case KTS -> Bound.files(Duration.ofDays(30), Bound.countCap(256));
+
             // Bookkeeping, not cache: the reason is CacheTree's, because it is the same fact that
             // keeps `jk cache nuke` off these entries.
-            case LAST_PRUNED, PRUNE_LOCK, STATUS_USAGE -> Bound.unbounded(tree.bookkeeping());
+            case LAST_PRUNED, PRUNE_LOCK, STATUS_USAGE, CENTRAL_RATE_LIMITED -> Bound.unbounded(tree.bookkeeping());
         };
     }
 }

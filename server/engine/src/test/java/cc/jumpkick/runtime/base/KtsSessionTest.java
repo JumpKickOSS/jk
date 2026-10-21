@@ -14,8 +14,10 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -24,6 +26,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -105,6 +109,36 @@ class KtsSessionTest {
         long after = jarCount(cache);
         BuildLogicKtsHost.evaluate(script, project, out);
         assertEquals(after, jarCount(cache));
+    }
+
+    /** The retention sweep ages compiled scripts by mtime, so a hit must move it. */
+    @Test
+    void a_cache_hit_stamps_the_compiled_jar_with_its_use(@TempDir Path dir) throws Exception {
+        Path script = dir.resolve("used.kts");
+        Files.writeString(script, "Files.writeString(outDir.resolve(\"u.txt\"), \"1\")\n");
+        Path project = Files.createDirectories(dir.resolve("p"));
+        Path out = Files.createDirectories(dir.resolve("o"));
+        Path cache = KtsSession.compiledScriptCache();
+        Files.createDirectories(cache);
+        Set<Path> before;
+        try (Stream<Path> s = Files.list(cache)) {
+            before = s.collect(Collectors.toSet());
+        }
+
+        BuildLogicKtsHost.evaluate(script, project, out);
+        Path jar;
+        try (Stream<Path> s = Files.list(cache)) {
+            jar = s.filter(p -> !before.contains(p)).findFirst().orElseThrow();
+        }
+        FileTime old = FileTime.fromMillis(
+                System.currentTimeMillis() - Duration.ofDays(40).toMillis());
+        Files.setLastModifiedTime(jar, old);
+
+        BuildLogicKtsHost.evaluate(script, project, out);
+
+        assertThat(Files.getLastModifiedTime(jar).toMillis())
+                .as("a hit stamps the jar it served")
+                .isGreaterThan(old.toMillis() + Duration.ofDays(39).toMillis());
     }
 
     /**
