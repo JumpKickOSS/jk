@@ -20,6 +20,15 @@ class GraphIdsTest {
     }
 
     @Test
+    void filesOtherThanSourceAndMarkdownKeepTheirExtension() {
+        assertThat(GraphIds.file("src/app/app.ts")).isEqualTo("src_app_app");
+        assertThat(GraphIds.file("src/app/app.css")).isEqualTo("src_app_app_css");
+        assertThat(GraphIds.file("src/app/app.html")).isEqualTo("src_app_app_html");
+        assertThat(GraphIds.declared("src/main/resources/application.yml", "server.port"))
+                .isEqualTo("src_main_resources_application_yml_server_port");
+    }
+
+    @Test
     void normalizeCollapsesFoldsAndIsIdempotent() {
         assertThat(GraphIds.normalize("__Foo--Bar..baz__")).isEqualTo("foo_bar_baz");
         assertThat(GraphIds.normalize("Straße")).isEqualTo("strasse");

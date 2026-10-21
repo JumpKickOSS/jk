@@ -40,7 +40,14 @@ public final class GraphWorker implements Plugin {
         PluginConfig c = PluginSpec.read(Path.of(args.get(0))).config();
         try {
             GraphService.Answer answer = GraphService.run(
-                    Path.of(c.string("root")), Path.of(c.string("out")), indexes(c), request(c), new Progress(out));
+                    Path.of(c.string("root")),
+                    Path.of(c.string("out")),
+                    indexes(c),
+                    new ScriptReader(
+                            c.stringOpt("node").map(Path::of).orElse(null),
+                            c.stringOpt("oxc").map(Path::of).orElse(null)),
+                    request(c),
+                    new Progress(out));
             GraphBuild.Result b = answer.build();
             Map<String, Object> event = new LinkedHashMap<>();
             event.put("t", "answer");

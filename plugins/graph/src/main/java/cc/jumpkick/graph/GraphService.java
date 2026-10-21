@@ -48,11 +48,16 @@ public final class GraphService {
     public record Answer(String text, GraphBuild.Result build) {}
 
     public static Answer run(
-            Path root, Path out, List<GraphBuild.ClassIndex> indexes, Request r, GraphBuild.Progress progress)
+            Path root,
+            Path out,
+            List<GraphBuild.ClassIndex> indexes,
+            ScriptReader scripts,
+            Request r,
+            GraphBuild.Progress progress)
             throws IOException {
         if (!OPS.contains(r.op())) throw new IllegalArgumentException("unknown graph operation '" + r.op() + "'");
         GraphBuild.Result build = r.noRefresh() ? stored(out) : null;
-        if (build == null) build = GraphBuild.refresh(root, out, indexes, r.rebuild(), progress);
+        if (build == null) build = GraphBuild.refresh(root, out, indexes, scripts, r.rebuild(), progress);
         return new Answer(text(build, r), build);
     }
 

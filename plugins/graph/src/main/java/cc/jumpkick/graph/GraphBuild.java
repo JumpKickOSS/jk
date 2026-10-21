@@ -76,13 +76,20 @@ public final class GraphBuild {
             boolean changed,
             @Nullable String commit) {}
 
-    public static Result refresh(Path root, Path out, List<ClassIndex> indexes, boolean rebuild, Progress progress)
+    public static Result refresh(
+            Path root, Path out, List<ClassIndex> indexes, ScriptReader scripts, boolean rebuild, Progress progress)
             throws IOException {
-        return refresh(root, out, indexes, rebuild, progress, Clock.SYSTEM);
+        return refresh(root, out, indexes, scripts, rebuild, progress, Clock.SYSTEM);
     }
 
     static Result refresh(
-            Path root, Path out, List<ClassIndex> indexes, boolean rebuild, Progress progress, Clock clock)
+            Path root,
+            Path out,
+            List<ClassIndex> indexes,
+            ScriptReader scripts,
+            boolean rebuild,
+            Progress progress,
+            Clock clock)
             throws IOException {
         long start = clock.nanos();
         Path base = root.toAbsolutePath().normalize();
@@ -114,7 +121,8 @@ public final class GraphBuild {
         }
         String classDigest = classDigest(indexes);
         String commit = GitHead.read(base);
-        GraphSnapshot.Key key = new GraphSnapshot.Key(Extractors.VERSION, sources.size(), classDigest, commit);
+        String extractors = Extractors.VERSION + (scripts.active() ? "+oxc" : "");
+        GraphSnapshot.Key key = new GraphSnapshot.Key(extractors, sources.size(), classDigest, commit);
         boolean sameFiles = changed.isEmpty() && stats.size() == sources.size();
         if (!rebuild && sameFiles) {
             CodeGraph stored = snapshot(out, key);
@@ -126,18 +134,31 @@ public final class GraphBuild {
             }
         }
         FragmentStore store = rebuild ? FragmentStore.empty() : FragmentStore.open(out);
+        List<String> unread = new ArrayList<>();
+        for (GraphSources.Source s : sources) {
+            String sha = shas.get(s.rel());
+            if (sha != null && ScriptReader.handles(s.rel()) && store.get(key(s.rel(), sha, scripts)) == null) {
+                unread.add(s.rel());
+            }
+        }
+        if (scripts.active() && !unread.isEmpty()) progress.phase("read scripts with oxc");
+        Map<String, Fragment> oxc = scripts.read(base, unread);
         AtomicInteger extracted = new AtomicInteger();
         Map<String, Fragment> fragments = new ConcurrentHashMap<>();
+        Map<String, String> keys = new ConcurrentHashMap<>();
         sources.parallelStream().forEach(s -> {
             String sha = shas.get(s.rel());
             if (sha == null) return;
-            String k = FragmentStore.key(s.rel(), sha);
+            String k = key(s.rel(), sha, scripts);
             Fragment stored = store.get(k);
-            Fragment f = stored != null ? stored : extract(s, changed.get(s.rel()));
+            Fragment read = oxc.get(s.rel());
+            Fragment f = stored != null ? stored : read != null ? read : extract(s, changed.get(s.rel()));
             if (stored == null) {
+                if (read == null) k = FragmentStore.key(s.rel(), sha);
                 store.put(k, f);
                 extracted.incrementAndGet();
             }
+            keys.put(s.rel(), k);
             if (!f.nodes().isEmpty()) fragments.put(s.rel(), f);
             progress.file(s.rel(), stored == null);
         });
@@ -146,8 +167,8 @@ public final class GraphBuild {
         for (GraphSources.Source s : sources) {
             Fragment f = fragments.get(s.rel());
             if (f != null) all.add(f);
-            String sha = shas.get(s.rel());
-            if (sha != null) live.add(FragmentStore.key(s.rel(), sha));
+            String k = keys.get(s.rel());
+            if (k != null) live.add(k);
         }
         progress.phase("map compiled classes");
         int classes = mapClasses(sources, indexes, all);
@@ -160,6 +181,11 @@ public final class GraphBuild {
         store.save(out, live);
         long millis = (clock.nanos() - start) / 1_000_000;
         return new Result(graph, sources.size(), extracted.get(), classes, out, millis, true, commit);
+    }
+
+    /** The store key of a file's fragment: an oxc read is kept apart from a scanner read of the same bytes. */
+    private static String key(String rel, String sha, ScriptReader scripts) {
+        return FragmentStore.key(rel, sha + scripts.flavor(rel));
     }
 
     /** The stored graph when its key matches, else {@code null}. */
