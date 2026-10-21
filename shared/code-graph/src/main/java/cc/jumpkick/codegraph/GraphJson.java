@@ -3,6 +3,7 @@ package cc.jumpkick.codegraph;
 
 import cc.jumpkick.jsonl.MiniJson;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -98,23 +99,34 @@ public final class GraphJson {
 
     /**
      * One fragment as a single JSON line: {@code {"nodes":[…],"links":[…],"mentions":[[source, kind,
-     * text, line, relation],…]}}.
+     * text, line, relation, context],…]}}.
      */
     public static String writeFragment(Fragment f) {
+        return MiniJson.write(fragmentTree(f));
+    }
+
+    /** The fragment {@link #writeFragment} wrote. */
+    public static Fragment readFragment(String json) {
+        return fragmentOf(MiniJson.parse(json));
+    }
+
+    /** {@link #writeFragment}'s document as a tree, for embedding in a larger one. */
+    public static Map<String, Object> fragmentTree(Fragment f) {
         Map<String, Object> doc = new LinkedHashMap<>();
         doc.put("nodes", f.nodes().stream().map(n -> node(null, n)).toList());
         doc.put("links", f.edges().stream().map(GraphJson::edge).toList());
         doc.put(
                 "mentions",
                 f.mentions().stream()
-                        .map(m -> List.<Object>of(m.source(), m.kind().name(), m.text(), m.line(), m.relation()))
+                        .map(m -> Arrays.asList(
+                                m.source(), m.kind().name(), m.text(), m.line(), m.relation(), m.context()))
                         .toList());
-        return MiniJson.write(doc);
+        return doc;
     }
 
-    /** The fragment {@link #writeFragment} wrote. */
-    public static Fragment readFragment(String json) {
-        if (!(MiniJson.parse(json) instanceof Map<?, ?> doc)) throw new IllegalArgumentException("not a fragment");
+    /** The fragment a {@link #fragmentTree} tree holds. */
+    public static Fragment fragmentOf(@Nullable Object tree) {
+        if (!(tree instanceof Map<?, ?> doc)) throw new IllegalArgumentException("not a fragment");
         List<GraphNode> nodes = new ArrayList<>();
         for (Object o : MiniJson.list(doc, "nodes")) {
             if (o instanceof Map<?, ?> m) {
@@ -133,13 +145,14 @@ public final class GraphJson {
         }
         List<Mention> mentions = new ArrayList<>();
         for (Object o : MiniJson.list(doc, "mentions")) {
-            if (o instanceof List<?> l && l.size() == 5 && l.get(3) instanceof Number line) {
+            if (o instanceof List<?> l && l.size() == 6 && l.get(3) instanceof Number line) {
                 mentions.add(new Mention(
                         String.valueOf(l.get(0)),
                         Mention.Kind.valueOf(String.valueOf(l.get(1))),
                         String.valueOf(l.get(2)),
                         line.intValue(),
-                        String.valueOf(l.get(4))));
+                        String.valueOf(l.get(4)),
+                        l.get(5) == null ? null : String.valueOf(l.get(5))));
             }
         }
         return new Fragment(nodes, edges, mentions);

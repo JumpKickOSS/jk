@@ -66,6 +66,19 @@ public final class CodeGraph {
         return new CodeGraph(nodes, new ArrayList<>(edges.values()));
     }
 
+    private static GraphNode combine(GraphNode had, GraphNode n) {
+        boolean takeNew = had.sourceFile().isEmpty() && !n.sourceFile().isEmpty()
+                || had.sourceLocation().isEmpty()
+                        && !n.sourceLocation().isEmpty()
+                        && had.sourceFile().equals(n.sourceFile());
+        GraphNode base = takeNew ? n : had;
+        GraphNode other = takeNew ? had : n;
+        if (other.extra().isEmpty()) return base;
+        Map<String, Object> extra = new LinkedHashMap<>(other.extra());
+        extra.putAll(base.extra());
+        return new GraphNode(base.id(), base.label(), base.fileType(), base.sourceFile(), base.sourceLocation(), extra);
+    }
+
     /** A graph read back from {@code graph.json}, communities included. */
     static CodeGraph of(
             List<GraphNode> nodes, List<GraphEdge> edges, Map<String, Integer> community, Map<Integer, String> names) {

@@ -47,7 +47,7 @@ final class JvmSourceScanner {
 
     static Fragment extract(String relPath, String text) {
         FragmentBuilder b = new FragmentBuilder(relPath, "code", null);
-        SourceMask mask = SourceMask.of(text);
+        SourceMask mask = SourceMask.of(text, false);
         String code = mask.masked;
         Lines lines = new Lines(text);
         int[] depth = mask.depths();
@@ -80,8 +80,7 @@ final class JvmSourceScanner {
         if (java) javaMethods(b, code, lines, depth, open);
         if (relPath.endsWith(".gradle") || relPath.endsWith(".gradle.kts")) coordinates(b, text, lines);
         for (SourceMask.Comment c : mask.comments) {
-            String body = c.text().strip();
-            while (body.startsWith("*")) body = body.substring(1).strip();
+            String body = SourceMask.body(c);
             for (String prefix : RATIONALE) {
                 if (body.startsWith(prefix)) {
                     Open target = enclosing(open, c.offset());
