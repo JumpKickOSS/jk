@@ -6,6 +6,7 @@ import cc.jumpkick.model.RepositorySpec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -30,6 +31,15 @@ public final class RepoStoreDirs {
                 || RepositorySpec.JUMPKICK_NAME.equals(name);
     }
 
+    /**
+     * Whether a child of {@code repos/}, listed with {@code attrs}, is a store tree: a directory, or a
+     * link to one. A tree may live outside the store, in a pool several stores share; deleting the
+     * store removes the link and leaves the pool alone.
+     */
+    public static boolean isTree(Path child, BasicFileAttributes attrs) {
+        return attrs.isDirectory() || (attrs.isSymbolicLink() && Files.isDirectory(child));
+    }
+
     /** True when {@code dir} is a store some lookup may read: the shelf, a reserved origin, or a marked tree. */
     public static boolean isKnown(Path dir) {
         String name = String.valueOf(dir.getFileName());
@@ -43,7 +53,7 @@ public final class RepoStoreDirs {
         List<Path> out = new ArrayList<>();
         try {
             PathUtil.forEachChild(storeRoot.resolve("repos"), (child, attrs) -> {
-                if (attrs.isDirectory() && isKnown(child)) out.add(child);
+                if (isTree(child, attrs) && isKnown(child)) out.add(child);
                 return true;
             });
         } catch (IOException e) {

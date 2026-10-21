@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.compile.PackageIndex;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.lock.RepoStoreDirs;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -39,7 +40,7 @@ final class StorePackages {
         boolean[] capped = {false};
         try {
             PathUtil.forEachChild(repos, (repo, attrs) -> {
-                if (!attrs.isDirectory() || found.size() == 2) return found.size() < 2;
+                if (!RepoStoreDirs.isTree(repo, attrs) || found.size() == 2) return found.size() < 2;
                 Path base = deepest(repo, segments);
                 if (base == null) return true;
                 int[] seen = {0};

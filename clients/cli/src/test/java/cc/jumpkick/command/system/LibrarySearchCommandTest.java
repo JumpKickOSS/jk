@@ -6,8 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactStore;
@@ -107,45 +107,28 @@ class LibrarySearchCommandTest {
     }
 
     @Test
+    @IsolatedStore
     void offline_restricts_to_cached_coords_and_annotates_versions(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        // Cache one of the two "junit" curated coords.
+        // Cache one of the two "junit" curated coords: fake bytes for a real coordinate, so a
+        // private store, never the shared one a sandbox's Central tree links to.
         Coordinate coord = Coordinate.of("org.junit.jupiter", "junit-jupiter", "6.1.0");
         byte[] bytes = "junit-jar".getBytes(StandardCharsets.UTF_8);
         Path blob = new Cas(cache).put(bytes);
-        String seededRel = MavenLayout.artifactPath(coord);
         RepoArtifactStore.forStoreId(JkStores.store(), "central")
-                .materialize(seededRel, blob, Hashing.sha256Hex(bytes));
+                .materialize(MavenLayout.artifactPath(coord), blob, Hashing.sha256Hex(bytes));
 
-        try {
-            int exit = Jk.execute("library", "search", "junit", "--offline", "--cache-dir", cache.toString());
-            assertThat(exit).isZero();
-            String stdout = out.toString(StandardCharsets.UTF_8);
-            // The seeded coord is shown with its local version in the Cached column. The store is
-            // the suite-shared JK_HOME store (repos live there), so other tests' real
-            // syncs may legitimately add rows — assert on the seed, never on absence.
-            assertThat(stdout).contains("junit-jupiter").contains("6.1.0");
-        } finally {
-            // A fake blob for a REAL coordinate poisons later offline locks that pin it.
-            Path seeded = JkStores.store().resolve("repos/central").resolve(seededRel);
-            Files.deleteIfExists(Path.of(seeded + ".sha256"));
-            Files.deleteIfExists(seeded);
-        }
+        int exit = Jk.execute("library", "search", "junit", "--offline", "--cache-dir", cache.toString());
+        assertThat(exit).isZero();
+        String stdout = out.toString(StandardCharsets.UTF_8);
+        // The seeded coord is shown with its local version in the Cached column.
+        assertThat(stdout).contains("junit-jupiter").contains("6.1.0");
     }
 
     @Test
+    @IsolatedStore
     void offline_with_nothing_cached_reports_no_local_matches(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        // The store is suite-shared: scrub the searched family so this test is
-        // order-independent — nothing else in the suite syncs commons-io.
-        Path repos = JkStores.store().resolve("repos");
-        if (Files.isDirectory(repos)) {
-            try (var names = Files.list(repos)) {
-                for (Path repo : names.toList()) {
-                    PathUtil.deleteRecursively(repo.resolve("commons-io"));
-                }
-            }
-        }
         int exit = Jk.execute("library", "search", "commons-io", "--offline", "--cache-dir", cache.toString());
         assertThat(exit).isOne();
         assertThat(out.toString(StandardCharsets.UTF_8)).contains("No matches (cached locally)");

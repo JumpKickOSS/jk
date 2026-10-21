@@ -165,6 +165,38 @@ final class CliRules {
     }
 
     @Guard(
+            id = "cli-test-shared-store-trees",
+            why =
+                    "a sandbox store's central, google and jumpkick trees are links into the pool every test sandbox on the host shares, so a test that writes or deletes there reaches every worktree's suites",
+            instead = "annotate the test (or its class) with @IsolatedStore")
+    void aCliTestTouchingThePooledTreesDeclaresAPrivateStore(Text text, Violations v) {
+        List<String> tests = text.files(TESTS);
+        if (tests.size() < 200)
+            throw new IllegalStateException(
+                    "scan of clients/cli/src/test/java: " + tests.size() + " files; measured against 402");
+        List<String> ambient =
+                List.of("JkStores.store()", "JkDirs.store()", "JkStores.resolve(", "JkStores.storeCas()");
+        Pattern tree = Pattern.compile(
+                "\"(?:repos/)?(?:central|google|jumpkick)[\"/]|RepositorySpec\\.(?:CENTRAL|GOOGLE|JUMPKICK_NAME)\\b");
+        boolean sawLibrarySearch = false;
+        for (String rel : tests) {
+            String code = raw(text, rel);
+            if (rel.endsWith("/LibrarySearchCommandTest.java")) sawLibrarySearch = true;
+            if (ambient.stream().noneMatch(code::contains)) continue;
+            Matcher m = tree.matcher(code);
+            if (!m.find()) continue;
+            if (code.lines().anyMatch(l -> l.strip().equals("@IsolatedStore"))) continue;
+            v.add(
+                    new TextSite(rel, 0, m.group()),
+                    rel + " names the ambient store and a pooled tree (" + m.group() + ") without @IsolatedStore");
+        }
+        if (!sawLibrarySearch)
+            throw new IllegalStateException(
+                    "the scan never reached LibrarySearchCommandTest, a class that seeds Central's tree");
+        v.population(tests.size());
+    }
+
+    @Guard(
             id = "ide-client-wiring",
             why =
                     "the IDE clients are wired to jk by string and no compiler looks at them: a palette entry can name a handler that does not exist, a client can shell out to a verb that is not a command, plugin.xml can name a class that is gone",

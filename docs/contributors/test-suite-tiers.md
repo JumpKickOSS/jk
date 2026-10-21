@@ -241,6 +241,31 @@ fetch memos and the store's `repos/<id>` are all keyed by URL and a kernel reuse
 The reaper that bounds `test-homes` walks a slot once and records its size beside the stamp; an
 idle slot is not walked again until a launch re-stamps it or its suite's hold closes.
 
+**One artifact pool per host.** A sandbox's slot is keyed by its module's path, so a new worktree
+gets new slots. Its store would start cold too, and the network and slow tiers would spend minutes
+re-downloading what another worktree already holds. Instead, the public-origin trees of every
+sandbox store (`repos/central`, `repos/google`, `repos/jumpkick`) are links into one pool,
+`<home>/test-store/repos/<id>` (`TestStorePool`). The engine places them when it prepares the
+sandbox, replacing a private tree left from before. Those trees are safe to share:
+
+- A store tree is keyed by the origin that served it, so a loopback stub, a `file:` repository or
+  a fixture's own repository fills a tree of its own, never Central's.
+- Every artifact lands through a temp file and an atomic rename, with its checksum verified, so
+  engines in several sandboxes can write one tree at once.
+
+Everything else stays per sandbox: the `jk-local` shelf a suite installs onto, version lists, the
+store CAS, tools and JDKs, state, locks and ledgers. The pool sits beside `test-homes`, outside every
+sandbox home, and jk's deletes never follow a link. So `jk self nuke`, `jk storage nuke`, `jk clean`
+and the slot reaper remove a sandbox's links and leave the pool alone, and the reaper's size walk
+does not count the pool against a slot. The pool is not reaped; delete `~/.jk/test-store` to
+reclaim it.
+
+A test that writes fake bytes under a public coordinate, deletes from the ambient store's trees, or
+must prove a cold download (first-run provisioning, checksum confirmation) takes a private store:
+`@IsolatedStore` on the `:cli` class or method (guard `cli-test-shared-store-trees`), or
+`@SysProps.TempRoots("jk.env.JK_STORE_DIR")` elsewhere. A store named that way has no links, so it
+starts cold.
+
 **The overlay rule.** Layout settings come in two layers: the `jk.env.<NAME>` system properties
 (the in-process seam a test sets per class or method, forwarded by the engine spawner to the
 engine it starts) over the real environment. A root override binds to the home it was set beside,
@@ -257,15 +282,14 @@ reader's file. `:cli` classes use `@IsolatedState` / `@IsolatedStore` (guard `cl
 `junit-platform-launcher` (and `junit-jupiter` when the fixture declares no test dependencies) as
 `latest`, which needs a version list. When the engine prepares a module's sandbox it seeds that
 sandbox's store from its own (`TestStoreSeed`): the JUnit Platform trees hard-linked under
-`repos/central`, and for each artifact a version list naming exactly the versions whose POM came
+`repos/central` (the pool, through the sandbox's link), and for each artifact a version list naming exactly the versions whose POM came
 along, under the key the metadata cache reads for the Central URL. A cold sandbox therefore locks
 its test roots without Central, and a Central that throttles this host cannot turn the tier red; a
 real index the sandbox fetched itself is left in place. A store filled from a lock holds the jars
 but not their POMs (a fresh CI runner's, a new machine's), so before its first test launch the
 engine locks a throwaway project once when its store has no launcher or Jupiter POM, which puts the
-test roots' closure into its own store with the network it has. Only those trees: everything else a
-fixture needs is exact-pinned and fetched once into the warm sandbox, and a whole-store link would
-make every sandbox weigh the whole store to the slot reaper's byte cap.
+test roots' closure into its own store with the network it has. Only those trees come from the
+engine's store: everything else a fixture needs is exact-pinned and fetched once into the pool.
 
 **Slots live as long as their module.** A sandbox slot's stamp names the module directory it was
 handed to; every launch reaps the slots whose module is gone — a removed worktree, a fixture

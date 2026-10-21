@@ -39,9 +39,12 @@ import org.jspecify.annotations.Nullable;
  * genuinely needs from the real environment beyond {@link BuildEnv#MACHINE} it can name explicitly —
  * the sandbox is a default, not a wall.
  *
- * <p>The sandbox store is warmed with the JUnit Platform from the engine's own ({@link
- * TestStoreSeed}): the injected test roots a fixture lock needs, version lists included, are on disk
- * before the first fixture asks, and a Central that throttles this host cannot turn a suite red.
+ * <p>The sandbox store's public-origin trees ({@code repos/central}, {@code google}, {@code
+ * jumpkick}) are links into one pool every sandbox on the host shares ({@link TestStorePool}), so a
+ * new worktree's suites start with what any other worktree already fetched. The store is also warmed
+ * with the JUnit Platform from the engine's own ({@link TestStoreSeed}): the injected test roots a
+ * fixture lock needs, version lists included, are on disk before the first fixture asks, and a
+ * Central that throttles this host cannot turn a suite red.
  *
  * <p>The declared values themselves are resolved by {@link TestEnvValues}, which the run-tests cache
  * key also uses: the two must agree about an unset {@code ${VAR}} or a build's outcome depends on
@@ -89,15 +92,22 @@ public final class TestEnv {
     private TestEnv() {}
 
     /**
-     * The sandbox store learns the JUnit Platform from this engine's store ({@link TestStoreSeed}),
-     * so the suite's fixtures lock their injected test roots without Central. Completes missing
-     * POMs from the workspace's shared test-m2 first (where prior fetches leave them), then from
-     * {@code ~/.m2}. Warmth only: a seed that fails leaves the fixtures to fetch what they need.
+     * The sandbox store's public-origin trees become links into the host's shared pool ({@link
+     * TestStorePool}), then it learns the JUnit Platform from this engine's store ({@link
+     * TestStoreSeed}), so the suite's fixtures lock their injected test roots without Central.
+     * Completes missing POMs from the workspace's shared test-m2 first (where prior fetches leave
+     * them), then from {@code ~/.m2}. Warmth only: a link or seed that fails leaves the fixtures to
+     * fetch what they need.
      */
     private static void warmStore(Path sandboxHome, Path sandboxM2) {
+        Path store = sandboxHome.resolve("store");
+        try {
+            TestStorePool.link(TestStorePool.root(), store);
+        } catch (IOException | RuntimeException e) {
+            Log.debug("TestEnv: the sandbox keeps its own repository trees; fixtures fetch into them", e);
+        }
         try {
             Path host = JkDirs.store();
-            Path store = sandboxHome.resolve("store");
             int seeded = TestStoreSeed.seed(host, store, sandboxM2);
             Path user = Path.of(System.getProperty("user.home"), ".m2", "repository")
                     .toAbsolutePath()

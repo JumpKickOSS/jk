@@ -1613,7 +1613,7 @@ population = { files = 2203 }
 population = { files = 4230 }
 
 [no-fqcn]
-population = { units = 4510 }
+population = { units = 4576 }
 [[no-fqcn.entries]]
 unit   = "clients/cli-terminal/src/main/java/cc/jumpkick/terminal/package-info.java"
 value  = 1
@@ -1637,10 +1637,6 @@ reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reason
 [[no-fqcn.entries]]
 unit   = "clients/cli/src/test/java/cc/jumpkick/command/NewScaffolder.java"
 value  = 3
-reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
-[[no-fqcn.entries]]
-unit   = "clients/cli/src/test/java/cc/jumpkick/command/system/CacheCommandTest.java"
-value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]
 unit   = "clients/cli/src/test/java/cc/jumpkick/command/system/SelfNukeCommandTest.java"
