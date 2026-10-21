@@ -44,7 +44,7 @@ class AndroidRemoteAarTest {
     void androidx_aar_resolves_explodes_and_builds(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
         Path cache = TestCaches.dir("android-spike-cache");
-        Path sdkRoot = TestCaches.dir("android-spike-sdk");
+        Path sdkRoot = TestCaches.pooled("android-sdk");
         System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
 
         writeProject(project);

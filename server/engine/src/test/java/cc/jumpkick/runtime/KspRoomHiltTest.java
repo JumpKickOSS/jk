@@ -36,8 +36,8 @@ import org.junit.jupiter.api.io.TempDir;
  * also exercises kotlinc resolving KSP-generated <em>Java</em> sources ({@code
  * -Xjava-source-roots} carries the generated dir).
  *
- * <p>Network test (Google Maven + Central; Room/Hilt closures are real); the CAS + SDK persist
- * under build/ so repeat runs are warm.
+ * <p>Network test (Google Maven + Central; Room/Hilt closures are real); the artifacts and the SDK
+ * come from the host's test pool, so a repeat run in any worktree is warm.
  */
 @Tag("slow")
 @ExtendWith(SysProps.class)
@@ -47,7 +47,7 @@ class KspRoomHiltTest {
     void room_and_hilt_generate_via_ksp_and_the_app_builds(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
         Path cache = TestCaches.dir("android-spike-cache");
-        Path sdkRoot = TestCaches.dir("android-spike-sdk");
+        Path sdkRoot = TestCaches.pooled("android-sdk");
         System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
 
         writeProject(project);

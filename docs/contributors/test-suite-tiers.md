@@ -241,30 +241,46 @@ fetch memos and the store's `repos/<id>` are all keyed by URL and a kernel reuse
 The reaper that bounds `test-homes` walks a slot once and records its size beside the stamp; an
 idle slot is not walked again until a launch re-stamps it or its suite's hold closes.
 
-**One artifact pool per host.** A sandbox's slot is keyed by its module's path, so a new worktree
+**One download pool per host.** A sandbox's slot is keyed by its module's path, so a new worktree
 gets new slots. Its store would start cold too, and the network and slow tiers would spend minutes
-re-downloading what another worktree already holds. Instead, the public-origin trees of every
-sandbox store (`repos/central`, `repos/google`, `repos/jumpkick`) are links into one pool,
-`<home>/test-store/repos/<id>` (`TestStorePool`). The engine places them when it prepares the
-sandbox, replacing a private tree left from before. Those trees are safe to share:
+re-downloading what another worktree already holds. Instead, every sandbox shares one pool,
+`<home>/test-store` (`TestStorePool`):
 
-- A store tree is keyed by the origin that served it, so a loopback stub, a `file:` repository or
-  a fixture's own repository fills a tree of its own, never Central's.
-- Every artifact lands through a temp file and an atomic rename, with its checksum verified, so
-  engines in several sandboxes can write one tree at once.
+- The public-origin repository trees (`repos/central`, `repos/google`, `repos/jumpkick`) and the
+  build-tool distributions (`tools/kotlin`, `tools/gradle`, `tools/maven`) of every sandbox store
+  are links into the pool at the same relative path. The engine places them when it prepares the
+  sandbox, replacing a private tree left from before.
+- The managed Android SDK is `<home>/test-store/android-sdk`. A suite reaches it through
+  `TestCaches.pooled("android-sdk")`, which the launcher's `-Djk.test.pool.dir` points at the
+  pool. A suite that writes into its SDK (a fake system image, an AVD: `AndroidSpikeTest`) keeps a
+  private one under `TestCaches.dir`.
 
-Everything else stays per sandbox: the `jk-local` shelf a suite installs onto, version lists, the
-store CAS, tools and JDKs, state, locks and ledgers. The pool sits beside `test-homes`, outside every
-sandbox home, and jk's deletes never follow a link. So `jk self nuke`, `jk storage nuke`, `jk clean`
-and the slot reaper remove a sandbox's links and leave the pool alone, and the reaper's size walk
-does not count the pool against a slot. The pool is not reaped; delete `~/.jk/test-store` to
-reclaim it.
+That content is safe to share because it is verified and published whole:
 
-A test that writes fake bytes under a public coordinate, deletes from the ambient store's trees, or
-must prove a cold download (first-run provisioning, checksum confirmation) takes a private store:
-`@IsolatedStore` on the `:cli` class or method (guard `cli-test-shared-store-trees`), or
-`@SysProps.TempRoots("jk.env.JK_STORE_DIR")` elsewhere. A store named that way has no links, so it
-starts cold.
+- A repository tree is keyed by the origin that served it, so a loopback stub, a `file:` repository
+  or a fixture's own repository fills a tree of its own, never Central's. Every artifact lands
+  through a temp file and an atomic rename, with its checksum verified.
+- A tool distribution is checked against its pin or its publisher's checksum, staged beside its
+  version directory and published by one rename. An Android component is checked against the
+  feed's SHA-1 and published the same way, and an accepted license file is replaced whole.
+
+So engines in several sandboxes can fill the pool at once. Everything else stays per sandbox: the
+`jk-local` shelf a suite installs onto, version lists, the store CAS and the tool closure indexes
+into it, Node and the other tools, JDKs, state, locks and ledgers. The pool sits beside
+`test-homes`, outside every sandbox home, and jk's deletes never follow a link. So `jk self nuke`,
+`jk storage nuke`, `jk clean` and the slot reaper remove a sandbox's links and leave the pool alone,
+and the reaper's size walk does not count the pool against a slot. Preparing a sandbox also sweeps
+what a killed process left staged in the pool for over an hour (a download's `.put-*.tmp`, a tool's
+`jk-tool-stage-*`, an SDK zip under `.downloads`), with one listing per pooled directory and at
+most once per ten minutes. The pool is not otherwise reaped; delete `~/.jk/test-store` to reclaim
+it.
+
+A test that writes fake bytes under a public coordinate or a real tool version, mirrors Central at
+a stub (a `settings.xml` mirror fills the tree of the repository it stands in for), deletes from the
+ambient store's trees, or must prove a cold download (first-run provisioning, checksum
+confirmation) takes a private store: `@IsolatedStore` on the `:cli` class or method (guard
+`cli-test-shared-store-trees`), or `@SysProps.TempRoots("jk.env.JK_STORE_DIR")` elsewhere. A store
+named that way has no links, so it starts cold.
 
 **The overlay rule.** Layout settings come in two layers: the `jk.env.<NAME>` system properties
 (the in-process seam a test sets per class or method, forwarded by the engine spawner to the

@@ -53,7 +53,7 @@ class NiaScratchTest {
     @Test
     void sweep_all_jk_modules() throws Exception {
         Path cache = TestCaches.dir("android-spike-cache");
-        Path sdkRoot = TestCaches.dir("android-spike-sdk");
+        Path sdkRoot = TestCaches.pooled("android-sdk");
         System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
         acceptLicenses();
 
@@ -97,7 +97,7 @@ class NiaScratchTest {
     void app_release_aab() throws Exception {
         Path module = NIA.resolve("app");
         Path cache = TestCaches.dir("android-spike-cache");
-        Path sdkRoot = TestCaches.dir("android-spike-sdk");
+        Path sdkRoot = TestCaches.pooled("android-sdk");
         System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
         acceptLicenses();
 

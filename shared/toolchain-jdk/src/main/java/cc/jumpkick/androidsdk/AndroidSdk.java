@@ -2,6 +2,7 @@
 package cc.jumpkick.androidsdk;
 
 import cc.jumpkick.jdk.DirLinks;
+import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -130,7 +131,10 @@ public final class AndroidSdk {
         return false;
     }
 
-    /** Record acceptance of {@code licenseId} (appends, preserving other accepted hashes). */
+    /**
+     * Record acceptance of {@code licenseId} (appends, preserving other accepted hashes). The file
+     * is replaced whole, so a reader in another process never sees it empty or half-written.
+     */
     public void recordLicense(String licenseId, String textHash) throws IOException {
         Path dir = Files.createDirectories(root.resolve("licenses"));
         Path file = dir.resolve(licenseId);
@@ -138,10 +142,10 @@ public final class AndroidSdk {
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (line.strip().equalsIgnoreCase(textHash)) return;
             }
-            Files.writeString(
+            AtomicWrites.replace(
                     file, Files.readString(file, StandardCharsets.UTF_8).stripTrailing() + "\n" + textHash + "\n");
             return;
         }
-        Files.writeString(file, textHash + "\n");
+        AtomicWrites.replace(file, textHash + "\n");
     }
 }

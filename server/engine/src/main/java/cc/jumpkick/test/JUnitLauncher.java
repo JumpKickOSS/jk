@@ -22,6 +22,7 @@ import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.base.TestStorePool;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -332,6 +333,8 @@ public final class JUnitLauncher {
                 if (jkHomeParent != null) {
                     flags.add("-Djk.test.cache.dir=" + jkHomeParent.resolve("test-shared-cache"));
                 }
+                // The host pool of verified downloads every sandbox shares (TestCaches.pooled).
+                flags.add("-D" + TestStorePool.PROPERTY + "=" + TestStorePool.root());
                 // Sandbox JK_HOME hides the product store; first-party workers still resolve
                 // Zinc from the host engine's store.
                 flags.add("-D"

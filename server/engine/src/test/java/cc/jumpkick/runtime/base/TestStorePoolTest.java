@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.RepoStoreDirs;
 import cc.jumpkick.model.JkBuild;
@@ -16,6 +17,8 @@ import cc.jumpkick.util.JkDirs;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -34,8 +37,8 @@ class TestStorePoolTest {
         Path a = tmp.resolve("a/home/store");
         Path b = tmp.resolve("b/home/store");
 
-        assertThat(TestStorePool.link(pool, a)).isEqualTo(TestStorePool.TREES.size());
-        assertThat(TestStorePool.link(pool, b)).isEqualTo(TestStorePool.TREES.size());
+        assertThat(TestStorePool.link(pool, a)).isEqualTo(TestStorePool.SHARED.size());
+        assertThat(TestStorePool.link(pool, b)).isEqualTo(TestStorePool.SHARED.size());
         materialize(a, "lib");
 
         assertThat(b.resolve("repos/central").resolve(JAR)).hasContent("lib");
@@ -46,20 +49,52 @@ class TestStorePoolTest {
     }
 
     @Test
-    void only_the_public_origin_trees_are_shared(@TempDir Path tmp) throws Exception {
+    void only_the_public_origin_trees_and_tool_distributions_are_shared(@TempDir Path tmp) throws Exception {
         Path pool = tmp.resolve("test-store");
         Path store = tmp.resolve("home/store");
         TestStorePool.link(pool, store);
 
-        assertThat(store.resolve("repos/central")).isSymbolicLink();
-        assertThat(store.resolve("repos/google")).isSymbolicLink();
-        assertThat(store.resolve("repos/jumpkick")).isSymbolicLink();
+        for (String rel : List.of(
+                "repos/central", "repos/google", "repos/jumpkick", "tools/kotlin", "tools/gradle", "tools/maven")) {
+            assertThat(store.resolve(rel)).as(rel).isSymbolicLink();
+            assertThat(Files.readSymbolicLink(store.resolve(rel)))
+                    .isEqualTo(pool.resolve(rel).toAbsolutePath().normalize());
+        }
         assertThat(store.resolve("repos").resolve(RepositorySpec.JK_LOCAL)).doesNotExist();
         try (var names = Files.list(store.resolve("repos"))) {
             assertThat(names.map(p -> p.getFileName().toString()))
                     .as("no staged link is left behind")
                     .containsExactlyInAnyOrder("central", "google", "jumpkick");
         }
+        try (var names = Files.list(store.resolve("tools"))) {
+            assertThat(names.map(p -> p.getFileName().toString()))
+                    .as("closure indexes into the sandbox CAS, node and the rest stay per sandbox")
+                    .containsExactlyInAnyOrder("kotlin", "gradle", "maven");
+        }
+    }
+
+    @Test
+    void a_sweep_removes_staged_leftovers_older_than_an_hour_and_nothing_else(@TempDir Path tmp) throws Exception {
+        Path pool = tmp.resolve("test-store");
+        TestStorePool.link(pool, tmp.resolve("home/store"));
+        long now = Clock.SYSTEM.millis();
+        Path oldPut = stale(pool.resolve("repos/central/.put-123.tmp"), now);
+        Path youngPut = Files.writeString(pool.resolve("repos/central/.put-456.tmp"), "in flight");
+        Path oldStage = pool.resolve("tools/kotlin/jk-tool-stage-1");
+        stale(oldStage.resolve("bin/kotlinc"), now);
+        Files.setLastModifiedTime(oldStage, FileTime.fromMillis(now - 2 * TestStorePool.LEAK_MILLIS));
+        Path oldZip = stale(pool.resolve("android-sdk/.downloads/jk-sdk-1.zip"), now);
+        Path artifact = stale(pool.resolve("repos/central").resolve(JAR), now);
+        Path install = stale(pool.resolve("tools/kotlin/2.4.10/bin/kotlinc"), now);
+
+        assertThat(TestStorePool.sweep(pool, now)).isEqualTo(3);
+
+        assertThat(oldPut).doesNotExist();
+        assertThat(oldStage).doesNotExist();
+        assertThat(oldZip).doesNotExist();
+        assertThat(youngPut).as("may belong to a live download").exists();
+        assertThat(artifact).exists();
+        assertThat(install).exists();
     }
 
     @Test
@@ -129,6 +164,14 @@ class TestStorePoolTest {
         assertThat(TestStorePool.root().startsWith(Path.of(env.get("JK_HOME"))))
                 .as("the pool is outside the sandbox home a test may delete")
                 .isFalse();
+    }
+
+    /** A file at {@code path}, two leak windows old. */
+    private static Path stale(Path path, long now) throws Exception {
+        Files.createDirectories(path.getParent());
+        Files.writeString(path, "x");
+        Files.setLastModifiedTime(path, FileTime.fromMillis(now - 2 * TestStorePool.LEAK_MILLIS));
+        return path;
     }
 
     private static void materialize(Path store, String body) throws Exception {
