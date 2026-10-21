@@ -101,8 +101,9 @@ jk new -t webapp -f angular shop # the webapp template with an Angular web/
 ```
 
 jk writes only `jk.toml` and `.gitignore`. The tree is the framework's own starter, made by its
-generator under the Node.js jk provisions, so it is always the framework's newest. A generator that
-installs nothing is followed by `npm install`, so the lockfile `jk build` needs is there. Generators
+generator under the Node.js jk provisions, so it is always the framework's newest. The generator
+installs nothing: jk resolves `package-lock.json` after it (`npm install --package-lock-only`), and
+the first `jk build` installs `node_modules` once, from jk's npm cache. Generators
 come from the npm registry: there is no offline form. `--param` passes a flag through (`k=v` as
 `--k=v`).
 

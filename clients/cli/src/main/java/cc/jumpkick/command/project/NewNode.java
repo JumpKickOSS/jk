@@ -16,11 +16,13 @@ import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.node.NodeInstalls;
 import cc.jumpkick.scaffold.NewGroupGuess;
 import cc.jumpkick.scaffold.NodeGenerators;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -163,13 +165,22 @@ final class NewNode {
         return lts;
     }
 
-    /** Run the generator beside {@code target}, then install when it left no lockfile. */
+    /**
+     * Run the generator beside {@code target}, then resolve the lockfile when it left none. Nothing
+     * is installed: the first {@code jk build}'s frozen install is the one install, against the npm
+     * cache this shares with it.
+     */
     private static int generate(NodeHome home, NodeGenerators.Framework f, Path target, List<String> params)
             throws IOException, InterruptedException {
         Path parent = Objects.requireNonNull(target.toAbsolutePath().getParent(), "target has a parent");
         Files.createDirectories(parent);
         String dir = String.valueOf(target.getFileName());
-        int exit = NodeCli.exec(home, NodeGenerators.argv(f, dir, params), parent);
+        Map<String, String> env = Map.of(
+                "npm_config_cache",
+                NodeHome.npmCache(JkDirs.cache()).toString(),
+                "npm_config_update_notifier",
+                "false");
+        int exit = NodeCli.exec(home, NodeGenerators.argv(f, dir, params), parent, env);
         if (exit != 0) {
             CommandWedge.printFail(WEDGE, "the " + f.id() + " generator exited with " + exit);
             return exit;
@@ -179,9 +190,13 @@ final class NewNode {
             return Exit.SOFTWARE;
         }
         if (NodeGenerators.LOCKFILES.stream().noneMatch(l -> Files.exists(target.resolve(l)))) {
-            exit = NodeCli.exec(home, List.of("npm", "install", "--no-audit", "--no-fund"), target);
+            exit = NodeCli.exec(
+                    home,
+                    List.of("npm", "install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"),
+                    target,
+                    env);
             if (exit != 0) {
-                CommandWedge.printFail(WEDGE, "npm install exited with " + exit);
+                CommandWedge.printFail(WEDGE, "npm install --package-lock-only exited with " + exit);
                 return exit;
             }
         }

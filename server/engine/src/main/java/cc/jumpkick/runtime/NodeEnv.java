@@ -38,7 +38,7 @@ final class NodeEnv {
             boolean production)
             throws IOException {
         Map<String, String> vars = new LinkedHashMap<>();
-        vars.put("npm_config_cache", in.cache().resolve("npm").toString());
+        vars.put("npm_config_cache", NodeHome.npmCache(in.cache()).toString());
         // Each manager's own cache sits under jk's, as npm's does; npm warns about every config it
         // does not know, so each key goes only to its manager.
         switch (home.packageManager()) {

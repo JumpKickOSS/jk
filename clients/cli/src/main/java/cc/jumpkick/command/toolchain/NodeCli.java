@@ -24,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -148,9 +149,16 @@ public final class NodeCli {
      * first: the JVM resolves one against its own {@code PATH}, not the child's.
      */
     public static int exec(NodeHome home, List<String> argv, Path dir) throws IOException, InterruptedException {
+        return exec(home, argv, dir, Map.of());
+    }
+
+    /** {@link #exec(NodeHome, List, Path)} with {@code env} set over the inherited environment. */
+    public static int exec(NodeHome home, List<String> argv, Path dir, Map<String, String> env)
+            throws IOException, InterruptedException {
         List<String> command = new ArrayList<>(argv);
         command.set(0, resolve(home, argv.get(0)));
         ProcessBuilder pb = new ProcessBuilder(command).directory(dir.toFile());
+        pb.environment().putAll(env);
         pb.environment().put("PATH", home.path(System.getenv("PATH")));
         Process p = CliOutput.handOffTerminal(pb);
         CliOutput.skipTrailingBlank();
