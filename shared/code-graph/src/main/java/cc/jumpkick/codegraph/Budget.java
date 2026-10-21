@@ -1,0 +1,65 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.codegraph;
+
+import java.util.List;
+
+/** graphify's output budget: about three characters per token, cut at a line boundary with a notice. */
+final class Budget {
+
+    private Budget() {}
+
+    static final int CHARS_PER_TOKEN = 3;
+
+    /** {@code NODE}/{@code EDGE} lines under {@code budget}; the first {@code seeds} lines are never cut. */
+    static String cut(List<String> lines, int seeds, int budget) {
+        String output = String.join("\n", lines);
+        int chars = budget * CHARS_PER_TOKEN;
+        if (output.length() <= chars) return output;
+        int cutAt = output.substring(0, chars).lastIndexOf('\n');
+        if (cutAt <= 0) cutAt = chars;
+        if (seeds > 0) {
+            int seedEnd = lines.subList(0, seeds).stream()
+                            .mapToInt(l -> l.length() + 1)
+                            .sum()
+                    - 1;
+            cutAt = Math.max(cutAt, Math.min(seedEnd, output.length()));
+        }
+        long total = lines.stream().filter(l -> l.startsWith("NODE ")).count();
+        String kept = output.substring(0, cutAt);
+        long shown = kept.lines().filter(l -> l.startsWith("NODE ")).count();
+        long cut = total - shown;
+        if (cut == 0) {
+            long edges = lines.stream().filter(l -> l.startsWith("EDGE ")).count();
+            return "[i] Complete answer over budget: all " + total + " nodes and " + edges + " edges shown (~"
+                    + output.length() / CHARS_PER_TOKEN + " tokens vs the requested ~" + budget
+                    + "-token budget). Edges are never dropped once every node fits, so this is already the full"
+                    + " answer. Narrow with context_filter=['call'] or use get_node for a specific symbol.\n\n"
+                    + output;
+        }
+        int nodeChars = lines.stream()
+                .filter(l -> l.startsWith("NODE "))
+                .mapToInt(l -> l.length() + 1)
+                .sum();
+        int full = (Math.min(nodeChars, output.length()) + 2) / CHARS_PER_TOKEN;
+        return "[!] TRUNCATED: showing " + shown + " of " + total + " nodes (~" + budget
+                + "-token budget). The answer may be among the " + cut + " cut nodes: raise the token budget to "
+                + full + " to get all " + total + " (CLI: --budget " + full + ", MCP: token_budget=" + full
+                + ") or narrow the query (context_filter=['call'], or get_node for a specific symbol).\n\n" + kept
+                + "\n... (truncated: " + cut + " more nodes cut by ~" + budget + "-token budget)";
+    }
+
+    /** Plain lines under {@code budget}, cut with a count and {@code hint}. */
+    static String lines(List<String> lines, int budget, String hint) {
+        String output = String.join("\n", lines);
+        int chars = budget * CHARS_PER_TOKEN;
+        if (output.length() <= chars) return output;
+        int cutAt = output.substring(0, chars).lastIndexOf('\n');
+        if (cutAt <= 0) cutAt = chars;
+        String kept = output.substring(0, cutAt);
+        long shown = kept.lines().count();
+        int full = (output.length() + 2) / CHARS_PER_TOKEN;
+        return "[!] TRUNCATED: showing " + shown + " of " + lines.size() + " lines (~" + budget
+                + "-token budget). Raise the token budget to " + full + " to get all " + lines.size() + ". " + hint
+                + "\n\n" + kept + "\n... (truncated: " + (lines.size() - shown) + " more lines. " + hint + ")";
+    }
+}

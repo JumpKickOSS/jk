@@ -1,0 +1,82 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.codegraph;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+class GraphQueryTest {
+
+    @Test
+    void querySeedsOnTheNamedSymbolAndRendersItsNeighbourhood() throws IOException {
+        CodeGraph g = GraphJsonTest.shop();
+        String out = new GraphQuery(g).query("what does OrderService use", GraphQuery.Mode.BFS, 2, 2000, List.of());
+        assertThat(out).startsWith("Traversal: BFS depth=2 | Start: [OrderService]");
+        assertThat(out).contains("NODE OrderService [src=src/main/java/com/acme/shop/OrderService.java loc=L6");
+        assertThat(out).contains("EDGE OrderService --inherits [EXTRACTED]--> BaseService");
+        assertThat(new GraphQuery(g).query("zzzz qqqq", GraphQuery.Mode.BFS, 2, 2000, List.of()))
+                .isEqualTo(GraphQuery.NO_MATCH);
+    }
+
+    @Test
+    void nodeOrderMatchesGraphifyForTheSameGraphAndQuestion() throws IOException {
+        String out = new GraphQuery(GraphJsonTest.shop())
+                .query("what does OrderService use", GraphQuery.Mode.BFS, 2, 2000, List.of());
+        assertThat(out.lines().filter(l -> l.startsWith("NODE ")).map(l -> l.substring(5, l.indexOf(" ["))))
+                .containsExactly(
+                        "OrderService",
+                        "Shop",
+                        ".audit()",
+                        ".total()",
+                        "PriceCalculator",
+                        "Auditable",
+                        "BaseService",
+                        "OrderService.java",
+                        "Item",
+                        ".sum()",
+                        "README.md",
+                        ".log()",
+                        "PriceCalculator.kt",
+                        "list",
+                        "Override",
+                        "Design",
+                        "Auditable.java",
+                        ".audit()",
+                        "BaseService.java");
+        assertThat(out).contains("19 nodes found");
+    }
+
+    @Test
+    void callQuestionsFollowOnlyCallEdges() throws IOException {
+        CodeGraph g = GraphJsonTest.shop();
+        String out = new GraphQuery(g).query("who calls log", GraphQuery.Mode.BFS, 2, 2000, List.of());
+        assertThat(out).contains("Context: call (heuristic)");
+        assertThat(out).contains("EDGE .audit() --calls [INFERRED context=call]--> .log()");
+        assertThat(out).doesNotContain("--contains");
+    }
+
+    @Test
+    void budgetCutsAtALineAndSaysHowMuchIsMissing() {
+        List<String> lines = new ArrayList<>();
+        for (int i = 0; i < 100; i++) lines.add("NODE n" + i + " [src=x.java loc=L" + i + " community=0]");
+        String out = Budget.cut(lines, 1, 100);
+        assertThat(out).startsWith("[!] TRUNCATED: showing ");
+        assertThat(out).contains("NODE n0 ");
+        assertThat(out).doesNotContain("NODE n99 ");
+    }
+
+    @Test
+    void pathFollowsDirectionAndExplainListsConnections() throws IOException {
+        GraphTools tools = new GraphTools(GraphJsonTest.shop());
+        assertThat(tools.shortestPath("OrderService", "BaseService", 8, false))
+                .isEqualTo("Shortest path (1 hops):\n  OrderService --inherits [EXTRACTED]--> BaseService");
+        assertThat(tools.shortestPath("BaseService", "OrderService", 8, false)).startsWith("No directed path");
+        assertThat(tools.explain("OrderService", false))
+                .contains("Node: OrderService")
+                .contains("--> BaseService [inherits] [EXTRACTED]");
+        assertThat(tools.node(".audit()")).startsWith("'.audit()' matches 2 nodes; pass one id:");
+    }
+}

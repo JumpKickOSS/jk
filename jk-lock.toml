@@ -1,10 +1,10 @@
 version = 1
 generated-by = "jk 0.15.3"
-generated-by-build = "b688123577a6"
-generated-by-build-time = "2026-10-21T02:08:28Z"
+generated-by-build = "28b568daa54a"
+generated-by-build-time = "2026-10-21T04:37:46Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "4e2c0d4a44a5b5a1919df9a51e97b8760b48aa9c5d312846ead7d42b938ddc73"
+manifests-sha256 = "5037d2819e12beb6109568971fbb56c31455af1fecb8d6a5517160fa882fa235"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -1646,7 +1646,7 @@ version  = "1.18.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d78396e3c5bce3f2865c9186647481e5589d34cacc632484715b686108d17c66"
 scopes   = ["test"]
-members  = ["clients/cli", "clients/cli-terminal", "clients/intellij", "clients/maven-spy", "clients/web", "plugins/android", "plugins/antlr", "plugins/auditor", "plugins/avro", "plugins/formatter", "plugins/generator", "plugins/grails", "plugins/groovy-compiler", "plugins/image-builder", "plugins/intellij", "plugins/java-compiler", "plugins/jaxb", "plugins/jenkins-test", "plugins/jooq", "plugins/kotlin-compiler", "plugins/lint", "plugins/localizer", "plugins/micronaut", "plugins/minified", "plugins/openapi", "plugins/protobuf", "plugins/publisher", "plugins/quarkus", "plugins/spring-boot", "plugins/taglib", "plugins/test-runner", "server/engine", "server/guard", "server/io", "server/resolver", "server/toolchain", "shared/client-io", "shared/core", "shared/dynamic-surface", "shared/guard-api", "shared/host", "shared/ide", "shared/jk-api", "shared/plugin-sdk", "shared/toolchain-jdk", "shared/wire"]
+members  = ["clients/cli", "clients/cli-terminal", "clients/intellij", "clients/maven-spy", "clients/web", "plugins/android", "plugins/antlr", "plugins/auditor", "plugins/avro", "plugins/formatter", "plugins/generator", "plugins/grails", "plugins/groovy-compiler", "plugins/image-builder", "plugins/intellij", "plugins/java-compiler", "plugins/jaxb", "plugins/jenkins-test", "plugins/jooq", "plugins/kotlin-compiler", "plugins/lint", "plugins/localizer", "plugins/micronaut", "plugins/minified", "plugins/openapi", "plugins/protobuf", "plugins/publisher", "plugins/quarkus", "plugins/spring-boot", "plugins/taglib", "plugins/test-runner", "server/engine", "server/guard", "server/io", "server/resolver", "server/toolchain", "shared/client-io", "shared/code-graph", "shared/core", "shared/dynamic-surface", "shared/guard-api", "shared/host", "shared/ide", "shared/jk-api", "shared/plugin-sdk", "shared/toolchain-jdk", "shared/wire"]
 
 [[artifact]]
 name     = "net.jqwik:jqwik-api:jar:"
@@ -4459,6 +4459,14 @@ name    = "jk-client-io"
 version = "0.15.3"
 java    = 25
 description = "Client-side HTTP, repository transports, forge auth, credentials, and CAS"
+
+[[module]]
+path    = "shared/code-graph"
+group   = "cc.jumpkick"
+name    = "jk-code-graph"
+version = "0.15.3"
+java    = 25
+description = "Code graph model: graphify-compatible ids and graph.json, budgeted query, paths, communities and the report"
 
 [[module]]
 path    = "shared/core"

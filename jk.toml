@@ -32,6 +32,7 @@ modules = [
   "shared/client-io",
   "shared/dynamic-surface",
   "shared/guard-api",
+  "shared/code-graph",
   # Server/Engine
   "server/io",
   "server/resolver",
