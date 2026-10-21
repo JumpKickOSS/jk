@@ -1181,6 +1181,10 @@ in     = "server/engine/src/main/java/cc/jumpkick/engine/plugin/WarmWorkers.java
 reason = "warm plugin workers outlive any one request: their reader, reaper and shutdown hook carry no request; each run brings its own"
 
 [[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/plugin/HostPressure.java"
+reason = "the memory-pressure watcher outlives any one request and ends only idle warm workers"
+
+[[guards.request-thread-carries-session.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/task/CasPrewriter.java"
 reason = "polls the output directory for finished class files"
 

@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -111,6 +112,27 @@ class WarmLanesTest {
         awaitTrue(small::closing, "the covered pool retires when its work is done");
         assertThat(big.closing()).isFalse();
         onBig.compile.complete(ok());
+    }
+
+    @Test
+    void memory_pressure_retires_a_pool_with_no_work_and_keeps_one_with_work(@TempDir Path dir) throws Exception {
+        WarmLinger.forTests(60_000);
+        Lanes done = idlePool();
+        CompileWork finished = item(dir, "a", 1L);
+        WarmLanes.lanes("idle", 256L, h -> done, finished);
+        finished.compile.complete(ok());
+        Lanes working = idlePool();
+        CompileWork open = item(dir, "b", 2L);
+        WarmLanes.lanes("busy", 256L, h -> working, open);
+
+        assertThat(WarmLanes.shedIdle(Duration.ofMinutes(1)))
+                .as("idle for less than the grace")
+                .isZero();
+        assertThat(WarmLanes.shedIdle(Duration.ZERO)).isEqualTo(1);
+
+        awaitTrue(done::closing, "the pool with no work retires");
+        assertThat(working.closing()).isFalse();
+        open.compile.complete(ok());
     }
 
     @Test

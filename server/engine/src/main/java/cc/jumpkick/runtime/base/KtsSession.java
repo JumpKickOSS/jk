@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.engine.plugin.HeapScope;
+import cc.jumpkick.engine.plugin.HostPressure;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
@@ -437,6 +438,7 @@ final class KtsSession {
         Process p = JobWorkers.startResident(
                 hostProcess(), new WorkerLeases.Resident(LEASE_NAME, () -> yieldLease(started)));
         registerShutdownHook();
+        HostPressure.register(LEASE_NAME, KtsSession::shedIdle);
         KtsSession session = new KtsSession(p);
         started.set(session);
         String ready = session.replies.poll(START_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
@@ -482,6 +484,20 @@ final class KtsSession {
             } catch (InterruptedException e) {
                 return;
             }
+        }
+    }
+
+    /**
+     * The host is short of memory: end the host when it has been idle at least {@code minIdle}.
+     * Taking {@link #LOCK} lets a script in flight finish first.
+     */
+    static int shedIdle(Duration minIdle) {
+        synchronized (LOCK) {
+            KtsSession session = current;
+            if (session == null || clock.nanos() - session.lastUsedNanos < minIdle.toNanos()) return 0;
+            current = null;
+            session.exit();
+            return 1;
         }
     }
 

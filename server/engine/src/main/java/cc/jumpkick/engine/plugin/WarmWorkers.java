@@ -34,9 +34,10 @@ import org.jspecify.annotations.Nullable;
  * its plugin caches between runs, a JIT that has seen the work before, and its loaded classes.
  *
  * <p><strong>Ownership.</strong> A worker belongs to the engine, not to the request that started
- * it, so it is forked outside the request's worker scope. Three owners end it: a reaper once it has
+ * it, so it is forked outside the request's worker scope. Four owners end it: a reaper once it has
  * sat idle for the {@link WarmLinger linger}, the lease ledger when a waiting fork needs its memory
- * (after the run in flight), and the engine's shutdown. A run that the plugin answers with {@code
+ * (after the run in flight), {@link HostPressure} when the host is short of memory (only while it
+ * is idle), and the engine's shutdown. A run that the plugin answers with {@code
  * retire}, or that a cancel or an interrupt cuts short, ends its worker too: the next run starts a
  * fresh one.
  *
@@ -132,6 +133,23 @@ public final class WarmWorkers {
         } finally {
             release(worker, keep);
         }
+    }
+
+    /** End every idle worker that has been idle at least {@code minIdle}; how many. */
+    static int shedIdle(Duration minIdle) {
+        List<Worker> shed = new ArrayList<>();
+        long now = CLOCK.nanos();
+        synchronized (IDLE) {
+            for (Deque<Worker> idle : IDLE.values()) {
+                for (Worker w : idle) {
+                    if (now - w.lastUsedNanos >= minIdle.toNanos()) shed.add(w);
+                }
+                idle.removeAll(shed);
+            }
+            IDLE.values().removeIf(Deque::isEmpty);
+        }
+        for (Worker w : shed) w.exit();
+        return shed.size();
     }
 
     /** Stop every worker now: the engine's shutdown, and the test seam. */
@@ -245,6 +263,7 @@ public final class WarmWorkers {
         started[0] = w;
         LIVE.add(w);
         registerShutdownHook();
+        HostPressure.register("warm plugin workers", WarmWorkers::shedIdle);
         return w;
     }
 

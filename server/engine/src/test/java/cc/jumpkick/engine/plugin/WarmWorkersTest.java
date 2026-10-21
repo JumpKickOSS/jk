@@ -137,6 +137,46 @@ class WarmWorkersTest {
     }
 
     @Test
+    void host_memory_pressure_ends_idle_workers_and_leaves_a_busy_one() throws Exception {
+        WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
+        long idle = run(launch("a"), "ok", out).pid;
+        Path spec = Files.createTempFile(dir, "spec", ".txt");
+        Files.writeString(spec, "hang\n");
+        Seen busy = new Seen();
+        AtomicBoolean cancel = new AtomicBoolean();
+        Thread running = Thread.ofVirtual().start(() -> {
+            try {
+                WarmWorkers.run(launch("b"), spec, busy, cancel::get);
+            } catch (Exception e) {
+                // the run ends with the test
+            }
+        });
+        try {
+            for (int i = 0; i < 200 && busy.pid < 0; i++) Thread.sleep(25);
+            assertThat(busy.pid).isPositive();
+
+            HostPressure.forTests(HostPressure.Level.WARN);
+            assertThat(WarmWorkers.shedIdle(HostPressure.WARN_IDLE))
+                    .as("under warn a worker idle for less than the grace stays")
+                    .isZero();
+            HostPressure.forTests(HostPressure.Level.CRITICAL);
+            HostPressure.check();
+
+            assertThat(WarmWorkers.idleCount()).isZero();
+            assertThat(ProcessHandle.of(idle).map(ProcessHandle::isAlive).orElse(false))
+                    .as("the idle worker exits")
+                    .isFalse();
+            assertThat(ProcessHandle.of(busy.pid).map(ProcessHandle::isAlive).orElse(false))
+                    .as("the busy one is left to its run")
+                    .isTrue();
+        } finally {
+            HostPressure.forTests(null);
+            cancel.set(true);
+            running.join();
+        }
+    }
+
+    @Test
     void a_cancelled_run_stops_its_worker() throws Exception {
         Path spec = Files.createTempFile(dir, "spec", ".txt");
         Files.writeString(spec, "hang\n");
