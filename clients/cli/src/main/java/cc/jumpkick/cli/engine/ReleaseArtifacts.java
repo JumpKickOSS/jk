@@ -97,6 +97,21 @@ public final class ReleaseArtifacts {
         }
     }
 
+    /** The release directory serves no {@code SHA256SUMS} (HTTP 404): no release of the version is published. */
+    public static final class NotPublished extends IOException {
+        private final String version;
+
+        NotPublished(String version, URI versionDir) {
+            super("no jk " + version + " release at " + versionDir + " — HTTP 404");
+            this.version = version;
+        }
+
+        /** The version the release site does not publish. */
+        public String version() {
+            return version;
+        }
+    }
+
     private ReleaseArtifacts() {}
 
     /**
@@ -125,12 +140,15 @@ public final class ReleaseArtifacts {
     /**
      * The verified manifest of {@code releasesBase/version/}: {@code SHA256SUMS} and its signature
      * fetched, the signature checked against {@code verifier}. Every artifact of that release is
-     * then fetched through {@link Manifest#fetch}.
+     * then fetched through {@link Manifest#fetch}. A 404 on the checksums is {@link NotPublished}.
      */
     public static Manifest manifest(URI releasesBase, String version, ReleaseVerifier verifier) throws IOException {
         URI versionDir = URI.create(releasesBase.toString() + "/" + version + "/");
         Http http = new Http();
-        byte[] sumsBytes = get(http, versionDir.resolve("SHA256SUMS"), "release checksums");
+        URI sumsUri = versionDir.resolve("SHA256SUMS");
+        HttpResponse<byte[]> sums = send(http, sumsUri, "release checksums");
+        if (sums.statusCode() == 404) throw new NotPublished(version, versionDir);
+        byte[] sumsBytes = ok(sums, sumsUri, "release checksums");
         byte[] sig = get(http, versionDir.resolve("SHA256SUMS.sig"), "release signature");
         verifier.verify(sumsBytes, new String(sig, StandardCharsets.UTF_8));
         return new Manifest(http, versionDir, sumsBytes);
@@ -241,15 +259,21 @@ public final class ReleaseArtifacts {
     }
 
     private static byte[] get(Http http, URI uri, String what) throws IOException {
-        HttpResponse<byte[]> response;
+        return ok(send(http, uri, what), uri, what);
+    }
+
+    private static HttpResponse<byte[]> send(Http http, URI uri, String what) throws IOException {
         try {
-            response = http.get(uri);
+            return http.get(uri);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("interrupted while downloading the " + what + " from " + uri);
         } catch (IOException e) {
             throw downloadFailed(uri, what, e);
         }
+    }
+
+    private static byte[] ok(HttpResponse<byte[]> response, URI uri, String what) throws IOException {
         if (response.statusCode() != 200) {
             throw new IOException(
                     "could not download the " + what + " from " + uri + " — HTTP " + response.statusCode());
