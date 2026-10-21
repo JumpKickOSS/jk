@@ -32,7 +32,7 @@ Canonical names. Hidden aliases (Maven/Gradle muscle memory) are listed in
 | `jk verify` | Rebuild and hash-diff | [Publish](publish.md) |
 | `jk audit` / `jk deny` | OSV / source denylist | [Publish](publish.md) |
 | `jk jdk …` | JDK install / pin / list / verify | [JDK](jdk.md) |
-| `jk node …` / `jk npx` | Node.js install / pin / exec; `jk npx` is `jk node exec -- npx` | [Node.js](node.md) |
+| `jk node …` / `jk npx` / `jk npm` | Node.js install / pin / exec; `jk npx` and `jk npm` are `jk node exec -- npx` / `-- npm` | [Node.js](node.md) |
 | `jk tool …` / `jkx` | One-off JVM tools | [Tools](tools.md) |
 | `jk library …` | Catalog search / update | [Dependencies](dependencies.md) |
 | `jk import` / `jk export` | Maven / Gradle / BOM / IDE | [Migration](migration.md) |
