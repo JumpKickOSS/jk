@@ -68,6 +68,9 @@ class CacheRetentionCoverageTest {
         m.put(CacheTree.GENERATED, root -> subtree(root, CacheTree.GENERATED, "compile-test@dead", OLD));
         m.put(CacheTree.PROJECTS, root -> subtree(root, CacheTree.PROJECTS, "dead-project", OLD));
         m.put(CacheTree.TOOL_SRC, root -> subtree(root, CacheTree.TOOL_SRC, "deadhash", OLD));
+        m.put(
+                CacheTree.NPM,
+                root -> overStoreBudget(root, CacheTree.NPM, "_cacache/content-v2/sha512/ab/blob", 2L << 30));
         // Bookkeeping entries seed a file that must SURVIVE; see the dedicated test below.
         m.put(CacheTree.LAST_PRUNED, root -> null);
         m.put(CacheTree.PRUNE_LOCK, root -> null);

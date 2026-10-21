@@ -73,6 +73,8 @@ public enum CacheTree {
 
     /** Tool scripts fetched from a URL, keyed by the hash of that URL. */
     TOOL_SRC("tool-src"),
+    /** npm's own cache ({@code npm_config_cache}), shared by every npm jk runs: scaffold and build alike. */
+    NPM("npm"),
 
     /** Cadence bookkeeping for the prune itself: {@code <millis> <finalActionBytes>}. */
     LAST_PRUNED(".last-pruned", "constant-size cadence sentinel"),
