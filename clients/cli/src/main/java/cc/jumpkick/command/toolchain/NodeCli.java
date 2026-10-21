@@ -146,7 +146,7 @@ public final class NodeCli {
     }
 
     /**
-     * Run a command the user asked for ({@code jk node exec}, {@code jk node run}) through {@link
+     * Run a command the user asked for ({@code jk node exec}, {@code jk node run}, {@code jk npx}) through {@link
      * #exec}, its package managers on jk's caches unless the user configured their own.
      */
     static int passthrough(NodeHome home, List<String> argv, Path dir) throws IOException, InterruptedException {
