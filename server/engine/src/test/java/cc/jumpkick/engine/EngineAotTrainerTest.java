@@ -59,6 +59,41 @@ class EngineAotTrainerTest {
                 .containsEntry("JK_CACHE_DIR", dir.resolve("cache").toString());
     }
 
+    @Test
+    void a_process_still_running_out_of_the_scratch_is_killed_and_others_are_not(@TempDir Path dir) throws Exception {
+        Path scratch = dir.resolve("engine-aot-train-1");
+        Process inside = loop(scratch.resolve("state/engine"));
+        Process outside = loop(dir.resolve("elsewhere"));
+        try {
+            EngineAotTrainer.killStragglers(scratch);
+            assertThat(inside.isAlive()).isFalse();
+            assertThat(outside.isAlive()).isTrue();
+        } finally {
+            inside.destroyForcibly();
+            outside.destroyForcibly();
+        }
+    }
+
+    @Test
+    void a_killed_engines_scratch_is_dropped_before_the_next_recording(@TempDir Path tmp) throws Exception {
+        Path stale = Files.createDirectories(tmp.resolve("engine-aot-train-7/state/engine"));
+        Path other = Files.createDirectories(tmp.resolve("worker-gc"));
+        Process trainer = loop(stale);
+        try {
+            EngineAotTrainer.dropStaleScratch(tmp);
+            assertThat(trainer.isAlive()).isFalse();
+            assertThat(tmp.resolve("engine-aot-train-7")).doesNotExist();
+            assertThat(other).isDirectory();
+        } finally {
+            trainer.destroyForcibly();
+        }
+    }
+
+    /** A process that runs until killed with {@code arg} among its arguments. */
+    private static Process loop(Path arg) throws Exception {
+        return new ProcessBuilder("sh", "-c", "while :; do sleep 1; done", "loop", arg.toString()).start();
+    }
+
     private static Path script(Path dir, String body) throws Exception {
         Path cli = dir.resolve("jk");
         Files.writeString(cli, "#!/bin/sh\n" + body + "\n");
