@@ -59,6 +59,16 @@ class GraphQueryTest {
     }
 
     @Test
+    void aTypeFollowedByItsMemberSeedsOnTheMember() throws IOException {
+        CodeGraph g = GraphJsonTest.shop();
+        assertThat(new GraphSearch(g).members(List.of("baseservice", "log")))
+                .containsExactly("src_main_java_com_acme_shop_baseservice_baseservice_log");
+        assertThat(new GraphQuery(g).query("what calls BaseService log", GraphQuery.Mode.BFS, 1, 2000, List.of()))
+                .contains("Start: [.log()")
+                .contains("EDGE .audit() --calls [INFERRED context=call]--> .log()");
+    }
+
+    @Test
     void callQuestionsFollowOnlyCallEdges() throws IOException {
         CodeGraph g = GraphJsonTest.shop();
         String out = new GraphQuery(g).query("who calls log", GraphQuery.Mode.BFS, 2, 2000, List.of());

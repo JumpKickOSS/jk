@@ -64,7 +64,7 @@ final class JvmSourceScanner {
             String name = type.group(2);
             int brace = code.indexOf('{', type.end());
             Open parent = enclosing(open, at);
-            String id = parent == null ? GraphIds.declared(relPath, name) : GraphIds.member(parent.id, name);
+            String id = GraphIds.declared(relPath, name);
             String qualified = parent == null
                     ? (packageName.isEmpty() ? name : packageName + "." + name)
                     : parent.qualified + "$" + name;
@@ -77,7 +77,10 @@ final class JvmSourceScanner {
             }
         }
         functions(b, code, lines, depth, open);
-        if (java) javaMethods(b, code, lines, depth, open);
+        if (java) {
+            javaMethods(b, code, lines, depth, open);
+            constructors(b, code, lines, depth, open);
+        }
         if (relPath.endsWith(".gradle") || relPath.endsWith(".gradle.kts")) coordinates(b, text, lines);
         for (SourceMask.Comment c : mask.comments) {
             String body = SourceMask.body(c);
@@ -202,6 +205,23 @@ final class JvmSourceScanner {
             if (owner == null || depth[at] != owner.depth) continue;
             String name = m.group(1);
             if (name.equals("return") || name.equals("new") || name.equals("throw")) continue;
+            int line = lines.at(at);
+            String id = b.node(GraphIds.member(owner.id, name), "." + name + "()", "code", line, Map.of());
+            b.edge(owner.id, id, Relations.METHOD, Confidence.EXTRACTED, line);
+        }
+    }
+
+    private static final Pattern CONSTRUCTOR = Pattern.compile(
+            "(?m)^[ \\t]*(?:@\\w+(?:\\([^)]*\\))?\\s+)*(?:(?:public|protected|private)\\s+)?([A-Z][\\w$]*)\\s*\\(");
+
+    /** A Java constructor is a member named after its type, as graphify names it: {@code .Outer()}. */
+    private static void constructors(FragmentBuilder b, String code, Lines lines, int[] depth, List<Open> open) {
+        Matcher m = CONSTRUCTOR.matcher(code);
+        while (m.find()) {
+            int at = m.start(1);
+            Open owner = enclosing(open, at);
+            String name = m.group(1);
+            if (owner == null || depth[at] != owner.depth || !owner.qualified.endsWith(name)) continue;
             int line = lines.at(at);
             String id = b.node(GraphIds.member(owner.id, name), "." + name + "()", "code", line, Map.of());
             b.edge(owner.id, id, Relations.METHOD, Confidence.EXTRACTED, line);

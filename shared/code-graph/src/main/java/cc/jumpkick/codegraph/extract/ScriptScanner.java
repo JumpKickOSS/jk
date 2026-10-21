@@ -61,7 +61,8 @@ final class ScriptScanner {
             String name = d.group(2);
             int line = lines.at(d.start());
             boolean function = kind.startsWith("function") || isArrow(code, d.end());
-            if ((kind.equals("const") || kind.equals("let") || kind.equals("var")) && !function) continue;
+            boolean variable = kind.equals("const") || kind.equals("let") || kind.equals("var");
+            if (variable && !function && !code.startsWith("export", d.start())) continue;
             String label = function ? name + "()" : name;
             String id = b.declared(name, label, "code", line, Map.of());
             b.edge(b.fileId(), id, Relations.CONTAINS, Confidence.EXTRACTED, line);

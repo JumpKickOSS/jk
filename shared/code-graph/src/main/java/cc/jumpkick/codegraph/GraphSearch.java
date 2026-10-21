@@ -101,13 +101,44 @@ public final class GraphSearch {
      * FormatWorker}) count as that one term: in camel-cased code the compound is what was meant.
      */
     List<String> seeds(String question) {
-        List<String> terms = compounds(queryTerms(question));
+        List<String> terms = new ArrayList<>(compounds(queryTerms(question)));
+        if (terms.stream().anyMatch(t -> !RELATIONAL.contains(t))) terms.removeIf(RELATIONAL::contains);
+        List<String> members = members(terms);
         Scores s = score(terms);
-        Map<String, String> best = new HashMap<>(s.bestByTerm());
-        boolean intent = best.keySet().stream().anyMatch(RELATIONAL::contains);
-        if (intent && terms.stream().anyMatch(t -> !RELATIONAL.contains(t)))
-            best.keySet().removeIf(RELATIONAL::contains);
-        return pickSeeds(s.ranked(), best, s.termOrder());
+        List<String> seeds = new ArrayList<>(members);
+        for (String id : pickSeeds(s.ranked(), new HashMap<>(s.bestByTerm()), s.termOrder())) {
+            if (!seeds.contains(id) && seeds.size() < 3 + members.size()) seeds.add(id);
+        }
+        return seeds;
+    }
+
+    /**
+     * A type's name followed by one of its members' ({@code FactsIndexing ensure}): that member,
+     * which a word-by-word score cannot find because neither word alone names it.
+     */
+    List<String> members(List<String> terms) {
+        Map<String, List<String>> typesByLabel = new HashMap<>();
+        for (GraphNode n : graph.nodes()) {
+            if (n.fileType().equals("code") && !n.label().endsWith(")")) {
+                typesByLabel
+                        .computeIfAbsent(n.normLabel(), k -> new ArrayList<>())
+                        .add(n.id());
+            }
+        }
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i + 1 < terms.size(); i++) {
+            for (String type : typesByLabel.getOrDefault(terms.get(i), List.of())) {
+                for (String member : graph.neighbors(type)) {
+                    GraphNode m = graph.node(member);
+                    if (m != null
+                            && stripParens(m.normLabel()).equals("." + terms.get(i + 1))
+                            && !out.contains(member)) {
+                        out.add(member);
+                    }
+                }
+            }
+        }
+        return out;
     }
 
     /** {@code terms} with every run of two or three that names a symbol joined into one. */

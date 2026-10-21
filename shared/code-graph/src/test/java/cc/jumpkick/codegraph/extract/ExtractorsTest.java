@@ -183,4 +183,41 @@ class ExtractorsTest {
                 .isNotNull();
         assertThat(Extractors.forPath("logo.png")).isNull();
     }
+
+    /** graphify's ids for the same file: nested types at file level, constructors as members. */
+    @Test
+    void nestedTypesAndConstructorsTakeGraphifysIds() {
+        Fragment f = JvmSourceScanner.extract("src/a/Outer.java", """
+                package a;
+
+                public class Outer {
+                    public Outer(int x) {}
+
+                    static class Inner {
+                        void go() {}
+                    }
+
+                    void run() { new Inner().go(); }
+                }
+                """);
+        assertThat(f.nodes())
+                .extracting(GraphNode::id)
+                .contains(
+                        "src_a_outer_outer",
+                        "src_a_outer_outer_outer",
+                        "src_a_outer_inner",
+                        "src_a_outer_inner_go",
+                        "src_a_outer_outer_run");
+        Fragment kt = JvmSourceScanner.extract("src/a/Fns.kt", """
+                package a
+
+                class Box(val v: Int) {
+                    class Lid
+                    fun open() = v
+                }
+                """);
+        assertThat(kt.nodes())
+                .extracting(GraphNode::id)
+                .contains("src_a_fns_box", "src_a_fns_lid", "src_a_fns_box_open");
+    }
 }

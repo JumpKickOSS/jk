@@ -137,9 +137,21 @@ public final class Linker {
             for (String type : frontier) {
                 String id = GraphIds.member(type, name);
                 if (nodes.containsKey(id)) return id;
+                String property = propertyOf(name);
+                if (property != null && nodes.containsKey(GraphIds.member(type, property))) {
+                    return GraphIds.member(type, property);
+                }
                 next.addAll(supertypes.getOrDefault(type, List.of()));
             }
             frontier = next;
+        }
+        return null;
+    }
+
+    /** The property a Kotlin accessor reads: {@code getAppModule} → {@code appModule}; {@code null} for any other name. */
+    static @Nullable String propertyOf(String accessor) {
+        if (accessor.length() > 3 && accessor.startsWith("get") && Character.isUpperCase(accessor.charAt(3))) {
+            return Character.toLowerCase(accessor.charAt(3)) + accessor.substring(4);
         }
         return null;
     }
