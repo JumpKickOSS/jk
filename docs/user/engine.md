@@ -411,7 +411,10 @@ idle) or critical (at once), on Linux when the cgroup's, else the host's, memory
 figures cross the same two levels. A worker in the middle of a run is never stopped for it; the
 next run starts a fresh one. Workers of one tool share by heap: a run takes an idle worker with
 at least the heap it needs, and a smaller idle one exits once a bigger one is idle, so each tool
-keeps one warm worker at the largest heap it needed. The build-script host starts with a planned heap of 256 MiB — learned after that, the
+keeps one warm worker at the largest heap it needed. On CI (`CI` true) the most recently used
+Java compiler worker and kotlinc worker ignore the linger and stay up for the life of the engine,
+so a later step of the job, or the next job on a long-lived agent, compiles warm; workers started
+for a parallel burst, and every other tool, still idle out. The build-script host starts with a planned heap of 256 MiB — learned after that, the
 same way as other planned workers — so its lease is that heap plus the usual overhead instead
 of the unsized 512 MiB default. A warm worker's lease is held while the process is alive and
 drops when it exits.

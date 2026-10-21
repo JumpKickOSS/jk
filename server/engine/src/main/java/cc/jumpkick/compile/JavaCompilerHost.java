@@ -392,6 +392,9 @@ public final class JavaCompilerHost {
 
         private boolean closed;
 
+        /** Idle lanes beyond this many exit; a warm pool kept past its linger keeps one. Guarded by {@code this}. */
+        private int keepAtMost = Integer.MAX_VALUE;
+
         Lanes(long id, ForkedJavac.Request template, Path workerJavaHome, @Nullable Long heapBytes) {
             this(
                     laneBudget(),
@@ -561,9 +564,26 @@ public final class JavaCompilerHost {
             return !lanes.isEmpty();
         }
 
-        /** An idle engine-wide lane exits when another fork needs its memory or its lane slot. */
+        /**
+         * An idle engine-wide lane exits when another fork needs its memory or its lane slot, or
+         * when the pool has more standing lanes than it keeps.
+         */
         synchronized boolean idleShouldExit() {
-            return engineWide && !closed && shouldShedIdleLane(leases);
+            return engineWide && !closed && (shouldShedIdleLane(leases) || standing() > keepAtMost);
+        }
+
+        /** Keep at most {@code n} lanes once they are idle; {@link Integer#MAX_VALUE} keeps every one. */
+        synchronized void keepAtMost(int n) {
+            keepAtMost = n;
+        }
+
+        /** Live lanes not already leaving. */
+        private int standing() {
+            int n = 0;
+            for (Session lane : lanes) {
+                if (lane.alive() && !lane.shedding) n++;
+            }
+            return n;
         }
 
         /** Under the pool lock: this idle lane should leave, and its queue has nothing for it. */

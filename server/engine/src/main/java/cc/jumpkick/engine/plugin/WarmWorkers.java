@@ -114,6 +114,9 @@ public final class WarmWorkers {
 
     private static volatile boolean hookRegistered;
 
+    /** The most recently idled worker of each launch name; under CI a kept one outlives the linger. */
+    private static final Map<String, Worker> LATEST = new ConcurrentHashMap<>();
+
     /**
      * Run {@code spec} on an idle worker of {@code launch}, or a new one. Returns when the plugin
      * answers or the worker dies. {@code cancelled} is watched while the run is in flight; when it
@@ -208,7 +211,11 @@ public final class WarmWorkers {
      * one the ledger asked for, and every worker when the linger is zero.
      */
     private static void release(Worker w, boolean keep) {
-        boolean idle = keep && w.process.isAlive() && !w.retire && !w.yielding && WarmLinger.millis() > 0;
+        boolean idle = keep
+                && w.process.isAlive()
+                && !w.retire
+                && !w.yielding
+                && (WarmLinger.millis() > 0 || WarmLinger.keepsLatest(w.name));
         if (!idle) {
             w.exit();
             return;
@@ -229,7 +236,9 @@ public final class WarmWorkers {
         }
         // A bigger idle sibling serves whatever these would: they exit rather than hold a lease.
         for (Worker s : covered) s.exit();
-        if (!covered.contains(w)) w.armReaper();
+        if (covered.contains(w)) return;
+        LATEST.put(w.name, w);
+        w.armReaper();
     }
 
     /** Remove {@code w} from the idle list. True when it was there, so the caller owns ending it. */
@@ -259,7 +268,7 @@ public final class WarmWorkers {
         } finally {
             HeapScope.restore(previous);
         }
-        Worker w = new Worker(key, launch.heap(), process);
+        Worker w = new Worker(launch.name(), key, launch.heap(), process);
         started[0] = w;
         LIVE.add(w);
         registerShutdownHook();
@@ -279,6 +288,7 @@ public final class WarmWorkers {
 
     /** One served worker process and the lines it has written that no run has read yet. */
     private static final class Worker {
+        final String name;
         final String key;
 
         /** The {@code -Xmx} it was started with, or {@code -1}. */
@@ -299,7 +309,8 @@ public final class WarmWorkers {
 
         private @Nullable Thread reaper;
 
-        Worker(String key, long heap, Process process) {
+        Worker(String name, String key, long heap, Process process) {
+            this.name = name;
             this.key = key;
             this.heap = heap;
             this.process = process;
@@ -390,7 +401,9 @@ public final class WarmWorkers {
                 synchronized (IDLE) {
                     wait = linger - (CLOCK.nanos() - lastUsedNanos);
                 }
-                if (wait <= 0) {
+                if (wait <= 0 && kept()) {
+                    wait = Math.max(linger, TimeUnit.MINUTES.toNanos(1));
+                } else if (wait <= 0) {
                     if (unlistIdle(this)) exit();
                     return;
                 }
@@ -402,6 +415,11 @@ public final class WarmWorkers {
             }
         }
 
+        /** Under CI, the most recently used worker of a kept tool, which the linger does not end. */
+        private boolean kept() {
+            return WarmLinger.keepsLatest(name) && LATEST.get(name) == this;
+        }
+
         /** The ledger needs the memory: an idle worker exits now, a running one after its run. */
         void yieldLease() {
             yielding = true;
@@ -411,6 +429,7 @@ public final class WarmWorkers {
         /** Ask the worker to exit and wait briefly; one that does not go is killed. */
         void exit() {
             LIVE.remove(this);
+            LATEST.remove(name, this);
             Thread t = reaper;
             if (t != null && t != Thread.currentThread()) t.interrupt();
             try {
@@ -427,6 +446,7 @@ public final class WarmWorkers {
 
         void kill() {
             LIVE.remove(this);
+            LATEST.remove(name, this);
             process.destroyForcibly();
             try {
                 process.waitFor(5, TimeUnit.SECONDS);
