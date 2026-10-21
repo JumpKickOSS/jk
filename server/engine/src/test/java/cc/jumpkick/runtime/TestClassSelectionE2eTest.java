@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -30,6 +31,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -330,12 +332,28 @@ class TestClassSelectionE2eTest {
         return new Standalone(plan, SessionContext.where(session, plan::run));
     }
 
+    /** The locked workspace every test copies; built once, never built in place. */
+    private static Path template;
+
+    @BeforeAll
+    static void lockTemplate(@TempDir Path shared) throws Exception {
+        template = lockedWorkspace(shared);
+    }
+
+    /** A private copy of the locked workspace under {@code tmp}, with an empty cache beside it. */
+    private static Path workspace(Path tmp) throws Exception {
+        Files.createDirectories(tmp.resolve("cache"));
+        Path ws = tmp.resolve("ws");
+        PathUtil.copyTree(template, ws);
+        return ws;
+    }
+
     /**
      * lib has one plain test class; app depends on lib and carries one plain class plus two
      * {@code serial}-tagged ones behind {@code [test] serial-tags}, and one {@code bench}-tagged. Locked once at the root, with
      * the members redirected to the root lock.
      */
-    private static Path workspace(Path tmp) throws Exception {
+    private static Path lockedWorkspace(Path tmp) throws Exception {
         Path ws = Files.createDirectories(tmp.resolve("ws"));
         Path cache = Files.createDirectories(tmp.resolve("cache"));
         Files.writeString(ws.resolve("jk.toml"), """

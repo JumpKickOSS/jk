@@ -193,6 +193,14 @@ public final class EngineServer implements AutoCloseable {
         this.metricsFile = file;
     }
 
+    /** How long a fresh connection may stay silent before it is closed. */
+    private long helloIdleMillis = EngineConnection.HELLO_IDLE_MS;
+
+    /** Test seam: a shorter hello window, set before {@link #run}. */
+    void helloIdleForTests(long millis) {
+        this.helloIdleMillis = millis;
+    }
+
     /** Event-request id for the hosted op on this thread (set around the runner). */
     private final ThreadLocal<Long> currentEventRequestId = new ThreadLocal<>();
 
@@ -461,21 +469,23 @@ public final class EngineServer implements AutoCloseable {
         if (won == null) return false; // lost the spawn race / an identical engine already serves
         serverChannel = won.listener();
         expectedToken = won.token();
-        connection = new EngineConnection(new EngineConnection.Context(
-                verbs,
-                jobs,
-                version,
-                pid,
-                startedAtMillis,
-                buildId,
-                expectedToken,
-                this::statusSnapshot,
-                http,
-                () -> draining,
-                () -> drainDeadlineMillis,
-                drain,
-                this::handleShutdown,
-                this::noteIdleDropped));
+        connection = new EngineConnection(
+                new EngineConnection.Context(
+                        verbs,
+                        jobs,
+                        version,
+                        pid,
+                        startedAtMillis,
+                        buildId,
+                        expectedToken,
+                        this::statusSnapshot,
+                        http,
+                        () -> draining,
+                        () -> drainDeadlineMillis,
+                        drain,
+                        this::handleShutdown,
+                        this::noteIdleDropped),
+                helloIdleMillis);
 
         // One platform thread per connection; each verb binds the request's session itself
         // (SessionContext.where). A platform thread, so hello and status are answered while a

@@ -23,6 +23,9 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class EngineFleetTest {
 
+    /** A grace for a fake engine that ignores the drain: long enough for a hard kill to land. */
+    private static final long SHORT_GRACE_MS = 1_000;
+
     @Test
     void a_process_that_is_already_gone_counts_as_exited() {
         // A pid nothing owns must read as gone rather than hang out the grace period, or every stop of an
@@ -48,7 +51,9 @@ class EngineFleetTest {
         try {
             assertThat(sleeper.isAlive()).isTrue();
 
-            assertThat(EngineFleet.waitForExit(sleeper.pid())).isFalse();
+            // The grace is short: the answer for a live process is the same at any deadline.
+            assertThat(EngineFleet.waitGone(sleeper.pid(), SHORT_GRACE_MS)).isFalse();
+            assertThat(sleeper.isAlive()).isTrue();
         } finally {
             sleeper.destroyForcibly();
             sleeper.waitFor();
@@ -110,7 +115,8 @@ class EngineFleetTest {
             WindowsCommandLines.resetForTests();
             var member = new EngineFleet.Member(null, null, null, oldEngine.pid(), false);
 
-            var results = EngineFleet.retireOldDefaultLayoutEngines(List.of(member), tmp.resolve("current"), retired);
+            var results = EngineFleet.retireOldDefaultLayoutEngines(
+                    List.of(member), tmp.resolve("current"), retired, SHORT_GRACE_MS);
 
             assertThat(results)
                     .singleElement()
@@ -133,7 +139,8 @@ class EngineFleetTest {
             WindowsCommandLines.resetForTests();
             var member = new EngineFleet.Member(null, null, null, currentEngine.pid(), false);
 
-            assertThat(EngineFleet.retireOldDefaultLayoutEngines(List.of(member), explicitHome, retired))
+            assertThat(EngineFleet.retireOldDefaultLayoutEngines(
+                            List.of(member), explicitHome, retired, SHORT_GRACE_MS))
                     .isEmpty();
             assertThat(currentEngine.isAlive()).isTrue();
         } finally {

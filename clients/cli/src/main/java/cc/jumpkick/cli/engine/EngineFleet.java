@@ -489,13 +489,19 @@ public final class EngineFleet {
 
     static List<StopResult> retireOldDefaultLayoutEngines(
             List<Member> candidates, Path currentHome, RetiredEngineLayouts.Layout retired) {
+        return retireOldDefaultLayoutEngines(candidates, currentHome, retired, EXIT_GRACE_MS);
+    }
+
+    /** As above, with the exit grace each retired engine gets before and after its hard kill. */
+    static List<StopResult> retireOldDefaultLayoutEngines(
+            List<Member> candidates, Path currentHome, RetiredEngineLayouts.Layout retired, long graceMs) {
         List<StopResult> results = new ArrayList<>();
         for (Member member : candidates) {
             String commandLine = ProcessHandle.of(member.pid())
                     .map(EngineFleet::commandLineOf)
                     .orElse("");
             if (!isRetiredDefaultEngine(commandLine, currentHome, retired)) continue;
-            results.add(retire(member));
+            results.add(retire(member, graceMs));
         }
         return List.copyOf(results);
     }
@@ -513,12 +519,12 @@ public final class EngineFleet {
      * A superseded-layout engine always goes: a drain, or a silent engine the graceful stop left
      * alone, is given the exit grace and then killed.
      */
-    private static StopResult retire(Member member) {
+    private static StopResult retire(Member member, long graceMs) {
         StopResult result = stop(member, false);
         if (result.outcome() != Outcome.DRAINING && result.outcome() != Outcome.LEFT_ALONE) return result;
-        if (waitForExit(member.pid())) return new StopResult(member, Outcome.STOPPED);
+        if (waitGone(member.pid(), graceMs)) return new StopResult(member, Outcome.STOPPED);
         EngineProcessControl.hardKill(member.pid());
-        return new StopResult(member, waitForExit(member.pid()) ? Outcome.KILLED : Outcome.SURVIVED);
+        return new StopResult(member, waitGone(member.pid(), graceMs) ? Outcome.KILLED : Outcome.SURVIVED);
     }
 
     /** Stop the engine with this pid, or empty when no running engine has it. */
@@ -547,7 +553,8 @@ public final class EngineFleet {
         return waitGone(pid, EXIT_GRACE_MS);
     }
 
-    private static boolean waitGone(long pid, long withinMs) {
+    /** Wait up to {@code withinMs} for {@code pid} to exit. True when it is gone. */
+    static boolean waitGone(long pid, long withinMs) {
         if (pid <= 0) return true; // nothing addressable; treat as gone rather than claim a kill
         long deadline = System.nanoTime() + Duration.ofMillis(withinMs).toNanos();
         while (System.nanoTime() < deadline) {
