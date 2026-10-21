@@ -17,11 +17,14 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -65,6 +68,9 @@ final class EngineAotTrainer {
 
     /** How long the trainer's exit may take to assemble the cache after {@code engine stop}. */
     private static final long ASSEMBLY_TIMEOUT_MILLIS = 120_000;
+
+    /** How long a killed straggler may take to exit before its scratch is deleted anyway. */
+    private static final long STRAGGLER_EXIT_SECONDS = 5;
 
     /** How long {@link #stop} waits for the recording to stop its trainer and remove its scratch. */
     private static final Duration STOP_TIMEOUT = Duration.ofSeconds(30);
@@ -116,7 +122,9 @@ final class EngineAotTrainer {
         long start = Clock.SYSTEM.millis();
         Path scratch = null;
         try {
-            scratch = Files.createTempDirectory(Files.createDirectories(JkDirs.tmp()), "engine-aot-train-");
+            Path tmpRoot = Files.createDirectories(JkDirs.tmp());
+            dropStaleScratch(tmpRoot);
+            scratch = Files.createTempDirectory(tmpRoot, SCRATCH_PREFIX);
             Path project = fixture(scratch.resolve("project"));
             Path recorded = scratch.resolve("engine.aot");
             Map<String, String> env = env(scratch, recorded);
@@ -153,8 +161,53 @@ final class EngineAotTrainer {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } finally {
+            if (scratch != null) killStragglers(scratch);
             PathUtil.deleteRecursively(scratch);
             recording = null;
+        }
+    }
+
+    /** A recording's scratch under {@code JkDirs.tmp()}: a killed engine's is left for the next recording. */
+    private static final String SCRATCH_PREFIX = "engine-aot-train-";
+
+    /** Remove the scratch of a recording whose engine was killed, and anything still running from it. */
+    static void dropStaleScratch(Path tmp) throws IOException {
+        List<Path> stale = new ArrayList<>();
+        PathUtil.forEachChild(tmp, (p, attrs) -> {
+            if (p.getFileName().toString().startsWith(SCRATCH_PREFIX)) stale.add(p);
+            return true;
+        });
+        for (Path p : stale) {
+            killStragglers(p);
+            PathUtil.deleteRecursively(p);
+        }
+    }
+
+    /**
+     * Kill what still runs out of {@code scratch} before it is deleted: a trainer engine still
+     * starting is not listening yet, so {@code engine stop} cannot reach it, and it would recreate
+     * the scratch it was spawned into. Matched by the scratch path among its arguments, which every
+     * trainer engine carries in its heap-dump path; where a platform gives no arguments, the owner
+     * watch still ends it.
+     */
+    static void killStragglers(Path scratch) {
+        String mark = scratch.toString();
+        List<ProcessHandle> found = ProcessHandle.allProcesses()
+                .filter(h -> h.info()
+                        .arguments()
+                        .map(args -> Arrays.stream(args).anyMatch(a -> a.contains(mark)))
+                        .orElse(false))
+                .toList();
+        for (ProcessHandle h : found) h.destroyForcibly();
+        for (ProcessHandle h : found) {
+            try {
+                h.onExit().get(STRAGGLER_EXIT_SECONDS, TimeUnit.SECONDS);
+            } catch (ExecutionException | TimeoutException e) {
+                Log.debug("EngineAotTrainer: pid " + h.pid() + " outlived its kill");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
         }
     }
 
