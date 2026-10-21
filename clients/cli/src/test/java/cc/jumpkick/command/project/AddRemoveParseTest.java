@@ -131,13 +131,9 @@ class AddRemoveParseTest {
         assertThat(RemoveCommand.shortNameOf("com.foo:bar", tmp)).isEqualTo("bar");
         assertThat(RemoveCommand.shortNameOf("com.foo:bar:9.9", tmp)).isEqualTo("bar");
 
-        Path lib = tmp.resolve("libb");
-        Files.createDirectories(lib);
-        Files.writeString(lib.resolve("jk.toml"), """
-                group = "g"
-                name = "libb"
-                version = "1.0.0"
-                """);
+        // No manifest: one would send the name lookup to an engine. The manifest-name path is
+        // covered end to end by AddRemoveCommandTest.
+        Files.createDirectories(tmp.resolve("libb"));
         assertThat(RemoveCommand.shortNameOf("./libb", tmp)).isEqualTo("libb");
         assertThat(RemoveCommand.shortNameOf("libb/", tmp)).isEqualTo("libb");
         assertThat(RemoveCommand.shortNameOf("libb", tmp)).isEqualTo("libb"); // dir exists → path
