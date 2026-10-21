@@ -256,6 +256,8 @@ public final class ManifestUpdates {
     /**
      * {@code text} with every selected tool pin of {@code build} moved to its newest stable, each
      * move recorded in {@code rewrites}; a pin whose key the editor cannot find is left as written.
+     * A key that fills several coordinates ({@code [intellij] version} names the IDE and its test
+     * framework) moves only to a version every one of them publishes.
      */
     private static String moveToolPins(
             Path dir,
@@ -266,9 +268,18 @@ public final class ManifestUpdates {
             Selection selection,
             Map<String, List<String>> versionsByModule,
             List<Rewrite> rewrites) {
+        Map<String, List<ToolPins.ToolPin>> byKey = new LinkedHashMap<>();
         for (ToolPins.ToolPin pin : ToolPins.of(build, text)) {
-            if (!selection.selects(pin)) continue;
-            String to = newer(pin.version(), available(pin.module(), repos, versionsByModule), selection.major());
+            byKey.computeIfAbsent(pin.table() + "." + pin.key(), k -> new ArrayList<>())
+                    .add(pin);
+        }
+        for (List<ToolPins.ToolPin> pins : byKey.values()) {
+            if (pins.stream().noneMatch(selection::selects)) continue;
+            ToolPins.ToolPin pin = pins.getFirst();
+            List<List<String>> published = pins.stream()
+                    .map(p -> available(p.module(), repos, versionsByModule))
+                    .toList();
+            String to = newer(pin.version(), publishedByAll(published), selection.major());
             if (to == null) continue;
             try {
                 text = JkBuildEditor.setTableString(text, pin.table(), pin.key(), pin.rewritten(to));
@@ -303,6 +314,13 @@ public final class ManifestUpdates {
                 .filter(v -> Versions.compare(v, current) > 0)
                 .max(Versions::compare)
                 .orElse(null);
+    }
+
+    /** The versions every list in {@code published} carries, in the first list's order. */
+    static List<String> publishedByAll(List<List<String>> published) {
+        return published.getFirst().stream()
+                .filter(v -> published.stream().allMatch(l -> l.contains(v)))
+                .toList();
     }
 
     /** The Maven major: the first numeric segment ({@code 33.4.8-jre} → 33), or {@code -1} when there is none. */

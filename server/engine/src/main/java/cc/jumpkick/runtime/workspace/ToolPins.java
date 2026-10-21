@@ -88,7 +88,7 @@ final class ToolPins {
     private static void plain(String table, String template, PluginConfig config, Project project, List<ToolPin> out) {
         String[] parts = template.split(":");
         if (parts.length < 3) return;
-        Matcher m = CONFIG_KEY.matcher(parts[2]);
+        Matcher m = CONFIG_KEY.matcher(versionSlot(parts[2]));
         if (!m.matches()) return;
         String key = m.group(1);
         String raw = config.stringOpt(key).orElse(null);
@@ -113,7 +113,7 @@ final class ToolPins {
             key = head.group(1);
         } else {
             if (parts.length < 3) return;
-            Matcher slot = ENTRY_KEY.matcher(parts[2]);
+            Matcher slot = ENTRY_KEY.matcher(versionSlot(parts[2]));
             if (!slot.matches()) return;
             key = slot.group(1);
         }
@@ -150,6 +150,12 @@ final class ToolPins {
             Log.debug("ToolPins.module: a head segment names a value the table leaves unset", unset);
             return null;
         }
+    }
+
+    /** A coordinate's version segment without its {@code !type} suffix ({@code ${config.version}!zip}). */
+    private static String versionSlot(String segment) {
+        int bang = segment.indexOf('!');
+        return bang < 0 ? segment : segment.substring(0, bang);
     }
 
     /** The version an exact selector pins; empty for a floating one or text that is no selector. */

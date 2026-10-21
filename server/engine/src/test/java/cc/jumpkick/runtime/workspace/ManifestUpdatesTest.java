@@ -325,6 +325,49 @@ class ManifestUpdatesTest {
         JkBuildParser.parse(text);
     }
 
+    /**
+     * One table key filling several coordinates ({@code [intellij] version} names the IDE zip and its
+     * test framework) moves only to a version every one of them publishes.
+     */
+    @Test
+    void a_key_shared_by_several_coordinates_moves_to_a_version_all_of_them_publish(@TempDir Path project)
+            throws Exception {
+        PluginTableRegistry.putBuiltIn(PluginDescriptors.parse("""
+                        [plugin]
+                        id = "shared-key"
+                        table = "shared-key"
+
+                        [schema]
+                        version = { type = "string", required = true }
+
+                        [[contribute.step-dependency]]
+                        artifact   = "ide"
+                        coordinate = "io.acme:ide:${config.version}!zip"
+
+                        [[contribute.step-dependency]]
+                        artifact   = "framework"
+                        coordinate = "io.acme:test-framework:${config.version}"
+                        """, "shared-key.toml"), null);
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "com.example"
+                name = "ide-plugin"
+                version = "1.0.0"
+                java = 25
+
+                [shared-key]
+                version = "1.0.0"
+                """);
+        MavenStub upstream = new MavenStub(http);
+        published(upstream, "io.acme", "ide", "1.0.0", "1.1.0");
+        published(upstream, "io.acme", "test-framework", "1.0.0", "1.1.0", "1.2.0");
+
+        ManifestUpdates.Plan plan = ManifestUpdates.plan(project, http.base(), ManifestUpdates.Selection.ALL);
+
+        assertThat(plan.rewrites())
+                .extracting(r -> r.table(), r -> r.from(), r -> r.to())
+                .containsExactly(tuple("shared-key.version", "1.0.0", "1.1.0"));
+    }
+
     // ---- fixture ---------------------------------------------------------------
 
     // ---- raising pins a highest-wins probe holds higher -----------------------------
