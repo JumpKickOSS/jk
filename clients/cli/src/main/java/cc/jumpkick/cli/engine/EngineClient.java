@@ -113,8 +113,7 @@ public final class EngineClient {
     }
 
     /**
-     * Run a single (non-workspace) project's build against the engine — the engine equivalent of
-     * {@code BuildCommand.runForDir}'s {@code agg == null} branch — see {@link
+     * Run a single (non-workspace) project's build against the engine — see {@link
      * EngineJobs#runSingleBuild} for the exact contract.
      */
     public static BuildPlanResult runSingleBuild(

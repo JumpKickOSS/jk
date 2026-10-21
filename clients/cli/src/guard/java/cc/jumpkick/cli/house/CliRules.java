@@ -8,6 +8,7 @@ import cc.jumpkick.guard.api.Scope;
 import cc.jumpkick.guard.api.Text;
 import cc.jumpkick.guard.api.TextSite;
 import cc.jumpkick.guard.api.Violations;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
@@ -192,7 +193,11 @@ final class CliRules {
         Pattern aliases = Pattern.compile(
                 "List<String> aliases\\(\\)\\s*\\{[^}]*?return List\\.of\\(([^)]*)\\);", Pattern.DOTALL);
         Pattern quoted = Pattern.compile("\"([a-z][a-z0-9-]*)\"");
-        for (String rel : text.files("clients/cli/src/main/java/cc/jumpkick/command/**/*Command.java")) {
+        List<String> owners =
+                new ArrayList<>(text.files("clients/cli/src/main/java/cc/jumpkick/command/**/*Command.java"));
+        // A build verb names its command the same way and is registered through BuildVerbCommand.
+        owners.addAll(text.files("clients/cli/src/main/java/cc/jumpkick/command/**/*Verb.java"));
+        for (String rel : owners) {
             String code = raw(text, rel);
             verbs.addAll(matches(name, code, 1));
             for (String block : matches(aliases, code, 1)) verbs.addAll(matches(quoted, block, 1));

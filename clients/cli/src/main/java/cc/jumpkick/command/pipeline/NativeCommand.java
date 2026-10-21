@@ -124,7 +124,7 @@ public final class NativeCommand implements CliCommand {
         this.global = GlobalOptions.from(in);
         this.modulesSpec = CommonOpts.modulesSpec(in);
         this.affectedSince = in.value("affected-since").orElse(null);
-        if (!TestCommand.installSelection(in, "Native")) return Exit.CONFIG;
+        if (!BuildFlags.installSelection(in, "Native")) return Exit.CONFIG;
         this.affectedWip = in.isSet("affected");
         if (ModuleSelectors.bothSelectors(affectedWip, affectedSince)) {
             CommandWedge.printFail("Native", ModuleSelectors.BOTH_MESSAGE);
@@ -362,7 +362,7 @@ public final class NativeCommand implements CliCommand {
         // (the plan burst carries every module plan's estimated weight).
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         JkManager view = JkManager.plan(CliOutput.stdout(), "Build", animate);
-        view.setPlanCoord(BuildCommand.projectGaLabel(wsRoot));
+        view.setPlanCoord(BuildRun.projectGaLabel(wsRoot));
         ModuleScopeHint.apply(view, "building", scopeHintNames);
         AggregateContext agg = new AggregateContext(view);
         int[] built = {0};

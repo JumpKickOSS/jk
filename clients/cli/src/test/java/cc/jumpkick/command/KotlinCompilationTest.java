@@ -217,7 +217,7 @@ class KotlinCompilationTest {
 
     @Test
     void check_passes_for_java_calling_kotlin(@TempDir Path tempDir) throws IOException {
-        // jk check → CompileCommand, which also compiles Kotlin-first so Java can
+        // jk check → jk compile, which also compiles Kotlin-first so Java can
         // reference Kotlin within the module.
         run("new", "--name", "mixed", "--lang", "kotlin", "--layout", "traditional", tempDir.toString());
         ScaffoldTestSupport.writeEmptyLock(tempDir); // jk new no longer locks; check needs a lock

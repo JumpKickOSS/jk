@@ -41,7 +41,7 @@ import java.util.Optional;
  */
 public final class GuardCommand implements CliCommand {
 
-    private final BuildCommand build = new BuildCommand();
+    private final BuildVerbCommand build = BuildVerbCommand.build();
 
     @Override
     public String name() {
@@ -114,10 +114,10 @@ public final class GuardCommand implements CliCommand {
         String output = in.value("output").orElse("").trim();
         boolean sarif = output.equalsIgnoreCase("sarif");
         Invocation.Builder b = Invocation.builder();
-        for (Opt opt : build.options()) copy(in, opt, b);
+        for (Opt opt : build.options()) BuildVerbCommand.copy(in, opt, b);
         for (Opt opt : GlobalOptions.globalOpts()) {
             if (sarif && opt.canonicalName().equals("output")) continue; // the build runs in text mode, quietly
-            copy(in, opt, b);
+            BuildVerbCommand.copy(in, opt, b);
         }
         if (sarif) b.flag("quiet", true);
         b.flag("skip-tests", true);
@@ -198,15 +198,6 @@ public final class GuardCommand implements CliCommand {
     static final String SARIF_FILE = "jk-guards.sarif";
 
     static final String JSONL_FILE = "jk-guards.jsonl";
-
-    private static void copy(Invocation in, Opt opt, Invocation.Builder b) {
-        String name = opt.canonicalName();
-        if (opt.takesValue()) {
-            for (String v : in.values(name)) b.addValue(name, v);
-        } else if (in.isSet(name)) {
-            b.flag(name, true);
-        }
-    }
 
     /**
      * {@code jk guard explain [<id>] [--schema <kind>]}: the rule card (why, instead, population,

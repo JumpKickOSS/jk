@@ -664,7 +664,9 @@ class EngineProtocolTest {
     @Test
     void hosted_request_project_directory_field_is_always_dir() {
         // Sample of hosted builders — none may invent a second spelling for the project path.
-        assertThat(Jsonl.str(new CompileRequest("/w", "/c", null, false, false, false, List.of()).encode(), "dir"))
+        assertThat(Jsonl.str(
+                        new CompileRequest("/w", "/c", null, null, false, false, false, false, List.of()).encode(),
+                        "dir"))
                 .isEqualTo("/w");
         assertThat(Jsonl.str(buildRequest(false, false, null), "dir")).isEqualTo("/w");
         assertThat(Jsonl.str(new ProvisionRequest("/w", "/t", false, false, false, null, null).encode(), "dir"))
@@ -674,7 +676,8 @@ class EngineProtocolTest {
 
     @Test
     void compile_request_round_trips_all_fields() {
-        String json = new CompileRequest("/work", "/cache", "ci", true, false, true, List.of()).encode();
+        String json =
+                new CompileRequest("/work", "/cache", "/jdks", "ci", true, false, true, true, List.of("a")).encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.COMPILE_REQUEST);
         assertThat(Jsonl.str(json, "dir")).isEqualTo("/work");
         assertThat(Jsonl.str(json, "cache")).isEqualTo("/cache");
@@ -682,8 +685,10 @@ class EngineProtocolTest {
         assertThat(Jsonl.bool(json, "offline", false)).isTrue();
         assertThat(Jsonl.bool(json, "force", true)).isFalse();
         assertThat(Jsonl.bool(json, "verbose", false)).isTrue();
+        assertThat(CompileRequest.decode(json))
+                .isEqualTo(new CompileRequest("/work", "/cache", "/jdks", "ci", true, false, true, true, List.of("a")));
 
-        String noProfile = new CompileRequest("/w", "/c", null, false, false, false, List.of()).encode();
+        String noProfile = new CompileRequest("/w", "/c", null, null, false, false, false, false, List.of()).encode();
         assertThat(Jsonl.str(noProfile, "profile")).isNull();
     }
 

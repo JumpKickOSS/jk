@@ -9,10 +9,12 @@ import org.jspecify.annotations.Nullable;
 public record CompileRequest(
         @Nullable String dir,
         @Nullable String cache,
+        @Nullable String jdksDir,
         @Nullable String profile,
         boolean offline,
         boolean force,
         boolean verbose,
+        boolean keepGoing,
         List<String> moduleDirs) {
 
     public CompileRequest {
@@ -23,10 +25,12 @@ public record CompileRequest(
         return RequestJson.request(EngineProtocol.COMPILE_REQUEST)
                 .string("dir", dir)
                 .string("cache", cache)
+                .string(ProtoJobs.JDKS_DIR, jdksDir)
                 .string("profile", profile)
                 .bool("offline", offline)
                 .bool("force", force)
                 .bool("verbose", verbose)
+                .bool("keepGoing", keepGoing)
                 .array("moduleDirs", moduleDirs)
                 .finish();
     }
@@ -35,10 +39,12 @@ public record CompileRequest(
         return new CompileRequest(
                 Jsonl.str(json, "dir"),
                 Jsonl.str(json, "cache"),
+                Jsonl.str(json, ProtoJobs.JDKS_DIR),
                 Jsonl.str(json, "profile"),
                 Jsonl.bool(json, "offline", false),
                 Jsonl.bool(json, "force", false),
                 Jsonl.bool(json, "verbose", false),
+                Jsonl.bool(json, "keepGoing", false),
                 Jsonl.strArray(json, "moduleDirs"));
     }
 }

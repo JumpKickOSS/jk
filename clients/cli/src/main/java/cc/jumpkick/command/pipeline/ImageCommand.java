@@ -118,7 +118,7 @@ public final class ImageCommand implements CliCommand {
         this.buildOpts = new BuildOptions();
         this.buildOpts.skipTests = in.isSet("skip-tests");
         this.global = GlobalOptions.from(in);
-        if (!TestCommand.installSelection(in, "Image")) return Exit.CONFIG;
+        if (!BuildFlags.installSelection(in, "Image")) return Exit.CONFIG;
         Path projectDir = global.workingDir();
         VariantSelection.install(in, projectDir);
         var proj = ProjectContext.require(projectDir, "Image").orElse(null);
@@ -169,7 +169,7 @@ public final class ImageCommand implements CliCommand {
         TestSummary testResult;
         // The wire has no real BuildPlan, so the success tail renders from the structured fields the
         // terminal plan-finish carries — the summary holder is populated before the console
-        // listener's own planFinish fires, same holder pattern as TestCommand's hosted path.
+        // listener's own planFinish fires, same holder pattern as jk test's hosted path.
         var session = SessionContext.current();
         EngineRequests.ImageSummary[] summary = new EngineRequests.ImageSummary[1];
         ConsoleSpec spec = new ConsoleSpec(
@@ -279,7 +279,7 @@ public final class ImageCommand implements CliCommand {
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         ModuleScopeHint.print("building", ModuleScopeHint.namesFrom(moduleInfo), false);
         JkManager view = JkManager.plan(CliOutput.stdout(), "Image", animate);
-        view.setPlanCoord(BuildCommand.projectGaLabel(moduleDir));
+        view.setPlanCoord(BuildRun.projectGaLabel(moduleDir));
         AggregateContext agg = new AggregateContext(view);
         ModuleOutcome.Image[] imageOut = {null};
         long start = System.nanoTime();

@@ -131,8 +131,8 @@ public final class WatchCommand implements CliCommand {
                                 jdksDir,
                                 "jk watch run",
                                 in.flag("no-sidecars").orElse(false),
-                                recompiler(global),
-                                rebuilder(global, jdksDir),
+                                recompiler(in),
+                                rebuilder(in, jdksDir),
                                 members(in))
                         .run(projectDir, AppWatchLoop.cache(cacheOverride), rest);
             case "compile", "test", "build" -> verbLoop(verb, projectDir, global, debounceMs);
@@ -154,11 +154,12 @@ public final class WatchCommand implements CliCommand {
         return List.copyOf(out);
     }
 
-    /** The dev loop's recompile: the same single-plan-or-workspace choice as {@code jk compile}. */
-    private static AppWatchLoop.Compiler recompiler(GlobalOptions global) {
-        var labels = new PlanRun.Labels("Watch", "Recompiled", "Compile failed");
-        return (projectDir, cache) -> PlanRun.resolve(projectDir, null, null, false, PlanRun.compile(null))
-                        .run(labels, global, cache)
+    /** The dev loop's recompile: {@code jk compile}, told as the loop's own. */
+    private static AppWatchLoop.Compiler recompiler(Invocation in) {
+        return (projectDir, cache) -> BuildVerbCommand.run(
+                        new CompileVerb("Watch", "Recompiled"),
+                        BuildVerbCommand.embedded(in, projectDir, cache, b -> {}),
+                        false)
                 == 0;
     }
 
@@ -166,10 +167,16 @@ public final class WatchCommand implements CliCommand {
      * The dev loop's full rebuild after a manifest or resource change: the same choice, so a
      * workspace member is packaged with the siblings it runs on rather than as a lone plan.
      */
-    private static AppWatchLoop.Compiler rebuilder(GlobalOptions global, @Nullable Path jdksDir) {
-        var labels = new PlanRun.Labels("Watch", "Built", "Build failed");
-        return (projectDir, cache) -> PlanRun.resolve(projectDir, null, null, false, PlanRun.devBuild(jdksDir))
-                        .run(labels, global, cache)
+    private static AppWatchLoop.Compiler rebuilder(Invocation in, @Nullable Path jdksDir) {
+        return (projectDir, cache) -> BuildVerbCommand.run(
+                        new PackageVerb("Watch"),
+                        BuildVerbCommand.embedded(in, projectDir, cache, b -> {
+                            // The loop restarts a process; it does not gate on a suite.
+                            b.flag("skip-tests", true);
+                            b.putValue("workers", "1");
+                            if (jdksDir != null) b.putValue(CommonOpts.JDKS_DIR, jdksDir.toString());
+                        }),
+                        false)
                 == 0;
     }
 
@@ -213,12 +220,13 @@ public final class WatchCommand implements CliCommand {
 
     private static int runVerb(String verb) throws Exception {
         return switch (verb) {
-            case "compile" -> new CompileCommand().run(Invocation.builder().build());
-            case "test" -> new TestCommand().run(Invocation.builder().build());
+            case "compile" ->
+                BuildVerbCommand.compile().run(Invocation.builder().build());
+            case "test" -> BuildVerbCommand.test().run(Invocation.builder().build());
             case "build" -> {
                 Invocation.Builder bb = Invocation.builder();
                 bb.flag("skip-tests", true);
-                yield new BuildCommand().run(bb.build());
+                yield BuildVerbCommand.build().run(bb.build());
             }
             default -> Exit.USAGE;
         };

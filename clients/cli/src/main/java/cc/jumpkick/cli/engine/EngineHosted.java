@@ -336,10 +336,14 @@ final class EngineHosted {
                         new CompileRequest(
                                         req.entryDir().toString(),
                                         req.cache().toString(),
+                                        req.jdksDir() == null
+                                                ? null
+                                                : req.jdksDir().toString(),
                                         req.profile(),
                                         req.offline(),
                                         req.force(),
                                         req.verbose(),
+                                        req.keepGoing(),
                                         req.modules())
                                 .encode(),
                         "compile",

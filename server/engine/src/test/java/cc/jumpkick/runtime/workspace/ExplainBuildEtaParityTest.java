@@ -25,10 +25,8 @@ class ExplainBuildEtaParityTest {
         // Both commands pass 0 ("auto") when -w is omitted, and 0 must not resolve like 1. With no
         // class-wall history the modest default is 2, still wider than a forced serial run, so an
         // explain does not price the suite as one JVM. The claim that the two defaults ARE both 0
-        // is not testable from :engine — BuildCommand and ExplainCommand live in clients/cli — and
-        // the test that pretended otherwise wrote `int a = 0; int b = 0; assertThat(a).isEqualTo(b)`.
-        // That half is now BuildExplainPlanOptionsParityTest in :cli, which parses one argv against
-        // both commands and compares the PlanOptions they derive.
+        // is not testable from :engine; BuildExplainPlanOptionsParityTest in :cli parses one argv
+        // against both commands and compares the plan inputs they derive.
         int auto = TestWorkers.resolve(0, 24, 8);
         int forcedOne = TestWorkers.resolve(1, 24, 8);
         assertThat(auto).isGreaterThan(forcedOne);

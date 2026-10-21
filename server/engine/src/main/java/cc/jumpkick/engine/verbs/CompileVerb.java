@@ -113,7 +113,8 @@ public final class CompileVerb implements HostedVerb {
                 moduleDirs = selected.stream().map(Path::toString).sorted().toList();
             }
         }
-        return new CompileRequest(spec.dir(), JkDirs.cache().toString(), null, false, false, false, moduleDirs)
+        return new CompileRequest(
+                        spec.dir(), JkDirs.cache().toString(), null, null, false, false, false, false, moduleDirs)
                 .encode();
     }
 
@@ -180,6 +181,7 @@ public final class CompileVerb implements HostedVerb {
                                         true,
                                         true)
                                 .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                                .withKeepGoing(body.keepGoing())
                                 .withSpec(WorkspaceSpec.compile(selected));
                         long rid = host.eventRequestId();
                         if (rid > 0) host.putProgressRoot(rid, wsRoot.get().toString());

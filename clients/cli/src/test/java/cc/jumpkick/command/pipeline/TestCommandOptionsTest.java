@@ -22,12 +22,12 @@ import org.junit.jupiter.api.Test;
 class TestCommandOptionsTest {
 
     private static Invocation parse(String... args) throws Exception {
-        return ArgParser.parse(new TestCommand(), List.of(args));
+        return ArgParser.parse(BuildVerbCommand.test(), List.of(args));
     }
 
     @Test
     void suite_and_profile_declare_short_forms() {
-        List<Opt> opts = new TestCommand().options();
+        List<Opt> opts = BuildVerbCommand.test().options();
         Opt suite = opts.stream()
                 .filter(o -> o.canonicalName().equals("suite"))
                 .findFirst()
@@ -50,10 +50,10 @@ class TestCommandOptionsTest {
 
     @Test
     void a_class_method_selector_rides_class_and_a_bare_hash_is_refused() throws Exception {
-        assertThat(TestCommand.resolveTestSelection(parse("--class", "OrdersTest#refunds", "--class", "BarTest"))
+        assertThat(BuildFlags.testSelection(parse("--class", "OrdersTest#refunds", "--class", "BarTest"))
                         .classes())
                 .containsExactly("OrdersTest#refunds", "BarTest");
-        assertThatThrownBy(() -> TestCommand.resolveTestSelection(parse("--class", "OrdersTest#")))
+        assertThatThrownBy(() -> BuildFlags.testSelection(parse("--class", "OrdersTest#")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("names no method after '#'");
     }
@@ -68,8 +68,8 @@ class TestCommandOptionsTest {
     @Test
     void jdks_dir_is_on_every_build_type_verb() {
         for (var verb : List.<Supplier<List<Opt>>>of(
-                () -> new BuildCommand().options(),
-                () -> new TestCommand().options(),
+                () -> BuildVerbCommand.build().options(),
+                () -> BuildVerbCommand.test().options(),
                 () -> new ImageCommand().options(),
                 () -> new NativeCommand().options(),
                 () -> new ToolInstallCommand().options(),
@@ -91,8 +91,8 @@ class TestCommandOptionsTest {
     @Test
     void guard_is_on_every_build_type_verb() {
         for (var verb : List.<Supplier<List<Opt>>>of(
-                () -> new BuildCommand().options(),
-                () -> new TestCommand().options(),
+                () -> BuildVerbCommand.build().options(),
+                () -> BuildVerbCommand.test().options(),
                 () -> new AssemblyCommand().options(),
                 () -> new ImageCommand().options(),
                 () -> new NativeCommand().options(),
@@ -107,32 +107,32 @@ class TestCommandOptionsTest {
 
     @Test
     void guard_is_one_option_with_no_alias() throws Exception {
-        List<Opt> opts = new TestCommand().options();
+        List<Opt> opts = BuildVerbCommand.test().options();
         Opt guard = opts.stream()
                 .filter(o -> o.names().contains("--guard"))
                 .findFirst()
                 .orElseThrow();
         assertThat(guard.names()).containsExactly("--guard");
-        assertThat(TestCommand.guardRequested(parse("--guard"))).isTrue();
-        String help = HelpRenderer.renderHelp(CommandModels.from(new TestCommand(), "jk test", List.of()), false);
+        assertThat(BuildFlags.guardRequested(parse("--guard"))).isTrue();
+        String help = HelpRenderer.renderHelp(CommandModels.from(BuildVerbCommand.test(), "jk test", List.of()), false);
         assertThat(help).contains("--guard");
         assertThat(help).doesNotContain("--gate").doesNotContain("--pre-merge");
-        Opt buildGuard = new BuildCommand()
-                .options().stream()
-                        .filter(o -> o.names().contains("--guard"))
-                        .findFirst()
-                        .orElseThrow();
+        Opt buildGuard = BuildVerbCommand.build().options().stream()
+                .filter(o -> o.names().contains("--guard"))
+                .findFirst()
+                .orElseThrow();
         assertThat(buildGuard.names()).containsExactly("--guard");
     }
 
     @Test
     void affected_and_affected_since_both_declared() {
-        List<Opt> opts = new TestCommand().options();
+        List<Opt> opts = BuildVerbCommand.test().options();
         assertThat(opts.stream().anyMatch(o -> o.names().contains("--affected")))
                 .isTrue();
         assertThat(opts.stream().anyMatch(o -> o.names().contains("--affected-since")))
                 .isTrue();
-        assertThat(new BuildCommand().options().stream().anyMatch(o -> o.names().contains("--affected")))
+        assertThat(BuildVerbCommand.build().options().stream()
+                        .anyMatch(o -> o.names().contains("--affected")))
                 .isTrue();
     }
 
@@ -144,7 +144,7 @@ class TestCommandOptionsTest {
 
     @Test
     void test_affected_help_says_list_only() {
-        String help = HelpRenderer.renderHelp(CommandModels.from(new TestCommand(), "jk test", List.of()), false);
+        String help = HelpRenderer.renderHelp(CommandModels.from(BuildVerbCommand.test(), "jk test", List.of()), false);
         assertThat(help).contains("Ranked WIP tests (does not run)");
         assertThat(help).contains("Ranked tests since ref (no run)");
         for (String line : help.split("\\R", -1)) {
@@ -156,29 +156,34 @@ class TestCommandOptionsTest {
 
     @Test
     void scripts_only_and_no_scripts_are_on_test_and_build() {
-        assertThat(new TestCommand().options().stream().map(Opt::names).anyMatch(n -> n.contains("--scripts-only")))
+        assertThat(BuildVerbCommand.test().options().stream()
+                        .map(Opt::names)
+                        .anyMatch(n -> n.contains("--scripts-only")))
                 .isTrue();
-        assertThat(new TestCommand().options().stream().map(Opt::names).anyMatch(n -> n.contains("--no-scripts")))
+        assertThat(BuildVerbCommand.test().options().stream().map(Opt::names).anyMatch(n -> n.contains("--no-scripts")))
                 .isTrue();
-        assertThat(new BuildCommand().options().stream().map(Opt::names).anyMatch(n -> n.contains("--scripts-only")))
+        assertThat(BuildVerbCommand.build().options().stream()
+                        .map(Opt::names)
+                        .anyMatch(n -> n.contains("--scripts-only")))
                 .isTrue();
-        assertThat(new BuildCommand().options().stream().map(Opt::names).anyMatch(n -> n.contains("--no-scripts")))
+        assertThat(BuildVerbCommand.build().options().stream()
+                        .map(Opt::names)
+                        .anyMatch(n -> n.contains("--no-scripts")))
                 .isTrue();
     }
 
     @Test
     void exclusive_is_a_flag_with_a_short_form_and_generic_help() throws Exception {
-        Opt exclusive = new TestCommand()
-                .options().stream()
-                        .filter(o -> o.names().contains("--exclusive"))
-                        .findFirst()
-                        .orElseThrow();
+        Opt exclusive = BuildVerbCommand.test().options().stream()
+                .filter(o -> o.names().contains("--exclusive"))
+                .findFirst()
+                .orElseThrow();
         assertThat(exclusive.names()).containsExactly("-X", "--exclusive");
         assertThat(exclusive.takesValue()).isFalse();
         assertThat(parse("-m", "app", "-X").isSet("exclusive")).isTrue();
         assertThat(parse("-m", "app", "--exclusive").isSet("exclusive")).isTrue();
         assertThat(parse("-m", "app").isSet("exclusive")).isFalse();
-        String help = HelpRenderer.renderHelp(CommandModels.from(new TestCommand(), "jk test", List.of()), false);
+        String help = HelpRenderer.renderHelp(CommandModels.from(BuildVerbCommand.test(), "jk test", List.of()), false);
         assertThat(help).contains("Selected modules only (no prereqs)");
     }
 

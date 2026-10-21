@@ -32,26 +32,26 @@ class TestCommandTailTest {
 
     @Test
     void a_run_that_served_nothing_reads_as_before() {
-        String t = TestAnsi.strip(TestCommand.workspaceTestSuccessTail(modules(3), 3, 0, 3, 0, 1200));
+        String t = TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(3), 3, 0, 3, 0, 1200));
         assertThat(t).startsWith("Tests passed for 3 modules");
         assertThat(t).doesNotContain("served");
     }
 
     @Test
     void a_partly_served_run_names_the_count() {
-        String t = TestAnsi.strip(TestCommand.workspaceTestSuccessTail(modules(49), 49, 47, 49, 0, 4600));
+        String t = TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(49), 49, 47, 49, 0, 4600));
         assertThat(t).contains("49 modules, 47 served from cache");
     }
 
     @Test
     void a_wholly_served_run_says_so() {
-        String t = TestAnsi.strip(TestCommand.workspaceTestSuccessTail(modules(4), 4, 4, 4, 0, 300));
+        String t = TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(4), 4, 4, 4, 0, 300));
         assertThat(t).contains("4 modules, all served from cache");
     }
 
     @Test
     void one_module_served() {
-        String t = TestAnsi.strip(TestCommand.workspaceTestSuccessTail(modules(1), 1, 1, 1, 0, 30));
+        String t = TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(1), 1, 1, 1, 0, 30));
         assertThat(t).startsWith("Tests passed, served from cache");
     }
 
@@ -60,11 +60,10 @@ class TestCommandTailTest {
         TestSummary twelve = new TestSummary(12, 12, 0, 0, List.of());
         BuildPlanResult result =
                 new BuildPlanResult("test", true, Duration.ofMillis(30), List.of(), List.of(), List.of(), false);
-        assertThat(TestAnsi.strip(TestCommand.testSummary(twelve, result, true)))
+        assertThat(TestAnsi.strip(TestVerb.testSummary(twelve, result, true)))
                 .isEqualTo("Passed 12 tests (served from cache)");
-        assertThat(TestAnsi.strip(TestCommand.testSummary(twelve, result, false)))
-                .isEqualTo("Passed 12 tests");
-        assertThat(TestAnsi.strip(TestCommand.testSummary(new TestSummary(0, 0, 0, 0, List.of()), result, true)))
+        assertThat(TestAnsi.strip(TestVerb.testSummary(twelve, result, false))).isEqualTo("Passed 12 tests");
+        assertThat(TestAnsi.strip(TestVerb.testSummary(new TestSummary(0, 0, 0, 0, List.of()), result, true)))
                 .isEqualTo("No tests");
     }
 
@@ -74,7 +73,7 @@ class TestCommandTailTest {
      */
     @Test
     void a_run_where_no_module_had_a_suite_says_there_was_nothing_to_run() {
-        assertThat(TestAnsi.strip(TestCommand.workspaceTestSuccessTail(modules(5), 5, 0, 0, 0, 900)))
+        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(5), 5, 0, 0, 0, 900)))
                 .isEqualTo("No tests to run");
     }
 
@@ -125,11 +124,11 @@ class TestCommandTailTest {
     /** `jk test -m app -X` over app and three prerequisites: one module tested, the three named apart. */
     @Test
     void an_exclusive_run_counts_the_prerequisites_apart() {
-        assertThat(TestAnsi.strip(TestCommand.workspaceTestSuccessTail(modules(4), 4, 0, 1, 3, 900)))
+        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(4), 4, 0, 1, 3, 900)))
                 .startsWith("Tests passed; 3 prerequisites not tested (--exclusive) ");
-        assertThat(TestAnsi.strip(TestCommand.workspaceTestSuccessTail(modules(5), 5, 0, 2, 3, 900)))
+        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(5), 5, 0, 2, 3, 900)))
                 .startsWith("Tests passed for 2 modules; 3 prerequisites not tested (--exclusive) ");
-        assertThat(TestAnsi.strip(TestCommand.workspaceTestSuccessTail(modules(2), 2, 0, 0, 1, 900)))
+        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(2), 2, 0, 0, 1, 900)))
                 .isEqualTo("No tests to run; 1 prerequisite not tested (--exclusive)");
     }
 

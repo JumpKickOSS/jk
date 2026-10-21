@@ -6,7 +6,6 @@ import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.EnsureFreshLock;
 import cc.jumpkick.cli.api.GlobalOptions;
-import cc.jumpkick.cli.api.PlanOptions;
 import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
@@ -27,11 +26,10 @@ import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.cli.tui.Tree;
 import cc.jumpkick.command.CwdModuleScope;
 import cc.jumpkick.command.ModuleSelectors;
-import cc.jumpkick.command.pipeline.BuildCommand;
+import cc.jumpkick.command.pipeline.BuildFlags;
+import cc.jumpkick.command.pipeline.BuildVerbCommand;
 import cc.jumpkick.command.pipeline.JdkPreflight;
-import cc.jumpkick.command.pipeline.TestCommand;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -82,9 +80,7 @@ public final class ExplainCommand implements CliCommand {
         var opts = new ArrayList<Opt>();
         opts.add(Opt.flag("Build the plan instead of printing it", "--run"));
         // Forecasting `jk build <flags>` means accepting the flags the build does.
-        opts.addAll(PlanOptions.options());
-        opts.add(CommonOpts.cacheDir());
-        opts.addAll(CommonOpts.moduleSelection());
+        opts.addAll(BuildVerbCommand.build().options());
         opts.add(Opt.value("<fmt>", "Emit module DAG as dot or mermaid", "--graph"));
         opts.add(Opt.value("<file>", "Write --graph output to this file", "--graph-out"));
         return opts;
@@ -140,7 +136,7 @@ public final class ExplainCommand implements CliCommand {
             return Exit.USAGE;
         }
         if (in.isSet("run")) {
-            return new BuildCommand().run(in); // forwards --cache-dir; build options default
+            return BuildVerbCommand.build().run(in);
         }
 
         // Resolve the test selection through the same resolver `jk build` uses and put it on the
@@ -148,14 +144,14 @@ public final class ExplainCommand implements CliCommand {
         // live in the root manifest, so a session left at TestSelection.DEFAULT stamps every
         // module's run-tests with an empty tag list — a key no build ever stores. That is how a
         // two-module incremental came to be reported as "30 modules are dirty".
-        TestSelection testSelection;
+        BuildFlags flags;
         try {
-            testSelection = TestCommand.resolveTestSelection(in);
+            flags = BuildFlags.from(in);
         } catch (IllegalArgumentException e) {
             CommandWedge.printFail("Explain", e.getMessage());
             return Exit.CONFIG;
         }
-        SessionContext.install(SessionContext.current().withTestSelection(testSelection));
+        SessionContext.install(SessionContext.current().withTestSelection(flags.testSelection()));
 
         // Module DAG export is engine-hosted. Honor --modules / --affected-since.
         // On single-project layouts, selectors only validate; the graph is one node.
@@ -170,9 +166,8 @@ public final class ExplainCommand implements CliCommand {
 
         // HARD INVARIANT: bare `jk explain` uses the exact same defaults as bare `jk build`, and
         // the estimate must match the live countdown bit-for-bit. One derivation for both, so the
-        // two cannot drift apart by hand — see PlanOptions and BuildExplainPlanOptionsParityTest,
+        // two cannot drift apart by hand — see BuildFlags and BuildExplainPlanOptionsParityTest,
         // and docs/contributors/progress-contract.md.
-        PlanOptions planOpts = PlanOptions.from(in, global, testSelection);
         String affectedSince = affectedSinceEarly;
 
         // Client-side module filter listing (before engine forecast) when selectors are set.
@@ -213,15 +208,15 @@ public final class ExplainCommand implements CliCommand {
                     new EngineRequests.ExplainRequest(
                             graphDir,
                             cache,
-                            planOpts.workers(),
-                            planOpts.skipTests(),
-                            planOpts.profile(),
-                            planOpts.jdksDir(),
-                            planOpts.serial(),
-                            planOpts.parallelTests(),
-                            planOpts.verbose(),
-                            planOpts.rebuild(),
-                            planOpts.jobs(),
+                            flags.workers(),
+                            flags.skipTests(),
+                            flags.profile(),
+                            flags.jdksDir(),
+                            flags.jobs() == 1,
+                            flags.parallelTests(),
+                            global.verbose,
+                            flags.rebuild(),
+                            flags.jobs(),
                             selectors),
                     etaOut,
                     prep == null ? null : prep::update);

@@ -41,7 +41,7 @@ class InvocationSessionIsolationTest {
                 .isFalse();
     }
 
-    /** As BuildCommand does: install the flags, then build the request from the current session. */
+    /** As the build verbs do: install the flags, then build the request from the current session. */
     private static BuildRequest invoke(CyclicBarrier installed, boolean skipNode, @Nullable TestFailureMode failures) {
         try {
             return SessionContext.invocation(() -> {

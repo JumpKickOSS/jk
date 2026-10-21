@@ -514,7 +514,7 @@ class CacheCommandTest {
 
     /** The qualified-task tag the build would use for {@code projectDir}'s main classes dir. */
     private static String classesTag(Path projectDir) throws Exception {
-        // BuildCommand realpaths the module root before hashing tags — match that form.
+        // The build verbs realpath the module root before hashing tags — match that form.
         Path norm = projectDir.toRealPath();
         JkBuild jb = JkBuildParser.parse(norm.resolve("jk.toml"));
         return ActionKey.taskTag(BuildLayout.of(norm, jb).classesDir());

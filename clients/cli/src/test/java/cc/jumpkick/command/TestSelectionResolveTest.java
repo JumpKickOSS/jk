@@ -7,7 +7,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.testing.Capture;
-import cc.jumpkick.command.pipeline.TestCommand;
+import cc.jumpkick.command.pipeline.BuildFlags;
+import cc.jumpkick.command.pipeline.BuildVerbCommand;
 import cc.jumpkick.model.command.Command;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -19,14 +20,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@link TestCommand#resolveTestSelection}: the resolved selection is final ({@code tagsResolved})
+ * {@link BuildFlags#testSelection}: the resolved selection is final ({@code tagsResolved})
  * exactly when a layer spoke — baseline tags, a present profile key (including {@code = []} to
  * clear), or a CLI flag. Silent runs stay unresolved so the engine can still fold
  * per-module {@code [test]} tags for workspace members.
  */
 class TestSelectionResolveTest {
 
-    /** TestCommand's options plus the global mixin so {@code -C <dir>} parses like a real run. */
+    /** jk test's options plus the global mixin so {@code -C <dir>} parses like a real run. */
     private static final Command CMD = new Command() {
         @Override
         public String name() {
@@ -40,7 +41,7 @@ class TestSelectionResolveTest {
 
         @Override
         public List<Opt> options() {
-            var opts = new ArrayList<>(new TestCommand().options());
+            var opts = new ArrayList<>(BuildVerbCommand.test().options());
             opts.addAll(GlobalOptions.globalOpts());
             return opts;
         }
@@ -69,7 +70,7 @@ class TestSelectionResolveTest {
                 [profiles.ci]
                 exclude-tags = []
                 """);
-        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "-p", "ci"));
+        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "ci"));
         assertThat(sel.excludeTags()).isEmpty();
         assertThat(sel.tagsResolved()).isTrue();
     }
@@ -80,7 +81,7 @@ class TestSelectionResolveTest {
                 [test]
                 exclude-tags = ["integration", "slow", "bench"]
                 """);
-        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--include-tags", "slow"));
+        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "--include-tags", "slow"));
         assertThat(sel.includeTags()).containsExactly("slow");
         assertThat(sel.excludeTags())
                 .as("include ∧ exclude of one tag selects nothing — the explicit include wins")
@@ -93,7 +94,7 @@ class TestSelectionResolveTest {
                 [test]
                 exclude-tags = ["slow"]
                 """);
-        var sel = TestCommand.resolveTestSelection(
+        var sel = BuildFlags.testSelection(
                 parse("-C", dir.toString(), "--include-tags", "slow", "--exclude-tags", "slow"));
         assertThat(sel.excludeTags()).containsExactly("slow");
     }
@@ -117,11 +118,11 @@ class TestSelectionResolveTest {
         Path member = Files.createDirectories(dir.resolve("member"));
         writeToml(member, "");
 
-        var sel = TestCommand.resolveTestSelection(parse("-C", member.toString()));
+        var sel = BuildFlags.testSelection(parse("-C", member.toString()));
         assertThat(sel.excludeTags()).containsExactly("slow");
         assertThat(sel.tagsResolved()).isTrue();
 
-        var gate = TestCommand.resolveTestSelection(parse("-C", member.toString(), "--guard"));
+        var gate = BuildFlags.testSelection(parse("-C", member.toString(), "--guard"));
         assertThat(gate.suites()).containsExactly("test", "integration");
     }
 
@@ -131,7 +132,7 @@ class TestSelectionResolveTest {
                 [test]
                 exclude-tags = ["slow"]
                 """);
-        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString()));
+        var sel = BuildFlags.testSelection(parse("-C", dir.toString()));
         assertThat(sel.excludeTags()).containsExactly("slow");
         assertThat(sel.tagsResolved()).isTrue();
     }
@@ -142,7 +143,7 @@ class TestSelectionResolveTest {
                 [test]
                 exclude-tags = ["slow"]
                 """);
-        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--exclude-tags", ""));
+        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "--exclude-tags", ""));
         assertThat(sel.excludeTags()).isEmpty();
         assertThat(sel.tagsResolved()).isTrue();
     }
@@ -153,7 +154,7 @@ class TestSelectionResolveTest {
                 [test]
                 exclude-tags = ["slow", "integration"]
                 """);
-        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--all"));
+        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "--all"));
         assertThat(sel.allSuites()).isTrue();
         assertThat(sel.includeTags()).isEmpty();
         assertThat(sel.excludeTags()).isEmpty();
@@ -166,7 +167,7 @@ class TestSelectionResolveTest {
                 [test]
                 exclude-tags = ["slow", "integration"]
                 """);
-        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--all", "--exclude-tags", "bench"));
+        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "--all", "--exclude-tags", "bench"));
         assertThat(sel.allSuites()).isTrue();
         assertThat(sel.excludeTags()).containsExactly("bench");
         assertThat(sel.tagsResolved()).isTrue();
@@ -175,7 +176,7 @@ class TestSelectionResolveTest {
     @Test
     void silent_run_stays_unresolved(@TempDir Path dir) throws Exception {
         writeToml(dir, "");
-        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString()));
+        var sel = BuildFlags.testSelection(parse("-C", dir.toString()));
         assertThat(sel.includeTags()).isEmpty();
         assertThat(sel.excludeTags()).isEmpty();
         assertThat(sel.tagsResolved()).isFalse();
@@ -187,7 +188,7 @@ class TestSelectionResolveTest {
                 [test]
                 exclude-tags = ["slow", "network", "bench"]
                 """);
-        var guard = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--guard"));
+        var guard = BuildFlags.testSelection(parse("-C", dir.toString(), "--guard"));
         assertThat(guard.guard()).isTrue();
         assertThat(guard.suites()).containsExactly("test", "integration");
         assertThat(guard.excludeTags()).containsExactly("slow", "network", "bench");
@@ -197,7 +198,7 @@ class TestSelectionResolveTest {
     @Test
     void gate_and_all_cannot_combine(@TempDir Path dir) throws Exception {
         writeToml(dir, "");
-        assertThatThrownBy(() -> TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--guard", "--all")))
+        assertThatThrownBy(() -> BuildFlags.testSelection(parse("-C", dir.toString(), "--guard", "--all")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("--all")
                 .hasMessageContaining("--guard");
@@ -206,7 +207,7 @@ class TestSelectionResolveTest {
     @Test
     void suite_wins_over_gate(@TempDir Path dir) throws Exception {
         writeToml(dir, "");
-        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--guard", "-s", "e2e"));
+        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "--guard", "-s", "e2e"));
         assertThat(sel.guard()).isFalse();
         assertThat(sel.suites()).containsExactly("e2e");
     }
@@ -217,7 +218,7 @@ class TestSelectionResolveTest {
                 [test]
                 guard-suites = ["test", "contract"]
                 """);
-        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--guard"));
+        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "--guard"));
         assertThat(sel.guard()).isTrue();
         assertThat(sel.suites()).containsExactly("test", "contract");
     }
@@ -228,7 +229,7 @@ class TestSelectionResolveTest {
                 [test]
                 guard-suites = []
                 """);
-        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--guard"));
+        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "--guard"));
         assertThat(sel.suites()).containsExactly("test");
         assertThat(sel.guard()).isTrue();
     }
@@ -237,8 +238,8 @@ class TestSelectionResolveTest {
     void suite_plus_gate_warns_once(@TempDir Path dir) throws Exception {
         writeToml(dir, "");
         Invocation in = parse("-C", dir.toString(), "--guard", "-s", "e2e");
-        String err = Capture.stderr(() -> TestCommand.warnGateOverride(in, GlobalOptions.from(in)));
-        assertThat(err).contains(TestCommand.GUARD_SUITE_OVERRIDE_WARNING);
+        String err = Capture.stderr(() -> BuildFlags.warnGateOverride(in, GlobalOptions.from(in)));
+        assertThat(err).contains(BuildFlags.GUARD_SUITE_OVERRIDE_WARNING);
     }
 
     @Test
@@ -247,7 +248,7 @@ class TestSelectionResolveTest {
                 [test]
                 guard-suites = ["Nope"]
                 """);
-        assertThatThrownBy(() -> TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--guard")))
+        assertThatThrownBy(() -> BuildFlags.testSelection(parse("-C", dir.toString(), "--guard")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Nope")
                 .hasMessageContaining("guard-suites");
@@ -256,16 +257,16 @@ class TestSelectionResolveTest {
     @Test
     void scripts_only_and_no_scripts_cannot_combine(@TempDir Path dir) throws Exception {
         writeToml(dir, "");
-        assertThatThrownBy(() ->
-                        TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--scripts-only", "--no-scripts")))
+        assertThatThrownBy(
+                        () -> BuildFlags.testSelection(parse("-C", dir.toString(), "--scripts-only", "--no-scripts")))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining(TestCommand.SCRIPTS_FLAGS_CONFLICT);
+                .hasMessageContaining(BuildFlags.SCRIPTS_FLAGS_CONFLICT);
     }
 
     @Test
     void scripts_only_without_a_guard_stem_errors(@TempDir Path dir) throws Exception {
         writeToml(dir, "");
-        assertThatThrownBy(() -> TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--scripts-only")))
+        assertThatThrownBy(() -> BuildFlags.testSelection(parse("-C", dir.toString(), "--scripts-only")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("no guard scripts")
                 .hasMessageContaining("jk/guard");
@@ -275,7 +276,7 @@ class TestSelectionResolveTest {
     void scripts_only_selects_scripts_without_junit(@TempDir Path dir) throws Exception {
         writeToml(dir, "");
         writeGate(dir);
-        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--scripts-only"));
+        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "--scripts-only"));
         assertThat(sel.scriptsOnly()).isTrue();
         assertThat(sel.guard()).isFalse();
         assertThat(sel.runGuardScripts()).isTrue();
@@ -286,8 +287,8 @@ class TestSelectionResolveTest {
     void gate_scripts_only_equals_scripts_only(@TempDir Path dir) throws Exception {
         writeToml(dir, "");
         writeGate(dir);
-        var only = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--scripts-only"));
-        var both = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--guard", "--scripts-only"));
+        var only = BuildFlags.testSelection(parse("-C", dir.toString(), "--scripts-only"));
+        var both = BuildFlags.testSelection(parse("-C", dir.toString(), "--guard", "--scripts-only"));
         assertThat(only.scriptsOnly()).isTrue();
         assertThat(both.scriptsOnly()).isTrue();
         assertThat(only.runGuardScripts()).isTrue();
@@ -297,7 +298,7 @@ class TestSelectionResolveTest {
     @Test
     void gate_no_scripts_skips_gate_scripts(@TempDir Path dir) throws Exception {
         writeToml(dir, "");
-        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--guard", "--no-scripts"));
+        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "--guard", "--no-scripts"));
         assertThat(sel.guard()).isTrue();
         assertThat(sel.noScripts()).isTrue();
         assertThat(sel.runGuardScripts()).isFalse();
