@@ -1,0 +1,150 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.codegraph;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import org.jspecify.annotations.Nullable;
+
+/**
+ * The merged graph. Nodes are unique by id and edges by {@code (source, target, relation)}; an
+ * edge whose endpoint no fragment declares is dropped. Traversal treats the graph as undirected
+ * (graphify's model) while every edge keeps its true direction. Communities are assigned after
+ * construction by {@link Communities}.
+ */
+public final class CodeGraph {
+
+    private final Map<String, GraphNode> nodes;
+    private final List<GraphEdge> edges;
+    private final Map<String, Set<String>> neighbors = new HashMap<>();
+    private final Map<String, List<GraphEdge>> incident = new HashMap<>();
+    private final Map<String, Integer> community = new HashMap<>();
+    private final Map<Integer, String> communityNames = new HashMap<>();
+
+    private CodeGraph(Map<String, GraphNode> nodes, List<GraphEdge> edges) {
+        this.nodes = nodes;
+        this.edges = edges;
+        for (GraphEdge e : edges) {
+            if (!e.source().equals(e.target())) {
+                neighbors
+                        .computeIfAbsent(e.source(), k -> new LinkedHashSet<>())
+                        .add(e.target());
+                neighbors
+                        .computeIfAbsent(e.target(), k -> new LinkedHashSet<>())
+                        .add(e.source());
+            }
+            incident.computeIfAbsent(e.source(), k -> new ArrayList<>()).add(e);
+            if (!e.source().equals(e.target())) {
+                incident.computeIfAbsent(e.target(), k -> new ArrayList<>()).add(e);
+            }
+        }
+    }
+
+    /** One graph from {@code fragments}; a node declared twice keeps the copy that has a source file. */
+    public static CodeGraph merge(Collection<Fragment> fragments) {
+        Map<String, GraphNode> nodes = new LinkedHashMap<>();
+        for (Fragment f : fragments) {
+            for (GraphNode n : f.nodes()) {
+                GraphNode had = nodes.get(n.id());
+                if (had == null
+                        || (had.sourceFile().isEmpty() && !n.sourceFile().isEmpty())) nodes.put(n.id(), n);
+            }
+        }
+        Map<String, GraphEdge> edges = new LinkedHashMap<>();
+        for (Fragment f : fragments) {
+            for (GraphEdge e : f.edges()) {
+                if (!nodes.containsKey(e.source()) || !nodes.containsKey(e.target())) continue;
+                edges.putIfAbsent(e.source() + '\u0000' + e.target() + '\u0000' + e.relation(), e);
+            }
+        }
+        return new CodeGraph(nodes, new ArrayList<>(edges.values()));
+    }
+
+    /** A graph read back from {@code graph.json}, communities included. */
+    static CodeGraph of(
+            List<GraphNode> nodes, List<GraphEdge> edges, Map<String, Integer> community, Map<Integer, String> names) {
+        CodeGraph g = merge(List.of(new Fragment(nodes, edges)));
+        g.community.putAll(community);
+        g.communityNames.putAll(names);
+        return g;
+    }
+
+    public Collection<GraphNode> nodes() {
+        return nodes.values();
+    }
+
+    public List<GraphEdge> edges() {
+        return edges;
+    }
+
+    public @Nullable GraphNode node(String id) {
+        return nodes.get(id);
+    }
+
+    public boolean has(String id) {
+        return nodes.containsKey(id);
+    }
+
+    public int size() {
+        return nodes.size();
+    }
+
+    /** Distinct neighbours of {@code id}, in either direction. */
+    public Set<String> neighbors(String id) {
+        return neighbors.getOrDefault(id, Set.of());
+    }
+
+    /** Distinct neighbour count: graphify's degree on its simple undirected graph. */
+    public int degree(String id) {
+        return neighbors(id).size();
+    }
+
+    /** Every edge touching {@code id}, either end. */
+    public List<GraphEdge> incident(String id) {
+        return incident.getOrDefault(id, List.of());
+    }
+
+    /** The edges between {@code a} and {@code b}, either direction. */
+    public List<GraphEdge> between(String a, String b) {
+        List<GraphEdge> out = new ArrayList<>();
+        for (GraphEdge e : incident(a)) {
+            if ((e.source().equals(a) && e.target().equals(b))
+                    || (e.source().equals(b) && e.target().equals(a))) {
+                out.add(e);
+            }
+        }
+        return out;
+    }
+
+    /** The community of {@code id}, {@code -1} before {@link Communities#assign} ran. */
+    public int community(String id) {
+        return community.getOrDefault(id, -1);
+    }
+
+    public @Nullable String communityName(int id) {
+        return communityNames.get(id);
+    }
+
+    /** Community id → member ids, members in graph order. */
+    public Map<Integer, List<String>> communities() {
+        Map<Integer, List<String>> out = new TreeMap<>();
+        for (String id : nodes.keySet()) {
+            int c = community(id);
+            if (c >= 0) out.computeIfAbsent(c, k -> new ArrayList<>()).add(id);
+        }
+        return out;
+    }
+
+    void assignCommunities(Map<String, Integer> assignment, Map<Integer, String> names) {
+        community.clear();
+        community.putAll(assignment);
+        communityNames.clear();
+        communityNames.putAll(names);
+    }
+}
