@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.codegraph.extract;
 
+import cc.jumpkick.host.CodeText;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
- * A C-family source with comments and string literals blanked to spaces (newlines kept, so offsets
- * and lines still line up), plus the comments it removed. Brace depth and declaration patterns are
- * then read off the masked text without a string or comment fooling them. Handles {@code //},
- * {@code /* *\/}, {@code "…"}, {@code '…'}, triple-quoted text blocks and JS template literals.
+ * A C-family source as the scanners read it: {@link CodeText}'s code-only projection (comments and
+ * literals blanked, offsets kept), the comment lines it removed, and brace structure over the code.
  */
 final class SourceMask {
 
-    /** A comment's text without its delimiters, and the offset it starts at. */
+    /** One line of comment text, delimiters included, and the offset it starts at. */
     record Comment(String text, int offset) {}
 
     final String masked;
@@ -24,61 +24,30 @@ final class SourceMask {
         this.comments = comments;
     }
 
-    static SourceMask of(String text) {
-        char[] out = text.toCharArray();
+    /** {@code templateLiterals} for JavaScript and TypeScript, where backticks delimit strings. */
+    static SourceMask of(String text, boolean templateLiterals) {
+        String code = CodeText.blank(text, CodeText.Blank.COMMENTS_AND_STRINGS, templateLiterals);
+        String commentsOnly = CodeText.blank(text, CodeText.Blank.CODE, templateLiterals);
         List<Comment> comments = new ArrayList<>();
-        int i = 0;
-        int n = text.length();
-        while (i < n) {
-            char c = text.charAt(i);
-            if (c == '/' && i + 1 < n && text.charAt(i + 1) == '/') {
-                int end = text.indexOf('\n', i);
-                if (end < 0) end = n;
-                comments.add(new Comment(text.substring(i + 2, end), i));
-                blank(out, i, end);
-                i = end;
-            } else if (c == '/' && i + 1 < n && text.charAt(i + 1) == '*') {
-                int end = text.indexOf("*/", i + 2);
-                end = end < 0 ? n : end + 2;
-                comments.add(new Comment(text.substring(i + 2, Math.max(i + 2, end - 2)), i));
-                blank(out, i, end);
-                i = end;
-            } else if (text.startsWith("\"\"\"", i) || text.startsWith("'''", i)) {
-                String q = text.substring(i, i + 3);
-                int end = text.indexOf(q, i + 3);
-                end = end < 0 ? n : end + 3;
-                blank(out, i + 1, end - 1);
-                i = end;
-            } else if (c == '"' || c == '\'' || c == '`') {
-                int end = closeQuote(text, i, c);
-                blank(out, i + 1, end - 1);
-                i = end;
-            } else {
-                i++;
-            }
+        int lineStart = 0;
+        for (String line : commentsOnly.split("\n", -1)) {
+            int first = 0;
+            while (first < line.length() && Character.isWhitespace(line.charAt(first))) first++;
+            if (first < line.length()) comments.add(new Comment(line.strip(), lineStart + first));
+            lineStart += line.length() + 1;
         }
-        return new SourceMask(new String(out), comments);
+        return new SourceMask(code, comments);
     }
 
-    /** The offset just past the quote closing the literal opened at {@code start}. */
-    private static int closeQuote(String text, int start, char quote) {
-        for (int i = start + 1; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c == '\\') {
-                i++;
-            } else if (c == quote) {
-                return i + 1;
-            } else if (c == '\n' && quote != '`') {
-                return i;
-            }
-        }
-        return text.length();
-    }
-
-    private static void blank(char[] out, int from, int to) {
-        for (int i = Math.max(from, 0); i < Math.min(to, out.length); i++) {
-            if (out[i] != '\n') out[i] = ' ';
-        }
+    /** The comment's text without {@code //}, {@code /*}, {@code *} or {@code *}{@code /} markers. */
+    static String body(Comment c) {
+        String s = c.text();
+        if (s.startsWith("//")) s = s.substring(2);
+        else if (s.startsWith("/*")) s = s.substring(2);
+        if (s.endsWith("*/")) s = s.substring(0, s.length() - 2);
+        s = s.strip();
+        while (s.startsWith("*")) s = s.substring(1).strip();
+        return s;
     }
 
     /** For each offset holding {@code '{'}, the offset of its matching {@code '}'} (the text's length when unclosed). */
@@ -99,7 +68,7 @@ final class SourceMask {
         return close;
     }
 
-    /** The brace depth at each offset of the masked text: depth before the character there. */
+    /** The brace depth before each offset of the masked text. */
     int[] depths() {
         int[] d = new int[masked.length() + 1];
         int depth = 0;
@@ -111,5 +80,16 @@ final class SourceMask {
         }
         d[masked.length()] = depth;
         return d;
+    }
+
+    /** The quoted literal starting at the first non-blank offset from {@code from} in {@code source}, or {@code null}. */
+    static @Nullable String quotedAt(String source, int from) {
+        int i = from;
+        while (i < source.length() && Character.isWhitespace(source.charAt(i))) i++;
+        if (i >= source.length()) return null;
+        char q = source.charAt(i);
+        if (q != '"' && q != '\'' && q != '`') return null;
+        int end = source.indexOf(q, i + 1);
+        return end < 0 ? null : source.substring(i + 1, end);
     }
 }

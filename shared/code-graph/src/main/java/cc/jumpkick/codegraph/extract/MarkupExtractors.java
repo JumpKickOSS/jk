@@ -40,7 +40,7 @@ final class MarkupExtractors {
     static Fragment xml(String relPath, String text) {
         FragmentBuilder b = new FragmentBuilder(relPath, "document", "config");
         Lines lines = new Lines(text);
-        String body = blankComments(text);
+        String body = xmlCommentsBlanked(text);
         if (relPath.equals("pom.xml") || relPath.endsWith("/pom.xml")) {
             Matcher d = POM_DEPENDENCY.matcher(body);
             while (d.find()) {
@@ -134,7 +134,7 @@ final class MarkupExtractors {
     }
 
     /** {@code text} with XML comments blanked, offsets kept. */
-    private static String blankComments(String text) {
+    private static String xmlCommentsBlanked(String text) {
         Matcher m = XML_COMMENT.matcher(text);
         if (!m.find()) return text;
         StringBuilder out = new StringBuilder(text);

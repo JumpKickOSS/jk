@@ -25,9 +25,9 @@ final class ScriptScanner {
 
     private ScriptScanner() {}
 
-    private static final Pattern FROM = Pattern.compile("\\b(?:import|export)\\b[^;]*?\\bfrom\\s*([\"'`])");
-    private static final Pattern BARE_IMPORT = Pattern.compile("\\bimport\\s*([\"'])");
-    private static final Pattern CALL_IMPORT = Pattern.compile("\\b(?:require|import)\\s*\\(\\s*([\"'`])");
+    private static final Pattern FROM = Pattern.compile("\\b(?:import|export)\\b[^;]*?\\bfrom\\b");
+    private static final Pattern BARE_IMPORT = Pattern.compile("\\bimport\\b");
+    private static final Pattern CALL_IMPORT = Pattern.compile("\\b(?:require|import)\\s*\\(");
     private static final Pattern DECLARATION =
             Pattern.compile("(?<![\\w$.])(?:export\\s+(?:default\\s+)?)?(?:declare\\s+)?(?:abstract\\s+)?(?:async\\s+)?"
                     + "(class|interface|enum|type|function\\*?|const|let|var)\\s+([A-Za-z_$][\\w$]*)");
@@ -46,7 +46,7 @@ final class ScriptScanner {
     static Fragment extract(String relPath, String text) {
         FragmentBuilder b = new FragmentBuilder(relPath, "code", null);
         String source = relPath.endsWith(".vue") ? scriptOnly(text) : text;
-        SourceMask mask = SourceMask.of(source);
+        SourceMask mask = SourceMask.of(source, true);
         String code = mask.masked;
         Lines lines = new Lines(source);
         int[] depth = mask.depths();
@@ -77,8 +77,7 @@ final class ScriptScanner {
         methods(b, code, lines, depth, classes, classIds);
         components(b, relPath, text, new Lines(text));
         for (SourceMask.Comment c : mask.comments) {
-            String body = c.text().strip();
-            while (body.startsWith("*")) body = body.substring(1).strip();
+            String body = SourceMask.body(c);
             for (String prefix : List.of("NOTE:", "IMPORTANT:", "HACK:", "WHY:", "RATIONALE:")) {
                 if (body.startsWith(prefix)) b.rationale(body, lines.at(c.offset()), b.fileId());
             }
@@ -90,11 +89,8 @@ final class ScriptScanner {
         for (Pattern p : List.of(FROM, BARE_IMPORT, CALL_IMPORT)) {
             Matcher m = p.matcher(code);
             while (m.find()) {
-                int open = m.end(1) - 1;
-                int end = source.indexOf(source.charAt(open), open + 1);
-                if (end < 0) continue;
-                String spec = source.substring(open + 1, end);
-                if (spec.isEmpty() || spec.contains("${")) continue;
+                String spec = SourceMask.quotedAt(source, m.end());
+                if (spec == null || spec.isEmpty() || spec.contains("${")) continue;
                 int line = lines.at(m.start());
                 if (spec.startsWith(".")) {
                     b.mention(b.fileId(), Mention.Kind.MODULE, resolve(relPath, spec), line);

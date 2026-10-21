@@ -46,47 +46,112 @@ public final class Linker {
         }
     }
 
-    /** The graph {@code fragments} merge into, with their mentions resolved to edges. */
+    /**
+     * The graph {@code fragments} merge into, with their mentions resolved to edges. Two passes:
+     * method calls resolve last, against a graph whose inheritance edges are already linked, so a
+     * call to an inherited method finds the supertype declaring it.
+     */
     public static CodeGraph link(List<Fragment> fragments) {
         CodeGraph merged = CodeGraph.merge(fragments);
-        Linker linker = new Linker(merged);
-        Map<String, GraphEdge> edges = new LinkedHashMap<>();
-        for (Fragment f : fragments) {
-            for (Mention m : f.mentions()) {
-                GraphEdge e = linker.resolve(m);
-                if (e != null && !e.source().equals(e.target())) {
-                    edges.putIfAbsent(e.source() + '\u0000' + e.target() + '\u0000' + e.relation(), e);
-                }
-            }
-        }
-        if (edges.isEmpty()) return merged;
         List<Fragment> all = new ArrayList<>(fragments);
-        all.add(new Fragment(List.of(), List.copyOf(edges.values())));
+        all.add(edges(new Linker(merged), fragments, false));
+        CodeGraph typed = CodeGraph.merge(all);
+        all.add(edges(new Linker(typed), fragments, true));
         return CodeGraph.merge(all);
     }
 
-    private @Nullable GraphEdge resolve(Mention m) {
+    private static Fragment edges(Linker linker, List<Fragment> fragments, boolean members) {
+        Map<String, GraphEdge> edges = new LinkedHashMap<>();
+        for (Fragment f : fragments) {
+            for (Mention m : f.mentions()) {
+                if ((m.kind() == Mention.Kind.MEMBER) != members) continue;
+                for (GraphEdge e : linker.resolve(m)) {
+                    if (!e.source().equals(e.target())) {
+                        edges.putIfAbsent(e.source() + '\u0000' + e.target() + '\u0000' + e.relation(), e);
+                    }
+                }
+            }
+        }
+        return new Fragment(List.of(), List.copyOf(edges.values()));
+    }
+
+    private List<GraphEdge> resolve(Mention m) {
         GraphNode from = graph.node(m.source());
-        if (from == null) return null;
-        String target =
+        if (from == null) return List.of();
+        List<String> targets =
                 switch (m.kind()) {
-                    case CLASS -> classes.get(m.text().replace('$', '.'));
-                    case SYMBOL -> unique(symbols.get(bare(m.text())));
-                    case FILE -> files.get(relative(from.sourceFile(), m.text()));
-                    case MODULE -> module(m.text());
-                    case CONFIG_KEY -> unique(keys.get(relaxed(m.text())));
+                    case CLASS -> one(classes.get(m.text().replace('$', '.')));
+                    case MEMBER -> one(member(m.text()));
+                    case SYMBOL -> one(unique(symbols.get(bare(m.text()))));
+                    case FILE -> one(files.get(relative(from.sourceFile(), m.text())));
+                    case MODULE -> one(module(m.text()));
+                    case CONFIG_KEY -> configKeys(m.text());
                 };
-        if (target == null) return null;
-        GraphEdge edge = GraphEdge.of(
-                m.source(),
-                target,
-                m.relation(),
-                inferred(m.kind()) ? Confidence.INFERRED : Confidence.EXTRACTED,
-                from.sourceFile(),
-                m.line());
-        if (m.kind() == Mention.Kind.SYMBOL) return edge.withScore(0.95).withContext(m.text());
-        if (m.kind() == Mention.Kind.CONFIG_KEY) return edge.withScore(0.85).withContext("config_key");
-        return edge;
+        boolean inferred = m.kind() == Mention.Kind.SYMBOL || m.kind() == Mention.Kind.CONFIG_KEY;
+        String context = m.context() != null
+                ? m.context()
+                : switch (m.kind()) {
+                    case SYMBOL -> m.text();
+                    case CONFIG_KEY -> "config_key";
+                    case MEMBER -> "call";
+                    default -> null;
+                };
+        List<GraphEdge> out = new ArrayList<>();
+        for (String target : targets) {
+            GraphEdge edge = GraphEdge.of(
+                    m.source(),
+                    target,
+                    m.relation(),
+                    inferred ? Confidence.INFERRED : Confidence.EXTRACTED,
+                    from.sourceFile(),
+                    m.line());
+            if (m.kind() == Mention.Kind.SYMBOL) edge = edge.withScore(0.95);
+            if (m.kind() == Mention.Kind.CONFIG_KEY) edge = edge.withScore(0.85);
+            out.add(context == null ? edge : edge.withContext(context));
+        }
+        return out;
+    }
+
+    /** {@code owner#name}: the member on the owner, else on the nearest supertype declaring it. */
+    private @Nullable String member(String text) {
+        int hash = text.indexOf('#');
+        if (hash < 0) return null;
+        String owner = classes.get(text.substring(0, hash).replace('$', '.'));
+        if (owner == null) return null;
+        String name = text.substring(hash + 1);
+        List<String> frontier = List.of(owner);
+        for (int hop = 0; hop < 6 && !frontier.isEmpty(); hop++) {
+            List<String> next = new ArrayList<>();
+            for (String type : frontier) {
+                String id = GraphIds.member(type, name);
+                if (graph.has(id)) return id;
+                for (GraphEdge e : graph.incident(type)) {
+                    if (e.source().equals(type)
+                            && (e.relation().equals(Relations.INHERITS)
+                                    || e.relation().equals(Relations.IMPLEMENTS))) {
+                        next.add(e.target());
+                    }
+                }
+            }
+            frontier = next;
+        }
+        return null;
+    }
+
+    /** The key itself, or every key under {@code prefix.*} (at most 25). */
+    private List<String> configKeys(String text) {
+        if (!text.endsWith(".*")) return one(unique(keys.get(relaxed(text))));
+        String prefix = relaxed(text.substring(0, text.length() - 1));
+        List<String> out = new ArrayList<>();
+        keys.entrySet().stream()
+                .filter(e -> e.getKey().startsWith(prefix))
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(e -> out.addAll(e.getValue()));
+        return out.size() > 25 ? out.subList(0, 25) : out;
+    }
+
+    private static List<String> one(@Nullable String id) {
+        return id == null ? List.of() : List.of(id);
     }
 
     private @Nullable String module(String path) {
@@ -95,10 +160,6 @@ public final class Linker {
             if (hit != null) return hit;
         }
         return null;
-    }
-
-    private static boolean inferred(Mention.Kind kind) {
-        return kind == Mention.Kind.SYMBOL || kind == Mention.Kind.CONFIG_KEY;
     }
 
     private static @Nullable String unique(@Nullable List<String> ids) {
