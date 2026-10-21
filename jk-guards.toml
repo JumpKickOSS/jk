@@ -401,7 +401,7 @@ in     = "clients/cli/src/main/java/cc/jumpkick/cli/engine/RetiredEngineLayouts.
 reason = "names the retired layouts in order to migrate away from them"
 
 [[guards.single-home-root.allow]]
-in     = "clients/cli/src/test/java/cc/jumpkick/cli/engine/EngineFleetTest.java"
+in     = "clients/cli/src/test/java/cc/jumpkick/cli/engine/EngineFleetCommandLineTest.java"
 reason = "fixture for a retired LOCALAPPDATA layout"
 
 [[guards.single-home-root.allow]]

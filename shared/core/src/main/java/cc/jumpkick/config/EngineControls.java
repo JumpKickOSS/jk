@@ -116,6 +116,12 @@ public final class EngineControls {
                     "Internal: the spawned engine records its startup cache to this path."),
             control(
                     "",
+                    "JK_ENGINE_OWNER_PID",
+                    "unset",
+                    ENGINE_START,
+                    "Internal: the spawned engine stops once this pid exits."),
+            control(
+                    "",
                     "JK_ENGINE_TRANSPORT",
                     "unix; tcp on Windows",
                     ENGINE_START,

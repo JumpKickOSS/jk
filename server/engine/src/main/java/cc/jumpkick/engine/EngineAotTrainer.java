@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Records the engine's {@link EngineAotCache} once per install, from an idle engine.
@@ -40,10 +42,20 @@ import java.util.function.Consumer;
  * <p>The recording competes with the user's builds for the CPU, so it stands down the moment a job
  * arrives: the step in flight is killed, the trainer engine stopped, and the next settled idle
  * tries again. A recording that fails for any other reason is not retried by this engine.
+ *
+ * <p>The trainer engine never outlives this one: it is started owned by this engine's pid
+ * ({@link OwnerWatchdog#ENV}), and this engine's shutdown {@linkplain #stop stops} a recording in
+ * flight, which stops the trainer and removes its scratch.
  */
 final class EngineAotTrainer {
 
     private static final AtomicBoolean ATTEMPTED = new AtomicBoolean();
+
+    /** The recording in flight, or null. */
+    private static volatile @Nullable Thread recording;
+
+    /** Set by {@link #stop}: the recording stands down as it does for a job, and none starts again. */
+    private static volatile boolean stopping;
 
     /** How often a step in flight checks that the engine is still idle. */
     private static final long IDLE_POLL_MILLIS = 100;
@@ -54,11 +66,14 @@ final class EngineAotTrainer {
     /** How long the trainer's exit may take to assemble the cache after {@code engine stop}. */
     private static final long ASSEMBLY_TIMEOUT_MILLIS = 120_000;
 
+    /** How long {@link #stop} waits for the recording to stop its trainer and remove its scratch. */
+    private static final Duration STOP_TIMEOUT = Duration.ofSeconds(30);
+
     private EngineAotTrainer() {}
 
     /** Start the recording when this install has none and the engine is idle; returns at once. */
     static void maybeTrain(BooleanSupplier idle, Consumer<String> log) {
-        if (!EngineAotCache.enabled(System::getenv) || EnvValues.isCi(System::getenv)) return;
+        if (stopping || !EngineAotCache.enabled(System::getenv) || EnvValues.isCi(System::getenv)) return;
         String own = System.getenv(EngineAotCache.RECORD_ENV);
         if (own != null && !own.isBlank()) return;
         Path cli = JkDirs.binDir().resolve("jk");
@@ -69,7 +84,25 @@ final class EngineAotTrainer {
         if (cache == null || Files.isRegularFile(cache) || !idle.getAsBoolean()) return;
         if (!ATTEMPTED.compareAndSet(false, true)) return;
         // Idle-time recording beside the resident engine; reads no session.
-        Thread.ofVirtual().name("jk-engine-aot-train").start(() -> train(cli, cache, idle, log));
+        BooleanSupplier go = () -> !stopping && idle.getAsBoolean();
+        recording = Thread.ofVirtual().name("jk-engine-aot-train").start(() -> train(cli, cache, go, log));
+    }
+
+    /**
+     * Stand a recording in flight down, as a job arriving does, and wait for it to stop the trainer
+     * engine and remove its scratch. Called once, on this engine's shutdown; true when nothing was
+     * left running.
+     */
+    static boolean stop() {
+        stopping = true;
+        Thread t = recording;
+        if (t == null) return true;
+        try {
+            return t.join(STOP_TIMEOUT);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     /** A job arrived while a recording step was in flight. */
@@ -98,9 +131,9 @@ final class EngineAotTrainer {
                             && step(cli, project, env, idle, "status", "--no-ansi");
                 }
             } catch (Yielded y) {
-                run(cli, project, env, "engine", "stop");
+                run(cli, project, env, "engine", "stop", "--now");
                 ATTEMPTED.set(false);
-                Log.debug("EngineAotTrainer: a job arrived; the next settled idle records again");
+                Log.debug("EngineAotTrainer: stood down; the next settled idle records again");
                 return;
             }
             run(cli, project, env, "engine", "stop");
@@ -121,6 +154,7 @@ final class EngineAotTrainer {
             Thread.currentThread().interrupt();
         } finally {
             PathUtil.deleteRecursively(scratch);
+            recording = null;
         }
     }
 
@@ -140,7 +174,8 @@ final class EngineAotTrainer {
     /**
      * The trainer's environment: this engine's, with a scratch state and cache so its builds,
      * journal and engine stay apart from the user's, the shared store, and nothing an engine does
-     * for itself when idle (HTTP, worker caches, warmups, a lingering compiler).
+     * for itself when idle (HTTP, worker caches, warmups, a lingering compiler), owned by this
+     * engine so a kill of this one cannot leave the trainer resident.
      */
     static Map<String, String> env(Path scratch, Path recorded) {
         Map<String, String> env = new LinkedHashMap<>(System.getenv());
@@ -152,6 +187,7 @@ final class EngineAotTrainer {
         env.put("JK_WORKER_AOT", "off");
         env.put("JK_AUTO_WARMUP", "off");
         env.put("JK_COMPILE_LINGER_MS", "0");
+        env.put(OwnerWatchdog.ENV, Long.toString(ProcessHandle.current().pid()));
         return env;
     }
 
@@ -200,7 +236,7 @@ final class EngineAotTrainer {
     private static boolean awaitAssembled(Path recorded) throws IOException, InterruptedException {
         long deadline = Clock.SYSTEM.millis() + ASSEMBLY_TIMEOUT_MILLIS;
         long last = -1;
-        while (Clock.SYSTEM.millis() < deadline) {
+        while (!stopping && Clock.SYSTEM.millis() < deadline) {
             long size = Files.isRegularFile(recorded) ? Files.size(recorded) : -1;
             if (size > 0 && size == last) return true;
             last = size;

@@ -102,7 +102,7 @@ public final class EngineMain {
             JkHttpConfig httpConfig = JkHttpConfig.resolve().orElse(null);
             EngineServer server = new EngineServer(paths, config, httpConfig, JkVersion.VERSION, Log::info);
             if (logSink != null) server.logSink(logSink);
-            OwnerWatchdog.start(System.getProperty(OwnerWatchdog.PROPERTY), server::close, Log::info);
+            OwnerWatchdog.start(server::close, Log::info);
             server.run();
             return 0;
         } catch (IOException e) {
