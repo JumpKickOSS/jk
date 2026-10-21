@@ -365,6 +365,18 @@ public final class EngineProtocol {
     /** Server → client, terminal for {@link #WHY_REQUEST}. */
     public static final String WHY_ACK = "why-ack";
 
+    /**
+     * Client → server: build or read the workspace's code graph; zero or more {@link
+     * #GRAPH_PROGRESS}, then one {@link #GRAPH_ACK}.
+     */
+    public static final String GRAPH_REQUEST = "graph-request";
+
+    /** Server → client, one per settled file while a graph refresh runs. */
+    public static final String GRAPH_PROGRESS = "graph-progress";
+
+    /** Server → client, terminal for {@link #GRAPH_REQUEST}. */
+    public static final String GRAPH_ACK = "graph-ack";
+
     /** Client → server: full-model generator payloads; one {@link #GENERATE_ACK}. */
     public static final String GENERATE_REQUEST = "generate-request";
 

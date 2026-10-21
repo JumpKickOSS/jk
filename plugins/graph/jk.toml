@@ -1,13 +1,11 @@
 name = "jk-graph"
-description = "Code graph builder: walks a workspace, extracts each file incrementally, maps compiled class facts, links and clusters"
+description = "JumpKick's code graph worker: walks a workspace, extracts each file incrementally, maps compiled class facts, links, clusters and answers queries"
 
 [dependencies]
+jk-plugin-sdk.workspace = true
 jk-code-graph.workspace = true
-jk-core.workspace = true
-jk-guard.workspace = true
 jk-guards-junit.workspace = true
-jk-host.workspace = true
-jk-model.workspace = true
+jk-core.workspace = true
 
 [processor-dependencies]
 error_prone_core = { group = "com.google.errorprone", version = "2.50.0" }
@@ -32,5 +30,6 @@ options = [
 ]
 
 [test-dependencies]
+jk-guard.workspace = true
 assertj-core = "3.27.7"
 junit-jupiter = "6.1.3"

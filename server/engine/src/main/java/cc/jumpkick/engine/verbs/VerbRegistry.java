@@ -60,6 +60,7 @@ public final class VerbRegistry {
                 new AffectedTestsVerb(host),
                 new TreeVerb(host),
                 new WhyVerb(host),
+                new GraphVerb(host),
                 new PluginCommandVerb(host),
                 new GenerateVerb(host),
                 new NewProjectVerb(host),

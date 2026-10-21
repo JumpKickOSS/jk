@@ -8,6 +8,7 @@ import cc.jumpkick.codegraph.GraphIds;
 import cc.jumpkick.codegraph.Linker;
 import cc.jumpkick.codegraph.Mention;
 import cc.jumpkick.codegraph.Relations;
+import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.jsonl.MiniJson;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -97,7 +98,7 @@ final class ConfigExtractors {
     static Fragment toml(String relPath, String text) {
         FragmentBuilder b = new FragmentBuilder(relPath, "document", "config");
         String name = relPath.substring(relPath.lastIndexOf('/') + 1);
-        boolean jk = name.equals("jk.toml");
+        boolean jk = name.equals(ManifestNames.MANIFEST);
         boolean catalog = name.endsWith(".versions.toml");
         String table = "";
         boolean modules = false;
@@ -122,7 +123,12 @@ final class ConfigExtractors {
             if (modules) {
                 Matcher q = QUOTED.matcher(line);
                 while (q.find()) {
-                    b.mention(b.fileId(), Mention.Kind.FILE, "/" + q.group(1) + "/jk.toml", n, Relations.CONTAINS);
+                    b.mention(
+                            b.fileId(),
+                            Mention.Kind.FILE,
+                            "/" + q.group(1) + "/" + ManifestNames.MANIFEST,
+                            n,
+                            Relations.CONTAINS);
                 }
                 if (line.contains("]")) modules = false;
             }

@@ -66,6 +66,18 @@ public final class CodeGraph {
         return new CodeGraph(nodes, new ArrayList<>(edges.values()));
     }
 
+    /** Every fragment's nodes by id, duplicates combined as {@link #merge} combines them. */
+    static Map<String, GraphNode> mergeNodes(Collection<Fragment> fragments) {
+        Map<String, GraphNode> nodes = new LinkedHashMap<>();
+        for (Fragment f : fragments) {
+            for (GraphNode n : f.nodes()) {
+                GraphNode had = nodes.get(n.id());
+                nodes.put(n.id(), had == null ? n : combine(had, n));
+            }
+        }
+        return nodes;
+    }
+
     private static GraphNode combine(GraphNode had, GraphNode n) {
         boolean takeNew = had.sourceFile().isEmpty() && !n.sourceFile().isEmpty()
                 || had.sourceLocation().isEmpty()

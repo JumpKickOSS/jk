@@ -24,6 +24,9 @@ import cc.jumpkick.wire.protocol.FreshenCatalogAck;
 import cc.jumpkick.wire.protocol.FreshenCatalogRequest;
 import cc.jumpkick.wire.protocol.GenerateRequest;
 import cc.jumpkick.wire.protocol.GeneratedFiles;
+import cc.jumpkick.wire.protocol.GraphAck;
+import cc.jumpkick.wire.protocol.GraphProgress;
+import cc.jumpkick.wire.protocol.GraphRequest;
 import cc.jumpkick.wire.protocol.GuardCommitMsgAck;
 import cc.jumpkick.wire.protocol.GuardCommitMsgRequest;
 import cc.jumpkick.wire.protocol.GuardExplainAck;
@@ -56,6 +59,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -332,6 +336,21 @@ final class EngineReads {
                     String error = Jsonl.str(line, "error");
                     if (error != null) throw new IOException(error);
                     return Jsonl.requiredStr(line, "rendered");
+                });
+    }
+
+    /** One engine-hosted graph operation; each progress line goes to {@code onProgress} as it arrives. */
+    static GraphAck graph(EnginePaths.Paths paths, GraphRequest request, Consumer<GraphProgress> onProgress)
+            throws IOException {
+        return request(
+                paths,
+                request.encode(),
+                EngineProtocol.GRAPH_ACK,
+                "graph request",
+                GraphAck::decode,
+                EngineSpawn::ensure,
+                (type, line) -> {
+                    if (EngineProtocol.GRAPH_PROGRESS.equals(type)) onProgress.accept(GraphProgress.decode(line));
                 });
     }
 

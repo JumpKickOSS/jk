@@ -637,6 +637,18 @@ closed = true
 why    = "a plugin that depends past the SDK runs engine code inside a worker and cannot be published on its own"
 
 [[guards.plugin-sdk-boundary.allow]]
+in     = "plugins/graph -> shared/code-graph"
+reason = "the graph worker builds and queries the graph model the engine and every surface share"
+
+[[guards.plugin-sdk-boundary.allow]]
+in     = "plugins/graph -> shared/guard-api"
+reason = "the graph worker reads the class facts indexes the engine keeps current, in their one on-disk format"
+
+[[guards.plugin-sdk-boundary.allow]]
+in     = "plugins/graph -> shared/core"
+reason = "the graph worker walks with the workspace's skip rules and writes its outputs atomically"
+
+[[guards.plugin-sdk-boundary.allow]]
 in     = "plugins/auditor -> shared/core"
 reason = "the auditor reads the canonical lockfile and emits the shared audit report"
 

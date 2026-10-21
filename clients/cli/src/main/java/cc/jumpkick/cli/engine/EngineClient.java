@@ -14,6 +14,9 @@ import cc.jumpkick.wire.protocol.CatalogReadAck;
 import cc.jumpkick.wire.protocol.DenyReport;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import cc.jumpkick.wire.protocol.GeneratedFiles;
+import cc.jumpkick.wire.protocol.GraphAck;
+import cc.jumpkick.wire.protocol.GraphProgress;
+import cc.jumpkick.wire.protocol.GraphRequest;
 import cc.jumpkick.wire.protocol.GuardCommitMsgAck;
 import cc.jumpkick.wire.protocol.GuardExplainAck;
 import cc.jumpkick.wire.protocol.GuardFreezeAck;
@@ -274,6 +277,12 @@ public final class EngineClient {
             boolean noDefaultFeatures)
             throws IOException {
         return EngineReads.treeRender(paths, dir, maxDepth, flatten, stack, scopes, features, noDefaultFeatures);
+    }
+
+    /** {@code jk graph}: refresh the workspace's code graph engine-side and answer one operation on it. */
+    public static GraphAck graph(EnginePaths.Paths paths, GraphRequest request, Consumer<GraphProgress> onProgress)
+            throws IOException {
+        return EngineReads.graph(paths, request, onProgress);
     }
 
     /** Thin-client why lookup: lock matching + provenance paths, engine-side, under a feature selection. */
