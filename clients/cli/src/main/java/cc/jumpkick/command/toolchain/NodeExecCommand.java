@@ -13,6 +13,7 @@ import cc.jumpkick.node.NodeHome;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk node exec -- <cmd…>} — run a command with the project's Node.js and package manager
@@ -42,12 +43,24 @@ public final class NodeExecCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws Exception {
-        Path dir = GlobalOptions.from(in).workingDir();
-        Optional<NodeHome> home = NodeCli.home(dir, in.value("node").orElse(null));
+        return run(launch(in));
+    }
+
+    /** A command to run: where, under which Node.js ({@code null}: the project's), and its argv. */
+    public record Launch(Path dir, @Nullable String node, List<String> argv) {}
+
+    /** The launch this invocation is. */
+    public static Launch launch(Invocation in) {
+        return new Launch(GlobalOptions.from(in).workingDir(), in.value("node").orElse(null), in.positionals());
+    }
+
+    /** Run {@code launch} through {@link NodeCli#passthrough}, the path every Node passthrough takes. */
+    static int run(Launch launch) throws Exception {
+        Optional<NodeHome> home = NodeCli.home(launch.dir(), launch.node());
         if (home.isEmpty()) {
             CommandWedge.printFail(NodeCli.WEDGE, "no Node.js declared here — pass --node <spec> or run `jk node pin`");
             return Exit.CONFIG;
         }
-        return NodeCli.passthrough(home.get(), in.positionals(), dir);
+        return NodeCli.passthrough(home.get(), launch.argv(), launch.dir());
     }
 }
