@@ -8,10 +8,12 @@ import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
 import cc.jumpkick.plugin.protocol.CompilerProtocol;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
+import groovy.lang.GroovyClassLoader;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -19,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import org.codehaus.groovy.GroovyBugError;
+import org.codehaus.groovy.ast.decompiled.AsmDecompiler;
 import org.codehaus.groovy.control.CompilationFailedException;
 import org.codehaus.groovy.control.CompilationUnit;
 import org.codehaus.groovy.control.CompilerConfiguration;
@@ -31,8 +34,8 @@ import org.codehaus.groovy.tools.javac.JavaAwareCompilationUnit;
 /**
  * Child-JVM entry point that drives the Groovy 5 compiler in-process.
  *
- * <p>jk launches this as {@code java -cp <worker.jar>:<groovy-closure>
- * cc.jumpkick.plugin.process.PluginMain @&lt;spec&gt;}. The plugin reads the {@link CompileSpec},
+ * <p>jk runs this on a served worker ({@code java -cp <worker.jar>:<groovy-closure>
+ * cc.jumpkick.plugin.process.PluginMain --serve}), one spec per compile. The plugin reads the {@link CompileSpec},
  * runs a full JVM compile ({@link CompilationUnit}, or {@link JavaAwareCompilationUnit} when the
  * source set carries {@code .java} files — joint mode), streams diagnostics back as JSONL, and
  * exits {@link Exit#SUCCESS}, {@link Exit#FAILURE} on a compilation error,
@@ -53,10 +56,40 @@ public final class GroovyCompiler implements Plugin {
         return new PluginManifest("jk-groovy-compiler", "##JKGC:");
     }
 
+    /** Set when the class-file cache could not be cleared: the next compile needs a fresh JVM. */
+    private boolean stale;
+
     @Override
     public int run(List<String> args, ProtocolWriter out) {
-        return CompilerProtocol.compileFromSpec(
-                manifest().id(), args, out, (spec, proto) -> compile(CompileSpec.from(spec), proto));
+        try {
+            return CompilerProtocol.compileFromSpec(
+                    manifest().id(), args, out, (spec, proto) -> compile(CompileSpec.from(spec), proto));
+        } finally {
+            stale = !forgetClassFiles();
+        }
+    }
+
+    @Override
+    public boolean reusable() {
+        return !stale;
+    }
+
+    /**
+     * Groovy caches each class file it reads off the classpath by location, for the life of the
+     * JVM, and offers no way to drop it; a dependency's {@code target/classes} rewritten in place
+     * would compile against the old API. Clears it, and is false when this Groovy has no such
+     * field to clear.
+     */
+    static boolean forgetClassFiles() {
+        try {
+            Field cache = AsmDecompiler.class.getDeclaredField("stubCache");
+            cache.setAccessible(true);
+            if (!(cache.get(null) instanceof Map<?, ?> stubs)) return false;
+            stubs.clear();
+            return true;
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return false;
+        }
     }
 
     static int compile(CompileSpec spec, CompilerProtocol proto) throws Exception {
@@ -132,6 +165,8 @@ public final class GroovyCompiler implements Plugin {
                 }
                 proto.result("COMPILATION_ERROR");
                 return Exit.FAILURE;
+            } finally {
+                close(unit);
             }
 
             emitDiagnostics(unit.getErrorCollector(), proto);
@@ -196,6 +231,20 @@ public final class GroovyCompiler implements Plugin {
             write.accept(pw);
         }
         return sw.toString().strip();
+    }
+
+    /**
+     * Release the unit's class loaders: a served worker compiles again, and they hold this
+     * compile's classpath jars open.
+     */
+    private static void close(CompilationUnit unit) {
+        for (GroovyClassLoader loader : new GroovyClassLoader[] {unit.getClassLoader(), unit.getTransformLoader()}) {
+            try {
+                if (loader != null) loader.close();
+            } catch (IOException e) {
+                // Closing is best effort; the worker exits at the end of its linger either way.
+            }
+        }
     }
 
     /** The scratch root for joint-mode side products: the spec's workdir, else a temp dir. */

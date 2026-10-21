@@ -4,11 +4,12 @@ package cc.jumpkick.compile;
 import cc.jumpkick.engine.plugin.HeapLadder;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
-import cc.jumpkick.engine.plugin.PluginProcess;
+import cc.jumpkick.engine.plugin.WarmWorkers;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerFate;
@@ -24,15 +25,18 @@ import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Drives a secondary-language compile by forking its worker plugin, which runs that language's
- * compiler in-process on jk's own runtime.
+ * Drives a secondary-language compile on its worker plugin, which runs that language's compiler
+ * in-process on jk's own runtime.
  *
- * <p>One fork body for every language. A worker is launched as {@code <hostJavaHome>/bin/java -cp
- * <workerClasspath> cc.jumpkick.plugin.process.PluginMain @<spec>}; it streams JSONL back on stdout
+ * <p>One run body for every language. A worker is launched as {@code <hostJavaHome>/bin/java -cp
+ * <workerClasspath> cc.jumpkick.plugin.process.PluginMain --serve} and kept warm ({@link
+ * WarmWorkers}), so the next compile on the same compiler, heap and flags skips the JVM start and
+ * finds a JIT that has compiled before. Each run hands it a spec; it streams JSONL back on stdout
  * (each line carrying the plugin's protocol prefix) and we collect the diagnostics and the terminal
  * result. The plugin is jk's OWN process: it runs on jk's runtime, because plugins are built at
  * jk's language level and must not be hostage to the project's pinned JDK. The project's toolchain
@@ -40,8 +44,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Kotlin and Groovy are not the same compile and this does not pretend they are. The whole of
  * the difference is the one exhaustive {@code switch} in {@link #plan}: kotlinc gets the project
- * JDK as {@code -jdk-home} and a startup-cached worker; groovyc gets neither, and reports located
- * diagnostics where the Kotlin Build Tools logger reports bare text. Adding a third JVM language
+ * JDK as {@code -jdk-home}, groovyc does not, and groovyc reports located diagnostics where the
+ * Kotlin Build Tools logger reports bare text. Each maps a startup cache its own trainer records. Adding a third JVM language
  * adds an arm there and a spec writer beside {@link KotlincSpec}/{@link GroovycSpec} — not a
  * fourth driver.
  */
@@ -58,12 +62,12 @@ public final class WorkerCompileDriver {
 
     private WorkerCompileDriver() {}
 
-    /** Compile Kotlin by forking {@code jk-kotlin-compiler} (the Kotlin Build Tools API). */
+    /** Compile Kotlin on {@code jk-kotlin-compiler} (the Kotlin Build Tools API). */
     public static CompileResult compile(KotlincRequest request, WorkerEnv env) {
         return compile(new Job.Kotlin(request, env));
     }
 
-    /** Compile Groovy by forking {@code jk-groovy-compiler} (the Groovy 5 compiler). */
+    /** Compile Groovy on {@code jk-groovy-compiler} (the Groovy compiler). */
     public static CompileResult compile(GroovycRequest request, WorkerEnv env) {
         return compile(new Job.Groovy(request, env));
     }
@@ -119,18 +123,6 @@ public final class WorkerCompileDriver {
             }
             return first.result;
         } catch (IOException e) {
-            // One retry when the worker pipe closes mid-compile (flake).
-            if (PluginProcess.isPipeClosed(e)) {
-                try {
-                    return run(job, null).result;
-                } catch (IOException e2) {
-                    throw new UncheckedIOException(
-                            job.tool() + " compile failed after pipe-closed retry: " + e2.getMessage(), e2);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw new RuntimeException(job.tool() + " compile interrupted on retry", ie);
-                }
-            }
             throw new UncheckedIOException(e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -171,12 +163,19 @@ public final class WorkerCompileDriver {
                         // The BTA logger surfaces text only — no file/line/col.
                         json -> WorkerDiagnostics.text(Jsonl.str(json, "sev"), Jsonl.str(json, "msg")));
             }
-            case Job.Groovy(GroovycRequest request, WorkerEnv env) ->
-                new Fork(
+            case Job.Groovy(GroovycRequest request, WorkerEnv env) -> {
+                String classpath = Classpaths.join(request.workerClasspath());
+                yield new Fork(
                         GROOVY_PREFIX,
                         GroovycSpec.write(request),
-                        Classpaths.join(request.workerClasspath()),
-                        List.of(),
+                        classpath,
+                        WorkerAotCache.flags(
+                                "groovyc",
+                                hostJavaHome,
+                                classpath,
+                                List.of(),
+                                (aotOutput, scratch) -> GroovycSpec.trainerCommand(
+                                        request, classpath, hostJavaHome, aotOutput, scratch)),
                         json -> WorkerDiagnostics.located(
                                 Jsonl.str(json, "sev"),
                                 Jsonl.str(json, "file"),
@@ -184,41 +183,58 @@ public final class WorkerCompileDriver {
                                 Jsonl.longValue(json, "col", 0),
                                 Jsonl.str(json, "msg"),
                                 null));
+            }
         };
     }
 
-    /** One fork. {@code overrideXmx} replaces the planned heap; {@code null} keeps learned-or-estimate. */
+    /**
+     * The served command line of a worker on {@code classpath}: the heap is {@code overrideXmx},
+     * else the one learned for this thread's {@link HeapScope}, else the estimate. The compile and
+     * the Kotlin classpath snapshot build it the same way, so they share a warm worker.
+     */
+    record Served(List<String> command, long xmx, boolean planned) {}
+
+    static Served served(Path hostJavaHome, String classpath, List<String> flags, @Nullable Long overrideXmx) {
+        List<String> jvmFlags = new ArrayList<>(flags);
+        // Silence the JDK's native-access / Unsafe warnings the compiler triggers.
+        jvmFlags.add("--enable-native-access=ALL-UNNAMED");
+        // One worker argv assembly for the whole engine (PluginLoader.command); JvmOptions
+        // re-heads it with the java binary plus this job's memory flags.
+        List<String> assembled = PluginLoader.command(hostJavaHome, classpath, jvmFlags, List.of(PluginProtocol.SERVE));
+        List<String> cmd = JvmOptions.javaCommand(hostJavaHome, 1, assembled.subList(1, assembled.size()));
+        boolean planned = JvmOptions.autoHeapEnabled() && !JvmOptions.userPinnedHeap(cmd);
+        HeapScope.Key key = HeapScope.get();
+        long xmx = WorkerLeases.parseXmx(cmd);
+        if (planned && overrideXmx != null && overrideXmx > 0) {
+            xmx = overrideXmx;
+            cmd = WorkerLeases.rewriteHeap(cmd, xmx);
+            JvmOptions.notePlannedCommand(cmd);
+        } else if (planned && key != null && xmx > 0) {
+            long chosen = LearnedHeaps.engine().choose(key.project(), key.module(), key.kind(), key.jdk(), xmx);
+            if (chosen > 0 && chosen != xmx) {
+                xmx = chosen;
+                cmd = WorkerLeases.rewriteHeap(cmd, xmx);
+                JvmOptions.notePlannedCommand(cmd);
+            }
+        }
+        return new Served(cmd, xmx, planned);
+    }
+
+    /** Ends a run whose request was cancelled while it waited on the worker. */
+    static BooleanSupplier cancelProbe() {
+        Long request = JobWorkers.currentRequestId();
+        return request == null ? () -> false : () -> JobWorkers.ended(request);
+    }
+
+    /**
+     * One run on a warm worker. {@code overrideXmx} replaces the planned heap; {@code null} keeps
+     * learned-or-estimate.
+     */
     private static Outcome run(Job job, @Nullable Long overrideXmx) throws IOException, InterruptedException {
         Path hostJavaHome = JavaHomes.runningJavaHome();
         Fork fork = plan(job, hostJavaHome);
         try {
-            List<String> jvmFlags = new ArrayList<>(fork.jvmFlags());
-            // Silence the JDK's native-access / Unsafe warnings the compiler triggers.
-            jvmFlags.add("--enable-native-access=ALL-UNNAMED");
-            // One worker argv assembly for the whole engine (PluginLoader.command); JvmOptions
-            // re-heads it with the java binary plus this job's memory flags.
-            List<String> assembled = PluginLoader.command(
-                    hostJavaHome,
-                    fork.classpath(),
-                    jvmFlags,
-                    List.of("@" + fork.spec().toAbsolutePath()));
-            List<String> cmd = JvmOptions.javaCommand(hostJavaHome, 1, assembled.subList(1, assembled.size()));
-            boolean planned = JvmOptions.autoHeapEnabled() && !JvmOptions.userPinnedHeap(cmd);
-            HeapScope.Key key = HeapScope.get();
-            long xmx = WorkerLeases.parseXmx(cmd);
-            if (planned && overrideXmx != null && overrideXmx > 0) {
-                xmx = overrideXmx;
-                cmd = WorkerLeases.rewriteHeap(cmd, xmx);
-                JvmOptions.notePlannedCommand(cmd);
-            } else if (planned && key != null && xmx > 0) {
-                long chosen = LearnedHeaps.engine().choose(key.project(), key.module(), key.kind(), key.jdk(), xmx);
-                if (chosen > 0 && chosen != xmx) {
-                    xmx = chosen;
-                    cmd = WorkerLeases.rewriteHeap(cmd, xmx);
-                    JvmOptions.notePlannedCommand(cmd);
-                }
-            }
-
+            Served served = served(hostJavaHome, fork.classpath(), fork.jvmFlags(), overrideXmx);
             List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
             @Nullable String[] status = {null};
             // Non-protocol lines (JDK/compiler chatter) are dropped on success, but a plugin
@@ -226,16 +242,31 @@ public final class WorkerCompileDriver {
             // whole story there — keep a bounded tail and surface it on failure, or the build
             // fails with an empty diagnostic and no way to see why.
             ArrayDeque<String> chatter = new ArrayDeque<>();
-            int exit = new PluginClient(fork.prefix())
-                    .on(
-                            PluginProtocol.DIAGNOSTIC,
-                            json -> diagnostics.add(fork.decode().apply(json)))
-                    .on(PluginProtocol.RESULT, json -> status[0] = Jsonl.str(json, "status"))
-                    .passthrough(line -> {
-                        if (chatter.size() >= CHATTER_TAIL) chatter.removeFirst();
-                        chatter.addLast(line);
-                    })
-                    .run(cmd, job.env().withJavaHome(hostJavaHome));
+            WarmWorkers.Outcome ran = WarmWorkers.run(
+                    new WarmWorkers.Launch(
+                            job.tool(),
+                            served.command(),
+                            job.env().withJavaHome(hostJavaHome),
+                            fork.prefix(),
+                            HeapScope.get()),
+                    fork.spec(),
+                    new WarmWorkers.Listener() {
+                        @Override
+                        public void protocol(String json) {
+                            String t = Jsonl.str(json, PluginClient.TYPE);
+                            if (PluginProtocol.DIAGNOSTIC.equals(t))
+                                diagnostics.add(fork.decode().apply(json));
+                            else if (PluginProtocol.RESULT.equals(t)) status[0] = Jsonl.str(json, "status");
+                        }
+
+                        @Override
+                        public void output(String line) {
+                            if (chatter.size() >= CHATTER_TAIL) chatter.removeFirst();
+                            chatter.addLast(line);
+                        }
+                    },
+                    cancelProbe());
+            int exit = ran.exit();
             boolean success = exit == 0 && "COMPILATION_SUCCESS".equals(status[0]);
             String output = String.join("\n", chatter);
             WorkerFate.Cause cause = success ? WorkerFate.Cause.OTHER : WorkerFate.classify(exit, output);
@@ -246,7 +277,8 @@ public final class WorkerCompileDriver {
                 diagnostics.add(
                         new CompileResult.Diagnostic(CompileResult.Severity.ERROR, null, 0, 0, tail.toString()));
             }
-            return new Outcome(new CompileResult(success, diagnostics), cause, xmx, planned, job.tool());
+            return new Outcome(
+                    new CompileResult(success, diagnostics), cause, served.xmx(), served.planned(), job.tool());
         } finally {
             Files.deleteIfExists(fork.spec());
         }

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
-import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
+import cc.jumpkick.engine.plugin.WarmWorkers;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerEnv;
@@ -19,7 +20,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,8 +27,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The engine's way to a Kotlin classpath-entry ABI snapshot: fork {@code jk-kotlin-compiler} with
- * its {@code snapshot} op and read the digests back. The compiler never loads in the engine; the
+ * The engine's way to a Kotlin classpath-entry ABI snapshot: run {@code jk-kotlin-compiler}'s
+ * {@code snapshot} op on the compile's warm worker and read the digests back. The compiler never loads in the engine; the
  * worker writes the snapshots into the compile's own snapshot directory, so the incremental compile
  * that may follow finds them already there and pays for no second pass.
  *
@@ -75,37 +75,48 @@ public final class KotlincSnapshots {
         String classpath = Classpaths.join(request.workerClasspath());
         Path spec = writeSpec(request, entries);
         try {
-            // The same worker classpath maps the same cache the compile fork uses; a miss records
-            // one in the background with the compile's own trainer.
-            List<String> jvmFlags = new ArrayList<>(WorkerAotCache.flags(
+            // The compile's own launch: the same classpath, startup cache and heap, so the snapshot
+            // runs on the warm worker the compile then reuses.
+            List<String> aot = WorkerAotCache.flags(
                     "kotlinc",
                     hostJavaHome,
                     classpath,
                     List.of(),
                     (aotOutput, scratch) ->
-                            KotlincSpec.trainerCommand(request, classpath, hostJavaHome, aotOutput, scratch)));
-            jvmFlags.add("--enable-native-access=ALL-UNNAMED");
-            List<String> assembled =
-                    PluginLoader.command(hostJavaHome, classpath, jvmFlags, List.of("@" + spec.toAbsolutePath()));
-            List<String> cmd = JvmOptions.javaCommand(hostJavaHome, 1, assembled.subList(1, assembled.size()));
+                            KotlincSpec.trainerCommand(request, classpath, hostJavaHome, aotOutput, scratch));
+            WorkerCompileDriver.Served served = WorkerCompileDriver.served(hostJavaHome, classpath, aot, null);
 
             Map<Path, String> digests = new LinkedHashMap<>();
             ArrayDeque<String> chatter = new ArrayDeque<>();
             Recording.note(
                     RECORDING, new Fork(request.outputDir().toAbsolutePath().normalize(), entries));
-            int exit = new PluginClient(WorkerCompileDriver.KOTLIN_PREFIX)
-                    .on(PluginProtocol.CP_SNAPSHOT, json -> {
-                        @Nullable String path = Jsonl.str(json, PluginProtocol.PATH);
-                        @Nullable String sha = Jsonl.str(json, PluginProtocol.SHA256);
-                        if (path != null && sha != null) {
-                            digests.put(Path.of(path).toAbsolutePath().normalize(), sha);
+            WarmWorkers.Outcome ran = WarmWorkers.run(
+                    new WarmWorkers.Launch(
+                            "kotlinc",
+                            served.command(),
+                            env.withJavaHome(hostJavaHome),
+                            WorkerCompileDriver.KOTLIN_PREFIX,
+                            HeapScope.get()),
+                    spec,
+                    new WarmWorkers.Listener() {
+                        @Override
+                        public void protocol(String json) {
+                            if (!PluginProtocol.CP_SNAPSHOT.equals(Jsonl.str(json, PluginClient.TYPE))) return;
+                            @Nullable String path = Jsonl.str(json, PluginProtocol.PATH);
+                            @Nullable String sha = Jsonl.str(json, PluginProtocol.SHA256);
+                            if (path != null && sha != null) {
+                                digests.put(Path.of(path).toAbsolutePath().normalize(), sha);
+                            }
                         }
-                    })
-                    .passthrough(line -> {
-                        if (chatter.size() >= CHATTER_TAIL) chatter.removeFirst();
-                        chatter.addLast(line);
-                    })
-                    .run(cmd, env.withJavaHome(hostJavaHome));
+
+                        @Override
+                        public void output(String line) {
+                            if (chatter.size() >= CHATTER_TAIL) chatter.removeFirst();
+                            chatter.addLast(line);
+                        }
+                    },
+                    WorkerCompileDriver.cancelProbe());
+            int exit = ran.exit();
             if (exit != 0) {
                 Log.warn(
                         "kotlinc snapshot worker "

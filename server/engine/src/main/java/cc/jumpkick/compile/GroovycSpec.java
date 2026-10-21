@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -9,7 +10,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -47,5 +50,64 @@ final class GroovycSpec {
         Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
         PluginLoader.sealNetworkPolicy(spec);
         return spec;
+    }
+
+    /**
+     * The AOT trainer's command line: the same plugin spawn shape as a real compile, recording with
+     * {@code -XX:AOTCacheOutput} while it joint-compiles a synthetic Groovy class and the Java class
+     * it calls, against the triggering request's own compile classpath and {@code jvmTarget}.
+     */
+    static List<String> trainerCommand(
+            GroovycRequest request, String classpath, Path hostJavaHome, Path aotOutput, Path scratch)
+            throws IOException {
+        Path groovy = scratch.resolve("src/demo/Hello.groovy");
+        Path java = scratch.resolve("src/demo/Util.java");
+        Files.createDirectories(groovy.getParent());
+        Files.writeString(groovy, """
+                package demo
+
+                import groovy.transform.CompileStatic
+
+                @CompileStatic
+                class Hello {
+                    record Point(int x, int y) {}
+
+                    String greet(List<String> names) {
+                        names.findAll { it }.collect { Util.shout(it) }.join(', ')
+                    }
+
+                    static void main(String[] args) {
+                        def points = (1..10).collect { new Point(it, it * 2) }
+                        println new Hello().greet(['a', 'b'])
+                        println points.findAll { it.x() % 2 == 0 }.sum { it.y() }
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+        Files.writeString(java, """
+                package demo;
+
+                public final class Util {
+                    private Util() {}
+
+                    public static String shout(String s) {
+                        return s.toUpperCase();
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+        SpecWriter sw = new SpecWriter()
+                .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
+                .configString("jvmTarget", String.valueOf(request.jvmTarget()))
+                .layout(Map.of("classesDir", scratch.resolve("out"), "workdir", scratch.resolve("work")))
+                .source(groovy)
+                .source(java);
+        for (Path cp : request.classpath()) sw.cp(cp, PluginProtocol.ROLE_COMPILE);
+        Path spec = scratch.resolve("train.spec");
+        Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
+        PluginLoader.sealNetworkPolicy(spec);
+        List<String> jvmFlags = new ArrayList<>();
+        jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
+        jvmFlags.addAll(JvmOptions.batchFlags(1));
+        jvmFlags.add("--enable-native-access=ALL-UNNAMED");
+        return PluginLoader.command(hostJavaHome, classpath, jvmFlags, List.of("@" + spec.toAbsolutePath()));
     }
 }

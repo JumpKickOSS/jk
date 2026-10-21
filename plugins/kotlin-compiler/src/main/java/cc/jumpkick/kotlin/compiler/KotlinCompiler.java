@@ -40,8 +40,8 @@ import org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmCompilationOperatio
 /**
  * Child-JVM entry point that drives the Kotlin Build Tools API.
  *
- * <p>jk launches this as {@code java -cp <worker.jar>:<kotlin-bta-closure>
- * cc.jumpkick.kotlin.compiler.KotlinCompiler @&lt;spec&gt;}. The plugin reads the {@link
+ * <p>jk runs this on a served worker ({@code java -cp <worker.jar>:<kotlin-bta-closure>
+ * cc.jumpkick.plugin.process.PluginMain --serve}), one spec per compile. The plugin reads the {@link
  * CompileSpec}, runs an in-process JVM compile (incremental when the spec carries a {@code
  * WORKDIR}), streams diagnostics back as JSONL, and exits {@link Exit#SUCCESS},
  * {@link Exit#FAILURE} on a compilation error, {@link CompilerProtocol#COMPILER_FAULT} on an
@@ -131,6 +131,8 @@ public final class KotlinCompiler implements Plugin {
         List<Path> sources = spec.sources.stream().map(File::toPath).toList();
 
         CompilationResult result;
+        // Plugin jars aliased for this compile; a served worker compiles again, so they go after it.
+        List<Path> aliases = new ArrayList<>();
         try (KotlinToolchains.BuildSession session = toolchains.createBuildSession()) {
             ExecutionPolicy policy = toolchains.createInProcessExecutionPolicy();
             KcLogger logger = new KcLogger(proto);
@@ -152,7 +154,7 @@ public final class KotlinCompiler implements Plugin {
                                 eq < 0 ? opt : opt.substring(0, eq), eq < 0 ? "" : opt.substring(eq + 1)));
                     }
                     plugins.add(new org.jetbrains.kotlin.buildtools.api.arguments.CompilerPlugin(
-                            plugin.id(), List.of(jarSuffixed(plugin.jar().toPath())), options, Set.of()));
+                            plugin.id(), List.of(jarSuffixed(plugin.jar().toPath(), aliases)), options, Set.of()));
                 }
                 op.getCompilerArguments()
                         .set(
@@ -178,6 +180,8 @@ public final class KotlinCompiler implements Plugin {
             }
 
             result = session.executeOperation(op.build(), policy, logger);
+        } finally {
+            for (Path alias : aliases) PathUtil.deleteRecursively(alias);
         }
 
         proto.result(result.name());
@@ -312,16 +316,15 @@ public final class KotlinCompiler implements Plugin {
 
     /**
      * The compiler's plugin loader silently ignores classpath entries that don't end in
-     * {@code .jar}. Alias any extensionless path so the plugin is actually loaded.
+     * {@code .jar}. Alias any extensionless path so the plugin is actually loaded; the alias's
+     * directory is added to {@code aliases} for the caller to delete.
      */
-    private static Path jarSuffixed(Path jar) throws IOException {
+    private static Path jarSuffixed(Path jar, List<Path> aliases) throws IOException {
         if (jar.getFileName().toString().endsWith(".jar")) return jar;
-        // Unique directory name without creating a file first.
         Path dir = Files.createTempDirectory("jk-kotlin-plugin-");
-        dir.toFile().deleteOnExit();
+        aliases.add(dir);
         Path suffixed = dir.resolve(jar.getFileName() + ".jar");
         Linking.linkOrCopy(jar, suffixed);
-        suffixed.toFile().deleteOnExit();
         return suffixed;
     }
 
