@@ -24,8 +24,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -41,23 +41,25 @@ import org.junit.jupiter.api.io.TempDir;
 class KtsSessionTest {
 
     @TempDir
-    Path cacheDir;
+    static Path cacheDir;
 
-    private String prevCacheDir;
+    private static String prevCacheDir;
 
     /**
      * Point the compiled-script cache at a temp dir. Counting jars in the developer's real cache
-     * would be both a pollution of it and a race against whatever else is building.
+     * would be both a pollution of it and a race against whatever else is building. The class
+     * shares one cache and one warm host; a test that needs a host born under its own conditions
+     * shuts the resident one down first.
      */
-    @BeforeEach
-    void isolateCompiledScriptCache() {
+    @BeforeAll
+    static void isolateCompiledScriptCache() {
         prevCacheDir = System.getProperty("jk.env.JK_CACHE_DIR");
         System.setProperty("jk.env.JK_CACHE_DIR", cacheDir.toString());
         KtsSession.shutdown(); // a session started under a different cache must not be reused
     }
 
-    @AfterEach
-    void restoreCache() {
+    @AfterAll
+    static void restoreCache() {
         KtsSession.shutdown();
         if (prevCacheDir == null) System.clearProperty("jk.env.JK_CACHE_DIR");
         else System.setProperty("jk.env.JK_CACHE_DIR", prevCacheDir);
@@ -221,6 +223,7 @@ class KtsSessionTest {
         Files.writeString(script, "Files.writeString(outDir.resolve(\"a.txt\"), \"1\")\n");
         Path project = Files.createDirectories(dir.resolve("p"));
         Path out = Files.createDirectories(dir.resolve("o"));
+        KtsSession.shutdown(); // the host must be born inside the first build
 
         JobWorkers.open(9101L);
         try {
@@ -255,12 +258,13 @@ class KtsSessionTest {
         Path slow = dir.resolve("slow.kts");
         Files.writeString(slow, """
                 Files.writeString(outDir.resolve("started"), "1")
-                Thread.sleep(2500)
+                while (!Files.exists(outDir.resolve("release"))) Thread.sleep(10)
                 Files.writeString(outDir.resolve("done"), "1")
                 """);
         Path project = Files.createDirectories(dir.resolve("p"));
         Path outA = Files.createDirectories(dir.resolve("a"));
         Path outB = Files.createDirectories(dir.resolve("b"));
+        KtsSession.shutdown(); // the host must be born inside build A
 
         // Build A runs its script and is about to end.
         JobWorkers.open(9201L);
@@ -286,6 +290,8 @@ class KtsSessionTest {
 
         JobWorkers.shutdownForRequest(9201L, 0L);
         JobWorkers.close();
+        // B's script holds until A has ended.
+        Files.writeString(outB.resolve("release"), "1");
 
         b.join(TimeUnit.SECONDS.toMillis(60));
         assertThat(failure.get())
@@ -302,6 +308,7 @@ class KtsSessionTest {
         Path project = Files.createDirectories(dir.resolve("p"));
         Path out = Files.createDirectories(dir.resolve("o"));
 
+        KtsSession.shutdown(); // the shortened timeout applies to a host started after it
         KtsSession.idleTimeoutForTests(Duration.ofMillis(300));
         try {
             BuildLogicKtsHost.evaluate(script, project, out);

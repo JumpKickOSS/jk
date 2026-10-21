@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -46,7 +47,7 @@ class GroovyCompilationTest {
 
     @Test
     void second_build_skips_groovy_compile_when_nothing_changed(@TempDir Path tempDir) throws IOException {
-        run("new", "--group", "com.example", "--name", "widget", "--lang", "groovy", "--no-module", tempDir.toString());
+        newGroovyLibrary(tempDir, "widget");
         Path cache = tempDir.resolve("cache");
 
         assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
@@ -66,7 +67,7 @@ class GroovyCompilationTest {
 
     @Test
     void editing_a_groovy_source_recompiles(@TempDir Path tempDir) throws IOException {
-        run("new", "--group", "com.example", "--name", "widget", "--lang", "groovy", "--no-module", tempDir.toString());
+        newGroovyLibrary(tempDir, "widget");
         Path src = tempDir.resolve("src/main/groovy/com/example/Calc.groovy");
         Path cache = tempDir.resolve("cache");
 
@@ -121,7 +122,7 @@ class GroovyCompilationTest {
 
     @Test
     void mixed_groovy_and_java_resolve_both_directions(@TempDir Path tempDir) throws IOException {
-        run("new", "--group", "com.example", "--name", "mixed", "--lang", "groovy", "--no-module", tempDir.toString());
+        newGroovyLibrary(tempDir, "mixed");
         // Groovy→Java: the Groovy class calls a Java helper (joint sweep).
         Path javaSrc = tempDir.resolve("src/main/java/com/example/Util.java");
         Files.createDirectories(javaSrc.getParent());
@@ -181,6 +182,7 @@ class GroovyCompilationTest {
                 "groovy",
                 "--no-module",
                 tempDir.toString());
+        PathUtil.deleteRecursively(tempDir.resolve("src/test")); // the sample suite; packaging only
         Path toml = tempDir.resolve("jk.toml");
         Files.writeString(toml, Files.readString(toml) + """
 
@@ -255,5 +257,27 @@ class GroovyCompilationTest {
         if (Files.isRegularFile(lock)) {
             assertThat(Files.readString(lock)).contains("org.apache.groovy:groovy");
         }
+    }
+
+    /**
+     * Scaffold a Groovy library minus what the compile and stamp tests never read: the sample
+     * suite (run by {@link #test_runs_the_scaffolded_groovy_junit_test}) and the javadoc jar.
+     */
+    private static void newGroovyLibrary(Path dir, String name) throws IOException {
+        assertThat(run(
+                        "new",
+                        "--group",
+                        "com.example",
+                        "--name",
+                        name,
+                        "--lang",
+                        "groovy",
+                        "--no-module",
+                        dir.toString()))
+                .as("jk new")
+                .isEqualTo(0);
+        PathUtil.deleteRecursively(dir.resolve("src/test"));
+        Path toml = dir.resolve("jk.toml");
+        Files.writeString(toml, "javadoc = false\n" + Files.readString(toml));
     }
 }
