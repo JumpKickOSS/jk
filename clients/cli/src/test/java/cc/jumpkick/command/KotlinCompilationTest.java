@@ -129,6 +129,30 @@ class KotlinCompilationTest {
         assertThat(Files.getLastModifiedTime(ktClass).toMillis()).isNotEqualTo(firstMtime);
     }
 
+    /**
+     * The second build compiles on the worker the first one left warm: removing a function a
+     * caller still uses must fail it, not resolve against what the warm compiler saw before.
+     */
+    @Test
+    void removing_a_function_a_caller_uses_fails_the_next_build(@TempDir Path tempDir) throws IOException {
+        newKotlinProject(tempDir, "--name", "widget", "--lang", "kotlin");
+        Path dir = tempDir.resolve("src/main/kotlin/example");
+        Files.createDirectories(dir);
+        Path lib = dir.resolve("Lib.kt");
+        Files.writeString(lib, "package example\n\nfun shout(s: String): String = s.uppercase()\n");
+        Files.writeString(dir.resolve("Use.kt"), "package example\n\nfun use(): String = shout(\"hi\")\n");
+        Path cache = tempDir.resolve("cache");
+        assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
+                .isEqualTo(0);
+
+        long stamp = Files.getLastModifiedTime(lib).toMillis() + 5_000;
+        Files.writeString(lib, "package example\n\nfun whisper(s: String): String = s.lowercase()\n");
+        Files.setLastModifiedTime(lib, FileTime.fromMillis(stamp));
+
+        assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
+                .isNotEqualTo(0);
+    }
+
     @Test
     void check_fails_on_kotlin_syntax_error(@TempDir Path tempDir) throws IOException {
         newKotlinProject(tempDir, "--lang", "kotlin");

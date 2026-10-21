@@ -400,10 +400,11 @@ spawn line keep the native side bounded between trims: HotSpot's periodic trim
 inherited from the shell when it sets its own). `jk engine status` shows heap and RSS.
 
 Most worker JVMs are job-scoped: test runners and plugin workers exit when their job ends.
-Four stay warm between requests: the java-compiler lanes, the formatter, the code-graph worker
-and the build-script host (`.jk/*.kts`). A warm worker keeps its JIT, its loaded classes and
-what it caches (the formatter its step chains, the graph worker the loaded graph), and shuts
-down after 30 idle minutes (`JK_WORKER_LINGER_MS`), or at once when a queued fork needs its
+These stay warm between requests: the Java, Kotlin and Groovy compilers, the formatter, the
+code-graph worker and the build-script host (`.jk/*.kts`). A warm worker keeps its JIT, its
+loaded classes and what it caches (the formatter its step chains, the graph worker the loaded
+graph), and shuts
+down after 30 idle minutes (`JK_WORKER_LINGER_MIN`), or at once when a queued fork needs its
 lease. The build-script host starts with a planned heap of 256 MiB — learned after that, the
 same way as other planned workers — so its lease is that heap plus the usual overhead instead
 of the unsized 512 MiB default. A warm worker's lease is held while the process is alive and
