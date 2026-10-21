@@ -63,12 +63,12 @@ terminal at all the wizard is skipped and the command's flags apply, as before.
 Detected per launch — `nerd-font` defaults to `"auto"`. Pin only to override:
 
 ```bash
-jk self setup-terminal --explain
+jk self setup-terminal -e
 jk self setup-terminal                  # write nerd-font = "auto"
-jk self setup-terminal --mode on        # every PUA glyph
-jk self setup-terminal --mode off       # no PUA glyphs
-jk self setup-terminal --mode wedge     # powerline triangles only
-jk self setup-terminal --mode pill      # half-circle pill caps only
+jk self setup-terminal -m on        # every PUA glyph
+jk self setup-terminal -m off       # no PUA glyphs
+jk self setup-terminal -m wedge     # powerline triangles only
+jk self setup-terminal -m pill      # half-circle pill caps only
 ```
 
 `auto` grants both axes on Ghostty, kitty, WezTerm, and Windows Terminal; at least the

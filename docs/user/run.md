@@ -25,9 +25,9 @@ has nothing to start; a JVM module that depends on it serves the files.
 ### Debug the app JVM
 
 ```bash
-jk run --debug-jvm                      # localhost:5005, suspended until a debugger attaches
-jk run --debug-jvm=0 . -- args…         # a free port; use `=` when args follow
-jk run --debug-jvm=6006,suspend=n
+jk run -U                      # localhost:5005, suspended until a debugger attaches
+jk run -U 0 . -- args…         # a free port; use `=` when args follow
+jk run -U 6006,suspend=n
 jk run --debug                          # the same flag by its unique prefix
 ```
 
@@ -51,12 +51,12 @@ Watches **`src/`**, **`test/src/`**, and project-root **`jk.toml`** by default �
 ```bash
 jk watch compile
 jk watch test
-jk watch build               # package loop (--skip-tests)
+jk watch build               # package loop (-S)
 jk watch run
 jk dev                       # same as jk watch run
 jk dev -- --port=8080        # app args after --
 jk dev -m api,admin          # at a workspace root: only these members
-jk watch test --debounce-ms 300
+jk watch test -U 300
 ```
 
 `watch run` / `dev` use classes-dir execution, Spring Boot DevTools when present,
@@ -101,7 +101,7 @@ Vite on 5173 proxying `/api` as the dev server jk infers from `[node] dir`, one 
 
 Sidecars start once per session and survive the app's restarts — Vite watches its own tree. Ctrl-C
 stops the app and every sidecar together, along with everything they spawned. Editing
-`[dev.sidecars]` mid-session is reported, not applied — restart `jk dev`. `jk dev --no-sidecars`
+`[dev.sidecars]` mid-session is reported, not applied — restart `jk dev`. `jk dev -T`
 runs the app alone for one invocation.
 
 Every process with a `ready` URL is `JK_DEV_<NAME>_URL` in the environment of every other process
@@ -179,7 +179,7 @@ started. With one, `dev-ready` and the `ready ·` line wait for the app too, so 
 
 ```bash
 jk jshell                    # build --skip-tests if needed, then jshell on compile classpath
-jk jshell --no-build         # existing target/classes + lock deps only
+jk jshell -n         # existing target/classes + lock deps only
 jk repl                      # alias
 ```
 

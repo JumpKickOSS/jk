@@ -235,7 +235,7 @@ public final class CliOutput {
 
     /**
      * Run {@code body} with stdout discarded — for a command whose result is one document printed
-     * afterwards ({@code jk guard --output sarif}), where the build's own lines would corrupt the
+     * afterwards ({@code jk guard -O sarif}), where the build's own lines would corrupt the
      * stream. stderr is untouched, so failures still reach the terminal.
      */
     public static int silenced(IntSupplier body) {

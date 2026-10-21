@@ -250,7 +250,7 @@ final class ManifestBuildTable {
             s.testAssertions = assertions;
         }
         // [test] coverage — every test JVM of this module runs under the JaCoCo agent and the
-        // module leaves its coverage report, as `jk test --coverage` does for the whole run.
+        // module leaves its coverage report, as `jk test -T` does for the whole run.
         if (test.contains("coverage")) {
             if (!(test.get("coverage") instanceof Boolean coverage)) {
                 throw new JkBuildParseException("[test].coverage must be true or false");

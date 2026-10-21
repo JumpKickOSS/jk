@@ -71,7 +71,7 @@ public final class BuildForecasting {
     /**
      * Read-only variant for pure estimates (ForecastVerb, post-clean ETA): consults the memo but
      * NEVER stores one. A query that writes {@code target/.jk/preflight} resurrects the target
-     * dir right after {@code jk clean --force} wiped it.
+     * dir right after {@code jk clean -F} wiped it.
      */
     public static Set<Path> forecastDirtyDirsReadOnly(
             BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
@@ -397,7 +397,7 @@ public final class BuildForecasting {
 
     /**
      * As {@link #explain(Path, JkBuild, Path)} with {@code skipTests} matching {@code jk build
-     * --skip-tests} / {@code jk explain --skip-tests} so the forecast does not claim test work the
+     * --skip-tests} / {@code jk explain -S} so the forecast does not claim test work the
      * live command will not run.
      */
     public static ExplainPlan explain(Path entryDir, JkBuild entryBuild, Path cache, boolean skipTests)
@@ -485,7 +485,7 @@ public final class BuildForecasting {
         }
         // Which modules will `jk build` actually schedule? That is the question explain answers, so
         // it has to ask it the same way the build does — through the memo-aware preflight, read-only
-        // so a query never resurrects `target/.jk/preflight` after `jk clean --force`.
+        // so a query never resurrects `target/.jk/preflight` after `jk clean -F`.
         //
         // Asking it the other way is what made explain a forecast of `jk test`. A bare
         // TaskForecaster walk reports every module whose action-cache entries are missing, and

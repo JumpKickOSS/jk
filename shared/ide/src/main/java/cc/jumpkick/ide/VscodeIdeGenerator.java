@@ -63,7 +63,7 @@ public final class VscodeIdeGenerator implements IdeGenerator {
             out.file(vscodeDir.resolve("launch.json"), launch);
         }
         out.file(vscodeDir.resolve("extensions.json"), extensionsJson());
-        // tasks for jk test / --all / per-suite
+        // tasks for jk test / -A / per-suite
         out.file(vscodeDir.resolve("tasks.json"), tasksJson(model));
     }
 
@@ -310,7 +310,7 @@ public final class VscodeIdeGenerator implements IdeGenerator {
     static String tasksJson(IdeModel model) {
         List<String> tasks = new ArrayList<>();
         tasks.add(taskEntry("jk: test", "jk test"));
-        tasks.add(taskEntry("jk: test all", "jk test --all"));
+        tasks.add(taskEntry("jk: test all", "jk test -A"));
         LinkedHashSet<String> extra = new LinkedHashSet<>();
         for (Path mod : model.allModules().keySet()) {
             for (String suite : IdeSourceRoots.suites(mod)) {

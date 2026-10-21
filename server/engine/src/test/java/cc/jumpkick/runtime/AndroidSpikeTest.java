@@ -243,7 +243,7 @@ class AndroidSpikeTest {
         Path project = Files.createDirectories(tmp.resolve("hello"));
         writeProject(project);
 
-        // Accept the SDK licenses exactly as `jk android licenses --yes` does — the installer
+        // Accept the SDK licenses exactly as `jk android licenses -y` does — the installer
         // refuses to download otherwise (the gate the AndroidSdkTest covers in isolation).
         var sdk = AndroidSdk.resolve();
         var installer = new AndroidSdkInstaller(sdk);

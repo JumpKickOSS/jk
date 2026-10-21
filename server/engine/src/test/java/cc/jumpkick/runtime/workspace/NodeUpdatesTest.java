@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
-/** {@code jk update --major} moves a manifest's own {@code node} major, and nothing else. */
+/** {@code jk update -m} moves a manifest's own {@code node} major, and nothing else. */
 class NodeUpdatesTest {
 
     private static final List<NodeRelease> RELEASES = List.of(

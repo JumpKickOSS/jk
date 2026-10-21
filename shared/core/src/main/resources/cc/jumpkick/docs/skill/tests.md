@@ -3,9 +3,9 @@
 Default `jk test` and `run(kind=test)` run the unit suite only. That is the inner loop.
 
 - Fixing a unit: `jk test`
-- About to push, or the change touches DB, HTTP, or the filesystem: `jk test --guard`
+- About to push, or the change touches DB, HTTP, or the filesystem: `jk test -g`
 - One named suite: `jk test -s integration`
-- Not as a habit: `jk test --all`
+- Not as a habit: `jk test -A`
 
 MCP climbs with `suites=["integration"]`. Do not pass every suite. Replay the same selection after a failure.
 

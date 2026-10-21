@@ -17,7 +17,7 @@ import java.util.Optional;
 
 /**
  * {@code jk node update} — refresh the catalog and report the project's Node.js against the newest
- * release of its major. {@code jk update} moves the lock; {@code jk update --major} the major.
+ * release of its major. {@code jk update} moves the lock; {@code jk update -m} the major.
  */
 public final class NodeUpdateCommand implements CliCommand {
 

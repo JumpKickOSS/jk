@@ -367,7 +367,7 @@ final class EngineHosted {
                                         req.graalHome() != null
                                                 ? req.graalHome().toString()
                                                 : null,
-                                        req.profile(),
+                                        req.trainProfile(),
                                         req.force(),
                                         req.skipTests(),
                                         req.offline(),

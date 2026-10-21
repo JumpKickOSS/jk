@@ -50,6 +50,8 @@ public final class ProtoSession {
                 .withTestFailures(TestFailureMode.parse(Jsonl.str(request, ProtoJobs.TEST_FAILURES))
                         .orElse(null))
                 .withSkipNode(Jsonl.bool(request, ProtoJobs.SKIP_NODE, false))
+                .withProfile(Jsonl.str(request, "profile"))
+                .withKeepGoing(Jsonl.bool(request, "keepGoing", false))
                 .withAffected(Jsonl.bool(request, "affected", false))
                 .withVariant(variantOf(request), clientEnvOf(request))
                 .withToolchainSpecs(jdkSpecOf(request), graalSpecOf(request), graalHomeOf(request), javaHomeOf(request))
@@ -151,7 +153,7 @@ public final class ProtoSession {
 
     /**
      * Session envelope including optional {@code assemblyOverride} ({@code fat} / {@code minified}) for
-     * {@code jk assemble --minified} one-offs.
+     * {@code jk assemble -W} one-offs.
      */
     public static String withSession(
             String request,
@@ -202,18 +204,42 @@ public final class ProtoSession {
      * arguments to every one of them. Nothing selected → the line rides unchanged.
      */
     /**
-     * {@link #withToolchain(String, String, String, String, String)} for a session's own
-     * selection — all four fields read in one place, so a caller cannot forward three of them and
-     * leave the fourth behind. Which is how {@code JAVA_HOME} came to be the one the daemon was
-     * started with rather than the one the caller set.
+     * A session's own toolchain selection and build options onto an encoded request line — every
+     * field read in one place, so a caller cannot forward three of them and leave the fourth behind
+     * (which is how {@code JAVA_HOME} came to be the one the daemon was started with rather than
+     * the one the caller set).
      */
-    public static String withToolchain(String request, Session session) {
-        return withToolchain(
+    public static String withSessionFields(String request, Session session) {
+        String line = withToolchain(
                 request,
                 session.jdkSpec(),
                 session.graalSpec(),
                 asString(session.graalHome()),
                 asString(session.javaHome()));
+        return withBuildOptions(line, session);
+    }
+
+    /**
+     * The options every build verb shares — profile, workers, keep-going, parallel tests, the test
+     * selection, the failure mode, skip-node, coverage — onto a request that does not name them
+     * itself, so every verb's engine half reads them through {@link #sessionOf} the same way.
+     */
+    static String withBuildOptions(String request, Session session) {
+        RequestJson f = RequestJson.fields();
+        if (!Jsonl.has(request, "profile")) f.optionalNonBlankString("profile", session.profile());
+        if (!Jsonl.has(request, "workers") && session.requestedTestWorkers() > 0) {
+            f.number("workers", session.requestedTestWorkers());
+        }
+        if (!Jsonl.has(request, "keepGoing")) f.optionalTrue("keepGoing", session.keepGoing());
+        if (!Jsonl.has(request, "parallelTests") && !session.parallelTests()) f.bool("parallelTests", false);
+        if (!Jsonl.has(request, "suites")) f.testSelection(session.testSelection(), true);
+        if (!Jsonl.has(request, ProtoJobs.TEST_FAILURES) && session.testFailures() != null) {
+            f.string(ProtoJobs.TEST_FAILURES, session.testFailures().wireName());
+        }
+        if (!Jsonl.has(request, ProtoJobs.SKIP_NODE)) f.optionalTrue(ProtoJobs.SKIP_NODE, session.skipNode());
+        if (!Jsonl.has(request, ProtoJobs.COVERAGE)) f.optionalTrue(ProtoJobs.COVERAGE, session.coverage());
+        String body = f.body();
+        return body.isEmpty() ? request : Jsonl.append(request, body);
     }
 
     private static @Nullable String asString(@Nullable Path path) {

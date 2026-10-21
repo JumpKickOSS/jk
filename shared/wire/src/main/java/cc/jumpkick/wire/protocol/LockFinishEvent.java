@@ -6,7 +6,7 @@ import java.util.List;
 
 /**
  * Terminal for a lock/update request: the engine-computed exit code, pre-plan failure text, and
- * {@code jk update --git}'s refreshed count ({@code -1} for every other request) (see {@link EngineProtocol#LOCK_FINISH}).
+ * {@code jk update -g}'s refreshed count ({@code -1} for every other request) (see {@link EngineProtocol#LOCK_FINISH}).
  */
 public record LockFinishEvent(boolean success, int exitCode, List<String> errors, int refreshed) {
     public String encode() {

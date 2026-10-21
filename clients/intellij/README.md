@@ -12,9 +12,9 @@ model. Never loads the JumpKick engine jar into the IDE.
 | `jk.toml` or `jk-lock.toml` changes under the project (editor save or a terminal `jk add` / `jk remove`) | Re-resolves after a 2 s quiet window; libraries and roots update in place |
 | **Tools → JumpKick → Sync project** | Explicit re-resolve; progress and the CLI's output in the Build tool window's Sync tab |
 | Tools → JumpKick → Build / Test / Lock / Sync dependencies and sources / Install BSP connection | `jk build` / `test` / `lock` / `sync --sources` / `bsp install` |
-| Gutter **Run** / **Debug** on a test class or method, or on a `main` method | A **JumpKick** run configuration: `jk test -m <module> --class <fqcn>` for a class, `--class <fqcn>#<method>` for one method, or `jk run <module>` from the workspace root. Debug starts the same command with `--debug-jvm=localhost:<port>` and attaches the Java debugger to that address once the JVM listens — no hand-made Remote JVM Debug configuration |
+| Gutter **Run** / **Debug** on a test class or method, or on a `main` method | A **JumpKick** run configuration: `jk test -m <module> -S <fqcn>` for a class, `--class <fqcn>#<method>` for one method, or `jk run <module>` from the workspace root. Debug starts the same command with `--debug-jvm=localhost:<port>` and attaches the Java debugger to that address once the JVM listens — no hand-made Remote JVM Debug configuration |
 
-A resolve runs `jk ide --print-model` in the linked directory, decodes the engine's `ide-model`
+A resolve runs `jk ide -p` in the linked directory, decodes the engine's `ide-model`
 JSON with the plugin's own small reader, and hands IntelliJ:
 
 - one module per workspace module (plus a root module for the workspace directory), with the
@@ -23,7 +23,7 @@ JSON with the plugin's own small reader, and hands IntelliJ:
   suite and the guard suite are test roots — read the way `jk ide` reads them;
 - generated-source roots when a module has annotation processors;
 - project-level libraries by coordinate with their sources jars — every `-sources.jar` the store
-  or the Maven local repository holds; **Sync dependencies and sources** (`jk sync --sources`)
+  or the Maven local repository holds; **Sync dependencies and sources** (`jk sync -s`)
   fetches one for every library that publishes it — and per-module dependencies in IntelliJ's
   scope vocabulary (a tests-kind edge is one module dependency with *production on test*);
 - the per-module JDK under its stable `jk-<vendor>-<level>` name, registered in the IDE's JDK
@@ -35,7 +35,7 @@ Modules are stored externally, as for Gradle: a linked project gains no `*.iml` 
 `.idea/modules.xml`. A failing resolve surfaces in the Build tool window with the CLI's first
 error line; a missing `jk` binary names the `JK_BIN` / PATH fix.
 
-`jk ide --idea` remains the offline export for users without the plugin; the plugin never runs it.
+`jk ide -i` remains the offline export for users without the plugin; the plugin never runs it.
 
 ## Distribution
 
@@ -90,7 +90,7 @@ Three tiers:
   `jk` on PATH, a released client that fetches its engine from the release site in the sandbox
   home. `JkWorkspaceImportTest`'s import test imports a two-module workspace through the real
   external-system path — link, resolver running that `jk`, platform applying the result — and
-  asserts every module, roots, libraries (with sources jars, after a `jk sync --sources`), SDKs,
+  asserts every module, roots, libraries (with sources jars, after a `jk sync -s`), SDKs,
   `target/jdt` outputs and that no `.iml` lands in the workspace; `JkDebugBreakpointTest` is the
   gutter's Debug end to end: a project `jk new` scaffolds is imported, a line breakpoint is set in
   its test, the producer's JumpKick configuration runs under the Debug executor, and the session
@@ -100,7 +100,7 @@ Three tiers:
 ## Run and debug through jk
 
 `JkRunConfigurationProducer` turns the gutter's context into a `JkRunConfiguration`: a class under
-a test root of a JumpKick module is `jk test -m <module> --class <fqcn>`, an annotated method in
+a test root of a JumpKick module is `jk test -m <module> -S <fqcn>`, an annotated method in
 it is `--class <fqcn>#<method>`; a class with a `main` method under a source root is `jk run
 <module>`. Both run from the workspace root in the Run
 tool window's console. The producer is preferred over the bundled JUnit and Application ones on

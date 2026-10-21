@@ -37,7 +37,7 @@ import org.jspecify.annotations.Nullable;
  * real environment. A root override binds to the home it was set beside. A home named by the
  * overlay therefore takes its store, cache and state from the overlay alone: an environment
  * {@code JK_STORE_DIR} describes the shell's home, and letting it reach into an overlay home would
- * point a test's {@code jk self nuke --store} at the developer's store. A home named by the
+ * point a test's {@code jk self nuke -S} at the developer's store. A home named by the
  * environment keeps the environment's overrides, so {@code JK_HOME=/scratch JK_STORE_DIR=~/.jk/store}
  * still shares one store.
  *
@@ -46,7 +46,7 @@ import org.jspecify.annotations.Nullable;
  * user can drive the engine and nobody else can reach it. {@code store} and {@code cache} hold
  * nothing secret and are left to the umask.
  *
- * <p>The roots are also the <strong>deletion units</strong>. {@code jk self nuke --store} cannot
+ * <p>The roots are also the <strong>deletion units</strong>. {@code jk self nuke -S} cannot
  * remove a credential because {@code creds} is a sibling of {@code store} rather than a child, and
  * {@code jk clean} cannot remove build history because {@code builds} lives under {@code state}.
  * Where a directory sits is the guard; nothing has to remember to exclude it.

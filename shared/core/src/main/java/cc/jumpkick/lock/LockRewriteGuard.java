@@ -26,7 +26,7 @@ import org.tomlj.TomlTable;
  * A newer jk and the same build always may. A jk older than the writer may only when it restates
  * every key the lock carries: a key it does not know would be dropped, and the newer tree that
  * carries the lock could not boot from the result. A change in what a known key means is the
- * {@code jk-min} floor's to refuse, not this guard's. {@code jk lock --force} overrides the refusal.
+ * {@code jk-min} floor's to refuse, not this guard's. {@code jk lock -F} overrides the refusal.
  */
 public final class LockRewriteGuard {
 
@@ -162,7 +162,7 @@ public final class LockRewriteGuard {
                 + String.join(", ", dropped)
                 + " — a relock with it would drop them, and the tree that carries the lock may not build"
                 + " from the result. Install the jk that wrote it (`jk self update`, or"
-                + " `jk install --skip-tests` from its checkout) and run `jk engine stop`, or pass"
+                + " `jk install -S` from its checkout) and run `jk engine stop`, or pass"
                 + " `jk lock -F` to rewrite the lock with this engine anyway";
     }
 

@@ -79,7 +79,7 @@ final class EngineExplainDecoder {
         // The same session envelope every build line carries — variant, client env, worker-JVM
         // tuning, toolchain — so the engine decodes the explain and the build to one Session.
         var session = SessionContext.current();
-        String enveloped = ProtoSession.withToolchain(
+        String enveloped = ProtoSession.withSessionFields(
                 ProtoSession.withSession(
                         request,
                         session.variant(),

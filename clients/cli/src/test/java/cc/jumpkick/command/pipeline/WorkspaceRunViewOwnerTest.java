@@ -37,7 +37,7 @@ class WorkspaceRunViewOwnerTest {
      *   <li>{@code WorkspaceRunView} — the owner: one live listener, one headless listener. They are
      *       siblings on the mode axis (a painted region vs an append-only block under a print
      *       mutex), not a flag apart, so they are two objects on purpose.
-     *   <li>{@code NativeCommand}, once. Its single-project path is a cascade of one and attaches
+     *   <li>{@code NativeVerb}, once. Its single-project path is a cascade of one and attaches
      *       {@code BuildPlanConsole.chooseConsoleListener} to the only module there is; it renders
      *       no aggregate. Its workspace arms — live and headless — are {@link WorkspaceRunView}.
      *   <li>{@code VerifyBuildCommand} — collects diagnostic strings into a list and renders
@@ -49,7 +49,7 @@ class WorkspaceRunViewOwnerTest {
      * {@link WorkspaceRunView} answers.
      */
     private static final Map<String, Integer> ALLOWED =
-            Map.of("WorkspaceRunView.java", 2, "NativeCommand.java", 1, "VerifyBuildCommand.java", 1);
+            Map.of("WorkspaceRunView.java", 2, "NativeVerb.java", 1, "VerifyBuildCommand.java", 1);
 
     @Test
     void only_the_owner_and_the_two_stated_exceptions_build_a_workspace_listener() throws Exception {

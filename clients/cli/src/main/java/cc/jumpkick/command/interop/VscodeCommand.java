@@ -12,7 +12,7 @@ import java.util.List;
  * {@code jk vscode} — generate VS Code project files ({@code .vscode/} + Eclipse metadata for the
  * redhat.java language server).
  *
- * <p>An alias of {@code jk ide --vscode}. All generation logic lives in {@link IdeCommand} +
+ * <p>An alias of {@code jk ide -s}. All generation logic lives in {@link IdeCommand} +
  * {@link cc.jumpkick.ide.VscodeIdeGenerator}.
  */
 public final class VscodeCommand implements CliCommand {
@@ -26,7 +26,7 @@ public final class VscodeCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Generate VS Code project files + .bsp/ (jk ide --vscode)";
+        return "Generate VS Code project files + .bsp/ (jk ide -s)";
     }
 
     @Override

@@ -214,7 +214,7 @@ class GlobalCancelNonTtyTest {
     /**
      * Spawn a real {@code jk} on this suite's classpath, stdout+stderr redirected to a file.
      *
-     * <p>{@code jk lock --offline} because it is the shortest route to a live engine job: no
+     * <p>{@code jk lock -o} because it is the shortest route to a live engine job: no
      * project-info preflight, and {@code --offline} skips the catalog freshen, so the very first
      * line the stub sees on a job connection is the request itself.
      */

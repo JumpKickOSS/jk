@@ -92,7 +92,7 @@ public final class ExecPlans {
 
     /**
      * As above with the request's variant selection: the plan must describe the SELECTED product
-     * {@code jk run --release} on an Android app resolves the AAB packaging (and its deploy command),
+     * {@code jk run -R} on an Android app resolves the AAB packaging (and its deploy command),
      * not the debug APK's. A non-null {@code debug} makes a {@code run} plan's JVM listen for a
      * debugger; no other kind reads it.
      */
@@ -136,8 +136,7 @@ public final class ExecPlans {
         }
         Path classes = layout.classesDir();
         if (!Files.isDirectory(classes)) {
-            return ExecPlan.error(
-                    "jshell", "no classes at " + classes + " — run `jk build --skip-tests` or drop `--no-build`");
+            return ExecPlan.error("jshell", "no classes at " + classes + " — run `jk build -S` or drop `--no-build`");
         }
         Path lockFile = LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lockFile)) {
@@ -876,7 +875,7 @@ public final class ExecPlans {
                 Map.of());
     }
 
-    /** {@code jk build --aot-cache}: everything the client's layout/training step needs. */
+    /** {@code jk build -T}: everything the client's layout/training step needs. */
     private static ExecPlan aotCachePlan(Path dir, Path cache, JkBuild project, BuildLayout layout) throws IOException {
         Path mainJar = layout.mainJar();
         if (!Files.isRegularFile(mainJar)) {

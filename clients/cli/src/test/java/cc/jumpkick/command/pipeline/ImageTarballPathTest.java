@@ -15,13 +15,13 @@ class ImageTarballPathTest {
         Invocation in =
                 Invocation.builder().addValue("tarball", "target/ns.tar").build();
 
-        assertThat(ImageCommand.tarballPath(in))
+        assertThat(ImageVerb.tarballPath(in))
                 .isEqualTo(Path.of("")
                         .toAbsolutePath()
                         .resolve("target/ns.tar")
                         .normalize()
                         .toString());
-        assertThat(Path.of(ImageCommand.tarballPath(in))).isAbsolute();
-        assertThat(ImageCommand.tarballPath(Invocation.builder().build())).isNull();
+        assertThat(Path.of(ImageVerb.tarballPath(in))).isAbsolute();
+        assertThat(ImageVerb.tarballPath(Invocation.builder().build())).isNull();
     }
 }

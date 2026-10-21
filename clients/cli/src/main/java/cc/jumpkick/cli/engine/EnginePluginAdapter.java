@@ -92,7 +92,7 @@ final class EnginePluginAdapter {
             var session = SessionContext.current();
             send(
                     writer,
-                    ProtoSession.withToolchain(
+                    ProtoSession.withSessionFields(
                             ProtoSession.withSession(
                                     requestLine,
                                     session.variant(),
@@ -232,7 +232,7 @@ final class EnginePluginAdapter {
             var session = SessionContext.current();
             send(
                     writer,
-                    ProtoSession.withToolchain(
+                    ProtoSession.withSessionFields(
                             ProtoSession.withSession(
                                     requestLine,
                                     session.variant(),

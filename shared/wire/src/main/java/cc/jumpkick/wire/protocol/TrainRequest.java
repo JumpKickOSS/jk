@@ -10,7 +10,8 @@ public record TrainRequest(
         @Nullable String cache,
         @Nullable String jdksDir,
         @Nullable String graalHome,
-        @Nullable String profile,
+        /** {@code --train-profile}: the train profile to run; null runs every one. */
+        @Nullable String trainProfile,
         boolean force,
         boolean skipTests,
         boolean offline,
@@ -22,7 +23,7 @@ public record TrainRequest(
                 .string("cache", cache)
                 .string(ProtoJobs.JDKS_DIR, jdksDir)
                 .string("graalHome", graalHome)
-                .string("profile", profile)
+                .string("trainProfile", trainProfile)
                 .bool("force", force)
                 .bool("skipTests", skipTests)
                 .bool("offline", offline)
@@ -36,7 +37,7 @@ public record TrainRequest(
                 Jsonl.str(json, "cache"),
                 Jsonl.str(json, ProtoJobs.JDKS_DIR),
                 Jsonl.str(json, "graalHome"),
-                Jsonl.str(json, "profile"),
+                Jsonl.str(json, "trainProfile"),
                 Jsonl.bool(json, "force", false),
                 Jsonl.bool(json, "skipTests", false),
                 Jsonl.bool(json, "offline", false),

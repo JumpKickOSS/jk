@@ -5,7 +5,7 @@ in place (or checks that they are already formatted). Import hygiene is on by de
 
 ```bash
 jk format                 # rewrite dirty files
-jk format --check         # exit non-zero if anything would change (CI gate)
+jk format -c         # exit non-zero if anything would change (CI gate)
 ```
 
 This page is the full reference. High-level: [Skill](skill.md) · [Getting started](getting-started.md).
@@ -65,9 +65,9 @@ Cross-language preset `--style standard` (or `[format] style = "standard"`) is
 **palantir + kotlinlang** — both 4-space, 120-column, so mixed repos look consistent.
 
 ```bash
-jk format --java-style google
-jk format --kotlin-style meta
-jk format --style standard          # Java + Kotlin styles
+jk format -s google
+jk format -S meta
+jk format -t standard          # Java + Kotlin styles
 ```
 
 ```toml
@@ -94,9 +94,9 @@ Per language: **CLI `--java-style` / `--kotlin-style` → CLI `--style` alias �
 | **remove-unused-imports** | Spotless `removeUnusedImports` | on | Java |
 
 ```bash
-jk format --no-optimize-imports
-jk format --no-import-order
-jk format --no-remove-unused-imports
+jk format -N
+jk format -n
+jk format -R
 ```
 
 ```toml
@@ -133,13 +133,13 @@ are exclusive pairs.
 ## Check mode (CI)
 
 ```bash
-jk format --check
+jk format -c
 ```
 
 Exits non-zero if any file is unformatted. Does not write. Under `--check`, dirty files
 are reported as findings (not as successful formats).
 
-JumpKick formats **this** repository with `jk format`; `jk format --check` is the local
+JumpKick formats **this** repository with `jk format`; `jk format -c` is the local
 gate before a commit. There is no required CI format job unless you add one.
 
 ## Slow files and the per-file timeout

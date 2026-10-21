@@ -68,7 +68,7 @@ public final class TrainVerb implements HostedVerb {
                             jdksDir,
                             graalHome,
                             javaHome,
-                            body.profile(),
+                            body.trainProfile(),
                             body.force(),
                             body.skipTests(),
                             body.verbose());

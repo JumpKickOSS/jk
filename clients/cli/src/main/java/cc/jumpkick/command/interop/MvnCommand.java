@@ -61,9 +61,9 @@ public final class MvnCommand implements CliCommand {
     /** The options {@code jk mvn} and {@code jk gradle} share: how jk provisions the tool. */
     static List<Opt> ownOptions() {
         return List.of(
-                Opt.value("<dir>", "Override the tools install root.", "--tools-dir"),
+                Opt.value("<dir>", "Override the tools install root.", "-t", "--tools-dir"),
                 CommonOpts.jdksDir(),
-                Opt.flag("Skip tool discovery.", "--no-discover"),
+                Opt.flag("Skip tool discovery.", "-X", "--no-discover"),
                 CommonOpts.acceptUnverifiedTool());
     }
 

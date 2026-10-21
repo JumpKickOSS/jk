@@ -6,23 +6,23 @@ turn requires. Product bet: [Why JumpKick](why.md#test-rungs-the-execute-moat).
 
 ```bash
 jk test                              # unit rung — default suite only. Inner loop.
-jk test --guard                       # share-the-commit: unit + integration (if present) + guard scripts
-jk test --scripts-only               # guard scripts, no JUnit
-jk test --guard --no-scripts          # guard suites, skip extra scripts
+jk test -g                       # share-the-commit: unit + integration (if present) + guard scripts
+jk test -P               # guard scripts, no JUnit
+jk test -g -b          # guard suites, skip extra scripts
 jk test -s integration              # climb one named suite
 jk test -s e2e                      # UI / compose / contract; not a habit
-jk test --all                        # every suite; tag excludes cleared. Nightly / release.
-jk test --exclude-tags slow,bench
-jk test --include-tags smoke
-jk test --class OrdersTest           # one class (simple or qualified name, * wildcards; repeatable)
-jk test --class OrdersTest#refunds   # one method of it (* wildcards in the method too)
-jk test --debug-jvm                  # suspended test JVM listening on localhost:5005 — attach and go
-jk test --coverage                   # JaCoCo agent on every suite JVM; Coverage block in jk-results.md, HTML per module
-jk test --test-failures=report       # failing tests are reported, the run still exits 0
-jk test --affected                   # ranked classes for the working tree (does not run them)
-jk test --affected-since=HEAD~2      # ranked classes since that ref (does not run them)
-jk build --guard                      # package with the guards green (same flag on assemble, image, native, install)
-jk build --all                       # package with the full suite green
+jk test -A                        # every suite; tag excludes cleared. Nightly / release.
+jk test -E slow,bench
+jk test -I smoke
+jk test -S OrdersTest           # one class (simple or qualified name, * wildcards; repeatable)
+jk test -S OrdersTest#refunds   # one method of it (* wildcards in the method too)
+jk test -U                  # suspended test JVM listening on localhost:5005 — attach and go
+jk test -T                   # JaCoCo agent on every suite JVM; Coverage block in jk-results.md, HTML per module
+jk test -t report       # failing tests are reported, the run still exits 0
+jk test -f                   # ranked classes for the working tree (does not run them)
+jk test -e HEAD~2      # ranked classes since that ref (does not run them)
+jk build -g                      # package with the guards green (same flag on assemble, image, native, install)
+jk build -A                       # package with the full suite green
 ```
 
 `--affected` and `--affected-since=<ref>` rank at most 20 test **classes**, print them as a
@@ -162,7 +162,7 @@ judged together: a pattern that only matches serial-tagged classes is a match.
 `-m` narrows the run to the selected modules **and their prerequisites**, and a prerequisite
 runs its own suite too (a green suite replays from its stamp; a dirty one runs). `-m` is the
 same cone for `jk build` and `jk test`. To reach one module's class from the workspace root,
-name the class: `jk test -m clients/cli --class SelfNukeCommandTest` runs it in `clients/cli`
+name the class: `jk test -m clients/cli -S SelfNukeCommandTest` runs it in `clients/cli`
 and skips the prerequisites, whose suites match nothing. A prerequisite compiles its tests and
 is judged from their class files, so it skips without a test JVM, warm engine or cold.
 
@@ -233,18 +233,18 @@ still names every class that completed ([Machine output](machine-output.md#event
 read one benchmark's table:
 
 ```bash
-jk test -p bench --class com.example.FormatBenchTest
+jk test -p bench -S com.example.FormatBenchTest
 cat target/surefire-reports/TEST-com.example.FormatBenchTest.xml
 ```
 
 ## Debug a test JVM
 
 ```bash
-jk test --debug-jvm                     # localhost:5005, suspend=y — IDEA's default remote port
-jk test --debug-jvm=0                   # a free port jk picks; the address is printed
-jk test --debug-jvm=6006,suspend=n      # listen, but do not wait for the attach
-jk test --debug-jvm='*:5005'            # every interface (remote attach)
-jk test --class OrdersTest --debug-jvm  # the usual selection applies unchanged
+jk test -U                     # localhost:5005, suspend=y — IDEA's default remote port
+jk test -U 0                   # a free port jk picks; the address is printed
+jk test -U 6006,suspend=n      # listen, but do not wait for the attach
+jk test -U '*:5005'            # every interface (remote attach)
+jk test -S OrdersTest -U  # the usual selection applies unchanged
 jk test --debug                         # the same flag by its unique prefix
 ```
 
@@ -273,8 +273,8 @@ bind error; run again.
 ## Affected tests (WIP)
 
 ```bash
-jk test --affected              # rank ≤20 classes for the working tree; print a table; do not run
-jk test --affected-since=HEAD~2 # same table for ref...HEAD (does not run)
+jk test -f              # rank ≤20 classes for the working tree; print a table; do not run
+jk test -e HEAD~2 # same table for ref...HEAD (does not run)
 ```
 
 `--affected` is the working-tree cone (unstaged + untracked; last commit if the tree is clean).
@@ -284,7 +284,7 @@ It is **not** `--affected-since=HEAD` (that range is empty). The two flags canno
 Both flags print the ranking as a table (Score · Class · Reason) and write
 `target/jk-tests-affected.md`. They do **not** run tests and do not replace
 `target/jk-results.md`. `-m` intersects the ranked list exactly as it intersects the
-build cone (`jk test --affected -m api`). Ranking refuse exits **2**. When the guess
+build cone (`jk test -f -m api`). Ranking refuse exits **2**. When the guess
 would be dishonest (`jk.toml` change, stale class files, too many types or modules, a
 dirty test outside the current suite), jk prints `cannot rank affected tests` and tells
 you to run `jk test`.
@@ -298,7 +298,7 @@ exclude-tags = ["slow", "network", "bench"]
 
 [profiles.ci]
 # Auto-selected when CI is set. Keep the inner/guard excludes — do not clear them
-# just because it is CI. Nightly is `jk test --all` (or a dedicated nightly profile),
+# just because it is CI. Nightly is `jk test -A` (or a dedicated nightly profile),
 # not the PR job.
 exclude-tags = ["slow", "network", "bench"]
 ```
@@ -422,7 +422,7 @@ jk test -w4          # cap class-shard pool
 By default **module suites overlap**. Opt out:
 
 ```bash
-jk test --serial-tests
+jk test -L
 # alias: --no-parallel-tests
 ```
 
@@ -598,7 +598,7 @@ module's setting for one run (flag, then environment, then `jk.toml`).
 
 ## Coverage (`--coverage`, `[test] coverage`)
 
-`jk test --coverage` starts every test JVM under the JaCoCo agent (fetched from the project's
+`jk test -T` starts every test JVM under the JaCoCo agent (fetched from the project's
 repositories at its newest release; not a lock entry) and, per module, writes
 the execution data to `target/jacoco.exec` and the report to `target/site/jacoco/` (`jacoco.xml` and
 the HTML's `index.html`), where Maven's JaCoCo plugin puts them. The
@@ -766,7 +766,7 @@ multi-worker `-w` **or** Jupiter parallel with **`-w1`**. When both are active, 
 ```bash
 jk test                         # default: parallel modules, auto -w
 jk test -w1                     # one JVM per module
-jk test --serial-tests          # one module at a time
+jk test -L          # one module at a time
 jk test -j0 -w0
 ```
 

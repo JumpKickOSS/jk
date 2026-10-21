@@ -15,7 +15,7 @@ import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk update --major} for a manifest's own {@code node = <major>}: the major moves to the
+ * {@code jk update -m} for a manifest's own {@code node = <major>}: the major moves to the
  * newest one with an LTS release. A point release, an {@code =} pin and a keyword keep their text;
  * within a major, the relock that follows moves the lock.
  */

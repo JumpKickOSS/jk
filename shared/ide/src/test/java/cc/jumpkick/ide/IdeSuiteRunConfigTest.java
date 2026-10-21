@@ -15,9 +15,9 @@ class IdeSuiteRunConfigTest {
 
     @Test
     void shell_run_config_embeds_command_and_cwd(@TempDir Path tmp) {
-        String xml = IntellijIdeGenerator.shellRunConfigXml("jk test", "jk test --all", tmp);
+        String xml = IntellijIdeGenerator.shellRunConfigXml("jk test", "jk test -A", tmp);
         assertThat(xml).contains("ShConfigurationType");
-        assertThat(xml).contains("jk test --all");
+        assertThat(xml).contains("jk test -A");
         assertThat(xml).contains(tmp.toAbsolutePath().normalize().toString().replace('\\', '/'));
     }
 
@@ -88,7 +88,7 @@ class IdeSuiteRunConfigTest {
                 null);
         String tasks = VscodeIdeGenerator.tasksJson(model);
         assertThat(tasks).contains("jk: test");
-        assertThat(tasks).contains("jk test --all");
+        assertThat(tasks).contains("jk test -A");
         assertThat(tasks).contains("jk test -s integration");
     }
 }

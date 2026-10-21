@@ -81,9 +81,9 @@ public record Session(
         // Variant selection + client-resolved env (env: indirection for signing secrets).
         String variant,
         @Nullable Map<String, String> clientEnv,
-        /** CLI packaging override: empty, {@code fat}, or {@code minified} ({@code jk assemble --minified}). */
+        /** CLI packaging override: empty, {@code fat}, or {@code minified} ({@code jk assemble -W}). */
         @With String assemblyOverride,
-        /** Test suite / tag selection ({@code jk test --suite}/tags); default = unit suite only. */
+        /** Test suite / tag selection ({@code jk test -s}/tags); default = unit suite only. */
         @With TestSelection testSelection,
         /**
          * {@code --debug-jvm}: start the one JVM under test with a JDWP listener at this address;
@@ -99,6 +99,10 @@ public record Session(
         @With @Nullable TestFailureMode testFailures,
         /** {@code --skip-node} / {@code JK_SKIP_NODE}: no module's node steps run, as if each said {@code [node] skip}. */
         @With boolean skipNode,
+        /** {@code -p}: the build profile the run selected; null for auto. */
+        @With @Nullable String profile,
+        /** {@code --continue}: finish the graph and report every failure, not just the first. */
+        @With boolean keepGoing,
         /** {@code run kind=test affected=true}: rank and run WIP test classes. */
         @With boolean affected,
         /** Cross-module changed-type carrier for {@code --affected}; shared by every copy. */
@@ -143,6 +147,8 @@ public record Session(
                 coverage,
                 testFailures,
                 skipNode,
+                profile,
+                keepGoing,
                 affected,
                 affectedChanged,
                 io);
@@ -258,6 +264,8 @@ public record Session(
                 false,
                 null,
                 false,
+                null,
+                false,
                 false,
                 new AffectedChanged(),
                 IoLedger.currentOrNew());
@@ -286,6 +294,8 @@ public record Session(
                 coverage,
                 testFailures,
                 skipNode,
+                profile,
+                keepGoing,
                 affected,
                 affectedChanged,
                 io);
@@ -314,6 +324,8 @@ public record Session(
                 coverage,
                 testFailures,
                 skipNode,
+                profile,
+                keepGoing,
                 affected,
                 affectedChanged,
                 io);
@@ -347,6 +359,8 @@ public record Session(
                 coverage,
                 testFailures,
                 skipNode,
+                profile,
+                keepGoing,
                 affected,
                 affectedChanged,
                 io);

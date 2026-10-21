@@ -18,7 +18,7 @@ import java.util.zip.GZIPInputStream;
 
 /**
  * An image read back for assertions: its config JSON, and each layer's id and file names, from a
- * {@code jk image --tarball} archive or from what a {@link RegistryStub} was pushed.
+ * {@code jk image -Z} archive or from what a {@link RegistryStub} was pushed.
  */
 public final class OciImages {
 

@@ -35,7 +35,7 @@ import org.jspecify.annotations.Nullable;
  * class patterns of jk's {@code integration} suite, {@code [test.suites.integration] classes}, so
  * plain {@code jk test} leaves those classes out as {@code mvn test} does, and its {@code
  * <excludes>} are that suite's {@code exclude-classes}; its JVM settings land in the same keys when
- * Surefire set none. JaCoCo is {@code jk test --coverage}, a run flag.
+ * Surefire set none. JaCoCo is {@code jk test -T}, a run flag.
  */
 final class TestPlugins {
 
@@ -74,7 +74,7 @@ final class TestPlugins {
                 .orElseGet(() -> unboundIntegration(model, report));
         if (PluginFacts.plugin(model, "jacoco-maven-plugin").isPresent()) {
             report.warning("`jacoco-maven-plugin` — coverage is a run flag in jk, not a build setting:"
-                    + " `jk test --coverage` runs every suite JVM under the JaCoCo agent and writes"
+                    + " `jk test -T` runs every suite JVM under the JaCoCo agent and writes"
                     + " `reports/jacoco.xml` per module.");
         }
         return new TestSettings(
@@ -162,7 +162,7 @@ final class TestPlugins {
         if (patterns.isEmpty()) return;
         report.warning("`" + SUREFIRE + "` `<includes>` " + String.join(", ", patterns)
                 + " — jk runs every test class in the suite directory; select classes at run time with"
-                + " `jk test --class '<pattern>'`, or tag them and filter with `[test] include-tags` /"
+                + " `jk test -S '<pattern>'`, or tag them and filter with `[test] include-tags` /"
                 + " `exclude-tags`.");
     }
 
@@ -261,7 +261,7 @@ final class TestPlugins {
 
         /**
          * {@code <argLine>} tokens minus {@code ${argLine}} / {@code @{argLine}} and the JaCoCo
-         * agent (coverage is {@code jk test --coverage}); the {@code argLine} property counts when
+         * agent (coverage is {@code jk test -T}); the {@code argLine} property counts when
          * the plugin declares none. Failsafe's values behind Surefire's are a row.
          */
         void take(Plugin plugin, String label, Model model, ImportReport.Builder report) {
@@ -363,7 +363,7 @@ final class TestPlugins {
         skip |= isTrue(props.getProperty("skipTests")) || isTrue(props.getProperty("maven.test.skip"));
         if (skip) {
             report.warning("`maven-surefire-plugin` is configured to skip tests; jk has no manifest key for that —"
-                    + " `jk build --skip-tests` skips them for one build.");
+                    + " `jk build -S` skips them for one build.");
         }
     }
 
@@ -389,7 +389,7 @@ final class TestPlugins {
                 if (value != null) {
                     report.warning("`maven-failsafe-plugin` `<" + element + ">" + value + "</" + element
                             + ">` — jk's tag filters apply to every suite, not to `integration` alone; tag the"
-                            + " integration classes and select with `jk test -s integration --include-tags`.");
+                            + " integration classes and select with `jk test -s integration -I`.");
                 }
             }
         }

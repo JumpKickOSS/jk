@@ -13,12 +13,12 @@ Run, read the verdict, edit, run again. The verdict is the whole answer; do not 
 
 | | Shell | MCP |
 |---|---|---|
-| test | `jk --agent test` | `run()` |
-| build | `jk --agent build` | `run(kind=build)` |
+| test | `jk -a test` | `run()` |
+| build | `jk -a build` | `run(kind=build)` |
 | add / remove a dep | `jk add g:a`, `jk remove g:a` | `deps(action=add, coords=["g:a"])` |
 | why this version | `jk why g:a` | `why(coord=g:a)` |
 | find code | `jk graph query "…"` | `skill(topic=graph)` |
-| every problem with its line | `jk results --all` | `diagnostics()` (`file=` for one) |
+| every problem with its line | `jk results -A` | `diagnostics()` (`file=` for one) |
 | one skill topic | `jk skill <topic>` | `skill(topic=…)` |
 
 A dependency edit relocks in the same call. Register MCP as `jk mcp` in the project and the tools take no `dir`; over HTTP, pass `dir` (the project root) on the first call.
@@ -32,7 +32,7 @@ E src/main/java/app/Web.java:3:8 package org.springframework.web.bind.annotation
 FIX deps(add, org.springframework.boot:spring-boot-starter-web)
 ```
 
-One line per problem: `E path:line:col message` (paths relative to the project), `T Class#method` for a failed test with its expectation and `at path:line`; under either, `N|`, a tab, then the source line verbatim (an Edit's `old_string`); `FIX` when jk knows the edit (`deps(add, g:a)` is `jk add g:a` in a shell), and `+K more: jk results --all | diagnostics(file=…)` past the cap (the shell command, then the MCP call). An OK run is one line: `OK test app · 2 tests · 0.5s`.
+One line per problem: `E path:line:col message` (paths relative to the project), `T Class#method` for a failed test with its expectation and `at path:line`; under either, `N|`, a tab, then the source line verbatim (an Edit's `old_string`); `FIX` when jk knows the edit (`deps(add, g:a)` is `jk add g:a` in a shell), and `+K more: jk results -A | diagnostics(file=…)` past the cap (the shell command, then the MCP call). An OK run is one line: `OK test app · 2 tests · 0.5s`.
 
 ## Topics
 

@@ -19,7 +19,7 @@ import org.jspecify.annotations.Nullable;
  * {@code FreezingArchRule}'s store backed by {@code jk-guards-baseline.toml}: the entries frozen
  * under the running {@code @Guard}'s id are the known violations, so a frozen rule reports only
  * what is new. Read-only — {@link #save} records nothing, because a run never writes the baseline;
- * {@code jk guard freeze <id> --reason} does, tighten-only, through the engine. Configure with
+ * {@code jk guard freeze <id> -W} does, tighten-only, through the engine. Configure with
  * {@code freeze.store=cc.jumpkick.guard.api.archunit.JkViolationStore} and
  * {@code freeze.lineMatcher=cc.jumpkick.guard.api.archunit.JkLineMatcher} in {@code archunit.properties},
  * or call {@link JkArchUnit#configureFreezing()}.

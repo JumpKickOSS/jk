@@ -30,7 +30,7 @@ public final class NodeRunCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.value("<spec>", "Run under this Node.js instead of the project's", "--node"));
+        return List.of(Opt.value("<spec>", "Run under this Node.js instead of the project's", "-n", "--node"));
     }
 
     @Override

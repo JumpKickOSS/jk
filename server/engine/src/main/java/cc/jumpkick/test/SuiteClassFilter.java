@@ -177,7 +177,7 @@ public final class SuiteClassFilter {
                 parts.add(String.join(", ", classes.stream().limit(3).toList())
                         + (classes.size() > 3 ? " and " + (classes.size() - 3) + " more" : "")
                         + (classes.size() == 1 ? " is" : " are") + " in the " + suite + " suite (jk test -s " + suite
-                        + " --class " + String.join(" --class ", classPatterns) + ")"));
+                        + " -S " + String.join(" -S ", classPatterns) + ")"));
         return String.join("; ", parts);
     }
 

@@ -194,7 +194,7 @@ jk lock          # resolve → write jk-lock.toml (commit this)
 jk build         # uses the lock; does not re-resolve
 jk outdated      # read-only: which deps can move; writes target/jk-outdated-dependencies.md
 jk update        # bump declared pins to the newest stable on the same major, relock
-jk sync --offline-prepare   # download everything for offline/CI
+jk sync -p   # download everything for offline/CI
 ```
 
 ### PubGrub: resolution you can understand
@@ -242,7 +242,7 @@ jk engine stop
 jk new payments-api && cd payments-api
 
 jk add org.springframework.boot:spring-boot-starter-web:4.1.0
-jk add --test org.springframework.boot:spring-boot-starter-test:4.1.0
+jk add -t org.springframework.boot:spring-boot-starter-test:4.1.0
 
 jk build
 jk test
@@ -294,7 +294,7 @@ jk build          # one lock at the root; whole workspace
 ```bash
 jk test
 jk results                    # same markdown as target/jk-results.md
-jk results --details          # details.jsonl when you need the raw event stream
+jk results -d          # details.jsonl when you need the raw event stream
 # or: MCP bind → diagnostics → run wait=true
 ```
 
@@ -313,7 +313,7 @@ jkx com.diffplug.spotless:spotless-cli:2.45.0 -- check
 jk jdk install temurin-25 && jk jdk pin temurin-25
 eval "$("$HOME/.jk/bin/jk" activate bash)"
 
-jk publish --sign --sigstore --slsa --sbom
+jk publish -I -g -L -S
 jk audit
 jk verify
 ```
@@ -332,7 +332,7 @@ jk --help
 Or from this repo, with that release building it:
 
 ```bash
-jk build --skip-tests && jk install --skip-tests
+jk build -S && jk install -S
 ```
 
 Developer setup: [CONTRIBUTING.md](CONTRIBUTING.md).

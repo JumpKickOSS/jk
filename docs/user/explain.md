@@ -23,10 +23,10 @@ The ETA seed matches bare `jk build` bit-for-bit (same `-w` auto, `-j`, flags).
 ## Module graph (no engine)
 
 ```bash
-jk explain --graph dot > modules.dot
+jk explain -U dot > modules.dot
 dot -Tsvg modules.dot -o modules.svg
-jk explain --graph mermaid > build.mmd
-jk explain --graph mermaid -m 'libs/*' --graph-out filtered.mmd
+jk explain -U mermaid > build.mmd
+jk explain -U mermaid -m 'libs/*' --graph-out filtered.mmd
 ```
 
 Interactive DAG: engine dashboard → Project → Dependencies ([Web](web.md)).

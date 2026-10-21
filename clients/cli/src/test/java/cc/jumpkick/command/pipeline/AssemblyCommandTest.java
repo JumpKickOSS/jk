@@ -44,9 +44,9 @@ class AssemblyCommandTest {
         String msg = err.toString(StandardCharsets.UTF_8);
         assertThat(msg).contains("jk assemble");
         assertThat(msg).contains("assembly = true");
-        assertThat(msg).contains("--fat");
-        assertThat(msg).contains("--minified");
-        assertThat(msg).contains("--write-config");
+        assertThat(msg).contains("jk assemble -U");
+        assertThat(msg).contains("jk assemble -W");
+        assertThat(msg).contains("jk assemble -U -X");
     }
 
     @Test

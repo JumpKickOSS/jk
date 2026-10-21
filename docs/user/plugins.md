@@ -45,8 +45,8 @@ register. **Since** is the first jk release that shipped the battery.
 | javafx | `[javafx]`: the project's OpenJFX modules on the module path of the test JVM and `jk run`, with `--add-modules` | **contrib** | 0.15.3 | desktop; OpenJFX moves with the JDK cadence |
 | Scala 3 | mixed Java/Scala modules through Zinc | **contrib** | 0.13.0 | compiles; no cross-building, Scala.js/Native or sbt parity |
 
-Coverage (`jk test --coverage` / the Coverage block), sources and javadoc jars, Central Portal
-publishing (`jk publish --central`), and lint as a cached step are core batteries today — see the
+Coverage (`jk test -T` / the Coverage block), sources and javadoc jars, Central Portal
+publishing (`jk publish -c`), and lint as a cached step are core batteries today — see the
 register above and [the 1.0 plan](../contributors/plan-1.0.md).
 
 Which batteries matter is measured, not guessed: the [plugin census](../contributors/plugin-census.md)

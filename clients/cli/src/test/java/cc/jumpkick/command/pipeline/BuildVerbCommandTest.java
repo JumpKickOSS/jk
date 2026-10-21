@@ -17,8 +17,13 @@ import org.junit.jupiter.api.Test;
 /** Every build command takes the shared options from one place, once, by how far its goal runs. */
 class BuildVerbCommandTest {
 
-    private static final List<BuildVerbCommand> VERBS =
-            List.of(BuildVerbCommand.compile(), BuildVerbCommand.test(), BuildVerbCommand.build());
+    private static final List<BuildVerbCommand> VERBS = List.of(
+            BuildVerbCommand.compile(),
+            BuildVerbCommand.test(),
+            BuildVerbCommand.build(),
+            BuildVerbCommand.nativeImage(),
+            BuildVerbCommand.image(),
+            BuildVerbCommand.train());
 
     @Test
     void every_build_command_declares_each_option_name_once() {
@@ -58,15 +63,26 @@ class BuildVerbCommandTest {
     }
 
     @Test
+    void train_names_its_own_profile_apart_from_the_build_profile() throws Exception {
+        var in = ArgParser.parse(BuildVerbCommand.train(), List.of("-p", "ci", "-T", "startup"));
+        assertThat(in.value("profile")).contains("ci");
+        assertThat(in.value("train-profile")).contains("startup");
+    }
+
+    @Test
     void a_verb_that_redeclares_a_shared_option_is_refused() {
         assertThatThrownBy(() -> BuildVerbCommand.requireNoSharedOptions(
                         "demo",
+                        BuildFlags.Reach.DELIVER,
                         BuildFlags.Affected.MODULES,
                         List.of(Opt.value("<name>", "Another profile", "-p", "--profile"))))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("jk demo declares the shared build option -p itself");
         assertThatCode(() -> BuildVerbCommand.requireNoSharedOptions(
-                        "demo", BuildFlags.Affected.MODULES, List.of(Opt.flag("Own", "--own"))))
+                        "demo",
+                        BuildFlags.Reach.DELIVER,
+                        BuildFlags.Affected.MODULES,
+                        List.of(Opt.flag("Own", "--own"))))
                 .doesNotThrowAnyException();
     }
 

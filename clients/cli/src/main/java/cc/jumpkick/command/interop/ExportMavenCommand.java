@@ -33,7 +33,7 @@ public final class ExportMavenCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.flag("Overwrite existing pom.xml files.", "--overwrite"));
+        return List.of(Opt.flag("Overwrite existing pom.xml files.", "-e", "--overwrite"));
     }
 
     @Override

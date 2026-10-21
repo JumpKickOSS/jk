@@ -34,7 +34,7 @@ public final class AuthStatusCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<HOST>", "Forge host (required for Gitea/Forgejo)", "--host"),
+                Opt.value("<HOST>", "Forge host (required for Gitea/Forgejo)", "-s", "--host"),
                 Opt.value(
                                 "<dir>",
                                 "Override the credentials directory. Default: <home>/creds/forge.",

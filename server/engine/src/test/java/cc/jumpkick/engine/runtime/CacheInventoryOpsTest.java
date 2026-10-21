@@ -76,7 +76,7 @@ class CacheInventoryOpsTest {
     }
 
     /**
-     * {@code jk storage clean --workers}: every installed version of every worker goes, from
+     * {@code jk storage clean -w}: every installed version of every worker goes, from
      * every store repo, and nothing that is not a worker. The dry run counts the same files it
      * would delete and deletes none.
      */
@@ -137,7 +137,7 @@ class CacheInventoryOpsTest {
             assertThat(f[8])
                     .contains("describes plugin `spring-boot`")
                     .contains("worker jk-spring-boot")
-                    .contains("jk storage clean --workers");
+                    .contains("jk storage clean -w");
         } finally {
             if (saved != null) System.setProperty(PluginJar.IMAGE_BUILDER.jarProperty(), saved);
         }

@@ -5,6 +5,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.terminal.Style;
 import java.io.PrintStream;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -153,15 +154,57 @@ public final class HelpRenderer {
 
         StringBuilder sb = new StringBuilder();
         String nl = System.lineSeparator();
+        int descCol = 2 + width;
+        // A description that would cross the help budget wraps under its own column; one so narrow
+        // that wrapping would leave a ragged sliver starts on the next line instead.
+        boolean below = HELP_COLUMNS - descCol < MIN_DESCRIPTION;
+        int avail = below ? HELP_COLUMNS - BELOW_INDENT : HELP_COLUMNS - descCol;
+        String continuation = " ".repeat(below ? BELOW_INDENT : descCol);
         for (OptionModel opt : options) {
             String desc = opt.description().length > 0 ? opt.description()[0] : "";
             sb.append("  ").append(commandName(opt.namePart(), ansi));
             if (!opt.labelPart().isEmpty()) {
                 sb.append(" ").append(paramLabel(opt.labelPart(), ansi));
             }
-            sb.append(" ".repeat(width - rowWidth(opt))).append(desc).append(nl);
+            boolean fits = descCol + desc.length() <= HELP_COLUMNS;
+            List<String> lines = fits ? List.of(desc) : wrap(desc, avail);
+            if (!fits && below) {
+                sb.append(nl);
+                for (String line : lines) sb.append(continuation).append(line).append(nl);
+                continue;
+            }
+            sb.append(" ".repeat(width - rowWidth(opt)))
+                    .append(lines.getFirst())
+                    .append(nl);
+            for (String line : lines.subList(1, lines.size()))
+                sb.append(continuation).append(line).append(nl);
         }
         return sb.toString();
+    }
+
+    /** The help screen's width budget, in columns. */
+    static final int HELP_COLUMNS = 78;
+
+    /** Below this many columns a description goes under its option rather than beside it. */
+    private static final int MIN_DESCRIPTION = 24;
+
+    /** Indent of a description placed under its option. */
+    private static final int BELOW_INDENT = 8;
+
+    /** {@code text} broken at spaces into lines of at most {@code columns}; a longer word stands alone. */
+    static List<String> wrap(String text, int columns) {
+        List<String> lines = new ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        for (String word : text.split(" ")) {
+            if (!line.isEmpty() && line.length() + 1 + word.length() > columns) {
+                lines.add(line.toString());
+                line.setLength(0);
+            }
+            if (!line.isEmpty()) line.append(' ');
+            line.append(word);
+        }
+        lines.add(line.toString());
+        return lines;
     }
 
     private static int rowWidth(OptionModel opt) {

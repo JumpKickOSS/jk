@@ -3,6 +3,7 @@ package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.model.command.Param;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.IOException;
@@ -18,7 +19,7 @@ import java.util.List;
  * module selection, the JDK preflight, the workspace run and its settle, the exit code. A verb
  * supplies only what differs.
  */
-sealed interface BuildVerb permits CompileVerb, TestVerb, PackageVerb {
+sealed interface BuildVerb permits CompileVerb, TestVerb, PackageVerb, NativeVerb, ImageVerb, TrainVerb, RunVerb {
 
     /** The words a run is told in: {@code Build}, {@code building}, {@code build}, {@code Building}. */
     record Words(String name, String gerund, String infinitive, String title) {}
@@ -27,9 +28,26 @@ sealed interface BuildVerb permits CompileVerb, TestVerb, PackageVerb {
 
     String description();
 
+    default List<String> aliases() {
+        return List.of();
+    }
+
+    /** Positional parameters, after the options. */
+    default List<Param> parameters() {
+        return List.of();
+    }
+
     Words words();
 
     BuildFlags.Reach reach();
+
+    /**
+     * False for a verb that runs one module and has no workspace run: a member directory or a
+     * one-module selection runs that module standalone, and a workspace root asks for {@code -m}.
+     */
+    default boolean workspaceShaped() {
+        return true;
+    }
 
     default BuildFlags.Affected affected() {
         return BuildFlags.Affected.MODULES;
@@ -56,8 +74,10 @@ sealed interface BuildVerb permits CompileVerb, TestVerb, PackageVerb {
         return -1;
     }
 
-    /** The modules a selection resolved to, before a workspace run starts. */
-    default void selected(BuildRun run, List<String> moduleDirs) {}
+    /** The modules a selection resolved to, before a workspace run starts: an exit code, or {@code -1} to go on. */
+    default int selected(BuildRun run, List<String> moduleDirs) {
+        return -1;
+    }
 
     /** Client-side preparation of a workspace run (prompts, installs): an exit code, or {@code -1} to go on. */
     default int prepareWorkspace(BuildRun run, Path entryDir, BuildRun.Selection selection) {
@@ -76,6 +96,11 @@ sealed interface BuildVerb permits CompileVerb, TestVerb, PackageVerb {
 
     /** Work after a standalone build ({@code --aot-cache}): the exit code to report. */
     default int afterSingle(BuildRun run, Path dir, int code) {
+        return code;
+    }
+
+    /** Runs once the run is over, however it ended: the exit code to report. */
+    default int after(BuildRun run, int code) {
         return code;
     }
 }

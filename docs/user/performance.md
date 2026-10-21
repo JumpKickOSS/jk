@@ -37,9 +37,9 @@ the daemon and its workers; for Maven the launcher JVM and its forks.
 
 | Row | jk | Gradle | Maven |
 |---|---|---|---|
-| Clean build | `jk clean`, then `jk build -r --skip-tests`: outputs gone, action cache bypassed | `build/`, configuration cache and build cache removed, then `classes jar` | `target/` removed, then `package` |
-| Warm rebuild | `jk clean`, then `jk build --skip-tests`: the action cache restores | `build/` removed, then `classes jar`: the build cache restores | `target/` removed, then `package`: Maven has no cache and recompiles |
-| No-op | `jk build --skip-tests` | `classes jar` | `package` |
+| Clean build | `jk clean`, then `jk build -r -S`: outputs gone, action cache bypassed | `build/`, configuration cache and build cache removed, then `classes jar` | `target/` removed, then `package` |
+| Warm rebuild | `jk clean`, then `jk build -S`: the action cache restores | `build/` removed, then `classes jar`: the build cache restores | `target/` removed, then `package`: Maven has no cache and recompiles |
+| No-op | `jk build -S` | `classes jar` | `package` |
 | One-file edit | one line appended to a leaf controller | the same edit | the same edit |
 | Test run | `jk test -r` | `test --rerun` | `test` |
 

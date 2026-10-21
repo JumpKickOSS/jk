@@ -129,7 +129,7 @@ public final class PlannerSetup {
                     ctx.label("parse jk.toml");
                     JkBuild project;
                     try {
-                        // Same override the plan was built from (jk assemble --fat/--minified).
+                        // Same override the plan was built from (jk assemble -U/-W).
                         // Plan construction and step bodies must read one effective config, or a
                         // task gets scheduled against a config its body cannot.
                         project = VariantApply.apply(

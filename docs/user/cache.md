@@ -36,7 +36,7 @@ lists which roots a runner may therefore share.
 
 Everything under a cache root — including its `sha256/` blob pool — is cache tier:
 cleaned with `jk cache clean` and wiped by `jk cache nuke`. A nuke removes the root
-directory too: `jk cache nuke` and `jk self nuke --cache` are `rm -rf $JK_CACHE_DIR`,
+directory too: `jk cache nuke` and `jk self nuke -c` are `rm -rf $JK_CACHE_DIR`,
 not an emptied skeleton. The next build recreates what it needs.
 
 ## Hygiene
@@ -44,11 +44,11 @@ not an emptied skeleton. The next build recreates what it needs.
 ```bash
 jk cache clean                    # first knob for safe space reclaim
 jk storage clean                  # leaked download temps
-jk storage clean --workers        # also drop installed plugin workers (see below)
+jk storage clean -w        # also drop installed plugin workers (see below)
 jk cache nuke -y                  # wipe rebuildable action cache
 jk storage nuke                   # wipe downloaded artifacts (confirms)
 jk self nuke                      # all targets (default); confirms first
-jk self nuke --cache --state -y
+jk self nuke -c -s -y
 ```
 
 One target per root, no aliases:
@@ -82,7 +82,7 @@ another origin's bytes is one line apart from the symptom.
 `jk doctor` prints one `worker:` line per installed worker — where its jar came from, how many
 dependencies its POM declares, how many entries the rebuilt classpath has — and `jk doctor -v`
 lists those entries. When a worker runs on the wrong jar (a Guava flavour, a stale POM from an
-older checkout shadowing the published one), `jk storage clean --workers` drops every installed
+older checkout shadowing the published one), `jk storage clean -w` drops every installed
 worker — jar, POM and memo, all versions, from every store repo — and forgets the memoised
 classpaths; the next build fetches the published plugin again and rebuilds from its POM. The
 closure jars stay: they are shared with project resolution and are re-walked, not re-downloaded.

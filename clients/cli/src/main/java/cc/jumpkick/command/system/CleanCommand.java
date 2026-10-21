@@ -40,7 +40,7 @@ import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk clean}: remove per-module {@code target/} ({@code --keep-artifacts} keeps final jars).
+ * {@code jk clean}: remove per-module {@code target/} ({@code -A} keeps final jars).
  * With global {@code --force}, also invalidates this project's action-cache entries so the next
  * build starts from scratch. Shared-cache hygiene is {@code jk cache clean} / {@code jk storage
  * clean}.
@@ -60,7 +60,7 @@ public final class CleanCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Delete only target/ intermediates; keep artifacts.", "--keep-artifacts"),
+                Opt.flag("Delete only target/ intermediates; keep artifacts.", "-A", "--keep-artifacts"),
                 CommonOpts.cacheDir());
     }
 
@@ -324,7 +324,7 @@ public final class CleanCommand implements CliCommand {
         }
         // Match the build verbs: action-cache tags/INPUT paths are keyed on the realpath of the
         // module root. Without this, macOS /var → /private/var (and other symlink roots) make
-        // `jk clean --force` miss every entry the build just wrote.
+        // `jk clean -F` miss every entry the build just wrote.
         try {
             projectDir = projectDir.toRealPath();
         } catch (IOException ignored) {

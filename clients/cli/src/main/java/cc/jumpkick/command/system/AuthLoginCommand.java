@@ -26,7 +26,7 @@ import java.util.Optional;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
-/** {@code jk auth login <provider> [--host H]} — obtain and store a token for a forge. */
+/** {@code jk auth login <provider> [-s H]} — obtain and store a token for a forge. */
 public final class AuthLoginCommand implements CliCommand {
 
     @Override
@@ -42,9 +42,9 @@ public final class AuthLoginCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<HOST>", "Forge host (required for Gitea/Forgejo)", "--host"),
-                Opt.flag("Read a PAT/app password from stdin (no device flow)", "--with-token"),
-                Opt.value("<SCOPE>", "OAuth scope; device flow only (per-provider default)", "--scope"),
+                Opt.value("<HOST>", "Forge host (required for Gitea/Forgejo)", "-s", "--host"),
+                Opt.flag("Read a PAT/app password from stdin (no device flow)", "-w", "--with-token"),
+                Opt.value("<SCOPE>", "OAuth scope; device flow only (per-provider default)", "-S", "--scope"),
                 Opt.value(
                                 "<dir>",
                                 "Override the credentials directory. Default: <home>/creds/forge.",

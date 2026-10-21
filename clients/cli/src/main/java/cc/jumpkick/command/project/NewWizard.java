@@ -73,7 +73,7 @@ public final class NewWizard {
             case "scala" -> NewInputs.Language.SCALA;
             default ->
                 throw new IllegalArgumentException(
-                        "jk new: --lang must be 'java', 'kotlin', 'groovy', or 'scala', got: " + value);
+                        "jk new: -l must be 'java', 'kotlin', 'groovy', or 'scala', got: " + value);
         };
     }
 

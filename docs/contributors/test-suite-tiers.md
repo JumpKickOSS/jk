@@ -58,7 +58,7 @@ spawn, worker, workspace, install or lock regression could merge with a determin
 test — sitting in the nightly profile — that would have caught it.
 
 `scripts/curated-integration.sh` closes that gap. It reads `curated-integration.txt` at the
-checkout root and runs one `jk test -p integration -m <module> --class …` per module the
+checkout root and runs one `jk test -p integration -m <module> -S …` per module the
 registry names, as the last step of the self-host job on every pull request. jk fails a run in
 which no class matched, so a renamed or deleted entry fails the lane instead of shrinking it.
 
@@ -135,7 +135,7 @@ generator moves on.
 floor over `coverage.line` baselined per module in `jk-guards-baseline.toml` with a half-point band:
 
 - more than 0.5 points **below** the entry: red, naming the module, the measured and the recorded
-  value — cover the change, or `jk guard freeze coverage-band --reason "…"` and say why;
+  value — cover the change, or `jk guard freeze coverage-band -W "…"` and say why;
 - more than 0.5 points **above** the entry: the entry is tightened in the same run. Locally that is
   a modified baseline to commit; in the nightly job it is reported as a would-tighten, for a
   contributor to bank;
@@ -166,7 +166,7 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 
 - **PR / push (`ci.yml`):** the self-host job (`jk build`, `jk install`, `jk guard`, `jk test`: the
   fast tier and every house-rule lane, run by the checkout's own jk; then the curated integration
-  lane and `jk audit --severity HIGH` over the lock), the shell fixtures, the workflow lint and the
+  lane and `jk audit -s HIGH` over the lock), the shell fixtures, the workflow lint and the
   commit-authorship scan. No coverage, no benches.
 - **Nightly (`ci-nightly.yml`):** `jk test -p integration`, `-p slow`,
   `-p network`, `-p bench`, the coverage ratchet (`jk test --coverage`, `jk guard`),
@@ -278,9 +278,9 @@ CLI tier leaves no slot per fixture behind. A slot a live launch holds is never 
 |--------|---------|
 | Fast / default | `jk test` (suite `test` only; `[test] exclude-tags`) |
 | Extra suite | `jk test -s integration` or put e2e under `integration/` |
-| Everything | `jk test --all` / `jk build --all` (all suites, config tag excludes cleared) |
-| Tag filter | `jk test --exclude-tags slow` / `--include-tags smoke` |
-| One class | `jk test -m <module> --class <fqcn>` (`-p integration` for a tagged one) |
+| Everything | `jk test -A` / `jk build -A` (all suites, config tag excludes cleared) |
+| Tag filter | `jk test -E slow` / `--include-tags smoke` |
+| One class | `jk test -m <module> -S <fqcn>` (`-p integration` for a tagged one) |
 | CI profile | `[profiles.ci] exclude-tags = […]` (overrides `[test]`) + `-p ci` (auto on CI) |
 
 Prefer **directory suites** for structural separation (Mill-shaped); use **JUnit tags** for

@@ -832,7 +832,7 @@ public final class PlannerPlugin {
     /**
      * The application SBOM entry + manifest headers shared by every packager: the lockfile's
      * production RUNTIME components as CycloneDX (see {@link CycloneDxSbom}), the same document
-     * {@code jk publish --sbom} writes beside the module.
+     * {@code jk publish -S} writes beside the module.
      */
     static byte[] applicationSbom(JkBuild project, Lockfile lock) {
         return CycloneDxSbom.write(

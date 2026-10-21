@@ -70,7 +70,7 @@ final class PackageVerb implements BuildVerb {
 
     @Override
     public List<Opt> ownOptions() {
-        return List.of(Opt.flag("Package with JVM startup AOT cache", "--" + AOT_CACHE));
+        return List.of(Opt.flag("Package with JVM startup AOT cache", "-T", "--" + AOT_CACHE));
     }
 
     @Override

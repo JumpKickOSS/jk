@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Coverage is a battery: {@code jk test --coverage} over a two-module workspace leaves a {@code ##
+ * Coverage is a battery: {@code jk test -T} over a two-module workspace leaves a {@code ##
  * Coverage} block in {@code jk-results.md} with each module's line and branch percentages, a JaCoCo
  * HTML page per module and a workspace roll-up, and the next coverage run shows the change against
  * this one. {@code [test] coverage = true} turns the same machinery on without the flag.

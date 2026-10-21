@@ -75,7 +75,7 @@ public final class SelfCommand extends GroupCommand {
     }
 
     /**
-     * {@code jk self write-launcher [--jar <path>]} — hidden install-time seam for the JVM client:
+     * {@code jk self write-launcher [-A <path>]} — hidden install-time seam for the JVM client:
      * write {@code bin/jk} ({@code bin/jk.bat}) starting this JVM on the fat jar, and point
      * {@code jkx} at it. The installers run it as {@code java -jar <jar> self write-launcher} right
      * after placing the jar, so the JVM that ran the installer's version check is the one the
@@ -101,7 +101,7 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public List<Opt> options() {
-            return List.of(Opt.value("<JAR>", "The client jar the launcher runs (default: this one).", "--jar"));
+            return List.of(Opt.value("<JAR>", "The client jar the launcher runs (default: this one).", "-A", "--jar"));
         }
 
         @Override
@@ -187,8 +187,8 @@ public final class SelfCommand extends GroupCommand {
         @Override
         public List<Opt> options() {
             return List.of(
-                    Opt.value("<MODE>", "auto (default), on, off, wedge, or pill", "--mode"),
-                    Opt.flag("Report what detection concludes; write nothing.", "--explain"));
+                    Opt.value("<MODE>", "auto (default), on, off, wedge, or pill", "-m", "--mode"),
+                    Opt.flag("Report what detection concludes; write nothing.", "-e", "--explain"));
         }
 
         @Override
@@ -334,7 +334,7 @@ public final class SelfCommand extends GroupCommand {
         public List<Opt> options() {
             // No --version option: the global -V/--version flag owns that name (the dispatcher
             // rejects duplicates), so the target rides as a positional.
-            return List.of(Opt.flag("Stop the engine immediately (no drain)", "--now"));
+            return List.of(Opt.flag("Stop the engine immediately (no drain)", "-n", "--now"));
         }
 
         @Override

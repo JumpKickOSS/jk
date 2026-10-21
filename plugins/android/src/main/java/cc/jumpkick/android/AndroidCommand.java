@@ -34,7 +34,7 @@ final class AndroidCommand {
             case "licenses" -> licenses(exec, exec.args().contains("--yes"));
             case "sdk" -> sdkStatus(exec);
             default -> {
-                exec.out("usage: jk android <licenses [--yes] | sdk>");
+                exec.out("usage: jk android <licenses [-y] | sdk>");
                 yield sub.isEmpty() ? 0 : 64;
             }
         };
@@ -62,7 +62,7 @@ final class AndroidCommand {
             }
             exec.out("");
             exec.out("Review them at https://developer.android.com/studio/terms — then run");
-            exec.out("`jk android licenses --yes` to accept (recorded in " + dir + ",");
+            exec.out("`jk android licenses -y` to accept (recorded in " + dir + ",");
             exec.out("the same format sdkmanager and Android Studio use).");
             return 0;
         }

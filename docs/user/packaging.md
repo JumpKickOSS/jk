@@ -204,10 +204,10 @@ including one in a profile the host JDK activates. Surefire's `<additionalClassp
 ## One-off CLI override
 
 ```bash
-jk assemble --fat
-jk assemble --minified
-jk assemble --minified --write-config    # also set minified = true in jk.toml
-jk assemble --fat --write-config
+jk assemble -U
+jk assemble -W
+jk assemble -W -X    # also set minified = true in jk.toml
+jk assemble -U -X
 ```
 
 `--write-config` surgically edits `[application].assembly` / `.minified` (requires an

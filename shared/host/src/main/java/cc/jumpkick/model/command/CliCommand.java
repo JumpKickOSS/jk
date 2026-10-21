@@ -61,7 +61,7 @@ public interface CliCommand extends Command {
      *
      * <p>Must be a pure read of {@code in}: no filesystem, no engine, no config resolution. It runs
      * before the command does. When a verb or flag decides the mode ({@code jk activate
-     * &lt;shell&gt;} versus the bare installer, {@code jk ide --print-model}), share one resolver
+     * &lt;shell&gt;} versus the bare installer, {@code jk ide -p}), share one resolver
      * with {@link #run} so the two cannot disagree about which path is taken.
      *
      * <p>Every override that can return true is a row in the script-mode allowlist in

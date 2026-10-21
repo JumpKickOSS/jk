@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
-/** Short-flag parity for {@code jk test}: {@code -s}/{@code --suite}, {@code -p}/{@code --profile}. */
+/** Short-flag parity for {@code jk test}: {@code -s}/{@code -s}, {@code -p}/{@code -p}. */
 class TestCommandOptionsTest {
 
     private static Invocation parse(String... args) throws Exception {
@@ -70,8 +70,8 @@ class TestCommandOptionsTest {
         for (var verb : List.<Supplier<List<Opt>>>of(
                 () -> BuildVerbCommand.build().options(),
                 () -> BuildVerbCommand.test().options(),
-                () -> new ImageCommand().options(),
-                () -> new NativeCommand().options(),
+                () -> BuildVerbCommand.image().options(),
+                () -> BuildVerbCommand.nativeImage().options(),
                 () -> new ToolInstallCommand().options(),
                 () -> new ExplainCommand().options())) {
             assertThat(verb.get().stream()
@@ -94,8 +94,8 @@ class TestCommandOptionsTest {
                 () -> BuildVerbCommand.build().options(),
                 () -> BuildVerbCommand.test().options(),
                 () -> new AssemblyCommand().options(),
-                () -> new ImageCommand().options(),
-                () -> new NativeCommand().options(),
+                () -> BuildVerbCommand.image().options(),
+                () -> BuildVerbCommand.nativeImage().options(),
                 () -> new ToolInstallCommand().options(),
                 () -> new ExplainCommand().options())) {
             assertThat(verb.get().stream()
@@ -112,7 +112,7 @@ class TestCommandOptionsTest {
                 .filter(o -> o.names().contains("--guard"))
                 .findFirst()
                 .orElseThrow();
-        assertThat(guard.names()).containsExactly("--guard");
+        assertThat(guard.names()).containsExactly("-g", "--guard");
         assertThat(BuildFlags.guardRequested(parse("--guard"))).isTrue();
         String help = HelpRenderer.renderHelp(CommandModels.from(BuildVerbCommand.test(), "jk test", List.of()), false);
         assertThat(help).contains("--guard");
@@ -121,7 +121,7 @@ class TestCommandOptionsTest {
                 .filter(o -> o.names().contains("--guard"))
                 .findFirst()
                 .orElseThrow();
-        assertThat(buildGuard.names()).containsExactly("--guard");
+        assertThat(buildGuard.names()).containsExactly("-g", "--guard");
     }
 
     @Test

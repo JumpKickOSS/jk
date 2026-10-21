@@ -162,7 +162,7 @@ public final class InstallCommand {
      * from {@code META-INF/maven/.../pom.properties} for {@code .jar} files; {@code --group}, {@code
      * --name}, and {@code --ver} override or supply missing fields.
      */
-    /** Package-private: `jk tool install <file> --group/--name/--ver` delegates here. */
+    /** Package-private: `jk tool install <file> -U/-W/--ver` delegates here. */
     public int installFromFile(Path filePath) throws IOException {
         if (!Files.exists(filePath)) {
             CommandWedge.printFail("Install", PathDisplay.styled(filePath) + ": no such file");
@@ -502,8 +502,8 @@ public final class InstallCommand {
                         wsRoot,
                         cacheDir,
                         jdksDir,
-                        0,
-                        null,
+                        session.requestedTestWorkers(),
+                        session.profile(),
                         reshelving || buildOpts.skipTests,
                         global.verbose,
                         0,
@@ -511,6 +511,7 @@ public final class InstallCommand {
                         true,
                         !reshelving)
                 .withVariant(session.variant(), session.clientEnv())
+                .withKeepGoing(session.keepGoing())
                 .withModules(tokens)
                 .withSpec(
                         reshelving

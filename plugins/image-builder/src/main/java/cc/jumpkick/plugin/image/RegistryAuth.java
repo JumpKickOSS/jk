@@ -108,7 +108,7 @@ public final class RegistryAuth {
      * registry that issues opaque tokens ignores is spelled {@code jk} rather than Jib's
      * {@link Credential#OAUTH2_TOKEN_USER_NAME}, which would send jk down Google's refresh-token
      * grant instead. A registry that does read the user name (Docker Hub, a Harbor robot account)
-     * needs {@code jk repo login <registry> --username <user>}, which resolves to Basic.
+     * needs {@code jk repo login <registry> -s <user>}, which resolves to Basic.
      */
     private static @Nullable Credential jibCredential(RepoCredential credential) {
         return switch (credential) {

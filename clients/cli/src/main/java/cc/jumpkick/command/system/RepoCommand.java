@@ -133,7 +133,8 @@ public final class RepoCommand extends GroupCommand {
         @Override
         public List<Opt> options() {
             return List.of(
-                    Opt.value("<N>", "Cap coordinates shown (default: no cap)", "--limit"), CommonOpts.cacheDir());
+                    Opt.value("<N>", "Cap coordinates shown (default: no cap)", "-n", "--limit"),
+                    CommonOpts.cacheDir());
         }
 
         @Override

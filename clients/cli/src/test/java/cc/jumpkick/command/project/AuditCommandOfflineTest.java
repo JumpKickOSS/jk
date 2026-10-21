@@ -8,7 +8,7 @@ import java.net.URI;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code jk audit --offline} refuses in the CLI (saving an engine round trip) and in the auditor
+ * {@code jk audit -o} refuses in the CLI (saving an engine round trip) and in the auditor
  * worker (web/MCP triggers). One decision, one wording owner — {@code Errors.offlineRefusal} —
  * whichever side produced it. The worker half is pinned by {@code AuditorOfflineTest}; this pins
  * the CLI half to the same owner.

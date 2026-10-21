@@ -427,7 +427,7 @@ public final class PreflightMemo {
 
     /**
      * In-tree copy, written only while {@code target/} is alive. Memo stores run after the
-     * plan's terminal event reaches the client, so a fast follow-up {@code jk clean [--force]}
+     * plan's terminal event reaches the client, so a fast follow-up {@code jk clean [-F]}
      * can wipe target in the gap — recreating {@code target/.jk} here resurrected the dir the
      * clean just removed AND left a memo claiming outputs that no longer exist. The
      * durable copy is authoritative; the in-tree copy is inspection-only.

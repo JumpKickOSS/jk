@@ -55,12 +55,12 @@ public final class ImportCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<file>", "Path to write jk.toml.", "--out"),
-                Opt.value("<file>", "Path to write the import report.", "--report"),
+                Opt.value("<file>", "Path to write jk.toml.", "-t", "--out"),
+                Opt.value("<file>", "Path to write the import report.", "-R", "--report"),
                 Opt.value("<id>", "Activate Maven profiles by id (mvn -P).", "-P", "--activate-profiles")
                         .repeat(),
-                Opt.flag("Overwrite existing jk.toml.", "--overwrite"),
-                Opt.flag("Print the plan; write and move nothing.", "--dry-run"));
+                Opt.flag("Overwrite existing jk.toml.", "-e", "--overwrite"),
+                Opt.flag("Print the plan; write and move nothing.", "-U", "--dry-run"));
     }
 
     @Override

@@ -55,7 +55,7 @@ class JdkFingerprintTest {
 
     /**
      * A symlinked tool home fingerprints the tree it points at — what
-     * {@code jk doctor --verify-linked} needs when jk discovers a host install. The digest equals
+     * {@code jk doctor -l} needs when jk discovers a host install. The digest equals
      * the target's and moves when the target does.
      */
     @Test

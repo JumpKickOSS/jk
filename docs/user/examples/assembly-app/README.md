@@ -51,16 +51,16 @@ Artifacts are **additive** — the thin jar is always written too:
 Output below is real, captured with `--no-ansi` so it pastes cleanly.
 
 ```console
-$ jk build --no-ansi
+$ jk build -u
 jk: + Build > Build successful. Built target/assembly-app-0.0.1-all.jar - took 143ms
 
-$ jk test --no-ansi
+$ jk test -u
 + Test Successful: Passed 2 tests - took 47ms
 
-$ jk assemble --no-ansi          # same work, named for the packaging step
+$ jk assemble -u          # same work, named for the packaging step
 jk: + Build > Build successful. Built target/assembly-app-0.0.1-all.jar - took 64ms
 
-$ jk run --no-ansi
+$ jk run -u
 jk: > Run > Executing `java -jar target/assembly-app-0.0.1-all.jar`
 
 sha256(assembly-app) = 7b3f920f1dd85d7741b976d4c7e8a075fc6447c3fee820cec387b93ea7499e03
@@ -149,7 +149,7 @@ Archive:  target/assembly-app-0.0.1.jar
 `jk-lock.toml` is committed and `jk build` never re-resolves. After editing a version:
 
 ```console
-$ jk lock --no-ansi
+$ jk lock -u
 jk: + Lock > Lock successful. Resolved 11 dependencies - took 127ms
 ```
 

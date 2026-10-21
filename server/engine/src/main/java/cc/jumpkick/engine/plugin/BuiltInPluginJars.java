@@ -111,7 +111,7 @@ public final class BuiltInPluginJars {
                     + descriptor.table() + "], worker " + owner
                     + ") — a vendored sibling's descriptor took the jar root; the jar is not registered."
                     + " Reinstall it so its own descriptor sits at the root: `jk install` from the jk checkout,"
-                    + " or `jk storage clean --workers` and let the next build fetch the published jar.");
+                    + " or `jk storage clean -w` and let the next build fetch the published jar.");
         }
         return descriptor;
     }

@@ -131,7 +131,7 @@ public final class NativeVerb implements HostedVerb {
     }
 
     /**
-     * Selection ∩ native eligibility, mirroring {@code NativeCommand.graalHomesForModules}:
+     * Selection ∩ native eligibility, mirroring the client's {@code NativeVerb.graalHomesForModules}:
      * modules with a {@code [native]} table are preferred; when NO module declares one, modules
      * with a unique main are eligible. Never falls back to "every module" — an empty result is
      * the caller's cue to refuse the job.
@@ -203,8 +203,19 @@ public final class NativeVerb implements HostedVerb {
 
             Session session = ProtoSession.sessionOf(requestLine, cancelToken);
             WorkspaceRequest req = new WorkspaceRequest(
-                            entryDir, cache, jdksDir, 0, null, body.skipTests(), body.verbose(), 0, null, true, true)
+                            entryDir,
+                            cache,
+                            jdksDir,
+                            session.requestedTestWorkers(),
+                            session.profile(),
+                            body.skipTests(),
+                            body.verbose(),
+                            0,
+                            null,
+                            true,
+                            true)
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                    .withKeepGoing(session.keepGoing())
                     .withSpec(WorkspaceSpec.nativeImage(selected, graalByDir, body.mainClass(), body.extraArgs()));
 
             long rid = host.eventRequestId();

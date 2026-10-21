@@ -158,10 +158,10 @@ These commands intentionally emit only machine-consumable stdout. Every row but 
 | `jk tool dir` / `jk cache dir` / `jk storage dir` | Path | scripts / installers |
 | `jk skill` | Playbook markdown | agents / MCP |
 | `jk --version` / `-V` | `jk <version>` | CI |
-| `jk explain --graph dot\|mermaid` | Graph source | `dot` / editors |
+| `jk explain -U dot\|mermaid` | Graph source | `dot` / editors |
 | `jk selective resolve` (+ `--json`) | Paths or JSON | CI selective plans |
 | `jk bsp serve` (bare `jk bsp` is `serve`; `run` is an alias) | JSON-RPC on stdio | IDE BSP client |
-| `jk ide --print-model` (and its `jk vscode` alias) | Wire JSON | IDE plugins |
+| `jk ide -p` (and its `jk vscode` alias) | Wire JSON | IDE plugins |
 
 Adding a new exception requires updating this table and the override that backs it.
 

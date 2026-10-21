@@ -53,7 +53,7 @@ public final class AuditCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<level>", "Severity: CRITICAL|HIGH|MEDIUM|LOW. Default: LOW.", "--severity"),
+                Opt.value("<level>", "Severity: CRITICAL|HIGH|MEDIUM|LOW. Default: LOW.", "-s", "--severity"),
                 Opt.value("<url>", "Override the OSV batch query URL (for tests).", "--osv-batch-url")
                         .hide(),
                 Opt.value("<url>", "Override the OSV vulnerability lookup URL (for tests).", "--osv-vulns-url")
@@ -176,7 +176,7 @@ public final class AuditCommand implements CliCommand {
     }
 
     /**
-     * The refusal {@code jk audit --offline} prints before the engine round trip — the same
+     * The refusal {@code jk audit -o} prints before the engine round trip — the same
      * decision the auditor worker makes for web/MCP triggers, worded by the same owner
      * ({@link Errors#offlineRefusal}). The explicit {@code --osv-batch-url} is named when given;
      * the default endpoint's owner is the auditor worker, off this classpath, so the fallback is

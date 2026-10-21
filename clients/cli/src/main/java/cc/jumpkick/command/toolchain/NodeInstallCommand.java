@@ -38,7 +38,7 @@ public final class NodeInstallCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.flag("Download even when another manager already has it", "--no-discover"));
+        return List.of(Opt.flag("Download even when another manager already has it", "-X", "--no-discover"));
     }
 
     @Override

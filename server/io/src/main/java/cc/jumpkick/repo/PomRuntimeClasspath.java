@@ -74,7 +74,7 @@ public final class PomRuntimeClasspath {
 
     /**
      * Forget every memoised launch classpath and repo group, so the next fork re-reads the
-     * worker POMs and the store from disk. {@code jk storage clean --workers} calls this after
+     * worker POMs and the store from disk. {@code jk storage clean -w} calls this after
      * deleting the installed workers: a memo keyed on files that no longer exist would fall back
      * to a real resolve on its own, but one keyed on a POM that was replaced by a same-sized write
      * in the same millisecond would not.
@@ -222,7 +222,7 @@ public final class PomRuntimeClasspath {
     /** What to do when a launch finds the store short of a POM the install should have staged. */
     static final String STAGING_REMEDY = "`jk install` stages a worker's whole POM graph into the store;"
             + " run it again with the network reachable (from the jk checkout for a jk-local worker), or"
-            + " `jk storage clean --workers` so the next build fetches the published worker afresh";
+            + " `jk storage clean -w` so the next build fetches the published worker afresh";
 
     /**
      * Fetch the runtime closure of {@code root} (jar + POM per compile/runtime dependency, parents

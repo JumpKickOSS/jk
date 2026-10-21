@@ -14,7 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * The two things {@code jk new --template} decides before it ever reaches the engine. Everything
+ * The two things {@code jk new -t} decides before it ever reaches the engine. Everything
  * past these arms needs a running engine and lives in {@code NewCommandTest}.
  */
 class NewTemplateTest {

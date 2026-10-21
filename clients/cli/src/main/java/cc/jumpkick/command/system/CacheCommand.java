@@ -490,7 +490,7 @@ public final class CacheCommand extends GroupCommand {
         }
     }
 
-    /** Project-scoped clear UI for {@code jk clean --force}. */
+    /** Project-scoped clear UI for {@code jk clean -F}. */
     static ConsoleSpec clearSpec(boolean dryRun, LongSupplier files, LongSupplier bytes) {
         return new ConsoleSpec(
                 "Cache",
@@ -530,7 +530,8 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public List<Opt> options() {
-            return List.of(CommonOpts.cacheDir(), Opt.flag("Print what would be removed; touch nothing.", "--dry-run"));
+            return List.of(
+                    CommonOpts.cacheDir(), Opt.flag("Print what would be removed; touch nothing.", "-U", "--dry-run"));
         }
 
         @Override
@@ -613,7 +614,8 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public List<Opt> options() {
-            return List.of(CommonOpts.cacheDir(), Opt.flag("Print what would be removed; touch nothing.", "--dry-run"));
+            return List.of(
+                    CommonOpts.cacheDir(), Opt.flag("Print what would be removed; touch nothing.", "-U", "--dry-run"));
         }
 
         @Override

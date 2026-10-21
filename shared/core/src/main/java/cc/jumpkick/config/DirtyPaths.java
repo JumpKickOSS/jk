@@ -18,7 +18,7 @@ import org.jspecify.annotations.Nullable;
  * {@link AffectedSelection#gitDiffNameOnly}, not JGit.
  *
  * <p>Primary: unstaged + staged vs {@code HEAD}, plus untracked. When that set is empty (clean
- * tree after commit), union {@code HEAD~1...HEAD} so “edit, commit, jk test --affected” still
+ * tree after commit), union {@code HEAD~1...HEAD} so “edit, commit, jk test -f” still
  * sees the last commit.
  */
 public final class DirtyPaths {

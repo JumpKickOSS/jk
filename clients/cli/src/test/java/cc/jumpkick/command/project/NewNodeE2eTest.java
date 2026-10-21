@@ -26,7 +26,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk new --lang node}, {@code --frontend} and {@code jk init} against a stub Node.js
+ * {@code jk new -l node}, {@code -f} and {@code jk init} against a stub Node.js
  * distribution whose {@code npx} stands in for every generator: it records its argv and writes the
  * {@code package.json} and lockfile a real one would. Its major is one no host has installed, so
  * discovery never picks a real {@code npx}.

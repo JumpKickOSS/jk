@@ -14,7 +14,7 @@ Run in this order, in your checkout, with the installed jk; all four must be gre
 is done:
 
 ```bash
-jk format                        # formats; `jk format --check` is the same verdict without writing
+jk format                        # formats; `jk format -c` is the same verdict without writing
 jk guard                         # every house-rule lane, the tree lane and the fixture proofs included
 jk build                         # every module compiled, packaged and its fast test tier run
 jk test -p integration           # the pre-merge bar: engine, e2e and worker suites
@@ -45,7 +45,7 @@ eight minutes). A guard failure is annotated with the rule that owns it.
 | What produces the `jk` under test | the hosted release the pin names bootstraps; `jk install` then swaps in the checkout's own client, engine and workers |
 | Where CI installs it | `$GITHUB_WORKSPACE/../jk-home`, beside the checkout so no guard lane walks the store — never the runner's `~/.jk` |
 | What proves the graph is honest | `jk build` must not rewrite the committed `jk-lock.toml`; `cmp` of `target/dist/jk` against `$JK_HOME/bin/jk` and the engine sha against `jk-engine.toml` prove the takeover |
-| What audits the graph | `jk audit --severity HIGH -O jsonl` over the committed lock, after the drift check, by the checkout's own jk: HIGH, CRITICAL and unlabelled advisories fail the job, `scripts/ci-audit-annotate.sh` names each one, the JSON is the `jk-audit` artifact; a pin bump or an `[audit] ignore` with a reason is the fix, never a skipped step |
+| What audits the graph | `jk audit -s HIGH -O jsonl` over the committed lock, after the drift check, by the checkout's own jk: HIGH, CRITICAL and unlabelled advisories fail the job, `scripts/ci-audit-annotate.sh` names each one, the JSON is the `jk-audit` artifact; a pin bump or an `[audit] ignore` with a reason is the fix, never a skipped step |
 | What runs nightly | `jk test -p integration`, `-p slow`, `-p network`, `-p bench`, the coverage ratchet (`jk test --coverage`, `jk guard`), the heap guard, the doc examples, the audit at `LOW` (informational), the macOS product smoke and the JVM client smoke on a runner with a plain JDK and no GraalVM (`ci-nightly.yml`) |
 | Wall-clock series | `bench/scoreboard --tier night` on the reference host, banked in `scoreboard.toml` ([perf](../perf/README.md)) |
 
@@ -123,12 +123,12 @@ git worktree add ../jk-reader <last commit the pinned release reads>
    && "$JK_HOME/bin/jk" lock --force && "$JK_HOME/bin/jk" build --skip-tests \
    && { "$JK_HOME/bin/jk" install --skip-tests || true; } && "$JK_HOME/bin/jk" install --skip-tests)   # a jk that reads the branch
 "$JK_HOME/bin/jk" build --skip-tests && "$JK_HOME/bin/jk" install --skip-tests            # the branch, built by it
-JK_HOME="$JK_HOME" jk engine stop --now
+JK_HOME="$JK_HOME" jk engine stop -n
 ```
 
 Your own `~/.jk` falls behind the same way: an install older than a commit that adds a plugin
 and uses it in the same tree cannot build that tree. `scripts/reinstall-chain.sh` reinstalls from
-the checkout anyway. It tries the plain `jk build --skip-tests && jk install --skip-tests` first.
+the checkout anyway. It tries the plain `jk build -S && jk install -S` first.
 When the failure is a table no installed plugin owns, it installs HEAD from a scratch worktree
 without the members that open that table, so the tree's own plugin for it is installed. Any other
 failure bisects the first-parent history after the installed jk's source (its engine jar's
@@ -157,7 +157,7 @@ The CI lane sets `JK_HOME` to a directory inside the workspace, so the store, th
 the engine jar all come from that run. Nothing it reads survives from another job, and nothing it
 writes leaks into one. Locally the same isolation is a `JK_HOME=/some/scratch/dir` prefix; do not
 point a scratch run at your real `~/.jk`, and stop the scratch engine when you are done
-(`JK_HOME=… jk engine stop --now`).
+(`JK_HOME=… jk engine stop -n`).
 
 ## Bootstrap
 
@@ -167,9 +167,9 @@ Install the released jk and let it build the tree; the tree's own jk then takes 
 curl -fsSL https://jumpkick.build/install.sh | bash   # or JK_VERSION="$(cat .jk/ci-bootstrap-version)" bash
 export PATH="$HOME/.jk/bin:$PATH"
 jk engine status
-jk build --skip-tests
-jk install --skip-tests   # this checkout's client, engine and workers replace the release's
-jk install --skip-tests   # once more: the release's client stops after the pass its engine ran
+jk build -S
+jk install -S   # this checkout's client, engine and workers replace the release's
+jk install -S   # once more: the release's client stops after the pass its engine ran
 ```
 
 `jk install` is what makes the checkout self-hosting rather than merely built: from then on the
@@ -198,7 +198,7 @@ The client module is a plain JVM program, and two things run it without a native
   installer found — see [releases](releases.md#platforms-without-a-hosted-client) and the [user
   install page](../user/install.md#the-jvm-client).
 - **The published closure**, `cc.jumpkick:jk-cli:<version>` on `jumpkick.build/repo/`, runs from
-  any project that names the repository and depends on it: `jk run . -- --version` executes
+  any project that names the repository and depends on it: `jk run . -- -V` executes
   `cc.jumpkick.cli.Jk` from the resolved jars, and `jk install` of that project writes a launcher
   of the project's name that does the same. Both were exercised against the hosted 0.13.2 closure
   and print `jk 0.13.2`.
@@ -211,7 +211,7 @@ the gap by publishing the 0.13.3 closure the way [releases](releases.md#platform
 describes (`jk install`, then `scripts/publish-maven-repo.sh`), after which a JVM client from the
 closure materializes the hosted engine with `jk self materialize <client> <engine-jar>`. Until
 then the JVM client is produced by the tree's own build, and `ci-nightly.yml`'s `jvm-client` job
-runs it nightly on a runner that brings a plain JDK and no GraalVM: `jk install --skip-tests`
+runs it nightly on a runner that brings a plain JDK and no GraalVM: `jk install -S`
 writes the launcher, then `jk-jvm --version` and `scripts/ci-product-smoke.sh` with
 `JK_BIN=jk-jvm` build a fresh sample through the installed engine under the same `JK_HOME`.
 G57 holds the job, its lack of `setup-graalvm` and both commands in place.
@@ -222,7 +222,7 @@ After `jk` is on `PATH`, stay in this checkout:
 
 ```bash
 jk lock
-jk build --skip-tests
+jk build -S
 jk install
 jk test                          # the fast tier, every module
 jk test -p integration           # the pre-merge bar
@@ -279,7 +279,7 @@ jk test -p integration           # the pre-merge bar
 jk test -p slow                  # framework / language e2e (nightly)
 jk test -p network               # talks to a real remote (nightly)
 jk test -p bench                 # microbenchmarks (nightly)
-jk test --all                    # everything, no tag filter
+jk test -A                    # everything, no tag filter
 ```
 
 That table is the only copy: the engine's `tiers` validation (G23) re-derives the partition from it
@@ -292,7 +292,7 @@ the fast tier and included by no profile fails the build rather than silently ne
 One command installs everything the tree builds:
 
 ```bash
-jk install            # or --skip-tests; install runs the suite like `jk build`
+jk install            # or -S; install runs the suite like `jk build`
 ```
 
 | Module kind | What `jk install` does with it |
@@ -368,7 +368,7 @@ memos — it does not re-compile, re-test, or re-package. One command leaves the
 the tree's own engine. An engine serves only clients of its own version, so a client of another
 version than the tree's (the released client a contributor bootstraps from, the previous release
 the hosted CI installs with) stops after the first pass, succeeds, and says which client runs the
-second — the PATH client the pass installed: run `<home>/bin/jk install --skip-tests` once more,
+second — the PATH client the pass installed: run `<home>/bin/jk install -S` once more,
 which is what the CI takeover step does. A client older than this second pass stops silently after
 the first. The passes are bounded at two, so when the re-shelving pass itself ends on yet another
 engine, `jk install` says so and asks for that one more run.
@@ -393,7 +393,7 @@ JumpKick's ship shape is **native CLI** + **JVM engine** jar + PluginMain worker
 a private home ([Try the tree on another project](#try-the-tree-on-another-project)):
 
 ```bash
-jk build --skip-tests
+jk build -S
 ./install.sh target/dist/jk                     # the native client
 ./install.sh target/dist/lib/jk-<version>.jar   # the JVM client, on a host with no native one
 ```
@@ -432,7 +432,7 @@ untouched: install the ship layout into a private home. `JK_HOME` is the one kno
 install writes lands under it, and the `jk` on your PATH keeps running the default home.
 
 ```bash
-jk build --skip-tests                                   # target/dist/: client, engine jar, shelf
+jk build -S                                   # target/dist/: client, engine jar, shelf
 export JK_HOME=$HOME/src/scratch/jk-home                # any absolute path that is not ~/.jk
 bash install.sh target/dist/jk                          # copies the binary, materializes the engine,
                                                         # shelves repos/jk-local, starts that engine

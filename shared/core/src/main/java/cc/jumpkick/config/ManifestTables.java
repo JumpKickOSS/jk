@@ -344,7 +344,7 @@ public final class ManifestTables {
 
     /**
      * {@code [publish]} — the POM metadata a release carries. Every key is optional here; what a
-     * repository requires is the repository's rule, and {@code jk publish --central} names the
+     * repository requires is the repository's rule, and {@code jk publish -c} names the
      * missing ones before it signs anything.
      */
     static Optional<PomMetadata> parsePublish(TomlTable root) {

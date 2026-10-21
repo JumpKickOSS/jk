@@ -1,13 +1,13 @@
 # JumpKick skill
 
 The live playbook is **`jk skill`**. It prints a short core (the loop, the five default MCP tools,
-the verdict shape). **`jk skill <topic>`** prints one page. **`jk skill --list`** prints the topic
+the verdict shape). **`jk skill <topic>`** prints one page. **`jk skill -l`** prints the topic
 names.
 
 ```bash
 jk skill
 jk skill dependencies
-jk skill --list
+jk skill -l
 jk skill install            # <project>/.agents/skills/jk/
 jk skill install <dir>      # <dir>/jk/SKILL.md and the topic files
 ```
@@ -26,7 +26,7 @@ Topics: `dependencies`, `tests`, `workspaces`, `lockfile`, `imports`, `plugins`,
 ## What an agent does
 
 1. Run **`jk skill`** (or MCP **`skill`**) once per session.
-2. Read the **verdict**. MCP `run` returns it. On the CLI, `jk --agent` or `JK_AGENT=1` prints it.
+2. Read the **verdict**. MCP `run` returns it. On the CLI, `jk -a` or `JK_AGENT=1` prints it.
    `run=<id>` reads an earlier run.
 3. Detail past the cap is MCP **`diagnostics`** (`file=`). Over `jk mcp` the tools take no `dir`;
    over HTTP, pass `dir` on the first call and it binds the connection.

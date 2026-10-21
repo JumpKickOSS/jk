@@ -189,7 +189,7 @@ class ToolCommandTest {
 
     @Test
     void exec_is_a_hidden_alias_of_run() {
-        // `jk tool exec --help` renders `jk tool run`'s help (dotnet muscle memory).
+        // `jk tool exec -h` renders `jk tool run`'s help (dotnet muscle memory).
         String stdout = Capture.stdout(() -> Jk.execute("tool", "exec", "--help"));
         assertThat(stdout).contains("jk tool run");
         // Hidden per the hidden-surface policy: the parent's help lists only `run`.

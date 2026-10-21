@@ -137,7 +137,7 @@ public final class BuildService {
 
     /**
      * As {@link #explain(Path, JkBuild, Path)} with {@code skipTests} matching {@code jk build
-     * --skip-tests} / {@code jk explain --skip-tests} so the forecast does not claim test work the
+     * --skip-tests} / {@code jk explain -S} so the forecast does not claim test work the
      * live command will not run.
      */
     public static ExplainPlan explain(Path entryDir, JkBuild entryBuild, Path cache, boolean skipTests)

@@ -142,7 +142,7 @@ public final class GuardFixtures {
                     + " declares a guard suite under src/guard and its compiled index "
                     + root.relativize(idx).toString().replace('\\', '/')
                     + " is missing — guard tests and their fixtures are discovered from the compiled suite; run"
-                    + " `jk guard` (or `jk build --guard`) first, then `jk guard test`");
+                    + " `jk guard` (or `jk build -g`) first, then `jk guard test`");
         }
         return out;
     }

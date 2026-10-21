@@ -19,7 +19,7 @@ transitive edges. Explicit Maven ranges on a POM edge remain open ranges.
 | Policy | Config | BOM-map pin |
 |--------|--------|-------------|
 | **enforced** (default) | omit / `[resolve] platform = "enforced"` | exact |
-| **floor** (opt-in) | `[resolve] platform = "floor"` or `jk update --platform=floor` | lower bound (may highest-wins lift) |
+| **floor** (opt-in) | `[resolve] platform = "floor"` or `jk update -p floor` | lower bound (may highest-wins lift) |
 
 ```toml
 [platform-dependencies]
@@ -109,8 +109,8 @@ Library / platform authors can freeze a lock scope as a publishable Maven BOM PO
 
 ```bash
 jk export bom
-jk export bom --scope test
-jk export bom --out dist/my-bom.pom --overwrite
+jk export bom -S test
+jk export bom -t dist/my-bom.pom -e
 ```
 
 Import that POM like any other platform BOM (`[platform-dependencies]`).

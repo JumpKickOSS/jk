@@ -9,7 +9,7 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The scope flags {@code jk add} and {@code jk remove} share: one of {@code --test}, {@code
+ * The scope flags {@code jk add} and {@code jk remove} share: one of {@code -t}, {@code
  * --runtime}, {@code --provided}, {@code --processor} names a table, {@code --processor --test}
  * together name {@code [test-processor-dependencies]}, and no flag is {@code [dependencies]}.
  */
@@ -19,10 +19,10 @@ final class DepScopeFlags {
 
     static List<Opt> options() {
         return List.of(
-                Opt.flag("Test scope (with --processor: test-only processors)", "--test"),
-                Opt.flag("Runtime scope", "--runtime"),
-                Opt.flag("Provided scope", "--provided"),
-                Opt.flag("Annotation processor scope", "--processor"));
+                Opt.flag("Test scope (with --processor: test-only processors)", "-t", "--test"),
+                Opt.flag("Runtime scope", "-R", "--runtime"),
+                Opt.flag("Provided scope", "-P", "--provided"),
+                Opt.flag("Annotation processor scope", "-p", "--processor"));
     }
 
     /**

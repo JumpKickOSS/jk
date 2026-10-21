@@ -55,16 +55,16 @@ public final class FormatCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Check formatting; fail if unformatted.", "--check"),
-                Opt.value("<style>", "Java style: palantir | google | aosp.", "--java-style"),
-                Opt.value("<style>", "Kotlin style: kotlinlang | google | meta.", "--kotlin-style"),
-                Opt.value("<preset>", "Cross-language preset for both: standard.", "--style"),
-                Opt.flag("Shorten FQCNs and add imports (default on).", "--optimize-imports"),
-                Opt.flag("Skip FQCN-to-import optimization.", "--no-optimize-imports"),
-                Opt.flag("Sort imports (default on).", "--import-order"),
-                Opt.flag("Skip import sorting.", "--no-import-order"),
-                Opt.flag("Remove unused imports (default on).", "--remove-unused-imports"),
-                Opt.flag("Keep unused imports.", "--no-remove-unused-imports"));
+                Opt.flag("Check formatting; fail if unformatted.", "-c", "--check"),
+                Opt.value("<style>", "Java style: palantir | google | aosp.", "-s", "--java-style"),
+                Opt.value("<style>", "Kotlin style: kotlinlang | google | meta.", "-S", "--kotlin-style"),
+                Opt.value("<preset>", "Cross-language preset for both: standard.", "-t", "--style"),
+                Opt.flag("Shorten FQCNs and add imports (default on).", "-I", "--optimize-imports"),
+                Opt.flag("Skip FQCN-to-import optimization.", "-N", "--no-optimize-imports"),
+                Opt.flag("Sort imports (default on).", "-i", "--import-order"),
+                Opt.flag("Skip import sorting.", "-n", "--no-import-order"),
+                Opt.flag("Remove unused imports (default on).", "-U", "--remove-unused-imports"),
+                Opt.flag("Keep unused imports.", "-R", "--no-remove-unused-imports"));
     }
 
     /**
