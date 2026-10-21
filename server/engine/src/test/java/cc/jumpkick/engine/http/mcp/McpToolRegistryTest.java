@@ -88,12 +88,14 @@ class McpToolRegistryTest {
     }
 
     @Test
-    void the_default_list_is_the_five_loop_tools() {
+    void the_default_list_is_the_loop_and_the_code_graph_navigation_tools() {
         McpTools tools = McpTools.standard();
         List<String> listed = names(tools.listing(McpTools.Surface.LOOP));
-        assertThat(listed).containsExactly("run", "diagnostics", "deps", "why", "skill");
+        assertThat(listed)
+                .containsExactly(
+                        "run", "diagnostics", "deps", "why", "query_graph", "get_neighbors", "shortest_path", "skill");
         assertThat(listed).isEqualTo(tools.loopNames());
-        assertThat(listed).doesNotContain("bind", "history", "manifest");
+        assertThat(listed).doesNotContain("bind", "history", "manifest", "god_nodes", "graph_stats");
     }
 
     @Test
@@ -148,10 +150,9 @@ class McpToolRegistryTest {
      * The default list against the comparator's: {@code bench/agent-loop/wrappers/results-mcp}
      * serves three tools over a Maven or Gradle results file, captured in
      * {@code src/test/resources/mcp/wrapper-tools-list.json}. Both are re-serialized by MiniJson
-     * so the bytes compare serializer-for-serializer. Eight cards against three cannot reach the
-     * wrapper's size — the JSON skeleton of a card with no description and an empty schema is
-     * seventy bytes, and eight of those are more than half the wrapper's list — so the bar is
-     * the ratio the loop cards achieve, and it only ratchets down.
+     * so the bytes compare serializer-for-serializer. The cards are paid on every turn, so the
+     * ceiling holds the loop to lean cards; it also carries the code graph's navigation cards,
+     * because one budgeted graph answer replaces grep-and-read turns that cost far more.
      */
     @Test
     void the_default_list_is_within_the_wrapper_budget() throws IOException {
@@ -162,14 +163,14 @@ class McpToolRegistryTest {
         String listing = MiniJson.write(McpTools.standard().listing(McpTools.Surface.LOOP));
         assertThat(listing.length())
                 .as("default tools/list reply %d bytes", listing.length())
-                .isLessThanOrEqualTo(1_500);
+                .isLessThanOrEqualTo(2_800);
         assertThat(all.length()).as("full list is the expensive one").isGreaterThan(loop.length() * 4);
     }
 
     @Test
     void the_playbook_names_only_the_default_tools() {
         String instructions = McpTools.INSTRUCTIONS;
-        for (String name : List.of("run", "diagnostics", "deps", "why", "skill")) {
+        for (String name : McpTools.LOOP) {
             assertThat(instructions).contains(name);
             assertThat(McpTools.standard().loopNames()).contains(name);
         }

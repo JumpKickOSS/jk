@@ -82,5 +82,6 @@ LLM pass: documents are read for their structure, links and code mentions only.
 ## MCP
 
 The same operations are MCP tools under graphify's names: `query_graph`, `get_node`,
-`get_neighbors`, `get_community`, `god_nodes`, `graph_stats` and `shortest_path`. They are on the
-extended `tools/list`; `skill(topic=graph)` introduces them. See [MCP](mcp.md).
+`get_neighbors`, `get_community`, `god_nodes`, `graph_stats` and `shortest_path`. `query_graph`,
+`get_neighbors` and `shortest_path` are on the default `tools/list`; the rest are on the extended
+one, and `skill(topic=graph)` introduces them all. See [MCP](mcp.md).
