@@ -121,7 +121,7 @@ public final class AssemblyCommand implements CliCommand {
                         """.stripIndent());
                 return Exit.CONFIG;
             }
-            return build.run(in);
+            return BuildVerbCommand.run(new PackageVerb("Assemble"), in, true);
         }
 
         // One-off --fat/--minified: install override for this invocation only, then restore. A sticky
@@ -139,7 +139,7 @@ public final class AssemblyCommand implements CliCommand {
         var previous = SessionContext.current();
         SessionContext.install(previous.withAssemblyOverride(overrideLabel));
         try {
-            return build.run(in);
+            return BuildVerbCommand.run(new PackageVerb("Assemble"), in, true);
         } finally {
             SessionContext.install(previous);
         }

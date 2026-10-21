@@ -26,6 +26,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.model.command.Param;
 import cc.jumpkick.wire.protocol.EngineWireException;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -70,6 +71,21 @@ public final class BuildVerbCommand implements CliCommand {
         return new BuildVerbCommand(PackageVerb::new);
     }
 
+    /** {@code jk native}. */
+    public static BuildVerbCommand nativeImage() {
+        return new BuildVerbCommand(NativeVerb::new);
+    }
+
+    /** {@code jk image}. */
+    public static BuildVerbCommand image() {
+        return new BuildVerbCommand(ImageVerb::new);
+    }
+
+    /** {@code jk train}. */
+    public static BuildVerbCommand train() {
+        return new BuildVerbCommand(TrainVerb::new);
+    }
+
     /**
      * A verb's own options never repeat a shared one: a second declaration is a second help string
      * and a second parse, which is how the build commands drifted apart.
@@ -95,6 +111,16 @@ public final class BuildVerbCommand implements CliCommand {
     @Override
     public String description() {
         return shape.description();
+    }
+
+    @Override
+    public List<String> aliases() {
+        return shape.aliases();
+    }
+
+    @Override
+    public List<Param> parameters() {
+        return shape.parameters();
     }
 
     @Override
@@ -137,7 +163,7 @@ public final class BuildVerbCommand implements CliCommand {
             run.fail(e.getMessage());
             return finish(run, Exit.CONFIG);
         }
-        return finish(run, run(verb, run, dir));
+        return finish(run, verb.after(run, run(verb, run, dir)));
     }
 
     private static int finish(BuildRun run, int code) {
@@ -154,9 +180,32 @@ public final class BuildVerbCommand implements CliCommand {
         // A pinned JDK that is not installed downloads here, with the `jk jdk install` bar, before any
         // build console opens — never as a silent step inside the engine.
         if (!JdkPreflight.ensure(dir, info, run.flags().jdksDir(), run.mode())) return Exit.FAILURE;
-        if (info != null && info.workspaceRoot()) return workspace(verb, run, dir, info);
-        if (scope.workspaceMember()) return workspace(verb, run, scope.workspaceRoot(), null);
+        if (info != null && info.workspaceRoot()) {
+            return verb.workspaceShaped() ? workspace(verb, run, dir, info) : oneModule(verb, run, dir);
+        }
+        if (scope.workspaceMember()) {
+            Path root = scope.workspaceRoot();
+            return verb.workspaceShaped() ? workspace(verb, run, root, null) : oneModule(verb, run, root);
+        }
         return single(verb, run, dir);
+    }
+
+    /** A verb with no workspace run inside a workspace: the one selected module, standalone. */
+    private static int oneModule(BuildVerb verb, BuildRun run, Path root) {
+        BuildRun.Selection sel = run.select(root);
+        if (sel.error() != null) {
+            run.fail(sel.error());
+            return Exit.CONFIG;
+        }
+        if (sel.empty()) {
+            run.ok(run.nothingSelected());
+            return 0;
+        }
+        if (sel.dirs().size() != 1) {
+            run.fail("jk " + verb.name() + " runs one module — pass -m <module> or run from its directory");
+            return Exit.USAGE;
+        }
+        return single(verb, run, Path.of(sel.dirs().getFirst()));
     }
 
     // ---- standalone project ------------------------------------------------------------------
@@ -213,7 +262,10 @@ public final class BuildVerbCommand implements CliCommand {
             run.ok("workspace declares no modules");
             return 0;
         }
-        if (sel.confines()) verb.selected(run, sel.dirs());
+        if (sel.confines()) {
+            int chosen = verb.selected(run, sel.dirs());
+            if (chosen >= 0) return chosen;
+        }
         int prepared = verb.prepareWorkspace(run, entryDir, sel);
         if (prepared >= 0) return prepared;
         BuildPlanConsole.Mode mode = run.mode();
@@ -311,6 +363,19 @@ public final class BuildVerbCommand implements CliCommand {
         for (Opt opt : VariantSelection.options()) copy(outer, opt, b);
         b.putValue("dir", dir.toString());
         b.putValue("cache-dir", cache.toString());
+        extra.accept(b);
+        return b.build();
+    }
+
+    /**
+     * The invocation of a build another command runs for its own invocation {@code in}: the global
+     * options and the shared build options of {@code reach} as given, then whatever {@code extra}
+     * sets.
+     */
+    static Invocation forward(Invocation in, BuildFlags.Reach reach, Consumer<Invocation.Builder> extra) {
+        Invocation.Builder b = Invocation.builder();
+        for (Opt opt : GlobalOptions.globalOpts()) copy(in, opt, b);
+        for (Opt opt : BuildFlags.options(reach, BuildFlags.Affected.MODULES)) copy(in, opt, b);
         extra.accept(b);
         return b.build();
     }

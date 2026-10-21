@@ -7,7 +7,6 @@ import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.ParallelTestsOpts;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.command.ModuleSelectors;
 import cc.jumpkick.command.VariantSelection;
@@ -214,8 +213,11 @@ public record BuildFlags(
     }
 
     /** Put the options the engine reads off the session onto it. */
-    void installSession() {
+    public void installSession() {
         SessionContext.install(SessionContext.current()
+                .withProfile(profile)
+                .withRequestedTestWorkers(workers)
+                .withKeepGoing(keepGoing)
                 .withParallelTests(parallelTests)
                 .withTestSelection(testSelection)
                 .withTestFailures(testFailures)
@@ -225,22 +227,6 @@ public record BuildFlags(
     /** {@code --guard} is one option identity. */
     static boolean guardRequested(Invocation in) {
         return in.isSet("guard");
-    }
-
-    /**
-     * A build-type verb's test selection into the session: {@code --guard} on {@code jk image},
-     * {@code jk native} and their kin rides the same {@link TestSelection} the build and test verbs
-     * use, so the engine plans the guard lanes and the guard scripts from one field. Options the verb
-     * does not declare read as unset. Returns {@code false} after printing the config error.
-     */
-    public static boolean installSelection(Invocation in, String verb) {
-        try {
-            SessionContext.install(SessionContext.current().withTestSelection(testSelection(in)));
-            return true;
-        } catch (IllegalArgumentException e) {
-            CommandWedge.printFail(verb, e.getMessage());
-            return false;
-        }
     }
 
     public static void warnGateOverride(Invocation in, GlobalOptions global) {

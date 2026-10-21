@@ -64,7 +64,7 @@ final class EngineJobs {
         Session session = SessionContext.current();
         return workspace(
                 paths,
-                ProtoSession.withToolchain(
+                ProtoSession.withSessionFields(
                         ProtoSession.withSession(
                                 encodeWorkspaceRequest(req, session),
                                 req.variant(),
@@ -163,7 +163,7 @@ final class EngineJobs {
         var debug = req.debugJvm() != null ? req.debugJvm() : session.debugJvm();
         return singlePlan(
                 paths,
-                ProtoSession.withToolchain(
+                ProtoSession.withSessionFields(
                         ProtoSession.withSession(
                                 ProtoSession.withOrigin(
                                         new TestRequest(
@@ -216,7 +216,7 @@ final class EngineJobs {
         Session session = SessionContext.current();
         return singlePlan(
                 paths,
-                ProtoSession.withToolchain(
+                ProtoSession.withSessionFields(
                         ProtoSession.withSession(
                                 new SingleBuildRequest(
                                                 req.entryDir().toString(),
@@ -380,7 +380,7 @@ final class EngineJobs {
      */
     static String envelope(String body) {
         Session session = SessionContext.current();
-        return ProtoSession.withToolchain(
+        return ProtoSession.withSessionFields(
                 ProtoSession.withSession(
                         body,
                         session.variant(),

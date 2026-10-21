@@ -128,14 +128,14 @@ public final class GuardCommand implements CliCommand {
             // stdout carries the document alone; the build's lines are noise to a SARIF consumer
             exit = CliOutput.silenced(() -> {
                 try {
-                    return build.run(run);
+                    return BuildVerbCommand.run(new PackageVerb("Guard"), run, true);
                 } catch (Exception e) {
                     CommandWedge.printFail("Guard", e.getMessage());
                     return Exit.SOFTWARE;
                 }
             });
         } else {
-            exit = build.run(run);
+            exit = BuildVerbCommand.run(new PackageVerb("Guard"), run, true);
         }
         Path target = dir.resolve(BuildLayout.TARGET);
         if (sarif) {

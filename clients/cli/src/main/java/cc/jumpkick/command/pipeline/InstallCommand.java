@@ -502,8 +502,8 @@ public final class InstallCommand {
                         wsRoot,
                         cacheDir,
                         jdksDir,
-                        0,
-                        null,
+                        session.requestedTestWorkers(),
+                        session.profile(),
                         reshelving || buildOpts.skipTests,
                         global.verbose,
                         0,
@@ -511,6 +511,7 @@ public final class InstallCommand {
                         true,
                         !reshelving)
                 .withVariant(session.variant(), session.clientEnv())
+                .withKeepGoing(session.keepGoing())
                 .withModules(tokens)
                 .withSpec(
                         reshelving

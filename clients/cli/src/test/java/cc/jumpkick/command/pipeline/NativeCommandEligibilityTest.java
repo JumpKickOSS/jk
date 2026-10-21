@@ -26,7 +26,7 @@ class NativeCommandEligibilityTest {
         Path cli = module("cli", true, true);
         Path graal = Files.createDirectories(tmp.resolve("graal"));
 
-        Map<Path, Path> homes = NativeCommand.graalHomesForModules(List.of(plugin, cli), graal, null);
+        Map<Path, Path> homes = NativeVerb.graalHomesForModules(List.of(plugin, cli), graal, null);
         assertThat(homes).containsOnlyKeys(cli);
         assertThat(homes.get(cli)).isEqualTo(graal);
     }
@@ -37,7 +37,7 @@ class NativeCommandEligibilityTest {
         Path lib = module("lib", false, false);
         Path graal = Files.createDirectories(tmp.resolve("graal"));
 
-        Map<Path, Path> homes = NativeCommand.graalHomesForModules(List.of(app, lib), graal, null);
+        Map<Path, Path> homes = NativeVerb.graalHomesForModules(List.of(app, lib), graal, null);
         assertThat(homes).containsOnlyKeys(app);
     }
 
@@ -49,12 +49,11 @@ class NativeCommandEligibilityTest {
         Path app = module("app", true, false);
         Path graal = Files.createDirectories(tmp.resolve("graal"));
 
-        Map<Path, Path> homes = NativeCommand.graalHomesForModules(List.of(off, app), graal, null);
+        Map<Path, Path> homes = NativeVerb.graalHomesForModules(List.of(off, app), graal, null);
         assertThat(homes).containsOnlyKeys(app);
 
         // A lone disabled module yields nothing (jk native then fails preflight, by design).
-        assertThat(NativeCommand.graalHomesForModules(List.of(off), graal, null))
-                .isEmpty();
+        assertThat(NativeVerb.graalHomesForModules(List.of(off), graal, null)).isEmpty();
     }
 
     private Path moduleDisabledNative(String name) throws Exception {
@@ -68,8 +67,7 @@ class NativeCommandEligibilityTest {
     void empty_when_no_mains() throws Exception {
         Path lib = module("lib", false, false);
         Path graal = Files.createDirectories(tmp.resolve("graal"));
-        assertThat(NativeCommand.graalHomesForModules(List.of(lib), graal, null))
-                .isEmpty();
+        assertThat(NativeVerb.graalHomesForModules(List.of(lib), graal, null)).isEmpty();
     }
 
     private Path module(String name, boolean withMain, boolean withNativeTable) throws Exception {

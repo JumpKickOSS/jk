@@ -118,11 +118,12 @@ final class TestVerb implements BuildVerb {
     }
 
     @Override
-    public void selected(BuildRun run, List<String> moduleDirs) {
-        if (!exclusive) return;
+    public int selected(BuildRun run, List<String> moduleDirs) {
+        if (!exclusive) return -1;
         run.flags(run.flags().withTestSelection(run.flags().testSelection().withOnlyModules(moduleDirs)));
         SessionContext.install(
                 SessionContext.current().withTestSelection(run.flags().testSelection()));
+        return -1;
     }
 
     @Override

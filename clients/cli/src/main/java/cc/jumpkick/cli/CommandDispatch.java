@@ -29,12 +29,9 @@ import cc.jumpkick.command.pipeline.BuildVerbCommand;
 import cc.jumpkick.command.pipeline.DevCommand;
 import cc.jumpkick.command.pipeline.FormatCommand;
 import cc.jumpkick.command.pipeline.GuardCommand;
-import cc.jumpkick.command.pipeline.ImageCommand;
 import cc.jumpkick.command.pipeline.JshellCommand;
-import cc.jumpkick.command.pipeline.NativeCommand;
 import cc.jumpkick.command.pipeline.PublishCommand;
 import cc.jumpkick.command.pipeline.SelectiveCommand;
-import cc.jumpkick.command.pipeline.TrainCommand;
 import cc.jumpkick.command.pipeline.WatchCommand;
 import cc.jumpkick.command.project.AddCommand;
 import cc.jumpkick.command.project.AuditCommand;
@@ -183,9 +180,9 @@ public final class CommandDispatch {
             new SelectiveCommand(Jk::execute),
             BuildVerbCommand.test(),
             new FormatCommand(),
-            new NativeCommand(),
-            new TrainCommand(),
-            new ImageCommand(),
+            BuildVerbCommand.nativeImage(),
+            BuildVerbCommand.train(),
+            BuildVerbCommand.image(),
             new MvnCommand(),
             new GradleCommand(),
             new ActivateCommand(CommandDispatch::commands),
