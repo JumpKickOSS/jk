@@ -11,6 +11,7 @@ import cc.jumpkick.lock.RepoStoreDirs;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
+import cc.jumpkick.util.PoolUse;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -644,8 +645,12 @@ public final class RepoArtifactStore {
 
     // -------------------------------------------------------------------------
 
+    /** The artifact's file; its version directory is stamped as in use in a pooled tree ({@link PoolUse}). */
     private Path artifactPath(String relativePath) {
-        return MavenLayout.safeResolve(rootOf(this), relativePath);
+        Path dir = rootOf(this);
+        Path artifact = MavenLayout.safeResolve(dir, relativePath);
+        PoolUse.touch(dir, artifact.getParent());
+        return artifact;
     }
 
     private Path sidecarPath(String relativePath) {
