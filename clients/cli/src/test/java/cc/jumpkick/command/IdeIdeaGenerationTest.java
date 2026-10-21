@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.model.Coordinate;
@@ -279,6 +280,7 @@ class IdeIdeaGenerationTest {
     }
 
     @Test
+    @IsolatedStore
     void annotation_processor_is_wired_not_a_compile_dep(@TempDir Path tmp) throws IOException {
         Path ws = tmp.resolve("ws");
         Files.createDirectories(ws.resolve("src/main/java/example"));

@@ -10,7 +10,8 @@ import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 
 /**
- * One per-method throwaway-root mechanism behind {@link IsolatedStore} and {@link IsolatedState}.
+ * One per-method throwaway-root mechanism behind {@link IsolatedStore} and {@link IsolatedState},
+ * on a class (every method) or on one method.
  *
  * <p>Both annotations register this class, and JUnit registers a declaratively-requested extension
  * type once — so a class carrying both gets one instance that isolates both roots, in one temp-dir
@@ -38,7 +39,10 @@ public final class IsolatedRootsExtension implements BeforeEachCallback, AfterEa
         Class<?> testClass = ctx.getRequiredTestClass();
         List<PropertyRoots.Redirect> redirects = new ArrayList<>();
         for (Root root : ROOTS) {
-            if (!testClass.isAnnotationPresent(root.marker())) continue;
+            boolean onMethod = ctx.getTestMethod()
+                    .map(m -> m.isAnnotationPresent(root.marker()))
+                    .orElse(false);
+            if (!onMethod && !testClass.isAnnotationPresent(root.marker())) continue;
             redirects.add(PropertyRoots.redirect(root.property(), root.tempPrefix()));
         }
         ctx.getStore(NS).put("redirects", redirects);

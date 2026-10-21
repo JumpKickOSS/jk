@@ -468,7 +468,7 @@ public final class RepoArtifactStore {
         List<Path> dirs = new ArrayList<>();
         try {
             PathUtil.forEachChild(cacheRoot.resolve("repos"), (child, attrs) -> {
-                if (attrs.isDirectory()) dirs.add(child);
+                if (RepoStoreDirs.isTree(child, attrs)) dirs.add(child);
                 return true;
             });
         } catch (IOException e) {
@@ -514,9 +514,16 @@ public final class RepoArtifactStore {
      */
     public List<Module> modules() {
         if (root == null || !Files.isDirectory(root)) return List.of();
+        // The real path: a tree linked in from a shared pool is walked, not visited as one entry.
+        Path tree;
+        try {
+            tree = root.toRealPath();
+        } catch (IOException e) {
+            return List.of();
+        }
         // Group tracked files by their version directory (the file's parent).
         Map<Path, Boolean> versionDirs = new TreeMap<>();
-        try (Stream<Path> walk = Files.walk(root)) {
+        try (Stream<Path> walk = Files.walk(tree)) {
             // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
             // the path for a fresh stat even for entries the name test discards.
             walk.filter(p -> !isMemoName(p.getFileName().toString()))
@@ -528,7 +535,7 @@ public final class RepoArtifactStore {
         Map<String, List<String>> versionsByModule = new TreeMap<>();
         Map<String, String[]> ga = new HashMap<>();
         for (Path versionDir : versionDirs.keySet()) {
-            Path rel = root.relativize(versionDir);
+            Path rel = tree.relativize(versionDir);
             int n = rel.getNameCount();
             if (n < 3) continue; // need at least one group segment + artifact + version
             String version = rel.getName(n - 1).toString();

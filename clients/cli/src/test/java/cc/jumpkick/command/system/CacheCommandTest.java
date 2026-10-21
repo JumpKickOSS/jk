@@ -8,6 +8,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.engine.EngineFleet;
+import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.http.CacheSnapshot;
@@ -27,7 +28,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Tag;
@@ -301,7 +301,7 @@ class CacheCommandTest {
     void purge_removes_the_cache_root_including_trees_the_tier_table_does_not_name(@TempDir Path tempDir)
             throws Exception {
         Path cache = tempDir.resolve("cache");
-        Path storeJar = JkStores.store().resolve("repos/central/com/example/kept/1.0/kept-1.0.jar");
+        Path storeJar = JkStores.store().resolve("repos/jk-local/com/example/kept/1.0/kept-1.0.jar");
         writeBlob(CacheTree.CACHE_CAS.under(cache).resolve("ab/cd/deadbeef"), new byte[4096]);
         writeBlob(CacheTree.ACTIONS.under(cache).resolve("keys/task1"), new byte[1024]);
         writeBlob(CacheTree.FORMAT_STAMPS.under(cache).resolve("ab/stamp1"), new byte[128]);
@@ -430,27 +430,18 @@ class CacheCommandTest {
     }
 
     @Test
+    @IsolatedStore
     void repo_search_lists_cached_coordinates_with_versions(@TempDir Path tempDir) {
         Path cache = tempDir.resolve("cache");
-        // Overlay a private store BEFORE seeding: seedRepo materializes into the ambient
-        // store (repos live store-side and search walks only the store), and
-        // the suite-shared store legitimately holds jackson artifacts of its own — this test
-        // must see exactly the rows it seeds.
-        String prevStore = System.getProperty("jk.env.JK_STORE_DIR");
-        System.setProperty("jk.env.JK_STORE_DIR", tempDir.resolve("store").toString());
-        String stdout;
-        try {
-            seedRepo(cache, "com.fasterxml.jackson.core", "jackson-databind", "2.18.2");
-            seedRepo(cache, "com.fasterxml.jackson.core", "jackson-databind", "2.17.1");
-            seedRepo(cache, "com.google.guava", "guava", "33.0.0-jre");
+        // A private store: search walks only the store, and the shared one legitimately holds
+        // jackson artifacts of its own — this test must see exactly the rows it seeds.
+        seedRepo(cache, "com.fasterxml.jackson.core", "jackson-databind", "2.18.2");
+        seedRepo(cache, "com.fasterxml.jackson.core", "jackson-databind", "2.17.1");
+        seedRepo(cache, "com.google.guava", "guava", "33.0.0-jre");
 
-            // Coordinates print in color; strip ANSI to assert on the visible text.
-            stdout = TestAnsi.strip(
-                    Capture.stdout(() -> run("repo", "search", "jackson", "--cache-dir", cache.toString())));
-        } finally {
-            if (prevStore == null) System.clearProperty("jk.env.JK_STORE_DIR");
-            else System.setProperty("jk.env.JK_STORE_DIR", prevStore);
-        }
+        // Coordinates print in color; strip ANSI to assert on the visible text.
+        String stdout =
+                TestAnsi.strip(Capture.stdout(() -> run("repo", "search", "jackson", "--cache-dir", cache.toString())));
 
         assertThat(stdout).contains("com.fasterxml.jackson.core:jackson-databind");
         // newest-first version ordering
@@ -535,24 +526,6 @@ class CacheCommandTest {
         Files.writeString(ptr, key);
     }
 
-    private static final List<String> SEEDED_PATHS = new ArrayList<>();
-
-    /** Delete this class's store seeds — fake blobs for REAL coordinates poison later locks. */
-    @org.junit.jupiter.api.AfterEach
-    void scrubSeededRepoArtifacts() {
-        Path repos = JkStores.store().resolve("repos");
-        for (String rel : SEEDED_PATHS) {
-            Path f = repos.resolve("central").resolve(rel);
-            try {
-                Files.deleteIfExists(Path.of(f + ".sha256"));
-                Files.deleteIfExists(f);
-            } catch (Exception ignored) {
-                // best-effort
-            }
-        }
-        SEEDED_PATHS.clear();
-    }
-
     /** Materialise a jar for {@code group:artifact:version} into the "central" named-repo store. */
     private static void seedRepo(Path cache, String group, String artifact, String version) {
         try {
@@ -560,7 +533,6 @@ class CacheCommandTest {
             Cas cas = new Cas(cache);
             Path blob = cas.put(bytes);
             var coord = Coordinate.of(group, artifact, version);
-            SEEDED_PATHS.add(MavenLayout.artifactPath(coord));
             // repos/ lives under the STORE root — where MavenRepo writes.
             RepoArtifactStore.forStoreId(JkStores.store(), "central")
                     .materialize(MavenLayout.artifactPath(coord), blob, Hashing.sha256Hex(bytes));
