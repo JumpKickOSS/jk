@@ -48,7 +48,10 @@ final class EngineJarFetcher {
         return fetch(releasesBase, version, cas, install, verifier, ReleaseArtifacts.Progress.NONE);
     }
 
-    /** As above, reporting the jar download to {@code progress}. */
+    /**
+     * As above, reporting the jar download to {@code progress}. The version is the running
+     * client's, so a release site that does not publish it means this jk was built from a checkout.
+     */
     static Path fetch(
             URI releasesBase,
             String version,
@@ -57,11 +60,24 @@ final class EngineJarFetcher {
             ReleaseVerifier verifier,
             ReleaseArtifacts.Progress progress)
             throws IOException {
-        ReleaseArtifacts.Verified jar = ReleaseArtifacts.fetch(
-                releasesBase, version, "jk-engine-" + version + ".jar", "engine jar", verifier, progress);
+        ReleaseArtifacts.Verified jar;
+        try {
+            jar = ReleaseArtifacts.fetch(
+                    releasesBase, version, "jk-engine-" + version + ".jar", "engine jar", verifier, progress);
+        } catch (ReleaseArtifacts.NotPublished e) {
+            throw unpublished(e);
+        }
         cas.put(jar.bytes(), jar.sha256());
         Path engineJar = install.materialize(version, cas, jar.sha256()).engineJar();
         progress.done(engineJar);
         return engineJar;
+    }
+
+    private static IOException unpublished(ReleaseArtifacts.NotPublished e) {
+        return new IOException(
+                "jk " + e.version() + " is not a published release, so its engine cannot be downloaded — this"
+                        + " looks like an unpublished build from a checkout: run `jk build -S && jk install -S`"
+                        + " there, or set JK_HOME to a home where this build is installed",
+                e);
     }
 }
