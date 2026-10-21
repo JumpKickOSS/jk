@@ -1,0 +1,3 @@
+package com.acme.shop;
+
+public record Item(String sku, long cents) {}

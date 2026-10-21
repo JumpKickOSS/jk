@@ -1,0 +1,7 @@
+./docs/notes.md
+./README.md
+./src/main/java/com/acme/shop/Auditable.java.txt
+./src/main/java/com/acme/shop/BaseService.java.txt
+./src/main/java/com/acme/shop/Item.java.txt
+./src/main/java/com/acme/shop/OrderService.java.txt
+./src/main/kotlin/com/acme/shop/PriceCalculator.kt.txt

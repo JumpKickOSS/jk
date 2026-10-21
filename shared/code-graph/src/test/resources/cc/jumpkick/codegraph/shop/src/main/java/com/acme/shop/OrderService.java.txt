@@ -1,0 +1,23 @@
+package com.acme.shop;
+
+import java.util.List;
+
+/** Places orders. */
+public class OrderService extends BaseService implements Auditable {
+    private final PriceCalculator calculator = new PriceCalculator();
+
+    // NOTE: totals are computed in cents to avoid rounding drift
+    public long total(List<Item> items) {
+        audit("total");
+        return calculator.sum(items);
+    }
+
+    public long total(Item item) {
+        return calculator.sum(List.of(item));
+    }
+
+    @Override
+    public void audit(String what) {
+        log(what);
+    }
+}
