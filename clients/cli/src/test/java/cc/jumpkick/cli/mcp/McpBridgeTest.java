@@ -30,6 +30,9 @@ import org.junit.jupiter.api.Test;
 
 class McpBridgeTest {
 
+    /** How long a {@code slow} call takes: several of {@link #paced()}'s heartbeats. */
+    private static final long SLOW_MS = 400;
+
     private HttpServer server;
     private final ExecutorService handlers = Executors.newVirtualThreadPerTaskExecutor();
     private final List<String> projects = new CopyOnWriteArrayList<>();
@@ -58,7 +61,7 @@ class McpBridgeTest {
                 exchange.close();
                 return;
             }
-            if (body.contains("slow")) pause(1_200);
+            if (body.contains("slow")) pause(SLOW_MS);
             byte[] out = body.contains("boom")
                     ? "nope".getBytes(StandardCharsets.UTF_8)
                     : "{\"jsonrpc\":\"2.0\",\n\"id\":1,\"result\":{}}".getBytes(StandardCharsets.UTF_8);
@@ -115,7 +118,7 @@ class McpBridgeTest {
     }
 
     private McpBridge paced() {
-        return new McpBridge(this::live, "/ws", Duration.ofMillis(200), Duration.ofMillis(50));
+        return new McpBridge(this::live, "/ws", Duration.ofMillis(60), Duration.ofMillis(15));
     }
 
     private static String slowCall(String meta) {
@@ -155,7 +158,7 @@ class McpBridgeTest {
             last = p;
         }
         assertThat(eventQueries).containsExactly("progressToken=tok-1");
-        pause(400);
+        pause(150);
         assertThat(bytes.toString(StandardCharsets.UTF_8))
                 .as("nothing after the reply")
                 .isEqualTo(out);

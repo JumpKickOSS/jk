@@ -144,7 +144,8 @@ class JdkCatalogClientTest {
         // Stop the server so the next fetch fails on the wire.
         server.stop(0);
 
-        JdkCatalogClient client = new JdkCatalogClient(new Http(), feed, cache, Duration.ZERO);
+        // Fail-fast: the fallback is under test, not the retry ladder in front of it.
+        JdkCatalogClient client = new JdkCatalogClient(Http.failFast(), feed, cache, Duration.ZERO);
         JdkCatalog catalog = client.fetch();
         assertThat(catalog.entries()).isNotEmpty();
     }

@@ -9,6 +9,7 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
@@ -123,6 +124,8 @@ public final class GuardCommand implements CliCommand {
         b.flag("skip-tests", true);
         b.flag("guard", true);
         Invocation run = b.build();
+        // The lanes read classes and packaged jars, never a delivery artifact beside them.
+        SessionContext.install(SessionContext.current().withLanesOnly(true));
         int exit;
         if (sarif) {
             // stdout carries the document alone; the build's lines are noise to a SARIF consumer

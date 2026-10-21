@@ -42,9 +42,12 @@ class EngineSpawnSilentPeerTest {
     /** Quick enough for a unit test; the shape (probe, back off, probe again) is what is under test. */
     private static final Patience QUICK = new Patience(200, 3, Duration.ofMillis(20));
 
-    /** A young peer's grace at a unit test's scale: young for the whole test, waited out for half a second. */
+    /** For a peer that never answers: the reply wait only has to elapse, so it can be short. */
+    private static final Patience SILENT = new Patience(50, 3, Duration.ofMillis(20));
+
+    /** A young peer's grace at a unit test's scale: young for the whole test, waited out for a fifth of a second. */
     private static final SilentPeer.Grace BRIEF_GRACE = new SilentPeer.Grace(
-            Duration.ofMinutes(5), Duration.ofMillis(500), Duration.ofMillis(100), Duration.ofSeconds(2));
+            Duration.ofMinutes(5), Duration.ofMillis(200), Duration.ofMillis(100), Duration.ofSeconds(2));
 
     /** No startup grace at all: only workers or CPU can show life, and neither does a sleeping JVM. */
     private static final SilentPeer.Grace NO_GRACE =
@@ -83,8 +86,8 @@ class EngineSpawnSilentPeerTest {
         try (FakeEngine engine = new FakeEngine(socket, 1)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(holder.pid()));
 
-            // The real ensure, with its real patience: one silent probe, one answered.
-            EngineProbe.Handshake hs = EngineSpawn.ensure(paths, VERSION);
+            // The real ensure: one silent probe, one answered.
+            EngineProbe.Handshake hs = EngineSpawn.ensure(paths, VERSION, QUICK, SilentPeer.Grace.DEFAULT);
 
             assertThat(hs.version()).isEqualTo(VERSION);
             assertThat(engine.connections.get())
@@ -94,6 +97,9 @@ class EngineSpawnSilentPeerTest {
                     .as("the engine named by the pid file is untouched")
                     .isTrue();
             assertThat(paths.log()).doesNotExist();
+            assertThat(Patience.DEFAULT.reprobes())
+                    .as("the default patience re-probes a silent peer")
+                    .isPositive();
         } finally {
             holder.destroyForcibly();
             holder.waitFor();
@@ -105,10 +111,10 @@ class EngineSpawnSilentPeerTest {
         EnginePaths.Paths paths = paths();
         Path socket = EnginePaths.activeSocket(paths);
         try (FakeEngine engine = new FakeEngine(socket, Integer.MAX_VALUE)) {
-            Reachability reach = EngineSpawn.probePatiently(socket, VERSION, QUICK);
+            Reachability reach = EngineSpawn.probePatiently(socket, VERSION, SILENT);
 
             assertThat(reach).isInstanceOf(Reachability.Silent.class);
-            assertThat(engine.connections.get()).isEqualTo(QUICK.probes());
+            assertThat(engine.connections.get()).isEqualTo(SILENT.probes());
         }
     }
 
@@ -137,7 +143,7 @@ class EngineSpawnSilentPeerTest {
         try (FakeEngine engine = new FakeEngine(socket, Integer.MAX_VALUE)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(holder.pid()));
 
-            assertThatThrownBy(() -> EngineSpawn.ensure(paths, VERSION, QUICK, BRIEF_GRACE))
+            assertThatThrownBy(() -> EngineSpawn.ensure(paths, VERSION, SILENT, BRIEF_GRACE))
                     .isInstanceOf(IOException.class)
                     .hasMessageContaining("pid " + holder.pid())
                     .hasMessageContaining("not displaced");
@@ -145,7 +151,7 @@ class EngineSpawnSilentPeerTest {
                     .as("a young engine that accepts connections is never displaced for a slow handshake")
                     .isTrue();
             assertThat(Files.readString(paths.log())).doesNotContain("displacing unresponsive engine");
-            assertThat(engine.connections.get()).isGreaterThan(QUICK.probes());
+            assertThat(engine.connections.get()).isGreaterThan(SILENT.probes());
         } finally {
             holder.destroyForcibly();
             holder.waitFor();
@@ -161,9 +167,9 @@ class EngineSpawnSilentPeerTest {
         try (FakeEngine ignored = new FakeEngine(socket, Integer.MAX_VALUE)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(idle.pid()));
             // Let the JVM's own start-up CPU settle, so two readings apart show no step.
-            Thread.sleep(1_500);
+            SleepMain.awaitIdle(idle);
 
-            Reachability reach = EngineSpawn.waitOutSilentPeer(paths, socket, VERSION, QUICK, NO_GRACE);
+            Reachability reach = EngineSpawn.waitOutSilentPeer(paths, socket, VERSION, SILENT, NO_GRACE);
 
             assertThat(reach).isInstanceOf(Reachability.Absent.class);
             assertThat(idle.waitFor(5, TimeUnit.SECONDS))
@@ -184,7 +190,7 @@ class EngineSpawnSilentPeerTest {
         try (FakeEngine ignored = new FakeEngine(socket, Integer.MAX_VALUE)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(wedged.pid()));
 
-            EngineSpawn.displaceSilent(paths, socket);
+            EngineSpawn.displaceSilent(paths, socket, SILENT.replyTimeoutMillis());
 
             assertThat(wedged.waitFor(5, TimeUnit.SECONDS))
                     .as("the wedged JVM is gone")
@@ -205,7 +211,7 @@ class EngineSpawnSilentPeerTest {
         try (FakeEngine engine = new FakeEngine(socket, Integer.MAX_VALUE)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(bystander.pid()));
 
-            EngineSpawn.displaceSilent(paths, socket);
+            EngineSpawn.displaceSilent(paths, socket, SILENT.replyTimeoutMillis());
 
             assertThat(bystander.isAlive())
                     .as("not a JVM, so not a kill target")

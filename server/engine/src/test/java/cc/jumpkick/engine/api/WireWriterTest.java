@@ -236,7 +236,7 @@ class WireWriterTest {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        long idleMs = 2_000;
+        long idleMs = 400;
         WireWriter.bind(writer, idleMs, spillDir, 0, bytes -> true);
         String line = failureSizedLine();
         int lines = (int) (2 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1));
@@ -252,8 +252,9 @@ class WireWriterTest {
                     if (n < 0) return;
                     for (int i = 0; i < n; i++) if (buf.get(i) == '\n') newlines.incrementAndGet();
                     received.addAndGet(n);
-                    // About 3 MB/s: the burst takes seconds, each pause a sliver of the bound.
-                    Thread.sleep(10);
+                    // At most 32 KiB per millisecond: the burst outlasts the bound, each pause a
+                    // sliver of it.
+                    Thread.sleep(1);
                 }
             } catch (IOException | InterruptedException e) {
                 // the stream died under the reader; the assertions below say so

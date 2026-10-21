@@ -85,25 +85,27 @@ public final class PlannerTails {
             // both an assembly tail and a native tail fail validation — the join would be
             // requiring native-image, which is a later stage than itself.
             BuildStage joinStage = BuildStage.PACKAGE;
-            if (project.assembly()) {
+            // A guard run packages the jars the output lane reads and delivers nothing beside them.
+            boolean deliver = !in.session().lanesOnly();
+            if (deliver && project.assembly()) {
                 b.addTask(assemblyStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
                 leaves.add(TaskNames.PACKAGE_ASSEMBLY);
             }
-            if (PlannerWar.declared(project)) {
+            if (deliver && PlannerWar.declared(project)) {
                 b.addTask(PlannerWar.warStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
                 leaves.add(TaskNames.PACKAGE_WAR);
             }
-            if (project.minified()) {
+            if (deliver && project.minified()) {
                 b.addTask(minifiedStep(in, graalHome));
                 leaves.add(TaskNames.PACKAGE_MINIFIED);
             }
-            if (allowNative && project.nativeMode() == JkBuild.NativeMode.ALWAYS) {
+            if (deliver && allowNative && project.nativeMode() == JkBuild.NativeMode.ALWAYS) {
                 b.addTask(nativeStep(in.dir(), in.cache(), in.lockFile(), in.jdksDir(), graalHome, null, List.of()));
                 leaves.add(TaskNames.NATIVE_IMAGE);
                 joinStage = BuildStage.NATIVE;
             }
             // A library ships what Maven Central requires beside its jar: sources and javadoc.
-            if (PackagingKeys.libraryArtifacts(project, in.dir())) {
+            if (deliver && PackagingKeys.libraryArtifacts(project, in.dir())) {
                 b.addTask(sourcesStep(in.cache(), !in.ephemeralActions()));
                 leaves.add(TaskNames.PACKAGE_SOURCES);
                 if (project.project().javadocMode().enabled()) {
@@ -111,42 +113,16 @@ public final class PlannerTails {
                     leaves.add(TaskNames.PACKAGE_JAVADOC);
                 }
             }
-            // run-tests is a LEAF, not a gate: packaging does not require it, so without
-            // joining it here the terminal's requires-closure would prune the suite out of
-            // `jk build` entirely. Joining keeps tests scheduled — concurrently with
-            // packaging — while a failure still fails the plan.
-            List<String> joined = new ArrayList<>(leaves.isEmpty() ? List.of(TaskNames.PACKAGE_JAR) : leaves);
             // The output lane reads what the tails wrote, so it hangs off every packaging leaf and
             // re-roots the terminal; a plan without an output rule never plans it.
+            List<String> joined = new ArrayList<>(leaves.isEmpty() ? List.of(TaskNames.PACKAGE_JAR) : leaves);
             boolean outputLane = PlannerResources.invocationRoot(in.dir()) && PlannerGuards.outputLaneWanted(in);
             if (outputLane) {
                 b.addTask(PlannerGuards.outputStep(PlannerGuards.env(in), joined.toArray(String[]::new)));
                 joined = new ArrayList<>(List.of(TaskNames.GUARD_OUTPUT));
                 if (joinStage.ordinal() < BuildStage.NATIVE.ordinal()) joinStage = BuildStage.NATIVE;
             }
-            if (!PlannerResources.skipJUnit(in)) {
-                joined.add(TaskNames.RUN_TESTS);
-            }
-            if (PlannerResources.runGuardScripts(in) && PlannerResources.invocationRoot(in.dir())) {
-                joined.add(TaskNames.BUILD_LOGIC_GUARD);
-            }
-            if (joined.size() == 1 && leaves.isEmpty() && !outputLane)
-                return; // skip-tests, no tails: package-jar stays terminal
-            if (joined.size() == 1) {
-                b.terminal(joined.get(0));
-                return;
-            }
-            // Independent branches (package tails + the test leaf) — join so prune keeps each.
-            b.addTask(Task.builder(DELIVER_JOIN)
-                    .stage(joinStage)
-                    .requires(joined.toArray(String[]::new))
-                    .weight(0)
-                    .ticks(0)
-                    .execute(ctx -> {
-                        /* join only */
-                    })
-                    .build());
-            b.terminal(DELIVER_JOIN);
+            join(b, in, joined, joinStage, !leaves.isEmpty() || outputLane);
         } catch (JkBuildParseException | IOException ignored) {
             // Core planning parses the same file and has already reported an unreadable or
             // malformed jk.toml loudly; re-reporting here would double the diagnostic. Anything
@@ -154,6 +130,43 @@ public final class PlannerTails {
             // tails from the plan while the build still reported success.
         }
     }
+    /**
+     * A test run's plan for a module whose jar a sibling compiles against: {@code package-jar}
+     * and the tests, and none of the delivery tails — the sibling reads the jar, never the javadoc,
+     * sources, fat jar or native image.
+     */
+    public static void joinTests(BuildPlan.Builder b, BuildPlanner.Inputs in) {
+        join(b, in, new ArrayList<>(List.of(TaskNames.PACKAGE_JAR)), BuildStage.PACKAGE, false);
+    }
+
+    /**
+     * run-tests is a leaf, not a gate: packaging does not require it, so without joining it the
+     * terminal's requires-closure would prune the suite out entirely. Joining keeps the tests
+     * scheduled, concurrently with packaging, while a failure still fails the plan.
+     */
+    private static void join(
+            BuildPlan.Builder b, BuildPlanner.Inputs in, List<String> joined, BuildStage stage, boolean reroot) {
+        if (!PlannerResources.skipJUnit(in)) joined.add(TaskNames.RUN_TESTS);
+        if (PlannerResources.runGuardScripts(in) && PlannerResources.invocationRoot(in.dir())) {
+            joined.add(TaskNames.BUILD_LOGIC_GUARD);
+        }
+        if (joined.size() == 1 && !reroot) return; // package-jar stays terminal
+        if (joined.size() == 1) {
+            b.terminal(joined.get(0));
+            return;
+        }
+        b.addTask(Task.builder(DELIVER_JOIN)
+                .stage(stage)
+                .requires(joined.toArray(String[]::new))
+                .weight(0)
+                .ticks(0)
+                .execute(ctx -> {
+                    /* join only */
+                })
+                .build());
+        b.terminal(DELIVER_JOIN);
+    }
+
     // ---- tail steps ----------------------------------------------------
 
     /**

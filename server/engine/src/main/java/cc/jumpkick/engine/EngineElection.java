@@ -60,6 +60,9 @@ final class EngineElection {
     /** How long a handover probe waits for the predecessor's {@code bye} after yield. */
     private static final long HANDOVER_BYE_MS = 2_000;
 
+    /** Test seam: the probe and yield read timeout, {@link #HANDOVER_BYE_MS} unless a test shortens it. */
+    static long handoverByeMs = HANDOVER_BYE_MS;
+
     /** Highest generation number tried before giving up on finding a free one. */
     private static final int MAX_GENERATIONS = 10_000;
 
@@ -240,7 +243,7 @@ final class EngineElection {
             BufferedWriter w =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader r = new BoundedLineReader(
-                    new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8), ch, HANDOVER_BYE_MS);
+                    new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8), ch, handoverByeMs);
             w.write(ProtoLifecycle.shutdown(false));
             w.write('\n');
             w.flush();
@@ -387,7 +390,7 @@ final class EngineElection {
             BufferedWriter w =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader r = new BoundedLineReader(
-                    new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8), ch, HANDOVER_BYE_MS);
+                    new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8), ch, handoverByeMs);
             w.write(ProtoLifecycle.hello(probeVersion, "probe"));
             w.write('\n');
             w.flush();

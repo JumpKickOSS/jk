@@ -31,12 +31,24 @@ final class ConnectionWatch {
      */
     static final long TERMINAL_GRACE_MS = 500L;
 
+    /** What a cancelled join waits past the cancel grace before the workers are killed. */
+    static final long JOIN_BUFFER_MS = 500L;
+
     private final LongSupplier nowMillis;
     private final Consumer<String> log;
+    private final long terminalGraceMs;
+    private final long joinBufferMs;
 
     ConnectionWatch(LongSupplier nowMillis, Consumer<String> log) {
+        this(nowMillis, log, TERMINAL_GRACE_MS, JOIN_BUFFER_MS);
+    }
+
+    /** As above with the terminal grace and the join buffer in millis (tests). */
+    ConnectionWatch(LongSupplier nowMillis, Consumer<String> log, long terminalGraceMs, long joinBufferMs) {
         this.nowMillis = nowMillis;
         this.log = log;
+        this.terminalGraceMs = terminalGraceMs;
+        this.joinBufferMs = joinBufferMs;
     }
 
     /**
@@ -67,7 +79,7 @@ final class ConnectionWatch {
         try {
             while (done.getCount() > 0) {
                 if (gone.await(EOF_LOOK_MS, TimeUnit.MILLISECONDS)) {
-                    if (done.getCount() > 0 && !finishesWithin(bodyFinished, TERMINAL_GRACE_MS)) onDisconnect.run();
+                    if (done.getCount() > 0 && !finishesWithin(bodyFinished, terminalGraceMs)) onDisconnect.run();
                     break;
                 }
             }
@@ -165,7 +177,7 @@ final class ConnectionWatch {
             throws InterruptedException {
         // User cancel without wall deadline: join for cancelGrace + a small buffer, then kill the
         // workers so nothing the runner waits on is still running.
-        long joinBudget = cancelGraceMs + 500L;
+        long joinBudget = cancelGraceMs + joinBufferMs;
         if (done.await(joinBudget, TimeUnit.MILLISECONDS)) return;
         forceKill.run();
         long nextCheck = NEXT_CHECK_BUDGETS * joinBudget;

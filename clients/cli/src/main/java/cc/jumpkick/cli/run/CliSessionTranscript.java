@@ -83,6 +83,9 @@ public final class CliSessionTranscript {
 
     private final Path projectDir;
     private final Instant started;
+    /** {@link Clock#nanos()} at open: the session's age is monotonic, immune to a wall-clock step. */
+    private final long startedNanos;
+
     private final String command;
     private final List<String> argv;
     private final List<String> modules = new ArrayList<>();
@@ -109,6 +112,7 @@ public final class CliSessionTranscript {
             Path projectDir, Instant started, String command, List<String> argv, boolean acrossJobs) {
         this.projectDir = projectDir;
         this.started = started;
+        this.startedNanos = Clock.SYSTEM.nanos();
         this.command = command;
         this.argv = List.copyOf(argv);
         this.acrossJobs = acrossJobs;
@@ -222,7 +226,8 @@ public final class CliSessionTranscript {
     }
 
     private boolean oldEnough() {
-        return Clock.SYSTEM.millis() - started.toEpochMilli() >= lazyOpenMillis;
+        return Clock.SYSTEM.nanos() - startedNanos
+                >= Duration.ofMillis(lazyOpenMillis).toNanos();
     }
 
     private void openFile(Path detailsFile) throws IOException {

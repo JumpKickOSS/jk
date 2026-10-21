@@ -233,8 +233,11 @@ final class ModuleForecast {
             resource(prepared);
             pluginTasks(prepared);
             packageJar(prepared);
-            packageTails(prepared);
-            nativeImage(prepared);
+            // A test run packages only the jars a sibling reads; a guard run, only what its lanes read.
+            if (!target.testOnly() && !SessionContext.current().lanesOnly()) {
+                packageTails(prepared);
+                nativeImage(prepared);
+            }
             writeImage(prepared);
             cacheInstall(prepared);
             emit(prepared);
@@ -610,7 +613,7 @@ final class ModuleForecast {
         GuardKeys.forecastModuleLane(dir, layout, actionCache, force || compileDirty, skipTests)
                 .ifPresent(steps::add);
         if (PlannerResources.invocationRoot(dir))
-            steps.addAll(GuardKeys.forecastRootLanes(dir, project, actionCache, skipTests));
+            steps.addAll(GuardKeys.forecastRootLanes(dir, project, actionCache, cas, skipTests));
 
         if (haveTests && !skipTests) {
             compileTestStep(prepared);
@@ -981,9 +984,8 @@ final class ModuleForecast {
         boolean noSources = prepared.mainSrc().isEmpty()
                 && prepared.ktSrc().isEmpty()
                 && prepared.gvSrc().isEmpty();
-        boolean onBuild = project.nativeMode() == JkBuild.NativeMode.ALWAYS;
         boolean onNativeCmd = target == WorkspaceTarget.NATIVE && terminalDirs.contains(dir);
-        if (noSources || !(onBuild || onNativeCmd)) return;
+        if (noSources || !(project.nativeMode() == JkBuild.NativeMode.ALWAYS || onNativeCmd)) return;
         boolean jarDirty = steps.stream().anyMatch(s -> TaskNames.PACKAGE_JAR.equals(s.name()) && !s.cached());
         BuildLayout layout = prepared.layout();
         TaskForecast.Task step = ForecastPackagingTails.nativeImage(

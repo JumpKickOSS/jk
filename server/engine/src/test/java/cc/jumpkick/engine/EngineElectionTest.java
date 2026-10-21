@@ -359,7 +359,16 @@ class EngineElectionTest {
         assertThat(mine.active().socket())
                 .isEqualTo(EnginePaths.generation(p, 1).socket());
 
-        EngineElection.Won third = requireNonNull(election(p, "bbbb", 3).win());
+        // Nothing accepts on the successor's listener, so the third engine's hello probe of
+        // generation 1 can only time out; how long it waits is not what is under test.
+        long byeMs = EngineElection.handoverByeMs;
+        EngineElection.handoverByeMs = 50;
+        EngineElection.Won third;
+        try {
+            third = requireNonNull(election(p, "bbbb", 3).win());
+        } finally {
+            EngineElection.handoverByeMs = byeMs;
+        }
         closeLater(third.listener());
         assertThat(third.active().socket())
                 .as("generation 1 is still held by the successor")

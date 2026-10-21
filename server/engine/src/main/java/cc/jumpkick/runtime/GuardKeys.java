@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.eval.Evaluators;
 import cc.jumpkick.guard.eval.GuardSuites;
@@ -241,13 +242,13 @@ final class GuardKeys {
 
     /** The root lanes' forecast, in plan order: model, workspace, tree (gate), fixtures (gate). */
     static List<TaskForecast.Task> forecastRootLanes(
-            Path root, JkBuild project, ActionCache actionCache, boolean skipTests) {
+            Path root, JkBuild project, ActionCache actionCache, Cas cas, boolean skipTests) {
         if (PlannerGuards.lanesSkipped(skipTests, PlannerGuards.guardRequested())) return List.of();
         List<TaskForecast.Task> out = new ArrayList<>();
         forecastModelLane(root, project, actionCache).ifPresent(out::add);
         forecastWorkspaceLane(root, actionCache).ifPresent(out::add);
         forecastTreeLane(root, actionCache).ifPresent(out::add);
-        forecastFixtures(root).ifPresent(out::add);
+        forecastFixtures(root, actionCache, cas).ifPresent(out::add);
         forecastOutputLane(root, actionCache).ifPresent(out::add);
         return out;
     }
@@ -315,10 +316,10 @@ final class GuardKeys {
 
     /**
      * The gate's fixture proof: planned whenever the gate is asked for and any rule or guard test
-     * names a fixture. It keys its own compile on the fixture sources, so it is cheap to forecast as
-     * RUN; what matters is that a gate with fixtures is never "up to date" without running it.
+     * names a fixture, and cached when its key — the rules, the fixtures, the suites and what the
+     * fixtures compile against — names a green proof already.
      */
-    static Optional<TaskForecast.Task> forecastFixtures(Path dir) {
+    static Optional<TaskForecast.Task> forecastFixtures(Path dir, ActionCache actionCache, Cas cas) {
         Path root = WorkspaceScan.findRoot(dir).orElse(dir).toAbsolutePath().normalize();
         PlannerGuards.GuardsPlan g = PlannerGuards.detectAt(root);
         if (!g.enabled() || !PlannerGuards.guardRequested()) return Optional.empty();
@@ -332,6 +333,14 @@ final class GuardKeys {
                 }
             }
             if (!any) return Optional.empty();
+            List<String> tokens = GuardFixtures.keyTokens(root, cas);
+            if (tokens != null) {
+                String key = laneKey(ActionKey.qualifiedTaskId(TaskNames.GUARD_FIXTURES, root), tokens, "fixtures");
+                if (actionCache.lookup(key).isPresent()) {
+                    return Optional.of(new TaskForecast.Task(
+                            TaskNames.GUARD_FIXTURES, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
+                }
+            }
             return Optional.of(new TaskForecast.Task(
                     TaskNames.GUARD_FIXTURES,
                     TaskForecast.Status.RUN,

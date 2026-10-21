@@ -15,9 +15,12 @@ import java.util.List;
 import java.util.Objects;
 import java.util.zip.ZipFile;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+// Every case runs the real Scala 3 compiler through Zinc.
+@Tag("integration")
 class ZincJavaCompilerMixedTest {
 
     @Test

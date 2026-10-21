@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -285,6 +286,11 @@ public final class OfficialTemplatesFreshen {
     }
 
     static void runGit(List<String> args, int timeoutSec) throws IOException {
+        runGit(args, Duration.ofSeconds(timeoutSec));
+    }
+
+    /** As {@link #runGit(List, int)} with a finer timeout; tests prove the kill in milliseconds. */
+    static void runGit(List<String> args, Duration timeout) throws IOException {
         // Both streams are handled at the OS level — stdout discarded, stderr into a file — because
         // reading a pipe inline would block past the timeout on a stalled fetch, and the single
         // maintenance thread must never hang. The file is what lets a failure say why.
@@ -301,9 +307,11 @@ public final class OfficialTemplatesFreshen {
                 throw new IOException(failure("git not on PATH", args, stderr), e);
             }
             try {
-                if (!proc.waitFor(timeoutSec, TimeUnit.SECONDS)) {
+                if (!proc.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
                     kill(proc);
-                    throw new IOException(failure("git timed out after " + timeoutSec + "s", args, stderr));
+                    long millis = timeout.toMillis();
+                    String budget = millis % 1000 == 0 ? millis / 1000 + "s" : millis + "ms";
+                    throw new IOException(failure("git timed out after " + budget, args, stderr));
                 }
                 if (proc.exitValue() != 0) {
                     throw new IOException(failure("git exit " + proc.exitValue(), args, stderr));

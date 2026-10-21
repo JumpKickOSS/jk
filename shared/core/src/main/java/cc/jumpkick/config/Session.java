@@ -103,6 +103,8 @@ public record Session(
         @With @Nullable String profile,
         /** {@code --continue}: finish the graph and report every failure, not just the first. */
         @With boolean keepGoing,
+        /** A guard run: every jar is packaged for the output lane and no delivery artifact beside it. */
+        @With boolean lanesOnly,
         /** {@code run kind=test affected=true}: rank and run WIP test classes. */
         @With boolean affected,
         /** Cross-module changed-type carrier for {@code --affected}; shared by every copy. */
@@ -149,6 +151,7 @@ public record Session(
                 skipNode,
                 profile,
                 keepGoing,
+                lanesOnly,
                 affected,
                 affectedChanged,
                 io);
@@ -267,6 +270,7 @@ public record Session(
                 null,
                 false,
                 false,
+                false,
                 new AffectedChanged(),
                 IoLedger.currentOrNew());
     }
@@ -296,6 +300,7 @@ public record Session(
                 skipNode,
                 profile,
                 keepGoing,
+                lanesOnly,
                 affected,
                 affectedChanged,
                 io);
@@ -326,6 +331,7 @@ public record Session(
                 skipNode,
                 profile,
                 keepGoing,
+                lanesOnly,
                 affected,
                 affectedChanged,
                 io);
@@ -361,6 +367,7 @@ public record Session(
                 skipNode,
                 profile,
                 keepGoing,
+                lanesOnly,
                 affected,
                 affectedChanged,
                 io);

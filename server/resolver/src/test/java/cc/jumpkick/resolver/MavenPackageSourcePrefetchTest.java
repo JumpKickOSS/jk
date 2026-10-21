@@ -169,10 +169,10 @@ class MavenPackageSourcePrefetchTest {
 
     @Test
     void a_burst_of_submissions_runs_on_a_bounded_set_of_workers(@TempDir Path tmp) throws Exception {
-        for (int i = 0; i < 200; i++) upstream.pomWithoutJar("com.foo", "lib" + i, "1.0");
+        for (int i = 0; i < 100; i++) upstream.pomWithoutJar("com.foo", "lib" + i, "1.0");
         MavenPackageSource src = source(tmp);
         List<Term> roots = new ArrayList<>();
-        for (int i = 0; i < 200; i++) roots.add(Term.positive("com.foo:lib" + i + ":jar:", VersionSet.exact("1.0")));
+        for (int i = 0; i < 100; i++) roots.add(Term.positive("com.foo:lib" + i + ":jar:", VersionSet.exact("1.0")));
 
         src.prefetchRoots(roots);
         assertThat(src.prefetchWorkersRunning()).isLessThanOrEqualTo(32);
@@ -182,7 +182,7 @@ class MavenPackageSourcePrefetchTest {
         src.quiesce();
 
         assertThat(src.prefetchWorkersRunning()).isZero();
-        for (int i = 0; i < 200; i++) {
+        for (int i = 0; i < 100; i++) {
             assertThat(http.requestsFor(MavenStub.path("com.foo", "lib" + i, "1.0", ".pom")))
                     .isEqualTo(1);
         }

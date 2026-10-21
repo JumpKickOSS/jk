@@ -21,6 +21,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -172,6 +173,7 @@ class ApkPackagerTest {
      * goes red.
      */
     @Test
+    @Tag("integration") // forks keytool to generate the debug identity
     void a_build_with_no_signing_config_signs_with_the_debug_identity(@TempDir Path tmp) throws Exception {
         Path storeDir = tmp.resolve("android-home");
         FakeBuildIo io = builtApp(tmp).config("debug-store-dir", storeDir.toString());
@@ -257,8 +259,8 @@ class ApkPackagerTest {
 
     /**
      * A debug-shaped app after the resource and dex steps, plus one AAR dependency and a release
-     * signing identity. The keystore is minted by the plugin's own {@code keytool} generation into
-     * the temp dir, so the fixture and the product agree on what a keystore looks like.
+     * signing identity. The keystore is minted by the plugin's own {@code keytool} generation, so
+     * the fixture and the product agree on what a keystore looks like.
      */
     private static FakeBuildIo app(Path root) throws Exception {
         return app(root, root.resolve("keys"));
@@ -266,8 +268,7 @@ class ApkPackagerTest {
 
     private static FakeBuildIo app(Path root, Path keysDir) throws Exception {
         FakeBuildIo io = builtApp(root);
-        Path keystore =
-                DebugKeystore.ensure(Files.createDirectories(keysDir), Path.of(System.getProperty("java.home")));
+        Path keystore = MintedKeystore.in(keysDir);
         io.config("signing.store-file", keystore.toAbsolutePath().toString())
                 .config("signing.key-alias", DebugKeystore.ALIAS)
                 .secret("signing.store-password", KEY_PASSWORD)

@@ -356,10 +356,13 @@ final class WorkspacePreparePhase {
             }
             return builder.build();
         }
-        boolean testOnly = (target.testOnly() || request.testOnly()) && !consumed;
-        BuildPlanner.Inputs inputs = moduleInputs(dir, request, moduleDirs, testOnly, siblings);
+        boolean testRun = target.testOnly() || request.testOnly();
+        BuildPlanner.Inputs inputs = moduleInputs(dir, request, moduleDirs, testRun && !consumed, siblings);
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs, forceRebuild);
-        if (!testOnly) {
+        // A test run packages a consumed module's jar for the sibling that compiles against it, and
+        // nothing a delivery adds; a module nothing consumes stops at its tests.
+        if (testRun && consumed) PlannerTails.joinTests(builder, inputs);
+        else if (!testRun) {
             PlannerTails.appendDeclaredTails(builder, inputs, GraalHomes.lookup(dir, spec.graalByDir()), true);
         }
         return builder.build();

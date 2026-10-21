@@ -38,6 +38,8 @@ class McpJobRunsWaitTest {
                 null,
                 null);
         ctx.liveJid(jid -> jid == 7L && live.get());
+        // No journal row ever lands for this jid, so the post-wait settle poll can only run out.
+        ctx.journalSettleMs(50);
         Thread.ofVirtual().start(() -> {
             try {
                 Thread.sleep(300);

@@ -106,11 +106,14 @@ and `hybrid` rules read two of these. The **lane** is when it runs: `model` befo
 (text, metric, parity and generated rules) and the fixture proofs run on `jk guard` and on
 `--guard`, never on a plain `jk build`, so a tree scan is a share-the-commit cost.
 `--skip-tests` skips every lane along with the tests unless `--guard` is also given, which is
-what `jk guard` runs. `--guard`
+what `jk guard` runs. `jk guard` packages the jars its output lane reads and nothing beside
+them: no javadoc or sources jar, fat jar, war or native image. `--guard`
 is one flag on every verb that builds through the test stage — `jk build`, `jk test`,
 `jk assemble`, `jk image`, `jk native`, `jk install`, `jk explain` — and it means the same
 thing on each: the guard lanes, the integration suite and the root's guard scripts. A lane is keyed to what it reads, so an unchanged input skips it and
-an edit re-runs only the lanes it can affect.
+an edit re-runs only the lanes it can affect. The fixture proofs are keyed the same way: the
+rules, the fixture files, the guard suites and the classes the fixtures compile against. A
+proof only reruns when one of those changes, and its cases run side by side.
 
 ## Keys
 

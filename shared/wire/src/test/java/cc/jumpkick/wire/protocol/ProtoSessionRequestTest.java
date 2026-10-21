@@ -132,6 +132,16 @@ class ProtoSessionRequestTest {
         assertThat(BuildRequest.decode(build).coverage()).isTrue();
     }
 
+    /** A guard run's session rides the line to the engine; a plain build never spells it. */
+    @Test
+    void a_guard_run_session_reaches_the_engine_and_a_plain_line_stays_silent() {
+        String spliced =
+                ProtoSession.withSessionFields(buildLine(), Session.defaults().withLanesOnly(true));
+        assertThat(ProtoSession.sessionOf(spliced, TOKEN).lanesOnly()).isTrue();
+        assertThat(buildLine()).doesNotContain("\"lanesOnly\"");
+        assertThat(ProtoSession.sessionOf(buildLine(), TOKEN).lanesOnly()).isFalse();
+    }
+
     /** A test-failure mode on a test or build line lands on the session; a silent line leaves each module's own. */
     @Test
     void a_test_failure_mode_on_the_line_lands_on_the_session() {

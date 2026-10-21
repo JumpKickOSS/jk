@@ -18,6 +18,7 @@ import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -72,6 +73,7 @@ class LintStepTest {
             """;
 
     @Test
+    @Tag("integration") // forks Checkstyle
     void a_violation_is_a_warning_diagnostic_with_the_rule_id_and_the_step_passes(@TempDir Path tmp) throws Exception {
         FakeBuildIo io = lintModule(tmp, "warning", SOURCE);
 
@@ -85,6 +87,7 @@ class LintStepTest {
     }
 
     @Test
+    @Tag("integration") // forks Checkstyle
     void an_error_severity_violation_fails_the_step_and_is_an_error_diagnostic(@TempDir Path tmp) throws Exception {
         FakeBuildIo io = lintModule(tmp, "error", SOURCE);
 
@@ -98,6 +101,7 @@ class LintStepTest {
     }
 
     @Test
+    @Tag("integration") // forks Checkstyle
     void fail_on_warning_fails_on_a_warning_and_never_fails_on_nothing(@TempDir Path tmp) throws Exception {
         FakeBuildIo strict =
                 lintModule(tmp.resolve("strict"), "warning", SOURCE).config("fail-on", "warning");
@@ -112,6 +116,7 @@ class LintStepTest {
 
     /** A tool's own threshold sits beside the table's: Checkstyle at error-only while the table fails on warnings. */
     @Test
+    @Tag("integration") // forks Checkstyle
     void a_tools_own_fail_on_overrides_the_tables(@TempDir Path tmp) throws Exception {
         FakeBuildIo own = lintModule(tmp.resolve("own"), "warning", SOURCE)
                 .config("fail-on", "warning")
@@ -126,6 +131,7 @@ class LintStepTest {
     }
 
     @Test
+    @Tag("integration") // forks Checkstyle
     void a_clean_source_has_no_finding(@TempDir Path tmp) throws Exception {
         FakeBuildIo io = lintModule(tmp, "error", SOURCE.replace("n * 42", "n * 2"));
 
@@ -175,6 +181,7 @@ class LintStepTest {
 
     /** A rule set at a URL reaches the step as the engine-fetched {@code checkstyle-config} extra, not a module file. */
     @Test
+    @Tag("integration") // forks Checkstyle
     void a_rule_set_at_a_url_is_read_from_the_fetched_extra(@TempDir Path tmp) throws Exception {
         FakeBuildIo io = lintModule(tmp, "warning", SOURCE)
                 .config("checkstyle", "https://example.com/build/checks.xml")
@@ -194,6 +201,7 @@ class LintStepTest {
      * property, through Checkstyle's own {@code -p} file, so a {@code SuppressionFilter} over it applies.
      */
     @Test
+    @Tag("integration") // forks Checkstyle
     void the_suppressions_file_reaches_the_rule_set_through_checkstyles_property(@TempDir Path tmp) throws Exception {
         String filtered = CONFIG.formatted("warning")
                 .replace(
@@ -225,6 +233,7 @@ class LintStepTest {
      * checkstyle-properties} entry reaching the rule set through the same {@code -p} file.
      */
     @Test
+    @Tag("integration") // forks Checkstyle
     void a_rule_set_inside_a_classpath_jar_runs_with_its_header_and_properties(@TempDir Path tmp) throws Exception {
         String rules = CONFIG.formatted("warning")
                 .replace(
@@ -270,6 +279,7 @@ class LintStepTest {
 
     /** A {@code [lint.<name>]} entry is a Checkstyle run of its own, under its own step, output and extras. */
     @Test
+    @Tag("integration") // forks Checkstyle
     void an_entry_is_a_checkstyle_run_of_its_own(@TempDir Path tmp) throws Exception {
         FakeBuildIo io = lintModule(tmp, "warning", SOURCE)
                 .config("*", Map.of("nohttp", Map.of("checkstyle", "https://example.com/build/nohttp.xml")))
@@ -291,6 +301,7 @@ class LintStepTest {
 
     /** SpotBugs runs over the compiled classes; a high-priority pattern is an error that fails the step. */
     @Test
+    @Tag("integration") // forks SpotBugs
     void spotbugs_reports_a_pattern_against_the_classes_and_a_high_priority_one_fails_the_step(@TempDir Path tmp)
             throws Exception {
         FakeBuildIo io = spotbugsModule(tmp, REF_COMPARISON);
@@ -309,6 +320,7 @@ class LintStepTest {
     }
 
     @Test
+    @Tag("integration") // forks SpotBugs
     void spotbugs_over_clean_classes_has_no_finding(@TempDir Path tmp) throws Exception {
         FakeBuildIo io = spotbugsModule(tmp, CLEAN);
 

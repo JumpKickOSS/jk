@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -40,6 +41,7 @@ import org.junit.jupiter.api.io.TempDir;
  * diagnostic whose code is the rule id, freezing it turns the next build green, and the build after
  * that is a verdict hit.
  */
+@Tag("integration")
 class GuardLaneE2eTest {
 
     @AfterEach

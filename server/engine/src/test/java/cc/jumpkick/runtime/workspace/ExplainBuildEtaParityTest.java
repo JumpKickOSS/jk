@@ -4,14 +4,21 @@ package cc.jumpkick.runtime.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.test.TestWorkers;
+import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * HARD INVARIANT: {@code jk explain} and {@code jk build}'s countdown seed use one function
@@ -19,6 +26,39 @@ import org.junit.jupiter.api.Test;
  * is actively misleading — see docs/perf/progress-contract.md.
  */
 class ExplainBuildEtaParityTest {
+
+    @TempDir
+    Path hostStateDir;
+
+    private @Nullable String prevStateDir;
+
+    /**
+     * A settled host calibration in a private state dir, so the ETA's {@link Calibration#ensure}
+     * returns at once instead of running the multi-second hardware probe.
+     */
+    @BeforeEach
+    void settledHostCalibration() throws Exception {
+        prevStateDir = System.getProperty("jk.env.JK_STATE_DIR");
+        System.setProperty("jk.env.JK_STATE_DIR", hostStateDir.toString());
+        Path file = JkDirs.builds().resolve("host-metrics.toml");
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, """
+                [calibration]
+                schema        = 1
+                ms-per-weight = 120.0
+                measured      = true
+                jk-version    = "%s"
+                updated       = %d
+                """.formatted(JkVersion.VERSION, System.currentTimeMillis()));
+        Calibration.invalidateMemo();
+    }
+
+    @AfterEach
+    void restoreHostState() {
+        if (prevStateDir == null) System.clearProperty("jk.env.JK_STATE_DIR");
+        else System.setProperty("jk.env.JK_STATE_DIR", prevStateDir);
+        Calibration.invalidateMemo();
+    }
 
     @Test
     void auto_workers_resolve_wider_than_forced_serial() {
@@ -46,7 +86,7 @@ class ExplainBuildEtaParityTest {
     }
 
     @Test
-    void estimate_eta_is_deterministic_for_identical_inputs(@org.junit.jupiter.api.io.TempDir Path tmp) {
+    void estimate_eta_is_deterministic_for_identical_inputs(@TempDir Path tmp) {
         ExplainPlan empty = new ExplainPlan(List.of(), Map.of(), 1, List.of());
         long a = BuildService.estimateEtaMillis(empty, tmp, tmp.resolve("c"), 0, null, null, false, false, true, 8);
         long b = BuildService.estimateEtaMillis(empty, tmp, tmp.resolve("c"), 0, null, null, false, false, true, 8);
@@ -54,8 +94,7 @@ class ExplainBuildEtaParityTest {
     }
 
     @Test
-    void fully_cached_explain_plan_is_not_dirty_and_etas_to_zero(@org.junit.jupiter.api.io.TempDir Path tmp)
-            throws Exception {
+    void fully_cached_explain_plan_is_not_dirty_and_etas_to_zero(@TempDir Path tmp) throws Exception {
         // Mirrors the dirty-memo fast path: no TaskForecaster, empty steps, ETA 0.
         Path mod = tmp.resolve("m");
         Files.createDirectories(mod);

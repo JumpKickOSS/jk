@@ -134,7 +134,10 @@ class LibraryRegistryClientTest {
         Path etagFile = dir.resolve(".libs.global.toml.etag");
         Path cacheFile = cacheFile(dir);
 
-        assertThatThrownBy(() -> client().fetch(uri, etagFile, cacheFile)).isInstanceOf(IOException.class);
+        // Fail-fast: a 503 is retried by default, and the backoff ladder is not what is under test.
+        var client = new LibraryRegistryClient(Http.failFast());
+
+        assertThatThrownBy(() -> client.fetch(uri, etagFile, cacheFile)).isInstanceOf(IOException.class);
     }
 
     /** A present, non-empty cache file — the state under which conditional GET is allowed. */

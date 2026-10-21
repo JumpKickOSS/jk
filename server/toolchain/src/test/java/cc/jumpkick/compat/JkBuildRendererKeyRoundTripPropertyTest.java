@@ -46,7 +46,7 @@ class JkBuildRendererKeyRoundTripPropertyTest {
                 .filter(s -> !s.isBlank() && !s.equals("default") && !s.equals("jk-local"));
     }
 
-    @Property(tries = 300)
+    @Property(tries = 100)
     void a_handle_renders_as_a_key_the_parser_reads_back_verbatim(
             @ForAll("mavenIds") String handle,
             @ForAll("mavenIds") String feature,

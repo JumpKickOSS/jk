@@ -2,13 +2,17 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.guard.eval.FixtureCheck;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -110,6 +114,48 @@ class GuardFixturesTest {
                         .orElseThrow()
                         .outcome())
                 .isEqualTo("bites");
+    }
+
+    @Test
+    void parallel_verdicts_keep_submission_order_and_carry_the_session() throws Exception {
+        List<Callable<FixtureCheck.Verdict>> jobs = new ArrayList<>();
+        for (int n = 0; n < 12; n++) {
+            String id = "case-" + n;
+            long pause = 12 - n;
+            jobs.add(() -> {
+                Thread.sleep(pause);
+                return new FixtureCheck.Verdict(id, SessionContext.current().lanesOnly() ? "bites" : "no session", "");
+            });
+        }
+        List<FixtureCheck.Verdict> out =
+                SessionContext.where(SessionContext.current().withLanesOnly(true), () -> GuardFixtures.parallel(jobs));
+        assertThat(out)
+                .extracting(FixtureCheck.Verdict::id)
+                .containsExactly(
+                        "case-0", "case-1", "case-2", "case-3", "case-4", "case-5", "case-6", "case-7", "case-8",
+                        "case-9", "case-10", "case-11");
+        assertThat(out).extracting(FixtureCheck.Verdict::outcome).containsOnly("bites");
+    }
+
+    @Test
+    void a_case_that_throws_fails_the_run() {
+        List<Callable<FixtureCheck.Verdict>> jobs = List.of(() -> new FixtureCheck.Verdict("a", "bites", ""), () -> {
+            throw new IOException("fork died");
+        });
+        assertThatThrownBy(() -> GuardFixtures.parallel(jobs))
+                .isInstanceOf(IOException.class)
+                .hasMessage("fork died");
+    }
+
+    @Test
+    void the_key_moves_with_a_fixture_and_stays_put_without_one(@TempDir Path root, @TempDir Path store)
+            throws Exception {
+        project(root);
+        Cas cas = new Cas(store);
+        List<String> first = GuardFixtures.keyTokens(root, cas);
+        assertThat(first).isNotNull().isEqualTo(GuardFixtures.keyTokens(root, cas));
+        Files.writeString(root.resolve("guard-fixtures/wide/Ok.java"), "package fx.wide;\nclass Ok {}\n");
+        assertThat(GuardFixtures.keyTokens(root, cas)).isNotEqualTo(first);
     }
 
     /**

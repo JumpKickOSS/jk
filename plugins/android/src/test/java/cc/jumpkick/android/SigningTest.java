@@ -6,11 +6,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.plugin.testing.FakeBuildIo;
 import com.android.apksig.ApkVerifier;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.KeyStore;
 import java.security.Security;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
@@ -190,8 +191,7 @@ class SigningTest {
 
     /** A release-configured IO whose store is a real keystore the plugin's own keytool call made. */
     private static FakeBuildIo release(Path tmp) throws Exception {
-        Path keystore = DebugKeystore.ensure(
-                Files.createDirectories(tmp.resolve("keys")), Path.of(System.getProperty("java.home")));
+        Path keystore = MintedKeystore.in(tmp.resolve("keys"));
         return AndroidIo.packager(tmp, "app.apk")
                 .config("signing.store-file", keystore.toAbsolutePath().toString())
                 .config("signing.key-alias", DebugKeystore.ALIAS)
@@ -199,35 +199,25 @@ class SigningTest {
                 .secret("signing.key-password", PASSWORD);
     }
 
-    /** A genuine keystore of the named format ({@code JKS} or {@code PKCS12}), under any file name. */
+    /**
+     * A genuine keystore of the named format ({@code JKS} or {@code PKCS12}), under any file name,
+     * holding the minted key and chain as {@code upload}. The JDK provider writes the same format
+     * {@code keytool} does.
+     */
     private static Path keystore(Path dir, String storeType, String fileName) throws Exception {
-        Files.createDirectories(dir);
-        Path store = dir.resolve(fileName);
-        Path pass = Files.writeString(dir.resolve("pass"), PASSWORD);
-        List<String> command = new ArrayList<>(List.of(
-                Path.of(System.getProperty("java.home"), "bin", "keytool").toString(),
-                "-genkeypair",
-                "-storetype",
-                storeType,
-                "-keystore",
-                store.toString(),
-                "-storepass:file",
-                pass.toString(),
-                "-keypass:file",
-                pass.toString(),
-                "-alias",
+        char[] password = PASSWORD.toCharArray();
+        KeyStore minted = KeyStore.getInstance(MintedKeystore.in(dir).toFile(), password);
+        KeyStore target = KeyStore.getInstance(storeType);
+        target.load(null, null);
+        target.setKeyEntry(
                 "upload",
-                "-keyalg",
-                "RSA",
-                "-keysize",
-                "2048",
-                "-validity",
-                "3650",
-                "-dname",
-                "CN=Upload,O=Example,C=US"));
-        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        assertThat(process.waitFor()).as("keytool: %s", output).isZero();
+                minted.getKey(DebugKeystore.ALIAS, password),
+                password,
+                minted.getCertificateChain(DebugKeystore.ALIAS));
+        Path store = dir.resolve(fileName);
+        try (OutputStream out = Files.newOutputStream(store)) {
+            target.store(out, password);
+        }
         return store;
     }
 

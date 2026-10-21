@@ -5,12 +5,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.SessionContext;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Two jobs in one engine, under a budget that holds one fork: both finish, and the second waits
@@ -53,12 +55,15 @@ class WorkerBudgetJobsTest {
     }
 
     @Test
-    void two_jobs_under_a_tiny_budget_both_finish_one_waiting() throws Exception {
+    void two_jobs_under_a_tiny_budget_both_finish_one_waiting(@TempDir Path tmp) throws Exception {
         WorkerLeases.Ledger ledger = ledger(WorkerLeases.TOOL_BYTES, 8);
+        // The first fork holds its lease until the second job is seen queued behind it.
+        Path release = tmp.resolve("release");
         CompletableFuture<Integer> first = new CompletableFuture<>();
         Thread.ofVirtual().start(() -> {
             try {
-                first.complete(run(ledger, 1L, "sleep", "1"));
+                first.complete(
+                        run(ledger, 1L, "sh", "-c", "while [ ! -e \"$0\" ]; do sleep 0.01; done", release.toString()));
             } catch (RuntimeException e) {
                 first.completeExceptionally(e);
             }
@@ -72,6 +77,8 @@ class WorkerBudgetJobsTest {
                 second.completeExceptionally(e);
             }
         });
+        awaitQueued(ledger);
+        Files.createFile(release);
         assertThat(first.get(10, TimeUnit.SECONDS)).isZero();
         assertThat(second.get(10, TimeUnit.SECONDS)).isZero();
         assertThat(ledger.waitedNanos(1L) + ledger.waitedNanos(2L)).isPositive();
@@ -157,6 +164,14 @@ class WorkerBudgetJobsTest {
                 throw new AssertionError("ledger not idle: " + ledger.snapshot());
             }
             Thread.sleep(20);
+        }
+    }
+
+    private static void awaitQueued(WorkerLeases.Ledger ledger) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (ledger.queued() <= 0) {
+            if (System.nanoTime() > deadline) throw new AssertionError("nothing queued: " + ledger.snapshot());
+            Thread.sleep(5);
         }
     }
 

@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.security.KeyStore;
 import java.security.cert.X509Certificate;
 import java.util.Map;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -23,13 +24,24 @@ class DebugKeystoreTest {
 
     private static final Path JAVA_HOME = Path.of(System.getProperty("java.home"));
 
+    /** The first build's generation, shared: each {@code keytool} fork costs over half a second. */
+    @TempDir
+    static Path generatedDir;
+
+    private static Path first;
+
+    private static byte[] afterFirstBuild;
+
+    @BeforeAll
+    static void firstBuild() throws Exception {
+        first = DebugKeystore.ensure(generatedDir, JAVA_HOME);
+        afterFirstBuild = Files.readAllBytes(first);
+    }
+
     /** The regression: a second build must sign with the very same key, byte for byte. */
     @Test
-    void a_second_build_reuses_the_first_build_s_keystore(@TempDir Path dir) throws Exception {
-        Path first = DebugKeystore.ensure(dir, JAVA_HOME);
-        byte[] afterFirstBuild = Files.readAllBytes(first);
-
-        Path second = DebugKeystore.ensure(dir, JAVA_HOME);
+    void a_second_build_reuses_the_first_build_s_keystore() throws Exception {
+        Path second = DebugKeystore.ensure(generatedDir, JAVA_HOME);
 
         assertThat(second).isEqualTo(first);
         assertThat(Files.readAllBytes(second))
@@ -42,26 +54,23 @@ class DebugKeystoreTest {
      * not — but say the real thing anyway: the signing certificate is the same certificate.
      */
     @Test
-    void the_signing_certificate_is_the_same_certificate_across_builds(@TempDir Path dir) throws Exception {
-        X509Certificate first = certificateOf(DebugKeystore.ensure(dir, JAVA_HOME));
-        X509Certificate second = certificateOf(DebugKeystore.ensure(dir, JAVA_HOME));
+    void the_signing_certificate_is_the_same_certificate_across_builds() throws Exception {
+        X509Certificate firstCert = certificateOf(first);
+        X509Certificate second = certificateOf(DebugKeystore.ensure(generatedDir, JAVA_HOME));
 
-        assertThat(second.getSerialNumber()).isEqualTo(first.getSerialNumber());
-        assertThat(second.getPublicKey()).isEqualTo(first.getPublicKey());
+        assertThat(second.getSerialNumber()).isEqualTo(firstCert.getSerialNumber());
+        assertThat(second.getPublicKey()).isEqualTo(firstCert.getPublicKey());
     }
 
     /** The generated store carries the identity apksig, jarsigner and bundletool are all told to use. */
     @Test
-    void the_generated_store_carries_the_standard_debug_identity(@TempDir Path dir) throws Exception {
-        KeyStore ks = load(DebugKeystore.ensure(dir, JAVA_HOME));
+    void the_generated_store_carries_the_standard_debug_identity() throws Exception {
+        KeyStore ks = load(first);
 
         assertThat(ks.aliases().asIterator()).toIterable().containsExactly(DebugKeystore.ALIAS);
         assertThat(ks.getKey(DebugKeystore.ALIAS, DebugKeystore.PASSWORD.toCharArray()))
                 .isNotNull();
-        assertThat(certificateOf(DebugKeystore.ensure(dir, JAVA_HOME))
-                        .getSubjectX500Principal()
-                        .getName())
-                .contains("CN=Android Debug");
+        assertThat(certificateOf(first).getSubjectX500Principal().getName()).contains("CN=Android Debug");
     }
 
     /** A keystore already on disk is adopted untouched — jk never rotates a debug identity. */

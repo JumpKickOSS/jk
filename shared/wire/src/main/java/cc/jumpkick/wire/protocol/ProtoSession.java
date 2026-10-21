@@ -52,6 +52,7 @@ public final class ProtoSession {
                 .withSkipNode(Jsonl.bool(request, ProtoJobs.SKIP_NODE, false))
                 .withProfile(Jsonl.str(request, "profile"))
                 .withKeepGoing(Jsonl.bool(request, "keepGoing", false))
+                .withLanesOnly(Jsonl.bool(request, "lanesOnly", false))
                 .withAffected(Jsonl.bool(request, "affected", false))
                 .withVariant(variantOf(request), clientEnvOf(request))
                 .withToolchainSpecs(jdkSpecOf(request), graalSpecOf(request), graalHomeOf(request), javaHomeOf(request))
@@ -238,6 +239,7 @@ public final class ProtoSession {
         }
         if (!Jsonl.has(request, ProtoJobs.SKIP_NODE)) f.optionalTrue(ProtoJobs.SKIP_NODE, session.skipNode());
         if (!Jsonl.has(request, ProtoJobs.COVERAGE)) f.optionalTrue(ProtoJobs.COVERAGE, session.coverage());
+        if (!Jsonl.has(request, "lanesOnly")) f.optionalTrue("lanesOnly", session.lanesOnly());
         String body = f.body();
         return body.isEmpty() ? request : Jsonl.append(request, body);
     }

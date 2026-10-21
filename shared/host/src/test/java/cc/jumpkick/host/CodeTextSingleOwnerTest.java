@@ -24,6 +24,9 @@ class CodeTextSingleOwnerTest {
     private static final Pattern LEXER_DECL = Pattern.compile(
             "(?m)^\\s*(?:(?:public|private|static|final|\\s)*\\S+\\s+|fun\\s+)(blankNonCode|javaCodeOnly|blankComments)\\s*\\(");
 
+    /** The names {@link #LEXER_DECL} looks for; a file naming none of them skips the regex. */
+    private static final List<String> LEXER_NAMES = List.of("blankNonCode", "javaCodeOnly", "blankComments");
+
     @Test
     void only_CodeText_declares_a_blanker() throws IOException {
         Path root = RepoRoot.find(CodeTextSingleOwnerTest.class);
@@ -40,9 +43,9 @@ class CodeTextSingleOwnerTest {
                         for (Path f : files.filter(p -> p.toString().endsWith(".java"))
                                 .toList()) {
                             scanned++;
-                            if (LEXER_DECL
-                                    .matcher(Files.readString(f, StandardCharsets.UTF_8))
-                                    .find()) {
+                            String text = Files.readString(f, StandardCharsets.UTF_8);
+                            if (LEXER_NAMES.stream().anyMatch(text::contains)
+                                    && LEXER_DECL.matcher(text).find()) {
                                 owners.add(root.relativize(f).toString().replace('\\', '/'));
                             }
                         }

@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import sbt.internal.inc.FileAnalysisStore;
@@ -54,6 +55,7 @@ class ZincJavaCompilerEncodingTest {
     }
 
     @Test
+    @Tag("integration") // forks two JVMs that each compile twice
     void class_bytes_do_not_depend_on_the_hosts_default_charset(@TempDir Path dir) throws Exception {
         // A fixture that decodes the same either way would make every comparison below vacuous —
         // which is exactly what happens if the escapes in SOURCE ever reach javac unresolved.

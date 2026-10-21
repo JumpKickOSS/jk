@@ -117,6 +117,9 @@ class EngineProcessControlTest {
     /** Quick enough for a unit test; the shape (ask, back off, read the status, ask again) is what is under test. */
     private static final EngineProbe.Patience QUICK = new EngineProbe.Patience(200, 2, Duration.ofMillis(20));
 
+    /** For an engine that never answers: the reply wait only has to elapse, so it can be short. */
+    private static final EngineProbe.Patience SILENT = new EngineProbe.Patience(50, 2, Duration.ofMillis(20));
+
     private static final String VERSION = "9.9.9";
 
     @Test
@@ -167,9 +170,9 @@ class EngineProcessControlTest {
     void an_engine_silent_through_every_round_is_reported_silent_not_absent() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
         try (ScriptedEngine engine = ScriptedEngine.silent(socket)) {
-            assertThat(EngineProcessControl.drainPatiently(socket, QUICK))
+            assertThat(EngineProcessControl.drainPatiently(socket, SILENT))
                     .isEqualTo(new EngineProcessControl.GracefulStop.Silent());
-            assertThat(engine.received(EngineProtocol.SHUTDOWN)).isEqualTo(QUICK.probes());
+            assertThat(engine.received(EngineProtocol.SHUTDOWN)).isEqualTo(SILENT.probes());
         }
     }
 

@@ -138,7 +138,7 @@ class CacheSyncTest {
         String source = "central+http://127.0.0.1:" + port + "/";
         Lockfile lock = lockOf(new Lockfile.Artifact("com.foo:leaf", "1.0", source, "sha256:" + hex, null, List.of()));
 
-        assertThat(newSync(tempDir).sync(lock).errors())
+        assertThat(failFastSync(tempDir).sync(lock).errors())
                 .as("nothing listens: the ladder fails and the address is remembered")
                 .hasSize(1);
 
@@ -167,12 +167,12 @@ class CacheSyncTest {
         });
         back.start();
         try {
-            assertThat(newSync(tempDir).sync(lock).errors())
+            assertThat(failFastSync(tempDir).sync(lock).errors())
                     .as("the address is still remembered as dead: refused before it dials")
                     .hasSize(1);
             assertThat(asked).hasValue(0);
 
-            CacheSync.Report forced = newSync(tempDir).sync(lock, CacheSync.ProgressObserver.NOOP, true);
+            CacheSync.Report forced = failFastSync(tempDir).sync(lock, CacheSync.ProgressObserver.NOOP, true);
             assertThat(forced.errors()).isEmpty();
             assertThat(forced.fetched()).isEqualTo(1);
             assertThat(asked.get())
@@ -194,7 +194,7 @@ class CacheSyncTest {
         int rows = DownloadSlots.width() * 3;
         http.beforeServe(path -> {
             try {
-                Thread.sleep(5);
+                Thread.sleep(1);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -289,6 +289,11 @@ class CacheSyncTest {
 
     private CacheSync newSync(Path tempDir, boolean mirrorToM2) {
         return new CacheSync(new Cas(tempDir.resolve("cache")), new Http(), mirrorToM2);
+    }
+
+    /** One attempt per ladder: an address is remembered once its ladder fails, however long it is. */
+    private static CacheSync failFastSync(Path tempDir) {
+        return new CacheSync(new Cas(tempDir.resolve("cache")), Http.failFast(), false);
     }
 
     private void registerJar(String group, String artifact, String version, byte[] bytes) {

@@ -5,10 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.testing.DeadEndpoint;
+import cc.jumpkick.testing.FakeClock;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
@@ -20,6 +22,21 @@ import org.junit.jupiter.api.condition.OS;
  */
 @DisabledOnOs(OS.WINDOWS)
 class ReadyProbeTest {
+
+    /** A clock over {@code fake} that moves {@code step} forward on every ticker reading. */
+    private static Clock stepping(FakeClock fake, Duration step) {
+        return new Clock() {
+            @Override
+            public long millis() {
+                return fake.millis();
+            }
+
+            @Override
+            public long nanos() {
+                return fake.advance(step).nanos();
+            }
+        };
+    }
 
     private static Process sleeping() throws Exception {
         return new ProcessBuilder("sh", "-c", "sleep 30").start();
@@ -65,8 +82,8 @@ class ReadyProbeTest {
             assertThat(new ReadyProbe("app", new ExecPlan.Probe(base + "/health", "", 5_000), 0, p, Clock.SYSTEM)
                             .await())
                     .isNull();
-            assertThat(new ReadyProbe("app", new ExecPlan.Probe(base + "/missing", "", 1_000), 0, p, Clock.SYSTEM)
-                            .await())
+            Clock fast = stepping(new FakeClock(), Duration.ofMillis(600));
+            assertThat(new ReadyProbe("app", new ExecPlan.Probe(base + "/missing", "", 1_000), 0, p, fast).await())
                     .isEqualTo("app was not ready after 1 s: " + base + "/missing never answered 2xx/3xx");
         } finally {
             p.destroyForcibly();
@@ -96,16 +113,19 @@ class ReadyProbeTest {
     void a_sidecar_with_no_probe_is_ready_after_a_second_alive() throws Exception {
         Process p = sleeping();
         try {
-            long before = System.nanoTime();
+            FakeClock fake = new FakeClock();
             assertThat(new ReadyProbe(
                                     "sidecar `docs`",
                                     new ExecPlan.Probe("", "", 5_000),
                                     ReadyProbe.NO_PROBE_ALIVE_MILLIS,
                                     p,
-                                    Clock.SYSTEM)
+                                    stepping(fake, Duration.ofMillis(250)))
                             .await())
                     .isNull();
-            assertThat(System.nanoTime() - before).isGreaterThanOrEqualTo(900_000_000L);
+            assertThat(fake.nanos())
+                    .as("ready only once its clock has passed the alive stretch")
+                    .isGreaterThanOrEqualTo(
+                            Duration.ofMillis(ReadyProbe.NO_PROBE_ALIVE_MILLIS).toNanos());
         } finally {
             p.destroyForcibly();
         }

@@ -259,6 +259,8 @@ class McpHandlerTest {
                     }
                 },
                 null);
+        // No journal row ever lands for this jid, so the settle poll can only run out.
+        waiting.journalSettleMs(50);
         String body = waiting.handleBody("{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"run\",\"arguments\":{\"dir\":\"/tmp/demo\",\"wait\":true}}}");
         assertThat(body).contains("no run record");

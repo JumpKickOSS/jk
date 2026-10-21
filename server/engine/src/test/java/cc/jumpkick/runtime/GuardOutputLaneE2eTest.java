@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -24,6 +25,7 @@ import org.junit.jupiter.api.io.TempDir;
  * The output lane end to end: it runs after packaging, a clean jar is a green step, an unchanged
  * jar is a verdict hit, and a repackage re-evaluates.
  */
+@Tag("integration")
 class GuardOutputLaneE2eTest {
 
     @Test

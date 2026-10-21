@@ -37,11 +37,12 @@ final class VtScreen {
         for (Shown[] r : cells) Arrays.fill(r, Shown.BLANK);
     }
 
-    void write(CharSequence s) {
+    void write(CharSequence text) {
+        String s = text.toString();
         for (int i = 0; i < s.length(); ) {
             char ch = s.charAt(i);
             if (ch == Ansi.ESC) {
-                i = escape(s.toString(), i);
+                i = escape(s, i);
                 continue;
             }
             if (ch == '\r') {

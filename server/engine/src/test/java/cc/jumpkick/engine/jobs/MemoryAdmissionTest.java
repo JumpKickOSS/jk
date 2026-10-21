@@ -34,6 +34,9 @@ class MemoryAdmissionTest {
 
     private static final long MIB = 1L << 20;
 
+    /** The gates' re-judgement poll: short, so a fake clock's step is seen at once. */
+    private static final long POLL_MS = 10;
+
     /** A heap whose committed size is whatever the test says it is. */
     static final class FakeHeap implements MemoryAdmission.Heap {
         final long max;
@@ -71,7 +74,8 @@ class MemoryAdmissionTest {
 
     /** A gate on a frozen clock with a generous host: only the heap arithmetic decides. */
     private static MemoryAdmission gate(FakeHeap heap, MemoryAdmission.Estimator estimator) {
-        return new MemoryAdmission(heap, estimator, () -> 64L << 30, JobEnvelopeQueueTest.PATIENT, () -> 1_000L);
+        return new MemoryAdmission(
+                heap, estimator, () -> 64L << 30, JobEnvelopeQueueTest.PATIENT, () -> 1_000L, POLL_MS);
     }
 
     @Test
@@ -239,7 +243,8 @@ class MemoryAdmissionTest {
                 (kind, dir) -> "test".equals(kind) ? 100 * MIB : 30 * MIB,
                 () -> 8L << 30,
                 JobEnvelopeQueueTest.PATIENT,
-                () -> 1_000L);
+                () -> 1_000L,
+                POLL_MS);
         assertThat(gate.admit(1, "test", "/suite", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         // The suite's heap grew to 250 of 256: the plain arithmetic admits nothing behind it.
         heap.committed = 250 * MIB;
@@ -281,7 +286,7 @@ class MemoryAdmissionTest {
         FakeHeap heap = heldByOneLongJob();
         AtomicLong hostFree = new AtomicLong(100 * MIB);
         MemoryAdmission gate = new MemoryAdmission(
-                heap, (kind, dir) -> 50 * MIB, hostFree::get, JobEnvelopeQueueTest.PATIENT, () -> 1_000L);
+                heap, (kind, dir) -> 50 * MIB, hostFree::get, JobEnvelopeQueueTest.PATIENT, () -> 1_000L, POLL_MS);
         assertThat(gate.admit(1, "test", "/suite", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         heap.committed = 250 * MIB;
         AtomicInteger aheadRef = new AtomicInteger(-1);
@@ -309,7 +314,12 @@ class MemoryAdmissionTest {
         MemoryAdmission.Timing timing = new MemoryAdmission.Timing(10_000L, 0L, Long.MAX_VALUE / 4);
         // 60 idle + 100 suite + 50 lib = 210 of 224: the ledger holds the lib; the committed heap says no.
         MemoryAdmission gate = new MemoryAdmission(
-                heap, (kind, dir) -> "test".equals(kind) ? 100 * MIB : 50 * MIB, () -> 8L << 30, timing, clock);
+                heap,
+                (kind, dir) -> "test".equals(kind) ? 100 * MIB : 50 * MIB,
+                () -> 8L << 30,
+                timing,
+                clock,
+                POLL_MS);
         assertThat(gate.admit(1, "test", "/suite", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         heap.committed = 250 * MIB;
         CompletableFuture<Verdict> build =
@@ -320,14 +330,14 @@ class MemoryAdmissionTest {
                 async(() -> gate.admit(3, "build", "/app", (ahead, waited) -> {}, () -> false));
         Await.until(HANG, () -> gate.queued() == 2);
         clock.now += 4_999L;
-        Thread.sleep(2 * MemoryAdmission.POLL_MS);
+        Thread.sleep(2 * POLL_MS);
         assertThat(build).as("one millisecond short of the fair wait").isNotDone();
 
         clock.now += 1L;
         assertThat(build.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
         // 60 + 100 + 50 + 50 = 260 of 224: the next head is past its own fair wait and still waits.
         clock.now += 60_000L;
-        Thread.sleep(2 * MemoryAdmission.POLL_MS);
+        Thread.sleep(2 * POLL_MS);
         assertThat(second)
                 .as("the fair wait never admits past the heap the ledger accounts for")
                 .isNotDone();
@@ -342,14 +352,19 @@ class MemoryAdmissionTest {
         FakeClock clock = new FakeClock();
         MemoryAdmission.Timing timing = new MemoryAdmission.Timing(10_000L, 0L, Long.MAX_VALUE / 4);
         MemoryAdmission gate = new MemoryAdmission(
-                heap, (kind, dir) -> "test".equals(kind) ? 100 * MIB : 50 * MIB, () -> 200 * MIB, timing, clock);
+                heap,
+                (kind, dir) -> "test".equals(kind) ? 100 * MIB : 50 * MIB,
+                () -> 200 * MIB,
+                timing,
+                clock,
+                POLL_MS);
         assertThat(gate.admit(1, "test", "/suite", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         heap.committed = 250 * MIB;
         CompletableFuture<Verdict> build =
                 async(() -> gate.admit(2, "build", "/lib", (ahead, waited) -> {}, () -> false));
         Await.until(HANG, () -> gate.queued() == 1);
         clock.now += 60_000L;
-        Thread.sleep(2 * MemoryAdmission.POLL_MS);
+        Thread.sleep(2 * POLL_MS);
         assertThat(build).isNotDone();
         assertThat(gate.cancel(2)).isTrue();
         assertThat(build.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.CANCELLED);
@@ -365,8 +380,8 @@ class MemoryAdmissionTest {
         // 160 MiB heap, 40 idle, 32 reserved: 88 to hand out, so two 40 MiB jobs at a time.
         FakeHeap heap = new FakeHeap(160, 40);
         MemoryAdmission.Timing timing = new MemoryAdmission.Timing(1L, 0L, Long.MAX_VALUE / 4);
-        MemoryAdmission gate =
-                new MemoryAdmission(heap, (kind, dir) -> 40 * MIB, () -> 64L << 30, timing, System::currentTimeMillis);
+        MemoryAdmission gate = new MemoryAdmission(
+                heap, (kind, dir) -> 40 * MIB, () -> 64L << 30, timing, System::currentTimeMillis, POLL_MS);
         int jobs = 12;
         AtomicInteger live = new AtomicInteger();
         AtomicInteger peakLive = new AtomicInteger();
@@ -407,7 +422,8 @@ class MemoryAdmissionTest {
         FakeHeap heap = heldByOneLongJob();
         FakeClock clock = new FakeClock();
         MemoryAdmission.Timing timing = new MemoryAdmission.Timing(Long.MAX_VALUE / 4, 5_000L, Long.MAX_VALUE / 4);
-        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> 100 * MIB, () -> 8L << 30, timing, clock);
+        MemoryAdmission gate =
+                new MemoryAdmission(heap, (kind, dir) -> 100 * MIB, () -> 8L << 30, timing, clock, POLL_MS);
         assertThat(gate.admit(1, "test", "/suite", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         heap.committed = 250 * MIB;
         CompletableFuture<Verdict> build =
@@ -424,7 +440,8 @@ class MemoryAdmissionTest {
         FakeHeap heap = heldByOneLongJob();
         FakeClock clock = new FakeClock();
         MemoryAdmission.Timing timing = new MemoryAdmission.Timing(Long.MAX_VALUE / 4, 0L, 1_000L);
-        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> 100 * MIB, () -> 8L << 30, timing, clock);
+        MemoryAdmission gate =
+                new MemoryAdmission(heap, (kind, dir) -> 100 * MIB, () -> 8L << 30, timing, clock, POLL_MS);
         assertThat(gate.admit(1, "test", "/suite", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         heap.committed = 250 * MIB;
         List<long[]> reports = new CopyOnWriteArrayList<>();
@@ -447,7 +464,7 @@ class MemoryAdmissionTest {
         FakeHeap heap = heldByOneLongJob();
         FakeClock clock = new FakeClock();
         MemoryAdmission gate = new MemoryAdmission(
-                heap, (kind, dir) -> 100 * MIB, () -> 8L << 30, JobEnvelopeQueueTest.PATIENT, clock);
+                heap, (kind, dir) -> 100 * MIB, () -> 8L << 30, JobEnvelopeQueueTest.PATIENT, clock, POLL_MS);
         assertThat(gate.admit(1, "test", "/suite", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         heap.committed = 250 * MIB;
         CompletableFuture<Verdict> first =

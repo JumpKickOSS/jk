@@ -57,6 +57,8 @@ public final class JobEnvelope {
     private final LiveJobRegistry live;
     private final JobSettlement settlement;
     private final MemoryAdmission admission;
+    private final long terminalGraceMs;
+    private final long joinBufferMs;
 
     /** {@code limits} come from the engine's resolved config; the envelope never reads the environment. */
     public JobEnvelope(Host host, JobLimits limits) {
@@ -65,6 +67,13 @@ public final class JobEnvelope {
 
     /** As above with the memory gate supplied — tests hand in a fake heap and a fixed per-job cost. */
     public JobEnvelope(Host host, JobLimits limits, MemoryAdmission admission) {
+        this(host, limits, admission, ConnectionWatch.TERMINAL_GRACE_MS, ConnectionWatch.JOIN_BUFFER_MS);
+    }
+
+    /** As above with each connection's terminal grace and join buffer in millis (tests). */
+    JobEnvelope(Host host, JobLimits limits, MemoryAdmission admission, long terminalGraceMs, long joinBufferMs) {
+        this.terminalGraceMs = terminalGraceMs;
+        this.joinBufferMs = joinBufferMs;
         this.host = host;
         this.limits = limits;
         this.admission = admission;
@@ -182,7 +191,7 @@ public final class JobEnvelope {
         // A detached run has no CLI to open its transcript: the engine writes the header itself.
         if (detached)
             JobAdmit.openDetachedTranscript(host, eventRequestId, eventKind, eventDir, trigger, session, admit);
-        ConnectionWatch watch = new ConnectionWatch(host::nowMillis, host::log);
+        ConnectionWatch watch = new ConnectionWatch(host::nowMillis, host::log, terminalGraceMs, joinBufferMs);
         live.registerLiveJob(
                 eventRequestId,
                 cancelToken,

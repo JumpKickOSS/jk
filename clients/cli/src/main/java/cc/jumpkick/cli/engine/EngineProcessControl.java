@@ -35,6 +35,11 @@ public final class EngineProcessControl {
      * one was reachable but didn't acknowledge cleanly.
      */
     public static boolean stop(Path socket) {
+        return stop(socket, EngineWire.SOCKET_TIMEOUT_MILLIS);
+    }
+
+    /** As {@link #stop(Path)}, waiting {@code replyTimeoutMillis} for the {@code bye}. */
+    static boolean stop(Path socket, int replyTimeoutMillis) {
         SocketChannel ch;
         try {
             ch = EngineWire.connect(socket);
@@ -42,7 +47,7 @@ public final class EngineProcessControl {
             return true; // nothing reachable — a no-op "stop" is success
         }
         try (ch) {
-            String bye = EngineWire.exchange(ch, ProtoLifecycle.shutdown());
+            String bye = EngineWire.exchange(ch, ProtoLifecycle.shutdown(), replyTimeoutMillis);
             return EngineProtocol.BYE.equals(EngineProtocol.typeOf(bye));
         } catch (IOException e) {
             return false; // reachable but didn't behave — a real problem, not "already stopped"
@@ -67,6 +72,11 @@ public final class EngineProcessControl {
      * ordinary event mid-build, and the request is still in the engine's socket buffer.
      */
     public static Drain drain(@Nullable Path socket) {
+        return drain(socket, EngineWire.SOCKET_TIMEOUT_MILLIS);
+    }
+
+    /** As {@link #drain(Path)}, waiting {@code replyTimeoutMillis} for the {@code bye}. */
+    static Drain drain(@Nullable Path socket, int replyTimeoutMillis) {
         SocketChannel ch;
         try {
             ch = EngineWire.connect(socket);
@@ -74,7 +84,7 @@ public final class EngineProcessControl {
             return new Drain.Unreachable();
         }
         try (ch) {
-            String bye = EngineWire.exchange(ch, ProtoLifecycle.shutdown(false));
+            String bye = EngineWire.exchange(ch, ProtoLifecycle.shutdown(false), replyTimeoutMillis);
             if (!EngineProtocol.BYE.equals(EngineProtocol.typeOf(bye))) return new Drain.NoAck();
             return new Drain.Acked(ByeFrame.decode(bye).plans());
         } catch (IOException e) {
@@ -106,7 +116,7 @@ public final class EngineProcessControl {
      */
     public static GracefulStop drainPatiently(@Nullable Path socket, EngineProbe.Patience patience) {
         for (int round = 0; ; round++) {
-            switch (drain(socket)) {
+            switch (drain(socket, patience.replyTimeoutMillis())) {
                 case Drain.Acked(int jobs) -> {
                     return jobs > 0 ? new GracefulStop.Draining(jobs) : new GracefulStop.Exiting();
                 }
@@ -140,6 +150,11 @@ public final class EngineProcessControl {
      * so the next {@link EngineClient#ensureRunning} does not race a half-stopped generation.
      */
     public static boolean forceStop(@Nullable Path socket) {
+        return forceStop(socket, EngineWire.SOCKET_TIMEOUT_MILLIS);
+    }
+
+    /** As {@link #forceStop(Path)}, waiting {@code replyTimeoutMillis} for the {@code bye}. */
+    public static boolean forceStop(@Nullable Path socket, int replyTimeoutMillis) {
         long pid = readPidForSocket(socket);
         SocketChannel ch;
         try {
@@ -150,7 +165,7 @@ public final class EngineProcessControl {
             return true;
         }
         try (ch) {
-            String bye = EngineWire.exchange(ch, ProtoLifecycle.shutdown(true));
+            String bye = EngineWire.exchange(ch, ProtoLifecycle.shutdown(true), replyTimeoutMillis);
             boolean ok = EngineProtocol.BYE.equals(EngineProtocol.typeOf(bye));
             if (pid > 0) waitForDeathOrKill(pid, STOP_DEATH_WAIT);
             return ok;

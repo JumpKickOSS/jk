@@ -139,6 +139,8 @@ class McpContractTest {
 
     @Test
     void run_wait_returns_the_verdict_text() {
+        // The stub jobs never land a journal row for the jid, so the settle poll can only run out.
+        mcp.journalSettleMs(50);
         String r = text("run", "{\"kind\":\"test\",\"dir\":\"/tmp\",\"wait\":true,\"timeout_s\":2}");
         assertThat(r).containsPattern("^(OK|FAIL|TIMEOUT) test");
     }

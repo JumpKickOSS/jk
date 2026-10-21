@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Random;
+import java.util.stream.LongStream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
@@ -90,11 +92,12 @@ class RegionPainterTest {
 
     /**
      * Random frames, growth, shrink, drift and styles, with and without ONLCR: after every paint
-     * the emulated region shows exactly the frame, and nothing is left under it.
+     * the emulated region shows exactly the frame, and nothing is left under it. Seeds are
+     * independent, so they run in parallel.
      */
     @Test
     void theScreenAlwaysShowsTheFrame() {
-        for (long seed = 1; seed <= 500; seed++) {
+        LongStream.rangeClosed(1, 500).parallel().forEach(seed -> {
             Random rnd = new Random(seed);
             VtScreen vt = new VtScreen(ROWS, COLS);
             vt.onlcr = rnd.nextBoolean();
@@ -113,12 +116,12 @@ class RegionPainterTest {
                 assertShows(vt, frame, "seed " + seed + " step " + step + " onlcr " + vt.onlcr);
                 frame = randomFrame(rnd, frame);
             }
-        }
+        });
     }
 
     @Test
     void anInRowRegionAlwaysShowsTheFrame() {
-        for (long seed = 1; seed <= 300; seed++) {
+        LongStream.rangeClosed(1, 300).parallel().forEach(seed -> {
             Random rnd = new Random(seed);
             VtScreen vt = new VtScreen(ROWS, COLS);
             vt.write("$ jk outdated\r\n");
@@ -136,7 +139,7 @@ class RegionPainterTest {
                 assertThat(vt.row).as("seed %d", seed).isEqualTo(at);
                 assertRow(vt, at, line, "seed " + seed + " step " + step);
             }
-        }
+        });
     }
 
     @Test
@@ -160,8 +163,11 @@ class RegionPainterTest {
         assertThat(vt.col).as(why + ": parked at column 0").isZero();
         int top = vt.row - frame.size();
         for (int i = 0; i < frame.size(); i++) assertRow(vt, top + i, frame.get(i), why + " row " + i);
-        for (int r = vt.row; r < vt.rows; r++)
-            assertThat(vt.text(r)).as(why + ": below the region").isEmpty();
+        for (int r = vt.row; r < vt.rows; r++) {
+            String below = vt.text(r);
+            if (!below.isEmpty())
+                assertThat(below).as(why + ": below the region").isEmpty();
+        }
     }
 
     private static void assertRow(VtScreen vt, int r, String line, String why) {
@@ -170,6 +176,8 @@ class RegionPainterTest {
         VtScreen.Shown[] want = ref.row(0);
         VtScreen.Shown[] got = vt.row(r);
         for (int c = 0; c < COLS; c++) {
+            // Only a mismatch pays for the description: this runs for every cell of every frame.
+            if (Objects.equals(got[c], want[c])) continue;
             assertThat(got[c])
                     .as("%s col %d: %s vs %s", why, c, vt.text(r), ref.text(0))
                     .isEqualTo(want[c]);

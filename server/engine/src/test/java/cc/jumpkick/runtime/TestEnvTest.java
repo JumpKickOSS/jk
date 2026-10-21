@@ -54,7 +54,8 @@ class TestEnvTest {
     @Test
     void jk_home_and_m2_are_sandboxed_outside_the_project(@TempDir Path tmp) throws Exception {
         JkBuild project = project(tmp, "");
-        var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project)).extras();
+        var env = TestEnv.forModuleUnseeded(project, tmp, BuildLayout.of(tmp, project))
+                .extras();
 
         Path sandbox = TestHomes.pathFor(tmp);
         assertThat(env.get("JK_HOME")).isEqualTo(sandbox.toString());
@@ -86,7 +87,7 @@ class TestEnvTest {
                 "JK_CACHE_DIR", "/engine/cache",
                 "JK_JDKS_DIR", "/engine/jdks");
         Map<String, String> env = WorkerEnv.withEngineEnvironment(
-                engine, () -> TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project))
+                engine, () -> TestEnv.forModuleUnseeded(project, tmp, BuildLayout.of(tmp, project))
                         .environment());
 
         Path sandbox = TestHomes.pathFor(tmp);
@@ -118,7 +119,8 @@ class TestEnvTest {
         // link cannot split one directory into two spellings. Not under the project either: a
         // test may assume, as under Surefire, that @TempDir is outside its working directory.
         JkBuild project = project(tmp, "");
-        var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project)).extras();
+        var env = TestEnv.forModuleUnseeded(project, tmp, BuildLayout.of(tmp, project))
+                .extras();
 
         Path expected = TestHomes.slotFor(tmp).toRealPath().resolve("tmp");
         assertThat(Path.of(env.get("TMPDIR"))).isEqualTo(expected);
@@ -142,7 +144,8 @@ class TestEnvTest {
                 [test]
                 env = [{ TMPDIR = "${target}/scratch" }]
                 """);
-        var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project)).extras();
+        var env = TestEnv.forModuleUnseeded(project, tmp, BuildLayout.of(tmp, project))
+                .extras();
 
         assertThat(Path.of(env.get("TMPDIR")))
                 .isEqualTo(tmp.resolve("target/scratch").toAbsolutePath());
@@ -154,7 +157,8 @@ class TestEnvTest {
                 [test]
                 env = [{ JK_HOME = "${target}/mine", JK_HTTP_ENABLED = "false" }]
                 """);
-        var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project)).extras();
+        var env = TestEnv.forModuleUnseeded(project, tmp, BuildLayout.of(tmp, project))
+                .extras();
 
         // ${target} expands to a host path, so on Windows the declared value reads
         // C:\…\target/mine — mixed separators. The contract is the directory named, not the string.
@@ -175,7 +179,7 @@ class TestEnvTest {
         String callerPath = "/caller/nvm/bin:/usr/bin";
         JkBuild project = project(tmp, "");
         SessionContext.where(Session.defaults().withVariant(null, Map.of("PATH", callerPath)), () -> {
-            var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project))
+            var env = TestEnv.forModuleUnseeded(project, tmp, BuildLayout.of(tmp, project))
                     .extras();
             assertThat(env.get("PATH")).isEqualTo(callerPath);
             // Still not keyed, even while the session carrying PATH is bound — the stamp
@@ -191,7 +195,7 @@ class TestEnvTest {
         // Declared [test] env still wins — the machine seed is a default, like the sandbox.
         JkBuild project = project(tmp, "[test]\nenv = [{ PATH = \"/only/what/i/named\" }]\n");
         SessionContext.where(Session.defaults().withVariant(null, Map.of("PATH", "/caller/nvm/bin:/usr/bin")), () -> {
-            var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project))
+            var env = TestEnv.forModuleUnseeded(project, tmp, BuildLayout.of(tmp, project))
                     .extras();
             assertThat(env.get("PATH")).isEqualTo("/only/what/i/named");
             return null;
@@ -203,7 +207,8 @@ class TestEnvTest {
         // The whole point of the bare form: the module says which variable it cares about, not what
         // the value is. HOME is used because it is the one variable a test can rely on having.
         JkBuild project = project(tmp, "[test]\nenv = [\"HOME\"]\n");
-        var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project)).extras();
+        var env = TestEnv.forModuleUnseeded(project, tmp, BuildLayout.of(tmp, project))
+                .extras();
 
         assertThat(env.get("HOME")).isEqualTo(System.getenv("HOME"));
     }
@@ -214,7 +219,8 @@ class TestEnvTest {
         // would answer "set" to every such check, which is the opposite of an opt-in escape hatch —
         // and unlike ${VAR}, an unset forward is not an error either.
         JkBuild project = project(tmp, "[test]\nenv = [\"" + UNSET + "\"]\n");
-        var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project)).extras();
+        var env = TestEnv.forModuleUnseeded(project, tmp, BuildLayout.of(tmp, project))
+                .extras();
 
         assertThat(env).doesNotContainKey(UNSET);
     }
@@ -226,7 +232,8 @@ class TestEnvTest {
         // or "take the caller's" would silently mean "take the caller's, or mine".
         JkBuild project = project(
                 tmp, "[test]\nenv = [{ A = \"first\", B = \"kept\" }, { A = \"second\" }, \"" + UNSET + "\"]\n");
-        var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project)).extras();
+        var env = TestEnv.forModuleUnseeded(project, tmp, BuildLayout.of(tmp, project))
+                .extras();
 
         assertThat(env.get("A")).isEqualTo("second");
         assertThat(env.get("B")).isEqualTo("kept");
@@ -260,7 +267,8 @@ class TestEnvTest {
                 [test]
                 env = [{ A = "${module}/fixtures", B = "${target}/scratch", C = "literal", D = "costs $5" }]
                 """);
-        var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project)).extras();
+        var env = TestEnv.forModuleUnseeded(project, tmp, BuildLayout.of(tmp, project))
+                .extras();
 
         assertThat(env.get("A")).isEqualTo(tmp.toAbsolutePath() + "/fixtures");
         assertThat(env.get("B")).isEqualTo(tmp.resolve("target").toAbsolutePath() + "/scratch");
@@ -333,7 +341,7 @@ class TestEnvTest {
         JkBuild project = project(tmp, "[test]\nenv = [{ API_KEY = \"${" + UNSET + "}\" }]\n");
         BuildLayout layout = BuildLayout.of(tmp, project);
 
-        assertThatThrownBy(() -> TestEnv.forModule(project, tmp, layout))
+        assertThatThrownBy(() -> TestEnv.forModuleUnseeded(project, tmp, layout))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[test].env.API_KEY")
                 .hasMessageContaining(UNSET);
@@ -377,7 +385,8 @@ class TestEnvTest {
     @Test
     void by_default_a_test_jvm_inherits_nothing_beyond_the_allow_list(@TempDir Path tmp) throws Exception {
         JkBuild project = project(tmp, "");
-        assertThat(TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project)).inherit())
+        assertThat(TestEnv.forModuleUnseeded(project, tmp, BuildLayout.of(tmp, project))
+                        .inherit())
                 .isFalse();
     }
 
@@ -391,7 +400,7 @@ class TestEnvTest {
                 [test]
                 env = [{ TZ = "PST8PDT" }]
                 """);
-        WorkerEnv env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project));
+        WorkerEnv env = TestEnv.forModuleUnseeded(project, tmp, BuildLayout.of(tmp, project));
 
         assertThat(env.inherit()).isTrue();
         assertThat(env.extras()).containsEntry("TZ", "PST8PDT").containsEntry("LANG", "C");

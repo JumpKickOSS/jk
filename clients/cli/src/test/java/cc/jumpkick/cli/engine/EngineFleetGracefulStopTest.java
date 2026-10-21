@@ -21,6 +21,9 @@ class EngineFleetGracefulStopTest {
 
     private static final EngineProbe.Patience QUICK = new EngineProbe.Patience(200, 1, Duration.ofMillis(20));
 
+    /** For an engine that never answers: the reply wait only has to elapse, so it can be short. */
+    private static final EngineProbe.Patience SILENT = new EngineProbe.Patience(50, 1, Duration.ofMillis(20));
+
     /** Young for the whole test: a loading or busy coordinator. */
     private static final SilentPeer.Grace YOUNG = new SilentPeer.Grace(
             Duration.ofMinutes(5), Duration.ofMillis(100), Duration.ofMillis(100), Duration.ofSeconds(1));
@@ -43,11 +46,11 @@ class EngineFleetGracefulStopTest {
         try (ScriptedEngine engine = ScriptedEngine.silent(socket)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(holder.pid()));
 
-            EngineFleet.StopResult result = EngineFleet.stop(unresponsive(socket, holder.pid()), false, QUICK, YOUNG);
+            EngineFleet.StopResult result = EngineFleet.stop(unresponsive(socket, holder.pid()), false, SILENT, YOUNG);
 
             assertThat(result.outcome()).isEqualTo(EngineFleet.Outcome.LEFT_ALONE);
             assertThat(holder.isAlive()).isTrue();
-            assertThat(engine.received("shutdown")).isEqualTo(QUICK.probes());
+            assertThat(engine.received("shutdown")).isEqualTo(SILENT.probes());
         } finally {
             holder.destroyForcibly();
             holder.waitFor();
@@ -75,7 +78,7 @@ class EngineFleetGracefulStopTest {
         Process holder = SleepMain.spawn(60_000);
         try {
             // Let the JVM's own start-up CPU settle, so two readings apart show no step.
-            Thread.sleep(1_500);
+            SleepMain.awaitIdle(holder);
 
             EngineFleet.StopResult result =
                     EngineFleet.stop(unresponsive(socket, holder.pid()), false, QUICK, NO_GRACE);
@@ -92,7 +95,7 @@ class EngineFleetGracefulStopTest {
         Path socket = tempDirs.create().resolve("gen1.sock");
         Process holder = SleepMain.spawn(60_000);
         try (ScriptedEngine ignored = ScriptedEngine.silent(socket)) {
-            EngineFleet.StopResult result = EngineFleet.stop(unresponsive(socket, holder.pid()), true, QUICK, YOUNG);
+            EngineFleet.StopResult result = EngineFleet.stop(unresponsive(socket, holder.pid()), true, SILENT, YOUNG);
 
             assertThat(result.outcome()).isEqualTo(EngineFleet.Outcome.KILLED);
             assertThat(holder.waitFor(5, TimeUnit.SECONDS)).isTrue();

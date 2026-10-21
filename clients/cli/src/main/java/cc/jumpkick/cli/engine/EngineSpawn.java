@@ -144,7 +144,7 @@ public final class EngineSpawn {
         long pid = EngineProcessControl.unresponsiveHolderPid(socket);
         Optional<SilentPeer.Life> reading = pid > 0 ? SilentPeer.Life.of(pid, clock) : Optional.empty();
         if (reading.isEmpty()) {
-            displaceSilent(paths, socket);
+            displaceSilent(paths, socket, patience.replyTimeoutMillis());
             return new Reachability.Absent();
         }
         SilentPeer.Life before = null;
@@ -154,7 +154,7 @@ public final class EngineSpawn {
             Duration waited = Duration.ofNanos(clock.nanos() - since);
             switch (SilentPeer.judge(before, now, waited, grace)) {
                 case DISPLACE -> {
-                    displaceSilent(paths, socket);
+                    displaceSilent(paths, socket, patience.replyTimeoutMillis());
                     return new Reachability.Absent();
                 }
                 case LEAVE_ALONE -> {
@@ -193,10 +193,10 @@ public final class EngineSpawn {
      * by something that will never serve, and the next build would otherwise wait out the stream
      * idle instead of starting an engine that can bind. The pid file's process is hard-killed only
      * when it is visibly a JVM ({@link EngineProcessControl#unresponsiveHolderPid}); a recycled pid
-     * never gets an engine's kill — the peer is merely asked to stop, over the socket, and the
-     * spawn's election arbitrates from there.
+     * never gets an engine's kill — the peer is merely asked to stop over the socket, waiting
+     * {@code replyTimeoutMillis} for its reply, and the spawn's election arbitrates from there.
      */
-    static void displaceSilent(EnginePaths.Paths paths, Path socket) {
+    static void displaceSilent(EnginePaths.Paths paths, Path socket, int replyTimeoutMillis) {
         long pid = EngineProcessControl.unresponsiveHolderPid(socket);
         logReason(
                 paths,
@@ -207,7 +207,7 @@ public final class EngineSpawn {
             EngineProcessControl.hardKill(pid);
             EngineProcessControl.waitForDeathOrKill(pid, STOP_DEATH_WAIT);
         } else {
-            EngineProcessControl.stop(socket);
+            EngineProcessControl.stop(socket, replyTimeoutMillis);
         }
     }
 

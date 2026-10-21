@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -635,7 +636,9 @@ class JavaCompilerHostPoolTest {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
         while (!condition.getAsBoolean()) {
             if (System.nanoTime() > deadline) throw new AssertionError("timed out waiting until " + what);
-            Thread.sleep(5);
+            // A short park: the race test polls twice per round over hundreds of rounds.
+            LockSupport.parkNanos(50_000L);
+            if (Thread.interrupted()) throw new InterruptedException();
         }
     }
 }

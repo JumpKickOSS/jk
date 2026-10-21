@@ -384,7 +384,7 @@ class LockOrchestratorEntryPointsTest {
 
         assertThat(slowRequested.await(30, TimeUnit.SECONDS)).isTrue();
         Await.until(Duration.ofSeconds(30), () -> http.requestsFor(ghostJar) >= 1);
-        locking.join(1_000);
+        locking.join(250);
         assertThat(locking.isAlive())
                 .as("the failure is known, but the lock waits for the sibling still downloading")
                 .isTrue();

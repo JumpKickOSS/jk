@@ -198,6 +198,8 @@ public final class MemoryAdmission {
     /** How long a waiter sleeps between re-judgements when nothing wakes it. */
     static final long POLL_MS = 500;
 
+    private final long pollMs;
+
     private final Heap heap;
     private final Estimator estimator;
     private final HostMemory host;
@@ -243,6 +245,13 @@ public final class MemoryAdmission {
     }
 
     public MemoryAdmission(Heap heap, Estimator estimator, HostMemory host, Timing timing, LongSupplier nowMillis) {
+        this(heap, estimator, host, timing, nowMillis, POLL_MS);
+    }
+
+    /** As the public constructor with the re-judgement poll in millis (tests). */
+    MemoryAdmission(
+            Heap heap, Estimator estimator, HostMemory host, Timing timing, LongSupplier nowMillis, long pollMs) {
+        this.pollMs = pollMs;
         this.heap = heap;
         this.estimator = estimator;
         this.host = host;
@@ -284,7 +293,7 @@ public final class MemoryAdmission {
                     if (verdict != null) return verdict;
                     position = positionOf(jid);
                     if (nowMillis.getAsLong() - lastReport < timing.reportMs()) {
-                        lock.wait(POLL_MS);
+                        lock.wait(pollMs);
                         continue;
                     }
                 }
