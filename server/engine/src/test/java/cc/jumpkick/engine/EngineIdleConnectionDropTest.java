@@ -26,10 +26,14 @@ import org.junit.jupiter.api.Test;
 @Tag("integration")
 class EngineIdleConnectionDropTest extends EngineServerHarness {
 
+    /** The hello window under test; the production window is the same code path, only longer. */
+    private static final long HELLO_IDLE_MS = 2_000;
+
     @Test
     void a_silent_connection_is_closed_within_the_hello_window_and_counted() throws Exception {
         EnginePaths.Paths p = paths(shortTempDir());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
+        server.helloIdleForTests(HELLO_IDLE_MS);
         runInBackground(server);
         waitUntil(Duration.ofSeconds(10), () -> Files.exists(EnginePaths.endpoint(p)));
 
@@ -53,12 +57,12 @@ class EngineIdleConnectionDropTest extends EngineServerHarness {
                                 return -1;
                             }
                         })
-                        .get(EngineConnection.HELLO_IDLE_MS + 5_000, TimeUnit.MILLISECONDS);
+                        .get(HELLO_IDLE_MS + 5_000, TimeUnit.MILLISECONDS);
                 long waitedMs = (System.nanoTime() - opened) / 1_000_000;
                 assertThat(eof).as("the engine closed the silent connection").isEqualTo(-1);
                 assertThat(waitedMs)
                         .as("closed by the hello window, not merely at some point")
-                        .isLessThan(EngineConnection.HELLO_IDLE_MS + 5_000);
+                        .isLessThan(HELLO_IDLE_MS + 5_000);
             }
 
             waitUntil(
@@ -75,12 +79,13 @@ class EngineIdleConnectionDropTest extends EngineServerHarness {
     void a_connection_that_has_spoken_outlives_the_hello_window() throws Exception {
         EnginePaths.Paths p = paths(shortTempDir());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
+        server.helloIdleForTests(HELLO_IDLE_MS);
         runInBackground(server);
         waitUntil(Duration.ofSeconds(10), () -> Files.exists(EnginePaths.endpoint(p)));
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
             assertThat(EngineProtocol.typeOf(c.send(ProtoLifecycle.hello("1.0"))))
                     .isEqualTo(EngineProtocol.HELLO_ACK);
-            Thread.sleep(EngineConnection.HELLO_IDLE_MS + 1_000);
+            Thread.sleep(HELLO_IDLE_MS + 1_000);
             String pong = c.send(ProtoLifecycle.ping());
             assertThat(EngineProtocol.typeOf(pong))
                     .as("still served past the hello window")

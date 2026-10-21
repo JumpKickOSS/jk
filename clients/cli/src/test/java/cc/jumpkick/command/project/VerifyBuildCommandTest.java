@@ -20,7 +20,8 @@ import org.junit.jupiter.api.io.TempDir;
  * End-to-end tests for {@code jk verify}: build a project, then re-build it through the real
  * plan into a scratch copy and compare artifact hashes. Reproducible-by-default packaging means
  * an unchanged project must verify clean — including Kotlin, which the old javac-only verify never
- * covered.
+ * covered. Each build skips the scaffold's tests: verify compares packaged artifacts, so a test
+ * compile and a test JVM would be spent on nothing it reads.
  */
 @Tag("integration")
 class VerifyBuildCommandTest {
@@ -38,7 +39,7 @@ class VerifyBuildCommandTest {
                 """);
         Path cache = tempDir.resolve("cache");
 
-        assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
+        assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString(), "--skip-tests"))
                 .isEqualTo(0);
         // Verify's scratch rebuild bypasses the action cache in BOTH directions: its keys hash
         // the (random, never-recurring) scratch paths, so any store would be a permanent orphan.
@@ -77,7 +78,8 @@ class VerifyBuildCommandTest {
                         "-C",
                         tempDir.toString(),
                         "--cache-dir",
-                        TestCaches.dir("shared-cache").toString()))
+                        TestCaches.dir("shared-cache").toString(),
+                        "--skip-tests"))
                 .isEqualTo(0);
         assertThat(run(
                         "verify",
@@ -101,7 +103,7 @@ class VerifyBuildCommandTest {
                 """);
         Path cache = tempDir.resolve("cache");
 
-        assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
+        assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString(), "--skip-tests"))
                 .isEqualTo(0);
         // Change the source after the build: the scratch rebuild compiles the new code, so its
         // jar can no longer match the stale one in target/.
@@ -148,7 +150,7 @@ class VerifyBuildCommandTest {
                 """);
         Path cache = tempDir.resolve("cache");
 
-        assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
+        assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString(), "--skip-tests"))
                 .isEqualTo(0);
         assertThat(run("verify", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
                 .isEqualTo(0);

@@ -41,15 +41,17 @@ class ThirdPartyPluginExampleTest {
     private static final Path ROOT = RepoRoot.find(ThirdPartyPluginExampleTest.class);
     private static final Path EXAMPLE = ROOT.resolve("docs/user/examples/third-party-plugin");
     private static final String VERSION = JkVersion.VERSION;
+    private static final List<String> PUBLISHED_SUFFIXES = List.of(".jar", "-sources.jar", "-javadoc.jar");
 
     @Test
     void a_plugin_compiled_against_the_published_sdk_loads_in_a_consumer_build(@TempDir Path dir) throws Exception {
         Path sdkLib = ROOT.resolve("shared/plugin-sdk/target");
         Path hostLib = ROOT.resolve("shared/host/target");
+        // `jk test` packages only a consumed module's main jar; the sources and javadoc jars the
+        // release step publishes come from a full `jk build`.
         assumeTrue(
-                Files.isRegularFile(sdkLib.resolve("jk-plugin-sdk-" + VERSION + ".jar"))
-                        && Files.isRegularFile(hostLib.resolve("jk-host-" + VERSION + ".jar")),
-                "the checkout's own SDK jar is the fixture: run `jk build` first");
+                builtJarsPresent(sdkLib, "jk-plugin-sdk") && builtJarsPresent(hostLib, "jk-host"),
+                "the checkout's own SDK jars are the fixture: run `jk build` first");
 
         // 1. The release step: the SDK's dependency, then the SDK, into one Maven repository.
         Path repo = Files.createDirectories(dir.resolve("sdk-repo"));
@@ -191,12 +193,18 @@ class ThirdPartyPluginExampleTest {
                 description = "%s"
                 java        = 17
                 %s""".formatted(name, VERSION, description, deps));
-        for (String suffix : List.of(".jar", "-sources.jar", "-javadoc.jar")) {
+        for (String suffix : PUBLISHED_SUFFIXES) {
             Path built = lib.resolve(name + "-" + VERSION + suffix);
-            if (Files.isRegularFile(built)) Files.copy(built, project.resolve("target/" + built.getFileName()));
+            Files.copy(built, project.resolve("target/" + built.getFileName()));
         }
         assertThat(run("publish", "-C", project.toString(), "--repo-url", repoUrl.toString()))
                 .isEqualTo(0);
+    }
+
+    /** True when {@code lib} holds every jar {@link #publish} ships for {@code name}. */
+    private static boolean builtJarsPresent(Path lib, String name) {
+        return PUBLISHED_SUFFIXES.stream()
+                .allMatch(suffix -> Files.isRegularFile(lib.resolve(name + "-" + VERSION + suffix)));
     }
 
     private static void copyTree(Path from, Path to) throws IOException {

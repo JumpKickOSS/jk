@@ -93,21 +93,21 @@ final class EngineConnection {
 
     private final Context ctx;
 
+    /** Idle bound before the peer's first line; {@link #HELLO_IDLE_MS} outside tests. */
+    private final long helloIdleMillis;
+
     /** Idle bound once the peer has sent a request; {@code 0} = unbounded. */
     private final long streamIdleMillis;
 
-    EngineConnection(Context ctx) {
-        this(ctx, BoundedLineReader.streamIdleMillis(JkDirs::env));
-    }
-
-    EngineConnection(Context ctx, long streamIdleMillis) {
+    EngineConnection(Context ctx, long helloIdleMillis) {
         this.ctx = ctx;
-        this.streamIdleMillis = streamIdleMillis;
+        this.helloIdleMillis = helloIdleMillis;
+        this.streamIdleMillis = BoundedLineReader.streamIdleMillis(JkDirs::env);
     }
 
     void serve(SocketChannel ch) {
         BoundedLineReader reader = new BoundedLineReader(
-                new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8), ch, HELLO_IDLE_MS);
+                new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8), ch, helloIdleMillis);
         try (ch;
                 reader;
                 BufferedWriter writer = new BufferedWriter(

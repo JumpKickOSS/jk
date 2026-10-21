@@ -182,8 +182,17 @@ class EngineServerLameDuckTest extends EngineServerHarness {
                 assertThat(Jsonl.str(refusal, "code")).isEqualTo(EngineProtocol.ERR_SHUTTING_DOWN);
             }
 
-            // At the deadline the stuck job is cancelled with a verdict that names the drain.
-            List<String> rest = readToEof(building);
+            // At the deadline the stuck job is cancelled with a verdict that names the drain. Once
+            // the verdict is out the parked download is let go, so the job unwinds now rather than
+            // at the plan's backstop for a step that ignores its cancel.
+            List<String> rest = new ArrayList<>();
+            String line;
+            while ((line = readOne(building, rest)) != null) {
+                rest.add(line);
+                if (EngineProtocol.ERROR.equals(EngineProtocol.typeOf(line))) break;
+            }
+            release.countDown();
+            rest.addAll(readToEof(building));
             String error = rest.stream()
                     .filter(l -> EngineProtocol.ERROR.equals(EngineProtocol.typeOf(l)))
                     .findFirst()

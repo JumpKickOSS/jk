@@ -132,6 +132,7 @@ class CancellationPrecedenceTest extends EngineServerHarness {
             assertThat(Jsonl.longValue(ack, "jid", -1)).isEqualTo(jid);
             assertThat(Jsonl.bool(ack, "cancelled", false)).isTrue();
             assertThat(Jsonl.has(ack, "note")).isFalse();
+            unpark();
 
             String terminal = readUntil(building, EngineProtocol.BUILDPLAN_FINISH);
             assertThat(Jsonl.bool(terminal, "cancelled", false)).isTrue();
@@ -169,6 +170,7 @@ class CancellationPrecedenceTest extends EngineServerHarness {
                 assertThat(Jsonl.longValue(ack, "jid", -1)).isZero();
                 assertThat(Jsonl.bool(ack, "cancelled", false)).isTrue();
                 assertThat(Jsonl.str(ack, "note")).isEqualTo("cancelled 1 job(s)");
+                unpark();
 
                 readUntil(building, EngineProtocol.JOB_FINISH);
                 String none = canceller.send(ProtoLifecycle.cancelRequestForDir(project.toString()));
@@ -222,7 +224,15 @@ class CancellationPrecedenceTest extends EngineServerHarness {
             // The deadline's error line and the cancelled terminal race each other onto the wire:
             // the watchdog writes the error after interrupting the runner, whose unwinding may
             // already have settled the plan. Both must be there, and job-finish must be last.
-            List<String> rest = readToEof(building);
+            List<String> rest = new ArrayList<>();
+            String line;
+            while ((line = readOne(building, rest)) != null) {
+                rest.add(line);
+                String type = EngineProtocol.typeOf(line);
+                if (EngineProtocol.ERROR.equals(type) || EngineProtocol.BUILDPLAN_FINISH.equals(type)) break;
+            }
+            unpark();
+            rest.addAll(readToEof(building));
             List<String> types = rest.stream().map(EngineProtocol::typeOf).toList();
             assertThat(types)
                     .as(String.join("\n", rest))
@@ -263,6 +273,14 @@ class CancellationPrecedenceTest extends EngineServerHarness {
         assertThat(Jsonl.bool(finish, "success", false)).isTrue();
         assertThat(Jsonl.bool(finish, "cancelled", true)).isFalse();
         assertThat(Jsonl.has(finish, "cancelReason")).isFalse();
+    }
+
+    /**
+     * Let the parked download answer once the cancel has landed, so the cancelled job unwinds now
+     * rather than at the plan's backstop for a step that ignores its cancel.
+     */
+    private void unpark() {
+        release.countDown();
     }
 
     private EnginePaths.Paths paths() {
