@@ -9,16 +9,19 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.testing.TestCaches;
 import java.net.URI;
-import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
+/**
+ * A Micronaut app's lock keeps logback-classic's edge to logback-core. Network test (Maven Central);
+ * the store persists between runs, so a repeat run fetches only what Central has newly published.
+ */
 @Tag("network")
 class LogbackCoreEdgeFullTest {
     @Test
-    void micronaut_hello_shape_keeps_logback_core_edge(@TempDir Path tmp) throws Exception {
+    void micronaut_hello_shape_keeps_logback_core_edge() throws Exception {
         String toml = """
                 group = "com.example"
                 name = "hello-http"
@@ -46,7 +49,7 @@ class LogbackCoreEdgeFullTest {
                 junit-jupiter         = { group = "org.junit.jupiter", name = "junit-jupiter" }
                 """;
         var project = JkBuildParser.parse(toml);
-        Cas cas = new Cas(tmp.resolve("c"));
+        Cas cas = new Cas(TestCaches.dir("logback-core-edge-store"));
         MavenRepo central =
                 new MavenRepo("central", URI.create("https://repo.maven.apache.org/maven2/"), new Http(), cas);
         Lockfile lock = new LockOrchestrator(RepoGroup.of(central)).lock(project, "test");
