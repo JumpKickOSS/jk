@@ -9,7 +9,7 @@ everything it mentions.
 jk graph                                   # build or refresh target/graph/
 jk graph query "how is the order total computed"
 jk graph explain OrderService              # one node and its connections
-jk graph path OrderService PriceCalculator --undirected
+jk graph path OrderService PriceCalculator -U
 jk graph god-nodes                         # the most-connected entities
 jk graph report                            # GRAPH_REPORT.md: god nodes, surprises, communities
 ```
@@ -50,17 +50,17 @@ EDGE OrderService --inherits [EXTRACTED]--> BaseService at=src/main/java/com/acm
 ```
 
 The question's words pick the starting nodes (an exact name beats a prefix beats a substring; rare
-words weigh more), the graph is walked `--depth` hops (default 3), and the result is cut to
-`--budget` tokens (default 2000), nearest nodes first. A cut answer says how large a budget would
+words weigh more), the graph is walked `-d` hops (default 3), and the result is cut to
+`-b` tokens (default 2000), nearest nodes first. A cut answer says how large a budget would
 show everything.
 
 | Option | Meaning |
 |---|---|
-| `--depth N` | Hops from the matched nodes |
-| `--budget N` | Answer size in tokens |
-| `--dfs` | Walk depth-first |
-| `--context call,field,…` | Follow only edges with these contexts; a question that says "calls" or "imports" sets it |
-| `--no-refresh` | Answer from the last graph without looking at the tree |
+| `-d`, `--depth N` | Hops from the matched nodes |
+| `-b`, `--budget N` | Answer size in tokens |
+| `-s`, `--dfs` | Walk depth-first |
+| `-c`, `--context call,field,…` | Follow only edges with these contexts; a question that says "calls" or "imports" sets it |
+| `-n`, `--no-refresh` | Answer from the last graph without looking at the tree |
 
 ## Outputs
 

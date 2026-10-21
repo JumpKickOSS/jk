@@ -26,8 +26,9 @@ public final class GraphCommand extends GroupCommand {
         return "Build and query the code graph";
     }
 
-    private static final Opt NO_REFRESH = Opt.flag("Answer from the last graph; skip the refresh.", "--no-refresh");
-    private static final Opt BUDGET = Opt.value("<tokens>", "Answer size in tokens (default 2000).", "--budget");
+    private static final Opt NO_REFRESH =
+            Opt.flag("Answer from the last graph; skip the refresh.", "-n", "--no-refresh");
+    private static final Opt BUDGET = Opt.value("<tokens>", "Answer size in tokens (default 2000).", "-b", "--budget");
 
     private final GraphOpCommand build = new GraphOpCommand(
             "build", "Build or refresh target/graph/ (-r re-reads every file)", List.of(), List.of());
@@ -40,12 +41,13 @@ public final class GraphCommand extends GroupCommand {
                         "query",
                         "Answer a question with the relevant subgraph",
                         List.of(
-                                Opt.flag("Walk depth-first.", "--dfs"),
-                                Opt.value("<n>", "Hops from the matched nodes (default 3).", "--depth"),
+                                Opt.flag("Walk depth-first.", "-s", "--dfs"),
+                                Opt.value("<n>", "Hops from the matched nodes (default 3).", "-d", "--depth"),
                                 BUDGET,
                                 Opt.value(
                                                 "<a,b,...>",
                                                 "Follow only these edge contexts (call, field, ...).",
+                                                "-c",
                                                 "--context")
                                         .splitOn(","),
                                 NO_REFRESH),
@@ -53,14 +55,14 @@ public final class GraphCommand extends GroupCommand {
                 new GraphOpCommand(
                         "explain",
                         "Show one node and its connections",
-                        List.of(Opt.flag("List every connection, not the top 20.", "--all"), NO_REFRESH),
+                        List.of(Opt.flag("List every connection, not the top 20.", "-A", "--all"), NO_REFRESH),
                         List.of(Param.of("name", Arity.ONE, "label or node id"))),
                 new GraphOpCommand(
                         "path",
                         "Shortest path between two nodes",
                         List.of(
-                                Opt.flag("Ignore edge direction.", "--undirected"),
-                                Opt.value("<n>", "Longest path to report (default 8).", "--max-hops"),
+                                Opt.flag("Ignore edge direction.", "-U", "--undirected"),
+                                Opt.value("<n>", "Longest path to report (default 8).", "-m", "--max-hops"),
                                 NO_REFRESH),
                         List.of(
                                 Param.of("from", Arity.ONE, "label or node id"),
@@ -74,7 +76,11 @@ public final class GraphCommand extends GroupCommand {
                         "neighbors",
                         "A node's direct connections",
                         List.of(
-                                Opt.value("<relation>", "Only relations containing this (calls, ...).", "--relation"),
+                                Opt.value(
+                                        "<relation>",
+                                        "Only relations containing this (calls, ...).",
+                                        "-R",
+                                        "--relation"),
                                 BUDGET,
                                 NO_REFRESH),
                         List.of(Param.of("name", Arity.ONE, "label or node id"))),
@@ -86,7 +92,7 @@ public final class GraphCommand extends GroupCommand {
                 new GraphOpCommand(
                         "god-nodes",
                         "The most-connected entities",
-                        List.of(Opt.value("<n>", "How many (default 10).", "--top"), NO_REFRESH),
+                        List.of(Opt.value("<n>", "How many (default 10).", "-t", "--top"), NO_REFRESH),
                         List.of()),
                 new GraphOpCommand("stats", "Node, edge and community counts", List.of(NO_REFRESH), List.of()),
                 new GraphOpCommand("report", "Print GRAPH_REPORT.md", List.of(NO_REFRESH), List.of()));

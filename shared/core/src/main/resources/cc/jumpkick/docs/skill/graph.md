@@ -6,9 +6,9 @@
 |---|---|---|
 | a question | `jk graph query "order total"` | `query_graph(question)` |
 | one symbol | `jk graph explain OrderService` | `get_node`, `get_neighbors` |
-| how two connect | `jk graph path A B --undirected` | `shortest_path` |
+| how two connect | `jk graph path A B -U` | `shortest_path` |
 | where to start | `jk graph god-nodes` | `god_nodes()` |
 
 - Reads refresh first; unchanged files cost a stat. Calls come from compiled classes: build after edits.
 - Name symbols; adjacent words that spell a class (`order service`) match it.
-- `--budget N` (`token_budget`) widens a cut answer; `--context call` follows calls only.
+- `-b N` (`token_budget`) widens a cut answer; `-c call` follows calls only.
