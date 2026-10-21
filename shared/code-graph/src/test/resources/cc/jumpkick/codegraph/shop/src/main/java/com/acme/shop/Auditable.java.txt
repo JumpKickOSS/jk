@@ -1,0 +1,5 @@
+package com.acme.shop;
+
+public interface Auditable {
+    void audit(String what);
+}

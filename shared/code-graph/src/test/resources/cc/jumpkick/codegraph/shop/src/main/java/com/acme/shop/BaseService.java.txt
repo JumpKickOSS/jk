@@ -1,0 +1,7 @@
+package com.acme.shop;
+
+public abstract class BaseService {
+    protected void log(String message) {
+        System.out.println(message);
+    }
+}
