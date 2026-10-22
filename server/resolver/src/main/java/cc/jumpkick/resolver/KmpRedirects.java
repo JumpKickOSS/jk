@@ -37,8 +37,11 @@ public final class KmpRedirects {
     public record Selection(GradleModuleMetadata.Redirect target, Set<String> allTargets) {}
 
     /** One module's metadata facts: its runtime redirect, if any, and its version constraints. */
-    public record ModuleFacts(Optional<Selection> redirect, List<GradleModuleMetadata.Constraint> constraints) {
-        static final ModuleFacts NONE = new ModuleFacts(Optional.empty(), List.of());
+    public record ModuleFacts(
+            Optional<Selection> redirect,
+            List<GradleModuleMetadata.Constraint> constraints,
+            List<GradleModuleMetadata.FixtureDependency> fixtures) {
+        static final ModuleFacts NONE = new ModuleFacts(Optional.empty(), List.of(), List.of());
     }
 
     private final @Nullable RepoGroup repos;
@@ -110,6 +113,11 @@ public final class KmpRedirects {
      */
     public List<GradleModuleMetadata.Constraint> constraintsFor(String module, String version) {
         return facts(module, version).constraints();
+    }
+
+    /** The test-fixtures jars this module's runtime variant depends on; see {@link GradleModuleMetadata#testFixtureDependencies}. */
+    public List<GradleModuleMetadata.FixtureDependency> fixturesFor(String module, String version) {
+        return facts(module, version).fixtures();
     }
 
     private ModuleFacts facts(String module, String version) {
@@ -216,7 +224,8 @@ public final class KmpRedirects {
             GradleModuleMetadata gmm = GradleModuleMetadata.parse(moduleFile.cachePath());
             Optional<Selection> redirect = gmm.runtimeRedirect(jvmEnvironment)
                     .map(target -> new Selection(target, gmm.redirectTargetModules()));
-            return new ModuleFacts(redirect, gmm.dependencyConstraints(jvmEnvironment));
+            return new ModuleFacts(
+                    redirect, gmm.dependencyConstraints(jvmEnvironment), gmm.testFixtureDependencies(jvmEnvironment));
         } catch (IOException | InterruptedException | RuntimeException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             return ModuleFacts.NONE; // fail-soft: plain-Maven view

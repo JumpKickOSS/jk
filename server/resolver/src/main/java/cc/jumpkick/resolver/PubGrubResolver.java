@@ -261,6 +261,12 @@ public final class PubGrubResolver implements Resolver {
                     deps.add(ref);
                     declared.put(ref, d.version().trim());
                 }
+                // Mirror MavenPackageSource's test-fixtures edges, which the POM cannot spell.
+                for (var f : kmp.fixturesFor(e.getKey(), e.getValue())) {
+                    String fixturesPkg = PackageId.of(f.group(), f.module(), "jar", "test-fixtures")
+                            .key();
+                    if (decisions.containsKey(fixturesPkg)) deps.add(fixturesPkg + "@" + decisions.get(fixturesPkg));
+                }
             }
             dependsOn.put(e.getKey(), deps);
             declaredOn.put(e.getKey(), declared);

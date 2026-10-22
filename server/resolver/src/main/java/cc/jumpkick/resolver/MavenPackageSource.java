@@ -813,6 +813,14 @@ public final class MavenPackageSource implements PackageSource {
                     spec.isEmpty() || c.strictly() || VersionSelectors.looksLikeMavenRange(spec) ? null : spec;
             out.add(new RawEdge(depPkg, constraintForGmmConstraint(depPkg, c), Set.of(), declared, true));
         }
+        // A Gradle module's runtime dependency on another module's test fixtures: its POM names only
+        // the plain module, so the fixtures jar (classifier test-fixtures) is an edge of its own.
+        for (GradleModuleMetadata.FixtureDependency f : kmp.fixturesFor(pkg, version)) {
+            String fixturesPkg =
+                    PackageId.of(f.group(), f.module(), "jar", "test-fixtures").key();
+            out.add(new RawEdge(
+                    fixturesPkg, constraintForManagedEdge(fixturesPkg, f.version()), Set.of(), f.version()));
+        }
         for (Pom.Dep dep : pom.dependencies()) {
             if (dep.optional()) continue;
             if (kmpDropped.contains(dep.module())) continue;

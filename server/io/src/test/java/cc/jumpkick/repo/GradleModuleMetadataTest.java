@@ -91,6 +91,32 @@ class GradleModuleMetadataTest {
                         "androidx.compose.runtime:runtime-annotation-iosarm64");
     }
 
+    /** grails-testing-support-web's shape: the runtime variant asks for grails-web-common's test fixtures. */
+    @Test
+    void a_requested_test_fixtures_capability_is_a_fixtures_dependency(@TempDir Path dir) throws Exception {
+        Path module = Files.writeString(dir.resolve("f.module"), """
+                { "formatVersion": "1.1", "variants": [ {
+                    "name": "apiElements",
+                    "attributes": { "org.gradle.category": "library", "org.gradle.usage": "java-api" },
+                    "dependencies": [ { "group": "g", "module": "api-only", "version": { "requires": "1" },
+                      "requestedCapabilities": [ { "group": "g", "name": "api-only-test-fixtures" } ] } ]
+                  }, {
+                    "name": "runtimeElements",
+                    "attributes": { "org.gradle.category": "library", "org.gradle.usage": "java-runtime" },
+                    "dependencies": [
+                      { "group": "g", "module": "web", "version": { "requires": "8.0.0" } },
+                      { "group": "g", "module": "web", "version": { "requires": "8.0.0" },
+                        "requestedCapabilities": [ { "group": "g", "name": "web-test-fixtures" } ] },
+                      { "group": "g", "module": "other", "version": { "requires": "1" },
+                        "requestedCapabilities": [ { "group": "g", "name": "other-shaded" } ] }
+                    ]
+                } ] }
+                """);
+
+        assertThat(GradleModuleMetadata.parse(module).testFixtureDependencies("standard-jvm"))
+                .containsExactly(new GradleModuleMetadata.FixtureDependency("g", "web", "8.0.0"));
+    }
+
     @Test
     void in_place_runtime_wins_over_a_later_feature_variant_redirect(@TempDir Path dir) throws Exception {
         // grails-core's real shape: runtimeElements ships the jar in place; the cli FEATURE

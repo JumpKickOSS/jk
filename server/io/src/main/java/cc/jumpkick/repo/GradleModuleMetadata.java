@@ -85,11 +85,14 @@ public final class GradleModuleMetadata {
         if (hit != null) return hit;
 
         String text = Files.readString(moduleFile, StandardCharsets.UTF_8);
-        // KMP roots publish platform redirects via available-at and families align through
-        // dependencyConstraints. A .module file with neither is a variant catalog this class has
-        // no use for — skip MiniJson entirely (it dominates first-in-process Android locks:
-        // hundreds of 20–70 KB parses that would yield nothing).
-        if (!text.contains("\"available-at\"") && !text.contains("\"dependencyConstraints\"")) {
+        // KMP roots publish platform redirects via available-at, families align through
+        // dependencyConstraints, and a test-fixtures edge is a requestedCapabilities entry. A .module
+        // file with none of them is a variant catalog this class has no use for — skip MiniJson
+        // entirely (it dominates first-in-process Android locks: hundreds of 20–70 KB parses that
+        // would yield nothing).
+        if (!text.contains("\"available-at\"")
+                && !text.contains("\"dependencyConstraints\"")
+                && !text.contains("\"requestedCapabilities\"")) {
             GradleModuleMetadata empty = new GradleModuleMetadata(List.of());
             remember(cacheKey, empty);
             return empty;
@@ -139,6 +142,43 @@ public final class GradleModuleMetadata {
             return Optional.ofNullable(availableAt(variant));
         }
         return Optional.empty();
+    }
+
+    /** A dependency on another module's test fixtures: that module's {@code test-fixtures} classifier jar. */
+    public record FixtureDependency(String group, String module, String version) {}
+
+    /**
+     * The test-fixtures dependencies of the runtime variant for {@code jvmEnvironment}: entries that
+     * request the {@code <module>-test-fixtures} capability, which Gradle publishes as the module's
+     * {@code test-fixtures} classifier and a POM cannot express. Same variant choice as {@link
+     * #runtimeRedirect}; empty when the module publishes none.
+     */
+    public List<FixtureDependency> testFixtureDependencies(String jvmEnvironment) {
+        List<FixtureDependency> out = new ArrayList<>();
+        for (Map<String, Object> variant : variants) {
+            if (!(variant.get("attributes") instanceof Map<?, ?> attrs)) continue;
+            if (!"java-runtime".equals(attrs.get("org.gradle.usage"))) continue;
+            Object category = attrs.get("org.gradle.category");
+            if (category != null && !"library".equals(category)) continue;
+            Object env = attrs.get("org.gradle.jvm.environment");
+            if (env != null && !env.equals(jvmEnvironment)) continue;
+            if (!(variant.get("dependencies") instanceof List<?> deps)) return out;
+            for (Object entry : deps) {
+                if (!(entry instanceof Map<?, ?> d)) continue;
+                if (!(d.get("group") instanceof String group) || !(d.get("module") instanceof String module)) continue;
+                if (!(d.get("requestedCapabilities") instanceof List<?> caps)) continue;
+                boolean fixtures = caps.stream()
+                        .anyMatch(c -> c instanceof Map<?, ?> cap
+                                && group.equals(cap.get("group"))
+                                && (module + "-test-fixtures").equals(cap.get("name")));
+                if (!fixtures || !(d.get("version") instanceof Map<?, ?> version)) continue;
+                Object requires = version.get("strictly") instanceof String strict ? strict : version.get("requires");
+                if (requires instanceof String v && !v.isBlank())
+                    out.add(new FixtureDependency(group, module, v.trim()));
+            }
+            return out;
+        }
+        return out;
     }
 
     /**

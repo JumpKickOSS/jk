@@ -256,6 +256,13 @@ carries the target's version as a floor, like any POM dependency, so a module wh
 a relocation (`bcprov-ext-jdk18on` → `bcprov-jdk18on`) does not hold the target below what another
 edge needs.
 
+**A dependency on another module's test fixtures** is followed although its POM cannot say so.
+Gradle publishes a module's `testFixtures` as the `test-fixtures` classifier and records the edge
+only in the `.module` file, as a `requestedCapabilities` entry `<module>-test-fixtures`; the POM
+names the plain module. jk reads the runtime variant's request and adds the classifier jar, so
+`grails-testing-support-web` brings `grails-web-common-<version>-test-fixtures.jar` as it does
+under Gradle (a Maven build has to declare it by hand).
+
 **Ranges in dependency POMs and Gradle module metadata** read in Maven's spelling (`[1.0,2.0)`,
 `(,2.0]`, `[1.0]`) and in the ISO spelling Gradle publishes (`[1.0,2.0[` is exclusive above,
 `]1.0,2.0]` exclusive below). A bracket that points at the version includes it; one that points
