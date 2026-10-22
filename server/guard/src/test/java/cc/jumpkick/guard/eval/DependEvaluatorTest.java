@@ -211,6 +211,33 @@ class DependEvaluatorTest {
         assertThat(e.population()).containsEntry("artifacts", 6L);
     }
 
+    /**
+     * The annotation processors' path is solved apart from the build's classpath: a row there at
+     * one version beside the classpath's row at another is two paths, each converged.
+     */
+    @Test
+    void a_processor_path_row_is_not_divergence_from_the_classpaths(@TempDir Path root) throws Exception {
+        workspace(
+                root,
+                artifact("com.google.errorprone:error_prone_annotations:jar:", "2.51.0", Scope.PROCESSOR),
+                artifact("com.google.errorprone:error_prone_annotations:jar:", "2.41.0", Scope.TEST),
+                artifact("org.checkerframework:checker-qual:jar:", "4.2.3", Scope.PROCESSOR),
+                artifact("org.checkerframework:checker-qual:jar:", "3.55.1", Scope.MAIN),
+                artifact("com.google.guava:guava:jar:", "33.7.2-jre", Scope.PROCESSOR),
+                artifact("com.google.guava:guava:jar:", "32.0.0-jre", Scope.TEST_PROCESSOR));
+        Map<String, Evaluation> r = evaluate(root, """
+                [guards.converge]
+                kind = "depend"
+                convergence = true
+                why = "w"
+                """);
+
+        assertThat(ev(r, "converge").observations())
+                .as("two versions on the processor path itself still diverge")
+                .extracting(Observation::key)
+                .containsExactly("convergence com.google.guava:guava");
+    }
+
     @Test
     void allow_licenses_and_errors(@TempDir Path root) throws Exception {
         Map<String, Evaluation> r = run(root, """

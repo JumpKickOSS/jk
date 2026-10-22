@@ -225,14 +225,33 @@ final class DependEvaluator implements Evaluator {
          * One version per artifact within every set of rows one classpath reads: the workspace's
          * plain rows, then each partitioned member's view of the lock. A member's own row beside
          * the workspace's is one classpath's version and another's, not two on one; an artifact
-         * diverging in several views is one observation.
+         * diverging in several views is one observation. Each view is judged as two classpaths,
+         * the build's and the annotation processors': the processor graph is solved on its own, so
+         * Error Prone's annotations at one version beside Guava's at another are two paths, not a
+         * conflict.
          */
         private void convergence(List<Lockfile.Artifact> rows) {
             Set<String> reported = new TreeSet<>();
-            divergence(rows.stream().filter(a -> !a.isPartition()).toList(), "", reported);
+            classpaths(rows.stream().filter(a -> !a.isPartition()).toList(), "", reported);
             Set<String> members = new TreeSet<>();
             for (Lockfile.Artifact a : rows) members.addAll(a.members());
-            for (String member : members) divergence(MemberRows.narrow(rows, member), member, reported);
+            for (String member : members) classpaths(MemberRows.narrow(rows, member), member, reported);
+        }
+
+        private void classpaths(List<Lockfile.Artifact> view, String member, Set<String> reported) {
+            divergence(view.stream().filter(a -> !onlyProcessor(a)).toList(), member, reported);
+            divergence(view.stream().filter(Scan::processor).toList(), member, reported);
+        }
+
+        /** The scopes solved in the processor graph: what javac runs, never what it compiles against. */
+        private static final Set<Scope> PROCESSOR_SCOPES = Set.of(Scope.PROCESSOR, Scope.TEST_PROCESSOR);
+
+        private static boolean processor(Lockfile.Artifact a) {
+            return a.scopes().stream().anyMatch(PROCESSOR_SCOPES::contains);
+        }
+
+        private static boolean onlyProcessor(Lockfile.Artifact a) {
+            return !a.scopes().isEmpty() && a.scopes().stream().allMatch(PROCESSOR_SCOPES::contains);
         }
 
         private void divergence(List<Lockfile.Artifact> view, String member, Set<String> reported) {
