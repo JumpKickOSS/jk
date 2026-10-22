@@ -275,6 +275,11 @@ class JUnitLauncherAggregatorTest {
         assertThat(JUnitLauncher.classFromUniqueId(
                         "[engine:junit-jupiter]/[class:demo.FooTest]/[method:bar(int%5B%5D)]"))
                 .isEqualTo("demo.FooTest");
+        assertThat(JUnitLauncher.classFromUniqueId("[engine:spock]/[spec:demo.FooSpec]/[feature:$spock_feature_0_1]"))
+                .isEqualTo("demo.FooSpec");
+        assertThat(JUnitLauncher.classFromUniqueId("[engine:cucumber]/[feature:x.feature]/[scenario:1]"))
+                .isEqualTo("x.feature");
+        assertThat(JUnitLauncher.classFromUniqueId("[engine:junit-jupiter]")).isEmpty();
         assertThat(JUnitLauncher.engineFromUniqueId(
                         "[engine:junit-jupiter]/[class:demo.FooTest]/[method:bar(int%5B%5D)]"))
                 .isEqualTo("junit-jupiter");

@@ -2,7 +2,6 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -64,7 +63,7 @@ public final class MarkdownTestReport {
      */
     public synchronized void recordFinished(
             String uniqueId, String display, long durationMs, @Nullable String throwableJson) {
-        String className = classNameFrom(uniqueId);
+        String className = XmlTestReport.classNameFrom(uniqueId);
         String failureMessage = null, failureStack = null;
         if (throwableJson != null) {
             failureMessage = Jsonl.str(throwableJson, "message");
@@ -86,7 +85,7 @@ public final class MarkdownTestReport {
      * Record a skipped test. {@code reason} is the skip reason from the protocol event, may be null.
      */
     public synchronized void recordSkipped(String uniqueId, String display, @Nullable String reason) {
-        String className = classNameFrom(uniqueId);
+        String className = XmlTestReport.classNameFrom(uniqueId);
         entries.add(new Entry(className, display, 0, null, null, reason != null ? reason : ""));
     }
 
@@ -149,14 +148,5 @@ public final class MarkdownTestReport {
         if (sink == null) return;
         String k = scopeKey == null || scopeKey.isBlank() ? "_" : scopeKey;
         sink.publishTests(k, label == null ? "" : label, List.copyOf(entries));
-    }
-
-    /**
-     * FQCN from a JUnit Platform uniqueId via the shared {@link JUnitUniqueIds} walk; the raw id
-     * when the {@code [class:…]} segment is absent.
-     */
-    static String classNameFrom(String uniqueId) {
-        String cls = JUnitUniqueIds.classOf(uniqueId);
-        return cls.isEmpty() ? uniqueId : cls;
     }
 }

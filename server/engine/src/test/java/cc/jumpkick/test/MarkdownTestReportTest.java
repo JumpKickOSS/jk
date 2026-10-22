@@ -201,9 +201,16 @@ class MarkdownTestReportTest {
     }
 
     @Test
-    void class_name_from_junit_unique_id() {
-        assertThat(MarkdownTestReport.classNameFrom("[engine:junit-jupiter]/[class:com.acme.FooTest]/[method:bar()]"))
-                .isEqualTo("com.acme.FooTest");
-        assertThat(MarkdownTestReport.classNameFrom("not-a-unique-id")).isEqualTo("not-a-unique-id");
+    void a_spock_feature_is_filed_under_its_spec_class(@TempDir Path ws) {
+        RunResults sink = new RunResults();
+        RunResults.open(sink);
+        var report = new MarkdownTestReport();
+        report.recordFinished(
+                "[engine:spock]/[spec:dev.tally.LedgerSpec]/[feature:$spock_feature_0_0]", "sums", 3, null);
+        report.recordFinished("[engine:kotest]/[spec:dev.tally.KSpec]/[test:adds]", "adds", 1, null);
+        report.publish(ws.resolve("core").toString(), "g:core");
+        assertThat(sink.takeTests().getFirst().entries())
+                .extracting(MarkdownTestReport.Entry::className)
+                .containsExactly("dev.tally.LedgerSpec", "dev.tally.KSpec");
     }
 }
