@@ -143,7 +143,7 @@ and tightens the ratchet as they are fixed. The shape is [Guards](guards.md#keys
 `[lint]` sits beside `[spring-boot]`, `[kotlin]` or any generator table in one module. What
 `jk format` owns — layout, import order, unused imports — belongs in no rule set here; a
 Checkstyle configuration that repeats the formatter's job reports what `jk format` has already
-fixed. The worked example: [`examples/lint-checkstyle`](examples/lint-checkstyle/). `jk import`
+fixed. The worked example: [`05-recipes/lint/checkstyle`](https://github.com/JumpKickOSS/jk-examples/tree/main/05-recipes/lint/checkstyle). `jk import`
 writes the table from a POM's `maven-checkstyle-plugin`, `maven-pmd-plugin` and
 `spotbugs-maven-plugin` ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
 

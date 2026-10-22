@@ -30,7 +30,7 @@ logic = "tools/codegen"
 # logic = "off"                    # disable even if jk/ or .jk/ exists
 ```
 
-Sample: [examples/line-count-build](examples/line-count-build/).
+Sample: [jk-examples `05-recipes/build-logic/line-count`](https://github.com/JumpKickOSS/jk-examples/tree/main/05-recipes/build-logic/line-count).
 
 ## Stem scripts
 

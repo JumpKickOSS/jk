@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fixture test for scripts/examples-lock-drift.sh, on a throwaway checkout with one sample: a clean tree
+# Fixture test for scripts/examples-lock-drift.sh, on a throwaway jk-examples checkout with one scenario: a clean tree
 # and a checksum-only jk-lock.toml change pass; any other jk-lock.toml change, and any change or deletion
 # of a sample's package-lock.json, fail with the file named.
 set -euo pipefail
@@ -11,7 +11,7 @@ trap 'rm -rf "$WORK"' EXIT
 # In-place sed that BSD sed (macOS) and GNU sed both read: the last argument is the file.
 sed_i() { sed -i.bak "$@" && rm -f "${*: -1}.bak"; }
 
-sample="docs/user/examples/sample"
+sample="05-recipes/sample"
 lock="$sample/jk-lock.toml"
 npm_lock="$sample/web/package-lock.json"
 
@@ -43,7 +43,7 @@ cat >"$WORK/$npm_lock" <<'EOF'
 }
 EOF
 git -C "$WORK" add -A
-git -C "$WORK" commit -q -m "sample"
+git -C "$WORK" commit -q -m "scenario"
 
 reset() { git -C "$WORK" checkout -q -- .; }
 
@@ -82,35 +82,5 @@ reset
 rm "$WORK/$npm_lock"
 refuses_naming "an npm lock the job deleted" "$npm_lock"
 reset
-
-# A jk-examples checkout's scenarios, given as the second argument, are held to the same rules.
-EX="$WORK/jk-examples"
-scenario="03-fullstack/scenario"
-mkdir -p "$EX/$scenario"
-git -C "$EX" init -q
-git -C "$EX" config user.email fixture@example.com
-git -C "$EX" config user.name fixture
-cp "$WORK/$lock" "$EX/$scenario/jk-lock.toml"
-cp "$WORK/$npm_lock" "$EX/$scenario/package-lock.json"
-git -C "$EX" add -A
-git -C "$EX" commit -q -m "scenario"
-
-with_examples() { "$ROOT/scripts/examples-lock-drift.sh" "$WORK" "$EX"; }
-if ! with_examples >"$WORK/last.log" 2>&1; then
-  echo "test-examples-lock-drift: a clean jk-examples checkout was refused:" >&2; cat "$WORK/last.log" >&2; exit 1
-fi
-sed_i 's/"8.3.0"/"8.4.0"/' "$EX/$scenario/package-lock.json"
-if with_examples >"$WORK/last.log" 2>&1; then
-  echo "test-examples-lock-drift: a jk-examples npm lock the job rewrote was accepted" >&2; exit 1
-fi
-grep -qF "$scenario/package-lock.json" "$WORK/last.log" \
-  || { echo "test-examples-lock-drift: the jk-examples npm drift was not named:" >&2; cat "$WORK/last.log" >&2; exit 1; }
-git -C "$EX" checkout -q -- .
-sed_i 's/junit-jupiter:6.1.3/junit-jupiter:6.2.0/' "$EX/$scenario/jk-lock.toml"
-if JK_EXAMPLES_DIR="$EX" "$ROOT/scripts/examples-lock-drift.sh" "$WORK" >"$WORK/last.log" 2>&1; then
-  echo "test-examples-lock-drift: a jk-examples pin that moved was accepted (JK_EXAMPLES_DIR)" >&2; exit 1
-fi
-grep -qF "junit-jupiter:6.2.0" "$WORK/last.log" \
-  || { echo "test-examples-lock-drift: the jk-examples pin drift was not named:" >&2; cat "$WORK/last.log" >&2; exit 1; }
 
 echo "test-examples-lock-drift: ok"

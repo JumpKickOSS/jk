@@ -35,7 +35,7 @@ rendered with `${version}`, `${jar}`, `${name}`, and any `jk-config.*` system pr
 Without `config`, those same `jk-config.*` properties (plus `jar` / `version` / `name`) are
 written directly.
 
-Samples: [assembly-app](examples/assembly-app/), [minified-cli](examples/minified-cli/).
+Samples in jk-examples: [assembly-app](https://github.com/JumpKickOSS/jk-examples/tree/main/05-recipes/packaging/assembly), [minified-cli](https://github.com/JumpKickOSS/jk-examples/tree/main/05-recipes/packaging/shrink).
 Frameworks: [Frameworks](frameworks.md). Native / OCI: [Native](native.md), [Images](images.md).
 
 ## Library artefacts: sources and javadoc jars

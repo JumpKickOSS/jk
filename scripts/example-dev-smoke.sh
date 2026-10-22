@@ -9,7 +9,7 @@
 # One example: <dir> is run with `jk dev` (plus JK_DEV_ARGS); each <path>=<text> is fetched from the
 # first ready URL and its body must contain <text>, e.g.
 #
-#   scripts/example-dev-smoke.sh docs/user/examples/vite-sidecar '/api/hello=hello from the JVM'
+#   scripts/example-dev-smoke.sh ../jk-examples/03-fullstack/vite-sidecar '/api/hello=hello from the JVM'
 #
 # --examples: every scenario of a jk-examples checkout whose scenario.toml says `dev = true`, each
 # built beforehand (its node_modules installed by `jk build`), with the manifest's `dev-checks`.

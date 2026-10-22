@@ -2,7 +2,7 @@
 # comment (scripts/check-workflows.sh refuses anything else); Dependabot is what moves those pins,
 # one grouped pull request a week, so a pin never rots by hand. There is no build-tool ecosystem
 # here: jk locks its own dependencies in jk-lock.toml, and `jk audit` in the self-host job is the
-# vulnerability gate over them. The npm trees under clients/vscode and docs/user/examples keep
+# vulnerability gate over them. The npm trees under clients/vscode and clients/cli/fixtures keep
 # their own lockfiles deliberately and are not managed from here.
 version: 2
 updates:

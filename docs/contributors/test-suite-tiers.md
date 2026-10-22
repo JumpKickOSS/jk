@@ -186,20 +186,20 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
   commit-authorship scan. No coverage, no benches.
 - **Nightly (`ci-nightly.yml`):** `jk test -p integration`, `-p slow`,
   `-p network`, `-p bench`, the coverage ratchet (`jk test --coverage`, `jk guard`),
-  the heap guard, the doc examples, the nightly [jk-examples](https://github.com/JumpKickOSS/jk-examples)
+  the heap guard, the nightly [jk-examples](https://github.com/JumpKickOSS/jk-examples)
   scenarios and the audit at `LOW` on Linux; the product smoke on macOS.
-- **Examples job:** every `docs/user/examples/*` sample is locked, built and tested. Every
+- **Examples job:** every
   jk-examples scenario whose `scenario.toml` says `cadence = "nightly"` (or `pr`) is relocked and
   checked from a clean checkout with the commands its manifest lists
   (`scripts/scenarios.py list --cadence nightly --have docker`, then `scripts/scenarios.py check`),
-  each node scenario on the Node.js its lock pins. Samples and scenarios marked `dev = true` then run
-  under `jk dev` until their front doors answer (`scripts/example-dev-smoke.sh`, `--examples` for
-  the scenarios, with each manifest's `dev-checks`). Afterwards no committed `jk-lock.toml` may
+  each node scenario on the Node.js its lock pins. Scenarios marked `dev = true` then run
+  under `jk dev` until their front doors answer (`scripts/example-dev-smoke.sh --examples`, with
+  each manifest's `dev-checks`). Afterwards no committed `jk-lock.toml` may
   change beyond first-party plugin checksums and no `package-lock.json` may change at all
-  (`scripts/examples-lock-drift.sh . jk-examples`). The same scripts run locally against a sibling
+  (`scripts/examples-lock-drift.sh jk-examples`). The same scripts run locally against a sibling
   checkout: `../jk-examples/scripts/scenarios.py check <scenario>`,
   `scripts/example-dev-smoke.sh --examples ../jk-examples` and
-  `scripts/examples-lock-drift.sh . ../jk-examples`.
+  `scripts/examples-lock-drift.sh ../jk-examples`.
 - Local gate: `jk format`, `jk guard`, `jk install` (the build plus the reinstall), `jk test -p integration`;
   `scripts/curated-integration.sh` runs what the pull request's boundary lane will run.
 - Never the `network` or `bench` profile as a merge gate.
