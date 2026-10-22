@@ -215,7 +215,8 @@ must not load with its entity, inline dirty tracking, bidirectional association 
 behaves differently without it. `[hibernate] enhance = true` runs the enhancer of the project's
 own Hibernate (whatever `hibernate-core` the module's runtime classpath resolves) over the
 compiled classes after compile; the enhanced classes are the module's classes from then on, so
-`jk test`, the jar and `jk run` all use them.
+`jk test`, the jar, `jk run` and `jk dev` all use them, and a `jk dev` recompile re-enhances
+before the app restarts.
 
 ```toml
 [hibernate]

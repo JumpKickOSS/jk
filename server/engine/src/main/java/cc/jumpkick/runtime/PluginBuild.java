@@ -97,6 +97,20 @@ public final class PluginBuild {
         return layout.pluginStepScratch(Objects.requireNonNull(stepName, "step"));
     }
 
+    /**
+     * The module's classes as a launch from the classes dir runs them: a classes transform's output
+     * (bytecode enhancement) once it exists, else the compiler's {@code target/classes}.
+     */
+    public static Path runClassesDir(JkBuild project, BuildLayout layout, Path cache)
+            throws IOException, InterruptedException {
+        ActivePlugins.Declared declared =
+                ActivePlugins.declared(project, layout.moduleRoot(), cache, layout.moduleTargetDir());
+        TaskDecl transform = declared == null ? null : PlannerPlugin.transformStep(declared.decls());
+        if (transform == null) return layout.classesDir();
+        Path out = taskScratch(layout, transform.name()).resolve(Objects.requireNonNull(transform.transformsClasses()));
+        return Files.isDirectory(out) ? out : layout.classesDir();
+    }
+
     /** Every dir the declared steps contribute as classes/resources, in declaration order. */
     public static List<Path> contributedDirs(PluginDeclarations decls, BuildLayout layout) {
         List<Path> out = new ArrayList<>();

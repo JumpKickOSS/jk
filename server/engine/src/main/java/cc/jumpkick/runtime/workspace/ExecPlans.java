@@ -437,7 +437,8 @@ public final class ExecPlans {
         List<Path> classpath = new ArrayList<>();
         boolean classesEntry = dev
                 || PluginBuild.shape(project, dir).map(sh -> sh.classesRun()).orElse(false);
-        classpath.add(classesEntry ? layout.classesDir() : layout.mainJar());
+        Path classes = classesEntry ? PluginBuild.runClassesDir(project, layout, cache) : layout.mainJar();
+        classpath.add(classes);
 
         boolean devtoolsInjected = false;
         boolean hotReload = false;

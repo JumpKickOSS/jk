@@ -123,6 +123,36 @@ class BuildPlannerTestOnlyPlanTest {
                 .doesNotContain("plugin-dex", TaskNames.PACKAGE_JAR);
     }
 
+    /**
+     * A classes transform (bytecode enhancement) makes the module's classes what they are, so the
+     * compile plan `jk dev` recompiles with runs it; other packaging-time steps stay out.
+     */
+    @Test
+    void compile_only_plan_runs_the_classes_transform() throws Exception {
+        Path dir = pluginProject();
+        JkBuild build = VariantApply.apply(
+                        JkBuildParser.reparse(dir.resolve("jk.toml")), dir, Variants.Selection.parse(""), Map.of())
+                .build();
+        seedDescribeCache(
+                dir,
+                build,
+                List.of(
+                        "{\"t\":\"task\",\"name\":\"enhance\",\"inputs\":[\"classes\"],\"outputs\":[\"classes\"],"
+                                + "\"transformsClasses\":\"classes\"}",
+                        "{\"t\":\"task\",\"name\":\"dex\",\"inputs\":[\"classes\"],\"outputs\":[\"dex\"]}"));
+
+        BuildPlan plan = BuildPlanner.coreBuilder(inputs(dir, false, true)).build();
+        Set<String> names = plan.steps().stream().map(s -> s.name()).collect(Collectors.toSet());
+        assertThat(names)
+                .contains("plugin-enhance", BuildPlanner.COMPILE_JOIN)
+                .doesNotContain("plugin-dex", TaskNames.PACKAGE_JAR);
+        Task join = plan.steps().stream()
+                .filter(s -> s.name().equals(BuildPlanner.COMPILE_JOIN))
+                .findFirst()
+                .orElseThrow();
+        assertThat(join.requires()).contains("plugin-enhance");
+    }
+
     @Test
     void declared_tails_do_not_apply_to_test_or_compile_plans() throws Exception {
         Path dir = tmp.resolve("app");

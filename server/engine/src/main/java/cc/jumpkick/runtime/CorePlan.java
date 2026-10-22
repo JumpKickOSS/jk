@@ -26,6 +26,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -526,8 +527,16 @@ final class CorePlan {
         }
         if (PlannerVersions.declared(parsedBuild)) leaves.add(TaskNames.COMPILE_VERSIONS);
         leaves.add(TaskNames.COPY_RESOURCES);
+        // A classes transform (bytecode enhancement) makes the module's classes what they are, so
+        // a recompile runs it too: `jk dev` launches from its output.
+        TaskDecl transform = PlannerPlugin.transformStep(pluginDecls);
+        if (transform != null && pluginDecls != null) {
+            String name = "plugin-" + transform.name();
+            addPluginClosure(b, s.pluginSteps(), Set.of(name));
+            leaves.add(name);
+        }
         b.addTask(Task.builder(BuildPlanner.COMPILE_JOIN)
-                .stage(BuildStage.COMPILE)
+                .stage(transform == null ? BuildStage.COMPILE : BuildStage.PACKAGE)
                 .requires(leaves.toArray(String[]::new))
                 .weight(0)
                 .ticks(0)
@@ -586,25 +595,31 @@ final class CorePlan {
      * generators compile-java and compile-test read, and what those require.
      */
     private static void addTestClasspathPlugins(BuildPlan.Builder b, List<Task> pluginSteps, PluginDeclarations decls) {
-        Map<String, Task> pluginByName = new LinkedHashMap<>();
-        for (Task p : pluginSteps) pluginByName.put(p.name(), p);
-        ArrayDeque<String> want = new ArrayDeque<>();
+        Set<String> roots = new LinkedHashSet<>();
         for (TaskDecl step : decls.steps()) {
             if (step.testOnly() || step.feedsTests() || step.sourceGenerating()) {
-                want.add("plugin-" + step.name());
+                roots.add("plugin-" + step.name());
             }
         }
-        Set<String> testPlugins = new HashSet<>();
+        addPluginClosure(b, pluginSteps, roots);
+    }
+
+    /** The plugin tasks named in {@code roots} and every plugin task they transitively require. */
+    private static void addPluginClosure(BuildPlan.Builder b, List<Task> pluginSteps, Set<String> roots) {
+        Map<String, Task> pluginByName = new LinkedHashMap<>();
+        for (Task p : pluginSteps) pluginByName.put(p.name(), p);
+        ArrayDeque<String> want = new ArrayDeque<>(roots);
+        Set<String> closure = new HashSet<>();
         while (!want.isEmpty()) {
             String name = want.poll();
             Task p = pluginByName.get(name);
-            if (p == null || !testPlugins.add(name)) continue;
+            if (p == null || !closure.add(name)) continue;
             for (String r : p.requires()) {
                 if (pluginByName.containsKey(r)) want.add(r);
             }
         }
         for (Map.Entry<String, Task> e : pluginByName.entrySet()) {
-            if (testPlugins.contains(e.getKey())) b.addTask(e.getValue());
+            if (closure.contains(e.getKey())) b.addTask(e.getValue());
         }
     }
 
