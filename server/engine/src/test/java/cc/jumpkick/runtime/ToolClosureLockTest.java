@@ -97,7 +97,8 @@ class ToolClosureLockTest {
         JkBuild build = project(tmp);
         Lockfile lock = ToolLockFixtures.writeWithTools(tmp, tmp.resolve("cache"), Lockfile.empty("test"));
 
-        ToolEntry closure = Objects.requireNonNull(lock.closureRow(GROUP + ":gen-cli:1.0", List.of(), null));
+        ToolEntry closure =
+                Objects.requireNonNull(ToolEntry.closureIn(lock.tools(), GROUP + ":gen-cli:1.0", List.of(), null));
         assertThat(closure.closure()).containsExactly(GROUP + ":gen-cli:1.0", GROUP + ":gen-core:2.0");
         assertThat(lock.toolRow(Coordinate.parse(GROUP + ":gen-core:2.0")))
                 .isNotNull()

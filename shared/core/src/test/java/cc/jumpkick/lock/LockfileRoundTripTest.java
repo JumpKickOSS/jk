@@ -246,7 +246,8 @@ class LockfileRoundTripTest {
                 .isEqualTo("a".repeat(64));
         assertThat(back.toolRow(Coordinate.parse("com.google.protobuf:protoc:4.33.1:windows-x86_64!exe")))
                 .isNull();
-        assertThat(back.urlSha256("https://example.com/rules.xml")).isEqualTo("d".repeat(64));
+        assertThat(ToolEntry.urlSha256In(back.tools(), "https://example.com/rules.xml"))
+                .isEqualTo("d".repeat(64));
     }
 
     @Test

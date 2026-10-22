@@ -401,7 +401,7 @@ public final class PluginBuild {
 
     /** The sha256 hex the lock pins for the file at {@code url}; a URL without a row is lock drift, refused. */
     static String lockedUrlSha256(String url, @Nullable Lockfile lock) throws IOException {
-        String sha256 = lock == null ? null : lock.urlSha256(url);
+        String sha256 = lock == null ? null : ToolEntry.urlSha256In(lock.tools(), url);
         if (sha256 == null) throw unpinned(url);
         return sha256;
     }
