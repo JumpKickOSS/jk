@@ -147,9 +147,14 @@ Boot, skipping the migrations and exiting once the context has refreshed trains 
 
 ```toml
 [image.training-env]
-SPRING_FLYWAY_ENABLED = "false"     # no database during the build
-SPRING_CONTEXT_EXIT   = "onRefresh" # start every bean, then exit: the run settles on its own
+APP_MIGRATE_ON_START = "false"      # read by the app at run time: no database during the build
+SPRING_CONTEXT_EXIT  = "onRefresh"  # start every bean, then exit: the run settles on its own
 ```
+
+With `[spring-boot] aot = true`, Spring's AOT processing fixes `@ConditionalOnProperty` and friends
+when it generates the context, so `SPRING_FLYWAY_ENABLED=false` no longer removes Flyway at run
+time; switch the migration with a value the app reads while it runs (a `FlywayMigrationStrategy`
+that checks it), as jk-examples' hotel application does.
 
 Spring Boot images are unpacked into Boot’s CDS/AOT-friendly layout first (thin launcher
 jar + `lib/`). A non-Boot exploded-classes layout remains unsupported: a CDS dump refuses
