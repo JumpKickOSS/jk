@@ -37,6 +37,13 @@ class NewNodeNetworkTest {
         return NodeGenerators.all().stream().map(NodeGenerators.Framework::id);
     }
 
+    /** {@code jk build} in {@code app} exits 0; on failure the message carries what the build printed. */
+    private static void assertBuilds(Path app, String which) throws Exception {
+        int[] exit = new int[1];
+        Capture.Streams out = Capture.both(() -> exit[0] = run("build", "--no-ansi", "-C", app.toString()));
+        assertThat(exit[0]).as("%s:%n%s%n%s", which, out.out(), out.err()).isZero();
+    }
+
     @ParameterizedTest(name = "{0}")
     @MethodSource("frameworks")
     void the_template_generates_builds_and_runs(String id, @TempDir Path dir) throws Exception {
@@ -50,8 +57,8 @@ class NewNodeNetworkTest {
                 .as("a committed lockfile")
                 .isTrue();
 
-        assertThat(run("build", "-C", app.toString())).as("first build").isZero();
-        assertThat(run("build", "-C", app.toString())).as("second build").isZero();
+        assertBuilds(app, "first build");
+        assertBuilds(app, "second build");
 
         if (framework.shape() == NodeGenerators.Shape.SERVER) {
             int port = freePort();
