@@ -41,6 +41,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -688,15 +689,23 @@ public final class PackagingKeys {
 
     // ---- library artefacts: package-sources + package-javadoc -----------------------------------
 
+    /** Plugin {@code exec-mode}s whose artifact is run, not depended on. */
+    private static final Set<String> RUNNABLE = Set.of("jar", "binary", "device");
+
     /**
      * Whether {@code jk package} writes the sources and javadoc jars beside the module jar. A
-     * library is a module with main sources and no {@code [application]} table — the model's own
-     * definition of one; {@code sources = "always"} forces the pair for any module, application
-     * included. A coordinator root packages nothing.
+     * library is a module with main sources, no {@code [application]} table and no plugin packaging
+     * that produces something runnable (an APK, a Boot or Quarkus jar); {@code sources = "always"}
+     * forces the pair for any module, application included. A coordinator root packages nothing.
      */
     public static boolean libraryArtifacts(JkBuild project, Path moduleDir) {
         if (project.project().sourcesMode() == SourcesMode.ALWAYS) return true;
         if (project.isApplication()) return false;
+        if (PluginBuild.shape(project, moduleDir)
+                .map(p -> RUNNABLE.contains(p.execMode()))
+                .orElse(false)) {
+            return false;
+        }
         return !CompileSupport.coordinatorOnly(project, moduleDir) && CompileSupport.hasSources(moduleDir);
     }
 
