@@ -134,25 +134,15 @@ public final class GuardFixtures {
      * load, so the run reports the errors instead of keying them.
      */
     static @Nullable List<String> keyTokens(Path root, Cas cas) throws IOException {
-        GuardsConfig cfg;
-        try {
-            cfg = JkBuildParser.guardsConfig(ManifestPaths.manifestIn(root));
-        } catch (RuntimeException e) {
-            cfg = GuardsConfig.ABSENT;
-        }
-        LoadResult load = GuardRules.load(root, cfg);
+        LoadResult load = load(root);
         if (!load.errors().isEmpty()) return null;
         List<String> tokens = new ArrayList<>();
         GuardKeys.addRuleTokens(tokens, load);
         Map<String, GuardSuites.Located> guards = GuardSuites.declaredAcrossWorkspace(root);
         Set<Path> owners = new TreeSet<>();
         for (FixtureCheck.Case c : FixtureCheck.cases(root, load.rules(), guards)) {
-            if (!Files.isDirectory(c.dir())) continue;
-            List<Path> files = new ArrayList<>();
-            PathUtil.forEachRegularFile(c.dir(), (f, attrs) -> files.add(f));
-            files.sort(null);
-            for (Path f : files) tokens.add("fixture:" + root.relativize(f) + ":" + FileHashMemo.contentHash(f));
-            owners.add(c.module().isEmpty() ? root : root.resolve(c.module()));
+            for (Path f : filesOf(c)) tokens.add("fixture:" + root.relativize(f) + ":" + FileHashMemo.contentHash(f));
+            if (Files.isDirectory(c.dir())) owners.add(c.module().isEmpty() ? root : root.resolve(c.module()));
         }
         for (Path m : owners) {
             Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(m), "guard");
@@ -166,6 +156,46 @@ public final class GuardFixtures {
         }
         tokens.add(GuardKeys.fileToken("lock", root.resolve(ManifestPaths.LOCK)));
         return tokens;
+    }
+
+    /**
+     * One digest of every fixture file the workspace's rules and guard suites name, by path and
+     * content: what a proof reads besides the rules. Over nothing when the rules do not load; the
+     * rules file then carries the change.
+     */
+    static String digest(Path root) throws IOException {
+        LoadResult load = load(root);
+        StringBuilder all = new StringBuilder();
+        if (load.errors().isEmpty()) {
+            for (FixtureCheck.Case c :
+                    FixtureCheck.cases(root, load.rules(), GuardSuites.declaredAcrossWorkspace(root))) {
+                for (Path f : filesOf(c)) {
+                    all.append(root.relativize(f))
+                            .append(':')
+                            .append(FileHashMemo.contentHash(f))
+                            .append('\n');
+                }
+            }
+        }
+        return "fixtures=" + Hashing.sha256Hex(all.toString());
+    }
+
+    private static LoadResult load(Path root) {
+        GuardsConfig cfg;
+        try {
+            cfg = JkBuildParser.guardsConfig(ManifestPaths.manifestIn(root));
+        } catch (RuntimeException e) {
+            cfg = GuardsConfig.ABSENT;
+        }
+        return GuardRules.load(root, cfg);
+    }
+
+    private static List<Path> filesOf(FixtureCheck.Case c) throws IOException {
+        if (!Files.isDirectory(c.dir())) return List.of();
+        List<Path> files = new ArrayList<>();
+        PathUtil.forEachRegularFile(c.dir(), (f, attrs) -> files.add(f));
+        files.sort(null);
+        return files;
     }
 
     /**
