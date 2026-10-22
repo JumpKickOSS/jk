@@ -51,6 +51,11 @@ public record ExecPlan(
          */
         Map<String, String> appEnv,
         /**
+         * The module's {@code .env} values, workspace root then module: the client sets each one its
+         * own environment lacks, beneath {@link #appEnv}. Empty on plans that start no process.
+         */
+        Map<String, String> appDotEnv,
+        /**
          * {@code dev-stack} only: every runnable member of the workspace by name, its directory
          * absolute; the client asks each for its own dev plan. Empty on every other plan.
          */
@@ -61,6 +66,7 @@ public record ExecPlan(
 
     public ExecPlan {
         appEnv = appEnv == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(appEnv));
+        appDotEnv = appDotEnv == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(appDotEnv));
         members = members == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(members));
     }
 
@@ -91,6 +97,7 @@ public record ExecPlan(
                 "",
                 sidecars,
                 Probe.NONE,
+                Map.of(),
                 Map.of(),
                 members);
     }
@@ -131,7 +138,8 @@ public record ExecPlan(
 
     /**
      * One sidecar the client is to run beside the app: {@code cwd} absolute, {@code env} the
-     * values to lay over the inherited environment, {@code probe} as the manifest states it
+     * values to lay over the inherited environment, {@code dotEnv} the {@code .env} values set only
+     * where the inherited environment lacks them, {@code probe} as the manifest states it
      * ({@link Probe#NONE} when unset), written flat. Every field is written and every field is
      * required on decode.
      */
@@ -140,6 +148,7 @@ public record ExecPlan(
             List<String> command,
             String cwd,
             Map<String, String> env,
+            Map<String, String> dotEnv,
             Probe probe,
             boolean frontDoor,
             Restart restart) {
@@ -147,6 +156,7 @@ public record ExecPlan(
         public Sidecar {
             command = List.copyOf(command);
             env = Collections.unmodifiableMap(new LinkedHashMap<>(env));
+            dotEnv = Collections.unmodifiableMap(new LinkedHashMap<>(dotEnv));
         }
 
         String encode() {
@@ -155,6 +165,7 @@ public record ExecPlan(
                     .array("command", command)
                     .string("cwd", cwd)
                     .map("env", env)
+                    .map("dotEnv", dotEnv)
                     .string("ready", probe.ready())
                     .string("readyPattern", probe.readyPattern())
                     .number("readyTimeoutMillis", probe.readyTimeoutMillis())
@@ -164,7 +175,7 @@ public record ExecPlan(
         }
 
         static Sidecar decode(String object) {
-            for (String key : List.of("command", "env", "frontDoor")) {
+            for (String key : List.of("command", "env", "dotEnv", "frontDoor")) {
                 if (!Jsonl.has(object, key)) throw malformed(key);
             }
             long timeout = Jsonl.longValue(object, "readyTimeoutMillis", Long.MIN_VALUE);
@@ -174,6 +185,7 @@ public record ExecPlan(
                     Jsonl.strArray(object, "command"),
                     required(object, "cwd"),
                     Jsonl.strMap(object, "env"),
+                    Jsonl.strMap(object, "dotEnv"),
                     new Probe(required(object, "ready"), required(object, "readyPattern"), timeout),
                     Jsonl.bool(object, "frontDoor", false),
                     Restart.parse(required(object, "restart")));
@@ -237,6 +249,39 @@ public record ExecPlan(
                 sidecars,
                 appReady,
                 appEnv,
+                appDotEnv,
+                members);
+    }
+
+    /** This plan with {@code dotEnv} as its {@link #appDotEnv}; everything else as is. */
+    public ExecPlan withAppDotEnv(Map<String, String> dotEnv) {
+        return new ExecPlan(
+                error,
+                mainIssue,
+                kind,
+                argv,
+                workingDir,
+                display,
+                javaHome,
+                hotReload,
+                devtoolsInjected,
+                watchRoots,
+                linkSrcs,
+                linkDests,
+                launcherPath,
+                launcherScript,
+                binPath,
+                boot,
+                mainJar,
+                tier,
+                mainClass,
+                libNames,
+                libPaths,
+                deployCommand,
+                sidecars,
+                appReady,
+                appEnv,
+                dotEnv,
                 members);
     }
 
@@ -267,6 +312,7 @@ public record ExecPlan(
                 "",
                 List.of(),
                 Probe.NONE,
+                Map.of(),
                 Map.of(),
                 Map.of());
     }
@@ -300,6 +346,7 @@ public record ExecPlan(
                 .string("appReadyPattern", appReady.readyPattern())
                 .number("appReadyTimeoutMillis", appReady.readyTimeoutMillis())
                 .map("appEnv", appEnv)
+                .map("appDotEnv", appDotEnv)
                 .map("members", members)
                 .finish();
     }
@@ -331,6 +378,7 @@ public record ExecPlan(
                 Sidecar.decodeAll(line),
                 Probe.decode(line),
                 Jsonl.strMap(line, "appEnv"),
+                Jsonl.strMap(line, "appDotEnv"),
                 Jsonl.strMap(line, "members"));
     }
 

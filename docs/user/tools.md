@@ -23,6 +23,14 @@ jk tool dir
 jk tool run script.java                                 # JBang-compatible headers
 ```
 
+`--bin <name>` names the launcher instead of the artifact id: `flyway-commandline` installs as
+`flyway` with `--bin flyway`.
+
+A tool run with `jk tool run`, and an installed launcher, sees the `.env` of the directory it runs
+in — the workspace root's, then that directory's — beneath the shell's own values, which always win
+([`jk env`](install.md#jk-env) lists them). An installed launcher asks the `jk` beside it (else the
+one on `PATH`) with `jk env --export`; without one the tool starts with the shell's environment alone.
+
 One sharp edge worth knowing before you copy the above:
 
 - **`--` is not optional.** `jk tool run` parses the leading flags itself, so

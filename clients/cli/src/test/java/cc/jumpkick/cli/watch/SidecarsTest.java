@@ -42,6 +42,7 @@ class SidecarsTest {
                 List.of("sh", "-c", script),
                 cwd.toString(),
                 Map.of("GREETING", "hi"),
+                Map.of("GREETING", "file", "FROM_DOTENV", "file", "HOME", "file"),
                 new ExecPlan.Probe("", readyPattern, 5_000L),
                 false,
                 restart);
@@ -95,11 +96,11 @@ class SidecarsTest {
     @Test
     void output_is_prefixed_env_is_applied_and_the_pattern_probe_reads_it(@TempDir Path dir) throws Exception {
         List<String> lines = new CopyOnWriteArrayList<>();
-        try (Sidecars sidecars = start(
-                List.of(sh("web", "echo \"$GREETING ready\"; sleep 30", "ready", Sidecar.Restart.NEVER, dir)),
-                lines::add)) {
+        String script = "echo \"$GREETING $FROM_DOTENV $HOME ready\"; sleep 30";
+        try (Sidecars sidecars = start(List.of(sh("web", script, "ready", Sidecar.Restart.NEVER, dir)), lines::add)) {
             assertThat(sidecars.awaitReady()).isEmpty();
-            String expected = "web" + Sidecars.PREFIX_SEPARATOR + "hi ready";
+            // The entry's env beats .env, and .env fills only what the real environment lacks.
+            String expected = "web" + Sidecars.PREFIX_SEPARATOR + "hi file " + System.getenv("HOME") + " ready";
             assertThat(lines).contains(expected);
         }
     }
@@ -161,6 +162,7 @@ class SidecarsTest {
                     List.of("sh", "-c", "sleep 30"),
                     dir.toString(),
                     Map.of(),
+                    Map.of(),
                     new ExecPlan.Probe(url, "", 5_000L),
                     true,
                     Sidecar.Restart.NEVER);
@@ -203,6 +205,7 @@ class SidecarsTest {
                     List.of("sh", "-c", "sleep 30"),
                     dir.toString(),
                     Map.of(),
+                    Map.of(),
                     new ExecPlan.Probe("http://web.example.test:8080/health", "", 5_000L),
                     true,
                     Sidecar.Restart.NEVER);
@@ -222,6 +225,7 @@ class SidecarsTest {
                 "web",
                 List.of("sh", "-c", "sleep 30"),
                 dir.toString(),
+                Map.of(),
                 Map.of(),
                 new ExecPlan.Probe("", "never printed", 300L),
                 false,
