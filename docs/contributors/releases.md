@@ -8,10 +8,10 @@ What a release may change in the formats projects depend on: [Compatibility](com
 
 | Line | Meaning |
 |------|---------|
-| **`0.15.3`** | Current product version (no `-SNAPSHOT` on `main`) |
-| Tag **`v0.15.3`** | Next public release cut from that line |
+| **`0.20.0`** | Current product version (no `-SNAPSHOT` on `main`) |
+| Tag **`v0.20.0`** | Next public release cut from that line |
 | Prior | **`0.15.2`** — previous release; **`0.10.1`** first public |
-| Later | Semver-ish: `0.15.4`, `0.16.0`, … |
+| Later | Semver-ish: `0.20.1`, `0.21.0`, … |
 
 Bump `JkVersion.VERSION`, the workspace `jk.toml` `version` and the installers' pointer floor
 (`RELEASE_FLOOR` in `install.sh`, `$ReleaseFloor` in `install.ps1`, mirrored under
@@ -26,7 +26,35 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
 
-### 0.15.3
+### 0.20.0
+
+0.15.3 was never published; its changes ship here.
+
+- **Every byte a build runs is in the lock.** Plugin tools (protoc, aapt2, r8, the IntelliJ
+  distribution), tool closures, URL-fetched tools, packager tools and Kotlin compiler plugins are
+  pinned by sha256 — per platform where the tool is — and fetched fail-closed; `jk sync` pre-fetches
+  them. An older jk refuses a lock with `[[tool]]` rows: update jk before you relock.
+- **Warm workers.** The Java, Kotlin and Groovy compilers, the formatter and the code-graph worker
+  stay up between builds with JEP 514 startup caches, share by heap, and idle out after
+  `JK_WORKER_LINGER_MIN` (30) minutes — at once when the host is short of memory. On CI the latest
+  Java and Kotlin compiler stay up for the engine's life.
+- **`jk outdated` and `jk update` cover everything they report:** framework versions
+  (`[spring-boot]`, `[micronaut]`), the Kotlin/Groovy/Scala toolchains, tool pins, guard packs and
+  variant pins; a relocated artifact is named with its new coordinate.
+- **`.env` reaches what jk starts** — the app under `jk run` and `jk dev`, dev servers, `jk tool
+  run` and installed tool launchers — beneath the real environment.
+- **Front ends.** `jk test` works in a workspace whose JVM module depends on a node module; `jk dev`
+  infers the front end's dev server (the webapp template no longer declares a sidecar); SIGTERM and
+  SIGHUP stop `jk dev`'s app and dev servers as Ctrl-C does.
+- **Android unit tests** run under Robolectric with test-scope AAR manifests and resources
+  (`ComposeTestRule` works).
+- **Clearer failures:** `jk lock` names why it failed; a `--class` filter that matches nothing in a
+  profile says so (exit 64); `jk guard` with a variant dimension runs without `--variant` and an
+  unselected variant fails in seconds; a test JVM that runs out of heap climbs the heap ladder.
+- **Newest stable defaults:** Checkstyle 14.3.0, PMD 7.28.0, SpotBugs 4.10.5, jOOQ 3.21.9, R8 9.5.28,
+  Kotlin 2.4.21 in templates.
+
+Also in this release (from 0.15.3):
 
 - **A build with nothing to do is one line.** A no-op writes that line in the run log and leaves
   state, outputs and the run directory unwritten. The forecast prices only the modules that will
