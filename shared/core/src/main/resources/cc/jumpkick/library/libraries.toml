@@ -132,8 +132,8 @@ retrofit                     = "com.squareup.retrofit2:retrofit"
 
 # Containers / testing
 testcontainers               = "org.testcontainers:testcontainers"
-testcontainers-postgresql    = "org.testcontainers:postgresql"
-testcontainers-mysql         = "org.testcontainers:mysql"
+testcontainers-postgresql    = "org.testcontainers:testcontainers-postgresql"
+testcontainers-mysql         = "org.testcontainers:testcontainers-mysql"
 
 # Reactor / RxJava
 reactor-core                 = "io.projectreactor:reactor-core"

@@ -164,7 +164,7 @@ The whole registry:
 | **`why`** | The dependency path and the rule that picked the version, at most five lines (`coord`) |
 | **`explain`** | Forecast next build |
 | **`affected_tests`** | WIP module cone + advisory ranked test classes; writes `target/jk-tests-affected.md` |
-| **`outdated`** | Declared deps an update would move (read-only; Current / Compatible / Latest); `all=true` lists every row, `checked` counts them, `file` is the `target/jk-outdated-dependencies.md` it wrote |
+| **`outdated`** | Declared pins an update would move (read-only; Current / Compatible / Latest): dependencies, language and tool keys, rule packs; `all=true` lists every row, `checked` counts them, `file` is the `target/jk-outdated-dependencies.md` it wrote, and a row whose coordinate moved carries `relocated` |
 | **`update`** | Bump declared pins in `jk.toml` to the newest stable on the same major, then relock. Params: `dir`, `deps` (optional list of handles), `major` (bool), `apply` (bool, default **false**). Preview returns the proposed `jk.toml` hunk without writing; `apply=true` writes, relocks, and lists every lock package the relock added, removed or moved under `lock.changes` (`coordinate`, `from`, `to`; `from`/`to` null when added/removed), with the count in `lock.updated`. Same renderer as `jk add` |
 | **`deps`** | Add, remove, or pin coordinates and relock. `preview=true` does not write; a version or coordinate the repositories do not serve is an error, preview or not |
 | **`workspace`** | Preview/apply workspace member add/remove |

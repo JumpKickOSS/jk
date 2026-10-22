@@ -230,6 +230,73 @@ class ManifestUpdatesTest {
                 .containsExactlyInAnyOrder(tuple("dokka", "3.0.0"), tuple("grpc-java", "1.81.0"));
     }
 
+    /**
+     * The root {@code kotlin} and {@code scala} keys pin their compilers, a written lint tool version
+     * pins its tool while a schema default is left to jk, and a {@code [guards] extends} rule pack
+     * moves in {@code jk-guards.toml}: every pin {@code jk outdated} reports.
+     */
+    @Test
+    void language_keys_written_tool_versions_and_rule_packs_move(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+                java = 25
+                kotlin = "2.4.20"   # the compiler
+                scala = "3.8.0"
+
+                [lint]
+                checkstyle = "config/checkstyle.xml"
+                checkstyle-version = "13.0.0"
+                """);
+        Files.writeString(project.resolve("jk-guards.toml"), """
+                [guards]
+                extends = [
+                  "cc.jumpkick.guards:spring:0.13.2", # house rules
+                ]
+                """);
+        MavenStub upstream = new MavenStub(http);
+        published(upstream, "org.jetbrains.kotlin", "kotlin-compiler-embeddable", "2.4.20", "2.4.21");
+        published(upstream, "org.scala-lang", "scala3-compiler_3", "3.8.0", "3.10.0");
+        published(upstream, "com.puppycrawl.tools", "checkstyle", "13.0.0", "13.2.0", "14.1.0");
+        published(upstream, "net.sourceforge.pmd", "pmd-cli", "7.27.0", "7.30.0");
+        published(upstream, "cc.jumpkick.guards", "spring", "0.13.2", "0.15.3");
+
+        ManifestUpdates.Plan plan = ManifestUpdates.plan(project, http.base(), ManifestUpdates.Selection.ALL);
+
+        assertThat(plan.rewrites())
+                .extracting(r -> r.table(), r -> r.handle(), r -> r.module(), r -> r.from(), r -> r.to())
+                .containsExactlyInAnyOrder(
+                        tuple(
+                                "kotlin",
+                                "kotlin",
+                                "org.jetbrains.kotlin:kotlin-compiler-embeddable",
+                                "2.4.20",
+                                "2.4.21"),
+                        tuple("scala", "scala", "org.scala-lang:scala3-compiler_3", "3.8.0", "3.10.0"),
+                        tuple("lint.checkstyle-version", "lint", "com.puppycrawl.tools:checkstyle", "13.0.0", "13.2.0"),
+                        tuple("guards.extends", "spring", "cc.jumpkick.guards:spring", "0.13.2", "0.15.3"));
+        String text = Objects.requireNonNull(plan.contents().get(project.resolve("jk.toml")));
+        assertThat(text)
+                .contains("kotlin = \"2.4.21\"   # the compiler")
+                .contains("scala = \"3.10.0\"")
+                .contains("checkstyle-version = \"13.2.0\"")
+                .doesNotContain("pmd-version");
+        assertThat(JkBuildParser.parse(text).project().kotlin())
+                .extracting(k -> k.raw())
+                .isEqualTo("2.4.21");
+        assertThat(plan.contents().get(project.resolve("jk-guards.toml")))
+                .contains("\"cc.jumpkick.guards:spring:0.15.3\", # house rules");
+        assertThat(plan.rewrites())
+                .filteredOn(r -> r.handle().equals("spring"))
+                .extracting(r -> r.file())
+                .containsExactly(project.resolve("jk-guards.toml"));
+
+        ManifestUpdates.Plan named =
+                ManifestUpdates.plan(project, http.base(), new ManifestUpdates.Selection(List.of("kotlin"), false));
+        assertThat(named.rewrites()).extracting(r -> r.handle()).containsExactly("kotlin");
+    }
+
     /** {@code [build] ksp-version} is a tool pin: {@code jk update ksp} moves it on its major, beside {@code ksp-options}. */
     @Test
     void the_ksp_version_pin_moves_like_a_tool_pin(@TempDir Path project) throws Exception {

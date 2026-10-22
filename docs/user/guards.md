@@ -324,7 +324,9 @@ the rules the lock says it is. The root file may `allow` against a pack rule or 
 baseline, unless the pack marked the rule `locked = true`. A workspace member's own
 `<module>/jk-guards.toml` may only tighten, and its rules default to that module's scope.
 `jk guard explain` groups the catalog by layer. Every `jk new` framework template ships the
-pack for its framework — [Templates](templates.md), [Frameworks](frameworks.md).
+pack for its framework — [Templates](templates.md), [Frameworks](frameworks.md). `jk outdated`
+lists a pack with a newer release (from the first-party shelf or the project's repositories) and
+`jk update` moves it on its major in `jk-guards.toml` ([Lockfile](lockfile.md#jk-update)).
 
 ## Hooks
 
