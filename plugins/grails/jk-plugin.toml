@@ -24,6 +24,8 @@ self-contained = true          # install links one artifact, no dependency jars
 classes-run    = true          # run/dev exec from classes (BOOT-INF nesting isn't classpath-able)
 main-scan      = true          # a unique main may be discovered by scanning compiled classes
 layered-image  = true          # images split release/snapshot dep layers + exploded classes
+# What Grails' Gradle plugin passes a run: the build directory, where dev mode writes its pid file.
+run-system-properties = { "grails.project.target.dir" = "target" }
 
 [schema]
 version      = { type = "string", required = true, example = "8.0.0", hint = "Apache grails-bom version (org.grails is the pre-ASF line and has no 8.x)" }

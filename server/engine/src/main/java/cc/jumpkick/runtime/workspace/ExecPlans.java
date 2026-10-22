@@ -400,9 +400,14 @@ public final class ExecPlans {
                 .orElse(false)) {
             Path mainJar = layout.mainJar();
             if (Files.isRegularFile(mainJar)) {
+                List<String> argv = new ArrayList<>();
+                argv.add(java);
+                hostShape.get().runSystemProperties().forEach((k, v) -> argv.add("-D" + k + "=" + v));
+                argv.add("-jar");
+                argv.add(mainJar.toAbsolutePath().toString());
                 return runAck(
                         "run",
-                        List.of(java, "-jar", mainJar.toAbsolutePath().toString()),
+                        argv,
                         dir,
                         javaHome,
                         "java -jar " + dir.relativize(mainJar),
@@ -486,6 +491,10 @@ public final class ExecPlans {
         List<String> argv = new ArrayList<>();
         argv.add(java);
         argv.addAll(JvmModulePath.args(project, dir, classpath));
+        if (classesEntry) {
+            PluginBuild.shape(project, dir)
+                    .ifPresent(sh -> sh.runSystemProperties().forEach((k, v) -> argv.add("-D" + k + "=" + v)));
+        }
         String display;
         if (runnableJar) {
             Path jar = classpath.get(0);

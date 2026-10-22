@@ -120,6 +120,12 @@ public record PluginDescriptor(
             String appDir,
             /** The jar inside {@link #appDir} to run with {@code java -jar}. */
             String appJar,
+            /**
+             * System properties {@code jk run} and {@code jk dev} pass the module's JVM as {@code -D},
+             * from the classes dir or the packaged jar: what the framework's own build plugin passes
+             * it — Grails reads its build directory from {@code grails.project.target.dir}.
+             */
+            Map<String, String> runSystemProperties,
             List<Variant> variants) {
 
         /** Config-conditional packaging override; first matching {@code when} wins. */
