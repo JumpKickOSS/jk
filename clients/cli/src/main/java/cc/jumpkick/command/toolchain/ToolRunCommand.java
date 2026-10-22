@@ -18,6 +18,7 @@ import cc.jumpkick.command.pipeline.BuildFlags;
 import cc.jumpkick.command.pipeline.InstallCommand;
 import cc.jumpkick.command.pipeline.RunVerb;
 import cc.jumpkick.config.DebugJvm;
+import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.http.Http;
@@ -45,6 +46,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
@@ -501,8 +503,8 @@ public final class ToolRunCommand implements CliCommand {
                 Path javaHome = installed.javaHome() != null && Files.isDirectory(installed.javaHome())
                         ? installed.javaHome()
                         : JavaHomes.runningJavaHome();
-                return ProcessTrees.awaitExit(
-                        ToolLauncher.startEphemeral(javaHome, installed.env(), installed.jvmArgs(), toolArgs));
+                return ProcessTrees.awaitExit(ToolLauncher.startEphemeral(
+                        javaHome, installed.env(), installed.jvmArgs(), toolArgs, dotEnv()));
             }
         }
 
@@ -539,6 +541,11 @@ public final class ToolRunCommand implements CliCommand {
 
         // The exec deliberately stays client-side: the tool inherits this terminal's stdio.
         Path javaHome = JavaHomes.runningJavaHome();
-        return ProcessTrees.awaitExit(ToolLauncher.startEphemeral(javaHome, env, aliasJavaOptions, toolArgs));
+        return ProcessTrees.awaitExit(ToolLauncher.startEphemeral(javaHome, env, aliasJavaOptions, toolArgs, dotEnv()));
+    }
+
+    /** The {@code .env} of the directory jk runs in, as {@code jk env} lists it. */
+    private Map<String, String> dotEnv() {
+        return EnvLookup.dotEnv(global.workingDir().toAbsolutePath().normalize());
     }
 }

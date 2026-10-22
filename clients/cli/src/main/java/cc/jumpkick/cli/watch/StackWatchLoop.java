@@ -3,6 +3,7 @@ package cc.jumpkick.cli.watch;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.tui.GlobalCancel;
+import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.Exit;
@@ -203,6 +204,7 @@ final class StackWatchLoop {
         command.addAll(appArgs);
         ProcessBuilder pb = new ProcessBuilder(command)
                 .directory(Path.of(m.plan.workingDir()).toFile());
+        EnvLookup.layerUnder(pb.environment(), m.plan.appDotEnv());
         pb.environment().putAll(m.plan.appEnv());
         pb.environment().putAll(DevUrls.forApp(m.name, exports));
         Process process = pb.start();

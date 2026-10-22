@@ -13,13 +13,21 @@ is not available on this path.
 `jk run` is a **wrapper** around the process: Ctrl-C is owned by JumpKick (cancels the
 engine job, then the process). It is not `exec`-replace.
 
+### Environment
+
+The app inherits the shell's environment, and the module's `.env` files fill in what the shell
+does not set: the workspace root's `.env`, then the module's, the module's winning a name both
+set. The shell always wins over a file, so `JDBC_URL=… jk run` overrides `.env` without editing
+it. `jk dev` gives the app and every sidecar the same treatment (a sidecar reads the `.env` of the
+module that declares it), and `jk env` in the module directory lists exactly these values.
+
 ### Node modules
 
 In a node module, `jk run` starts its server: `[node] start`, else what the framework produces
 (`node build/index.js` for SvelteKit's node adapter, `node .output/server/index.mjs` for Nuxt,
 `node .next/standalone/server.js` for a standalone Next build), else the `start` script. It runs
-under the locked Node.js, from the module's node directory, with the module's `[env]`, `PORT` from
-`.env` when set and `NODE_ENV=production` unless set. A module whose build is only static files
+under the locked Node.js, from the module's node directory, with the module's `[env]` over the
+[environment](#environment) and `NODE_ENV=production` unless the shell or `.env` sets it. A module whose build is only static files
 has nothing to start; a JVM module that depends on it serves the files.
 
 ### Debug the app JVM
@@ -88,7 +96,7 @@ docs = { command = ["mkdocs", "serve"], env = { PORT = "8001" }, ready-pattern =
 |---|---|---|
 | `command` | A string split like a shell would — whitespace separates, quotes group, and a backslash is literal unless it sits right before a quote, a space, or another backslash, so `C:\tools\node.exe run dev` splits as written; nothing is expanded and no shell runs. When the string rules get in the way, write the argv array: `command = ["npm", "run", "dev"]` | required |
 | `cwd` | Working directory, relative to the manifest that declares the sidecar | `"."` |
-| `env` | Values laid over the inherited environment. `.env` at the workspace root and the module apply first, the way they do for every process jk spawns | none |
+| `env` | Values laid over the inherited environment. `.env` at the workspace root and the declaring module fill in beneath the shell first, [as for the app](#environment) | none |
 | `ready` | An HTTP(S) URL polled every 250 ms (HTTP/1.1) until it answers 2xx/3xx. A `localhost` URL is tried on both `127.0.0.1` and `[::1]` — Node binds only `::1` on many hosts | none |
 | `ready-pattern` | A regex matched against the sidecar's stdout and stderr lines — the other probe; a sidecar has one or the other. With neither, one second alive is ready | none |
 | `ready-timeout` | `"60s"`, `"2m"`, `"500ms"`, or a bare number of seconds. A probe that times out **fails the session** — a broken dev server is not a warning | `"60s"` |

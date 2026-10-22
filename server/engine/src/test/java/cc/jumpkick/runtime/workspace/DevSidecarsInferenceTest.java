@@ -43,6 +43,8 @@ class DevSidecarsInferenceTest {
                 web = { ready-timeout = "2m", env = { MODE = "dev" } }
                 """);
         web(ws.resolve("web"), node);
+        write(ws.resolve("web/.env"), "API_URL=http://localhost:8080\n");
+        write(ws.resolve("api/.env"), "API_ONLY=1\n");
 
         List<ExecPlan.Sidecar> sidecars = DevSidecars.resolve(
                 ws.resolve("api"), JkBuildParser.parse(ws.resolve("api/jk.toml")), Map.of("PATH", "/usr/bin"));
@@ -57,6 +59,10 @@ class DevSidecarsInferenceTest {
         assertThat(web.probe().ready()).isEqualTo("http://localhost:5199");
         assertThat(web.probe().readyTimeoutMillis()).as("written").isEqualTo(120_000);
         assertThat(web.env()).containsEntry("MODE", "dev").containsKey("NODE_HOME");
+        assertThat(web.dotEnv())
+                .as("the node module's .env, and the .env of the module that wrote the entry")
+                .containsEntry("API_URL", "http://localhost:8080")
+                .containsEntry("API_ONLY", "1");
         assertThat(web.frontDoor())
                 .as("the one inferred server, with no other front door")
                 .isTrue();

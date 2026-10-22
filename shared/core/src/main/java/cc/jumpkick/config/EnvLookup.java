@@ -21,7 +21,7 @@ import org.jspecify.annotations.Nullable;
  * <ol>
  * <li>{@code .env} at the workspace root
  * <li>{@code .env} in the module
- * <li>the real environment (the caller's, pernot the engine's)
+ * <li>the real environment (the caller's, not the engine's)
  * </ol>
  *
  * <p><b>The real environment beats {@code .env}</b>, which is what Node's dotenv and Docker Compose
@@ -69,6 +69,11 @@ public final class EnvLookup {
         return new EnvLookup(layered, realEnv);
     }
 
+    /** The layered {@code .env} values for {@code moduleDir}: the workspace root's, then the module's. */
+    public static Map<String, String> dotEnv(Path moduleDir) {
+        return forModule(moduleDir, name -> null).fileValues();
+    }
+
     /** One cached {@code .env} parse, invalidated by (size, mtime). Bounded: tiny working set. */
     private static final StampedMemo<Path, StampedMemo.FileStamp, Map<String, String>> READ_MEMO =
             StampedMemo.bounded(256);
@@ -113,6 +118,20 @@ public final class EnvLookup {
     /** Every name a {@code .env} file contributed, whether or not the real environment shadows it. */
     public Set<String> fileNames() {
         return fromFiles.keySet();
+    }
+
+    /** The layered {@code .env} values, module over workspace root, before the real environment. */
+    public Map<String, String> fileValues() {
+        return fromFiles;
+    }
+
+    /**
+     * Lay {@code fileValues} under {@code processEnv}, a child process's environment already holding
+     * the real one: each name is set only where {@code processEnv} lacks it, so the real environment
+     * wins.
+     */
+    public static void layerUnder(Map<String, String> processEnv, Map<String, String> fileValues) {
+        fileValues.forEach(processEnv::putIfAbsent);
     }
 
     /**

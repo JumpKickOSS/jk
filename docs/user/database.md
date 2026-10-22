@@ -12,9 +12,10 @@ One shape for both tools:
 
 1. **Install once**, pinned, with the driver: `jk tool install <tool coordinate> --with <driver>`.
 2. **Point it at the database through the environment**: the tool's own variables in the
-   project's `.env` (`FLYWAY_URL`, `LIQUIBASE_COMMAND_URL`), which every process jk spawns in the
-   project inherits — and the shell always wins over the file, so CI sets the real URL.
-3. **Run the verb**: `flyway migrate`, `liquibase update`.
+   project's `.env` (`FLYWAY_URL`, `LIQUIBASE_COMMAND_URL`). The launcher reads the `.env` of the
+   directory it runs in (and of the workspace root above it), as `jk tool run` does — and the
+   shell always wins over the file, so CI sets the real URL.
+3. **Run the verb** from the project directory: `flyway migrate`, `liquibase update`.
 
 Nothing lands in `jk.toml`: the migrations are resources of the module (`src/main/resources/db/migration`,
 `src/main/resources/db/changelog`), the application still runs them at startup, and the
@@ -33,7 +34,7 @@ jk tool install org.flywaydb:flyway-commandline:12.9.0 -T org.flywaydb.commandli
 (`flyway-database-ignite`) that Maven Central does not carry, so its closure does not resolve.
 
 ```dotenv
-# .env — read by every process jk starts in this project; the shell overrides it
+# .env — read by the launcher and by what jk starts in this project; the shell overrides it
 FLYWAY_URL=jdbc:postgresql://localhost:5432/app
 FLYWAY_USER=app
 FLYWAY_PASSWORD=app

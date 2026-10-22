@@ -14,6 +14,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Coord;
 import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.config.DebugJvm;
+import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
@@ -236,9 +237,13 @@ public final class RunVerb implements BuildVerb {
         }
     }
 
-    /** {@code command} as the plan launches it: a node server in its directory with the plan's environment. */
+    /**
+     * {@code command} as the plan launches it: the module's {@code .env} beneath this environment, and
+     * a node server in its directory with the plan's environment over it.
+     */
     private static ProcessBuilder processFor(List<String> command, ExecPlan plan) {
         ProcessBuilder builder = new ProcessBuilder(command);
+        EnvLookup.layerUnder(builder.environment(), plan.appDotEnv());
         if (!plan.appEnv().isEmpty()) {
             builder.environment().putAll(plan.appEnv());
             builder.directory(Path.of(plan.workingDir()).toFile());

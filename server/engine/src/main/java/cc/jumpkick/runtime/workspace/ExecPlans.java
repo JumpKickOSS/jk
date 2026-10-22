@@ -6,6 +6,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.ModuleRuntimeClasspath;
 import cc.jumpkick.config.DebugJvm;
+import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.WorkspaceClasspath;
@@ -183,6 +184,7 @@ public final class ExecPlans {
                 List.of(),
                 ExecPlan.Probe.NONE,
                 Map.of(),
+                Map.of(),
                 Map.of());
     }
 
@@ -218,7 +220,8 @@ public final class ExecPlans {
      * classes-dir) and assemble the full command line. Dev mode always runs from the classes dir
      * (the loop recompiles into it, and DevTools watches it) with the RUN classpath. Under
      * {@code debug} the native binary is passed over — JDWP needs a JVM — and the chosen JVM
-     * command line carries the agent flag right after the launcher.
+     * command line carries the agent flag right after the launcher. The module's {@code .env}
+     * values ride as {@link ExecPlan#appDotEnv}.
      */
     private static ExecPlan runPlan(
             Path dir,
@@ -240,6 +243,23 @@ public final class ExecPlans {
                 return runWorkspace(dir, cache, project, dev, clientEnv, debug);
             }
         }
+        ExecPlan plan = modulePlan(dir, cache, project, layout, dev, clientEnv, debug);
+        if (plan.error() != null) return plan;
+        Map<String, String> dotEnv = new LinkedHashMap<>(plan.appDotEnv());
+        dotEnv.putAll(EnvLookup.dotEnv(dir));
+        return plan.withAppDotEnv(dotEnv);
+    }
+
+    /** {@link #runPlan} for one module: a device deploy, a node server, or a JVM. */
+    private static ExecPlan modulePlan(
+            Path dir,
+            Path cache,
+            JkBuild project,
+            BuildLayout layout,
+            boolean dev,
+            Map<String, String> clientEnv,
+            @Nullable DebugJvm debug)
+            throws IOException, InterruptedException {
         // A device-mode artifact (an APK) is not host-runnable — the plugin's deploy command is
         // the run story; a generic java exec would be nonsense.
         var hostShape = PluginBuild.shape(project, dir);
@@ -328,6 +348,7 @@ public final class ExecPlans {
                 deployCommand,
                 sidecars,
                 ExecPlan.Probe.NONE,
+                Map.of(),
                 Map.of(),
                 Map.of());
     }
@@ -649,6 +670,7 @@ public final class ExecPlans {
                 sidecars,
                 appReady,
                 Map.of(),
+                Map.of(),
                 Map.of());
     }
 
@@ -872,6 +894,7 @@ public final class ExecPlans {
                 List.of(),
                 ExecPlan.Probe.NONE,
                 Map.of(),
+                Map.of(),
                 Map.of());
     }
 
@@ -935,6 +958,7 @@ public final class ExecPlans {
                 "",
                 List.of(),
                 ExecPlan.Probe.NONE,
+                Map.of(),
                 Map.of(),
                 Map.of());
     }
