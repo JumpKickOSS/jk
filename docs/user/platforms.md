@@ -37,7 +37,8 @@ jdbc = "org.springframework.boot:spring-boot-starter-jdbc"    # versionless coor
 The BOM version follows the [version grammar](projects.md#version-strings): a bare version is
 that release, `^4` / `~4.1` are opt-in floors, `latest` is opt-in. Open ranges on the BOM pin
 are rejected. `jk lock` records the concrete BOM version (and `pinned-by` on managed lock
-rows); `jk update` bumps the pin like any other. The tools a plugin fetches for packaging
+rows); `jk update` bumps the pin like any other, `[spring-boot] version` included, and moves a
+member's framework version and the root's BOM pin of the same coordinate together. The tools a plugin fetches for packaging
 (Boot's loader, Quarkus's bootstrap) follow that locked version, not the selector you wrote.
 
 A managed dependency is a versionless GAV string — `group:artifact` with no third slot — a

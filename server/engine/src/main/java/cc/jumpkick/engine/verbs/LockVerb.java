@@ -6,6 +6,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.base.LockMode;
 import cc.jumpkick.util.JkDirs;
@@ -96,6 +97,8 @@ public final class LockVerb implements HostedVerb {
                             body.freshen(),
                             writer));
         } catch (Exception e) {
+            long rid = host.eventRequestId();
+            if (rid > 0) host.accRunErrors(rid, List.of(Errors.text(e)));
             host.sendQuiet(writer, host.requestFailedLine(null, e));
             return JobOutcome.failed(Exit.FAILURE);
         }

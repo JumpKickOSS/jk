@@ -116,11 +116,13 @@ public final class UpdateVerb implements HostedVerb {
                 try {
                     root = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
                 } catch (RuntimeException e) {
-                    host.sendQuiet(writer, ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(Errors.text(e)), -1));
-                    return JobOutcome.failed(Exit.CONFIG);
+                    return LockCascade.fail(host, writer, Exit.CONFIG, Errors.text(e));
                 }
                 var outcome = LockPlans.updateGitOnly(
                         entryDir, root, cache, repoUrl, body.features(), !body.noDefaultFeatures(), body.gitTarget());
+                if (outcome.exitCode() != Exit.SUCCESS && outcome.error() != null) {
+                    return LockCascade.fail(host, writer, outcome.exitCode(), outcome.error());
+                }
                 host.sendQuiet(
                         writer,
                         ProtoEvents.lockFinish(
@@ -131,6 +133,8 @@ public final class UpdateVerb implements HostedVerb {
                 return outcome.exitCode() == Exit.SUCCESS ? JobOutcome.ok() : JobOutcome.failed(outcome.exitCode());
             });
         } catch (Exception e) {
+            long rid = host.eventRequestId();
+            if (rid > 0) host.accRunErrors(rid, List.of(Errors.text(e)));
             host.sendQuiet(writer, host.requestFailedLine(null, e));
             return JobOutcome.failed(Exit.FAILURE);
         }
@@ -146,8 +150,7 @@ public final class UpdateVerb implements HostedVerb {
             Path lockDir = LockPlans.lockScope(entryDir).lockDir();
             LockCascade.sendRewrites(host, writer, ManifestUpdates.plan(lockDir, repoUrl, selection));
         } catch (RuntimeException | IOException e) {
-            host.sendQuiet(writer, ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(Errors.text(e)), -1));
-            return JobOutcome.failed(Exit.CONFIG);
+            return LockCascade.fail(host, writer, Exit.CONFIG, Errors.text(e));
         }
         host.sendQuiet(writer, ProtoEvents.lockFinish(true, 0, List.of(), -1));
         return JobOutcome.ok();
