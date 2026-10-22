@@ -11,6 +11,7 @@ Agent protocol for work in this repo: [../../AGENTS.md](../../AGENTS.md).
 | Page | Contents |
 |------|----------|
 | [Architecture](architecture.md) | Client/engine split, modules, resolve, cache, schema freeze |
+| [Build lifecycle](lifecycle.md) | One planner for every build-like verb: shared phases, a tail past PACKAGE, the goal table |
 | [Per-job VFS](vfs.md) | Job-scoped input tree, `vfs-max-mb` vs `max-heap-mb`, PathUtil memo |
 | [Comments and Javadoc](comments.md) | Short by default; no ticket ids in source, tests, or these docs |
 | [Plugin authoring](plugins.md) | `jk-plugin.toml`, workers, private pins (first-party + vendored) |
