@@ -19,6 +19,7 @@ class ImageBuilderJavaOptsTest {
                 List.of(),
                 env,
                 Map.of(),
+                Map.of(),
                 null,
                 null,
                 List.of(),

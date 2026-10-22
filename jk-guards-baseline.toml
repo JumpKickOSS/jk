@@ -5,6 +5,7 @@
 [archive-instant-owner.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 30, sites = 1970 }
+"plugins/image-builder" = { classes = 19, sites = 1522 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
@@ -664,6 +665,7 @@ population = { constants = 29, files = 2266, literals = 44297 }
 [case-conversion-locale.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 30, sites = 1970 }
+"plugins/image-builder" = { classes = 19, sites = 1522 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
@@ -709,7 +711,7 @@ population = { examined = 4 }
 "clients/cli" = { classes = 763, sites = 47305 }
 "clients/cli-terminal" = { classes = 48, sites = 1630 }
 "plugins/android" = { classes = 30, sites = 1970 }
-"plugins/image-builder" = { classes = 13, sites = 1201 }
+"plugins/image-builder" = { classes = 19, sites = 1522 }
 "plugins/java-compiler" = { classes = 25, sites = 1420 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
@@ -938,14 +940,6 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 [[clock-owner.entries]]
 in     = "clients/cli-terminal"
 at     = "cc.jumpkick.terminal.windows.WindowsConsole#readByte(Ljava/time/Duration;Ljava/util/function/BooleanSupplier;)I -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "plugins/image-builder"
-at     = "cc.jumpkick.plugin.image.AotCacheTrainer#lambda$runUntilSettled$(Ljava/lang/StringBuilder;Ljava/util/concurrent/atomic/AtomicLong;Ljava/lang/String;)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "plugins/image-builder"
-at     = "cc.jumpkick.plugin.image.AotCacheTrainer#runUntilSettled(Ljava/util/List;Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/String;Ljava/util/function/Consumer;)Lcc/jumpkick/plugin/image/AotCacheTrainer$Output; -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "plugins/image-builder"
@@ -1532,6 +1526,7 @@ population = { files = 1888 }
 [jdk-removal-confined.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 30, sites = 0 }
+"plugins/image-builder" = { classes = 19, sites = 0 }
 "plugins/protobuf" = { classes = 4, sites = 0 }
 "plugins/publisher" = { classes = 16, sites = 0 }
 "plugins/quarkus" = { classes = 11, sites = 0 }
@@ -1850,6 +1845,7 @@ population = { examined = 5 }
 [null-marked-packages.populations]
 "clients/cli" = { classes = 676, elements = 18 }
 "plugins/android" = { classes = 30, elements = 1 }
+"plugins/image-builder" = { classes = 19, elements = 1 }
 "plugins/protobuf" = { classes = 4, elements = 1 }
 "plugins/publisher" = { classes = 16, elements = 1 }
 "plugins/quarkus" = { classes = 16, elements = 1 }
@@ -1866,6 +1862,7 @@ population = { examined = 5 }
 [one-digest-surface.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 30, sites = 1970 }
+"plugins/image-builder" = { classes = 19, sites = 1522 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
@@ -1882,6 +1879,7 @@ population = { examined = 5 }
 [one-hex-spelling.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 30, sites = 1970 }
+"plugins/image-builder" = { classes = 19, sites = 1522 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
@@ -1898,6 +1896,7 @@ population = { examined = 5 }
 [one-host-surface.populations]
 "clients/cli" = { classes = 676, sites = 31445 }
 "plugins/android" = { classes = 30, sites = 1355 }
+"plugins/image-builder" = { classes = 19, sites = 1114 }
 "plugins/protobuf" = { classes = 4, sites = 115 }
 "plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
@@ -1914,6 +1913,7 @@ population = { examined = 5 }
 [one-http-client.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 30, sites = 1970 }
+"plugins/image-builder" = { classes = 19, sites = 1522 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 16, sites = 1277 }
@@ -1939,6 +1939,7 @@ population = { files = 2203 }
 [own-algorithm-by-name.populations]
 "clients/cli" = { classes = 676, sites = 31445 }
 "plugins/android" = { classes = 30, sites = 1355 }
+"plugins/image-builder" = { classes = 19, sites = 1114 }
 "plugins/protobuf" = { classes = 4, sites = 115 }
 "plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
@@ -1956,6 +1957,7 @@ population = { files = 2203 }
 "clients/cli" = { edges = 79, slices = 18 }
 "clients/cli-terminal" = { edges = 4, slices = 3 }
 "plugins/android" = { edges = 0, slices = 1 }
+"plugins/image-builder" = { edges = 0, slices = 1 }
 "plugins/protobuf" = { edges = 0, slices = 1 }
 "plugins/publisher" = { edges = 0, slices = 1 }
 "plugins/quarkus" = { edges = 0, slices = 1 }
@@ -2036,6 +2038,7 @@ population = { examined = 15 }
 [plugin-fork-owner]
 [plugin-fork-owner.populations]
 "plugins/android" = { classes = 30, sites = 1970 }
+"plugins/image-builder" = { classes = 19, sites = 1522 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
@@ -2045,6 +2048,7 @@ population = { examined = 15 }
 [properties-render-owner.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 30, sites = 1970 }
+"plugins/image-builder" = { classes = 19, sites = 1522 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
@@ -2079,6 +2083,7 @@ population = { files = 2335 }
 [runnable-owner.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 30, sites = 1970 }
+"plugins/image-builder" = { classes = 19, sites = 1522 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
@@ -2181,6 +2186,7 @@ population = { files = 1920 }
 [toolchain-env-from-request]
 [toolchain-env-from-request.populations]
 "plugins/android" = { classes = 30, sites = 1355 }
+"plugins/image-builder" = { classes = 19, sites = 1114 }
 "plugins/protobuf" = { classes = 4, sites = 115 }
 "plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
@@ -2220,6 +2226,7 @@ population = { files = 1 }
 [xml-parser-owner.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 30, sites = 1970 }
+"plugins/image-builder" = { classes = 19, sites = 1522 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }

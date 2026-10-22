@@ -22,7 +22,8 @@ class AotCacheTrainerTest {
 
     private static ImageConfig config(String base) {
         return new ImageConfig(
-                base, null, null, List.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null, true);
+                base, null, null, List.of(), Map.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null,
+                true);
     }
 
     private static ImageBuilder.Plan plan(@Nullable Path classesDir) {
@@ -93,6 +94,34 @@ class AotCacheTrainerTest {
     }
 
     /** Jib reads a bare name as Docker Hub; podman refuses to guess and cannot prompt in a build. */
+    @Test
+    void training_runs_see_the_image_env_with_the_training_env_over_it() {
+        ImageConfig c = new ImageConfig(
+                "b",
+                null,
+                null,
+                List.of(),
+                Map.of("LANG", "C.UTF-8", "SPRING_FLYWAY_ENABLED", "true"),
+                Map.of("SPRING_FLYWAY_ENABLED", "false", "SPRING_CONTEXT_EXIT", "onRefresh"),
+                Map.of(),
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                true);
+        Map<String, String> env = AotCacheTrainer.trainingEnvironment(c);
+        assertThat(env)
+                .containsEntry("LANG", "C.UTF-8")
+                .containsEntry("SPRING_FLYWAY_ENABLED", "false")
+                .containsEntry("SPRING_CONTEXT_EXIT", "onRefresh");
+        List<String> prefix = AotCacheTrainer.containerPrefix("podman", Path.of("/w/aot-train"), "img", "n", env);
+        assertThat(String.join(" ", prefix))
+                .contains("-e SPRING_CONTEXT_EXIT=onRefresh")
+                .endsWith(" img");
+    }
+
     @Test
     void short_image_names_are_qualified_for_the_container_runtime() {
         assertThat(AotCacheTrainer.qualify("bellsoft/liberica-runtime-container:jre-25"))

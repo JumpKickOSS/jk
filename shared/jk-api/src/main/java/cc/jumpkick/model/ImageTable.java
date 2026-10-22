@@ -18,6 +18,8 @@ public record ImageTable(
         @Nullable String user,
         List<Integer> ports,
         Map<String, String> env,
+        /** {@code [image.training-env]} — environment of the AOT training runs alone, never the image's. */
+        Map<String, String> trainingEnv,
         Map<String, String> labels,
         @Nullable String registry,
         @Nullable String tag,
@@ -37,11 +39,13 @@ public record ImageTable(
 
     /** No {@code [image]} table — every field unset. */
     public static final ImageTable EMPTY = new ImageTable(
-            null, null, null, List.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null, null, null);
+            null, null, null, List.of(), Map.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null, null,
+            null);
 
     public ImageTable {
         ports = ports == null ? List.of() : List.copyOf(ports);
         env = env == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(env));
+        trainingEnv = trainingEnv == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(trainingEnv));
         labels = labels == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(labels));
         platforms = platforms == null ? List.of() : List.copyOf(platforms);
     }

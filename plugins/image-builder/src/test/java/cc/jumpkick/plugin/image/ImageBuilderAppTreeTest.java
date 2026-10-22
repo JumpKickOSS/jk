@@ -25,6 +25,7 @@ class ImageBuilderAppTreeTest {
                 List.of(),
                 Map.of(),
                 Map.of(),
+                Map.of(),
                 null,
                 null,
                 List.of(),

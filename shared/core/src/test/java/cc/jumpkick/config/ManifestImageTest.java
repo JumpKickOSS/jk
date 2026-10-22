@@ -54,6 +54,20 @@ class ManifestImageTest {
     }
 
     @Test
+    void training_env_is_its_own_table() throws IOException {
+        var data = image("""
+                [image]
+                aot-cache = true
+                [image.env]
+                LANG = "C.UTF-8"
+                [image.training-env]
+                SPRING_FLYWAY_ENABLED = "false"
+                """);
+        assertThat(data.trainingEnv()).containsExactly(Map.entry("SPRING_FLYWAY_ENABLED", "false"));
+        assertThat(data.env()).doesNotContainKey("SPRING_FLYWAY_ENABLED");
+    }
+
+    @Test
     void a_member_inherits_the_roots_registry_facts_and_keeps_its_own_image_identity() {
         ImageTable root = new ImageTable(
                 "eclipse-temurin:25-jre",
@@ -61,6 +75,7 @@ class ManifestImageTest {
                 "app",
                 List.of(9000),
                 Map.of("LANG", "C.UTF-8", "TZ", "UTC"),
+                Map.of(),
                 Map.of("team", "core"),
                 "ghcr.io/acme",
                 "edge",
@@ -76,6 +91,7 @@ class ManifestImageTest {
                 null,
                 List.of(8080),
                 Map.of("TZ", "Europe/Oslo"),
+                Map.of(),
                 Map.of(),
                 null,
                 null,
@@ -115,6 +131,7 @@ class ManifestImageTest {
                 null,
                 null,
                 List.of(),
+                Map.of(),
                 Map.of(),
                 Map.of("team", "core"),
                 "ghcr.io/acme",
@@ -183,6 +200,7 @@ class ManifestImageTest {
                 List.of(),
                 Map.of("A", "project"),
                 Map.of(),
+                Map.of(),
                 null,
                 null,
                 List.of(),
@@ -197,6 +215,7 @@ class ManifestImageTest {
                 "nobody",
                 List.of(8080),
                 Map.of("A", "global", "B", "global"),
+                Map.of(),
                 Map.of(),
                 "ghcr.io/acme",
                 null,

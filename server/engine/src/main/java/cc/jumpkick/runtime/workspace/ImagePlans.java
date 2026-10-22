@@ -334,6 +334,7 @@ public final class ImagePlans {
                 data.user(),
                 data.ports(),
                 data.env(),
+                data.trainingEnv(),
                 data.labels(),
                 registry != null ? registry : data.registry(),
                 tag != null ? tag : data.tag(),
@@ -389,6 +390,13 @@ public final class ImagePlans {
             sw.configList(
                     "env",
                     config.env().entrySet().stream()
+                            .map(e -> e.getKey() + "=" + e.getValue())
+                            .toList());
+        }
+        if (!config.trainingEnv().isEmpty()) {
+            sw.configList(
+                    "trainingEnv",
+                    config.trainingEnv().entrySet().stream()
                             .map(e -> e.getKey() + "=" + e.getValue())
                             .toList());
         }
@@ -625,6 +633,7 @@ public final class ImagePlans {
         sb.append("tag=").append(c.tag()).append(';');
         sb.append("ports=").append(new TreeSet<>(c.ports())).append(';');
         sb.append("env=").append(new TreeMap<>(c.env())).append(';');
+        sb.append("trainingEnv=").append(new TreeMap<>(c.trainingEnv())).append(';');
         sb.append("labels=").append(new TreeMap<>(c.labels())).append(';');
         sb.append("platforms=").append(new ArrayList<>(c.platforms())).append(';');
         // aot-cache changes the shipped layers (trained app tree + app.aot) and dockerFile

@@ -162,6 +162,7 @@ final class NodeImagePlans {
                 user,
                 ports,
                 env,
+                Map.of(),
                 data.labels(),
                 registry != null ? registry : data.registry(),
                 tag != null ? tag : data.tag(),

@@ -140,6 +140,7 @@ class LayeredImageTest {
                 List.of(3000),
                 Map.of("PORT", "3000", "NODE_ENV", "production"),
                 Map.of(),
+                Map.of(),
                 null,
                 "1",
                 List.of("linux/amd64"),

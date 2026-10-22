@@ -310,6 +310,7 @@ class RegistryAuthTest {
                 List.of(),
                 Map.of(),
                 Map.of(),
+                Map.of(),
                 targetRegistry,
                 "9",
                 List.of("linux/amd64"),

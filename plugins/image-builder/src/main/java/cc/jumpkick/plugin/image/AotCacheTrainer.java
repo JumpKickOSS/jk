@@ -5,6 +5,8 @@ import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.SearchPath;
+import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jdk.JdkFingerprint;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
@@ -16,7 +18,9 @@ import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
@@ -159,6 +163,7 @@ final class AotCacheTrainer {
         // directly. Each run gets its own name so the training and verifying containers cannot
         // collide.
         String runtime = localJre == null ? containerRuntime(plan.config().dockerExecutable()) : null;
+        Map<String, String> env = trainingEnvironment(plan.config());
         Function<String, List<String>> prefixFor;
         if (localJre != null) {
             String java = localJre.toString();
@@ -170,7 +175,7 @@ final class AotCacheTrainer {
             }
             String containerRuntime = runtime;
             prefixFor = name -> {
-                List<String> cmd = new ArrayList<>(containerPrefix(containerRuntime, staging, base, name));
+                List<String> cmd = new ArrayList<>(containerPrefix(containerRuntime, staging, base, name, env));
                 cmd.add("java");
                 return cmd;
             };
@@ -199,7 +204,8 @@ final class AotCacheTrainer {
         record.add("-XX:AOTConfiguration=" + CONFIG_FILE);
         record.addAll(runArgs);
 
-        Output recorded = runUntilSettled(record, localJre != null ? staging : null, runtime, trainName, log);
+        Output recorded = runUntilSettled(
+                record, localJre != null ? staging : null, localJre != null ? env : Map.of(), runtime, trainName, log);
         if (recorded.diedOnItsOwn()) {
             // The JVM still writes a recording at exit, so the file check below would pass and the
             // image would ship a cache describing a process that never started.
@@ -220,7 +226,13 @@ final class AotCacheTrainer {
         assemble.add("-XX:AOTConfiguration=" + CONFIG_FILE);
         assemble.add("-XX:AOTCache=" + CACHE_FILE);
         assemble.addAll(runArgs);
-        Output assembled = runUntilSettled(assemble, localJre != null ? staging : null, runtime, assembleName, log);
+        Output assembled = runUntilSettled(
+                assemble,
+                localJre != null ? staging : null,
+                localJre != null ? env : Map.of(),
+                runtime,
+                assembleName,
+                log);
         Path cache = staging.resolve(CACHE_FILE);
         if (assembled.diedOnItsOwn() || !Files.isRegularFile(cache) || sizeOrZero(cache) == 0) {
             throw new IOException("the recording could not be assembled into a cache.\n"
@@ -238,7 +250,8 @@ final class AotCacheTrainer {
         verify.add("-XX:AOTCache=" + CACHE_FILE);
         verify.addAll(runArgs);
 
-        Output verified = runUntilSettled(verify, localJre != null ? staging : null, runtime, verifyName, log);
+        Output verified = runUntilSettled(
+                verify, localJre != null ? staging : null, localJre != null ? env : Map.of(), runtime, verifyName, log);
         if (verified.diedOnItsOwn()) {
             throw new IOException("the application does not start with the cache (exit " + verified.exit() + ").\n"
                     + "  command: " + String.join(" ", verify) + "\n"
@@ -349,8 +362,21 @@ final class AotCacheTrainer {
         return isRegistry ? image : "docker.io/" + image;
     }
 
-    /** {@code <runtime> run --rm -v <staging>:/app -w /app <base>} — everything before the java command. */
-    private static List<String> containerPrefix(String runtime, Path staging, String base, String name) {
+    /**
+     * What every training run sees in its environment: the image's {@code env}, then
+     * {@code [image.training-env]} over it — the settings that let the app start and settle without
+     * its production dependencies (a database, a broker). The cache depends on the JVM's flags, which
+     * stay the entrypoint's, never on these.
+     */
+    static Map<String, String> trainingEnvironment(ImageConfig config) {
+        Map<String, String> env = new LinkedHashMap<>(config.env());
+        env.putAll(config.trainingEnv());
+        return env;
+    }
+
+    /** {@code <runtime> run --rm -e … -v <staging>:/app -w /app <base>} — everything before the java command. */
+    static List<String> containerPrefix(
+            String runtime, Path staging, String base, String name, Map<String, String> env) {
         List<String> cmd = new ArrayList<>(List.of(runtime, "run", "--rm", "--name", name));
         // Rootful docker writes app.aot/app.aotconf into the bind mount as root:root — the
         // follow-up setLastModifiedTime/delete then fails AFTER a successful training run, and
@@ -365,6 +391,7 @@ final class AotCacheTrainer {
         String mount = staging.toAbsolutePath() + ":/app";
         cmd.addAll(List.of("-v", isSelinux() ? mount + ":z" : mount));
         cmd.addAll(List.of("-w", "/app"));
+        env.forEach((k, v) -> cmd.addAll(List.of("-e", k + "=" + v)));
         cmd.add(base);
         return cmd;
     }
@@ -476,33 +503,35 @@ final class AotCacheTrainer {
     private static Output runUntilSettled(
             List<String> command,
             @Nullable Path cwd,
+            Map<String, String> env,
             @Nullable String runtime,
             String containerName,
             Consumer<String> log)
             throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
         if (cwd != null) pb.directory(cwd.toFile());
+        pb.environment().putAll(env);
         Process process = pb.start();
         StringBuilder out = new StringBuilder();
-        AtomicLong lastOutput = new AtomicLong(System.nanoTime());
+        AtomicLong lastOutput = new AtomicLong(Clock.SYSTEM.nanos());
         Thread reader = Thread.ofPlatform().daemon().start(() -> {
             try (var in = process.inputReader()) {
                 in.lines().forEach(line -> {
                     synchronized (out) {
                         out.append(line).append('\n');
                     }
-                    lastOutput.set(System.nanoTime());
+                    lastOutput.set(Clock.SYSTEM.nanos());
                 });
             } catch (IOException ignored) {
             }
         });
 
-        long started = System.nanoTime();
+        long started = Clock.SYSTEM.nanos();
         boolean asked = false;
         while (process.isAlive()) {
             if (process.waitFor(200, TimeUnit.MILLISECONDS)) break;
-            long elapsedMs = (System.nanoTime() - started) / 1_000_000L;
-            long quietMs = (System.nanoTime() - lastOutput.get()) / 1_000_000L;
+            long elapsedMs = (Clock.SYSTEM.nanos() - started) / 1_000_000L;
+            long quietMs = (Clock.SYSTEM.nanos() - lastOutput.get()) / 1_000_000L;
             if (elapsedMs > TRAIN_TIMEOUT_SECONDS * 1000) {
                 log.accept("the training run did not settle within " + TRAIN_TIMEOUT_SECONDS + "s — stopping it");
                 asked = true;

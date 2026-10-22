@@ -37,6 +37,8 @@ public final class ManifestImage {
         List<String> platforms = !project.platforms().isEmpty() ? project.platforms() : global.platforms();
         Map<String, String> env = new LinkedHashMap<>(global.env());
         env.putAll(project.env());
+        Map<String, String> trainingEnv = new LinkedHashMap<>(global.trainingEnv());
+        trainingEnv.putAll(project.trainingEnv());
         Map<String, String> labels = new LinkedHashMap<>(global.labels());
         labels.putAll(project.labels());
         String dockerExecutable =
@@ -50,6 +52,7 @@ public final class ManifestImage {
                 user,
                 ports,
                 Map.copyOf(env),
+                Map.copyOf(trainingEnv),
                 Map.copyOf(labels),
                 registry,
                 tag,
@@ -63,7 +66,7 @@ public final class ManifestImage {
 
     /**
      * A workspace member's table over the root's shared keys. The root answers for what is a
-     * workspace fact — {@code base}, {@code user}, {@code registry}, {@code tag}, {@code env},
+     * workspace fact — {@code base}, {@code user}, {@code registry}, {@code tag}, {@code env}, {@code training-env},
      * {@code labels}, {@code platforms}, {@code docker-executable}, {@code aot-cache} — and the
      * member's own value wins per key, as it does over the user-global table. What names one image
      * never flows down: {@code name}, {@code main}, {@code ports} and {@code docker-file} stay the
@@ -79,6 +82,7 @@ public final class ManifestImage {
                 root.user(),
                 List.of(),
                 root.env(),
+                root.trainingEnv(),
                 root.labels(),
                 root.registry(),
                 root.tag(),
@@ -105,6 +109,7 @@ public final class ManifestImage {
                 image.getString("user"),
                 optionalIntList(image, "ports"),
                 optionalStringMap(image, "env"),
+                optionalStringMap(image, "training-env"),
                 optionalStringMap(image, "labels"),
                 image.getString("registry"),
                 image.getString("tag"),

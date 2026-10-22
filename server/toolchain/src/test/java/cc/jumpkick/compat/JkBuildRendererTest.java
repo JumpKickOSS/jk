@@ -104,6 +104,7 @@ class JkBuildRendererTest {
                 List.of(8080, 9990),
                 Map.of("LANG", "C.UTF-8"),
                 Map.of(),
+                Map.of(),
                 "ghcr.io",
                 "1.0.0",
                 List.of(),
