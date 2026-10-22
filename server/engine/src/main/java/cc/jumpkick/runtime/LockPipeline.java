@@ -30,6 +30,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileModules;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
+import cc.jumpkick.lock.ToolEntry;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkBuild.NativeConfig;
@@ -44,6 +45,7 @@ import cc.jumpkick.node.NodeCatalog;
 import cc.jumpkick.node.NodePlatform;
 import cc.jumpkick.node.NodeResolver;
 import cc.jumpkick.node.PackageManagerResolver;
+import cc.jumpkick.plugin.manifest.Interpolation;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptors;
@@ -99,6 +101,7 @@ import org.jspecify.annotations.Nullable;
  *       {@code [jdk]} / {@code [graal]} toolchain pins.
  *   <li>{@link #pinPlugins} — {@code [[plugin]]} rows and the {@code jk-min} floor.
  *   <li>{@link #pinSdk} — {@code [[sdk]]} rows.
+ *   <li>{@link #pinTools} — {@code [[tool]]} rows.
  *   <li>{@link #write} — {@code [[module]]} identity stamp, then the file.
  * </ol>
  *
@@ -785,6 +788,127 @@ public final class LockPipeline {
         return lock.withSdk(entries);
     }
 
+    // ---- stage 4b: [[tool]] rows ---------------------------------------------
+
+    /**
+     * Pin every plugin tool the root or a member fetches as one Maven artifact — both the step and
+     * the command lane — by the sha256 of its bytes. A tool whose coordinate follows the host is
+     * pinned for each {@link Interpolation.Host#LOCKED} platform that publishes it, so a machine on
+     * another OS verifies its own download against the lock; the running host's artifact must
+     * exist. A plain {@code jk lock} keeps a floating tool's locked version and reuses the digests
+     * the previous lock pins for the same artifact instead of downloading it again.
+     */
+    public Lockfile pinTools(Lockfile lock, Progress progress) {
+        Lockfile previous = policy.keepPins() ? readIfPresent(lockDir) : null;
+        Cas cas = JkStores.storeCas();
+        // coordinate -> must exist (it is this host's); first module that asks owns the repositories
+        Map<Coordinate, Boolean> wanted = new LinkedHashMap<>();
+        Map<Coordinate, RepoGroup> reposFor = new LinkedHashMap<>();
+        for (Map.Entry<Path, JkBuild> module :
+                modules(LockPlans.lockMembers(lockDir, effective)).entrySet()) {
+            Path dir = module.getKey();
+            JkBuild build = module.getValue();
+            Lockfile view = dir.equals(lockDir)
+                    ? lock
+                    : lock.forMember(lockDir.relativize(dir).toString().replace('\\', '/'));
+            Map<String, String> platformPins = view.platformPins();
+            List<PluginContributions.StepDep> tools = new ArrayList<>();
+            tools.addAll(PluginContributions.stepDependencies(build, dir, platformPins));
+            tools.addAll(PluginContributions.commandDependencies(build, dir, platformPins));
+            RepoGroup repos = null;
+            for (PluginContributions.StepDep tool : tools) {
+                if (!tool.isPinnedArtifact()) continue;
+                if (repos == null) repos = RepoGroupBuilder.buildFor(build, repoUrl, cas, BuildEnv.forModule(dir));
+                for (String spec : tool.lockedCoordinates()) {
+                    Coordinate coord = toolCoordinate(spec, previous, repos);
+                    boolean host = spec.equals(tool.coordinateSpec());
+                    wanted.merge(coord, host, Boolean::logicalOr);
+                    reposFor.putIfAbsent(coord, repos);
+                }
+            }
+        }
+        if (wanted.isEmpty()) return lock.withTools(List.of());
+        progress.label("lock tools");
+        // group:artifact:version!type -> classifier -> hex
+        Map<String, Map<@Nullable String, String>> digests = new LinkedHashMap<>();
+        Map<String, Coordinate> groupHead = new LinkedHashMap<>();
+        for (Map.Entry<Coordinate, Boolean> e : wanted.entrySet()) {
+            Coordinate coord = e.getKey();
+            String hex = toolDigest(coord, e.getValue(), previous, Objects.requireNonNull(reposFor.get(coord)));
+            if (hex == null) continue; // not published for that platform
+            String group = coord.toGav() + "!" + coord.type();
+            groupHead.putIfAbsent(group, coord);
+            digests.computeIfAbsent(group, k -> new LinkedHashMap<>()).put(coord.classifier(), hex);
+        }
+        List<ToolEntry> rows = new ArrayList<>();
+        for (Map.Entry<String, Map<@Nullable String, String>> g : digests.entrySet()) {
+            Coordinate head = Objects.requireNonNull(groupHead.get(g.getKey()));
+            Map<String, String> perPlatform = new LinkedHashMap<>();
+            for (Map.Entry<@Nullable String, String> d : g.getValue().entrySet()) {
+                String classifier = d.getKey();
+                Coordinate one = new Coordinate(head.group(), head.artifact(), head.version(), classifier, head.type());
+                if (classifier == null || g.getValue().size() == 1) {
+                    rows.add(ToolEntry.single(one, d.getValue()));
+                } else {
+                    perPlatform.put(classifier, d.getValue());
+                }
+            }
+            if (!perPlatform.isEmpty()) {
+                rows.add(new ToolEntry(head.module(), head.version(), head.type(), null, null, perPlatform));
+            }
+        }
+        return lock.withTools(rows);
+    }
+
+    /**
+     * {@code spec} as a concrete coordinate: a bare version is exact; a floating one keeps the version
+     * the previous lock pins for the tool, else resolves to the newest release it admits.
+     */
+    private static Coordinate toolCoordinate(String spec, @Nullable Lockfile previous, RepoGroup repos) {
+        Coordinate raw = Coordinate.parse(spec);
+        if (VersionSelector.parse(raw.version()) instanceof VersionSelector.Exact exact) {
+            return new Coordinate(raw.group(), raw.artifact(), exact.version(), raw.classifier(), raw.type());
+        }
+        if (previous != null) {
+            for (ToolEntry row : previous.tools()) {
+                if (row.coordinate().equals(raw.module()) && row.type().equals(raw.type())) {
+                    return new Coordinate(raw.group(), raw.artifact(), row.version(), raw.classifier(), raw.type());
+                }
+            }
+        }
+        try {
+            return PluginBuild.resolveCoordinate(repos, spec);
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            throw new IllegalStateException("tool " + spec + " — " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * The sha256 hex of {@code coord}'s bytes: the previous lock's pin when it has one, else the
+     * download's. Null for another platform's artifact the repositories do not serve (unpublished,
+     * or out of reach offline): a build on that platform then fails naming the missing row. This
+     * host's artifact is {@code required}.
+     */
+    private static @Nullable String toolDigest(
+            Coordinate coord, boolean required, @Nullable Lockfile previous, RepoGroup repos) {
+        ToolEntry kept = previous == null ? null : previous.toolRow(coord);
+        if (kept != null) return kept.sha256Hex(coord.classifier());
+        try {
+            var fetched = repos.tryFetchArtifact(coord);
+            if (fetched.isPresent()) return fetched.get().fetched().sha256();
+            if (!required) return null;
+            throw new IllegalStateException("tool " + coord + " not found in any repo");
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            if (!required && e instanceof IOException) {
+                Log.debug("toolDigest: " + coord + " not pinned", e);
+                return null;
+            }
+            throw new IllegalStateException("tool " + coord + " — " + e.getMessage(), e);
+        }
+    }
+
     private static @Nullable String feedRevision(String component) {
         try {
             var feedComponent =
@@ -839,6 +963,7 @@ public final class LockPipeline {
         Lockfile lock = resolve(existing, observer, progress);
         lock = pinPlugins(lock, progress);
         lock = pinSdk(lock, progress);
+        lock = pinTools(lock, progress);
         return write(lock, manifestsSha);
     }
 

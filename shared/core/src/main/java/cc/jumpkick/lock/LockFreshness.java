@@ -4,12 +4,19 @@ package cc.jumpkick.lock;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.model.BuildBlock;
+import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.plugin.manifest.PluginContributions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -22,8 +29,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>A clean digest is necessary but not sufficient: a lock can also be missing a <em>fact</em>
  * jk writes for the current manifests — the {@code [native] metadata-repository} pin, the {@code
- * [node]} pin, a {@code [[kotlin-plugins]]} jar's {@code [[plugin]]} row — and {@link #isStale}
- * rules such a lock stale.
+ * [node]} pin, a {@code [[kotlin-plugins]]} jar's {@code [[plugin]]} row, a plugin step tool's
+ * {@code [[tool]]} row — and {@link #isStale} rules such a lock stale.
  */
 public final class LockFreshness {
 
@@ -64,6 +71,8 @@ public final class LockFreshness {
      *       pin: stale.
      *   <li>Digest clean but a manifest declares a {@code [[kotlin-plugins]]} jar the lock pins no
      *       digest for: stale.
+     *   <li>Digest clean but an active plugin fetches a tool artifact the lock has no {@code
+     *       [[tool]]} row for: stale.
      * </ul>
      *
      * <p>Both the project {@code jk.toml} and the lock must exist for a non-stale answer; missing
@@ -84,8 +93,10 @@ public final class LockFreshness {
             String live = LockManifestDigest.compute(owner);
             if (!stored.equalsIgnoreCase(live)) return true;
             if (missingNativePin(owner, lock)) return true;
-            List<JkBuild> modules = modules(owner);
-            return missingNodePin(modules, lock) || missingKotlinPluginPin(modules, lock);
+            Map<Path, JkBuild> modules = modules(owner);
+            return missingNodePin(modules.values(), lock)
+                    || missingKotlinPluginPin(modules.values(), lock)
+                    || missingToolPin(owner, modules, lock);
         } catch (Exception e) {
             return true; // unreadable lock / digest failure → re-lock
         }
@@ -105,19 +116,18 @@ public final class LockFreshness {
         }
     }
 
-    /** The manifest under {@code owner} and, for a workspace root, every member's. */
-    private static List<JkBuild> modules(Path owner) throws IOException {
+    /** The manifest under {@code owner} and, for a workspace root, every member's, by directory. */
+    private static Map<Path, JkBuild> modules(Path owner) throws IOException {
         Path dir = owner.toAbsolutePath().normalize();
         JkBuild root = JkBuildParser.parseLocal(ManifestPaths.manifestIn(dir));
-        List<JkBuild> out = new ArrayList<>();
-        out.add(root);
-        if (root.isWorkspaceRoot())
-            out.addAll(WorkspaceLoader.loadModules(dir, root).values());
+        Map<Path, JkBuild> out = new LinkedHashMap<>();
+        out.put(dir, root);
+        if (root.isWorkspaceRoot()) out.putAll(WorkspaceLoader.loadModules(dir, root));
         return out;
     }
 
     /** True when a manifest declares a Node.js version and {@code lock} pins none. */
-    private static boolean missingNodePin(List<JkBuild> modules, Lockfile lock) {
+    private static boolean missingNodePin(Collection<JkBuild> modules, Lockfile lock) {
         if (lock.node() != null) return false;
         for (JkBuild module : modules) {
             if (!module.project().nodeSpec().isEmpty()) return true;
@@ -130,7 +140,7 @@ public final class LockFreshness {
      * digest-pinned {@code [[plugin]]} row for. A coordinate without a version matches any row of
      * its {@code group:artifact}: its version is the locked compiler's.
      */
-    private static boolean missingKotlinPluginPin(List<JkBuild> modules, Lockfile lock) {
+    private static boolean missingKotlinPluginPin(Collection<JkBuild> modules, Lockfile lock) {
         for (JkBuild module : modules) {
             for (BuildBlock.KotlinPluginDecl decl : module.build().kotlinPlugins()) {
                 String[] parts = decl.coordinate().split(":");
@@ -139,6 +149,37 @@ public final class LockFreshness {
                         .anyMatch(row -> row.coordinate().equals(ga)
                                 && row.sha256Hex() != null
                                 && (parts.length < 3 || row.version().equals(parts[2])));
+                if (!pinned) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * True when an active plugin of a module fetches a tool artifact by coordinate that {@code lock}
+     * has no {@code [[tool]]} row for — the module, version and type; a floating version matches any
+     * row of its module. Which platforms a row covers is the build's question, not freshness's.
+     */
+    private static boolean missingToolPin(Path owner, Map<Path, JkBuild> modules, Lockfile lock) {
+        Path root = owner.toAbsolutePath().normalize();
+        for (Map.Entry<Path, JkBuild> module : modules.entrySet()) {
+            Path dir = module.getKey().toAbsolutePath().normalize();
+            Lockfile view = dir.equals(root)
+                    ? lock
+                    : lock.forMember(root.relativize(dir).toString().replace('\\', '/'));
+            Map<String, String> platformPins = view.platformPins();
+            List<PluginContributions.StepDep> tools = new ArrayList<>();
+            tools.addAll(PluginContributions.stepDependencies(module.getValue(), dir, platformPins));
+            tools.addAll(PluginContributions.commandDependencies(module.getValue(), dir, platformPins));
+            for (PluginContributions.StepDep tool : tools) {
+                if (!tool.isPinnedArtifact()) continue;
+                Coordinate coord = Coordinate.parse(Objects.requireNonNull(tool.coordinateSpec()));
+                String exact =
+                        VersionSelector.parse(coord.version()) instanceof VersionSelector.Exact e ? e.version() : null;
+                boolean pinned = lock.tools().stream()
+                        .anyMatch(row -> row.coordinate().equals(coord.module())
+                                && row.type().equals(coord.type())
+                                && (exact == null || row.version().equals(exact)));
                 if (!pinned) return true;
             }
         }

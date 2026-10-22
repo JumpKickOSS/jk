@@ -278,10 +278,17 @@ protoc runs once over every `.proto` under `src` — one root, or each of a list
 "src/main/proto"]`) — that no `exclude` glob names (a glob matches the proto's path relative to its
 root; one starting `**/` matches at the root too), writing `--java_out` (and `--kotlin_out`) and
 each entry's `--<id>_out` into one generated directory that joins the module's sources, so a
-`service` compiles against its gRPC stubs with no source root to declare. protoc and every
-plugin executable are fetched from the repositories for the host's OS and architecture and pinned
-in `jk-lock.toml`; an entry's `plugin` is a `group:artifact:version` and fewer segments fail the
-parse naming the entry. protoc's include path is the module's `src` roots, then the `src` of every
+`service` compiles against its gRPC stubs with no source root to declare. An entry's `plugin` is a
+`group:artifact:version` and fewer segments fail the parse naming the entry.
+
+protoc and every plugin executable are pinned in `jk-lock.toml` as a
+[`[[tool]]` row](lockfile.md#plugin-tools): `jk lock` records the sha256 of the binary for each
+platform the repository publishes (`linux-x86_64`, `linux-aarch_64`, `osx-x86_64`, `osx-aarch_64`,
+`windows-x86_64`), and the build fetches `com.google.protobuf:protoc:<version>:<os-arch>!exe` (and
+each plugin at the same classifier) for the host and refuses bytes other than the pinned ones. A
+lock written on a Mac verifies the Linux CI download the same way. `jk update` moves `version` and
+each `plugin` to the newest stable on their major and relocks the rows
+([`jk update`](lockfile.md#jk-update)). protoc's include path is the module's `src` roots, then the `src` of every
 workspace sibling the module's main compile reads (a `[dependencies]`, `[export-dependencies]` or
 `[provided-dependencies]` sibling, and the siblings those reach) that has a `[protobuf]` table — a
 proto imports a sibling's by bare name, as it does under Maven where the sibling's jar carries its

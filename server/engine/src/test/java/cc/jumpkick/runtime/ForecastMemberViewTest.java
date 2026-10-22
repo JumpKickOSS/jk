@@ -59,19 +59,9 @@ class ForecastMemberViewTest {
                 .withMembers(List.of("pinned"));
         Lockfile.Artifact plain = materialized(tmp, store, "1.0", "com.example.ProcOne", Scope.MAIN, Scope.PROCESSOR);
         LockfileWriter.write(
-                new Lockfile(
-                        Lockfile.CURRENT_VERSION,
-                        "jk test",
-                        Lockfile.RESOLUTION_ALGORITHM,
-                        null,
-                        null,
-                        List.of(partition, plain),
-                        List.of(),
-                        List.of(),
-                        List.of(),
-                        null,
-                        LockManifestDigest.compute(root),
-                        null),
+                Lockfile.empty("test")
+                        .withArtifacts(List.of(partition, plain))
+                        .withManifestsSha256(LockManifestDigest.compute(root)),
                 root.resolve("jk-lock.toml"));
 
         JkBuild project = JkBuildParser.parse(root.resolve("jk.toml"));

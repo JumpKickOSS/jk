@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.plugin.manifest.Interpolation;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -90,6 +92,16 @@ class ProtobufPluginTest {
                 project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
+        // protoc is pinned for every platform Central publishes it for, so a lock written here
+        // verifies a download on any of them.
+        assertThat(LockfileReader.read(project.resolve("jk-lock.toml")).tools()).anySatisfy(row -> {
+            assertThat(row.coordinate()).isEqualTo("com.google.protobuf:protoc");
+            assertThat(row.version()).isEqualTo("4.33.1");
+            assertThat(row.sha256())
+                    .containsOnlyKeys(Interpolation.Host.LOCKED.stream()
+                            .map(Interpolation.Host::osArch)
+                            .toList());
+        });
 
         BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 project,

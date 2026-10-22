@@ -108,10 +108,13 @@ class StepToolScopeTest {
 
         List<PluginContributions.StepDep> forA = tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "step-a");
         assertThat(forA).extracting(PluginContributions.StepDep::artifact).containsExactly("tool-a", "shared");
-        assertThat(tools.fetch(forA, build, cas, Map.of())).containsOnlyKeys("tool-a", "shared");
+        assertThat(tools.fetch(forA, build, cas, tmp.resolve("jk-lock.toml"))).containsOnlyKeys("tool-a", "shared");
 
         assertThatThrownBy(() -> tools.fetch(
-                        tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "step-b"), build, cas, Map.of()))
+                        tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "step-b"),
+                        build,
+                        cas,
+                        tmp.resolve("jk-lock.toml")))
                 .as("step-b's own slice is the one that needs the missing file")
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("tool-b");
@@ -142,7 +145,8 @@ class StepToolScopeTest {
     private List<String> stepTokens(JkBuild build, Cas cas, String step) throws Exception {
         PluginBuild.StepTools tools = new PluginBuild.StepTools();
         List<PluginContributions.StepDep> declared = tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), step);
-        return PlannerPlugin.toolTokens(declared, tools.fetch(declared, build, cas, Map.of()), Map.of());
+        return PlannerPlugin.toolTokens(
+                declared, tools.fetch(declared, build, cas, tmp.resolve("jk-lock.toml")), Map.of());
     }
 
     @Test
@@ -154,12 +158,19 @@ class StepToolScopeTest {
         Cas cas = new Cas(tmp.resolve("cas"));
         PluginBuild.StepTools tools = new PluginBuild.StepTools();
 
-        tools.fetch(tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "step-a"), build, cas, Map.of());
+        tools.fetch(
+                tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "step-a"),
+                build,
+                cas,
+                tmp.resolve("jk-lock.toml"));
         // Gone from disk: a second resolve of `shared` would now fail. The build already has it.
         Files.delete(shared);
 
         assertThat(tools.fetch(
-                        tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "step-b"), build, cas, Map.of()))
+                        tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "step-b"),
+                        build,
+                        cas,
+                        tmp.resolve("jk-lock.toml")))
                 .containsEntry("shared", shared)
                 .containsKey("tool-b");
     }

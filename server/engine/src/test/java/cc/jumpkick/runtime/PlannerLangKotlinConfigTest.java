@@ -70,7 +70,8 @@ class PlannerLangKotlinConfigTest {
                         null,
                         null,
                         null,
-                        null),
+                        null,
+                        List.of()),
                 module.resolve("jk-lock.toml"));
         Files.writeString(module.resolve("jk.toml"), """
                 name    = "demo"
@@ -129,7 +130,8 @@ class PlannerLangKotlinConfigTest {
                 null,
                 null,
                 null,
-                null);
+                null,
+                List.of());
         String plain = """
                 name    = "demo"
                 group   = "com.demo"
