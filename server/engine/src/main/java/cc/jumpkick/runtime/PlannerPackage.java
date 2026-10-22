@@ -8,7 +8,6 @@ import static cc.jumpkick.runtime.PlannerNative.kotlinSources;
 import static cc.jumpkick.runtime.PlannerPlugin.applicationSbom;
 import static cc.jumpkick.runtime.PlannerPlugin.packagePlugin;
 import static cc.jumpkick.runtime.PlannerSupport.contributionsToken;
-import static cc.jumpkick.runtime.PlannerSupport.packagedDirs;
 import static cc.jumpkick.runtime.PlannerSupport.restorePackaged;
 import static cc.jumpkick.runtime.PlannerSupport.stageClassesWithContributions;
 import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
@@ -16,10 +15,8 @@ import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.JarPackager;
 import cc.jumpkick.host.BuildStamps;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.run.BuildStage;
@@ -27,7 +24,6 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
-import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.util.AtomicWrites;
@@ -111,8 +107,8 @@ public final class PlannerPackage {
                     // custom packagers (boot-jar) merge step outputs themselves. The dirs are only
                     // *listed* here — staging them is a copy, and it must not happen before the
                     // cache check below.
-                    List<Path> contributed = new ArrayList<>(packagedDirs(pluginDecls, layout, project));
-                    contributed.addAll(PlannerSupport.workerCodecClassDirs(in.dir(), project));
+                    List<Path> contributed =
+                            PackagingKeys.packagedContributions(pluginDecls, layout, in.dir(), project);
                     Files.createDirectories(jarPath.getParent());
                     String mainClass = PluginModule.mainClass(in.dir(), project);
                     // Application jars embed the lockfile-derived SBOM (libraries don't:
@@ -122,18 +118,14 @@ public final class PlannerPackage {
                         Lockfile sbomLock = ctx.get(LOCKFILE).orElse(null);
                         if (sbomLock != null) sbom = applicationSbom(project, sbomLock);
                     }
-                    // Packaging cache: the jar is a pure function of the main classes
-                    // (resources already copied in), the plugin-contributed dirs merged over
-                    // them, the main-class, the manifest, and the SBOM content (a lock change
-                    // re-embeds).
-                    List<String> tokens = List.of(
-                            "classes:" + ClasspathFingerprint.entry(classes),
-                            "contrib:" + contributionsToken(contributed),
-                            "main:" + (mainClass == null ? "" : mainClass),
-                            "sbom:" + (sbom == null ? "" : Hashing.sha256Hex(sbom)),
-                            "manifest:" + project.manifest());
-                    String pkgTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, jarPath);
-                    String pkgKey = ActionKey.forArtifact(pkgTask, BuildIdentity.cacheKeyVersion(), tokens);
+                    PackagingKeys.Keyed keyed = PackagingKeys.packageJar(
+                            jarPath,
+                            in.dir(),
+                            project,
+                            ClasspathFingerprint.entry(classes),
+                            contributionsToken(contributed),
+                            sbom);
+                    String pkgKey = keyed.key();
                     if (restorePackaged(in.cache(), pkgKey, jarPath.getParent())) {
                         writeSidecarPom(project, layout, jarPath);
                         ctx.label(jarPath.getFileName() + " up-to-date");
@@ -159,9 +151,9 @@ public final class PlannerPackage {
                     ctx.put(BUILD_OUTCOME, "built");
                     storePackaged(
                             in.cache(),
-                            pkgTask,
+                            keyed.taskId(),
                             pkgKey,
-                            tokens,
+                            keyed.tokens(),
                             jarPath.getParent(),
                             List.of(jarPath),
                             !in.ephemeralActions());

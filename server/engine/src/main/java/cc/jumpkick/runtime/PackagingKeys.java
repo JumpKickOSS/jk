@@ -91,6 +91,35 @@ public final class PackagingKeys {
         return PluginModule.mainClass(moduleDir, project);
     }
 
+    // ---- package-jar -----------------------------------------------------------------------
+
+    /**
+     * The plain jar's key: a pure function of the main classes (resources already copied in), the
+     * plugin-contributed dirs merged over them, the main class, the embedded SBOM and the manifest.
+     * {@code classesTok}/{@code contribTok} are passed in because the forecast projects trees a
+     * {@code jk clean} wiped from their records; every token and its shape is derived here.
+     */
+    public static Keyed packageJar(
+            Path jar, Path moduleDir, JkBuild project, String classesTok, String contribTok, byte @Nullable [] sbom) {
+        List<String> tokens = List.of(
+                "classes:" + classesTok,
+                "contrib:" + contribTok,
+                "main:" + orEmpty(mainClass(moduleDir, project)),
+                "sbom:" + (sbom == null ? "" : Hashing.sha256Hex(sbom)),
+                "manifest:" + project.manifest());
+        String taskId = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, jar);
+        String jarKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
+        return new Keyed(taskId, tokens, jarKey);
+    }
+
+    /** The dirs package-jar merges over the classes: plugin contributions, then worker codec classes. */
+    public static List<Path> packagedContributions(
+            @Nullable PluginDeclarations decls, BuildLayout layout, Path moduleDir, JkBuild project) {
+        List<Path> contributed = new ArrayList<>(PlannerSupport.packagedDirs(decls, layout, project));
+        contributed.addAll(PlannerSupport.workerCodecClassDirs(moduleDir, project));
+        return contributed;
+    }
+
     // ---- package-assembly ------------------------------------------------------------------
 
     /**
