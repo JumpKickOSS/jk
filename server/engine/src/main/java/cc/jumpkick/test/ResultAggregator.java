@@ -301,9 +301,9 @@ final class ResultAggregator {
      * #incomplete}) with no test event at all is a {@link TestLauncherFailure} carrying {@code
      * crashOutput} (the worker's captured stdout/stderr) and {@code command} (how the worker was
      * started): the launcher never ran a test, so the step fails on that instead of counting one
-     * red test. After tests were reported it is one {@code (test run)} failure row: the passes
-     * reported before the end are not the suite, and counting them green would stamp the run and
-     * skip it next build.
+     * red test. After tests were reported it is one {@code (test run)} failure row carrying {@code
+     * crashOutput}: the passes reported before the end are not the suite, and counting them green
+     * would stamp the run and skip it next build.
      */
     synchronized TestSummary toResult(int exitCode, String crashOutput, List<String> command) {
         long total = succeeded + failed + skipped;
@@ -315,7 +315,10 @@ final class ResultAggregator {
             }
             failed++;
             total++;
-            failures.add(new TestFailureInfo(moduleLabel, "", "", "(test run)", "", why, "", 0));
+            // The fork's own output rides as the row's detail: what it died of — its heap, say —
+            // is what decides whether a retry on a bigger heap is due.
+            failures.add(new TestFailureInfo(
+                    moduleLabel, "", "", "(test run)", "", why, crashOutput == null ? "" : crashOutput, 0));
         }
         return new TestSummary(
                 total,
