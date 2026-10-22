@@ -42,6 +42,13 @@ class TestClassShapeTest {
                 .isFalse();
     }
 
+    /** No annotation anywhere: the JUnit 3 base is the declaration, as Spock's is for a specification. */
+    @Test
+    void a_junit3_test_case_is_a_test_class(@TempDir Path tmp) throws IOException {
+        assertThat(shape(tmp, JUnit3StyleFixture.class).isTestClass(JUnit3StyleFixture.class.getName()))
+                .isTrue();
+    }
+
     @Test
     void an_abstract_class_is_not_a_test_class_even_with_test_methods(@TempDir Path tmp) throws IOException {
         assertThat(shape(tmp, MissingBaseFixtureBase.class).isTestClass(MissingBaseFixtureBase.class.getName()))
