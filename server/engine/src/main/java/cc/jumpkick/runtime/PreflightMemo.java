@@ -330,10 +330,8 @@ public final class PreflightMemo {
     }
 
     /**
-     * The guard rule and baseline files as a module input, when the workspace has guards: a rule
-     * edit must re-plan every module so its lane re-evaluates against the cached facts — a module
-     * skipped as "up to date" never reaches its lane. Empty for a workspace without guards, so the
-     * fingerprint is what it always was.
+     * The guard rule, baseline and fixture files as a module input: an edit to any of them re-plans
+     * every module, or the lanes and proofs never run again. Empty for a workspace without guards.
      */
     static String guardSalt(Path root) {
         if (!PlannerGuards.enabledAt(root)) return "";
@@ -341,6 +339,7 @@ public final class PreflightMemo {
             MessageDigest md = Hashing.newSha256();
             feedFile(md, GuardsPresence.rulesFile(root));
             feedFile(md, GuardsPresence.baselineFile(root));
+            feed(md, GuardFixtures.digest(root));
             return "guards=" + Hashing.hex(md.digest());
         } catch (IOException e) {
             return "guards=unreadable";

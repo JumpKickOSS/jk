@@ -103,6 +103,33 @@ class PreflightMemoTest {
     }
 
     /**
+     * A fixture is what proves a rule bites; editing one must re-plan like a rule edit, or the
+     * proof never runs again and a fixture that stopped biting stays green.
+     */
+    @Test
+    void a_fixture_edit_misses_the_memo(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        Files.writeString(tmp.resolve("jk-guards.toml"), """
+                [guards.no-exit]
+                kind       = "forbid"
+                signatures = ["java.lang.System#exit"]
+                instead    = "return an exit code"
+                fixture    = "guard-fixtures/no-exit"
+                why        = "w"
+                """);
+        Path bad =
+                Files.createDirectories(tmp.resolve("guard-fixtures/no-exit")).resolve("Bad.java");
+        Files.writeString(bad, "class Bad { void f() { System.exit(1); } }\n");
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        storeDirty(tmp, graph, Set.of());
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isPresent();
+
+        Files.writeString(bad, "class Bad {}\n");
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
+    }
+
+    /**
      * A profile's javac args key every compile step, so a memo certified clean by a default build
      * must not answer a {@code --profile} build, nor the other way round.
      */
