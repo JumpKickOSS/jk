@@ -658,14 +658,23 @@ public final class LockPipeline {
     }
 
     /**
-     * A {@code [[plugin]]} row for every {@code [[kotlin-plugins]]} jar the root or a member compiles
-     * with, pinned by digest like a declared plugin. A coordinate without a version takes the
-     * compiler version this lock resolved.
+     * A {@code [[plugin]]} row for every Kotlin compiler plugin jar the root or a member compiles
+     * with — declared under {@code [[kotlin-plugins]]} or contributed by an installed plugin —
+     * pinned by digest like a declared plugin. A coordinate without a version takes the compiler
+     * version this lock resolved.
      */
     private void pinKotlinPlugins(
             Lockfile lock, RepoGroup repos, Set<String> seen, List<Lockfile.PluginEntry> entries, Progress progress) {
-        for (JkBuild module : modules(LockPlans.lockMembers(lockDir, effective)).values()) {
-            for (Coordinate coord : PlannerLang.declaredKotlinPlugins(module, lock)) {
+        for (Map.Entry<Path, JkBuild> module :
+                modules(LockPlans.lockMembers(lockDir, effective)).entrySet()) {
+            Path dir = module.getKey();
+            Lockfile view = dir.equals(lockDir)
+                    ? lock
+                    : lock.forMember(lockDir.relativize(dir).toString().replace('\\', '/'));
+            List<Coordinate> compilerPlugins =
+                    new ArrayList<>(PlannerLang.declaredKotlinPlugins(module.getValue(), lock));
+            compilerPlugins.addAll(PlannerLang.contributedKotlinPlugins(module.getValue(), dir, view));
+            for (Coordinate coord : compilerPlugins) {
                 if (!seen.add(coord.module() + ":" + coord.version())) continue;
                 progress.label("lock " + coord.toGav());
                 try {
@@ -678,7 +687,8 @@ public final class LockPipeline {
                 } catch (IOException | InterruptedException | RuntimeException e) {
                     if (e instanceof InterruptedException)
                         Thread.currentThread().interrupt();
-                    throw new IllegalStateException("[[kotlin-plugins]] " + coord.toGav() + " — " + e.getMessage(), e);
+                    throw new IllegalStateException(
+                            "Kotlin compiler plugin " + coord.toGav() + " — " + e.getMessage(), e);
                 }
             }
         }

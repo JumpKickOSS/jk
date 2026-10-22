@@ -425,7 +425,9 @@ keep their digest.
 
 A Kotlin compiler plugin a module declares under `[[kotlin-plugins]]` gets a `[[plugin]]` row too,
 pinned by `checksum` at the version it compiles with (the locked compiler's when the coordinate
-names none). kotlinc loads exactly those bytes, and a lock without the row is stale. See
+names none), and so does one an installed plugin contributes to a module that compiles Kotlin —
+`[spring-boot]`'s all-open, and no-arg when JPA is on the classpath. kotlinc loads exactly those
+bytes; a plugin with no row fails the compile naming it, and a lock without the row is stale. See
 [Build](build.md#kotlin-compiler-plugins-kotlin-plugins).
 
 A first-party plugin that ships inside jk (`cc.jumpkick:jk-minified`, `jk-spring-boot`,

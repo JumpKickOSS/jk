@@ -236,7 +236,8 @@ kotlinx-serialization-json = "1.12.0"
 
 Framework plugins contribute their own: `[spring-boot]` adds all-open with the `spring` preset,
 and no-arg with the `jpa` preset when `jakarta.persistence-api` is on the classpath, so a Boot
-module declares neither.
+module declares neither. Declared or contributed, every compiler plugin jar is pinned by digest in
+`jk-lock.toml` ([Lockfile](lockfile.md#plugin-tools)).
 
 ## Debug info
 

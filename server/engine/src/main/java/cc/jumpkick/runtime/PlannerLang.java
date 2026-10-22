@@ -17,6 +17,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.kotlin.KotlinResolver;
+import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Coordinate;
@@ -54,9 +55,8 @@ public final class PlannerLang {
 
     /**
      * One Kotlin compiler plugin the module compiles with, by coordinate. The jar is fetched when
-     * the compile actually runs; naming the coordinate is enough to decide whether it has to. A
-     * {@code [[kotlin-plugins]]} declaration is {@code locked}: its jar must be the {@code
-     * [[plugin]]} row's {@code sha256}, null when the lock has no row for it.
+     * the compile actually runs; naming the coordinate is enough to decide whether it has to. Its
+     * jar must be the {@code [[plugin]]} row's {@code sha256}, null when the lock has no row for it.
      */
     record KotlinPluginUse(
             String id,
@@ -64,7 +64,6 @@ public final class PlannerLang {
             String artifact,
             String version,
             List<String> options,
-            boolean locked,
             @Nullable String sha256) {
         KotlinPluginUse {
             options = List.copyOf(options);
@@ -75,14 +74,13 @@ public final class PlannerLang {
         }
 
         /**
-         * The digest this plugin's jar must have, or null when it follows the compiler unpinned.
+         * The digest this plugin's jar must have.
          *
-         * @throws IllegalStateException when a declared plugin has no lock row: the lock is stale
+         * @throws IllegalStateException when the lock has no row for it: the lock is stale
          */
-        @Nullable
         String requiredSha256() {
-            if (!locked || sha256 != null) return sha256;
-            throw new IllegalStateException("[[kotlin-plugins]] " + group + ":" + artifact + ":" + version
+            if (sha256 != null) return sha256;
+            throw new IllegalStateException("Kotlin compiler plugin " + group + ":" + artifact + ":" + version
                     + " has no [[plugin]] row in jk-lock.toml — run `jk lock`");
         }
     }
@@ -98,6 +96,22 @@ public final class PlannerLang {
         for (var decl : project.build().kotlinPlugins()) {
             String[] parts = decl.coordinate().split(":");
             out.add(Coordinate.of(parts[0], parts[1], parts.length == 3 ? parts[2] : pluginVersion));
+        }
+        return out;
+    }
+
+    /**
+     * The coordinates of the Kotlin compiler plugins the installed plugins contribute to {@code
+     * project} at {@code moduleDir} ({@code [[contribute.kotlin-plugin]]}, e.g. Spring's all-open),
+     * at the compiler's version; empty for a module that compiles no Kotlin. What {@code jk lock}
+     * pins and the compile fetches.
+     */
+    static List<Coordinate> contributedKotlinPlugins(JkBuild project, Path moduleDir, Lockfile lock) {
+        if (!Languages.resolve(project.project(), moduleDir).kotlin()) return List.of();
+        List<Coordinate> out = new ArrayList<>();
+        for (var use : PluginContributions.kotlinPlugins(
+                project, moduleDir, kotlinPluginVersion(lock, project), lockModules(lock))) {
+            out.add(Coordinate.of(use.group(), use.artifact(), use.version()));
         }
         return out;
     }
@@ -413,8 +427,9 @@ public final class PlannerLang {
         // from the manifest, version-locked to the compiler actually used. The embeddable
         // variants match the BTA plugin's embeddable compiler.
         for (var use : PluginContributions.kotlinPlugins(project, moduleDir, pluginVersion, lockModules)) {
+            Coordinate coord = Coordinate.of(use.group(), use.artifact(), use.version());
             plugins.add(new KotlinPluginUse(
-                    use.id(), use.group(), use.artifact(), use.version(), use.options(), false, null));
+                    use.id(), use.group(), use.artifact(), use.version(), use.options(), lockedSha256(lock, coord)));
         }
         // Project-declared [[kotlin-plugins]] (serialization et al.) ride the same lane, pinned by
         // the lock's [[plugin]] rows.
@@ -428,7 +443,6 @@ public final class PlannerLang {
                     coord.artifact(),
                     coord.version(),
                     decl.options(),
-                    true,
                     lockedSha256(lock, coord)));
         }
         List<String> args = new ArrayList<>();

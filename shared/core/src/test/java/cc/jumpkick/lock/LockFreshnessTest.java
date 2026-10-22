@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -192,6 +193,48 @@ class LockFreshnessTest {
                 foo = "com.example:foo"
                 """);
         assertThat(LockFreshness.isStale(dir, lockFile)).isTrue();
+    }
+
+    /**
+     * A Kotlin compiler plugin an installed plugin contributes (Spring's all-open) is pinned like a
+     * declared one in a module that compiles Kotlin, and asks nothing of a Java module.
+     */
+    @Test
+    void a_contributed_kotlin_compiler_plugin_without_a_digest_row_is_stale(@TempDir Path dir) throws Exception {
+        String manifest = """
+                group  = "g"
+                name   = "n"
+                version = "1"
+                %s
+
+                [spring-boot]
+                version = "4.1.1"
+                include-tools = false
+                """;
+        Lockfile loaderPinned = Lockfile.empty("test")
+                .withTools(List.of(new ToolEntry(
+                        "org.springframework.boot:spring-boot-loader",
+                        "4.1.1",
+                        "jar",
+                        null,
+                        "sha256:" + "b".repeat(64),
+                        Map.of())));
+        Path lockFile = dir.resolve("jk-lock.toml");
+        Files.writeString(dir.resolve("jk.toml"), manifest.formatted("java = 25"));
+        LockfileWriter.write(loaderPinned, lockFile);
+        assertThat(LockFreshness.isStale(dir, lockFile)).as("a Java module").isFalse();
+
+        Files.writeString(dir.resolve("jk.toml"), manifest.formatted("kotlin = \"2.4.10\""));
+        LockfileWriter.write(loaderPinned, lockFile);
+        assertThat(LockFreshness.isStale(dir, lockFile)).isTrue();
+
+        LockfileWriter.write(
+                loaderPinned.withPlugins(List.of(new Lockfile.PluginEntry(
+                        "org.jetbrains.kotlin:kotlin-allopen-compiler-plugin-embeddable",
+                        "2.4.10",
+                        "sha256:" + "a".repeat(64)))),
+                lockFile);
+        assertThat(LockFreshness.isStale(dir, lockFile)).isFalse();
     }
 
     /** A declared Kotlin compiler plugin is pinned by a digest row; a clean digest without one is stale. */
