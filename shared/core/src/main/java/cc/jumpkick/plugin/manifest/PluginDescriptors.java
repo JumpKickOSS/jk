@@ -234,6 +234,20 @@ public final class PluginDescriptors {
         return parsePackagingTable(packaging, displayPath, variants);
     }
 
+    private static Map<String, String> runSystemProperties(TomlTable packaging, String displayPath) {
+        TomlTable table = packaging.getTable("run-system-properties");
+        if (table == null) return Map.of();
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String key : table.keySet()) {
+            if (!(table.get(List.of(key)) instanceof String value)) {
+                throw new JkBuildParseException(
+                        displayPath + ".packaging.run-system-properties." + key + " must be a string");
+            }
+            out.put(key, value);
+        }
+        return Map.copyOf(out);
+    }
+
     private static PluginDescriptor.Packaging parsePackagingTable(
             TomlTable packaging, String displayPath, List<PluginDescriptor.Packaging.Variant> variants) {
         String execMode = packaging.getString("exec-mode");
@@ -270,6 +284,7 @@ public final class PluginDescriptors {
                 nativeImageSources == null ? "" : nativeImageSources,
                 appDir == null ? "" : appDir,
                 appJar == null ? "" : appJar,
+                runSystemProperties(packaging, displayPath),
                 variants);
     }
 

@@ -291,6 +291,8 @@ self-contained = true
 classes-run    = true
 main-scan      = true
 layered-image  = true
+# -D flags for the module's JVM under jk run / jk dev, as your framework's build tool passes them
+run-system-properties = { "grails.project.target.dir" = "target" }
 ```
 
 Static data consulted by `jk run` / `install` / `image` without forking your code.
