@@ -165,10 +165,12 @@ class DependEvaluatorTest {
                 no-snapshot = true
                 why = "w"
                 """);
-        assertThat(ev(r, "lombok-scope").observations())
-                .singleElement()
-                .extracting(Observation::key)
-                .isEqualTo("app [dependencies] org.projectlombok:lombok");
+        Observation misplaced = ev(r, "lombok-scope").observations().getFirst();
+        assertThat(ev(r, "lombok-scope").observations()).hasSize(1);
+        assertThat(misplaced.key()).isEqualTo("app [dependencies] org.projectlombok:lombok");
+        // The finding points at the declaration, so the editor jumps to the line to move.
+        assertThat(misplaced.file()).isEqualTo("app/" + ManifestPaths.MANIFEST);
+        assertThat(misplaced.line()).isEqualTo(7);
         Evaluation floors = ev(r, "floors");
         assertThat(floors.observations())
                 .extracting(Observation::key)
@@ -178,6 +180,11 @@ class DependEvaluatorTest {
                         "convergence org.slf4j:slf4j-api",
                         "dynamic app [dependencies] com.google.guava:guava",
                         "snapshot lock acme:internal");
+        assertThat(floors.observations())
+                .filteredOn(o -> o.key().startsWith("dynamic "))
+                .singleElement()
+                .extracting(Observation::line)
+                .isEqualTo(8);
     }
 
     /**

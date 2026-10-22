@@ -25,6 +25,9 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
+import org.tomlj.Toml;
+import org.tomlj.TomlParseResult;
+import org.tomlj.TomlPosition;
 import org.tomlj.TomlTable;
 
 /**
@@ -41,18 +44,30 @@ import org.tomlj.TomlTable;
  */
 final class DependEvaluator implements Evaluator {
 
-    /** One module's declared dependencies, by scope. */
-    record Manifest(String module, Map<Scope, List<Dependency>> byScope) {}
+    /** One module's declared dependencies, by scope, and the parsed manifest that places them. */
+    record Manifest(
+            String module,
+            Map<Scope, List<Dependency>> byScope,
+            @Nullable TomlParseResult toml) {
+
+        /** The 1-based line of {@code d} in its {@code [scope]} table; 0 when it cannot be placed. */
+        int line(Scope scope, Dependency d) {
+            if (toml == null) return 0;
+            TomlPosition at = toml.inputPositionOf(List.of(scope.tomlSection(), d.library()));
+            return at == null ? 0 : at.line();
+        }
+    }
 
     @Override
     public Evaluation evaluate(Rule rule, EvalContext ctx) throws IOException {
         List<Manifest> manifests = new ArrayList<>();
         Path rootManifest = ManifestPaths.manifestIn(ctx.root());
-        if (Files.isRegularFile(rootManifest)) manifests.add(manifest("", JkBuildParser.parse(rootManifest)));
+        if (Files.isRegularFile(rootManifest))
+            manifests.add(manifest("", JkBuildParser.parse(rootManifest), Files.readString(rootManifest)));
         for (Path m : ctx.modules()) {
             Path f = ManifestPaths.manifestIn(m);
             if (Files.isRegularFile(f))
-                manifests.add(manifest(WorkspaceModel.rel(ctx.root(), m), JkBuildParser.parse(f)));
+                manifests.add(manifest(WorkspaceModel.rel(ctx.root(), m), JkBuildParser.parse(f), Files.readString(f)));
         }
         // A scoped rule reads the scoped manifests. The lock is workspace-wide and names no module,
         // so it is read only by an unscoped rule: a ban scoped to one module cannot judge it honestly.
@@ -64,11 +79,11 @@ final class DependEvaluator implements Evaluator {
 
     /** The mutation-time entry: {@code proposed} is the manifest text about to be written for {@code module}. */
     static Evaluation evaluateProposed(Rule rule, String module, String proposed, @Nullable Lockfile lock) {
-        return evaluate(rule, List.of(manifest(module, JkBuildParser.parse(proposed))), lock);
+        return evaluate(rule, List.of(manifest(module, JkBuildParser.parse(proposed), proposed)), lock);
     }
 
-    static Manifest manifest(String module, JkBuild build) {
-        return new Manifest(module, build.dependencies().byScope());
+    static Manifest manifest(String module, JkBuild build, String text) {
+        return new Manifest(module, build.dependencies().byScope(), Toml.parse(text));
     }
 
     static Evaluation evaluate(Rule rule, List<Manifest> manifests, @Nullable Lockfile lock) {
@@ -169,11 +184,12 @@ final class DependEvaluator implements Evaluator {
             if (allow != null) allowUsed.put(allow, true);
             String where = (m.module().isEmpty() ? "root" : m.module()) + " [" + scope.tomlSection() + "]";
             String file = (m.module().isEmpty() ? "" : m.module() + "/") + ManifestPaths.MANIFEST;
+            int line = m.line(scope, d);
             for (String b : p.ban()) {
                 if (coordMatches(b, ga)) {
                     if (allow == null)
                         out.add(Observation.site(
-                                where + " " + ga, file, 0, ga + " is banned (declared in " + where + ")"));
+                                where + " " + ga, file, line, ga + " is banned (declared in " + where + ")"));
                 }
             }
             if (p.coordinate() != null && coordMatches(p.coordinate(), ga)) {
@@ -186,7 +202,7 @@ final class DependEvaluator implements Evaluator {
                     out.add(Observation.site(
                             where + " " + ga,
                             file,
-                            0,
+                            line,
                             ga + " in [" + scope.tomlSection() + "]"
                                     + (p.onlyIn().isEmpty()
                                             ? ""
@@ -202,11 +218,11 @@ final class DependEvaluator implements Evaluator {
                     out.add(Observation.site(
                             "dynamic " + where + " " + ga,
                             file,
-                            0,
+                            line,
                             ga + " = \"" + d.version().raw() + "\" floats; pin it"));
             }
             if (p.noSnapshot() && d.version() instanceof VersionSelector.Snapshot && allow == null) {
-                out.add(Observation.site("snapshot " + where + " " + ga, file, 0, ga + " selects a snapshot"));
+                out.add(Observation.site("snapshot " + where + " " + ga, file, line, ga + " selects a snapshot"));
             }
         }
 
