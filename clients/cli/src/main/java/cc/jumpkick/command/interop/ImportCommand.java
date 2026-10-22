@@ -7,6 +7,7 @@ import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.docs.AgentsGuide;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -163,7 +164,20 @@ public final class ImportCommand implements CliCommand {
 
         if (error != null) CommandWedge.printFail("Import", error);
         if (warnings != 0) CliOutput.out("Import notes: " + warnings + " issue(s)");
+        if (exit == Exit.SUCCESS && !dryRun && out == null) agentsGuide(projectDir);
         return exit;
+    }
+
+    /** An imported project gets jk's section of {@code AGENTS.md}, as a scaffolded one does. */
+    private static void agentsGuide(Path projectDir) {
+        try {
+            AgentsGuide.Change change = AgentsGuide.sync(projectDir);
+            if (change == AgentsGuide.Change.CREATED || change == AgentsGuide.Change.INSERTED) {
+                CommandWedge.printOk("Import", "Wrote jk's section of " + projectDir.resolve(AgentsGuide.FILE));
+            }
+        } catch (IOException e) {
+            CommandWedge.printFail("Import", e.getMessage());
+        }
     }
 
     /** The profile ids of every {@code -P} given, each split on commas as Maven splits its own. */

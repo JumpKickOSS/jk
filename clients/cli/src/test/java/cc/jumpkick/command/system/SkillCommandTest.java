@@ -7,6 +7,7 @@ import cc.jumpkick.cli.CommandDispatch;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.NoAnsi;
+import cc.jumpkick.docs.AgentsGuide;
 import cc.jumpkick.docs.JkSkill;
 import cc.jumpkick.model.command.Exit;
 import java.nio.file.Files;
@@ -70,5 +71,26 @@ class SkillCommandTest {
         // so assert the constant and the written layout instead of chdir.
         assertThat(JkSkill.INSTALL_DIR).isEqualTo(".agents/skills");
         assertThat(nested).isDirectory();
+    }
+
+    @Test
+    void agents_creates_then_reports_current_and_keeps_project_text(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve(AgentsGuide.FILE);
+        String created = Capture.stdout(
+                () -> assertThat(Jk.execute("skill", "agents", dir.toString())).isEqualTo(Exit.SUCCESS));
+        assertThat(created.strip()).isEqualTo("created " + file);
+        assertThat(Files.readString(file)).isEqualTo(AgentsGuide.newFile());
+
+        Files.writeString(file, Files.readString(file) + "\n## Project rules\n");
+        String current = Capture.stdout(
+                () -> assertThat(Jk.execute("skill", "agents", dir.toString())).isEqualTo(Exit.SUCCESS));
+        assertThat(current.strip()).isEqualTo(file + " is current");
+        assertThat(Files.readString(file)).endsWith("\n## Project rules\n");
+    }
+
+    @Test
+    void agents_refuses_unpaired_markers(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve(AgentsGuide.FILE), AgentsGuide.BEGIN + "\n");
+        assertThat(Jk.execute("skill", "agents", dir.toString())).isEqualTo(Exit.CONFIG);
     }
 }

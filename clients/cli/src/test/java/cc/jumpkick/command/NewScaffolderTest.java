@@ -389,7 +389,8 @@ class NewScaffolderTest {
         assertThat(tempDir.resolve("src/main/resources/templates/java/foo/hello.g8/src/main/g8/jk.toml"))
                 .exists();
         assertThat(tempDir.resolve("src/main/resources/templates/java/foo/hello.g8/src/main/g8/AGENTS.md"))
-                .exists();
+                .as("jk new writes jk's section into every project the template makes")
+                .doesNotExist();
 
         // ServiceLoader registration points at the sample class.
         var service = tempDir.resolve("src/main/resources/META-INF/services/cc.jumpkick.plugin.Plugin");

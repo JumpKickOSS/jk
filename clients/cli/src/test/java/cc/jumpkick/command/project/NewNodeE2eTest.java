@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.cli.testing.Capture;
-import cc.jumpkick.docs.JkSkill;
+import cc.jumpkick.docs.AgentsGuide;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.node.NodeCaches;
@@ -101,7 +101,7 @@ class NewNodeE2eTest {
                 .contains("node_modules/")
                 .contains("target/");
         assertThat(web.resolve("package-lock.json")).exists();
-        assertThat(Files.readString(web.resolve("AGENTS.md"))).startsWith(JkSkill.AGENTS_MD);
+        assertThat(Files.readString(web.resolve("AGENTS.md"))).contains(AgentsGuide.block());
     }
 
     @Test

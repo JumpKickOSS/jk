@@ -66,7 +66,7 @@ class NewScaffolderSampleTest {
         NewScaffolder.write(inputs, true, VERSIONS);
         assertThat(dir.resolve("AGENTS.md")).exists();
         assertThat(dir.resolve("src/main/resources/templates/java/foo/hello.g8/src/main/g8/AGENTS.md"))
-                .exists();
+                .doesNotExist();
     }
 
     @Test

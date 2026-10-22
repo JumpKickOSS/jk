@@ -14,8 +14,9 @@ jk init -t hello
 `-t` / `--template` is exclusive with `--plugin`. Blank `jk new` (no `-t`) is the wizard /
 flag scaffolder for a plain library or `--executable` app.
 
-Standalone scaffolds write **`AGENTS.md`** (unless the template already shipped one)
-pointing coding agents at `jk skill`. Workspace modules skip it — the root owns the file.
+Standalone scaffolds write [jk's section of **`AGENTS.md`**](agents.md#jks-section-of-agentsmd)
+pointing coding agents at `jk skill` (into the template's own `AGENTS.md` when it shipped one).
+Workspace modules skip it — the root owns the file.
 
 Every library and framework version a scaffold writes is today's **current stable, as an exact
 pin** (`[spring-boot] version = "4.1.0"`, not `"latest"`). The committed file says what you
@@ -139,7 +140,7 @@ Every template also declares test tiers (`[test] exclude-tags` with one profile 
 templates carry a [`[build-info]`](packaging.md#build-info-gitproperties-and-boots-build-infoproperties)
 table, so the jar records the commit it was built from (`git.properties`, and Boot's
 `META-INF/build-info.properties` for `/actuator/info`). None ships an `AGENTS.md`: `jk new`
-writes the current one into every project it scaffolds.
+writes jk's current section into every project it scaffolds.
 
 MCP `new`: `action=templates` lists `{id,name,language,framework,…}`; `preview=true`
 returns the file set without writing. The web dashboard has a New project modal —

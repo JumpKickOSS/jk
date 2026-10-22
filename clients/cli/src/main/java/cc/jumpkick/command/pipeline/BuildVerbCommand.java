@@ -19,6 +19,7 @@ import cc.jumpkick.cli.tui.ModuleScopeHint;
 import cc.jumpkick.command.CwdModuleScope;
 import cc.jumpkick.command.VariantSelection;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.docs.AgentsGuide;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
@@ -181,6 +182,8 @@ public final class BuildVerbCommand implements CliCommand {
         // A pinned JDK that is not installed downloads here, with the `jk jdk install` bar, before any
         // build console opens — never as a silent step inside the engine.
         if (!JdkPreflight.ensure(dir, info, run.flags().jdksDir(), run.mode())) return Exit.FAILURE;
+        refreshAgentsGuide(
+                info != null && info.workspaceRoot() ? dir : scope.workspaceMember() ? scope.workspaceRoot() : dir);
         if (info != null && info.workspaceRoot()) {
             return verb.workspaceShaped() ? workspace(verb, run, dir, info) : oneModule(verb, run, dir);
         }
@@ -189,6 +192,20 @@ public final class BuildVerbCommand implements CliCommand {
             return verb.workspaceShaped() ? workspace(verb, run, root, null) : oneModule(verb, run, root);
         }
         return single(verb, run, dir);
+    }
+
+    /**
+     * An upgraded jk brings its section of the project's {@code AGENTS.md} up to date. Only a file that
+     * already carries the section is touched, and a failure never stops the build.
+     */
+    private static void refreshAgentsGuide(Path root) {
+        try {
+            if (AgentsGuide.refresh(root) == AgentsGuide.Change.UPDATED) {
+                CliOutput.err("updated jk's section of " + root.resolve(AgentsGuide.FILE));
+            }
+        } catch (IOException ignored) {
+            // A read-only or vanished AGENTS.md is the project's business, not the build's.
+        }
     }
 
     /** A verb with no workspace run inside a workspace: the one selected module, standalone. */

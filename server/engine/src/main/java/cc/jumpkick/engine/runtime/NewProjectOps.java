@@ -7,7 +7,7 @@ import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkTemplatesConfig;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.docs.JkSkill;
+import cc.jumpkick.docs.AgentsGuide;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.giter8.Giter8Apply;
 import cc.jumpkick.giter8.Giter8Maven;
@@ -279,7 +279,7 @@ public final class NewProjectOps {
                 throw new IOException("template did not produce jk.toml: " + prep.template());
             }
             if (req.standalone()) {
-                JkSkill.ensureAgentsGuide(target);
+                AgentsGuide.sync(target);
             }
             return;
         }
