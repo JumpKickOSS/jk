@@ -524,37 +524,35 @@ public final class JkBuildEditor {
      *     (path, git, workspace, or versionless coordinate)
      */
     public static String setDependencyVersion(String content, Scope scope, String name, String versionLiteral) {
-        requireName(name);
-        requireVersionLiteral(versionLiteral);
-        Lines manifest = Lines.split(content);
-        List<String> lines = manifest.lines();
-        int hit = findDepKey(lines, scope, name);
-        if (hit < 0) {
-            throw new IllegalStateException("\"" + name + "\" not found in " + scope.tomlSection());
-        }
-        lines.set(hit, rewriteVersion(lines.get(hit), scope.tomlSection() + "." + name, versionLiteral));
-        return validated(manifest.join());
+        return setDependencyVersion(content, scope.tomlSection(), name, versionLiteral);
     }
 
-    /** {@link #setDependencyVersion} for a {@code [workspace.dependencies]} entry. */
+    /** {@link #setDependencyVersion} for {@code workspace.dependencies}. */
     public static String setWorkspaceDependencyVersion(String content, String name, String versionLiteral) {
+        return setDependencyVersion(content, "workspace.dependencies", name, versionLiteral);
+    }
+
+    /**
+     * {@link #setDependencyVersion} for the dependency table at {@code tablePath}, matched as
+     * written: {@code workspace.dependencies}, or a variant value's {@code
+     * variants.<dimension>.<value>.dependencies}.
+     */
+    public static String setDependencyVersion(String content, String tablePath, String name, String versionLiteral) {
         requireName(name);
         requireVersionLiteral(versionLiteral);
         Lines manifest = Lines.split(content);
         List<String> lines = manifest.lines();
-        int headerLine = findHeader(lines, tableHeader("workspace.dependencies"));
-        if (headerLine < 0) {
-            throw new IllegalStateException("[workspace.dependencies] not found in jk.toml");
-        }
+        int headerLine = findHeader(lines, tableHeader(tablePath));
+        if (headerLine < 0) throw new IllegalStateException("[" + tablePath + "] not found in jk.toml");
         int end = endOfTable(lines, headerLine);
         for (int i = headerLine + 1; i < end; i++) {
             Matcher m = DEP_ENTRY.matcher(lines.get(i));
             if (m.matches() && depKey(m).equals(name)) {
-                lines.set(i, rewriteVersion(lines.get(i), "workspace.dependencies." + name, versionLiteral));
+                lines.set(i, rewriteVersion(lines.get(i), tablePath + "." + name, versionLiteral));
                 return validated(manifest.join());
             }
         }
-        throw new IllegalStateException("\"" + name + "\" not found in [workspace.dependencies]");
+        throw new IllegalStateException("\"" + name + "\" not found in [" + tablePath + "]");
     }
 
     private static void requireVersionLiteral(String versionLiteral) {
