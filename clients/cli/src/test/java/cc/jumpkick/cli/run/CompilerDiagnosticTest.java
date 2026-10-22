@@ -64,6 +64,18 @@ class CompilerDiagnosticTest {
     }
 
     @Test
+    void a_unit_s_own_severity_beats_the_block_s() {
+        assertThat(CompilerDiagnostic.severityOf("warning: [JavaTimeDefaultTimeZone] x", "error"))
+                .isEqualTo(TestFailureHighlight.Severity.WARNING);
+        assertThat(CompilerDiagnostic.severityOf("error: cannot find symbol", "warning"))
+                .isEqualTo(TestFailureHighlight.Severity.ERROR);
+        assertThat(CompilerDiagnostic.severityOf("Unresolved reference 'x'.", "warning"))
+                .isEqualTo(TestFailureHighlight.Severity.WARNING);
+        assertThat(CompilerDiagnostic.severityOf("note: see here", "error"))
+                .isEqualTo(TestFailureHighlight.Severity.ERROR);
+    }
+
+    @Test
     void aligns_keys_and_drops_the_caret(@TempDir Path tmp) throws Exception {
         Path src = tmp.resolve("Foo.java");
         Files.writeString(src, String.join("\n", "class Foo {", "    @Test", "    void t() {}", "}", ""));

@@ -18,7 +18,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Renders a javac / kotlinc / groovyc diagnostic block. Under ANSI it is a test-failure-shaped
  * report: aligned {@code key: value} rows, a dashboard-linked path, and an editor-style source
- * window, the error token red + bold + underline. Plain, it is the compiler's own shape: {@code
+ * window, the flagged token bold + underline in the unit's severity colour. Plain, it is the compiler's own shape: {@code
  * path:line:col: error: message}, the source line, a caret, then the trailer lines.
  */
 public final class CompilerDiagnostic {
@@ -136,8 +136,8 @@ public final class CompilerDiagnostic {
             return;
         }
         String note = formatNote(kvs, extras);
-        List<String> window =
-                TestFailureHighlight.paintSourceWindow(display, file, fileLines, lineNo, markCol, lang, note);
+        List<String> window = TestFailureHighlight.paintSourceWindow(
+                display, file, fileLines, lineNo, markCol, lang, note, severityOf(rest, severity));
         for (int i = 0; i < window.size(); i++) {
             if (i > 0) out.append('\n');
             out.append(window.get(i));
@@ -195,6 +195,15 @@ public final class CompilerDiagnostic {
         StringBuilder sb = new StringBuilder(col0 + 1);
         for (int i = 0; i < col0; i++) sb.append(i < source.length() && source.charAt(i) == '\t' ? '\t' : ' ');
         return sb.append('^').toString();
+    }
+
+    /** The unit's own {@code error:} / {@code warning:} wins; any other header takes the block's. */
+    static TestFailureHighlight.Severity severityOf(String rest, String blockSeverity) {
+        if (rest.startsWith("error:") || rest.startsWith("e:")) return TestFailureHighlight.Severity.ERROR;
+        if (rest.startsWith("warning:") || rest.startsWith("w:")) return TestFailureHighlight.Severity.WARNING;
+        return "warning".equals(blockSeverity)
+                ? TestFailureHighlight.Severity.WARNING
+                : TestFailureHighlight.Severity.ERROR;
     }
 
     private static boolean hasSeverity(String rest) {

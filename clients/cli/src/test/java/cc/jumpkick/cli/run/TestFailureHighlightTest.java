@@ -497,6 +497,34 @@ class TestFailureHighlightTest {
     }
 
     @Test
+    void warning_window_washes_the_flagged_line_amber_not_red() {
+        if (!Theme.active().isAnsi()) return;
+        List<String> lines = List.of("class Foo {", "    Clock c = Clock.systemDefaultZone();", "}");
+        String warning = TestFailureHighlight.paintSourceWindow(
+                        "Foo.java",
+                        "Foo.java",
+                        lines,
+                        2,
+                        20,
+                        SyntaxHighlight.Language.JAVA,
+                        null,
+                        TestFailureHighlight.Severity.WARNING)
+                .get(2);
+        String error = TestFailureHighlight.paintSourceWindow(
+                        "Foo.java",
+                        "Foo.java",
+                        lines,
+                        2,
+                        20,
+                        SyntaxHighlight.Language.JAVA,
+                        null,
+                        TestFailureHighlight.Severity.ERROR)
+                .get(2);
+        assertThat(warning).contains("48;2;84;67;15").doesNotContain("48;2;84;27;46");
+        assertThat(error).contains("48;2;84;27;46").doesNotContain("48;2;84;67;15");
+    }
+
+    @Test
     void shortDisplayLabel_strips_package_fqcns() {
         assertThat(TestFailureHighlight.shortDisplayLabel("cc.jumpkick.runtime.FooTest.freshen(java.nio.file.Path)"))
                 .isEqualTo("FooTest.freshen(Path)");

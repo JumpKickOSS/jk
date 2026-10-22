@@ -169,6 +169,22 @@ public final class TestFailureHighlight {
     private static final Rgb CONSOLE_BG = new Rgb(11, 17, 22);
     /** rgba(255, 51, 102, 0.3) over console bg → rgb(84, 27, 46). */
     private static final Rgb ERROR_LINE_BG = new Rgb(84, 27, 46);
+    /** rgba(255, 184, 0, 0.3) over console bg → rgb(84, 67, 15). */
+    private static final Rgb WARNING_LINE_BG = new Rgb(84, 67, 15);
+
+    /** Severity of a source window's flagged line: it picks the wash, gutter and token colour. */
+    public enum Severity {
+        ERROR,
+        WARNING;
+
+        Rgb lineBg() {
+            return this == WARNING ? WARNING_LINE_BG : ERROR_LINE_BG;
+        }
+
+        Style accent(Theme t) {
+            return this == WARNING ? t.warning() : t.error();
+        }
+    }
 
     private static final String BODY_INDENT = "    ";
 
@@ -398,7 +414,7 @@ public final class TestFailureHighlight {
         out.add(rail(BODY_INDENT + paintSourcePath(path, header, t), t));
         Rgb pane = CONSOLE_BG;
         for (SrcRow row : rows) {
-            out.add(rail(paintSrcLine(row, maxCode, language, t, pane), t));
+            out.add(rail(paintSrcLine(row, maxCode, language, t, pane, Severity.ERROR), t));
         }
         return out;
     }
@@ -410,7 +426,7 @@ public final class TestFailureHighlight {
      */
     public static List<String> paintSourceWindow(
             String displayPath, List<String> fileLines, int errorLine, int errorCol, SyntaxHighlight.Language lang) {
-        return paintSourceWindow(displayPath, displayPath, fileLines, errorLine, errorCol, lang, null);
+        return paintSourceWindow(displayPath, displayPath, fileLines, errorLine, errorCol, lang, null, Severity.ERROR);
     }
 
     public static List<String> paintSourceWindow(
@@ -420,7 +436,7 @@ public final class TestFailureHighlight {
             int errorLine,
             int errorCol,
             SyntaxHighlight.Language lang) {
-        return paintSourceWindow(displayPath, linkPath, fileLines, errorLine, errorCol, lang, null);
+        return paintSourceWindow(displayPath, linkPath, fileLines, errorLine, errorCol, lang, null, Severity.ERROR);
     }
 
     public static List<String> paintSourceWindow(
@@ -430,7 +446,8 @@ public final class TestFailureHighlight {
             int errorLine,
             int errorCol,
             SyntaxHighlight.Language lang,
-            @Nullable String note) {
+            @Nullable String note,
+            Severity severity) {
         if (displayPath == null) displayPath = "";
         Theme t = Theme.active();
         int budget = Math.max(40, Size.columns() - ROW_OVERHEAD);
@@ -474,7 +491,7 @@ public final class TestFailureHighlight {
         out.add(BODY_INDENT + paintSourcePath(displayPath, linkPath, err, linkCol, t, note));
         Rgb pane = CONSOLE_BG;
         for (SrcRow row : rows) {
-            out.add(paintSrcLine(row, maxCode, lang == null ? SyntaxHighlight.Language.JAVA : lang, t, pane));
+            out.add(paintSrcLine(row, maxCode, lang == null ? SyntaxHighlight.Language.JAVA : lang, t, pane, severity));
         }
         return out;
     }
@@ -626,22 +643,23 @@ public final class TestFailureHighlight {
     }
 
     private static String paintSrcLine(
-            SrcRow row, int maxCode, SyntaxHighlight.Language language, Theme t, Rgb paneBg) {
-        Rgb lineBg = row.error ? ERROR_LINE_BG : paneBg;
-        Style numStyle = row.error ? t.error() : t.dim();
+            SrcRow row, int maxCode, SyntaxHighlight.Language language, Theme t, Rgb paneBg, Severity severity) {
+        Rgb lineBg = row.error ? severity.lineBg() : paneBg;
+        Style numStyle = row.error ? severity.accent(t) : t.dim();
         String gutter = Theme.colorize(String.format("%4s", row.num), t.withBackground(numStyle, lineBg));
         String gutterRail = Theme.colorize("│", t.withBackground(t.darkGray(), lineBg));
         String gap = Theme.colorize(" ", t.withBackground(Style.EMPTY, lineBg));
         String code = row.code;
-        String codePainted = paintCode(row, language, lineBg, t);
+        String codePainted = paintCode(row, language, lineBg, t, severity);
         int pad = Math.max(0, maxCode - columns(code));
         if (code.isEmpty() && pad == 0) pad = 1;
         String padPainted = pad > 0 ? Theme.colorize(" ".repeat(pad), t.withBackground(Style.EMPTY, lineBg)) : "";
         return gutter + gutterRail + gap + codePainted + padPainted;
     }
 
-    /** Syntax-highlight {@code row.code}; mark the identifier at {@code markCol} in error style. */
-    private static String paintCode(SrcRow row, SyntaxHighlight.Language language, Rgb lineBg, Theme t) {
+    /** Syntax-highlight {@code row.code}; mark the identifier at {@code markCol} in the severity's accent. */
+    private static String paintCode(
+            SrcRow row, SyntaxHighlight.Language language, Rgb lineBg, Theme t, Severity severity) {
         String code = row.code;
         if (code.isEmpty()) return "";
         int mark = row.markCol;
@@ -650,8 +668,8 @@ public final class TestFailureHighlight {
         }
         int to = identifierEnd(code, mark);
         String left = mark > 0 ? SyntaxHighlight.highlight(code.substring(0, mark), language, lineBg) : "";
-        Style err = t.error().bold().underline();
-        String mid = Theme.colorize(code.substring(mark, to), t.withBackground(err, lineBg));
+        Style accent = severity.accent(t).bold().underline();
+        String mid = Theme.colorize(code.substring(mark, to), t.withBackground(accent, lineBg));
         String right = to < code.length() ? SyntaxHighlight.highlight(code.substring(to), language, lineBg) : "";
         return left + mid + right;
     }
