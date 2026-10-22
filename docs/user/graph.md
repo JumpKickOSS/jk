@@ -59,17 +59,24 @@ NODE OrderService [src=src/main/java/com/acme/shop/OrderService.java loc=L6 comm
 EDGE OrderService --inherits [EXTRACTED]--> BaseService at=src/main/java/com/acme/shop/OrderService.java:L6
 ```
 
-The question's words pick the starting nodes (an exact name beats a prefix beats a substring; rare
-words weigh more; a word of a doc comment counts a little), the graph is walked `-d` hops (default
-3), and the result is cut to `-b` tokens (default 2000), nearest nodes first. A cut answer says how
-large a budget would show everything. A question that matches nothing lists the closest names.
+The question's words pick the starting nodes: an exact name beats a prefix, which beats a whole
+camel-case word inside a name (`errors` finds `ApiErrors`), which beats a substring; plurals, past
+tenses and a long shared stem count as the word (`available` meets `availability`); rare words
+weigh more; a word of a doc comment counts a little. Declarations outrank config keys and
+dependencies on the same word, and tests start an answer only when the question asks about tests
+(the walk still reaches them). A few words map to what code calls them (`endpoint` and `route` to
+controllers and mappings). The graph is walked `-d` hops (default 3) and the result is cut to `-b`
+tokens (default 2000): the starting nodes first, then the nodes the question's words match, best
+match first, then the rest nearest first — so a cut drops what the question did not ask about. A
+cut answer says how large a budget would show everything. A question that matches nothing lists
+the closest names.
 
 | Option | Meaning |
 |---|---|
 | `-d`, `--depth N` | Hops from the matched nodes |
 | `-b`, `--budget N` | Answer size in tokens |
 | `-s`, `--dfs` | Walk depth-first |
-| `-c`, `--context call,field,…` | Follow only edges with these contexts; a question that says "calls" or "imports" sets it |
+| `-c`, `--context call,field,…` | Follow only edges with these contexts; a question that says "calls" or "imports" sets it, and one that says "returns", "member" or "template" sets it unless that leaves fewer than ten nodes (the header then says the context was dropped) |
 | `-n`, `--no-refresh` | Answer from the last graph without looking at the tree |
 
 ## Scope

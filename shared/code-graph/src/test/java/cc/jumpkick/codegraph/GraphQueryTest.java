@@ -21,20 +21,24 @@ class GraphQueryTest {
                 .isEqualTo(GraphQuery.NO_MATCH);
     }
 
+    /**
+     * The seeds first, then what the question's own words match, best first, then the rest of the
+     * walk nearest first: when a budget cuts, it cuts what the question did not ask about.
+     */
     @Test
-    void nodeOrderMatchesGraphifyForTheSameGraphAndQuestion() throws IOException {
+    void nodesTheQuestionMatchesComeBeforeTheRestOfTheWalk() throws IOException {
         String out = new GraphQuery(GraphJsonTest.shop())
                 .query("what does OrderService use", GraphQuery.Mode.BFS, 2, 2000, List.of());
         assertThat(out.lines().filter(l -> l.startsWith("NODE ")).map(l -> l.substring(5, l.indexOf(" ["))))
                 .containsExactly(
                         "OrderService",
-                        "Shop",
+                        "OrderService.java",
                         ".audit()",
                         ".total()",
+                        "Shop",
                         "PriceCalculator",
                         "Auditable",
                         "BaseService",
-                        "OrderService.java",
                         "Item",
                         ".sum()",
                         "README.md",
@@ -47,6 +51,19 @@ class GraphQueryTest {
                         ".audit()",
                         "BaseService.java");
         assertThat(out).contains("19 nodes found");
+    }
+
+    @Test
+    void wholeWordsInsideNamesAndTheirInflectionsSeed() {
+        assertThat(GraphSearch.stem("errors")).isEqualTo("error");
+        assertThat(GraphSearch.stem("queries")).isEqualTo("query");
+        assertThat(GraphSearch.stem("booked")).isEqualTo("book");
+        assertThat(GraphSearch.stem("class")).isEqualTo("class");
+        assertThat(GraphSearch.sameWord("available", "availability")).isTrue();
+        assertThat(GraphSearch.sameWord("cancel", "cancellation")).isTrue();
+        assertThat(GraphSearch.sameWord("order", "ordinal")).isFalse();
+        assertThat(GraphSearch.queryTerms("which endpoint returns rooms"))
+                .contains("endpoint", "controller", "mapping");
     }
 
     @Test
