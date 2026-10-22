@@ -381,14 +381,28 @@ class JarSizeBenchTest {
         return target;
     }
 
+    /** {@code <home>} of a jk installed at {@code <home>/bin/jk} with its engine, else {@code null}. */
+    private static @Nullable Path installHome(Path binary) {
+        try {
+            Path bin = binary.toRealPath().getParent();
+            Path home = bin == null ? null : bin.getParent();
+            return home != null && Files.isDirectory(home.resolve("lib/jk-engine")) ? home : null;
+        } catch (IOException notAFile) {
+            return null;
+        }
+    }
+
     private static void exec(Path cwd, String... command) throws Exception {
         Path log = cwd.resolveSibling(cwd.getFileName() + ".log");
         ProcessBuilder pb = new ProcessBuilder(command)
                 .directory(cwd.toFile())
                 .redirectErrorStream(true)
                 .redirectOutput(log.toFile());
-        // The test task relocates JK_HOME to an empty home; the bench measures the installed product.
+        // The test task relocates JK_HOME (and HOME) to an empty home; the bench measures the
+        // installed product, so a jk runs in the home it was installed into, with that home's engine.
         pb.environment().keySet().removeIf(k -> k.startsWith("JK_"));
+        Path home = installHome(Path.of(command[0]));
+        if (home != null) pb.environment().put("JK_HOME", home.toString());
         Process p = pb.start();
         boolean done = p.waitFor(30, TimeUnit.MINUTES);
         if (!done) p.destroyForcibly();
