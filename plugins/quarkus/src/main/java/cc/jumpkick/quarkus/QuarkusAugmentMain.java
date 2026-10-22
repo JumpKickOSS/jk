@@ -179,10 +179,13 @@ public final class QuarkusAugmentMain {
 
         List<Dependency> direct = new ArrayList<>();
         int workspaceDeps = 0;
+        Set<String> reached = ClosureRoots.reachedFromAnother(locked, ClosureRoots.of(mvn));
         for (LockedClosure.Artifact a : locked.artifacts()) {
             if (a.workspace()) {
                 BootstrapRepo.install(repo, a.group(), a.artifact(), a.version(), a.jar(), poms);
                 workspaceDeps++;
+            } else if (reached.contains(a.group() + ":" + a.artifact())) {
+                continue;
             }
             direct.add(new ArtifactDependency(a.group(), a.artifact(), "", "jar", a.version(), "compile", false));
         }
