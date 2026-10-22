@@ -14,6 +14,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.PlannerNative;
 import cc.jumpkick.runtime.PlannerTails;
+import cc.jumpkick.runtime.TestClassMatch;
 import cc.jumpkick.runtime.TestSupport;
 import java.nio.file.Path;
 import java.util.List;
@@ -161,7 +162,7 @@ public final class NativePlans {
     /**
      * Build-family exit-code mapping for a failed module plan: a native-step "main class"
      * misconfiguration or an image "no-main" diagnostic exits {@link Exit#USAGE}, a test failure
-     * exits 4, anything else 1. Shared by the workspace path for native AND image terminals.
+     * exits 4, a {@code --class} that matched no test {@link Exit#USAGE}, anything else 1. Shared by the workspace path for native AND image terminals.
      */
     public static int failureExitCode(BuildPlan plan, BuildPlanResult result) {
         for (BuildPlanResult.Diagnostic d : result.errors()) {
@@ -177,6 +178,9 @@ public final class NativePlans {
         }
         var testResult = plan.get(BuildPlanner.TEST_RESULT).orElse(null);
         if (testResult != null && !testResult.allPassed()) return Exit.TESTS_FAILED;
+        for (BuildPlanResult.Diagnostic d : result.errors()) {
+            if (TestClassMatch.NO_TESTS_MATCHED.equals(d.code())) return Exit.USAGE;
+        }
         return 1;
     }
 }

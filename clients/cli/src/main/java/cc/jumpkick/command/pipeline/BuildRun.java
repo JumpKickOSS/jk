@@ -201,6 +201,9 @@ final class BuildRun {
             if ("no-main".equals(d.code())) return Exit.USAGE;
         }
         if (tests != null && !tests.allPassed()) return Exit.TESTS_FAILED;
+        for (var d : result.errors()) {
+            if ("no-tests-matched".equals(d.code())) return Exit.USAGE;
+        }
         return 1;
     }
 
