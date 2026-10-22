@@ -44,10 +44,10 @@ class WorkspaceRequestKnobsTest {
                 .withEphemeralActions(true);
 
         // The operator handed to the NATIVE/IMAGE/COMPILE terminal branches, over neutral inputs…
-        BuildPlanner.Inputs decorated = WorkspacePreparePhase.requestKnobs(req, dirs)
+        BuildPlanner.Inputs decorated = ModulePipeline.requestKnobs(req, dirs)
                 .apply(TaskForecaster.inputsFor(mod, req.cache(), 1, null, null, false, false, Set.of(), false));
         // …and the PACKAGE/INSTALL path.
-        BuildPlanner.Inputs packaged = WorkspacePreparePhase.moduleInputs(mod, req, dirs, false);
+        BuildPlanner.Inputs packaged = ModulePipeline.inputs(mod, req, dirs, false);
 
         for (BuildPlanner.Inputs in : List.of(decorated, packaged)) {
             assertThat(in.workerCount()).isEqualTo(3);
@@ -76,9 +76,9 @@ class WorkspaceRequestKnobsTest {
         WorkspaceRequest req =
                 new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 0, null, false, false, 0, null, true, true);
 
-        BuildPlanner.Inputs decorated = WorkspacePreparePhase.requestKnobs(req, dirs)
+        BuildPlanner.Inputs decorated = ModulePipeline.requestKnobs(req, dirs)
                 .apply(TaskForecaster.inputsFor(mod, req.cache(), 1, null, null, false, false, Set.of(), false));
-        BuildPlanner.Inputs packaged = WorkspacePreparePhase.moduleInputs(mod, req, dirs, false);
+        BuildPlanner.Inputs packaged = ModulePipeline.inputs(mod, req, dirs, false);
 
         assertThat(decorated.workerCount()).isZero();
         assertThat(packaged.workerCount()).isZero();
@@ -86,7 +86,7 @@ class WorkspaceRequestKnobsTest {
         // An explicit -w1 is also carried verbatim, and still means serial downstream.
         WorkspaceRequest serial =
                 new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 1, null, false, false, 0, null, true, true);
-        assertThat(WorkspacePreparePhase.moduleInputs(mod, serial, dirs, false).workerCount())
+        assertThat(ModulePipeline.inputs(mod, serial, dirs, false).workerCount())
                 .isEqualTo(1);
         assertThat(TestWorkers.resolve(1, 40, 12)).isEqualTo(1);
     }

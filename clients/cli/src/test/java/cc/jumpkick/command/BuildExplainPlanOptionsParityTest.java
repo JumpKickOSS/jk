@@ -14,6 +14,7 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -47,7 +48,7 @@ class BuildExplainPlanOptionsParityTest {
                 "// a guard script, so --scripts-only resolves\n");
         List<List<String>> cases = new ArrayList<>();
         cases.add(List.of());
-        for (Opt opt : BuildFlags.options(BuildFlags.Reach.DELIVER, BuildFlags.Affected.MODULES)) {
+        for (Opt opt : BuildFlags.options(WorkspaceTarget.Tests.UNLESS_SKIPPED, BuildFlags.Affected.MODULES)) {
             for (String name : opt.allNames()) {
                 if (!opt.takesValue()) {
                     cases.add(List.of(name));

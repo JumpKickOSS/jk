@@ -18,6 +18,7 @@ import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
@@ -56,8 +57,8 @@ final class ImageVerb implements BuildVerb {
     }
 
     @Override
-    public BuildFlags.Reach reach() {
-        return BuildFlags.Reach.DELIVER;
+    public WorkspaceTarget target() {
+        return WorkspaceTarget.IMAGE;
     }
 
     @Override
@@ -167,7 +168,7 @@ final class ImageVerb implements BuildVerb {
                 tag,
                 tarball,
                 dockerExecutable,
-                flags.skipTests(),
+                run.skipTests(),
                 session.offline(),
                 session.force(),
                 session.config().rebuildOr(false),

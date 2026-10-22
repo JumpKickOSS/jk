@@ -570,6 +570,21 @@ public final class TaskForecaster {
             boolean verbose,
             Set<Path> projectModules,
             boolean testOnly) {
+        return inputsFor(dir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules, testOnly, false);
+    }
+
+    /** As above with {@code compileOnly}: the plan stops after compiling ({@code jk compile}). */
+    public static BuildPlanner.Inputs inputsFor(
+            Path dir,
+            Path cache,
+            int workers,
+            @Nullable Path jdksDir,
+            @Nullable String profile,
+            boolean skipTests,
+            boolean verbose,
+            Set<Path> projectModules,
+            boolean testOnly,
+            boolean compileOnly) {
         Path buildFile = ManifestPaths.manifestIn(dir);
         Path lockFile = LockPaths.lockFile(dir);
         // 0 = auto at run-tests (JUnitLauncher); forecast treats as 1 for cost estimates.
@@ -591,7 +606,7 @@ public final class TaskForecaster {
                         skip,
                         verbose,
                         testOnly,
-                        false,
+                        compileOnly,
                         Set.of(),
                         SessionContext.current())
                 .withProjectModules(projectModules);

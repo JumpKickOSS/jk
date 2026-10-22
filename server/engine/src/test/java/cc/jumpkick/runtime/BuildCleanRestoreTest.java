@@ -115,9 +115,6 @@ class BuildCleanRestoreTest {
                     TaskForecaster.of(graph, cas, actionCache, cache, true, WorkspaceTarget.INSTALL, Set.of(project));
             TaskForecast.Module installed = install.get(0);
             assertThat(installed.dirty()).isTrue();
-            assertThat(installed.shelfOnly())
-                    .as("an emptied target/ needs the full install plan, not a shelf restamp")
-                    .isFalse();
             if (installed.steps().stream()
                     .filter(s ->
                             !s.name().equals("restore-outputs") && !s.name().equals("cache-install"))

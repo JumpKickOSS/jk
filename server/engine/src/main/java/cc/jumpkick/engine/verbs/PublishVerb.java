@@ -3,6 +3,7 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
@@ -11,11 +12,16 @@ import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.base.PublishPlans;
+import cc.jumpkick.runtime.workspace.ModulePipeline;
+import cc.jumpkick.runtime.workspace.PublishTail;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.PublishRequest;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Path;
@@ -86,7 +92,8 @@ public final class PublishVerb implements HostedVerb {
                         false,
                         false,
                         false,
-                        null)
+                        null,
+                        false)
                 .encode();
     }
 
@@ -145,7 +152,22 @@ public final class PublishVerb implements HostedVerb {
                         body.publishingType());
                 Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
-                BuildPlan plan = PublishPlans.publishBuildPlan(entryDir, cache, req);
+                WorkspaceRequest request = new WorkspaceRequest(
+                                entryDir,
+                                cache,
+                                session.jdksDir(),
+                                session.requestedTestWorkers(),
+                                session.profile(),
+                                body.skipTests(),
+                                body.verbose(),
+                                0,
+                                null,
+                                false,
+                                false)
+                        .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                        .withSpec(WorkspaceSpec.of(WorkspaceTarget.PUBLISH));
+                BuildPlan plan =
+                        SessionContext.where(session, () -> ModulePipeline.standalone(request, PublishTail.of(req)));
                 long rid = host.currentRequestId();
                 return host.streamSinglePlan(plan, session, writer, result -> {
                     PublishPlans.Deployment deployment =

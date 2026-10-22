@@ -20,6 +20,7 @@ import cc.jumpkick.model.command.Param;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ExecPlan;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -52,7 +53,8 @@ public final class JshellCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         // The preparatory build always skips tests, so jshell takes the core build options only.
-        List<Opt> opts = new ArrayList<>(BuildFlags.options(BuildFlags.Reach.COMPILE, BuildFlags.Affected.MODULES));
+        List<Opt> opts =
+                new ArrayList<>(BuildFlags.options(WorkspaceTarget.Tests.NOT_RUN, BuildFlags.Affected.MODULES));
         opts.add(Opt.flag("Skip build; use existing classes + lock classpath only.", "-n", "--no-build"));
         return opts;
     }
@@ -87,7 +89,7 @@ public final class JshellCommand implements CliCommand {
             // A quiet preparatory build so the classes exist; the REPL gates on no suite.
             int code = BuildVerbCommand.run(
                     new PackageVerb("JShell"),
-                    BuildVerbCommand.forward(in, BuildFlags.Reach.COMPILE, b -> {
+                    BuildVerbCommand.forward(in, WorkspaceTarget.Tests.NOT_RUN, b -> {
                         b.flag("skip-tests", true);
                         b.flag("no-timeline", true);
                     }),

@@ -24,6 +24,7 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.protocol.EngineWireException;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
@@ -212,14 +213,22 @@ final class BuildRun {
      * engine forecasting the dirty set and freshening a stale workspace lock itself. {@code
      * concurrency} is the module budget.
      */
-    WorkspaceRequest workspaceRequest(Path entryDir, List<String> modules, boolean skipTests, int concurrency) {
+    /**
+     * Whether this run skips tests: always for a goal that runs none, otherwise on {@code
+     * --skip-tests} or {@code --scripts-only}. The one place a verb's test policy is applied.
+     */
+    boolean skipTests() {
+        return verb.target().tests() == WorkspaceTarget.Tests.NOT_RUN || flags.skipTests();
+    }
+
+    WorkspaceRequest workspaceRequest(Path entryDir, List<String> modules, int concurrency) {
         return new WorkspaceRequest(
                         entryDir,
                         flags.cache(),
                         flags.jdksDir(),
                         flags.workers(),
                         flags.profile(),
-                        skipTests,
+                        skipTests(),
                         global().verbose,
                         concurrency,
                         null,

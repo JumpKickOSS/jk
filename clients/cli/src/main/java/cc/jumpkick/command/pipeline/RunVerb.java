@@ -26,6 +26,7 @@ import cc.jumpkick.wire.protocol.ExecPlan;
 import cc.jumpkick.wire.protocol.PluginCommandReport;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -62,7 +63,7 @@ public final class RunVerb implements BuildVerb {
     public static int runProject(Invocation outer, Path dir, List<String> appArgs, @Nullable DebugJvm debugJvm) {
         return BuildVerbCommand.run(
                 new RunVerb(appArgs, debugJvm),
-                BuildVerbCommand.forward(outer, BuildFlags.Reach.COMPILE, b -> {
+                BuildVerbCommand.forward(outer, WorkspaceTarget.Tests.NOT_RUN, b -> {
                     b.putValue("dir", dir.toString());
                     b.flag("skip-tests", true);
                 }),
@@ -85,8 +86,8 @@ public final class RunVerb implements BuildVerb {
     }
 
     @Override
-    public BuildFlags.Reach reach() {
-        return BuildFlags.Reach.COMPILE;
+    public WorkspaceTarget target() {
+        return WorkspaceTarget.RUN;
     }
 
     @Override
@@ -100,7 +101,7 @@ public final class RunVerb implements BuildVerb {
             throws IOException {
         return EngineClient.buildWorkspace(
                 EnginePaths.current(),
-                run.workspaceRequest(entryDir, modules, true, run.flags().jobs()),
+                run.workspaceRequest(entryDir, modules, run.flags().jobs()),
                 listener);
     }
 
@@ -153,7 +154,7 @@ public final class RunVerb implements BuildVerb {
                 flags.jdksDir(),
                 flags.workers(),
                 flags.profile(),
-                true,
+                run.skipTests(),
                 run.global().verbose,
                 session.offline(),
                 session.force(),

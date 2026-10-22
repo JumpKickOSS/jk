@@ -12,6 +12,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
@@ -51,8 +52,8 @@ final class CompileVerb implements BuildVerb {
     }
 
     @Override
-    public BuildFlags.Reach reach() {
-        return BuildFlags.Reach.COMPILE;
+    public WorkspaceTarget target() {
+        return WorkspaceTarget.COMPILE;
     }
 
     @Override

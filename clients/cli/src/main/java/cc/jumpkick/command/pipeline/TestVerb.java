@@ -28,6 +28,7 @@ import cc.jumpkick.wire.protocol.AffectedTestsReport;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -73,8 +74,8 @@ final class TestVerb implements BuildVerb {
     }
 
     @Override
-    public BuildFlags.Reach reach() {
-        return BuildFlags.Reach.TEST;
+    public WorkspaceTarget target() {
+        return WorkspaceTarget.TEST;
     }
 
     @Override
@@ -137,11 +138,7 @@ final class TestVerb implements BuildVerb {
     public WorkspaceResult workspace(BuildRun run, Path entryDir, List<String> modules, WorkspaceBuildListener listener)
             throws IOException {
         BuildFlags flags = run.flags();
-        WorkspaceRequest request = run.workspaceRequest(
-                        entryDir,
-                        modules,
-                        flags.testSelection().scriptsOnly(),
-                        flags.parallelTests() ? flags.jobs() : 1)
+        WorkspaceRequest request = run.workspaceRequest(entryDir, modules, flags.parallelTests() ? flags.jobs() : 1)
                 .withTestOnly(true);
         return EngineClient.buildWorkspace(EnginePaths.current(), request, listener);
     }

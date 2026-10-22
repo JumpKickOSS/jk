@@ -3,6 +3,7 @@ package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
+import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
@@ -77,7 +78,8 @@ public final class PublishCommand implements CliCommand {
                 Opt.value("<pass>", "Key passphrase (JK_GPG_PASSPHRASE env).", "-p", "--key-passphrase"),
                 Opt.flag("Sign with Sigstore keyless OIDC (.sigstore).", "-g", "--sigstore"),
                 Opt.flag("Emit a SLSA v1 in-toto provenance statement.", "-L", "--slsa"),
-                Opt.flag("Emit CycloneDX 1.6 and SPDX 2.3 SBOMs.", "-S", "--sbom")));
+                Opt.flag("Emit CycloneDX 1.6 and SPDX 2.3 SBOMs.", "-W", "--sbom"),
+                CommonOpts.skipTests()));
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -114,6 +116,7 @@ public final class PublishCommand implements CliCommand {
     boolean slsa;
     boolean sbom;
     boolean central;
+    boolean skipTests;
 
     @Nullable
     String publishingType;
@@ -137,6 +140,7 @@ public final class PublishCommand implements CliCommand {
         this.slsa = in.isSet("slsa");
         this.sbom = in.isSet("sbom");
         this.central = in.isSet(RepositorySpec.CENTRAL);
+        this.skipTests = in.isSet("skip-tests");
         this.publishingType = in.value("publishing-type").orElse(null);
         this.global = GlobalOptions.from(in);
 
@@ -209,7 +213,8 @@ public final class PublishCommand implements CliCommand {
                             global.offline,
                             global.verbose,
                             central,
-                            publishingType),
+                            publishingType,
+                            skipTests),
                     steps -> BuildPlanConsole.chooseConsoleListener("publish", steps, mode));
         } catch (IOException e) {
             CommandWedge.printFail("Publish", e.getMessage());

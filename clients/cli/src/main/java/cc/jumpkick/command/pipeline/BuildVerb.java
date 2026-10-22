@@ -6,6 +6,7 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
@@ -39,7 +40,8 @@ sealed interface BuildVerb permits CompileVerb, TestVerb, PackageVerb, NativeVer
 
     Words words();
 
-    BuildFlags.Reach reach();
+    /** This verb's goal: the phases it runs, its test policy and its tail. */
+    WorkspaceTarget target();
 
     /**
      * False for a verb that runs one module and has no workspace run: a member directory or a

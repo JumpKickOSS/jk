@@ -25,6 +25,7 @@ import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -65,8 +66,8 @@ final class NativeVerb implements BuildVerb {
     }
 
     @Override
-    public BuildFlags.Reach reach() {
-        return BuildFlags.Reach.DELIVER;
+    public WorkspaceTarget target() {
+        return WorkspaceTarget.NATIVE;
     }
 
     @Override
@@ -196,7 +197,7 @@ final class NativeVerb implements BuildVerb {
                 flags.cache(),
                 flags.jdksDir(),
                 mainClass,
-                flags.skipTests(),
+                run.skipTests(),
                 session.offline(),
                 session.force(),
                 run.global().verbose,

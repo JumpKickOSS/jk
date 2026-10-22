@@ -136,6 +136,13 @@ public final class Task {
         body.run(ctx);
     }
 
+    /** This task with {@code more} added to its {@link #requires()}; names already there stay once. */
+    public Task alsoRequiring(String... more) {
+        List<String> merged = new ArrayList<>(requires);
+        for (String n : more) if (!merged.contains(n)) merged.add(n);
+        return new Task(name, label, kind, merged, ticks, weight, interpolated, stage, body);
+    }
+
     public static Builder builder(String name) {
         return new Builder(name);
     }

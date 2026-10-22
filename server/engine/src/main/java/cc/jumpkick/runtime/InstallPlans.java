@@ -12,7 +12,6 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -63,8 +62,8 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk install} heavy halves: {@link #projectInstallBuildPlan} (build + cache-install into
- * {@code repos/jk-local/}) and {@link #gitFetchBuildPlan}. User-home launcher shims stay client-side.
+ * {@code jk install} heavy halves: the {@link #tail} that shelves a built module into
+ * {@code repos/jk-local/}, and {@link #gitFetchBuildPlan}. User-home launcher shims stay client-side.
  */
 public final class InstallPlans {
 
@@ -79,48 +78,9 @@ public final class InstallPlans {
     public static final BuildPlanKey<Path> CHECKOUT = BuildPlanKey.scalar("checkout-dir", Path.class);
     public static final BuildPlanKey<String> FETCHED_SHA = BuildPlanKey.scalar("fetched-sha", String.class);
 
-    /**
-     * Build the project-install plan for {@code projectDir}: core plan + declared tails +
-     * (native application only) the native-image tail with {@code graalHome} + the {@code
-     * cache-install} step. {@code m2Dir} is the local Maven repo root ({@code ~/.m2} or the
-     * {@code --m2-dir} override).
-     */
-    public static BuildPlan projectInstallBuildPlan(
-            Path projectDir,
-            Path cache,
-            @Nullable Path jdksDir,
-            Path m2Dir,
-            boolean skipTests,
-            boolean verbose,
-            @Nullable Path graalHome)
-            throws IOException {
-        JkBuild proj = JkBuildParser.parse(ManifestPaths.manifestIn(projectDir));
-
-        Path lockFile = LockPaths.lockFile(projectDir);
-        boolean compact = ModuleLayout.isCompact(projectDir);
-        int estimatedTestCount = TestSupport.estimateAllSuiteTestCount(projectDir, compact);
-        BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
-                projectDir,
-                cache,
-                ManifestPaths.manifestIn(projectDir),
-                lockFile,
-                projectDir,
-                SessionContext.current().requestedTestWorkers(),
-                estimatedTestCount,
-                SessionContext.current().profile(),
-                jdksDir,
-                skipTests,
-                verbose,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
-        BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
-        // ALWAYS modules get native from appendDeclaredTails (same as jk build); pass the
-        // client-resolved GraalVM so install does not re-resolve.
-        PlannerTails.appendDeclaredTails(builder, inputs, graalHome, true);
-        appendCacheInstall(builder, proj, cache, m2Dir);
-        return builder.build();
+    /** {@code jk install}'s tail: {@link #appendCacheInstall} after the build. */
+    public static Tail tail(JkBuild proj, Path cache, Path m2Dir) {
+        return (plan, in) -> appendCacheInstall(plan, proj, cache, m2Dir);
     }
 
     /**
@@ -149,35 +109,20 @@ public final class InstallPlans {
     }
 
     /**
-     * Thin-jar {@code cache-install} tail. Fat and minified jars are not written to the local
-     * repo — only the thin jar is.
-     *
-     * <p>Requiring the displaced terminal also keeps {@code run-tests} in the install plan when
-     * the request does not skip tests — the deliver join carries the suite, exactly as
-     * {@code jk build} runs it. Deliberate: install publishes, and a publish without the suite
-     * would be the one build verb that skips it silently; {@code --skip-tests} stays the opt-out.
+     * Thin-jar {@code cache-install}, extending the plan so the deliveries and the test suite it
+     * displaces stay in it. Fat and minified jars are not written to the local repo — only the thin
+     * jar is.
      */
     public static void appendCacheInstall(BuildPlan.Builder builder, JkBuild proj, Path cache, Path m2Dir) {
-        builder.stateKeys(PRIMARY, SHELVED);
-        // Require whatever the plan already ends on, not just package-jar. appendDeclaredTails
-        // re-roots the terminal onto its own join so the assembly / minified / sources tails are
-        // not pruned; taking the terminal for cache-install without requiring that join pruned
-        // them right back. The visible symptom was `jk install` on a project declaring
-        // `assembly = true` installing a THIN-jar launcher — the fat jar was never built, so the
-        // install plan's artifact ladder (native > minified > fat > thin) found nothing better
-        // than the thin jar and honestly picked it.
-        String displaced = builder.currentTerminal();
         List<String> requires = new ArrayList<>(List.of(TaskNames.PACKAGE_JAR));
-        if (displaced != null && !TaskNames.PACKAGE_JAR.equals(displaced)) requires.add(displaced);
-        boolean isNative = proj.nativeMode() == JkBuild.NativeMode.ALWAYS;
-        if (isNative && !requires.contains(TaskNames.NATIVE_IMAGE)) requires.add(TaskNames.NATIVE_IMAGE);
-        Task cacheInstall = Task.builder(TaskNames.CACHE_INSTALL)
-                .stage(BuildStage.PUBLISH)
-                .requires(requires.toArray(new String[0]))
-                .ticks(1)
-                .execute(ctx -> executeCacheInstall(ctx, cache, m2Dir))
-                .build();
-        builder.addTask(cacheInstall).terminal(TaskNames.CACHE_INSTALL);
+        if (proj.nativeMode() == JkBuild.NativeMode.ALWAYS) requires.add(TaskNames.NATIVE_IMAGE);
+        builder.stateKeys(PRIMARY, SHELVED)
+                .extend(Task.builder(TaskNames.CACHE_INSTALL)
+                        .stage(BuildStage.PUBLISH)
+                        .requires(requires.toArray(new String[0]))
+                        .ticks(1)
+                        .execute(ctx -> executeCacheInstall(ctx, cache, m2Dir))
+                        .build());
     }
 
     /**

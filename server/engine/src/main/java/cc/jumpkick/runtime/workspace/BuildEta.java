@@ -6,14 +6,12 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.EffortWeights;
-import cc.jumpkick.runtime.PlannerTails;
 import cc.jumpkick.runtime.StepWalls;
 import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.runtime.base.BuildMetrics;
@@ -326,9 +324,7 @@ public final class BuildEta {
             if (running.isEmpty() && distrust) {
                 BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
                         mdir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules);
-                BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs, true);
-                PlannerTails.appendDeclaredTails(builder, inputs);
-                for (Task s : builder.build().steps()) running.add(s.name());
+                for (Task s : ModulePipeline.throughPackage(inputs).steps()) running.add(s.name());
             }
             if (running.isEmpty()) {
                 // Resource-only producer or pure cascade recheck — milliseconds, not suite walls.

@@ -10,15 +10,19 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildPlanner;
-import cc.jumpkick.runtime.InstallPlans;
+import cc.jumpkick.runtime.workspace.ModulePipeline;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.InstallRequest;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.ProtoSession;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 public final class InstallVerb implements HostedVerb {
@@ -63,6 +67,10 @@ public final class InstallVerb implements HostedVerb {
                 .encode();
     }
 
+    private static Map<Path, Path> graalByDir(Path dir, @Nullable String graalHome) {
+        return graalHome == null ? Map.of() : Map.of(dir, Path.of(graalHome));
+    }
+
     @Override
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
@@ -70,17 +78,22 @@ public final class InstallVerb implements HostedVerb {
                 InstallRequest body = InstallRequest.decode(requestLine);
                 Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
-                // Constructed in-session — see runImage's note on ambient-session capture.
-                BuildPlan plan = SessionContext.where(
-                        session,
-                        () -> InstallPlans.projectInstallBuildPlan(
+                WorkspaceRequest request = new WorkspaceRequest(
                                 session.workingDir(),
                                 session.cacheDir(),
                                 session.jdksDir(),
-                                Path.of(body.m2Dir()),
+                                session.requestedTestWorkers(),
+                                session.profile(),
                                 body.skipTests(),
                                 body.verbose(),
-                                body.graalHome() != null ? Path.of(body.graalHome()) : null));
+                                0,
+                                null,
+                                false,
+                                false)
+                        .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                        .withSpec(WorkspaceSpec.install(
+                                Set.of(), graalByDir(session.workingDir(), body.graalHome()), Path.of(body.m2Dir())));
+                BuildPlan plan = SessionContext.where(session, () -> ModulePipeline.standalone(request, null));
                 return host.streamSinglePlan(plan, session, writer, result -> {
                     TestSummary testResult = plan.get(BuildPlanner.TEST_RESULT).orElse(null);
                     return testResult == null

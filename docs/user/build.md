@@ -22,6 +22,28 @@ compiles against is packaged instead, because the edge between them is its jar.
 
 When something fails, run `jk results` — [Troubleshooting](troubleshooting.md).
 
+## One lifecycle
+
+Every command that builds a project runs the same steps, in the same order, up to its goal:
+resolve and fetch, compile, test, package. A command that goes past packaging then does its own
+work on what the build just produced. No command needs another one run first: `jk install` is
+`jk build` and then the install, and `jk publish` is `jk build` and then the upload.
+
+| Command | Runs through | Tests | Then |
+|---------|--------------|-------|------|
+| `jk compile` | compile | — | |
+| `jk test` | test | always | |
+| `jk build` | package | unless `-S` | the deliveries `jk.toml` declares (fat jar, native when `always`, sources/javadoc) |
+| `jk install` | package | unless `-S` | the local repo and the launcher on `PATH` |
+| `jk native` | package | unless `-S` | `native-image` |
+| `jk image` | package | unless `-S` | the OCI image |
+| `jk publish` | package | unless `-S` | the upload |
+| `jk train` | package | not run | the training run |
+| `jk run`, `jk dev` | package | not run | the app |
+
+The action cache makes the shared steps free when nothing changed, so a command never pays twice
+for the build it shares with another.
+
 ## What gets skipped
 
 JumpKick hashes inputs (sources, classpath, options, tool versions) into an **action

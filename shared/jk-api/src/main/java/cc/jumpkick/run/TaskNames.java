@@ -15,6 +15,13 @@ public final class TaskNames {
 
     public static final String ASSEMBLE_CLASSES = "assemble-classes";
     public static final String CACHE_INSTALL = "cache-install";
+
+    /** Publish's refusals (a SNAPSHOT version, a branch-tracked git dependency), before anything builds. */
+    public static final String PUBLISH_CHECK = "publish-check";
+
+    /** Publish's upload of what PACKAGE left. */
+    public static final String PUBLISH = "publish";
+
     public static final String COLLECT_SOURCES = "collect-sources";
     public static final String COMPARE_HASHES = "compare-hashes";
     public static final String COMPILE_GROOVY = "compile-groovy";

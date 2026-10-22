@@ -502,7 +502,8 @@ public final class EngineRequests {
             boolean offline,
             boolean verbose,
             boolean central,
-            @Nullable String publishingType) {}
+            @Nullable String publishingType,
+            boolean skipTests) {}
 
     /**
      * A hosted {@code jk publish} run's summary, decoded from the terminal plan-finish: the upload

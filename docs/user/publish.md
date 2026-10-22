@@ -5,7 +5,7 @@ jk publish -l https://repo.example.com/releases/
 jk publish -I -f ~/.gnupg/release.asc
 jk publish -g
 jk publish -L
-jk publish -S
+jk publish -W
 jk publish -c -I -f ~/.gnupg/release.asc   # Maven Central, via the Portal
 jk verify                 # rebuild in a scratch dir and diff artifact hashes
 jk audit                  # OSV
@@ -17,9 +17,11 @@ always a **dry-run** so tokens never enter the engine — [MCP](mcp.md).
 
 Export a lock scope as a Maven BOM: `jk export bom` — [Platforms](platforms.md).
 
-A library's release set — jar, POM, `-sources.jar`, `-javadoc.jar` — is what `jk build` already
-wrote, and `jk publish` uploads the two classifier jars whenever they are on disk; Maven Central
-refuses a release missing either. A Kotlin library's javadoc jar is Dokka's output, so the bundle
+`jk publish` builds the project first, with the same steps and tests as `jk build` (`-S` skips
+the tests), then uploads what that build produced; a refused publish (a SNAPSHOT version, a
+branch-tracked git dependency) fails before anything compiles. A library's release set is jar,
+POM, `-sources.jar` and `-javadoc.jar`; Maven Central refuses a release missing either classifier
+jar. A Kotlin library's javadoc jar is Dokka's output, so the bundle
 carries real API docs rather than an empty jar.
 See [Packaging: library artefacts](packaging.md#library-artefacts-sources-and-javadoc-jars).
 
@@ -52,8 +54,7 @@ uploaded to the Portal's API, and jk polls the deployment until the Portal rules
 # once: the Portal user token (central.sonatype.com → account → Generate User Token)
 printf '%s' "$TOKEN_PASSWORD" | jk repo login central -U https://central.sonatype.com -s "$TOKEN_NAME"
 
-jk build                                                   # the four artefacts
-jk publish -c -I -f ~/.gnupg/release.asc   # JK_GPG_PASSPHRASE or -p
+jk publish -c -I -f ~/.gnupg/release.asc   # builds the four artefacts; JK_GPG_PASSPHRASE or -p
 #   Published com.example:widget:1.0.0 to the Central Portal (16 files)
 #     deployment 28570f16-… · VALIDATED — release it from the Portal, or publish with --publishing-type automatic
 ```

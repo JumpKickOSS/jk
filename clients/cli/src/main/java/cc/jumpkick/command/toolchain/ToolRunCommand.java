@@ -39,6 +39,7 @@ import cc.jumpkick.tool.TrustedSources;
 import cc.jumpkick.util.GitUrl;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -89,7 +90,7 @@ public final class ToolRunCommand implements CliCommand {
                         .hide());
         var all = new ArrayList<>(opts);
         // A project target builds (tests skipped) before it runs: the core build options.
-        all.addAll(BuildFlags.options(BuildFlags.Reach.COMPILE, BuildFlags.Affected.MODULES));
+        all.addAll(BuildFlags.options(WorkspaceTarget.Tests.NOT_RUN, BuildFlags.Affected.MODULES));
         return all;
     }
 

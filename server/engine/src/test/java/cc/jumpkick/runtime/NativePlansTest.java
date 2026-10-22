@@ -2,7 +2,6 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
@@ -10,20 +9,23 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.workspace.ModulePipeline;
 import cc.jumpkick.runtime.workspace.NativePlans;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk native} plans: native-image terminal only when the module is native-eligible; prereq
- * and library modules stay at package (or declared tails) so the workspace cascade does not fail
- * with "terminal task 'native-image' is not in the BuildPlan".
+ * {@code jk native} plans: the build through PACKAGE, tests included, then native-image for a
+ * selected module the client resolved a GraalVM home for; any other module stays at its package.
  */
 class NativePlansTest {
 
@@ -31,27 +33,31 @@ class NativePlansTest {
     Path tmp;
 
     @Test
-    void module_with_graal_home_terminals_at_native_image() throws Exception {
+    void module_with_graal_home_runs_its_tests_then_native_image() throws Exception {
         Path dir = module("app", true);
         Path graal = Files.createDirectories(tmp.resolve("graal"));
-        BuildPlan plan =
-                NativePlans.moduleBuildPlan(dir, parse(dir), cache(), null, graal, null, List.of(), true, false, true);
-        Set<String> names = plan.steps().stream().map(s -> s.name()).collect(Collectors.toSet());
-        assertThat(names).contains(TaskNames.PACKAGE_JAR, TaskNames.NATIVE_IMAGE);
-        assertThat(names).doesNotContain(TaskNames.RUN_TESTS); // skipTests=true
+        BuildPlan plan = nativePlan(dir, Set.of(dir), Map.of(dir, graal), false);
+        Set<String> names = names(plan);
+        assertThat(names).contains(TaskNames.PACKAGE_JAR, TaskNames.RUN_TESTS, TaskNames.NATIVE_IMAGE);
+        assertThat(plan.steps().getLast().name())
+                .as("native-image is the terminal, and the suite stays upstream of it")
+                .isEqualTo(TaskNames.NATIVE_IMAGE);
     }
 
     @Test
-    void prereq_module_without_native_stays_at_package_jar() throws Exception {
+    void skip_tests_drops_only_the_suite() throws Exception {
+        Path dir = module("app", true);
+        Path graal = Files.createDirectories(tmp.resolve("graal"));
+        Set<String> names = names(nativePlan(dir, Set.of(dir), Map.of(dir, graal), true));
+        assertThat(names).contains(TaskNames.PACKAGE_JAR, TaskNames.NATIVE_IMAGE);
+        assertThat(names).doesNotContain(TaskNames.RUN_TESTS);
+    }
+
+    @Test
+    void a_module_the_request_does_not_select_gets_no_native_image() throws Exception {
         Path dir = module("lib", false);
-        // allowNative=false (workspace prereq) even if a graal home is present.
         Path graal = Files.createDirectories(tmp.resolve("graal2"));
-        assertThatCode(() -> NativePlans.moduleBuildPlan(
-                        dir, parse(dir), cache(), null, graal, null, List.of(), true, false, false))
-                .doesNotThrowAnyException();
-        BuildPlan plan =
-                NativePlans.moduleBuildPlan(dir, parse(dir), cache(), null, graal, null, List.of(), true, false, false);
-        Set<String> names = plan.steps().stream().map(s -> s.name()).collect(Collectors.toSet());
+        Set<String> names = names(nativePlan(dir, Set.of(tmp.resolve("other")), Map.of(dir, graal), true));
         assertThat(names).contains(TaskNames.PACKAGE_JAR);
         assertThat(names).doesNotContain(TaskNames.NATIVE_IMAGE);
     }
@@ -59,16 +65,21 @@ class NativePlansTest {
     @Test
     void library_without_graal_home_does_not_demand_native_image() throws Exception {
         Path dir = module("core", false);
-        // Workspace cascade: allowNative=true for all, but client only supplies graal for modules
-        // with a unique main — graalHome null must not set terminal to native-image.
-        assertThatCode(() -> NativePlans.moduleBuildPlan(
-                        dir, parse(dir), cache(), null, null, null, List.of(), true, false, true))
-                .doesNotThrowAnyException();
-        BuildPlan plan =
-                NativePlans.moduleBuildPlan(dir, parse(dir), cache(), null, null, null, List.of(), true, false, true);
-        Set<String> names = plan.steps().stream().map(s -> s.name()).collect(Collectors.toSet());
+        Set<String> names = names(nativePlan(dir, Set.of(dir), Map.of(), true));
         assertThat(names).contains(TaskNames.PACKAGE_JAR);
         assertThat(names).doesNotContain(TaskNames.NATIVE_IMAGE);
+    }
+
+    private BuildPlan nativePlan(Path dir, Set<Path> selected, Map<Path, Path> graal, boolean skipTests)
+            throws Exception {
+        WorkspaceRequest request = new WorkspaceRequest(
+                        dir, cache(), null, 0, null, skipTests, false, 0, null, false, false)
+                .withSpec(WorkspaceSpec.nativeImage(selected, graal, null, List.of()));
+        return ModulePipeline.standalone(request, null);
+    }
+
+    private static Set<String> names(BuildPlan plan) {
+        return plan.steps().stream().map(s -> s.name()).collect(Collectors.toSet());
     }
 
     private Path cache() throws Exception {

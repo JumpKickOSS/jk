@@ -3,7 +3,6 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.JkThreads;
@@ -11,36 +10,26 @@ import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.EffortWeights;
-import cc.jumpkick.runtime.InstallPlans;
-import cc.jumpkick.runtime.PlannerTails;
 import cc.jumpkick.runtime.PreflightMemo;
-import cc.jumpkick.runtime.TaskForecaster;
-import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
-import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
-import cc.jumpkick.wire.runtime.WorkspaceSpec;
-import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.UnaryOperator;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -117,7 +106,6 @@ final class WorkspacePreparePhase {
             WorkspaceBuildListener listener,
             int count,
             SiblingArtifacts siblings) {
-        Set<Path> shelfOnly = shelfOnlyDirs(resources);
         Map<Path, ModulePlan> plans = new LinkedHashMap<>();
         int prepared = 0;
         for (BuildGraph.BuildUnit unit : resources.dirtyUnits()) {
@@ -129,8 +117,7 @@ final class WorkspacePreparePhase {
                     resources.preflight().jarConsumed(),
                     resources.preflight().launchedAssemblies(),
                     true,
-                    siblings.gateFor(unit.dir()),
-                    shelfOnly.contains(BuildGraph.canonicalPath(unit.dir())));
+                    siblings.gateFor(unit.dir()));
             prepared++;
             listener.onPreflight(
                     "plan", prepared, count, "Preparing " + unit.coord() + " (" + prepared + "/" + count + ")");
@@ -146,7 +133,6 @@ final class WorkspacePreparePhase {
             WorkspaceBuildListener listener,
             int count,
             SiblingArtifacts siblings) {
-        Set<Path> shelfOnly = shelfOnlyDirs(resources);
         AtomicInteger prepared = new AtomicInteger();
         Object preflightLock = new Object();
         Map<Path, ModulePlan> plans = new ConcurrentHashMap<>();
@@ -164,8 +150,7 @@ final class WorkspacePreparePhase {
                                 resources.preflight().jarConsumed(),
                                 resources.preflight().launchedAssemblies(),
                                 true,
-                                siblings.gateFor(unit.dir()),
-                                shelfOnly.contains(BuildGraph.canonicalPath(unit.dir())));
+                                siblings.gateFor(unit.dir()));
                         if (plan == null) throw new PrepareFailed(unit.coord(), unit.dir());
                         attachTimings(plan, resources);
                         plans.put(unit.dir(), plan);
@@ -213,20 +198,6 @@ final class WorkspacePreparePhase {
                         resources.hostSamples()));
     }
 
-    /**
-     * Modules whose install forecast is shelf-only: packaging is cached and only
-     * {@code cache-install} must run. Empty when the preflight carried no step list.
-     */
-    private static Set<Path> shelfOnlyDirs(WorkspaceResourcePhase.Resources resources) {
-        Optional<BuildForecasting.Preflight> forecast = resources.preflight().forecast();
-        if (forecast.isEmpty() || forecast.orElseThrow().modules().isEmpty()) return Set.of();
-        Set<Path> out = new LinkedHashSet<>();
-        for (TaskForecast.Module module : forecast.orElseThrow().modules()) {
-            if (module.shelfOnly()) out.add(BuildGraph.canonicalPath(module.dir()));
-        }
-        return out;
-    }
-
     /** Assemble one dirty module and preserve its live over-reserved work weight. */
     private static @Nullable ModulePlan prepareModule(
             BuildGraph.BuildUnit unit,
@@ -235,12 +206,11 @@ final class WorkspacePreparePhase {
             Set<Path> jarConsumed,
             Set<Path> launchedAssemblies,
             boolean forceRebuild,
-            SiblingArtifacts.Gate siblings,
-            boolean shelfOnly) {
+            SiblingArtifacts.Gate siblings) {
         Path dir = unit.dir();
         if (!Files.exists(ManifestPaths.manifestIn(dir))) return null;
-        BuildPlan plan = assemblePlan(
-                unit, request, moduleDirs, forceRebuild, jarConsumed, launchedAssemblies, siblings, shelfOnly);
+        BuildPlan plan =
+                ModulePipeline.plan(unit, request, moduleDirs, forceRebuild, jarConsumed, launchedAssemblies, siblings);
         // One evaluation serves prepare and run: each step keeps its estimate and the run sizes
         // the bar from it. The run evaluates under over-reserve, so the estimate is taken under
         // over-reserve too — every module prepared here is dirty, and a jar-derived tail priced
@@ -261,162 +231,6 @@ final class WorkspacePreparePhase {
             PreflightMemo.storeShape(request.entryDir(), dir, request.skipTests(), PreflightMemo.shapeOf(plan, weight));
         }
         return new ModulePlan(unit.dir(), unit.coord(), plan, weight, false, request.cache());
-    }
-
-    static BuildPlan assemblePlan(
-            BuildGraph.BuildUnit unit, WorkspaceRequest request, Set<Path> moduleDirs, boolean forceRebuild) {
-        return assemblePlan(unit, request, moduleDirs, forceRebuild, Set.of());
-    }
-
-    static BuildPlan assemblePlan(
-            BuildGraph.BuildUnit unit,
-            WorkspaceRequest request,
-            Set<Path> moduleDirs,
-            boolean forceRebuild,
-            Set<Path> jarConsumed) {
-        return assemblePlan(
-                unit, request, moduleDirs, forceRebuild, jarConsumed, Set.of(), SiblingArtifacts.NONE, false);
-    }
-
-    /** {@code siblings} is this module's side of the schedule's artifact wait; {@link SiblingArtifacts#NONE} outside one. */
-    static BuildPlan assemblePlan(
-            BuildGraph.BuildUnit unit,
-            WorkspaceRequest request,
-            Set<Path> moduleDirs,
-            boolean forceRebuild,
-            Set<Path> jarConsumed,
-            SiblingArtifacts.Gate siblings) {
-        return assemblePlan(unit, request, moduleDirs, forceRebuild, jarConsumed, Set.of(), siblings, false);
-    }
-
-    /**
-     * {@code shelfOnly} is set for an INSTALL module whose forecast has only {@code cache-install}
-     * left to run — same thin plan as {@link WorkspaceTarget#RESHELVE}. {@code launchedAssemblies}
-     * are the modules a sibling's suite runs from their fat jar, which a test run packages too.
-     */
-    static BuildPlan assemblePlan(
-            BuildGraph.BuildUnit unit,
-            WorkspaceRequest request,
-            Set<Path> moduleDirs,
-            boolean forceRebuild,
-            Set<Path> jarConsumed,
-            Set<Path> launchedAssemblies,
-            SiblingArtifacts.Gate siblings,
-            boolean shelfOnly) {
-        Path dir = unit.dir();
-        WorkspaceTarget target = request.target();
-        WorkspaceSpec spec = request.spec() == null ? WorkspaceSpec.DEFAULT : request.spec();
-        boolean selected = !spec.hasSelection()
-                || spec.selectedModules().stream()
-                        .anyMatch(path -> BuildGraph.canonicalPath(path).equals(BuildGraph.canonicalPath(dir)));
-        UnaryOperator<BuildPlanner.Inputs> decorate = requestKnobs(request, moduleDirs, siblings);
-        if (target == WorkspaceTarget.NATIVE) {
-            Path graal = GraalHomes.lookup(dir, spec.graalByDir());
-            return NativePlans.moduleBuildPlan(
-                    dir,
-                    unit.manifest(),
-                    request.cache(),
-                    request.jdksDir(),
-                    graal,
-                    spec.nativeMain(),
-                    spec.nativeExtraArgs(),
-                    request.skipTests(),
-                    request.verbose(),
-                    selected && graal != null,
-                    decorate);
-        }
-        if (target == WorkspaceTarget.IMAGE && selected) {
-            return ImagePlans.imageBuildPlan(
-                    dir,
-                    request.cache(),
-                    request.jdksDir(),
-                    request.skipTests(),
-                    request.verbose(),
-                    spec.imageMain(),
-                    spec.imageRegistry(),
-                    spec.imageTag(),
-                    spec.imageTarball(),
-                    spec.imageDocker(),
-                    decorate);
-        }
-        // Every module in a compile-only cone compiles and none packages: a consumer compiles
-        // against its siblings' classes trees, so no step of a compile-only plan reads a jar and
-        // the modules whose jars a sibling consumes matter only to the plans below, which do.
-        if (target == WorkspaceTarget.COMPILE) {
-            return CompilePlans.compileBuildPlan(dir, request.cache(), request.profile(), request.verbose(), decorate);
-        }
-        boolean consumed = jarConsumed.contains(BuildGraph.canonicalPath(dir));
-        if (target == WorkspaceTarget.RESHELVE || (target == WorkspaceTarget.INSTALL && shelfOnly)) {
-            if (CompileSupport.coordinatorOnly(unit.manifest(), dir)) {
-                return BuildPlan.builder("reshelve-skip").build();
-            }
-            Path m2 = spec.m2Dir() != null ? spec.m2Dir() : Path.of(System.getProperty("user.home", "."), ".m2");
-            return InstallPlans.reshelveBuildPlan(dir, request.cache(), m2);
-        }
-        if (target == WorkspaceTarget.INSTALL) {
-            Path graal = GraalHomes.lookup(dir, spec.graalByDir());
-            BuildPlanner.Inputs inputs = moduleInputs(dir, request, moduleDirs, false, siblings);
-            BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs, forceRebuild);
-            PlannerTails.appendDeclaredTails(builder, inputs, graal, true);
-            if (!CompileSupport.coordinatorOnly(unit.manifest(), dir)) {
-                Path m2 = spec.m2Dir() != null ? spec.m2Dir() : Path.of(System.getProperty("user.home", "."), ".m2");
-                InstallPlans.appendCacheInstall(builder, unit.manifest(), request.cache(), m2);
-            }
-            return builder.build();
-        }
-        boolean testRun = target.testOnly() || request.testOnly();
-        BuildPlanner.Inputs inputs = moduleInputs(dir, request, moduleDirs, testRun && !consumed, siblings);
-        BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs, forceRebuild);
-        // A test run packages a consumed module's jar for the sibling that compiles against it, and
-        // nothing a delivery adds; a module nothing consumes stops at its tests. A node module's
-        // plan already joins its install, build, tests and resource jar, and has no jar step.
-        boolean nodeModule = NodeShape.kind(unit.manifest(), dir) == NodeShape.Kind.MODULE;
-        if (testRun && consumed && !nodeModule) {
-            PlannerTails.joinTests(builder, inputs, launchedAssemblies.contains(BuildGraph.canonicalPath(dir)));
-        } else if (!testRun) {
-            PlannerTails.appendDeclaredTails(builder, inputs, GraalHomes.lookup(dir, spec.graalByDir()), true);
-        }
-        return builder.build();
-    }
-
-    /** Apply request-wide planning knobs to every module input. */
-    static UnaryOperator<BuildPlanner.Inputs> requestKnobs(WorkspaceRequest request, Set<Path> moduleDirs) {
-        return requestKnobs(request, moduleDirs, SiblingArtifacts.NONE);
-    }
-
-    /** As above, and the module's side of the schedule's artifact wait. */
-    static UnaryOperator<BuildPlanner.Inputs> requestKnobs(
-            WorkspaceRequest request, Set<Path> moduleDirs, SiblingArtifacts.Gate siblings) {
-        return inputs -> inputs.withWorkerCount(Math.max(0, request.workers()))
-                .withProfileName(request.profile())
-                .withProjectModules(moduleDirs)
-                .withVariant(request.variant(), request.clientEnv())
-                .withEphemeralActions(request.ephemeralActions())
-                .withSiblings(siblings);
-    }
-
-    static BuildPlanner.Inputs moduleInputs(
-            Path dir, WorkspaceRequest request, Set<Path> moduleDirs, boolean testOnly) {
-        return moduleInputs(dir, request, moduleDirs, testOnly, SiblingArtifacts.NONE);
-    }
-
-    static BuildPlanner.Inputs moduleInputs(
-            Path dir,
-            WorkspaceRequest request,
-            Set<Path> moduleDirs,
-            boolean testOnly,
-            SiblingArtifacts.Gate siblings) {
-        return requestKnobs(request, moduleDirs, siblings)
-                .apply(TaskForecaster.inputsFor(
-                        dir,
-                        request.cache(),
-                        Math.max(0, request.workers()),
-                        request.jdksDir(),
-                        request.profile(),
-                        request.skipTests(),
-                        request.verbose(),
-                        moduleDirs,
-                        testOnly));
     }
 
     private static boolean prepareParallelEnabled() {

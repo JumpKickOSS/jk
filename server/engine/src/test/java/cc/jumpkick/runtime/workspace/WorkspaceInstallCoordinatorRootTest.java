@@ -74,7 +74,7 @@ class WorkspaceInstallCoordinatorRootTest {
         Path root = coordinatorRoot("lib");
         var libUnit = unit(lib, "ex:lib");
 
-        BuildPlan plan = WorkspacePreparePhase.assemblePlan(libUnit, reshelveRequest(), Set.of(root, lib), false);
+        BuildPlan plan = ModulePipeline.plan(libUnit, reshelveRequest(), Set.of(root, lib), false);
         assertThat(stepNames(plan)).containsExactlyInAnyOrder(TaskNames.PARSE_BUILD, TaskNames.CACHE_INSTALL);
     }
 
@@ -89,9 +89,9 @@ class WorkspaceInstallCoordinatorRootTest {
     }
 
     private BuildPlan assertThatInstallPlanBuilds(BuildGraph.BuildUnit u, Set<Path> moduleDirs) {
-        assertThatCode(() -> WorkspacePreparePhase.assemblePlan(u, installRequest(), moduleDirs, false))
+        assertThatCode(() -> ModulePipeline.plan(u, installRequest(), moduleDirs, false))
                 .doesNotThrowAnyException();
-        return WorkspacePreparePhase.assemblePlan(u, installRequest(), moduleDirs, false);
+        return ModulePipeline.plan(u, installRequest(), moduleDirs, false);
     }
 
     private WorkspaceRequest installRequest() {
