@@ -133,10 +133,16 @@ public final class PlannerTails {
     /**
      * A test run's plan for a module whose jar a sibling compiles against: {@code package-jar}
      * and the tests, and none of the delivery tails — the sibling reads the jar, never the javadoc,
-     * sources, fat jar or native image.
+     * sources, fat jar or native image. {@code launched} adds {@code package-assembly}: a sibling's
+     * suite runs this module's fat jar.
      */
-    public static void joinTests(BuildPlan.Builder b, BuildPlanner.Inputs in) {
-        join(b, in, new ArrayList<>(List.of(TaskNames.PACKAGE_JAR)), BuildStage.PACKAGE, false);
+    public static void joinTests(BuildPlan.Builder b, BuildPlanner.Inputs in, boolean launched) {
+        List<String> joined = new ArrayList<>(List.of(TaskNames.PACKAGE_JAR));
+        if (launched) {
+            b.addTask(assemblyStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
+            joined.add(TaskNames.PACKAGE_ASSEMBLY);
+        }
+        join(b, in, joined, BuildStage.PACKAGE, launched);
     }
 
     /**

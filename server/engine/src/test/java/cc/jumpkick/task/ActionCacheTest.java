@@ -8,8 +8,10 @@ import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.ActionTree;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.run.TaskNames;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -61,6 +63,71 @@ class ActionCacheTest {
         for (int i = 0; i < count; i++) {
             assertThat(restored.resolve("p" + (i % 20) + "/C" + i + ".class")).hasContent("class body " + i);
         }
+    }
+
+    /**
+     * An output whose bytes cannot reach the CAS — a full disk, here a shard path a file occupies —
+     * fails the store, and no record or task pointer names the outputs that did land.
+     */
+    @Test
+    void an_output_write_that_fails_mid_store_leaves_no_record(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+        Path outputs = tempDir.resolve("classes");
+        Files.createDirectories(outputs.resolve("p"));
+        Files.writeString(outputs.resolve("p/A.class"), "alpha");
+        Files.writeString(outputs.resolve("p/PropertyRoots.class"), "roots");
+        Path shard = requireNonNull(
+                cas.pathFor(Hashing.sha256Hex(outputs.resolve("p/PropertyRoots.class")))
+                        .getParent(),
+                "shard");
+        Files.createDirectories(requireNonNull(shard.getParent(), "shard parent"));
+        Files.writeString(shard, "not a shard");
+
+        assertThatThrownBy(() -> cache.store("compile-test-fixtures", "short", Map.of(), outputs))
+                .isInstanceOf(IOException.class);
+
+        assertThat(cache.lookup("short")).isEmpty();
+        assertThat(cache.lastFor("compile-test-fixtures")).isEmpty();
+    }
+
+    /** A step that names an artifact it did not write is not recorded with the rest. */
+    @Test
+    void an_artifact_the_step_did_not_write_is_not_recorded(@TempDir Path tempDir) throws IOException {
+        ActionCache cache = new ActionCache(new Cas(tempDir.resolve("cas")), tempDir.resolve("actions"));
+        Path target = Files.createDirectories(tempDir.resolve("target"));
+        Path jar = Files.writeString(target.resolve("app.jar"), "jar");
+        Path war = target.resolve("app.war");
+
+        assertThatThrownBy(() -> cache.storeArtifacts("package-war", "half", Map.of(), target, List.of(jar, war)))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("app.war");
+        assertThat(cache.lookup("half")).isEmpty();
+    }
+
+    /**
+     * A restore that cannot lay down every output the record names is a miss, and leaves nothing
+     * of the record behind for a later step to mistake for its tree.
+     */
+    @Test
+    void a_restore_that_cannot_lay_down_every_output_is_a_miss(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+        String a = cas.hashFromPath(cas.put("alpha".getBytes(StandardCharsets.UTF_8)))
+                .orElseThrow();
+        String b = cas.hashFromPath(cas.put("beta".getBytes(StandardCharsets.UTF_8)))
+                .orElseThrow();
+        // "p" as a file and "p/B.class" beneath it: whichever lands first, the other cannot be
+        // written, the way a full disk refuses an output part-way through a restore.
+        var record = cache.storeWithOutputs("compile-java", "blocked", Map.of(), Map.of("p", a, "p/B.class", b));
+
+        Path classes = tempDir.resolve("classes");
+        assertThat(cache.restore(record, classes)).isFalse();
+        assertThat(classes).isEmptyDirectory();
+
+        Path target = Files.createDirectories(tempDir.resolve("target"));
+        assertThat(cache.restoreArtifacts(record, target)).isFalse();
+        assertThat(target.resolve("p")).doesNotExist();
     }
 
     @Test
@@ -410,7 +477,7 @@ class ActionCacheTest {
         Path missing = base.resolve("jk");
         assertThatThrownBy(() -> cache.storeArtifacts("native-image", "key-empty", Map.of(), base, List.of(missing)))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("no files to cache");
+                .hasMessageContaining("was not written");
         assertThat(cache.lookup("key-empty")).isEmpty();
     }
 
