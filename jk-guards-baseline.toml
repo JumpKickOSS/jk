@@ -719,7 +719,7 @@ population = { examined = 4 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
 "server/engine" = { classes = 1121, sites = 73055 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 56, sites = 3311 }
+"server/io" = { classes = 59, sites = 3494 }
 "server/resolver" = { classes = 123, sites = 7334 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
@@ -1204,14 +1204,6 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 [[clock-owner.entries]]
 in     = "server/io"
 at     = "cc.jumpkick.repo.EffectivePomBuilder#build(Lcc/jumpkick/model/Coordinate;)Lcc/jumpkick/repo/EffectivePom; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/io"
-at     = "cc.jumpkick.repo.EffectivePomBuilder#buildBomImportsParallel(Ljava/util/List;Ljava/util/Set;I)Ljava/util/Map; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/io"
-at     = "cc.jumpkick.repo.EffectivePomBuilder#joinExpansions(Ljava/util/LinkedHashMap;Ljava/util/Map;Ljava/util/Map;Ljava/lang/Thread;)V -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/io"
@@ -1931,6 +1923,10 @@ population = { examined = 1928 }
 
 [one-json-splicer]
 population = { files = 2240 }
+
+[one-module-planner]
+[one-module-planner.populations]
+"server/io" = { classes = 59, sites = 0 }
 
 [one-recursive-delete]
 population = { files = 2203 }
