@@ -80,7 +80,8 @@ public final class Giter8TemplateIndex {
      * <ul>
      *   <li>{@code lang/framework/name} — exact
      *   <li>{@code framework/name} — requested lang first, then java → kotlin → groovy
-     *   <li>bare {@code name} — framework {@code none}; requested lang only when set, else walk
+     *   <li>bare {@code name} — framework {@code none} first, then any framework; requested lang only
+     *       when set, else the first of java → kotlin → groovy that has it
      * </ul>
      *
      * @throws IllegalArgumentException when {@code ref} names a framework rather than a template
@@ -123,16 +124,17 @@ public final class Giter8TemplateIndex {
                     + under.getFirst()
                     + ")");
         }
-        // Bare name living under frameworks: unambiguous resolves, ambiguity names candidates.
+        // Bare name under frameworks: the requested lang, else the first of java → kotlin → groovy
+        // that has it; several frameworks within that one language is ambiguous.
+        List<String> order = new ArrayList<>();
+        if (lang != null && !lang.isBlank()) order.add(lang.strip().toLowerCase(Locale.ROOT));
+        else order.addAll(LANGS);
         List<TemplateSpec> named = new ArrayList<>();
-        for (TemplateSpec s : all) {
-            if (!s.name().equals(name)) continue;
-            if (lang != null
-                    && !lang.isBlank()
-                    && !s.language().equals(lang.strip().toLowerCase(Locale.ROOT))) {
-                continue;
+        for (String l : order) {
+            for (TemplateSpec s : all) {
+                if (s.name().equals(name) && s.language().equals(l)) named.add(s);
             }
-            named.add(s);
+            if (!named.isEmpty()) break;
         }
         if (named.size() == 1) return Optional.of(named.getFirst());
         if (named.size() > 1) {

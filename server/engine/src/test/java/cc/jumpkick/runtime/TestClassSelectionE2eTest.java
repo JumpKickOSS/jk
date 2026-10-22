@@ -50,6 +50,7 @@ class TestClassSelectionE2eTest {
     private static final class Steps implements WorkspaceBuildListener {
         final Map<Path, TaskStatus> status = new ConcurrentHashMap<>();
         final Map<Path, String> label = new ConcurrentHashMap<>();
+        final Map<Path, String> errors = new ConcurrentHashMap<>();
         final Map<Path, BuildPlan> plans = new ConcurrentHashMap<>();
 
         @Override
@@ -59,6 +60,11 @@ class TestClassSelectionE2eTest {
                 @Override
                 public void label(String step, String text) {
                     if (TaskNames.RUN_TESTS.equals(step)) label.put(module.dir(), text);
+                }
+
+                @Override
+                public void error(String step, String code, String message) {
+                    if (TaskNames.RUN_TESTS.equals(step)) errors.put(module.dir(), code + ": " + message);
                 }
 
                 @Override
@@ -105,7 +111,7 @@ class TestClassSelectionE2eTest {
         WorkspaceResult result = test(ws, tmp, List.of("NoSuchTest"), 0, steps);
 
         assertThat(result.success()).isFalse();
-        assertThat(result.exitCode()).isEqualTo(Exit.TESTS_FAILED);
+        assertThat(result.exitCode()).isEqualTo(Exit.USAGE);
         assertThat(result.errors()).containsExactly("no test classes matched --class NoSuchTest");
         assertThat(result.modules())
                 .as("every module finished; the verdict is the run's")
@@ -134,8 +140,8 @@ class TestClassSelectionE2eTest {
     }
 
     @Test
-    void a_class_the_tag_filter_excluded_fails_its_module_naming_the_tag_and_the_flag(@TempDir Path tmp)
-            throws Exception {
+    void a_class_the_tag_filter_excluded_fails_its_module_as_a_usage_error_naming_the_tag_and_the_flag(
+            @TempDir Path tmp) throws Exception {
         Path ws = workspace(tmp);
         Steps steps = new Steps();
 
@@ -147,11 +153,11 @@ class TestClassSelectionE2eTest {
                 steps);
 
         assertThat(result.success()).isFalse();
-        assertThat(result.exitCode()).isEqualTo(Exit.TESTS_FAILED);
+        assertThat(result.exitCode()).isEqualTo(Exit.USAGE);
         assertThat(steps.status.get(ws.resolve("app"))).isEqualTo(TaskStatus.FAIL);
-        assertThat(steps.tests(ws.resolve("app")))
-                .extracting(tests -> tests.failures().getFirst().message())
-                .isEqualTo(BENCH_EXCLUDED);
+        assertThat(steps.tests(ws.resolve("app"))).as("no red test").isNull();
+        assertThat(steps.errors.get(ws.resolve("app")))
+                .isEqualTo(TestClassMatch.NO_TESTS_MATCHED + ": " + BENCH_EXCLUDED);
     }
 
     @Test
@@ -168,13 +174,13 @@ class TestClassSelectionE2eTest {
                 steps);
 
         assertThat(result.success()).isFalse();
+        assertThat(result.exitCode()).isEqualTo(Exit.USAGE);
         assertThat(steps.tests(ws.resolve("app"))).satisfies(tests -> {
             assertThat(tests.succeeded()).as("AppTest ran").isEqualTo(1L);
-            assertThat(tests.failures())
-                    .singleElement()
-                    .extracting(f -> f.message())
-                    .isEqualTo(BENCH_EXCLUDED);
+            assertThat(tests.failures()).as("the dropped class is no red test").isEmpty();
         });
+        assertThat(steps.errors.get(ws.resolve("app")))
+                .isEqualTo(TestClassMatch.NO_TESTS_MATCHED + ": " + BENCH_EXCLUDED);
     }
 
     @Test
@@ -224,11 +230,12 @@ class TestClassSelectionE2eTest {
         Standalone missing = standalone(lib, tmp, List.of("NoSuchTest"));
         assertThat(missing.result().success()).isFalse();
         assertThat(missing.plan().get(BuildPlanner.TEST_RESULT))
-                .as("the typo is the module's one test failure, as it always was")
-                .hasValueSatisfying(tests -> assertThat(tests.failures())
-                        .singleElement()
-                        .extracting(f -> f.message())
-                        .isEqualTo("no test classes matched --class NoSuchTest"));
+                .as("the typo is a usage error, not a red test")
+                .isEmpty();
+        assertThat(missing.result().errors()).singleElement().satisfies(d -> {
+            assertThat(d.code()).isEqualTo(TestClassMatch.NO_TESTS_MATCHED);
+            assertThat(d.message()).isEqualTo("no test classes matched --class NoSuchTest");
+        });
 
         Standalone present = standalone(lib, tmp, List.of("LibTest"));
         assertThat(present.result().success()).isTrue();

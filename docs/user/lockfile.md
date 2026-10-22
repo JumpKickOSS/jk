@@ -75,13 +75,26 @@ and the root's `spring-boot-dependencies` row under `[platform-dependencies]` la
 release.
 
 The tool tables move under the same rule and flags: an exact `[dokka] version`, `[protobuf] version`
-(protoc), a `[protobuf.<id>] plugin`, and a `[generate.<name>] tool` or `unpack` coordinate are
-rewritten to the newest stable on their major; `jk update dokka`, `jk update grpc-java` or the tool's
-`group:artifact` selects one, and the rewrite line names the key (`grpc-java  1.70.0 → 1.81.0
-(protobuf.grpc-java.plugin)`). A floating selector in a tool table keeps its text as a dependency's
-does. Any plugin's tool pins move the same way: a step dependency whose coordinate takes its
-version from the plugin's table, or from an entry's key, is a pin on the module the coordinate
-names — its group and artifact filled from the table the way the step fills them.
+(protoc), a `[protobuf.<id>] plugin`, a `[generate.<name>] tool` or `unpack` coordinate, `[jooq]`,
+`[avro]` and `[jaxb] version`, and the `[lint]` tool versions (`checkstyle-version`, `pmd-version`,
+`spotbugs-version`, `detekt-version`) are rewritten to the newest stable on their major; `jk update
+dokka`, `jk update grpc-java` or the tool's `group:artifact` selects one, and the rewrite line names
+the key (`grpc-java  1.70.0 → 1.81.0 (protobuf.grpc-java.plugin)`). Only a key the manifest writes
+is a pin: a tool version the table leaves to its default moves when jk does. A floating selector
+in a tool table keeps its text as a dependency's does. Any plugin's tool pins move the same way: a
+step dependency whose coordinate takes its version from the plugin's table, or from an entry's key,
+is a pin on the module the coordinate names — its group and artifact filled from the table the way
+the step fills them.
+
+The language keys are pins too: an exact `kotlin`, `groovy` or `scala` moves on its major (`jk
+update kotlin`), the Kotlin compiler, the Groovy runtime and the Scala 3 compiler being the
+coordinates read. A rule pack under `[guards] extends` in the root `jk-guards.toml` moves the same
+way, its versions read from the first-party shelf and the project's repositories as `jk lock`
+finds the pack (`jk update spring` names `cc.jumpkick.guards:spring`), and `jk update -m` moves a
+plain `node = <major>` to the newest LTS major ([Node.js](node.md)).
+
+An update never rewrites a coordinate: an artifact that moved to a new `group:artifact` stays
+where it is, and `jk outdated` names where it went ([below](#jk-outdated)).
 
 The Maven major is the first numeric segment (`2.18.2` → 2.x, `33.4.8-jre` → 33.x). Pre-releases
 are never "stable", so an RC is taken only by an opt-in selector that admits it. The rewritten
@@ -121,11 +134,27 @@ row under its scope whichever value a build selects, as the lock resolves them a
 outdated` takes no `--variant`. A framework table's version reads as its platform BOM's row
 (`spring-boot-dependencies` for `[spring-boot] version`).
 
+Every pin `jk update` moves gets a row, and only those: besides dependencies, the language keys
+(`kotlin`, `groovy`, `scala`), each written tool-table key, a plain `node = <major>` and every
+`[guards] extends` rule pack. Such a row's Scope is the key it is written under (`kotlin`,
+`protobuf.version`, `generate.api.tool`, `guards.extends`, `node`); Current and Compatible are the
+version the key pins, Latest the newest stable release (the newest LTS major for `node`). A
+floating language or tool selector is left to the relock and gets no row.
+
+A dependency whose coordinate moved names where it went, and Latest is then the new coordinate's
+release. Two sources say so: a `<relocation>` in the POM of the old coordinate's newest release,
+the Maven way to rename an artifact; and, for publishers that renamed without one, a list jk
+ships — Testcontainers 2.0 (`org.testcontainers:postgresql` → `testcontainers-postgresql`, every
+module alike) — taken only when the old coordinate published nothing at or past the rename and the
+new one did. The table prints a `Moved:` line per such coordinate, JSON carries it as
+`relocated`, and the coordinate change is yours to make: `jk update` keeps coordinates. A rename
+neither source records is not detected; its row looks like any dependency at its newest release.
+
 | Column | Meaning |
 |--------|---------|
 | **Current** | Version pinned in `jk-lock.toml` (empty if unlocked) |
 | **Compatible** | Newest version the declared selector still admits — for an exact pin, the same as Current |
-| **Latest** | Newest stable in the repo; what `jk update` (same major) or `jk update -m` would write |
+| **Latest** | Newest stable in the repo, on any major — what `jk update -m` writes; `jk update` writes the newest stable on the pin's major |
 | **Tip** | With `--show-tip`: prerelease / git frontier ahead of Latest |
 
 A row prints when Compatible or Latest is strictly ahead of Current, or when Current is unknown
@@ -158,7 +187,8 @@ when something can move.
 Compatible/Latest — the CLI prints a note so that is not mistaken for “everything is current.”
 
 JSON is an **array** of row objects (`module`, `dependency`, `display`, `scope`, `current`,
-`compatible`, `latest`, `tip`), filtered the same way as the table (`--all` for every row).
+`compatible`, `latest`, `tip`, `relocated`), filtered the same way as the table (`--all` for every
+row). `relocated` is the `group:artifact` the dependency moved to, empty when it has not moved.
 `module` is empty for a single-project root. `display` is the catalog short name when known.
 MCP [`outdated`](mcp.md#tools) takes the same `all` and reports `checked`, the number of rows
 examined, and `file`, the path of the markdown report, beside `rows`.

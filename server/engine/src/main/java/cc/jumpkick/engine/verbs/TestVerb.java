@@ -14,6 +14,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.ShadowManifests;
+import cc.jumpkick.runtime.TestClassMatch;
 import cc.jumpkick.runtime.TestSupport;
 import cc.jumpkick.runtime.workspace.StandalonePlanTimings;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -107,6 +108,7 @@ public final class TestVerb implements HostedVerb {
             if (result.success()) return JobOutcome.ok();
             for (var d : result.errors()) {
                 if ("affected-refuse".equals(d.code())) return JobOutcome.failed(Exit.CONFIG);
+                if (TestClassMatch.NO_TESTS_MATCHED.equals(d.code())) return JobOutcome.failed(Exit.USAGE);
             }
             return JobOutcome.failed(Exit.FAILURE);
         } catch (ShadowManifests.NotBuiltHere refused) {

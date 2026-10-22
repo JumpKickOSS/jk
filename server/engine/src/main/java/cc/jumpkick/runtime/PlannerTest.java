@@ -622,11 +622,19 @@ public final class PlannerTest {
                         testClasses,
                         effectiveSel.classes(),
                         projectUnderTest.build().testExcludeClasses())) {
-            TestSummary unmatched = judgeClassSelection(
-                    ctx, in, effectiveSel, false, suites, moduleLabel, null, new TestSummary(0, 0, 0, 0, List.of()));
-            if (unmatched == null) return;
-            ctx.put(TEST_RESULT, unmatched);
-            TestLaunch.recordOutcome(ctx, in, actionCache, testTaskId, null, unmatched, !testSrcs.isEmpty(), snippets);
+            settle(
+                    ctx,
+                    in,
+                    effectiveSel,
+                    false,
+                    suites,
+                    null,
+                    new TestSummary(0, 0, 0, 0, List.of()),
+                    actionCache,
+                    testTaskId,
+                    null,
+                    !testSrcs.isEmpty(),
+                    snippets);
             return;
         }
         // The test runtime classpath is the siblings' jars: wait for them to be written.
@@ -702,14 +710,63 @@ public final class PlannerTest {
         if (jacoco != null && coverageExec != null) {
             TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
         }
-        result = result.withSuites(suites::suiteOf);
-        result = judgeClassSelection(
-                ctx, in, effectiveSel, affected != null, suites, moduleLabel, tagExcluded.message(), result);
-        if (result == null) return;
-        TagExcludedSuite.note(ctx, effectiveSel, in.profileName(), affected != null, result);
-        ctx.put(TEST_RESULT, result);
-        TestLaunch.recordOutcome(ctx, in, actionCache, testTaskId, stampKey, result, !testSrcs.isEmpty(), snippets);
+        settle(
+                ctx,
+                in,
+                effectiveSel,
+                affected != null,
+                suites,
+                tagExcluded.message(),
+                result.withSuites(suites::suiteOf),
+                actionCache,
+                testTaskId,
+                stampKey,
+                !testSrcs.isEmpty(),
+                snippets);
     }
+
+    /**
+     * Judge the {@code --class} selection, then record the suite's outcome. A selection that
+     * matched no test raises {@link TestClassMatch#NO_TESTS_MATCHED} and fails the step without a
+     * red test; a named class the tag filter dropped beside tests that ran does the same after
+     * their summary is kept.
+     */
+    private static void settle(
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            TestSelection sel,
+            boolean exactClassList,
+            SuiteClassFilter suites,
+            @Nullable String tagExcluded,
+            TestSummary result,
+            ActionCache actionCache,
+            String testTaskId,
+            @Nullable String stampKey,
+            boolean testSourcesExist,
+            TestFailureSource.Cache snippets)
+            throws Exception {
+        Judged judged = judgeClassSelection(ctx, in, sel, exactClassList, suites, tagExcluded, result);
+        if (judged == null) return;
+        TestSummary ran = judged.result();
+        if (ran != null) {
+            TagExcludedSuite.note(ctx, sel, in.profileName(), exactClassList, ran);
+            ctx.put(TEST_RESULT, ran);
+        }
+        if (judged.noMatch() != null) {
+            ctx.error(TestClassMatch.NO_TESTS_MATCHED, judged.noMatch());
+            if (ran == null || ran.allPassed()) throw new IllegalArgumentException(judged.noMatch());
+        }
+        if (ran != null) {
+            TestLaunch.recordOutcome(ctx, in, actionCache, testTaskId, stampKey, ran, testSourcesExist, snippets);
+        }
+    }
+
+    /**
+     * What a {@code --class} selection left: the summary of the tests that ran, or {@code null} when
+     * none did, and the no-match message when the selection named something that did not run.
+     */
+    private record Judged(
+            @Nullable TestSummary result, @Nullable String noMatch) {}
 
     /**
      * {@code [test] fast-method-budget} in milliseconds: the module's own, else its workspace
@@ -755,39 +812,59 @@ public final class PlannerTest {
     }
 
     /**
-     * The summary a {@code --class} selection leaves, or null when this workspace module skips: a
+     * The verdict a {@code --class} selection leaves, or null when this workspace module skips: a
      * workspace judges the patterns across its modules, a standalone project fails on the spot,
-     * naming the runner's {@code tagExcluded} warning, with the profiles that run the tag, when the
+     * naming the runner's {@code tagExcluded} warning, with the tier that runs the class, when the
      * tag filter emptied the run. A class named without a wildcard that the tag filter dropped fails
      * the module, whatever else ran. A {@code --class} naming a class another suite owns says which
      * suite, matched or not.
      */
-    private static @Nullable TestSummary judgeClassSelection(
+    private static @Nullable Judged judgeClassSelection(
             TaskContext ctx,
             BuildPlanner.Inputs in,
             TestSelection sel,
             boolean exactClassList,
             SuiteClassFilter suites,
-            String moduleLabel,
             @Nullable String tagExcluded,
-            TestSummary result) {
-        tagExcluded =
-                TestClassMatch.namingProfiles(tagExcluded, ctx.require(PROJECT).profiles(), in.profileName());
-        String suiteHint = exactClassList ? null : suites.classHint(ctx.require(TEST_CLASSES), sel.classes());
-        if (!exactClassList && tagExcluded != null && TestClassMatch.namesClasses(sel)) {
-            return TestClassMatch.withTagExcluded(result, moduleLabel, sel, tagExcluded, suiteHint);
+            TestSummary result)
+            throws IOException {
+        if (tagExcluded != null) {
+            JkBuild project = ctx.require(PROJECT);
+            tagExcluded = TestClassMatch.explainTagExcluded(
+                    tagExcluded, project.profiles(), in.profileName(), defaultTier(project, in.dir()));
         }
-        if (!TestClassMatch.nothingMatched(sel, exactClassList, result)) {
+        String suiteHint = exactClassList ? null : suites.classHint(ctx.require(TEST_CLASSES), sel.classes());
+        boolean nothing = TestClassMatch.nothingMatched(sel, exactClassList, result);
+        if (!exactClassList && tagExcluded != null && TestClassMatch.namesClasses(sel)) {
+            return nothing
+                    ? new Judged(null, TestClassMatch.noMatchMessage(sel, in.profileName(), tagExcluded, suiteHint))
+                    : new Judged(result, tagExcluded);
+        }
+        if (!nothing) {
             if (suiteHint != null) {
                 ctx.warn("class-in-other-suite", "--class " + String.join(", ", sel.classes()) + ": " + suiteHint);
             }
-            return result;
+            return new Judged(result, null);
         }
         if (in.projectModules().size() > 1) {
             TestClassMatch.skip(ctx, sel, tagExcluded, suiteHint);
             return null;
         }
-        return TestClassMatch.asFailure(moduleLabel, sel, tagExcluded, suiteHint);
+        return new Judged(null, TestClassMatch.noMatchMessage(sel, in.profileName(), tagExcluded, suiteHint));
+    }
+
+    /** The tags the run uses without {@code -p}: the module's own {@code [test]} lists, else its workspace root's. */
+    static TestClassMatch.Tier defaultTier(JkBuild module, Path moduleDir) throws IOException {
+        var own = module.build();
+        if (!own.testIncludeTags().isEmpty() || !own.testExcludeTags().isEmpty()) {
+            return new TestClassMatch.Tier(own.testIncludeTags(), own.testExcludeTags());
+        }
+        Path root = WorkspaceScan.owningRoot(moduleDir).orElse(null);
+        if (root == null || root.normalize().equals(moduleDir.normalize())) {
+            return new TestClassMatch.Tier(own.testIncludeTags(), own.testExcludeTags());
+        }
+        var rootBuild = JkBuildParser.parseLocal(ManifestPaths.manifestIn(root)).build();
+        return new TestClassMatch.Tier(rootBuild.testIncludeTags(), rootBuild.testExcludeTags());
     }
 
     /** Which compiled test classes the run's suites own, and which suite each runs in. */

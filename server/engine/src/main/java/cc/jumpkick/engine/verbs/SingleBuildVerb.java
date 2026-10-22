@@ -6,8 +6,10 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.engine.jobs.JobRequest;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -51,6 +53,13 @@ public final class SingleBuildVerb implements HostedVerb {
     @Override
     public JobKind jobKind() {
         return JobKind.plan("build");
+    }
+
+    /** A guard run journals as kind {@code guard}, as a workspace one does. */
+    @Override
+    public JobRequest toJobRequest(String requestLine) {
+        String verb = Jsonl.bool(requestLine, "guard", false) ? "guard" : "build";
+        return new JobRequest(JobKind.plan(verb), threadPrefix(), this::run);
     }
 
     @Override

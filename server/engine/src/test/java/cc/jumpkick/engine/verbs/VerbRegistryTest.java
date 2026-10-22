@@ -35,6 +35,9 @@ class VerbRegistryTest {
         assertThat(test.jobKind().verb()).isEqualTo("test");
         assertThat(single.toJobRequest("{\"type\":\"single-build-request\"}").verb())
                 .isEqualTo("build");
+        assertThat(single.toJobRequest("{\"type\":\"single-build-request\",\"guard\":true}")
+                        .verb())
+                .isEqualTo("guard");
         assertThat(verb(reg, EngineProtocol.AUDIT_REQUEST)).isInstanceOf(AuditVerb.class);
         assertThat(verb(reg, EngineProtocol.CACHE_PRUNE_REQUEST).shape()).isInstanceOf(VerbShape.CacheMaint.class);
         assertThat(verb(reg, EngineProtocol.EXPLAIN_REQUEST).shape()).isInstanceOf(VerbShape.SyncRead.class);

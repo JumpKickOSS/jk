@@ -53,7 +53,7 @@ final class WorkspaceFinalPhase {
         boolean skipTests = run.prepared().resources().request().skipTests();
         String verdict = TestClassMatch.runWideVerdict(SessionContext.current(), skipTests, plans);
         if (verdict == null) return null;
-        return new WorkspaceResult(false, Exit.TESTS_FAILED, run.outcomes(), List.of(verdict), false);
+        return new WorkspaceResult(false, Exit.USAGE, run.outcomes(), List.of(verdict), false);
     }
 
     /**
