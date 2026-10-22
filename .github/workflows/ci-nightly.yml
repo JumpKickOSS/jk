@@ -301,11 +301,11 @@ jobs:
   # held to the stricter rule — no change at all — since `npm ci` refuses a lock out of step with
   # its package.json. Both rules live in scripts/examples-lock-drift.sh, which has a fixture test.
   #
-  # The same job builds the web/ scenarios of JumpKickOSS/jk-examples (a Vite SPA in a Boot app,
+  # The same job builds the 03-fullstack/ scenarios of JumpKickOSS/jk-examples (Vite SPAs in Boot apps,
   # Next standalone, Angular, SvelteKit on node, two front ends beside one API) from a clean
   # checkout with the jk this job built: each provisions its own pinned Node.js, so the runner's
   # Node plays no part. Each then runs under `jk dev` until its front doors answer, and the same
-  # two lock rules hold over web/**.
+  # two lock rules hold over 03-fullstack/**.
   examples:
     name: Doc examples build and test
     runs-on: ubuntu-latest
@@ -362,11 +362,11 @@ jobs:
           repository: JumpKickOSS/jk-examples
           path: jk-examples
 
-      - name: Build every jk-examples web/ scenario from a clean checkout
+      - name: Build every jk-examples 03-fullstack/ scenario from a clean checkout
         run: |
           set -euo pipefail
           failed=0
-          for manifest in jk-examples/web/*/jk.toml; do
+          for manifest in jk-examples/03-fullstack/*/jk.toml; do
             scenario="$(dirname "$manifest")"
             echo "::group::$scenario"
             if ! ( cd "$scenario" && jk lock --no-ansi && jk build --no-ansi ); then
@@ -377,7 +377,7 @@ jobs:
           done
           exit "$failed"
 
-      - name: Run every jk-examples web/ scenario under jk dev
+      - name: Run every jk-examples 03-fullstack/ scenario under jk dev
         run: scripts/example-dev-smoke.sh --examples jk-examples
 
       - name: A sample relock may move first-party plugin checksums and nothing else; an npm lock may not move

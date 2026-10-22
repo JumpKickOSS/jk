@@ -185,8 +185,8 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 - **Nightly (`ci-nightly.yml`):** `jk test -p integration`, `-p slow`,
   `-p network`, `-p bench`, the coverage ratchet (`jk test --coverage`, `jk guard`),
   the heap guard, the doc examples, the [jk-examples](https://github.com/JumpKickOSS/jk-examples)
-  `web/` scenarios and the audit at `LOW` on Linux; the product smoke on macOS.
-- **Examples job:** every `docs/user/examples/*` sample and every jk-examples `web/*` scenario is
+  `03-fullstack/` scenarios and the audit at `LOW` on Linux; the product smoke on macOS.
+- **Examples job:** every `docs/user/examples/*` sample and every jk-examples `03-fullstack/*` scenario is
   locked, built (the scenarios from a clean checkout, each on the Node.js its lock pins) and run
   under `jk dev` until its front doors answer (`scripts/example-dev-smoke.sh`, `--examples` for the
   scenarios). Afterwards no committed `jk-lock.toml` may change beyond first-party plugin checksums
@@ -215,7 +215,7 @@ jvm-args) prints `TIMING_ASSERTS_SKIPPED` with the reason, since its numbers des
 user has. Run the one class alone on a quiet host:
 
 ```bash
-JK_NIA_OVERLAY=~/src/oss/jk-examples/android/nowinandroid/overlay \
+JK_NIA_OVERLAY=~/src/oss/jk-examples/04-android/nowinandroid/overlay \
   jk test -p network -m server/resolver -w 1 \
     --class cc.jumpkick.resolver.NiaWarmLockTimingTest
 # JVM_CPUS=… HOST_CPUS=… LOADAVG=… names the machine the numbers were taken on

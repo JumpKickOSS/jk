@@ -56,7 +56,7 @@ The uv lesson: get into existing repos first, convert the manifest later.
   release plugin, `war`, Tycho, OSGi.
 - **The fidelity corpus** is the twenty most-starred Maven-built Java repositories with a root
   POM and Java 17 or newer
-  ([jk-examples `corpus/maven-top20`](https://github.com/JumpKickOSS/jk-examples/tree/main/corpus/maven-top20)).
+  ([jk-examples `bench/maven-top20`](https://github.com/JumpKickOSS/jk-examples/tree/main/bench/maven-top20)).
   Run 16 (main `30c21270b`, 2026-09-18, jk 0.13.7): import-clean 11/20, lock 18/20, build 13/20,
   tests pass 2/20. The same counts are in
   [Migration](../user/migration.md#where-import-stands-on-real-repositories). Raising them is

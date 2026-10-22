@@ -15,7 +15,7 @@
 #
 # Usage: scripts/examples-lock-drift.sh [checkout] [jk-examples checkout]
 #   checkout             the jk tree whose docs/user/examples/** are checked (default: .)
-#   jk-examples checkout also check its web/** (default: $JK_EXAMPLES_DIR, if set)
+#   jk-examples checkout also check its 03-fullstack/** (default: $JK_EXAMPLES_DIR, if set)
 # Exit 1 with every drifted file named; the `::error::` prefix is a GitHub Actions annotation and
 # reads fine in a terminal.
 set -euo pipefail
@@ -50,7 +50,7 @@ check "${1:-.}" docs/user/examples
 
 examples="${2:-${JK_EXAMPLES_DIR:-}}"
 if [[ -n "$examples" ]]; then
-  check "$examples" web
+  check "$examples" 03-fullstack
 fi
 
 exit "$failed"
