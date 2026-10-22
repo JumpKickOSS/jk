@@ -295,7 +295,8 @@ public final class LockfileWriter {
     /**
      * One {@code [[tool]]} row per tool, artifacts sorted by coordinate, version, type and
      * classifier, then URLs; a host-following tool's per-platform digests are dotted {@code
-     * sha256.<classifier>} keys, as {@code [node]} writes its archives'.
+     * sha256.<classifier>} keys, as {@code [node]} writes its archives', and a closure row lists its
+     * jars one per line.
      */
     private static void writeTools(StringBuilder out, Lockfile lockfile) {
         List<ToolEntry> sorted = new ArrayList<>(lockfile.tools());
@@ -303,7 +304,10 @@ public final class LockfileWriter {
                 .thenComparing(t -> t.url() != null ? t.url() : Objects.requireNonNull(t.coordinate()))
                 .thenComparing(t -> t.version() == null ? "" : t.version())
                 .thenComparing(ToolEntry::type)
-                .thenComparing(t -> t.classifier() == null ? "" : t.classifier()));
+                .thenComparing(t -> t.classifier() == null ? "" : t.classifier())
+                .thenComparing(ToolEntry::isClosure)
+                .thenComparing(t -> String.join(",", t.with()))
+                .thenComparing(t -> t.managedBy() == null ? "" : t.managedBy()));
         for (ToolEntry t : sorted) {
             out.append('\n');
             out.append("[[tool]]\n");
@@ -329,6 +333,17 @@ public final class LockfileWriter {
             String checksum = t.checksum();
             if (checksum != null)
                 out.append("checksum   = ").append(quote(checksum)).append('\n');
+            if (!t.with().isEmpty())
+                out.append("with       = ").append(stringArray(t.with())).append('\n');
+            String managedBy = t.managedBy();
+            if (managedBy != null)
+                out.append("managed-by = ").append(quote(managedBy)).append('\n');
+            if (t.isClosure()) {
+                out.append("closure = [\n");
+                for (String jar : t.closure())
+                    out.append("  ").append(quote(jar)).append(",\n");
+                out.append("]\n");
+            }
             for (var sha : t.sha256().entrySet()) {
                 out.append("sha256.")
                         .append(sha.getKey())
@@ -337,6 +352,16 @@ public final class LockfileWriter {
                         .append('\n');
             }
         }
+    }
+
+    /** {@code ["a", "b"]} on one line. */
+    private static String stringArray(List<String> values) {
+        StringBuilder out = new StringBuilder("[");
+        for (int i = 0; i < values.size(); i++) {
+            if (i > 0) out.append(", ");
+            out.append(quote(values.get(i)));
+        }
+        return out.append(']').toString();
     }
 
     /** One {@code [[module]]} row per workspace module, sorted by path then name; blank fields left out. */

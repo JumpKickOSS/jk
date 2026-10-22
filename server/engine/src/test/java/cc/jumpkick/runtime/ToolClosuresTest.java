@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.Coordinate;
-import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.resolver.KmpRedirects;
 import cc.jumpkick.resolver.Resolution;
 import java.io.IOException;
@@ -12,29 +11,39 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Staging a tool's runtime closure: every resolved jar is linked under a readable alias, two
- * artifacts sharing a file name do not collide, the directory is keyed by the resolving jk and
+ * Staging a tool's runtime closure: every pinned jar is linked under a readable alias, two
+ * artifacts sharing a file name do not collide, the directory is keyed by the pinned jars and
  * carries a listing its lookup checks, and a failure names the tool, the directory and the cause
  * rather than the bare path a filesystem exception carries as its message.
  */
 class ToolClosuresTest {
 
     @Test
-    void the_key_names_the_roots_the_bom_and_the_resolving_jk() {
-        List<Coordinate> roots = List.of(Coordinate.of("com.android.tools.build", "bundletool", "1.17.2"));
+    void the_key_names_the_root_and_hashes_every_pinned_jar() {
+        Coordinate root = Coordinate.of("com.android.tools.build", "bundletool", "1.17.2");
+        Map<Coordinate, String> pinned = new LinkedHashMap<>();
+        pinned.put(root, "a".repeat(64));
+        pinned.put(Coordinate.of("com.google.guava", "guava", "33.0"), "b".repeat(64));
 
-        assertThat(ToolClosures.cacheKey(roots, null))
-                .isEqualTo("com.android.tools.build_bundletool_1.17.2__by_" + ToolClosures.resolverKey());
-        assertThat(ToolClosures.cacheKey(roots, "org.acme:bom:1.0"))
-                .isEqualTo("com.android.tools.build_bundletool_1.17.2__bom_org.acme_bom_1.0__by_"
-                        + ToolClosures.resolverKey());
-        assertThat(ToolClosures.resolverKey()).startsWith("jk_" + JkVersion.VERSION);
+        String key = ToolClosures.cacheKey(root, pinned);
+        assertThat(key).startsWith("bundletool-1.17.2__").doesNotContain("/").doesNotContain(":");
+
+        Map<Coordinate, String> reordered = new LinkedHashMap<>();
+        reordered.put(Coordinate.of("com.google.guava", "guava", "33.0"), "b".repeat(64));
+        reordered.put(root, "a".repeat(64));
+        assertThat(ToolClosures.cacheKey(root, reordered)).isEqualTo(key);
+
+        reordered.put(root, "c".repeat(64));
+        assertThat(ToolClosures.cacheKey(root, reordered))
+                .as("other bytes, other directory")
+                .isNotEqualTo(key);
     }
 
     /** A closure is served only when its listing is there and every jar it names is a non-empty file. */
@@ -70,30 +79,27 @@ class ToolClosuresTest {
     }
 
     /**
-     * A classified jar of a GAV lands beside its plain jar under its own name, so a data jar of
-     * resources never takes the name of the jar that holds the classes.
+     * A classified jar of a GAV is a jar of the closure beside its plain jar, and lands under its own
+     * name, so a data jar of resources never takes the name of the jar that holds the classes.
      */
     @Test
     void a_classified_jar_keeps_its_classifier_in_its_name_beside_the_plain_jar(@TempDir Path tmp) throws Exception {
-        Path staging = Files.createDirectories(tmp.resolve("staging"));
-        Files.createDirectories(tmp.resolve("cas"));
-        Path classes = Files.writeString(tmp.resolve("cas/classes.jar"), "classes");
-        Path data = Files.writeString(tmp.resolve("cas/data.jar"), "data");
         Resolution resolution = new Resolution(Map.of(
                 "org.xmlresolver:xmlresolver:jar:",
                 new Resolution.ResolvedModule("org.xmlresolver:xmlresolver:jar:", "5.3.3", List.of()),
                 "org.xmlresolver:xmlresolver:jar:data",
                 new Resolution.ResolvedModule("org.xmlresolver:xmlresolver:jar:data", "5.3.3", List.of())));
 
-        ToolClosures.stage(
-                staging,
-                List.of(Coordinate.of("org.xmlresolver", "xmlresolver", "5.3.3")),
-                resolution,
-                coord -> "data".equals(coord.classifier()) ? data : classes,
-                KmpRedirects.NONE);
+        assertThat(ToolClosures.jars(
+                        List.of(Coordinate.of("org.xmlresolver", "xmlresolver", "5.3.3")),
+                        resolution,
+                        KmpRedirects.NONE))
+                .extracting(Coordinate::toString)
+                .containsExactlyInAnyOrder(
+                        "org.xmlresolver:xmlresolver:5.3.3", "org.xmlresolver:xmlresolver:5.3.3:data");
 
-        assertThat(staging.resolve("xmlresolver-5.3.3.jar")).hasSameBinaryContentAs(classes);
-        assertThat(staging.resolve("xmlresolver-5.3.3-data.jar")).hasSameBinaryContentAs(data);
+        Path staging = Files.createDirectories(tmp.resolve("staging"));
+        Path data = Files.writeString(tmp.resolve("data.jar"), "data");
         assertThat(ToolClosures.alias(staging, Coordinate.parse("org.acme:tool:1.0:linux-x64"), data))
                 .isEqualTo(staging.resolve("tool-1.0-linux-x64.jar"));
     }

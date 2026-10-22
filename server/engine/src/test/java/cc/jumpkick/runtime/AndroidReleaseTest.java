@@ -9,7 +9,6 @@ import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.testing.SysProps;
@@ -141,11 +140,12 @@ class AndroidReleaseTest {
         // bundletool accepts the bundle: validate + the universal-APK local-deploy path.
         // Tool closures live under the shared store's CAS root (JkStores redirects every
         // cache root to the store), not under the cache dir the test passes.
-        Path bundletool = JkStores.storeCas()
-                .root()
-                .resolve("plugin-tools")
-                .resolve(ToolClosures.cacheKey(
-                        List.of(Coordinate.of("com.android.tools.build", "bundletool", "1.17.2")), null));
+        Path bundletool;
+        try (var dirs = Files.list(JkStores.storeCas().root().resolve("plugin-tools"))) {
+            bundletool = dirs.filter(dir -> dir.getFileName().toString().startsWith("bundletool-1.17.2__"))
+                    .findFirst()
+                    .orElseThrow();
+        }
         assertThat(bundletool).isDirectory();
         assertThat(bundletoolRun(bundletool, "validate", "--bundle=" + aab.toAbsolutePath()))
                 .contains("App Bundle information");

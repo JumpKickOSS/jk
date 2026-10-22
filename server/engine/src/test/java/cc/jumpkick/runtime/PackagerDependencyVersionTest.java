@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -121,7 +122,12 @@ class PackagerDependencyVersionTest {
         List<ToolEntry> tampered = new ArrayList<>();
         for (ToolEntry row : lock.tools()) {
             tampered.add(new ToolEntry(
-                    row.coordinate(), row.version(), row.type(), null, "sha256:" + "0".repeat(64), Map.of(), null));
+                    Objects.requireNonNull(row.coordinate()),
+                    Objects.requireNonNull(row.version()),
+                    row.type(),
+                    null,
+                    "sha256:" + "0".repeat(64),
+                    Map.of()));
         }
         Path lockFile = tmp.resolve("jk-lock.toml");
         LockfileWriter.write(lock.withTools(tampered), lockFile);
