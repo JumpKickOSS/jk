@@ -93,7 +93,7 @@ public final class ModulePipeline {
             }
             return plan.build();
         }
-        Tail tail = CompileSupport.coordinatorOnly(unit.manifest(), dir) || !selected(spec, dir)
+        Tail tail = !selected(spec, dir)
                 ? Tail.NONE
                 : selectedTail != null ? selectedTail : tail(target, spec, unit, request.cache());
         PlannerTails.appendDeclaredTails(

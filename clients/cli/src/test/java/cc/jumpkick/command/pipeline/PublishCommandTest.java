@@ -146,10 +146,11 @@ class PublishCommandTest {
     }
 
     @Test
-    void missing_jar_returns_no_input(@TempDir Path tempDir) throws Exception {
+    void publish_builds_the_jar_it_uploads(@TempDir Path tempDir) throws Exception {
         writeJkBuild(tempDir);
         int exit = run("publish", "-C", tempDir.toString(), "--repo-url", base.toString());
-        assertThat(exit).isEqualTo(66);
+        assertThat(exit).isEqualTo(0);
+        assertThat(received.keySet()).anyMatch(k -> k.endsWith("widget-1.0.0.jar"));
     }
 
     @Test

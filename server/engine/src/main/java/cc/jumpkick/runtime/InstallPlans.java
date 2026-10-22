@@ -44,6 +44,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -78,9 +79,11 @@ public final class InstallPlans {
     public static final BuildPlanKey<Path> CHECKOUT = BuildPlanKey.scalar("checkout-dir", Path.class);
     public static final BuildPlanKey<String> FETCHED_SHA = BuildPlanKey.scalar("fetched-sha", String.class);
 
-    /** {@code jk install}'s tail: {@link #appendCacheInstall} after the build. */
+    /** {@code jk install}'s tail: {@link #appendCacheInstall} after the build; a module with no jar has nothing to shelve. */
     public static Tail tail(JkBuild proj, Path cache, Path m2Dir) {
-        return (plan, in) -> appendCacheInstall(plan, proj, cache, m2Dir);
+        return (plan, in) -> {
+            if (!CompileSupport.coordinatorOnly(proj, in.dir())) appendCacheInstall(plan, proj, cache, m2Dir);
+        };
     }
 
     /**
