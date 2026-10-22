@@ -34,7 +34,9 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -143,11 +145,31 @@ public final class OutdatedCommand implements CliCommand {
                         showTip,
                         "Dependency versions");
         for (String line : table) CliOutput.out(line);
+        for (String line : movedNotes(rows)) CliOutput.out(line);
         // Footer: lockfile-respecting workflow + graph inspection.
-        CliOutput.out("Next: review with `jk why <coord>` / `jk tree`; `jk update [name…]` moves the declared"
-                + " pins to Compatible and relocks, `jk update -m` to Latest.");
+        CliOutput.out(NEXT);
         printReportFile(dir);
         return Exit.SUCCESS;
+    }
+
+    /** What the update verbs write, as they write it. */
+    static final String NEXT = "Next: review with `jk why <coord>` / `jk tree`; `jk update [name…]` moves each exact"
+            + " pin to the newest stable on its major and relocks (a range or `latest` floats to Compatible),"
+            + " `jk update -m` to Latest.";
+
+    /**
+     * One line per coordinate that moved to another {@code group:artifact}: its Latest is the new
+     * coordinate's, and no update rewrites a coordinate.
+     */
+    static List<String> movedNotes(List<OutdatedReport.Row> rows) {
+        Map<String, String> moved = new LinkedHashMap<>();
+        for (OutdatedReport.Row r : rows) {
+            if (r.isRelocated()) moved.putIfAbsent(r.coordinate(), r.relocated());
+        }
+        List<String> out = new ArrayList<>();
+        moved.forEach((from, to) -> out.add("Moved: " + from + " → " + to + " (Latest is " + to
+                + "'s; change the coordinate in jk.toml — `jk update` keeps coordinates)"));
+        return out;
     }
 
     /** Written by the engine on every successful run; mirrors the engine's file name. */
@@ -188,6 +210,7 @@ public final class OutdatedCommand implements CliCommand {
                     .string("compatible", r.compatible())
                     .string("latest", r.latest())
                     .string("tip", r.tip())
+                    .string("relocated", r.relocated())
                     .finish());
         }
         return "[" + String.join(",", items) + "]";

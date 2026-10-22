@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
+import cc.jumpkick.config.JkBuildEditor;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.layout.LanguageRuntimes;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Project;
@@ -12,6 +14,8 @@ import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.runtime.base.DokkaResolver;
 import cc.jumpkick.runtime.base.KspResolver;
+import cc.jumpkick.scala.ScalaResolver;
+import cc.jumpkick.util.MinimalToml;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -21,9 +25,10 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The exact pins a manifest's framework and tool tables carry, read the way the engine reads them:
- * {@code [dokka] version} pins {@link DokkaResolver#CLI}, {@code [build] ksp-version} pins {@link
- * KspResolver#KSP_AA_MODULE}, every {@code [[contribute.platform-dependency]]} of an active plugin
+ * The exact pins a manifest's language keys and framework and tool tables carry, read the way the
+ * engine reads them: the root {@code kotlin}, {@code groovy} and {@code scala} keys pin their
+ * compilers, {@code [dokka] version} pins {@link DokkaResolver#CLI}, {@code [build] ksp-version}
+ * pins {@link KspResolver#KSP_AA_MODULE}, every {@code [[contribute.platform-dependency]]} of an active plugin
  * whose version comes from its table ({@code [spring-boot] version} → {@code
  * spring-boot-dependencies}, {@code [micronaut] version} → {@code micronaut-platform}), and every
  * {@code [[contribute.step-dependency]]} of an active plugin whose coordinate takes its version
@@ -34,7 +39,9 @@ import org.jspecify.annotations.Nullable;
  * {@code unpack}), or {@code ${entry.<key>}} in the version slot of a per-entry coordinate. The
  * group and artifact segments are templates too, filled from the table and the entry through
  * {@link Interpolation} as the step's own coordinate is, so a plugin that templates them pins the
- * module they name. A floating selector is no pin and is left to the relock.
+ * module they name. Only a key the manifest writes is a pin — a schema default moves with jk — and
+ * a floating selector is no pin and is left to the relock. {@code jk update} moves exactly these
+ * pins and {@code jk outdated} reports exactly these.
  */
 final class ToolPins {
 
@@ -46,29 +53,58 @@ final class ToolPins {
     /** {@code ${entry.<key>}} as a coordinate's whole {@code group:artifact:version} head, or its version slot. */
     private static final Pattern ENTRY_KEY = Pattern.compile("\\$\\{entry\\.([A-Za-z0-9_-]+)}");
 
+    /** The Kotlin compiler the root {@code kotlin} key pins. */
+    private static final String KOTLIN_COMPILER = "org.jetbrains.kotlin:kotlin-compiler-embeddable";
+
     /**
-     * One pin: {@code key} of {@code [table]} holds {@code literal}, which pins {@code module} at
-     * exactly {@code version}; {@code handle} is what {@code jk update <handle>} selects it by — the
-     * table for a plain table, the entry name for a sub-table.
+     * One pin: {@code key} of {@code [table]} (a root key when {@code table} is empty) holds {@code
+     * literal}, which pins {@code module} at exactly {@code version}; {@code handle} is what {@code jk
+     * update <handle>} selects it by — the key for a root key, the table for a plain table, the entry
+     * name for a sub-table.
      */
     record ToolPin(String table, String key, String handle, String module, String version, String literal) {
+
+        /** Where the pin is written: {@code kotlin}, {@code dokka.version}, {@code protobuf.grpc-java.plugin}. */
+        String path() {
+            return table.isEmpty() ? key : table + "." + key;
+        }
 
         /** The key's string with the pin moved to {@code to}: the version alone, or the coordinate's version slot. */
         String rewritten(String to) {
             return literal.equals(version) ? to : literal.substring(0, literal.lastIndexOf(':') + 1) + to;
         }
+
+        /**
+         * {@code text} with this pin moved to {@code to}, keeping the line's spacing and comment.
+         *
+         * @throws IllegalStateException when the manifest does not write the key as a string
+         */
+        String rewrite(String text, String to) {
+            return table.isEmpty()
+                    ? JkBuildEditor.setRootScalar(text, key, MinimalToml.quote(rewritten(to)))
+                    : JkBuildEditor.setTableString(text, table, key, rewritten(to));
+        }
+
+        /** True when {@code text} writes this key itself, rather than the table's schema defaulting it. */
+        boolean writtenIn(String text) {
+            if (table.isEmpty()) return true; // a root key parses to null unless written
+            try {
+                rewrite(text, version);
+                return true;
+            } catch (IllegalStateException absent) {
+                return false;
+            }
+        }
     }
 
-    /**
-     * Every tool pin {@code build} declares. {@code text} is the manifest as written, consulted for
-     * the {@code [dokka]} header because the parsed table defaults when absent.
-     */
+    /** Every pin {@code build} declares; {@code text} is its manifest as written. */
     static List<ToolPin> of(JkBuild build, String text) {
         List<ToolPin> out = new ArrayList<>();
-        if (text.lines().anyMatch(l -> l.strip().equals("[dokka]"))) {
-            String raw = build.build().dokka().version().raw().trim();
-            exact(raw).ifPresent(v -> out.add(new ToolPin("dokka", "version", "dokka", DokkaResolver.CLI, v, raw)));
-        }
+        language("kotlin", build.project().kotlin(), KOTLIN_COMPILER, out);
+        language("groovy", build.project().groovy(), LanguageRuntimes.GROOVY, out);
+        language("scala", build.project().scala(), ScalaResolver.COMPILER_MODULE, out);
+        String dokka = build.build().dokka().version().raw().trim();
+        exact(dokka).ifPresent(v -> out.add(new ToolPin("dokka", "version", "dokka", DokkaResolver.CLI, v, dokka)));
         String ksp = build.build().kspVersion();
         if (ksp != null) out.add(new ToolPin("build", "ksp-version", "ksp", KspResolver.KSP_AA_MODULE, ksp, ksp));
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(null, build.plugins())) {
@@ -88,7 +124,14 @@ final class ToolPins {
                 }
             }
         }
-        return out;
+        return out.stream().filter(p -> p.writtenIn(text)).toList();
+    }
+
+    /** A root language key's exact pin on its compiler. */
+    private static void language(String key, @Nullable VersionSelector selector, String module, List<ToolPin> out) {
+        if (selector instanceof VersionSelector.Exact e) {
+            out.add(new ToolPin("", key, key, module, e.version(), e.version()));
+        }
     }
 
     /** {@code <group>:<artifact>:${config.<key>}…}: the table's own key pins the module the head names. */

@@ -150,8 +150,16 @@ public final class JkOutdatedMarkdown {
         return sb.toString();
     }
 
-    /** The coordinate in code, with the catalog short name after it when it says something new. */
+    /**
+     * The coordinate in code, with the catalog short name after it when it says something new and
+     * the coordinate it moved to, whose release Latest is.
+     */
     private static String dependency(OutdatedReport.Rollup r) {
+        String moved = r.relocated().isEmpty() ? "" : " → moved to " + code(r.relocated());
+        return named(r) + moved;
+    }
+
+    private static String named(OutdatedReport.Rollup r) {
         String c = code(r.coordinate());
         String d = r.display();
         if (d.isEmpty() || d.equals(r.coordinate())) return c;

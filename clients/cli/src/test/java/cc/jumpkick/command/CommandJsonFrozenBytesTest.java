@@ -113,7 +113,8 @@ class CommandJsonFrozenBytesTest {
         var row = new OutdatedReport.Row("app", "g:a", "g:a", "compile", "1.0", null, "2.0", "major");
         assertThat(OutdatedCommand.toJson(List.of(row)))
                 .isEqualTo("[{\"module\":\"app\",\"dependency\":\"g:a\",\"display\":\"g:a\",\"scope\":\"compile\","
-                        + "\"current\":\"1.0\",\"compatible\":null,\"latest\":\"2.0\",\"tip\":\"major\"}]");
+                        + "\"current\":\"1.0\",\"compatible\":null,\"latest\":\"2.0\",\"tip\":\"major\","
+                        + "\"relocated\":\"\"}]");
         assertThat(OutdatedCommand.toJson(List.of())).isEqualTo("[]");
     }
 
