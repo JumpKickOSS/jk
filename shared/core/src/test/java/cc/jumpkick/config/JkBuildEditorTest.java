@@ -758,14 +758,13 @@ class JkBuildEditorTest {
 
                 [[kotlin-plugins]]
                 coordinate = "org.jetbrains.kotlin:kotlin-serialization:2.1.0"
-                guava = "not a dependency"
+                id = "guava"
                 """;
         String added =
                 JkBuildEditor.addDependency(start, Scope.MAIN, "jackson", "com.fasterxml.jackson", "jackson", "1.0");
         assertThat(added)
                 .contains("guava = \"33.4.0-jre\"\njackson = \"com.fasterxml.jackson:jackson:1.0\"\n")
-                .contains(
-                        "coordinate = \"org.jetbrains.kotlin:kotlin-serialization:2.1.0\"\nguava = \"not a dependency\"\n");
+                .contains("coordinate = \"org.jetbrains.kotlin:kotlin-serialization:2.1.0\"\nid = \"guava\"\n");
         assertThat(JkBuildParser.parse(added).dependencies().of(Scope.MAIN))
                 .extracting(Dependency::name)
                 .containsExactly("guava", "jackson");
