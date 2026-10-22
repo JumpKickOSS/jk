@@ -47,8 +47,13 @@ public final class GraphAnalysis {
 
     /** The {@code topN} highest-degree entities: files, concepts and method stubs excluded. */
     public static List<String> godNodes(CodeGraph graph, int topN) {
+        return godNodes(graph, topN, Scope.ALL);
+    }
+
+    /** {@link #godNodes(CodeGraph, int)} among the nodes in {@code scope}. */
+    public static List<String> godNodes(CodeGraph graph, int topN, Scope scope) {
         return graph.nodes().stream()
-                .filter(n -> !isStructural(graph, n) && !NOISE.contains(n.label()))
+                .filter(n -> !isStructural(graph, n) && !NOISE.contains(n.label()) && scope.contains(n))
                 .sorted(Comparator.comparingInt((GraphNode n) -> -graph.degree(n.id()))
                         .thenComparing(GraphNode::id))
                 .limit(topN)

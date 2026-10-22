@@ -65,6 +65,9 @@ public final class GraphJson {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("schema_version", SCHEMA_VERSION);
         meta.put("generator", generator);
+        if (!graph.modules().list().isEmpty())
+            meta.put("jk_modules", graph.modules().tree());
+        if (!graph.stale().isEmpty()) meta.put("jk_stale", StaleRef.tree(graph.stale()));
         out.write('{');
         key(out, "directed", true);
         out.write("false");
@@ -137,7 +140,12 @@ public final class GraphJson {
         for (Object o : MiniJson.list(doc, "links")) {
             if (o instanceof Map<?, ?> m) edges.add(edge(m));
         }
-        return CodeGraph.of(nodes, edges, community, names);
+        CodeGraph graph = CodeGraph.of(nodes, edges, community, names);
+        if (MiniJson.get(doc, "graph") instanceof Map<?, ?> meta) {
+            graph.modules(Modules.ofTree(meta.get("jk_modules")));
+            graph.stale(StaleRef.ofTree(meta.get("jk_stale")));
+        }
+        return graph;
     }
 
     /**

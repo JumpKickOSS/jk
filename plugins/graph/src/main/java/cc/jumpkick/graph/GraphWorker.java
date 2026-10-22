@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.graph;
 
+import cc.jumpkick.codegraph.Modules;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.command.Exit;
@@ -40,15 +41,7 @@ public final class GraphWorker implements Plugin {
         }
         PluginConfig c = PluginSpec.read(Path.of(args.get(0))).config();
         try {
-            GraphService.Answer answer = GraphService.run(
-                    Path.of(c.string("root")),
-                    Path.of(c.string("out")),
-                    indexes(c),
-                    new ScriptReader(
-                            c.stringOpt("node").map(Path::of).orElse(null),
-                            c.stringOpt("oxc").map(Path::of).orElse(null)),
-                    request(c),
-                    new Progress(out));
+            GraphService.Answer answer = GraphService.run(workspace(c), request(c), new Progress(out));
             GraphBuild.Result b = answer.build();
             Map<String, Object> event = new LinkedHashMap<>();
             event.put("t", "answer");
@@ -61,6 +54,7 @@ public final class GraphWorker implements Plugin {
             event.put("classes", b.classes());
             event.put("millis", b.millis());
             event.put("dir", b.dir().toString());
+            if (answer.note() != null) event.put("note", answer.note());
             out.emit(MiniJson.write(event));
             return 0;
         } catch (IllegalArgumentException refused) {
@@ -83,7 +77,21 @@ public final class GraphWorker implements Plugin {
                 (int) c.intValue("topN", 10),
                 c.stringOpt("relation").orElse(null),
                 c.bool("rebuild", false),
-                c.bool("noRefresh", false));
+                c.bool("noRefresh", false),
+                c.stringOpt("scope").orElse(null),
+                c.stringList("modulePrefixes"),
+                c.stringOpt("sourceSet").orElse(null),
+                options(c.stringList("options")));
+    }
+
+    /** {@code key=value} settings as a map; a later key wins. */
+    static Map<String, String> options(List<String> rows) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String row : rows) {
+            int eq = row.indexOf('=');
+            if (eq > 0) out.put(row.substring(0, eq), row.substring(eq + 1));
+        }
+        return out;
     }
 
     /** {@code index \t modulePrefix \t digest \t classes}, one per class set. */
@@ -94,6 +102,42 @@ public final class GraphWorker implements Plugin {
             if (f.length == 4) out.add(new GraphBuild.ClassIndex(Path.of(f[0]), f[1], f[2], Integer.parseInt(f[3])));
         }
         return out;
+    }
+
+    static GraphService.Workspace workspace(PluginConfig c) {
+        return new GraphService.Workspace(
+                Path.of(c.string("root")),
+                Path.of(c.string("out")),
+                indexes(c),
+                modules(c),
+                new ScriptReader(
+                        c.stringOpt("node").map(Path::of).orElse(null),
+                        c.stringOpt("oxc").map(Path::of).orElse(null)),
+                c.bool("graphify", false),
+                aliases(c.stringList("aliases")),
+                c.stringList("rules"),
+                LibraryApi.jars(c.stringList("libraries")),
+                c.stringOpt("apiCache").map(Path::of).orElse(null));
+    }
+
+    /** {@code term \t word \t word …}, one per term. */
+    static Map<String, List<String>> aliases(List<String> rows) {
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        for (String row : rows) {
+            String[] f = row.split("\t", -1);
+            if (f.length > 1) out.put(f[0], List.of(f).subList(1, f.length));
+        }
+        return out;
+    }
+
+    /** {@code prefix \t compact}, one per module. */
+    static Modules modules(PluginConfig c) {
+        List<Modules.Module> out = new ArrayList<>();
+        for (String row : c.stringList("modules")) {
+            String[] f = row.split("\t", -1);
+            if (f.length == 2) out.add(new Modules.Module(f[0], Boolean.parseBoolean(f[1])));
+        }
+        return new Modules(out);
     }
 
     /** About one progress event per percent of the files. */

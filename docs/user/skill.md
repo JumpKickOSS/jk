@@ -21,7 +21,7 @@ default directory is `<project>/.agents/skills`, the project-level location clie
 skill's `name` matches the `jk/` directory it is installed into.
 
 Topics: `dependencies`, `tests`, `workspaces`, `lockfile`, `imports`, `plugins`, `guards`,
-`layout`, `jdk`, `engine`.
+`layout`, `jdk`, `engine`, `graph`.
 
 ## What an agent does
 

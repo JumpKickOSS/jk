@@ -2,7 +2,10 @@
 package cc.jumpkick.engine.graph;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.config.GraphConfig;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.plugin.HeapLadder;
@@ -19,11 +22,16 @@ import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.runtime.base.PluginLaunch;
@@ -34,6 +42,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -81,9 +90,16 @@ public final class GraphRunner {
         ReentrantLock lock = LOCKS.computeIfAbsent(root, k -> new ReentrantLock());
         lock.lock();
         try {
+            List<String> prefixes;
+            try {
+                prefixes = modulePrefixes(root, req.modules());
+            } catch (IOException | RuntimeException refused) {
+                return GraphAck.error(String.valueOf(refused.getMessage()));
+            }
             List<String> indexes = req.noRefresh() ? List.of() : classIndexes(root);
+            List<String> modules = req.noRefresh() ? List.of() : moduleRows(root);
             GraphScripts.Tools scripts = req.noRefresh() ? null : GraphScripts.of(root);
-            Path spec = spec(root, req, indexes, scripts);
+            Path spec = spec(root, req, indexes, modules, prefixes, scripts);
             try {
                 return forkWithHeap(root, spec, progress);
             } finally {
@@ -203,17 +219,40 @@ public final class GraphRunner {
                 Jsonl.intValue(json, "extracted", 0),
                 Jsonl.intValue(json, "classes", 0),
                 Jsonl.longValue(json, "millis", 0),
-                dir == null ? "" : dir);
+                dir == null ? "" : dir,
+                Jsonl.str(json, "note"));
     }
 
-    private static Path spec(Path root, GraphRequest r, List<String> indexes, GraphScripts.@Nullable Tools scripts)
+    private static Path spec(
+            Path root,
+            GraphRequest r,
+            List<String> indexes,
+            List<String> modules,
+            List<String> prefixes,
+            GraphScripts.@Nullable Tools scripts)
             throws IOException {
-        return specWriter(root, r, indexes, scripts).writeTempSpec();
+        GraphConfig config = graphConfig(root);
+        List<String> rules = "rules".equals(r.op()) && !r.args().isEmpty()
+                ? GraphRules.rows(root, relative(root, r.args().getFirst()), allModulePrefixes(root))
+                : List.of();
+        boolean apis = "read".equals(r.op()) || "find".equals(r.op());
+        return specWriter(root, r, indexes, modules, scripts)
+                .configList("rules", rules)
+                .configList("libraries", apis ? libraryRows(root) : List.of())
+                .configString("apiCache", apis ? JkStores.resolve("graph-api").toString() : null)
+                .configList("modulePrefixes", prefixes)
+                .configBool("graphify", config.graphify() || r.options().contains("graphify=true"))
+                .configList("aliases", aliasRows(config))
+                .writeTempSpec();
     }
 
     /** The spec of one operation on {@code root}: the worker's whole input. */
     static SpecWriter specWriter(
-            Path root, GraphRequest r, List<String> indexes, GraphScripts.@Nullable Tools scripts) {
+            Path root,
+            GraphRequest r,
+            List<String> indexes,
+            List<String> modules,
+            GraphScripts.@Nullable Tools scripts) {
         SpecWriter w = new SpecWriter()
                 .op(PluginProtocol.OP_COMMAND, "graph", "jk-graph")
                 .configString("root", root.toString())
@@ -231,7 +270,11 @@ public final class GraphRunner {
                 .configString("relation", r.relation())
                 .configBool("rebuild", r.rebuild())
                 .configBool("noRefresh", r.noRefresh())
-                .configList("classIndexes", indexes);
+                .configList("classIndexes", indexes)
+                .configList("modules", modules)
+                .configString("scope", r.scope())
+                .configString("sourceSet", r.sourceSet())
+                .configList("options", r.options());
         if (scripts != null) {
             w.configString("node", scripts.node().toString())
                     .configString("oxc", scripts.oxc().toString());
@@ -260,6 +303,101 @@ public final class GraphRunner {
                     Log.debug("graph: no facts index for " + classes, unreadable);
                 }
             }
+        }
+        return out;
+    }
+
+    /**
+     * The directories, relative to {@code root} and ending in {@code /} ({@code ""} for the root),
+     * of the modules {@code selector} names; none for no selector.
+     *
+     * @throws IllegalArgumentException when the selector names no module
+     */
+    static List<String> modulePrefixes(Path root, @Nullable String selector) throws IOException {
+        if (selector == null || selector.isBlank()) return List.of();
+        Path manifest = ManifestPaths.manifestIn(root);
+        if (!Files.isRegularFile(manifest)) throw new IllegalArgumentException("-m needs a jk.toml at " + root);
+        ModuleSelection.Result picked = ModuleSelection.resolve(root, JkBuildParser.parse(manifest), selector);
+        String refused = picked.errorMessage();
+        if (refused != null) throw new IllegalArgumentException(refused);
+        List<String> out = new ArrayList<>();
+        for (Path dir : picked.moduleDirs()) {
+            String rel =
+                    root.relativize(dir.toAbsolutePath().normalize()).toString().replace('\\', '/');
+            out.add(rel.isEmpty() ? "" : rel + "/");
+        }
+        out.sort(null);
+        return out;
+    }
+
+    /** {@code path} from the workspace root with {@code /} separators; a relative path is already that. */
+    static String relative(Path root, String path) {
+        Path p = Path.of(path);
+        String rel = p.isAbsolute()
+                ? root.relativize(p.normalize()).toString()
+                : p.normalize().toString();
+        return rel.replace('\\', '/');
+    }
+
+    /** Every module's directory under the root, ending in {@code /}; {@code ""} for the root. */
+    static List<String> allModulePrefixes(Path root) {
+        List<String> out = new ArrayList<>();
+        for (Path dir : modules(root).keySet()) {
+            String rel = root.relativize(dir).toString().replace('\\', '/');
+            out.add(rel.isEmpty() ? "" : rel + "/");
+        }
+        return out;
+    }
+
+    /**
+     * {@code coord \t jar} for every jar of the workspace lock the store holds, every scope: what
+     * {@code read} and {@code find} answer a type the workspace does not declare from.
+     */
+    static List<String> libraryRows(Path root) {
+        Path lock = root.resolve(ManifestNames.LOCK);
+        if (!Files.isRegularFile(lock)) return List.of();
+        List<String> out = new ArrayList<>();
+        try {
+            Lockfile locked = LockfileReader.read(lock);
+            for (ClasspathResolver.Entry e :
+                    new ClasspathResolver(JkStores.storeCas()).entriesOnDisk(locked, EnumSet.allOf(Scope.class))) {
+                Path jar = e.jar();
+                if (jar != null && jar.getFileName().toString().endsWith(".jar")) {
+                    out.add(e.artifact().displayCoord() + "\t" + jar);
+                }
+            }
+        } catch (IOException | RuntimeException unreadable) {
+            Log.debug("graph: no locked jars for " + root, unreadable);
+        }
+        return out;
+    }
+
+    /** The root manifest's {@code [graph]} table; empty without one or when it does not parse. */
+    static GraphConfig graphConfig(Path root) {
+        try {
+            return JkBuildParser.graphConfig(ManifestPaths.manifestIn(root));
+        } catch (RuntimeException unparsable) {
+            Log.debug("graph: no [graph] settings for " + root, unparsable);
+            return GraphConfig.EMPTY;
+        }
+    }
+
+    /** {@code term \t word \t word …} for every alias. */
+    static List<String> aliasRows(GraphConfig config) {
+        List<String> out = new ArrayList<>();
+        config.aliases().forEach((term, words) -> {
+            if (!words.isEmpty()) out.add(term + "\t" + String.join("\t", words));
+        });
+        out.sort(null);
+        return out;
+    }
+
+    /** {@code prefix \t compact} for every module: its directory under the root and its layout. */
+    static List<String> moduleRows(Path root) {
+        List<String> out = new ArrayList<>();
+        for (Path dir : modules(root).keySet()) {
+            String rel = root.relativize(dir).toString().replace('\\', '/');
+            out.add((rel.isEmpty() ? "" : rel + "/") + "\t" + ModuleLayout.isCompact(dir));
         }
         return out;
     }

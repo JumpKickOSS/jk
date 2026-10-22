@@ -1,18 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.graph;
 
+import cc.jumpkick.codegraph.Budget;
 import cc.jumpkick.codegraph.CodeGraph;
 import cc.jumpkick.codegraph.GraphJson;
 import cc.jumpkick.codegraph.GraphQuery;
 import cc.jumpkick.codegraph.GraphReport;
 import cc.jumpkick.codegraph.GraphSnapshot;
 import cc.jumpkick.codegraph.GraphTools;
+import cc.jumpkick.codegraph.Modules;
+import cc.jumpkick.codegraph.Scope;
+import cc.jumpkick.codegraph.SymbolFinder;
+import cc.jumpkick.codegraph.SymbolReader;
+import cc.jumpkick.config.EnvValues;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -26,9 +34,25 @@ public final class GraphService {
 
     /** The operations {@link #run} answers. */
     public static final List<String> OPS = List.of(
-            "build", "query", "explain", "path", "node", "neighbors", "community", "god-nodes", "stats", "report");
+            "build",
+            "query",
+            "explain",
+            "path",
+            "node",
+            "neighbors",
+            "community",
+            "god-nodes",
+            "stats",
+            "report",
+            "read",
+            "find",
+            "rules");
 
-    /** One operation's arguments, as the CLI and MCP surfaces collect them. */
+    /**
+     * One operation's arguments, as the CLI and MCP surfaces collect them. {@code modulePrefixes} are
+     * the selected modules' directories, already resolved by the engine; {@code options} are the
+     * operation's named settings.
+     */
     public record Request(
             String op,
             List<String> args,
@@ -42,23 +66,92 @@ public final class GraphService {
             int topN,
             @Nullable String relation,
             boolean rebuild,
-            boolean noRefresh) {}
+            boolean noRefresh,
+            @Nullable String scope,
+            List<String> modulePrefixes,
+            @Nullable String sourceSet,
+            Map<String, String> options) {
 
-    /** An operation's text and the refresh it was answered from. */
-    public record Answer(String text, GraphBuild.Result build) {}
+        public Request {
+            modulePrefixes = List.copyOf(modulePrefixes);
+            options = Map.copyOf(options);
+        }
 
-    public static Answer run(
+        /** The same request with no scope, settings or module selection. */
+        public Request(
+                String op,
+                List<String> args,
+                String mode,
+                int depth,
+                int budget,
+                List<String> contexts,
+                boolean all,
+                boolean undirected,
+                int maxHops,
+                int topN,
+                @Nullable String relation,
+                boolean rebuild,
+                boolean noRefresh) {
+            this(
+                    op,
+                    args,
+                    mode,
+                    depth,
+                    budget,
+                    contexts,
+                    all,
+                    undirected,
+                    maxHops,
+                    topN,
+                    relation,
+                    rebuild,
+                    noRefresh,
+                    null,
+                    List.of(),
+                    null,
+                    Map.of());
+        }
+    }
+
+    /**
+     * What the engine knows about the workspace: its root, where its graph lives, every module's
+     * class facts index, its modules, the script reader, whether {@code graphify-out/} is kept
+     * current, the {@code [graph.aliases]} (term → outside words), for {@code rules} the guard rules
+     * the engine matched to the file (one JSON object each), and for {@code read} and {@code find} the
+     * locked jars and where their API indexes are kept.
+     */
+    public record Workspace(
             Path root,
             Path out,
             List<GraphBuild.ClassIndex> indexes,
+            Modules modules,
             ScriptReader scripts,
-            Request r,
-            GraphBuild.Progress progress)
-            throws IOException {
+            boolean graphify,
+            Map<String, List<String>> aliases,
+            List<String> guardRules,
+            List<LibraryApi.Jar> libraries,
+            @Nullable Path apiCache) {
+
+        public Workspace {
+            indexes = List.copyOf(indexes);
+            aliases = Map.copyOf(aliases);
+            guardRules = List.copyOf(guardRules);
+            libraries = List.copyOf(libraries);
+        }
+    }
+
+    /** An operation's text, the refresh it was answered from, and a note for the user or {@code null}. */
+    public record Answer(
+            String text, GraphBuild.Result build, @Nullable String note) {}
+
+    public static Answer run(Workspace w, Request r, GraphBuild.Progress progress) throws IOException {
         if (!OPS.contains(r.op())) throw new IllegalArgumentException("unknown graph operation '" + r.op() + "'");
-        GraphBuild.Result build = r.noRefresh() ? stored(out) : null;
-        if (build == null) build = GraphBuild.refresh(root, out, indexes, scripts, r.rebuild(), progress);
-        return new Answer(text(build, r), build);
+        GraphBuild.Result build = r.noRefresh() ? stored(w.out()) : null;
+        if (build == null) {
+            build = GraphBuild.refresh(w.root(), w.out(), w.indexes(), w.modules(), w.scripts(), r.rebuild(), progress);
+        }
+        String note = w.graphify() ? GraphifyMirror.sync(w.root(), w.out(), build.changed()) : null;
+        return new Answer(text(w, build, r), build, note);
     }
 
     /**
@@ -91,14 +184,16 @@ public final class GraphService {
         return new GraphBuild.Result(graph, key.files(), 0, 0, out, 0, false, key.commit());
     }
 
-    static String text(GraphBuild.Result build, Request r) {
+    static String text(Workspace w, GraphBuild.Result build, Request r) {
         CodeGraph g = build.graph();
-        GraphTools tools = new GraphTools(g);
+        Scope scope = Scope.of(r.scope(), r.modulePrefixes(), r.sourceSet(), g.modules());
+        GraphTools tools = new GraphTools(g, scope);
         List<String> a = r.args();
         return switch (r.op()) {
             case "build" -> "";
             case "query" ->
-                new GraphQuery(g).query(String.join(" ", a), mode(r.mode()), r.depth(), r.budget(), r.contexts());
+                new GraphQuery(g, scope, w.aliases())
+                        .query(String.join(" ", a), mode(r.mode()), r.depth(), r.budget(), r.contexts());
             case "explain" -> tools.explain(arg(a, 0, "a node name"), r.all());
             case "path" ->
                 tools.shortestPath(arg(a, 0, "a source"), arg(a, 1, "a target"), r.maxHops(), r.undirected());
@@ -109,8 +204,49 @@ public final class GraphService {
             case "god-nodes" -> tools.godNodes(r.topN());
             case "stats" -> tools.stats(build.commit());
             case "report" -> GraphReport.write(g, build.commit());
+            case "rules" -> RulesFor.answer(g, w.root(), arg(a, 0, "a file"), w.guardRules());
+            case "find" -> find(w, g, scope, r, a);
+            case "read" ->
+                new SymbolReader(
+                                g,
+                                scope,
+                                rel -> source(w.root(), rel),
+                                new LibraryApi(w.libraries(), w.apiCache())::describe)
+                        .read(
+                                String.join(";", a.isEmpty() ? List.of(arg(a, 0, "an address")) : a),
+                                SymbolReader.View.of(r.options().get("view")),
+                                r.budget());
             default -> throw new IllegalArgumentException("unknown graph operation '" + r.op() + "'");
         };
+    }
+
+    /** Workspace declarations, or with {@code libraries=true} the locked jars' types by name glob and kind. */
+    private static String find(Workspace w, CodeGraph g, Scope scope, Request r, List<String> a) {
+        String name = a.isEmpty() ? null : String.join(" ", a);
+        if (!EnvValues.parseBool(r.options().get("libraries")).orElse(false)) {
+            return SymbolFinder.of(r.options(), name).find(g, scope, r.budget());
+        }
+        if (name == null) throw new IllegalArgumentException("a library search needs a name glob: *Mapper");
+        String kinds = r.options().getOrDefault("kind", "");
+        List<String> wanted = kinds.isBlank()
+                ? List.of()
+                : List.of(kinds.toLowerCase(Locale.ROOT).replace(" ", "").split(","));
+        List<String> rows = new LibraryApi(w.libraries(), w.apiCache()).find(SymbolFinder.namePattern(name), wanted);
+        List<String> lines = new ArrayList<>();
+        lines.add(rows.size() == 1 ? "1 library type" : rows.size() + " library types");
+        lines.addAll(rows);
+        return Budget.lines(lines, r.budget(), "Narrow the name glob or add a kind");
+    }
+
+    /** The text of the file at {@code rel} under {@code root}; {@code null} when it cannot be read. */
+    private static @Nullable String source(Path root, String rel) {
+        try {
+            Path file = root.resolve(rel).normalize();
+            if (!file.startsWith(root.normalize()) || !Files.isRegularFile(file)) return null;
+            return Files.readString(file);
+        } catch (IOException | RuntimeException unreadable) {
+            return null;
+        }
     }
 
     private static GraphQuery.Mode mode(String mode) {

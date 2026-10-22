@@ -8,8 +8,12 @@ everything it mentions.
 ```bash
 jk graph                                   # build or refresh target/graph/
 jk graph query "how is the order total computed"
+jk graph read OrderService.total           # that method's source, not the whole file
+jk graph read OrderService -w structure    # the type's declarations without bodies
+jk graph find -t interface -I Repository   # declarations by kind, supertype, annotation, name
 jk graph explain OrderService              # one node and its connections
 jk graph path OrderService PriceCalculator -U
+jk graph rules src/main/java/com/acme/shop/OrderService.java
 jk graph god-nodes                         # the most-connected entities
 jk graph report                            # GRAPH_REPORT.md: god nodes, surprises, communities
 ```
@@ -30,6 +34,10 @@ Calls, inheritance and type references come from the compiled classes, resolved 
 they are exact (`EXTRACTED`). A tree that does not compile yet still gets its declarations from the
 source; build to bring the call edges up to date. Links from prose and config keys matched by name
 are `INFERRED`.
+
+Every JVM declaration also carries its kind (class, interface, enum, record, annotation, object,
+method, constructor, function, property), visibility, last line, annotations, supertypes and the
+first sentence of its doc comment. `read`, `find` and the search use them.
 
 ## How it stays current
 
@@ -52,9 +60,9 @@ EDGE OrderService --inherits [EXTRACTED]--> BaseService at=src/main/java/com/acm
 ```
 
 The question's words pick the starting nodes (an exact name beats a prefix beats a substring; rare
-words weigh more), the graph is walked `-d` hops (default 3), and the result is cut to
-`-b` tokens (default 2000), nearest nodes first. A cut answer says how large a budget would
-show everything.
+words weigh more; a word of a doc comment counts a little), the graph is walked `-d` hops (default
+3), and the result is cut to `-b` tokens (default 2000), nearest nodes first. A cut answer says how
+large a budget would show everything. A question that matches nothing lists the closest names.
 
 | Option | Meaning |
 |---|---|
@@ -64,6 +72,70 @@ show everything.
 | `-c`, `--context call,field,…` | Follow only edges with these contexts; a question that says "calls" or "imports" sets it |
 | `-n`, `--no-refresh` | Answer from the last graph without looking at the tree |
 
+## Scope
+
+`query`, `explain`, `neighbors`, `god-nodes`, `read` and `find` take the same three narrowing
+options. A node outside the scope is neither a starting point nor walked through.
+
+| Option | Meaning |
+|---|---|
+| `-g`, `--scope <glob;glob;!glob>` | Paths from the workspace root. `*` stays in one directory, `**` crosses them, `{a,b}` is either; `!` excludes. A path without wildcards is everything under it |
+| `-m`, `--modules <sel>` | Modules, as `jk build -m` selects them; a nested module is not part of its parent |
+| `-S`, `--source-set main\|test` | Main sources, or any test suite |
+
+```bash
+jk graph query "retry policy" -m server/engine -S main
+jk graph find '*Test' -g 'server/**;!**/integration/**'
+```
+
+## Reading a symbol
+
+`jk graph read <address>` answers with the source of what the address names, in the richest view
+the budget fits: `content` (the numbered source of each span), then `structure` (each declaration
+without its body, annotations above it), then `headline` (one line per symbol with its kind, span and
+doc summary). `-w` picks one.
+
+| Address | Reads |
+|---|---|
+| `OrderService`, `com.acme.shop.OrderService` | The type |
+| `OrderService.total` | The member; every overload of it |
+| `OrderService.*` | The type's direct members |
+| `OrderService.**` | Everything declared inside it |
+| `src/main/java/com/acme/shop/OrderService.java` | The file |
+| `src/**/*Service.java;!**/legacy/**` | Every matching file |
+| `…#line=40,60` | Only those lines |
+
+A name several files declare is refused with the candidates; qualify it. A type no workspace file
+declares is read from the jars `jk-lock.toml` pins, at the version the lock pins:
+`jk graph read ObjectMapper.readValue` shows that method's public overloads with their generic
+signatures. Each jar's type list is read once and kept under the store.
+
+## Finding declarations
+
+`jk graph find [name-glob]` lists the declarations that pass every filter given, one line each with
+kind, visibility, name and span. Each filter takes a comma list.
+
+| Option | Matches |
+|---|---|
+| `-t`, `--kind` | `class`, `interface`, `enum`, `record`, `annotation`, `object`, `method`, `constructor`, `function`, `property`; `type` for every type, `member` for every method and function |
+| `-p`, `--visibility` | `public`, `protected`, `internal`, `package`, `private` |
+| `-E`, `--extends` | A superclass anywhere up the chain |
+| `-I`, `--implements` | A supertype anywhere above, interfaces included; library supertypes match by name |
+| `-A`, `--annotated` | An annotation on the declaration (`Transactional` or `@Transactional`) |
+| `-l`, `--libraries` | Search the locked jars' types instead, by name glob and kind |
+
+```bash
+jk graph find -A RestController
+jk graph find -t member -p public -m server/engine 'get*'
+jk graph find -l '*Mapper' -t class
+```
+
+## Before editing a file
+
+`jk graph rules <file>` lists the guard rules from `jk-guards.toml` whose reach covers the file (its
+module, its source set, the rule's `files` and `languages`, no `allow` entry for it), each with the
+sanctioned alternative and why, and the `NOTE:`/`WHY:` comments the file carries.
+
 ## Outputs
 
 `target/graph/` at the workspace root:
@@ -71,19 +143,43 @@ show everything.
 | File | Contents |
 |---|---|
 | `graph.json` | The graph in graphify's node-link format (`graph.schema_version` 1) |
-| `GRAPH_REPORT.md` | God nodes, surprising connections and communities: one read to orient |
+| `GRAPH_REPORT.md` | God nodes, surprising connections, import cycles, stale doc references and communities: one read to orient |
 | `graph.bin` | A compact copy jk reloads quickly |
 | `files.tsv`, `fragments.jsonl` | Per-file state that makes the next refresh incremental |
+
+The report's stale doc references are relative links to files that do not exist, and qualified class
+names in one of the workspace's packages that no source declares.
+
+## Settings
+
+The workspace root's `jk.toml`:
+
+```toml
+[graph]
+graphify = true                          # keep graphify-out/ current for graphify's tools
+
+[graph.aliases]
+Tariff = ["price", "rate card"]          # a question saying "price" also starts at Tariff
+```
+
+An alias maps a name in the code to the words people use for it. A question holding one of the words
+also starts from the name.
 
 ### graphify
 
 `graph.json` follows [graphify](https://github.com/Graphify-Labs/graphify)'s format and node ids, so
-graphify's tools read it unchanged: `GRAPHIFY_OUT=target/graph graphify query "…"`. jk's graph has no
-LLM pass: documents are read for their structure, links and code mentions only.
+graphify's tools read it unchanged. jk's declaration facts sit under each node's `jk` key, which
+graphify keeps and does not search. graphify's skill looks for `graphify-out/graph.json` in the
+working directory: `[graph] graphify = true` (or `jk graph build --graphify` once) writes
+`graphify-out/graph.json` and `GRAPH_REPORT.md` on every refresh. When something else rewrites that
+`graph.json` (`graphify update`), the next refresh writes jk's graph back and says so. jk's graph has
+no LLM pass: documents are read for their structure, links and code mentions only.
 
 ## MCP
 
-The same operations are MCP tools under graphify's names: `query_graph`, `get_node`,
-`get_neighbors`, `get_community`, `god_nodes`, `graph_stats` and `shortest_path`. `query_graph`,
-`get_neighbors` and `shortest_path` are on the default `tools/list`; the rest are on the extended
-one, and `skill(topic=graph)` introduces them all. See [MCP](mcp.md).
+The graph operations are MCP tools. graphify's names keep graphify's arguments: `query_graph`,
+`get_node`, `get_neighbors`, `get_community`, `god_nodes`, `graph_stats` and `shortest_path`;
+`query_graph` and `god_nodes` also take `scope`, `modules` and `source_set`. jk adds `read_symbol`,
+`find_symbols` and `rules_for`. `query_graph`, `read_symbol`, `get_neighbors` and `shortest_path` are
+on the default `tools/list`; the rest are on the extended one, and `skill(topic=graph)` introduces
+them all. See [MCP](mcp.md).

@@ -90,6 +90,7 @@ public final class ManifestBuild {
                 "install",
                 "publish",
                 "guards",
+                ManifestGraph.TABLE,
                 "dokka",
                 ManifestTables.MULTI_RELEASE,
                 ManifestTables.WAR,

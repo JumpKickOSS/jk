@@ -72,7 +72,24 @@ class GraphRunnerTest {
 
     private static GraphRequest request(Path dir, String op, List<String> args) {
         return new GraphRequest(
-                dir.toString(), op, args, "bfs", 3, 2000, List.of(), false, true, 8, 10, null, false, false);
+                dir.toString(),
+                op,
+                args,
+                "bfs",
+                3,
+                2000,
+                List.of(),
+                false,
+                true,
+                8,
+                10,
+                null,
+                false,
+                false,
+                null,
+                null,
+                null,
+                List.of());
     }
 
     @Test
@@ -109,7 +126,11 @@ class GraphRunnerTest {
                         10,
                         null,
                         true,
-                        false),
+                        false,
+                        null,
+                        null,
+                        null,
+                        List.of()),
                 p -> {});
         assertThat(rebuilt.extracted()).isEqualTo(4);
     }

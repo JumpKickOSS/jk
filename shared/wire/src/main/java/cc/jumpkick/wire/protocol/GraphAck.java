@@ -7,8 +7,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * The answer to a {@link GraphRequest}: the operation's text (empty for {@code build}) and the
  * graph it was answered from. {@code files} files were walked and {@code extracted} of them read
- * again; {@code dir} is where {@code graph.json} was written. {@code error} is set, and nothing
- * else is meaningful, when the request failed.
+ * again; {@code dir} is where {@code graph.json} was written; {@code note} is one line the user
+ * should see, such as jk taking {@code graphify-out/} back. {@code error} is set, and nothing else
+ * is meaningful, when the request failed.
  */
 public record GraphAck(
         @Nullable String error,
@@ -20,10 +21,11 @@ public record GraphAck(
         int extracted,
         int classes,
         long millis,
-        String dir) {
+        String dir,
+        @Nullable String note) {
 
     public static GraphAck error(String message) {
-        return new GraphAck(message, "", 0, 0, 0, 0, 0, 0, 0, "");
+        return new GraphAck(message, "", 0, 0, 0, 0, 0, 0, 0, "", null);
     }
 
     public boolean ok() {
@@ -42,6 +44,7 @@ public record GraphAck(
                 .number("classes", classes)
                 .number("millis", millis)
                 .string("dir", dir)
+                .optionalString("note", note)
                 .finish();
     }
 
@@ -58,6 +61,7 @@ public record GraphAck(
                 Jsonl.intValue(json, "extracted", 0),
                 Jsonl.intValue(json, "classes", 0),
                 Jsonl.longValue(json, "millis", 0),
-                dir == null ? "" : dir);
+                dir == null ? "" : dir,
+                Jsonl.str(json, "note"));
     }
 }
