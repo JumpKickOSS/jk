@@ -4,7 +4,6 @@ package cc.jumpkick.lock;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
-import cc.jumpkick.model.VersionSelector;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -499,50 +498,6 @@ public record Lockfile(
     public @Nullable ToolEntry toolRow(Coordinate coord) {
         for (ToolEntry row : tools) {
             if (row.pins(coord)) return row;
-        }
-        return null;
-    }
-
-    /**
-     * The closure row for a tool rooted at {@code rootSpec} with {@code withSpecs} and {@code
-     * managedBySpec} as a manifest names them, or null when none matches. A spec with an exact
-     * version matches that version; a floating one ({@code ^3.38}) matches the version the row
-     * resolved it to.
-     */
-    public @Nullable ToolEntry closureRow(String rootSpec, List<String> withSpecs, @Nullable String managedBySpec) {
-        for (ToolEntry row : tools) {
-            if (!row.isClosure() || !specMatches(rootSpec, row.root())) continue;
-            if (row.with().size() != withSpecs.size()) continue;
-            boolean same = true;
-            for (int i = 0; i < withSpecs.size() && same; i++) {
-                same = specMatches(withSpecs.get(i), Coordinate.parse(row.with().get(i)));
-            }
-            if (!same) continue;
-            String managedBy = row.managedBy();
-            if (managedBySpec == null
-                    ? managedBy == null
-                    : managedBy != null && specMatches(managedBySpec, Coordinate.parse(managedBy))) {
-                return row;
-            }
-        }
-        return null;
-    }
-
-    private static boolean specMatches(String spec, Coordinate resolved) {
-        Coordinate raw = Coordinate.parse(spec);
-        if (!raw.module().equals(resolved.module())
-                || !Objects.equals(raw.classifier(), resolved.classifier())
-                || !raw.type().equals(resolved.type())) {
-            return false;
-        }
-        return !(VersionSelector.parse(raw.version()) instanceof VersionSelector.Exact exact)
-                || exact.version().equals(resolved.version());
-    }
-
-    /** The hex digest a {@code [[tool]]} row pins for the file at {@code url}, or null when none does. */
-    public @Nullable String urlSha256(String url) {
-        for (ToolEntry row : tools) {
-            if (url.equals(row.url())) return row.sha256Hex(null);
         }
         return null;
     }

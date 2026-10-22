@@ -76,7 +76,7 @@ class UrlToolLockTest {
         String hostUrl = url(Interpolation.Host.current().os());
         assertThat(lock.tools()).hasSize(2).allSatisfy(row -> assertThat(row.url())
                 .isNotNull());
-        assertThat(lock.urlSha256(hostUrl))
+        assertThat(ToolEntry.urlSha256In(lock.tools(), hostUrl))
                 .isEqualTo(Hashing.sha256Hex(
                         "rules for " + Interpolation.Host.current().os()));
         Path lockFile = tmp.resolve("jk-lock.toml");

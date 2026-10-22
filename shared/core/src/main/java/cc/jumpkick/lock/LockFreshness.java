@@ -213,12 +213,13 @@ public final class LockFreshness {
             }
             for (PluginContributions.LockedTool url :
                     PluginContributions.lockedUrls(module.getValue(), dir, view.platformPins())) {
-                if (url.host() && lock.urlSha256(url.id()) == null) return true;
+                if (url.host() && ToolEntry.urlSha256In(lock.tools(), url.id()) == null) return true;
             }
             for (PluginContributions.StepDep closure :
                     PluginContributions.closureTools(module.getValue(), dir, view.platformPins())) {
                 String root = Objects.requireNonNull(closure.coordinateSpec());
-                if (lock.closureRow(root, closure.with(), closure.managedBySpec()) == null) return true;
+                if (ToolEntry.closureIn(lock.tools(), root, closure.with(), closure.managedBySpec()) == null)
+                    return true;
             }
         }
         return false;

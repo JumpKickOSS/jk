@@ -93,7 +93,8 @@ final class ToolClosures {
     static Path materialize(PluginContributions.StepDep dep, RepoGroup repos, Cas cas, @Nullable Lockfile lock)
             throws IOException, InterruptedException {
         String rootSpec = Objects.requireNonNull(dep.coordinateSpec(), "coordinate");
-        ToolEntry row = lock == null ? null : lock.closureRow(rootSpec, dep.with(), dep.managedBySpec());
+        ToolEntry row =
+                lock == null ? null : ToolEntry.closureIn(lock.tools(), rootSpec, dep.with(), dep.managedBySpec());
         if (row == null) {
             throw new IOException("jk-lock.toml pins no [[tool]] closure for " + rootSpec + " — run `jk lock`");
         }

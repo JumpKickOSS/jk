@@ -2,6 +2,7 @@
 package cc.jumpkick.lock;
 
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.VersionSelector;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -122,9 +123,52 @@ public record ToolEntry(
                 jarSpecs);
     }
 
+    /** The row of {@code rows} that {@link #isClosureOf} a tool's specs, or null when none is. */
+    public static @Nullable ToolEntry closureIn(
+            List<ToolEntry> rows, String rootSpec, List<String> withSpecs, @Nullable String managedBySpec) {
+        for (ToolEntry row : rows) {
+            if (row.isClosureOf(rootSpec, withSpecs, managedBySpec)) return row;
+        }
+        return null;
+    }
+
+    /** The hex digest a row of {@code rows} pins for the file at {@code url}, or null when none does. */
+    public static @Nullable String urlSha256In(List<ToolEntry> rows, String url) {
+        for (ToolEntry row : rows) {
+            if (url.equals(row.url())) return row.sha256Hex(null);
+        }
+        return null;
+    }
+
     /** True for a closure row. */
     public boolean isClosure() {
         return !closure.isEmpty();
+    }
+
+    /**
+     * True when this is the closure row of a tool rooted at {@code rootSpec} with {@code withSpecs}
+     * and {@code managedBySpec} as a manifest names them. A spec with an exact version matches that
+     * version; a floating one ({@code ^3.38}) matches the version this row resolved it to.
+     */
+    public boolean isClosureOf(String rootSpec, List<String> withSpecs, @Nullable String managedBySpec) {
+        if (!isClosure() || !specMatches(rootSpec, root()) || with.size() != withSpecs.size()) return false;
+        for (int i = 0; i < withSpecs.size(); i++) {
+            if (!specMatches(withSpecs.get(i), Coordinate.parse(with.get(i)))) return false;
+        }
+        return managedBySpec == null
+                ? managedBy == null
+                : managedBy != null && specMatches(managedBySpec, Coordinate.parse(managedBy));
+    }
+
+    private static boolean specMatches(String spec, Coordinate resolved) {
+        Coordinate raw = Coordinate.parse(spec);
+        if (!raw.module().equals(resolved.module())
+                || !Objects.equals(raw.classifier(), resolved.classifier())
+                || !raw.type().equals(resolved.type())) {
+            return false;
+        }
+        return !(VersionSelector.parse(raw.version()) instanceof VersionSelector.Exact exact)
+                || exact.version().equals(resolved.version());
     }
 
     /** The closure's root, as a coordinate; this row must be a closure row. */
