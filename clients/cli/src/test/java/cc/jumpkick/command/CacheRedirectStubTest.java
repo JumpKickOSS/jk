@@ -45,7 +45,9 @@ class CacheRedirectStubTest {
         Capture c = capture(() -> Jk.execute("cache", "search", "nonexistent", "--cache-dir", cache.toString()));
         // Same behavior as jk repo search: exit 1 + "no match" line on an empty store …
         assertThat(c.exit).isEqualTo(1);
-        assertThat(TestAnsi.strip(c.stdout)).contains("No cached coordinates match: nonexistent");
+        assertThat(TestAnsi.strip(c.stdout))
+                .as("stderr: %s", c.stderr)
+                .contains("No cached coordinates match: nonexistent");
         // … plus the one-line pointer to the canonical command, on stderr only.
         assertThat(TestAnsi.strip(c.stderr)).contains("moved to jk repo search");
         assertThat(TestAnsi.strip(c.stdout)).doesNotContain("moved to");

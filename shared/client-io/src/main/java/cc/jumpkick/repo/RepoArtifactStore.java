@@ -524,12 +524,11 @@ public final class RepoArtifactStore {
         }
         // Group tracked files by their version directory (the file's parent).
         Map<Path, Boolean> versionDirs = new TreeMap<>();
-        try (Stream<Path> walk = Files.walk(tree)) {
-            // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
-            // the path for a fresh stat even for entries the name test discards.
-            walk.filter(p -> !isMemoName(p.getFileName().toString()))
-                    .filter(Files::isRegularFile)
-                    .forEach(p -> versionDirs.put(p.getParent(), Boolean.TRUE));
+        try {
+            // A tree another process prunes while this walks loses that entry, not the whole store.
+            PathUtil.forEachRegularFile(tree, (file, attrs) -> {
+                if (!isMemoName(file.getFileName().toString())) versionDirs.put(file.getParent(), Boolean.TRUE);
+            });
         } catch (IOException e) {
             return List.of();
         }
