@@ -13,7 +13,7 @@ jk-compat = ">=0.13"
 greeting = { type = "string", default = "hello", hint = "the word the plugin says" }
 
 # The code layer: jk forks this jar as a worker (once the consumer has run
-# `jk trust plugin com.example:hello-plugin`) and asks it what it registers.
+# `jk trust plugin sha256:<the jar's hash>`) and asks it what it registers.
 [code]
 protocol-prefix = "##HELLO:"
 

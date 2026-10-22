@@ -28,8 +28,8 @@ bytes under their pin and adds the plugin's SDK floor (`jk-plugin-sdk`, `jk-host
 the manifest's `sdk` names) to the lock as `plugin`-scoped rows resolved from the consumer's
 `[repositories]`; the worker forks with the jar plus those rows. A manifest without `sdk` is
 pinned at the running jk's version, and the lock says so in a note. The javac flag applies to the consumer's compile
-and is part of its compile key. The code layer forks only after `jk trust plugin path:hello` — a path pin is trusted
-by its `path:<alias>` coordinate, and jk refuses untrusted third-party code with that exact
+and is part of its compile key. The code layer forks only after `jk trust plugin sha256:<hex>` — a path pin is trusted
+by its bytes, the sha256 its `[plugins]` row carries, and jk refuses untrusted third-party code with that exact
 remedy.
 
 ## Where the SDK comes from
