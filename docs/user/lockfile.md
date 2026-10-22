@@ -363,7 +363,8 @@ see [Dependencies](dependencies.md#classifiers-that-follow-the-host).
 ## What else the lock pins
 
 Not everything a build depends on is a classpath entry. Alongside `[[artifact]]` the lock
-carries the resolved Kotlin/Scala compiler versions, `[[plugin]]` and `[[sdk]]` rows, and:
+carries the resolved Kotlin/Scala compiler versions, `[[plugin]]`, `[[sdk]]` and
+[`[[tool]]`](#plugin-tools) rows, and:
 
 ```toml
 [native]
@@ -375,6 +376,42 @@ checksum = "sha256:…"
 metadata-repository` in `jk.toml`. It is not an `[[artifact]]` row: it is on no classpath
 and in no scope. It *is* an input to `native-image`, so it is pinned like one. See
 [Native images](native.md#the-graalvm-metadata-repository).
+
+### Plugin tools
+
+A tool a plugin's step or command fetches as one Maven artifact — protoc and its plugins under
+`[protobuf]`, r8 and aapt2 under `[android]`, the IDE distribution under `[intellij]` — is a
+`[[tool]]` row, pinned by the sha256 of its bytes. A tool published per platform (a `${host.os}` or
+`${host.os-arch}` classifier) carries one digest per platform the repository publishes (of
+`linux-x86_64`, `linux-aarch_64`, `osx-x86_64`, `osx-aarch_64` and `windows-x86_64`), as `[node]`
+does for its archives, so a machine on another OS verifies its own download against the lock. The
+lock needs this machine's artifact; a platform the repository does not publish gets no digest, and a
+build there fails naming the missing row:
+
+```toml
+[[tool]]
+coordinate = "com.google.protobuf:protoc"
+version    = "4.33.1"
+type       = "exe"                        # omitted for a jar
+sha256.linux-aarch_64 = "…"
+sha256.linux-x86_64 = "…"
+sha256.osx-aarch_64 = "…"
+sha256.osx-x86_64 = "…"
+sha256.windows-x86_64 = "…"
+
+[[tool]]
+coordinate = "com.android.tools:r8"
+version    = "9.2.23"
+checksum   = "sha256:…"                   # one artifact for every host
+```
+
+The build fetches the host's artifact and refuses any other bytes, from a repository, the store or
+the Maven local repository alike; a tool with no row fails naming it. A lock that has no row for a
+tool an active plugin fetches is stale, so the next build relocks first. A floating tool version
+(`^3.25`) is resolved once and kept by `jk lock`; `jk update` moves it. A plain `jk lock` reuses the
+digests a row already has instead of downloading every platform again. Tools a plugin fetches as a
+closure (`transitive`), SDK components (their `[[sdk]]` rows) and files at a URL are provisioned
+outside these rows.
 
 A `[[plugin]]` row normally pins the plugin jar by `checksum`: a jar that is fetched later and
 disagrees with it is refused. A plugin the workspace builds itself — a module whose

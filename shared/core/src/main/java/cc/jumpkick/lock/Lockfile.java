@@ -41,7 +41,9 @@ public record Lockfile(
         /** The code archive that wrote this lock; null when the writer ran from none, or the lock predates the stamp. */
         @Nullable WriterBuild writerBuild,
         /** The {@code [node]} pin; null when no module declares a Node.js version. */
-        @Nullable NodePin node) {
+        @Nullable NodePin node,
+        /** The {@code [[tool]]} rows: plugin step tools pinned by digest, per platform where they follow the host. */
+        List<ToolEntry> tools) {
 
     /**
      * The GraalVM reachability-metadata repository release a native build reads, resolved from
@@ -82,40 +84,7 @@ public record Lockfile(
         plugins = plugins == null ? List.of() : List.copyOf(plugins);
         sdk = sdk == null ? List.of() : List.copyOf(sdk);
         modules = modules == null ? List.of() : List.copyOf(modules);
-    }
-
-    /** Unset Scala / Graal pins. */
-    public Lockfile(
-            int version,
-            String generatedBy,
-            String resolutionAlgorithm,
-            @Nullable JdkPin jdk,
-            @Nullable String kotlin,
-            List<Artifact> artifacts,
-            List<PluginEntry> plugins,
-            List<SdkEntry> sdk,
-            List<ModuleEntry> modules,
-            @Nullable String jkMin,
-            @Nullable String manifestsSha256,
-            @Nullable String projectId) {
-        this(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                null,
-                kotlin,
-                null,
-                artifacts,
-                plugins,
-                sdk,
-                modules,
-                jkMin,
-                manifestsSha256,
-                projectId,
-                null,
-                null,
-                null);
+        tools = tools == null ? List.of() : List.copyOf(tools);
     }
 
     /** Constructor without the jk floor. */
@@ -133,14 +102,20 @@ public record Lockfile(
                 generatedBy,
                 resolutionAlgorithm,
                 jdk,
+                null,
                 kotlin,
+                null,
                 artifacts,
                 plugins,
                 sdk,
                 List.of(),
                 null,
                 null,
-                null);
+                null,
+                null,
+                null,
+                null,
+                List.of());
     }
 
     /** This lock with the jk floor set. */
@@ -162,7 +137,8 @@ public record Lockfile(
                 projectId,
                 nativeMetadata,
                 writerBuild,
-                node);
+                node,
+                tools);
     }
 
     /** This lock as written by another jk: {@code generated-by} names the writer, nothing else moves. */
@@ -184,7 +160,8 @@ public record Lockfile(
                 projectId,
                 nativeMetadata,
                 writerBuild,
-                node);
+                node,
+                tools);
     }
 
     /** This lock as written by the build {@code build} names; null when the writer ran from no archive. */
@@ -206,7 +183,8 @@ public record Lockfile(
                 projectId,
                 nativeMetadata,
                 build,
-                node);
+                node,
+                tools);
     }
 
     /** This lock with a content digest of the manifests used to produce it. */
@@ -228,7 +206,8 @@ public record Lockfile(
                 projectId,
                 nativeMetadata,
                 writerBuild,
-                node);
+                node,
+                tools);
     }
 
     /** This lock with a durable project identity. */
@@ -250,7 +229,8 @@ public record Lockfile(
                 id,
                 nativeMetadata,
                 writerBuild,
-                node);
+                node,
+                tools);
     }
 
     /**
@@ -276,7 +256,8 @@ public record Lockfile(
                 projectId,
                 nativeMetadata,
                 writerBuild,
-                node);
+                node,
+                tools);
     }
 
     /** This lock with the resolved reachability-metadata repository pin. */
@@ -298,7 +279,8 @@ public record Lockfile(
                 projectId,
                 pin,
                 writerBuild,
-                node);
+                node,
+                tools);
     }
 
     /** This lock with a resolved JDK pin. */
@@ -320,7 +302,8 @@ public record Lockfile(
                 projectId,
                 nativeMetadata,
                 writerBuild,
-                node);
+                node,
+                tools);
     }
 
     /** This lock with a resolved Node.js pin (null clears it). */
@@ -342,7 +325,8 @@ public record Lockfile(
                 projectId,
                 nativeMetadata,
                 writerBuild,
-                pin);
+                pin,
+                tools);
     }
 
     /** This lock with a resolved GraalVM pin (null clears it). */
@@ -364,7 +348,8 @@ public record Lockfile(
                 projectId,
                 nativeMetadata,
                 writerBuild,
-                node);
+                node,
+                tools);
     }
 
     /** Constructor without SDK entries. */
@@ -377,17 +362,6 @@ public record Lockfile(
             List<Artifact> artifacts,
             List<PluginEntry> plugins) {
         this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, List.of());
-    }
-
-    /** Constructor without plugin entries. */
-    public Lockfile(
-            int version,
-            String generatedBy,
-            String resolutionAlgorithm,
-            @Nullable JdkPin jdk,
-            @Nullable String kotlin,
-            List<Artifact> artifacts) {
-        this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, List.of());
     }
 
     /** Constructor that stamps a JDK but no Kotlin version. */
@@ -424,7 +398,8 @@ public record Lockfile(
                 projectId,
                 nativeMetadata,
                 writerBuild,
-                node);
+                node,
+                tools);
     }
 
     /** Return a copy with the resolved Scala 3 compiler version stamped in. */
@@ -446,7 +421,8 @@ public record Lockfile(
                 projectId,
                 nativeMetadata,
                 writerBuild,
-                node);
+                node,
+                tools);
     }
 
     /** Return a copy with the given plugin entries (replaces any existing). */
@@ -468,7 +444,8 @@ public record Lockfile(
                 projectId,
                 nativeMetadata,
                 writerBuild,
-                node);
+                node,
+                tools);
     }
 
     /** Return a copy with the given provisioned-SDK component pins (replaces any existing). */
@@ -490,7 +467,39 @@ public record Lockfile(
                 projectId,
                 nativeMetadata,
                 writerBuild,
-                node);
+                node,
+                tools);
+    }
+
+    /** Return a copy with the given {@code [[tool]]} rows (replaces any existing). */
+    public Lockfile withTools(List<ToolEntry> newTools) {
+        return new Lockfile(
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                graal,
+                kotlin,
+                scala,
+                artifacts,
+                plugins,
+                sdk,
+                modules,
+                jkMin,
+                manifestsSha256,
+                projectId,
+                nativeMetadata,
+                writerBuild,
+                node,
+                newTools);
+    }
+
+    /** The {@code [[tool]]} row that pins {@code coord}'s bytes, or null when none does. */
+    public @Nullable ToolEntry toolRow(Coordinate coord) {
+        for (ToolEntry row : tools) {
+            if (row.pins(coord)) return row;
+        }
+        return null;
     }
 
     /**
@@ -522,7 +531,8 @@ public record Lockfile(
                 projectId,
                 nativeMetadata,
                 writerBuild,
-                node);
+                node,
+                tools);
     }
 
     /**
@@ -566,7 +576,8 @@ public record Lockfile(
                 null,
                 null,
                 null,
-                null);
+                null,
+                List.of());
     }
 
     /** Provisioned SDK component pin (sdkmanager path + revision). */

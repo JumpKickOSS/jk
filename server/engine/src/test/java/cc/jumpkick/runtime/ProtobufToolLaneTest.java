@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.plugin.manifest.Interpolation;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptors;
@@ -61,6 +62,12 @@ class ProtobufToolLaneTest {
                 .isEqualTo("io.grpc:protoc-gen-grpc-java:1.81.0"
                         + protoc.substring("com.google.protobuf:protoc:3.25.5".length()));
         assertThat(tools).allSatisfy(tool -> assertThat(tool.forSteps()).isEmpty());
+        assertThat(tools.get(0).lockedCoordinates())
+                .as("the lock pins protoc for every locked platform, this host among them")
+                .contains(protoc)
+                .containsAll(Interpolation.Host.LOCKED.stream()
+                        .map(h -> "com.google.protobuf:protoc:3.25.5:" + h.osArch() + "!exe")
+                        .toList());
     }
 
     /** A table with no entry fetches protoc alone: no plugin, no second binary. */

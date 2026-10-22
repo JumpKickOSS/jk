@@ -124,6 +124,7 @@ public final class LockfileWriter {
         writeArtifacts(out, lockfile);
         writePlugins(out, lockfile);
         writeSdk(out, lockfile);
+        writeTools(out, lockfile);
         writeModules(out, lockfile);
         return out.toString();
     }
@@ -287,6 +288,40 @@ public final class LockfileWriter {
             out.append("[[sdk]]\n");
             out.append("component = ").append(quote(e.component())).append('\n');
             out.append("revision  = ").append(quote(e.revision())).append('\n');
+        }
+    }
+
+    /**
+     * One {@code [[tool]]} row per step tool, sorted by coordinate, version, type and classifier; a
+     * host-following tool's per-platform digests are dotted {@code sha256.<classifier>} keys, as
+     * {@code [node]} writes its archives'.
+     */
+    private static void writeTools(StringBuilder out, Lockfile lockfile) {
+        List<ToolEntry> sorted = new ArrayList<>(lockfile.tools());
+        sorted.sort(Comparator.comparing(ToolEntry::coordinate)
+                .thenComparing(ToolEntry::version)
+                .thenComparing(ToolEntry::type)
+                .thenComparing(t -> t.classifier() == null ? "" : t.classifier()));
+        for (ToolEntry t : sorted) {
+            out.append('\n');
+            out.append("[[tool]]\n");
+            out.append("coordinate = ").append(quote(t.coordinate())).append('\n');
+            out.append("version    = ").append(quote(t.version())).append('\n');
+            if (!"jar".equals(t.type()))
+                out.append("type       = ").append(quote(t.type())).append('\n');
+            String classifier = t.classifier();
+            if (classifier != null)
+                out.append("classifier = ").append(quote(classifier)).append('\n');
+            String checksum = t.checksum();
+            if (checksum != null)
+                out.append("checksum   = ").append(quote(checksum)).append('\n');
+            for (var sha : t.sha256().entrySet()) {
+                out.append("sha256.")
+                        .append(sha.getKey())
+                        .append(" = ")
+                        .append(quote(sha.getValue()))
+                        .append('\n');
+            }
         }
     }
 

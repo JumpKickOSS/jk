@@ -482,7 +482,7 @@ public final class PlannerPlugin {
                     Map<String, String> sdkPins = PluginBuild.sdkPins(in.lockFile());
                     List<PluginContributions.StepDep> tools =
                             cx.tools().forConsumer(project, in.dir(), in.lockFile(), step.name());
-                    Map<String, Path> toolExtras = cx.tools().fetch(tools, project, cx.cas(), sdkPins);
+                    Map<String, Path> toolExtras = cx.tools().fetch(tools, project, cx.cas(), in.lockFile());
                     Map<String, List<Path>> siblingFiles =
                             SiblingFiles.forInputs(step.inputs(), in.dir(), project, active.manifest());
                     PluginRepositories repositories =
