@@ -216,7 +216,7 @@ class LockfileRoundTripTest {
                 .isEmpty();
     }
 
-    /** A tool row is one digest, or one per platform as dotted {@code sha256.<classifier>} keys. */
+    /** A tool row is one digest, one per platform as dotted {@code sha256.<classifier>} keys, or a URL's. */
     @Test
     void tool_rows_round_trip() {
         Lockfile lock = Lockfile.empty("test")
@@ -228,13 +228,16 @@ class LockfileRoundTripTest {
                                 null,
                                 null,
                                 Map.of("osx-aarch_64", "a".repeat(64), "linux-x86_64", "b".repeat(64))),
-                        ToolEntry.single(Coordinate.parse("com.android.tools:r8:9.5.28"), "c".repeat(64))));
+                        ToolEntry.single(Coordinate.parse("com.android.tools:r8:9.5.28"), "c".repeat(64)),
+                        ToolEntry.atUrl("https://example.com/rules.xml", "d".repeat(64))));
         String rendered = LockfileWriter.render(lock);
         assertThat(rendered)
                 .contains("[[tool]]\ncoordinate = \"com.google.protobuf:protoc\"")
                 .contains("type       = \"exe\"")
                 .contains("sha256.linux-x86_64 = ")
-                .contains("checksum   = \"sha256:" + "c".repeat(64) + "\"");
+                .contains("checksum   = \"sha256:" + "c".repeat(64) + "\"")
+                .contains("[[tool]]\nurl      = \"https://example.com/rules.xml\"\nchecksum = \"sha256:"
+                        + "d".repeat(64));
         Lockfile back = LockfileReader.parse(rendered);
         assertThat(back.tools()).containsExactlyInAnyOrderElementsOf(lock.tools());
         assertThat(back.toolRow(Coordinate.parse("com.google.protobuf:protoc:4.33.1:osx-aarch_64!exe")))
@@ -243,6 +246,7 @@ class LockfileRoundTripTest {
                 .isEqualTo("a".repeat(64));
         assertThat(back.toolRow(Coordinate.parse("com.google.protobuf:protoc:4.33.1:windows-x86_64!exe")))
                 .isNull();
+        assertThat(back.urlSha256("https://example.com/rules.xml")).isEqualTo("d".repeat(64));
     }
 
     @Test

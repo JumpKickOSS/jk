@@ -71,7 +71,7 @@ public final class LockFreshness {
      *       pin: stale.
      *   <li>Digest clean but a module compiles with a Kotlin compiler plugin — declared or
      *       contributed — the lock pins no digest for: stale.
-     *   <li>Digest clean but an active plugin fetches a tool artifact the lock has no {@code
+     *   <li>Digest clean but an active plugin fetches a tool artifact or URL the lock has no {@code
      *       [[tool]]} row for: stale.
      * </ul>
      *
@@ -189,25 +189,30 @@ public final class LockFreshness {
     }
 
     /**
-     * True when an active plugin of a module fetches a tool artifact by coordinate that {@code lock}
-     * has no {@code [[tool]]} row for — the module, version and type; a floating version matches any
-     * row of its module. Which platforms a row covers is the build's question, not freshness's.
+     * True when an active plugin of a module fetches a tool artifact by coordinate, or a file at a
+     * URL, that {@code lock} has no {@code [[tool]]} row for — the module, version and type; a
+     * floating version matches any row of its module. Which platforms a row covers is the build's
+     * question, not freshness's.
      */
     private static boolean missingToolPin(Path owner, Map<Path, JkBuild> modules, Lockfile lock) {
         for (Map.Entry<Path, JkBuild> module : modules.entrySet()) {
             Path dir = module.getKey().toAbsolutePath().normalize();
             Lockfile view = memberView(owner, dir, lock);
-            for (PluginContributions.LockedArtifact tool :
+            for (PluginContributions.LockedTool tool :
                     PluginContributions.lockedArtifacts(module.getValue(), dir, view.platformPins())) {
                 if (!tool.host()) continue;
-                Coordinate coord = Coordinate.parse(tool.coordinate());
+                Coordinate coord = Coordinate.parse(tool.id());
                 String exact =
                         VersionSelector.parse(coord.version()) instanceof VersionSelector.Exact e ? e.version() : null;
                 boolean pinned = lock.tools().stream()
-                        .anyMatch(row -> row.coordinate().equals(coord.module())
+                        .anyMatch(row -> coord.module().equals(row.coordinate())
                                 && row.type().equals(coord.type())
-                                && (exact == null || row.version().equals(exact)));
+                                && (exact == null || exact.equals(row.version())));
                 if (!pinned) return true;
+            }
+            for (PluginContributions.LockedTool url :
+                    PluginContributions.lockedUrls(module.getValue(), dir, view.platformPins())) {
+                if (url.host() && lock.urlSha256(url.id()) == null) return true;
             }
         }
         return false;

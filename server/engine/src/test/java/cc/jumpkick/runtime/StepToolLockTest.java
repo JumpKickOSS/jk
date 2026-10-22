@@ -162,8 +162,8 @@ class StepToolLockTest {
         tampered.put(Interpolation.Host.current().osArch(), "0".repeat(64));
         Path lockFile = tmp.resolve("jk-lock.toml");
         LockfileWriter.write(
-                lock.withTools(
-                        List.of(new ToolEntry(row.coordinate(), row.version(), row.type(), null, null, tampered))),
+                lock.withTools(List.of(
+                        new ToolEntry(row.coordinate(), row.version(), row.type(), null, null, tampered, null))),
                 lockFile);
         RepoGroup.clearProcessFetchCache();
         assertThatThrownBy(() ->

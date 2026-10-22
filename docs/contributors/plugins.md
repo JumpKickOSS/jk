@@ -179,18 +179,20 @@ artifact      = "adb"                 # shape and rules, but provisioned when th
 sdk-component = "platform-tools"      # and part of no action key: upgrading it invalidates
 sdk-path      = "adb"                 # nothing
 
-[[contribute.step-dependency]]        # a file at a URL in place of a coordinate — fetched once
-artifact   = "checkstyle-config"      # into <store>/tools/url/<sha256 of the URL>/, keyed by
-url        = "${config.checkstyle}"   # content like any tool; declared only when the value is
-for-step   = "lint-checkstyle"        # an http(s) URL (a module path, or an unset key, is no tool)
+[[contribute.step-dependency]]        # a file at a URL in place of a coordinate — pinned by
+artifact   = "checkstyle-config"      # sha256 in the lock, kept in <store>/tools/url/<sha256 of
+url        = "${config.checkstyle}"   # the URL>/; declared only when the value is an http(s)
+for-step   = "lint-checkstyle"        # URL (a module path, or an unset key, is no tool)
 ```
 
 An entry names exactly one of `coordinate`, `sdk-component` or `url`; `transitive`, `with` and
 `managed-by` belong to a coordinate. A `coordinate` that is not `transitive` is pinned in the
 project's lock as a `[[tool]]` row by sha256, once per platform when it names `${host.os}` or
 `${host.os-arch}` ([Lockfile](../user/lockfile.md#plugin-tools)); the engine fetches only the
-pinned bytes. A `url` value is the file's identity: a cached copy is never
-fetched again, and an `--offline` build with no copy fails naming the URL. A `coordinate` or
+pinned bytes. A `url` is a `[[tool]]` row too, the sha256 of the file `jk lock` downloaded (one
+row per URL, so a URL that names `${host.os}` gets one per OS): the build reads the stored copy
+while it is those bytes, downloads it again otherwise and refuses anything else, and an `--offline`
+build with no pinned copy fails naming the URL. A `coordinate` or
 `url` over a key the table leaves unset declares no tool; a `coordinate` that is one
 `${config.<key>}` (or `${entry.<key>}`) over a string-list key is every coordinate of the list —
 the first the root, the rest `with` it in one closure — so the lint plugin's

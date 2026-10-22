@@ -18,6 +18,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -292,21 +293,34 @@ public final class LockfileWriter {
     }
 
     /**
-     * One {@code [[tool]]} row per step tool, sorted by coordinate, version, type and classifier; a
-     * host-following tool's per-platform digests are dotted {@code sha256.<classifier>} keys, as
-     * {@code [node]} writes its archives'.
+     * One {@code [[tool]]} row per tool, artifacts sorted by coordinate, version, type and
+     * classifier, then URLs; a host-following tool's per-platform digests are dotted {@code
+     * sha256.<classifier>} keys, as {@code [node]} writes its archives'.
      */
     private static void writeTools(StringBuilder out, Lockfile lockfile) {
         List<ToolEntry> sorted = new ArrayList<>(lockfile.tools());
-        sorted.sort(Comparator.comparing(ToolEntry::coordinate)
-                .thenComparing(ToolEntry::version)
+        sorted.sort(Comparator.comparing((ToolEntry t) -> t.url() != null)
+                .thenComparing(t -> t.url() != null ? t.url() : Objects.requireNonNull(t.coordinate()))
+                .thenComparing(t -> t.version() == null ? "" : t.version())
                 .thenComparing(ToolEntry::type)
                 .thenComparing(t -> t.classifier() == null ? "" : t.classifier()));
         for (ToolEntry t : sorted) {
             out.append('\n');
             out.append("[[tool]]\n");
-            out.append("coordinate = ").append(quote(t.coordinate())).append('\n');
-            out.append("version    = ").append(quote(t.version())).append('\n');
+            String url = t.url();
+            if (url != null) {
+                out.append("url      = ").append(quote(url)).append('\n');
+                out.append("checksum = ")
+                        .append(quote(Objects.requireNonNull(t.checksum())))
+                        .append('\n');
+                continue;
+            }
+            out.append("coordinate = ")
+                    .append(quote(Objects.requireNonNull(t.coordinate())))
+                    .append('\n');
+            out.append("version    = ")
+                    .append(quote(Objects.requireNonNull(t.version())))
+                    .append('\n');
             if (!"jar".equals(t.type()))
                 out.append("type       = ").append(quote(t.type())).append('\n');
             String classifier = t.classifier();

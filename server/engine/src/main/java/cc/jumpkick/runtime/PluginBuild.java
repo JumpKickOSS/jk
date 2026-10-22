@@ -299,9 +299,9 @@ public final class PluginBuild {
     }
 
     /**
-     * Provision {@code deps}: an SDK component at the lock's {@code [[sdk]]} revision, a URL file, a
-     * closure, or one Maven artifact fetched as the lock's {@code [[tool]]} row pins it — a tool the
-     * lock has no row for is refused, and so are bytes other than the pinned ones.
+     * Provision {@code deps}: an SDK component at the lock's {@code [[sdk]]} revision, a closure, or
+     * a URL file or one Maven artifact fetched as the lock's {@code [[tool]]} row pins it — a tool
+     * the lock has no row for is refused, and so are bytes other than the pinned ones.
      */
     private static Map<String, Path> fetchTools(
             List<PluginContributions.StepDep> deps, JkBuild project, Cas cas, @Nullable Lockfile lock, boolean lenient)
@@ -320,7 +320,7 @@ public final class PluginBuild {
                 }
                 Path fetched;
                 if (dep.url() != null) {
-                    fetched = UrlTools.fetch(dep.url(), cas);
+                    fetched = UrlTools.fetch(dep.url(), cas, lockedUrlSha256(dep.url(), lock));
                 } else {
                     if (repos == null) repos = RepoGroupBuilder.buildFor(project, null, cas);
                     if (dep.transitive()) {
@@ -361,8 +361,9 @@ public final class PluginBuild {
         }
         if (lock != null) {
             for (ToolEntry row : lock.tools()) {
-                Coordinate at =
-                        new Coordinate(raw.group(), raw.artifact(), row.version(), raw.classifier(), raw.type());
+                String version = row.version();
+                if (version == null) continue;
+                Coordinate at = new Coordinate(raw.group(), raw.artifact(), version, raw.classifier(), raw.type());
                 if (row.pins(at)) return at;
             }
         }
@@ -374,6 +375,13 @@ public final class PluginBuild {
         ToolEntry row = lock == null ? null : lock.toolRow(coord);
         if (row == null) throw unpinned(coord.toString());
         return Objects.requireNonNull(row.sha256Hex(coord.classifier()), "pinned digest");
+    }
+
+    /** The sha256 hex the lock pins for the file at {@code url}; a URL without a row is lock drift, refused. */
+    static String lockedUrlSha256(String url, @Nullable Lockfile lock) throws IOException {
+        String sha256 = lock == null ? null : lock.urlSha256(url);
+        if (sha256 == null) throw unpinned(url);
+        return sha256;
     }
 
     private static IOException unpinned(String coordinate) {

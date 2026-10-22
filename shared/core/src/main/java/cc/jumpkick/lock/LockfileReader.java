@@ -494,13 +494,22 @@ public final class LockfileReader {
         return plugins;
     }
 
-    /** The {@code [[tool]]} rows: one digest for every host, or one per platform under {@code sha256}. */
+    /**
+     * The {@code [[tool]]} rows: an artifact's one digest for every host, or one per platform under
+     * {@code sha256}; a URL's digest.
+     */
     private static List<ToolEntry> readTools(LockToml result) {
         List<ToolEntry> tools = new ArrayList<>();
         LockToml.Array array = result.getArray("tool");
         if (array == null) return tools;
         for (int i = 0; i < array.size(); i++) {
             LockToml t = array.getTable(i);
+            String url = t.getString("url");
+            if (url != null) {
+                tools.add(new ToolEntry(
+                        null, null, ToolEntry.FILE, null, requireRowString(t, "checksum"), Map.of(), url));
+                continue;
+            }
             String coord = requireRowString(t, "coordinate");
             String ver = requireRowString(t, "version");
             String type = t.getString("type");

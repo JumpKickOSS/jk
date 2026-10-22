@@ -243,30 +243,43 @@ public final class PluginContributions {
     public record PackagerDep(String artifact, String module, String version) {}
 
     /**
-     * One coordinate an active plugin fetches as a single Maven artifact, as this host or a locked
-     * platform resolves it: what a {@code [[tool]]} row pins. {@code host} marks this machine's.
+     * One tool an active plugin fetches, as this host or a locked platform resolves it — a Maven
+     * coordinate or a URL: what a {@code [[tool]]} row pins. {@code host} marks this machine's.
      */
-    public record LockedArtifact(String coordinate, boolean host) {}
+    public record LockedTool(String id, boolean host) {}
 
     /**
      * Every coordinate the active plugins fetch as one Maven artifact — the step, command and
      * packager lanes — on this host and on each {@link Interpolation.Host#LOCKED} platform.
      */
-    public static List<LockedArtifact> lockedArtifacts(
-            JkBuild build, Path moduleDir, Map<String, String> platformPins) {
-        List<StepDep> tools = new ArrayList<>(stepDependencies(build, moduleDir, platformPins));
-        tools.addAll(commandDependencies(build, moduleDir, platformPins));
-        List<LockedArtifact> out = new ArrayList<>();
-        for (StepDep tool : tools) {
+    public static List<LockedTool> lockedArtifacts(JkBuild build, Path moduleDir, Map<String, String> platformPins) {
+        List<LockedTool> out = new ArrayList<>();
+        for (StepDep tool : toolLanes(build, moduleDir, platformPins)) {
             if (!tool.isPinnedArtifact()) continue;
             for (String spec : tool.lockedCoordinates()) {
-                out.add(new LockedArtifact(spec, spec.equals(tool.coordinateSpec())));
+                out.add(new LockedTool(spec, spec.equals(tool.coordinateSpec())));
             }
         }
         for (PackagerDep dep : packagerDependencies(build, moduleDir, platformPins)) {
-            out.add(new LockedArtifact(dep.module() + ":" + dep.version(), true));
+            out.add(new LockedTool(dep.module() + ":" + dep.version(), true));
         }
         return out;
+    }
+
+    /** Every URL the active plugins fetch a file from, on this host and on each locked platform. */
+    public static List<LockedTool> lockedUrls(JkBuild build, Path moduleDir, Map<String, String> platformPins) {
+        List<LockedTool> out = new ArrayList<>();
+        for (StepDep tool : toolLanes(build, moduleDir, platformPins)) {
+            for (String url : tool.lockedUrls()) out.add(new LockedTool(url, url.equals(tool.url())));
+        }
+        return out;
+    }
+
+    /** The step lane, then the command lane. */
+    private static List<StepDep> toolLanes(JkBuild build, Path moduleDir, Map<String, String> platformPins) {
+        List<StepDep> tools = new ArrayList<>(stepDependencies(build, moduleDir, platformPins));
+        tools.addAll(commandDependencies(build, moduleDir, platformPins));
+        return tools;
     }
 
     /**
@@ -278,9 +291,9 @@ public final class PluginContributions {
      *
      * <p>{@code managedBy} / {@code with} mirror the manifest: BOM-aligned multi-root tool graphs.
      * {@code forSteps} names the steps or packagers that read the tool; empty means all of them.
-     * {@code hostCoordinates} is the coordinate as each {@link Interpolation.Host#LOCKED} platform
-     * resolves it when the manifest's names {@code ${host.os}} or {@code ${host.os-arch}}, deduped;
-     * empty when the coordinate is the same on every host.
+     * {@code hostVariants} is the coordinate (or URL) as each {@link Interpolation.Host#LOCKED}
+     * platform resolves it when the manifest's names {@code ${host.os}} or {@code ${host.os-arch}},
+     * deduped; empty when it is the same on every host.
      */
     public record StepDep(
             String artifact,
@@ -293,12 +306,12 @@ public final class PluginContributions {
             List<String> forSteps,
             @Nullable String url,
             boolean unpack,
-            List<String> hostCoordinates) {
+            List<String> hostVariants) {
 
         public StepDep {
             with = with == null ? List.of() : List.copyOf(with);
             forSteps = forSteps == null ? List.of() : List.copyOf(forSteps);
-            hostCoordinates = hostCoordinates == null ? List.of() : List.copyOf(hostCoordinates);
+            hostVariants = hostVariants == null ? List.of() : List.copyOf(hostVariants);
         }
 
         public StepDep(String artifact, @Nullable String coordinateSpec) {
@@ -325,14 +338,18 @@ public final class PluginContributions {
                     List.of());
         }
 
-        /** A file at {@code url}, handed to the steps {@code forSteps} name as {@code artifact}. */
-        public static StepDep atUrl(String artifact, String url, List<String> forSteps, boolean unpack) {
-            return new StepDep(artifact, null, false, null, null, null, List.of(), forSteps, url, unpack, List.of());
+        /**
+         * A file at {@code url}, handed to the steps {@code forSteps} name as {@code artifact};
+         * {@code hostVariants} as for a coordinate.
+         */
+        public static StepDep atUrl(
+                String artifact, String url, List<String> forSteps, boolean unpack, List<String> hostVariants) {
+            return new StepDep(artifact, null, false, null, null, null, List.of(), forSteps, url, unpack, hostVariants);
         }
 
         /**
-         * True for a tool fetched as one Maven artifact by coordinate — what the lock pins by digest.
-         * A closure, an SDK component and a URL file are provisioned otherwise.
+         * True for a tool fetched as one Maven artifact by coordinate. A closure, an SDK component
+         * and a URL file are pinned otherwise.
          */
         public boolean isPinnedArtifact() {
             return coordinateSpec != null && !transitive && sdkComponent == null && url == null;
@@ -340,10 +357,18 @@ public final class PluginContributions {
 
         /** Every coordinate this tool takes on a locked platform or this host: what the lock pins. */
         public List<String> lockedCoordinates() {
-            if (coordinateSpec == null) return List.of();
-            if (hostCoordinates.isEmpty()) return List.of(coordinateSpec);
-            List<String> out = new ArrayList<>(hostCoordinates);
-            if (!out.contains(coordinateSpec)) out.add(coordinateSpec);
+            return coordinateSpec == null ? List.of() : withHostVariants(coordinateSpec);
+        }
+
+        /** Every URL this file takes on a locked platform or this host: what the lock pins. */
+        public List<String> lockedUrls() {
+            return url == null ? List.of() : withHostVariants(url);
+        }
+
+        private List<String> withHostVariants(String hosts) {
+            if (hostVariants.isEmpty()) return List.of(hosts);
+            List<String> out = new ArrayList<>(hostVariants);
+            if (!out.contains(hosts)) out.add(hosts);
             return out;
         }
 
@@ -461,7 +486,10 @@ public final class PluginContributions {
         if (sd.url() != null) {
             if (!Interpolation.configProvides(sd.url(), config)) return null;
             String url = Interpolation.resolve(sd.url(), config, project, null, entry);
-            return isHttpUrl(url) ? StepDep.atUrl(artifact, url, forSteps, sd.unpack()) : null;
+            return isHttpUrl(url)
+                    ? StepDep.atUrl(
+                            artifact, url, forSteps, sd.unpack(), hostVariants(sd.url(), config, project, entry))
+                    : null;
         }
         if (sd.sdkComponent() != null) {
             String component = Interpolation.resolve(sd.sdkComponent(), config, project, null, entry);
@@ -492,14 +520,6 @@ public final class PluginContributions {
             }
             with.add(resolved);
         }
-        List<String> hostCoordinates = new ArrayList<>();
-        if (Interpolation.followsHost(template)) {
-            for (Interpolation.Host host : Interpolation.Host.LOCKED) {
-                String resolved = Interpolation.resolveAll(template, config, project, null, entry, host)
-                        .getFirst();
-                if (!hostCoordinates.contains(resolved)) hostCoordinates.add(resolved);
-            }
-        }
         return new StepDep(
                 artifact,
                 coordinate,
@@ -511,7 +531,23 @@ public final class PluginContributions {
                 forSteps,
                 null,
                 sd.unpack(),
-                hostCoordinates);
+                hostVariants(template, config, project, entry));
+    }
+
+    /**
+     * {@code template} as each {@link Interpolation.Host#LOCKED} platform resolves it, deduped, when
+     * it names {@code ${host.os}} or {@code ${host.os-arch}}; empty when it is the same on every host.
+     */
+    private static List<String> hostVariants(
+            String template, PluginConfig config, Project project, Interpolation.@Nullable Entry entry) {
+        List<String> out = new ArrayList<>();
+        if (!Interpolation.followsHost(template)) return out;
+        for (Interpolation.Host host : Interpolation.Host.LOCKED) {
+            String resolved = Interpolation.resolveAll(template, config, project, null, entry, host)
+                    .getFirst();
+            if (!out.contains(resolved)) out.add(resolved);
+        }
+        return out;
     }
 
     /** True for an {@code http://} or {@code https://} value. */

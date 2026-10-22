@@ -502,6 +502,14 @@ public record Lockfile(
         return null;
     }
 
+    /** The hex digest a {@code [[tool]]} row pins for the file at {@code url}, or null when none does. */
+    public @Nullable String urlSha256(String url) {
+        for (ToolEntry row : tools) {
+            if (url.equals(row.url())) return row.sha256Hex(null);
+        }
+        return null;
+    }
+
     /**
      * This lock as the module at {@code memberPath} (a {@link ModuleEntry#path}) reads it: for every
      * coordinate a partition row lists the member on, that row alone; for every other coordinate,
