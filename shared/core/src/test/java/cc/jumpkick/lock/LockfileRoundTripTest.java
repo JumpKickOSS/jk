@@ -4,9 +4,11 @@ package cc.jumpkick.lock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Scope;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
@@ -212,6 +214,35 @@ class LockfileRoundTripTest {
                         .getFirst()
                         .deps())
                 .isEmpty();
+    }
+
+    /** A tool row is one digest, or one per platform as dotted {@code sha256.<classifier>} keys. */
+    @Test
+    void tool_rows_round_trip() {
+        Lockfile lock = Lockfile.empty("test")
+                .withTools(List.of(
+                        new ToolEntry(
+                                "com.google.protobuf:protoc",
+                                "4.33.1",
+                                "exe",
+                                null,
+                                null,
+                                Map.of("osx-aarch_64", "a".repeat(64), "linux-x86_64", "b".repeat(64))),
+                        ToolEntry.single(Coordinate.parse("com.android.tools:r8:9.5.28"), "c".repeat(64))));
+        String rendered = LockfileWriter.render(lock);
+        assertThat(rendered)
+                .contains("[[tool]]\ncoordinate = \"com.google.protobuf:protoc\"")
+                .contains("type       = \"exe\"")
+                .contains("sha256.linux-x86_64 = ")
+                .contains("checksum   = \"sha256:" + "c".repeat(64) + "\"");
+        Lockfile back = LockfileReader.parse(rendered);
+        assertThat(back.tools()).containsExactlyInAnyOrderElementsOf(lock.tools());
+        assertThat(back.toolRow(Coordinate.parse("com.google.protobuf:protoc:4.33.1:osx-aarch_64!exe")))
+                .isNotNull()
+                .extracting(row -> row.sha256Hex("osx-aarch_64"))
+                .isEqualTo("a".repeat(64));
+        assertThat(back.toolRow(Coordinate.parse("com.google.protobuf:protoc:4.33.1:windows-x86_64!exe")))
+                .isNull();
     }
 
     @Test

@@ -54,6 +54,7 @@ public final class LockfileReader {
             "resolution-algorithm",
             "scala",
             "sdk",
+            "tool",
             "version");
 
     private LockfileReader() {}
@@ -254,7 +255,8 @@ public final class LockfileReader {
                 projectId,
                 toNativeMetadata(tableOrFail(result, "native", origin)),
                 toWriterBuild(result),
-                toNodePin(tableOrFail(result, "node", origin)));
+                toNodePin(tableOrFail(result, "node", origin)),
+                readTools(result));
     }
 
     /**
@@ -490,6 +492,30 @@ public final class LockfileReader {
             plugins.add(new Lockfile.PluginEntry(coord, ver, chk, path));
         }
         return plugins;
+    }
+
+    /** The {@code [[tool]]} rows: one digest for every host, or one per platform under {@code sha256}. */
+    private static List<ToolEntry> readTools(LockToml result) {
+        List<ToolEntry> tools = new ArrayList<>();
+        LockToml.Array array = result.getArray("tool");
+        if (array == null) return tools;
+        for (int i = 0; i < array.size(); i++) {
+            LockToml t = array.getTable(i);
+            String coord = requireRowString(t, "coordinate");
+            String ver = requireRowString(t, "version");
+            String type = t.getString("type");
+            Map<String, String> shas = new TreeMap<>();
+            LockToml sha256 = t.getTable("sha256");
+            if (sha256 != null) {
+                for (String classifier : sha256.keySet()) {
+                    String hex = sha256.getString(classifier);
+                    if (hex != null && !hex.isBlank()) shas.put(classifier, hex.trim());
+                }
+            }
+            tools.add(new ToolEntry(
+                    coord, ver, type == null ? "jar" : type, t.getString("classifier"), t.getString("checksum"), shas));
+        }
+        return tools;
     }
 
     private static String requireRowString(LockToml table, String key) {

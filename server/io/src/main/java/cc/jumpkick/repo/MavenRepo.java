@@ -564,7 +564,7 @@ public final class MavenRepo {
         URI primary = leg == Leg.ARTIFACT ? CENTRAL_MIRROR.routeForDownload(uri) : uri;
         // A Maven local-repository copy this repository's own checksum vouches for costs one small GET.
         if (mirror && !force) {
-            Optional<M2Adoption.Adopted> adopted = m2.tryAdopt(relativePath, uri);
+            Optional<M2Adoption.Adopted> adopted = m2.tryAdopt(relativePath, uri, expectedSha256);
             if (adopted.isPresent()) {
                 M2Adoption.Adopted a = adopted.get();
                 if (leg == Leg.ARTIFACT) download.countVerified();

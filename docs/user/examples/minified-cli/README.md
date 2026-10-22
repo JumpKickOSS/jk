@@ -111,13 +111,13 @@ verbs: greet, title
 
 ## What R8 removed
 
-Artifacts are additive — all three are written:
+Artifacts are additive — all three are written (sizes from R8 9.5.28, the `[minified]` default):
 
 | Artifact | Size | Entries | Contains |
 |----------|------|---------|----------|
-| `target/minified-cli-0.0.1.jar` | 6,125 B | 13 | project classes only |
-| `target/minified-cli-0.0.1-all.jar` | 975,956 B | 641 | project classes **+** commons-text **+** commons-lang3 |
-| `target/minified-cli-0.0.1-min.jar` | 25,772 B | 30 | only what R8 could prove reachable |
+| `target/minified-cli-0.0.1.jar` | 6,592 B | 13 | project classes only |
+| `target/minified-cli-0.0.1-all.jar` | 963,201 B | 633 | project classes **+** commons-text **+** commons-lang3 |
+| `target/minified-cli-0.0.1-min.jar` | 25,672 B | 30 | only what R8 could prove reachable |
 
 Two dependency classes survive out of the 589 the closure contributes:
 
@@ -136,10 +136,10 @@ And both classes reached only by name are still there, alongside the two resourc
 $ unzip -l target/minified-cli-0.0.1-min.jar | grep demo
        18  02-01-1980 00:00   META-INF/services/demo.Command
         0  02-01-1980 00:00   demo/
-     4623  02-01-1980 00:00   demo/Cli.class
+     4600  02-01-1980 00:00   demo/Cli.class
       289  02-01-1980 00:00   demo/Command.class
-     1124  02-01-1980 00:00   demo/GreetCommand.class
-     1522  02-01-1980 00:00   demo/TitleCommand.class
+     1136  02-01-1980 00:00   demo/GreetCommand.class
+     1531  02-01-1980 00:00   demo/TitleCommand.class
       112  02-01-1980 00:00   demo/commands.properties
 ```
 
@@ -196,9 +196,9 @@ a class it no longer carries:
 $ unzip -l target/minified-cli-0.0.1-min.jar | grep demo
        18  02-01-1980 00:00   META-INF/services/demo.Command
         0  02-01-1980 00:00   demo/
-     4623  02-01-1980 00:00   demo/Cli.class
+     4600  02-01-1980 00:00   demo/Cli.class
       289  02-01-1980 00:00   demo/Command.class
-     1522  02-01-1980 00:00   demo/TitleCommand.class
+     1531  02-01-1980 00:00   demo/TitleCommand.class
       112  02-01-1980 00:00   demo/commands.properties
 
 $ java -jar target/minified-cli-0.0.1-min.jar

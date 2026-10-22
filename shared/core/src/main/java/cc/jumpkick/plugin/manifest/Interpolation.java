@@ -114,6 +114,32 @@ public final class Interpolation {
         return true;
     }
 
+    /**
+     * The machine a template's {@code ${host.os}} ({@code linux} / {@code osx} / {@code windows})
+     * and {@code ${host.os-arch}} (protoc style: {@code linux-x86_64}, {@code osx-aarch_64}, …)
+     * stand for.
+     */
+    public record Host(String os, String osArch) {
+
+        /** The platforms a lock pins a host-following tool for. */
+        public static final List<Host> LOCKED = List.of(
+                new Host("linux", "linux-x86_64"),
+                new Host("linux", "linux-aarch_64"),
+                new Host("osx", "osx-x86_64"),
+                new Host("osx", "osx-aarch_64"),
+                new Host("windows", "windows-x86_64"));
+
+        /** This machine. */
+        public static Host current() {
+            return new Host(hostOs(), hostOsArch());
+        }
+    }
+
+    /** True when {@code template} names {@code ${host.os}} or {@code ${host.os-arch}}: it resolves per platform. */
+    public static boolean followsHost(@Nullable String template) {
+        return template != null && (template.contains("${host.os}") || template.contains("${host.os-arch}"));
+    }
+
     /** Host OS classifier: {@code linux} / {@code osx} / {@code windows}. */
     static String hostOs() {
         if (Os.isDarwin()) return "osx";
@@ -158,6 +184,17 @@ public final class Interpolation {
             Project project,
             @Nullable String kotlinVersion,
             @Nullable Entry entry) {
+        return resolveAll(template, config, project, kotlinVersion, entry, Host.current());
+    }
+
+    /** As {@link #resolveAll(String, PluginConfig, Project, String, Entry)} for {@code host}. */
+    public static List<String> resolveAll(
+            String template,
+            PluginConfig config,
+            Project project,
+            @Nullable String kotlinVersion,
+            @Nullable Entry entry,
+            Host host) {
         Matcher one = ONE_VAR.matcher(template);
         if (one.matches()) {
             Object raw = one.group(1).equals("config")
@@ -169,7 +206,7 @@ public final class Interpolation {
                 return out;
             }
         }
-        return List.of(resolve(template, config, project, kotlinVersion, entry));
+        return List.of(resolve(template, config, project, kotlinVersion, entry, host));
     }
 
     /**
@@ -200,6 +237,16 @@ public final class Interpolation {
             Project project,
             @Nullable String kotlinVersion,
             @Nullable Entry entry) {
+        return resolve(template, config, project, kotlinVersion, entry, Host.current());
+    }
+
+    private static String resolve(
+            @Nullable String template,
+            PluginConfig config,
+            Project project,
+            @Nullable String kotlinVersion,
+            @Nullable Entry entry,
+            Host host) {
         Matcher m = VAR.matcher(template);
         StringBuilder out = new StringBuilder();
         while (m.find()) {
@@ -231,8 +278,8 @@ public final class Interpolation {
                     case "project.group" -> project.group();
                     case "project.name" -> project.name();
                     case "project.version" -> project.version();
-                    case "host.os" -> hostOs();
-                    case "host.os-arch" -> hostOsArch();
+                    case "host.os" -> host.os();
+                    case "host.os-arch" -> host.osArch();
                     default -> null; // unreachable: validate() ran at manifest load
                 };
                 if (value == null) {

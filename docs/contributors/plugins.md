@@ -186,7 +186,10 @@ for-step   = "lint-checkstyle"        # an http(s) URL (a module path, or an uns
 ```
 
 An entry names exactly one of `coordinate`, `sdk-component` or `url`; `transitive`, `with` and
-`managed-by` belong to a coordinate. A `url` value is the file's identity: a cached copy is never
+`managed-by` belong to a coordinate. A `coordinate` that is not `transitive` is pinned in the
+project's lock as a `[[tool]]` row by sha256, once per platform when it names `${host.os}` or
+`${host.os-arch}` ([Lockfile](../user/lockfile.md#plugin-tools)); the engine fetches only the
+pinned bytes. A `url` value is the file's identity: a cached copy is never
 fetched again, and an `--offline` build with no copy fails naming the URL. A `coordinate` or
 `url` over a key the table leaves unset declares no tool; a `coordinate` that is one
 `${config.<key>}` (or `${entry.<key>}`) over a string-list key is every coordinate of the list —

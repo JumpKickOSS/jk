@@ -92,8 +92,8 @@ public final class ProvidedClasspath {
         if (entries.isEmpty()) return Provided.NONE;
         Set<String> names = new LinkedHashSet<>();
         for (PluginContributions.Provided entry : entries) names.add(entry.dependency());
-        Map<String, Path> fetched = tools.fetch(
-                tools.named(project, moduleDir, lockFile, names), project, cas, PluginBuild.sdkPins(lockFile));
+        Map<String, Path> fetched =
+                tools.fetch(tools.named(project, moduleDir, lockFile, names), project, cas, lockFile);
         List<Provided.Jar> jars = new ArrayList<>();
         for (PluginContributions.Provided entry : entries) {
             Path path = fetched.get(entry.dependency());

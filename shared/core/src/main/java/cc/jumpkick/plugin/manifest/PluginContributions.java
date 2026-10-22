@@ -251,6 +251,9 @@ public final class PluginContributions {
      *
      * <p>{@code managedBy} / {@code with} mirror the manifest: BOM-aligned multi-root tool graphs.
      * {@code forSteps} names the steps or packagers that read the tool; empty means all of them.
+     * {@code hostCoordinates} is the coordinate as each {@link Interpolation.Host#LOCKED} platform
+     * resolves it when the manifest's names {@code ${host.os}} or {@code ${host.os-arch}}, deduped;
+     * empty when the coordinate is the same on every host.
      */
     public record StepDep(
             String artifact,
@@ -262,15 +265,17 @@ public final class PluginContributions {
             List<String> with,
             List<String> forSteps,
             @Nullable String url,
-            boolean unpack) {
+            boolean unpack,
+            List<String> hostCoordinates) {
 
         public StepDep {
             with = with == null ? List.of() : List.copyOf(with);
             forSteps = forSteps == null ? List.of() : List.copyOf(forSteps);
+            hostCoordinates = hostCoordinates == null ? List.of() : List.copyOf(hostCoordinates);
         }
 
         public StepDep(String artifact, @Nullable String coordinateSpec) {
-            this(artifact, coordinateSpec, false, null, null, null, List.of(), List.of(), null, false);
+            this(artifact, coordinateSpec, false, null, null, null, List.of(), List.of(), null, false, List.of());
         }
 
         public StepDep(
@@ -279,12 +284,40 @@ public final class PluginContributions {
                 boolean transitive,
                 @Nullable String sdkComponent,
                 @Nullable String sdkPath) {
-            this(artifact, coordinateSpec, transitive, sdkComponent, sdkPath, null, List.of(), List.of(), null, false);
+            this(
+                    artifact,
+                    coordinateSpec,
+                    transitive,
+                    sdkComponent,
+                    sdkPath,
+                    null,
+                    List.of(),
+                    List.of(),
+                    null,
+                    false,
+                    List.of());
         }
 
         /** A file at {@code url}, handed to the steps {@code forSteps} name as {@code artifact}. */
         public static StepDep atUrl(String artifact, String url, List<String> forSteps, boolean unpack) {
-            return new StepDep(artifact, null, false, null, null, null, List.of(), forSteps, url, unpack);
+            return new StepDep(artifact, null, false, null, null, null, List.of(), forSteps, url, unpack, List.of());
+        }
+
+        /**
+         * True for a tool fetched as one Maven artifact by coordinate — what the lock pins by digest.
+         * A closure, an SDK component and a URL file are provisioned otherwise.
+         */
+        public boolean isPinnedArtifact() {
+            return coordinateSpec != null && !transitive && sdkComponent == null && url == null;
+        }
+
+        /** Every coordinate this tool takes on a locked platform or this host: what the lock pins. */
+        public List<String> lockedCoordinates() {
+            if (coordinateSpec == null) return List.of();
+            if (hostCoordinates.isEmpty()) return List.of(coordinateSpec);
+            List<String> out = new ArrayList<>(hostCoordinates);
+            if (!out.contains(coordinateSpec)) out.add(coordinateSpec);
+            return out;
         }
 
         /** True when {@code consumer} — a step or packager name — receives this tool. */
@@ -405,7 +438,8 @@ public final class PluginContributions {
         }
         if (sd.sdkComponent() != null) {
             String component = Interpolation.resolve(sd.sdkComponent(), config, project, null, entry);
-            return new StepDep(artifact, null, false, component, sd.sdkPath(), null, List.of(), forSteps, null, false);
+            return new StepDep(
+                    artifact, null, false, component, sd.sdkPath(), null, List.of(), forSteps, null, false, List.of());
         }
         String template = Objects.requireNonNull(sd.coordinate(), "coordinate");
         if (!Interpolation.configProvides(template, config)) return null;
@@ -431,8 +465,26 @@ public final class PluginContributions {
             }
             with.add(resolved);
         }
+        List<String> hostCoordinates = new ArrayList<>();
+        if (Interpolation.followsHost(template)) {
+            for (Interpolation.Host host : Interpolation.Host.LOCKED) {
+                String resolved = Interpolation.resolveAll(template, config, project, null, entry, host)
+                        .getFirst();
+                if (!hostCoordinates.contains(resolved)) hostCoordinates.add(resolved);
+            }
+        }
         return new StepDep(
-                artifact, coordinate, sd.transitive(), null, null, managedBy, with, forSteps, null, sd.unpack());
+                artifact,
+                coordinate,
+                sd.transitive(),
+                null,
+                null,
+                managedBy,
+                with,
+                forSteps,
+                null,
+                sd.unpack(),
+                hostCoordinates);
     }
 
     /** True for an {@code http://} or {@code https://} value. */

@@ -457,7 +457,7 @@ public final class PackagingKeys {
         Map<String, String> sdkPins = PluginBuild.sdkPins(p.lockFile());
         List<PluginContributions.StepDep> tools =
                 p.tools().forConsumer(p.project(), p.moduleDir(), p.lockFile(), packager.name());
-        Map<String, Path> extras = new LinkedHashMap<>(p.tools().fetch(tools, p.project(), p.cas(), sdkPins));
+        Map<String, Path> extras = new LinkedHashMap<>(p.tools().fetch(tools, p.project(), p.cas(), p.lockFile()));
         extras.putAll(PluginBuild.fetchPackagerDependencies(p.project(), p.moduleDir(), p.cas(), p.lockFile()));
 
         ProjectFacts facts =

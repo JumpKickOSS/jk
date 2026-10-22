@@ -29,7 +29,7 @@ main-artifact  = false
 [schema]
 # Newer than the android plugin's pin: --lib reads the running JDK's platform classes,
 # so the shrinker must parse the newest class-file version a jk toolchain provisions.
-r8-version = { type = "string", default = "9.2.23", hint = "the com.android.tools:r8 release to run (a plain JVM tool)" }
+r8-version = { type = "string", default = "9.5.28", hint = "the com.android.tools:r8 release to run (a plain JVM tool)" }
 keep       = { type = "string-list", default = [] }   # inline ProGuard keep rules
 keep-files = { type = "string-list", default = [] }   # project-relative rule files (proguard syntax)
 obfuscate  = { type = "bool", default = false }       # shrink-only by default: -dontobfuscate (JVM stack traces stay readable)

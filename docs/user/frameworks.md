@@ -154,12 +154,6 @@ Start from the `android/compose` template (`jk new my-app -t android/compose`) â
 Compose app with a JVM unit test and the `jk run` deploy path; see
 [Templates](templates.md).
 
-JVM unit tests run under Robolectric when it is on the test classpath: `android-test-config`
-writes its `test_config.properties`, naming the linked resources and a unit-test manifest. That
-manifest is the module's own merged as an application with every AAR on the test runtime closure,
-test-scope ones included, so `androidx.compose.ui:ui-test-manifest` as a `[test-dependencies]`
-entry is enough for a `ComposeTestRule` to launch its `ComponentActivity`.
-
 ## IntelliJ Platform plugins
 
 `[intellij]` builds a plugin for IntelliJ IDEA and the IDEs on its platform: the module compiles
@@ -268,7 +262,7 @@ compile graph. The plugin owns the generate stage; `jk.toml` stays data.
 
 ```toml
 [protobuf]
-version = "4.33.1"        # the protoc release to run; a bare version is exact and is the pin
+version = "4.33.1"        # the protoc release; pins com.google.protobuf:protoc in jk-lock.toml
 src     = "proto"         # module-relative proto root(s), protoc's include roots; a list declares several
 exclude = []              # root-relative globs protoc never sees, e.g. ["Legacy.proto", "**/*_legacy.proto"]
 lite    = false           # lite-runtime codegen (pairs with protobuf-javalite)
@@ -287,14 +281,13 @@ each entry's `--<id>_out` into one generated directory that joins the module's s
 `service` compiles against its gRPC stubs with no source root to declare. An entry's `plugin` is a
 `group:artifact:version` and fewer segments fail the parse naming the entry.
 
-protoc and every plugin executable are pinned by `jk.toml`, not by `jk-lock.toml`: `version` and each
-`plugin` name the exact release, and the lock has no row for them. The step fetches
-`com.google.protobuf:protoc:<version>:<os-arch>@exe` (and each plugin at the same classifier) for
-the host from the module's repositories into the store, and checks the bytes against the checksum
-the repository publishes beside them, failing closed on a mismatch as a
-[lock-time](lockfile.md#lock-time-trust) download does. A copy already in the store is checked the
-same way while the repository is reachable; offline, it is used as it stands. `jk update` moves
-`version` and each `plugin` to the newest stable on their major
+protoc and every plugin executable are pinned in `jk-lock.toml` as a
+[`[[tool]]` row](lockfile.md#plugin-tools): `jk lock` records the sha256 of the binary for each
+platform the repository publishes (`linux-x86_64`, `linux-aarch_64`, `osx-x86_64`, `osx-aarch_64`,
+`windows-x86_64`), and the build fetches `com.google.protobuf:protoc:<version>:<os-arch>!exe` (and
+each plugin at the same classifier) for the host and refuses bytes other than the pinned ones. A
+lock written on a Mac verifies the Linux CI download the same way. `jk update` moves `version` and
+each `plugin` to the newest stable on their major and relocks the rows
 ([`jk update`](lockfile.md#jk-update)). protoc's include path is the module's `src` roots, then the `src` of every
 workspace sibling the module's main compile reads (a `[dependencies]`, `[export-dependencies]` or
 `[provided-dependencies]` sibling, and the siblings those reach) that has a `[protobuf]` table â€” a
