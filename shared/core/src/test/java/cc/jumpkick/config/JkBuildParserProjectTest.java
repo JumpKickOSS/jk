@@ -40,7 +40,7 @@ class JkBuildParserProjectTest {
 
     @Test
     void platform_policy_survives_kotlin_plugins_rebuild() {
-        // the kotlin-plugins fold used a ctor that hard-reset platformPolicy to ENFORCED.
+        // Folding [[kotlin-plugins]] into the build block keeps every other field.
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 kotlin = "2.1.0"
 
@@ -79,6 +79,52 @@ class JkBuildParserProjectTest {
                         """))
                 .hasMessageContaining("[resolve] unknown key `pins`")
                 .hasMessageContaining("platform, unmapped");
+    }
+
+    @Test
+    void kotlin_plugins_entries_read_coordinate_id_and_options() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+
+                [[kotlin-plugins]]
+                coordinate = "org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable"
+
+                [[kotlin-plugins]]
+                id         = "org.jetbrains.kotlin.allopen"
+                coordinate = "org.jetbrains.kotlin:kotlin-allopen-compiler-plugin-embeddable:2.4.21"
+                options    = ["annotation=com.acme.Open"]
+                """);
+        assertThat(parsed.build().kotlinPlugins())
+                .containsExactly(
+                        new BuildBlock.KotlinPluginDecl(
+                                "kotlin-serialization-compiler-plugin-embeddable",
+                                "org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable",
+                                List.of()),
+                        new BuildBlock.KotlinPluginDecl(
+                                "org.jetbrains.kotlin.allopen",
+                                "org.jetbrains.kotlin:kotlin-allopen-compiler-plugin-embeddable:2.4.21",
+                                List.of("annotation=com.acme.Open")));
+    }
+
+    @Test
+    void kotlin_plugins_refuses_a_key_it_does_not_know() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                        [[kotlin-plugins]]
+                        coordinate = "org.jetbrains.kotlin:kotlin-allopen-compiler-plugin-embeddable"
+                        option     = ["annotation=com.acme.Open"]
+                        """))
+                .hasMessageContaining("[[kotlin-plugins]] unknown key `option`")
+                .hasMessageContaining("coordinate, id, options");
+    }
+
+    @Test
+    void kotlin_plugins_as_a_single_table_is_refused() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                        [kotlin-plugins]
+                        coordinate = "org.jetbrains.kotlin:kotlin-allopen-compiler-plugin-embeddable"
+                        """))
+                .hasMessageContaining("kotlin-plugins must be an array of tables");
     }
 
     @Test

@@ -932,17 +932,31 @@ public final class ManifestBuild {
         return new BuildBlock.AuditIgnore(id.trim(), reason.trim(), until);
     }
 
+    /** The keys one {@code [[kotlin-plugins]]} entry may carry. */
+    public static final List<String> KOTLIN_PLUGIN_KEYS = List.of("coordinate", "id", "options");
+
     /**
-     * {@code [[kotlin-plugins]]}: {@code coordinate} is {@code group:artifact[:version]} (omitted)
-     * version → project Kotlin version); {@code id} defaults to the artifact.
+     * {@code [[kotlin-plugins]]}: {@code coordinate} is {@code group:artifact[:version]} (an omitted
+     * version is the project's Kotlin version); {@code id} defaults to the artifact. Unknown keys
+     * fail the parse, so a misspelt {@code option} cannot drop a plugin's options.
      */
     static List<BuildBlock.KotlinPluginDecl> parseKotlinPlugins(TomlTable root) {
-        TomlArray arr = root.getArray("kotlin-plugins");
-        if (arr == null) return List.of();
+        Object raw = root.get(List.of("kotlin-plugins"));
+        if (raw == null) return List.of();
+        if (!(raw instanceof TomlArray arr)) {
+            throw new JkBuildParseException("kotlin-plugins must be an array of tables: [[kotlin-plugins]]"
+                    + " coordinate = \"org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable\"");
+        }
         List<BuildBlock.KotlinPluginDecl> out = new ArrayList<>();
         for (int i = 0; i < arr.size(); i++) {
             if (!(arr.get(i) instanceof TomlTable t)) {
                 throw new JkBuildParseException("[[kotlin-plugins]] entries must be tables");
+            }
+            for (String key : t.keySet()) {
+                if (!KOTLIN_PLUGIN_KEYS.contains(key)) {
+                    throw new JkBuildParseException("[[kotlin-plugins]] unknown key `" + key + "` — expected one of: "
+                            + String.join(", ", KOTLIN_PLUGIN_KEYS));
+                }
             }
             String coordinate = t.getString("coordinate");
             if (coordinate == null || coordinate.isBlank()) {
