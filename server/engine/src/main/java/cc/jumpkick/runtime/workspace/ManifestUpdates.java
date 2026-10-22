@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildEditor;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.guard.rules.GuardPacks;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
@@ -46,9 +48,10 @@ import org.jspecify.annotations.Nullable;
  * The manifest phase of {@code jk update}: every exact pin a manifest declares moves to the newest
  * stable release on its Maven major ({@code --major} lifts that gate), in every dependency scope
  * table, in each variant value's dependency tables, in {@code [workspace.dependencies]}, in the
- * framework and tool tables ({@link ToolPins}: {@code [spring-boot] version}, {@code [micronaut]
- * version}, {@code [dokka] version}, {@code [protobuf] version}, a {@code [protobuf.<id>] plugin}, a
- * {@code [generate.<name>] tool} or {@code unpack}) and in every workspace member. Ranges, {@code
+ * language keys and the framework and tool tables ({@link ToolPins}: {@code kotlin}, {@code
+ * scala}, {@code [spring-boot] version}, {@code [dokka] version}, {@code [protobuf] version}, a
+ * {@code [generate.<name>] tool}, …), in the lock root's {@code [guards] extends} rule packs
+ * ({@link GuardPackPins}) and in every workspace member. Ranges, {@code
  * latest}, git, path and platform-managed entries keep their text; the relock that follows floats
  * them. Candidates come from the project's declared repositories, revalidated past the metadata TTL
  * like the relock itself.
@@ -96,18 +99,22 @@ public final class ManifestUpdates {
     }
 
     /**
-     * One pin move: {@code handle} in {@code table} of the manifest under {@code dir} goes {@code
-     * from} → {@code to}. {@code table} is the scope table's name, {@link #WORKSPACE_TABLE}, or a
-     * tool pin's {@code <table>.<key>} ({@code dokka.version}, {@code protobuf.grpc-java.plugin}).
-     * {@code moduleLabel} is the workspace member's coordinate, empty for a standalone project.
+     * One pin move: {@code handle} in {@code table} of {@code file}, the manifest under {@code dir}
+     * or its {@code jk-guards.toml}, goes {@code from} → {@code to}. {@code table} is the scope
+     * table's name, {@link #WORKSPACE_TABLE}, a tool pin's {@code <table>.<key>} ({@code
+     * dokka.version}, {@code protobuf.grpc-java.plugin}), a root key ({@code kotlin}) or {@link
+     * GuardPackPins#TABLE}. {@code moduleLabel} is the workspace member's coordinate, empty for a
+     * standalone project.
      */
     public record Rewrite(
-            Path dir, String moduleLabel, String table, String handle, String module, String from, String to) {
-
-        public Path manifest() {
-            return ManifestPaths.manifestIn(dir);
-        }
-    }
+            Path file,
+            Path dir,
+            String moduleLabel,
+            String table,
+            String handle,
+            String module,
+            String from,
+            String to) {}
 
     /**
      * The rewrites and the manifest text they produce, keyed by manifest path. Nothing is on disk
@@ -276,7 +283,8 @@ public final class ManifestUpdates {
                         continue;
                     }
                     text = rewritten;
-                    rewrites.add(new Rewrite(dir, moduleLabel, table.path(), dep.library(), dep.module(), current, to));
+                    rewrites.add(new Rewrite(
+                            manifest, dir, moduleLabel, table.path(), dep.library(), dep.module(), current, to));
                 }
             }
             for (Map.Entry<String, Workspace.WorkspaceDependency> e :
@@ -287,8 +295,8 @@ public final class ManifestUpdates {
                 String to = move.to(dir, repos, wd.module(), exact.version());
                 if (to == null) continue;
                 text = JkBuildEditor.setWorkspaceDependencyVersion(text, e.getKey(), to);
-                rewrites.add(
-                        new Rewrite(dir, moduleLabel, WORKSPACE_TABLE, e.getKey(), wd.module(), exact.version(), to));
+                rewrites.add(new Rewrite(
+                        manifest, dir, moduleLabel, WORKSPACE_TABLE, e.getKey(), wd.module(), exact.version(), to));
             }
             if (toolVersions != null) {
                 text = moveToolPins(dir, moduleLabel, build, text, repos, selection, toolVersions, rewrites);
@@ -298,12 +306,61 @@ public final class ManifestUpdates {
                 if (node != null) {
                     text = node.text();
                     rewrites.add(new Rewrite(
-                            dir, moduleLabel, node.table(), NodeUpdates.HANDLE, "nodejs", node.from(), node.to()));
+                            manifest,
+                            dir,
+                            moduleLabel,
+                            node.table(),
+                            NodeUpdates.HANDLE,
+                            NodeUpdates.MODULE,
+                            node.from(),
+                            node.to()));
                 }
             }
             if (!text.equals(before)) contents.put(manifest, text);
         }
+        if (toolVersions != null) {
+            movePacks(lockDir, effective.get(lockDir), repoUrl, selection, toolVersions, rewrites, contents);
+        }
         return new Plan(rewrites, contents);
+    }
+
+    /**
+     * Move every selected rule pack the lock root's {@code [guards] extends} pins (a pack is
+     * selected by its artifact or coordinate) to its newest stable, writing the rules file.
+     */
+    private static void movePacks(
+            Path lockDir,
+            @Nullable JkBuild effectiveRoot,
+            @Nullable URI repoUrl,
+            Selection selection,
+            Map<String, List<String>> versionsByModule,
+            List<Rewrite> rewrites,
+            Map<Path, String> contents)
+            throws IOException {
+        List<GuardPacks.Coordinate> packs = GuardPackPins.of(lockDir);
+        if (packs.isEmpty() || effectiveRoot == null) return;
+        Path file = GuardPackPins.file(lockDir);
+        String text = Files.readString(file, StandardCharsets.UTF_8);
+        String before = text;
+        Cas cas = JkStores.storeCas();
+        RepoGroup repos = RepoGroupBuilder.buildFor(effectiveRoot, repoUrl, cas);
+        for (GuardPacks.Coordinate pack : packs) {
+            if (!selection.selects(pack.artifact(), pack.ga())) continue;
+            String to = newer(
+                    pack.version(),
+                    GuardPackPins.available(pack, cas.root(), repos, versionsByModule),
+                    selection.major());
+            if (to == null) continue;
+            try {
+                text = GuardPackPins.rewrite(text, pack, to);
+            } catch (IllegalStateException unwritable) {
+                Log.debug("update: " + pack.gav() + " not rewritten", unwritable);
+                continue;
+            }
+            rewrites.add(new Rewrite(
+                    file, lockDir, "", GuardPackPins.TABLE, pack.artifact(), pack.ga(), pack.version(), to));
+        }
+        if (!text.equals(before)) contents.put(file, text);
     }
 
     /**
@@ -351,27 +408,41 @@ public final class ManifestUpdates {
             List<Rewrite> rewrites) {
         Map<String, List<ToolPins.ToolPin>> byKey = new LinkedHashMap<>();
         for (ToolPins.ToolPin pin : ToolPins.of(build, text)) {
-            byKey.computeIfAbsent(pin.table() + "." + pin.key(), k -> new ArrayList<>())
-                    .add(pin);
+            byKey.computeIfAbsent(pin.path(), k -> new ArrayList<>()).add(pin);
         }
         for (List<ToolPins.ToolPin> pins : byKey.values()) {
             if (pins.stream().noneMatch(selection::selects)) continue;
             ToolPins.ToolPin pin = pins.getFirst();
-            List<List<String>> published = pins.stream()
-                    .map(p -> available(p.module(), repos, versionsByModule))
-                    .toList();
-            String to = newer(pin.version(), publishedByAll(published), selection.major());
+            String to = newer(pin.version(), published(pins, repos, versionsByModule), selection.major());
             if (to == null) continue;
             try {
-                text = JkBuildEditor.setTableString(text, pin.table(), pin.key(), pin.rewritten(to));
+                text = pin.rewrite(text, to);
             } catch (IllegalStateException unwritable) {
-                Log.debug("update: [" + pin.table() + "] " + pin.key() + " not rewritten", unwritable);
+                Log.debug("update: " + pin.path() + " not rewritten", unwritable);
                 continue;
             }
             rewrites.add(new Rewrite(
-                    dir, moduleLabel, pin.table() + "." + pin.key(), pin.handle(), pin.module(), pin.version(), to));
+                    ManifestPaths.manifestIn(dir),
+                    dir,
+                    moduleLabel,
+                    pin.path(),
+                    pin.handle(),
+                    pin.module(),
+                    pin.version(),
+                    to));
         }
         return text;
+    }
+
+    /**
+     * The versions every coordinate one table key fills publishes ({@code [intellij] version} names
+     * the IDE and its test framework), so the key moves only to a release all of them carry.
+     */
+    static List<String> published(
+            List<ToolPins.ToolPin> pinsOfOneKey, RepoGroup repos, Map<String, List<String>> versionsByModule) {
+        return publishedByAll(pinsOfOneKey.stream()
+                .map(p -> available(p.module(), repos, versionsByModule))
+                .toList());
     }
 
     /** Write every manifest the plan changed. A build parsing concurrently never sees a torn file. */
@@ -420,7 +491,7 @@ public final class ManifestUpdates {
      * Every version the repositories publish for {@code module}, revalidated past the metadata TTL;
      * empty when the repositories cannot be reached (the relock reports that).
      */
-    private static List<String> available(String module, RepoGroup repos, Map<String, List<String>> memo) {
+    static List<String> available(String module, RepoGroup repos, Map<String, List<String>> memo) {
         return memo.computeIfAbsent(module, m -> {
             try {
                 return MavenMetadataCache.withForceRevalidate(

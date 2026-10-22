@@ -100,7 +100,7 @@ public final class McpUpdate {
         List<Map<String, Object>> rows = new ArrayList<>();
         for (ManifestUpdates.Rewrite r : plan.rewrites()) {
             Map<String, Object> row = new LinkedHashMap<>();
-            row.put("manifest", r.manifest().toString());
+            row.put("manifest", r.file().toString());
             row.put("module", r.moduleLabel());
             row.put("table", r.table());
             row.put("handle", r.handle());

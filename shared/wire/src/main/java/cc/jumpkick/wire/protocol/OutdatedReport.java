@@ -17,11 +17,15 @@ import org.jspecify.annotations.Nullable;
 /**
  * Read-only outdated-dependency report for {@code jk outdated} ({@link EngineProtocol#OUTDATED_REQUEST}).
  * Non-null {@code error} is printable and {@code rows} is empty; {@code workspace} true spans modules.
- * Wire rows are {@code |}-joined 8-tuples (coords/versions/scopes never contain {@code |}).
+ * Wire rows are {@code |}-joined 9-tuples (coords/versions/scopes never contain {@code |}).
  */
 public record OutdatedReport(@Nullable String error, boolean workspace, List<Row> rows) {
 
-    /** One direct declared dependency's version picture. */
+    /**
+     * One declared pin's version picture: a dependency, a language, tool or framework key, or a rule
+     * pack. {@code relocated} is the {@code group:artifact} the coordinate moved to, empty when it
+     * has not moved; {@code latest} and {@code tip} are then the new coordinate's.
+     */
     public record Row(
             String moduleLabel,
             String coordinate,
@@ -30,7 +34,30 @@ public record OutdatedReport(@Nullable String error, boolean workspace, List<Row
             @Nullable String current,
             @Nullable String compatible,
             String latest,
-            @Nullable String tip) {
+            @Nullable String tip,
+            String relocated) {
+
+        public Row {
+            relocated = relocated == null ? "" : relocated;
+        }
+
+        /** A row whose coordinate has not moved. */
+        public Row(
+                String moduleLabel,
+                String coordinate,
+                String display,
+                String scope,
+                @Nullable String current,
+                @Nullable String compatible,
+                String latest,
+                @Nullable String tip) {
+            this(moduleLabel, coordinate, display, scope, current, compatible, latest, tip, "");
+        }
+
+        /** True when the coordinate moved to another {@code group:artifact}. */
+        public boolean isRelocated() {
+            return !relocated.isEmpty();
+        }
 
         /**
          * True when an update would change something: Compatible or Latest is strictly ahead of
@@ -74,7 +101,8 @@ public record OutdatedReport(@Nullable String error, boolean workspace, List<Row
     /**
      * One coordinate across every module that declares it. {@code current} and {@code compatible}
      * list each distinct value with its module count, lowest version first, so two modules on
-     * different pins read as a spread rather than as two rows.
+     * different pins read as a spread rather than as two rows. {@code relocated} is the
+     * coordinate it moved to, empty when it has not moved.
      */
     public record Rollup(
             String coordinate,
@@ -85,7 +113,8 @@ public record OutdatedReport(@Nullable String error, boolean workspace, List<Row
             String latest,
             @Nullable String tip,
             List<String> scopes,
-            boolean canMove) {
+            boolean canMove,
+            String relocated) {
 
         /** The catalog short name when known, else the coordinate. */
         public String label() {
@@ -137,7 +166,9 @@ public record OutdatedReport(@Nullable String error, boolean workspace, List<Row
         Set<String> modules = new LinkedHashSet<>();
         Set<String> scopes = new LinkedHashSet<>();
         boolean canMove = false;
+        String relocated = "";
         for (Row r : rows) {
+            if (relocated.isEmpty()) relocated = r.relocated();
             if (display.isEmpty()) display = r.display();
             if (latest.isEmpty() || ahead(r.latest(), latest)) latest = r.latest();
             if (tip == null && r.tip() != null && !r.tip().isBlank()) tip = r.tip();
@@ -154,7 +185,8 @@ public record OutdatedReport(@Nullable String error, boolean workspace, List<Row
                 latest,
                 tip,
                 List.copyOf(scopes),
-                canMove);
+                canMove,
+                relocated);
     }
 
     private static List<Spread> spread(List<Row> rows, Function<Row, @Nullable String> cell) {
@@ -194,7 +226,8 @@ public record OutdatedReport(@Nullable String error, boolean workspace, List<Row
                     r.current(),
                     r.compatible(),
                     r.latest(),
-                    r.tip()));
+                    r.tip(),
+                    r.relocated()));
         }
         return RequestJson.request(EngineProtocol.OUTDATED_ACK)
                 .string("error", error)
@@ -225,6 +258,7 @@ public record OutdatedReport(@Nullable String error, boolean workspace, List<Row
             o.put("compatible", r.compatible());
             o.put("latest", r.latest());
             if (r.tip() != null && !r.tip().isBlank()) o.put("tip", r.tip());
+            if (r.isRelocated()) o.put("relocated", r.relocated());
             out.add(o);
         }
         m.put("rows", out);
@@ -237,7 +271,7 @@ public record OutdatedReport(@Nullable String error, boolean workspace, List<Row
         List<Row> rows = new ArrayList<>();
         for (String enc : Jsonl.strArray(line, "rows")) {
             String[] f = enc.split("\\|", -1);
-            rows.add(new Row(at(f, 0), at(f, 1), at(f, 2), at(f, 3), at(f, 4), at(f, 5), at(f, 6), at(f, 7)));
+            rows.add(new Row(at(f, 0), at(f, 1), at(f, 2), at(f, 3), at(f, 4), at(f, 5), at(f, 6), at(f, 7), at(f, 8)));
         }
         return new OutdatedReport(error, workspace, rows);
     }
