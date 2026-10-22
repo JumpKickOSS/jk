@@ -1,10 +1,10 @@
 version = 1
-generated-by = "jk 0.15.1"
-generated-by-build = "95029c41956f"
-generated-by-build-time = "2026-10-10T19:11:09Z"
+generated-by = "jk 0.20.0"
+generated-by-build = "351af4376a6d"
+generated-by-build-time = "2026-10-22T05:59:57Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "9ec8e1d4bdf694f72da543313af9f38e05d6f7a18d76a10f09000a89f9aec030"
+manifests-sha256 = "76fbf8c20cb82193e535e61b40422ebb75516bf5bc52120e5ed1fc6acb7dfea1"
 project-id = "f10b3ac96aedcb2e0760ad23f4e56589"
 
 [jdk]
@@ -13,9 +13,9 @@ suggested-version = "25.0.4.1"
 
 [[artifact]]
 name     = "cc.jumpkick:jk-plugin-sdk:jar:"
-version  = "0.15.1"
+version  = "0.20.0"
 source   = "jumpkick+https://jumpkick.build/repo/"
-checksum = "sha256:7afdae188497b9b1081e0bf70696409c012b06f88335e100a46b2c86942b1254"
+checksum = "sha256:977483fcece80dbb1a575552c3943d341f5a9e74bc6fe2fffcf47733edc9e851"
 scopes   = ["main"]
 
 [[artifact]]
