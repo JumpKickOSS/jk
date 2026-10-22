@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.cli.engine.EngineSpawn;
+import cc.jumpkick.cli.testing.DevPorts;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
@@ -17,7 +18,6 @@ import cc.jumpkick.node.NodeDiscovery;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.File;
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -94,6 +94,15 @@ class DevSidecarExampleTest {
             assertThat(Jsonl.str(ready.get(), "url")).isEqualTo("http://localhost:" + webPort);
             assertThat(Jsonl.bool(ready.get(), "frontDoor", false)).isTrue();
 
+            // Output lines come from their own pump: wait for them before reading the stream whole.
+            assertThat(awaitLine(
+                            out,
+                            typed("sidecar-output").and(l -> ("stub dev server on http://localhost:" + webPort)
+                                    .equals(Jsonl.str(l, "line"))),
+                            jk))
+                    .isPresent();
+            assertThat(awaitLine(out, l -> "bundling 100%".equals(Jsonl.str(l, "line")), jk))
+                    .isPresent();
             List<String> events = lines(out);
             String started =
                     events.stream().filter(typed("sidecar-started")).findFirst().orElseThrow();
@@ -507,23 +516,9 @@ class DevSidecarExampleTest {
         }
     }
 
-    /**
-     * {@code n} distinct free ports. Every socket stays open until all are chosen, so the kernel
-     * cannot hand the same port out twice, as two separate open-and-close probes can.
-     */
+    /** {@code n} distinct ports outside the ephemeral range: see {@link DevPorts}. */
     private static int[] freePorts(int n) throws IOException {
-        List<ServerSocket> held = new ArrayList<>();
-        try {
-            int[] ports = new int[n];
-            for (int i = 0; i < n; i++) {
-                ServerSocket socket = new ServerSocket(0);
-                held.add(socket);
-                ports[i] = socket.getLocalPort();
-            }
-            return ports;
-        } finally {
-            for (ServerSocket socket : held) socket.close();
-        }
+        return DevPorts.free(n);
     }
 
     private static void copyTree(Path from, Path to) throws IOException {
