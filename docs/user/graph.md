@@ -22,7 +22,7 @@ jk graph report                            # GRAPH_REPORT.md: god nodes, surpris
 
 | Source | Nodes | Edges |
 |---|---|---|
-| Java, Kotlin, Groovy (compiled classes and source) | types, nested types, methods, Kotlin top-level functions, `NOTE:`/`WHY:` comments | `contains`, `method`, `inherits`, `implements`, `imports`, `calls`, `references` (field, parameter, return types, annotations) |
+| Java, Kotlin, Groovy (compiled classes and source) | types, nested types, methods, named constants (`static final UPPER_CASE`, Kotlin `const val`), Kotlin top-level functions, `NOTE:`/`WHY:` comments | `contains`, `method`, `inherits`, `implements`, `imports`, `calls`, `references` (field, parameter, return types, annotations) |
 | JavaScript, TypeScript, JSX/TSX, Vue | classes, functions, methods | `imports_from` (relative), `imports` (npm packages), `uses` (Angular templates and styles, JSX components) |
 | Markdown, AsciiDoc | pages, headings | `contains`, links to other files, `references` to the code a code span names |
 | Spring `application*`/`bootstrap*` YAML and properties | one node per key | code reading `${key}`, `@Value` or `@ConfigurationProperties` → the key |

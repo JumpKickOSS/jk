@@ -100,6 +100,7 @@ final class JvmSourceScanner {
             javaMethods(b, text, code, lines, depth, close, open);
             constructors(b, text, code, lines, depth, close, open);
         }
+        if (java || kotlin) constants(b, text, code, lines, depth, open, java ? JAVA_CONSTANT : KOTLIN_CONSTANT);
         if (relPath.endsWith(".gradle") || relPath.endsWith(".gradle.kts")) coordinates(b, text, lines);
         for (SourceMask.Comment c : mask.comments) {
             String body = SourceMask.body(c);
@@ -316,6 +317,48 @@ final class JvmSourceScanner {
             b.declare(
                     id, line, member(text, code, close, lines, at, m.end() - 1, "constructor", fallback(owner), false));
             b.edge(owner.id, id, Relations.METHOD, Confidence.EXTRACTED, line);
+        }
+    }
+
+    private static final Pattern JAVA_CONSTANT = Pattern.compile("(?m)^[ \\t]*(?:@\\w+(?:\\([^)]*\\))?\\s+)*"
+            + "(?:(?:public|protected|private)\\s+)?(?:static\\s+final|final\\s+static)\\s+[\\w$.<>\\[\\]?, ]+?\\s+"
+            + "([A-Z][A-Z0-9_]*)\\s*[=;]");
+    private static final Pattern KOTLIN_CONSTANT = Pattern.compile(
+            "(?m)^[ \\t]*(?:(?:public|internal|protected|private)\\s+)?const\\s+val\\s+([A-Z][A-Z0-9_]*)\\b");
+
+    /**
+     * A named constant ({@code static final MAX_NIGHTS}, Kotlin {@code const val}) is a member of its
+     * type: a rule's value is often where a rule is decided. A Kotlin top-level or companion
+     * constant belongs to the file or the enclosing class.
+     */
+    private static void constants(
+            FragmentBuilder b, String text, String code, Lines lines, int[] depth, List<Open> open, Pattern pattern) {
+        Matcher m = pattern.matcher(code);
+        while (m.find()) {
+            int at = m.start(1);
+            Open owner = enclosing(open, at);
+            int companion = pattern == KOTLIN_CONSTANT ? 1 : 0;
+            if (owner == null ? depth[at] != 0 : depth[at] < owner.depth || depth[at] > owner.depth + companion) {
+                continue;
+            }
+            String name = m.group(1);
+            int line = lines.at(at);
+            DeclScan.Preamble pre = DeclScan.preamble(code, at);
+            int semi = code.indexOf(';', m.end() - 1);
+            int newline = code.indexOf('\n', m.end());
+            int end = pattern == JAVA_CONSTANT && semi >= 0 ? semi : (newline < 0 ? code.length() - 1 : newline);
+            Map<String, Object> facts = new LinkedHashMap<>(DeclScan.facts(
+                    "constant",
+                    Decl.visibility(pre.modifiers(), owner == null ? "public" : fallback(owner)),
+                    lines.at(end),
+                    pre.annotations()));
+            String doc = DeclScan.docSummary(text, code, pre.start(), at);
+            if (doc != null) facts.put(Decl.DOC, doc);
+            String id = owner == null
+                    ? b.declared(name, name, "code", line, Map.of())
+                    : b.node(GraphIds.member(owner.id, name), "." + name, "code", line, Map.of());
+            b.declare(id, line, facts);
+            b.edge(owner == null ? b.fileId() : owner.id, id, Relations.CONTAINS, Confidence.EXTRACTED, line);
         }
     }
 

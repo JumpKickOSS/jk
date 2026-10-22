@@ -41,11 +41,9 @@ public final class Budget {
                 .mapToInt(l -> l.length() + 1)
                 .sum();
         int full = (Math.min(nodeChars, output.length()) + 2) / CHARS_PER_TOKEN;
-        return "[!] TRUNCATED: showing " + shown + " of " + total + " nodes (~" + budget
-                + "-token budget). The answer may be among the " + cut + " cut nodes: raise the token budget to "
-                + full + " to get all " + total + " (CLI: --budget " + full + ", MCP: token_budget=" + full
-                + ") or narrow the query (context_filter=['call'], or get_node for a specific symbol).\n\n" + kept
-                + "\n... (truncated: " + cut + " more nodes cut by ~" + budget + "-token budget)";
+        return "[!] TRUNCATED: showing " + shown + " of " + total + " nodes (~" + budget + " tokens). All of them"
+                + " take ~" + full + ": --budget " + full + " (MCP token_budget), or narrow with context_filter or"
+                + " get_node.\n\n" + kept + "\n... " + cut + " more nodes cut";
     }
 
     /** Plain lines under {@code budget}, cut with a count and {@code hint}. */
