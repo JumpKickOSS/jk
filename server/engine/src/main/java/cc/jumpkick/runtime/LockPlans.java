@@ -240,7 +240,17 @@ public final class LockPlans {
                 .kind(TaskKind.IO)
                 .requires(TaskNames.LOCK_PLUGINS)
                 .ticks(1)
-                .execute(ctx -> ctx.put(LOCKFILE, pipeline.pinSdk(ctx.require(LOCKFILE), LockPipeline.of(ctx))))
+                .execute(ctx -> {
+                    LockPipeline.Progress progress = LockPipeline.of(ctx);
+                    try {
+                        ctx.put(
+                                LOCKFILE,
+                                pipeline.pinTools(pipeline.pinSdk(ctx.require(LOCKFILE), progress), progress));
+                    } catch (RuntimeException e) {
+                        ctx.error("tool", Errors.text(e));
+                        throw e;
+                    }
+                })
                 .build();
 
         Task write = Task.builder(TaskNames.WRITE_LOCKFILE)
@@ -467,7 +477,8 @@ public final class LockPlans {
                         ? oldLock.nativeMetadata()
                         : newLock.nativeMetadata(),
                 newLock.writerBuild(),
-                oldLock != null && oldLock.node() != null ? oldLock.node() : newLock.node());
+                oldLock != null && oldLock.node() != null ? oldLock.node() : newLock.node(),
+                oldLock != null ? oldLock.tools() : newLock.tools());
         pipeline.write(finalLock, manifestsSha);
         return refreshed;
     }

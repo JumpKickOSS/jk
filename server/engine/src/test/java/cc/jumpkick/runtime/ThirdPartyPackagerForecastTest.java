@@ -164,24 +164,15 @@ class ThirdPartyPackagerForecastTest {
         assertThat(sdkRows).hasSize(PluginSdkFloor.ARTIFACTS.size());
         LockfileWriter.write(
                 PluginSdkFloor.withRows(
-                        new Lockfile(
-                                Lockfile.CURRENT_VERSION,
-                                "test",
-                                Lockfile.RESOLUTION_ALGORITHM,
-                                null,
-                                null,
-                                List.of(),
-                                List.of(new Lockfile.PluginEntry(
+                        Lockfile.empty("test")
+                                .withGeneratedBy("test")
+                                .withPlugins(List.of(new Lockfile.PluginEntry(
                                         GROUP + ":" + ARTIFACT,
                                         VERSION,
-                                        "sha256:" + fetched.fetched().sha256())),
-                                List.of(),
-                                List.of(),
-                                null,
+                                        "sha256:" + fetched.fetched().sha256())))
                                 // Without the manifest digest the lock reads as stale and the forecast
                                 // short-circuits to a single "lock update needed" step.
-                                LockManifestDigest.compute(proj),
-                                null),
+                                .withManifestsSha256(LockManifestDigest.compute(proj)),
                         sdkRows),
                 lockFile);
         assertThat(PluginDescriptorOps.ensureMaterialized(proj, cache)).isTrue();

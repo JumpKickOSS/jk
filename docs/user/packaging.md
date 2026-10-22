@@ -357,6 +357,7 @@ minified = true
 # keep-files = ["proguard-rules.pro"]
 # obfuscate = false         # default
 # strict-warnings = false   # default
+# r8-version = "9.5.28"     # default: the com.android.tools:r8 release that shrinks
 ```
 
 JumpKick derives keep rules from by-name indexes (`META-INF/services/*` and

@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.LongAdder;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A repository's use of the Maven local repository ({@code ~/.m2/repository}). A local-repo file
@@ -111,7 +112,7 @@ final class M2Adoption {
 
     /**
      * Adopt {@code relativePath} out of the Maven local repository when its bytes match the checksum this
-     * repository publishes for it.
+     * repository publishes for it and, under a lock pin, {@code expectedSha256}.
      *
      * <p>The hash is fetched remotely rather than read from {@code jk-lock.toml} on purpose: it makes the
      * check work during resolve, when no lock entry exists yet, and it keeps the authority with the
@@ -124,7 +125,7 @@ final class M2Adoption {
      * the ordinary download, so the worst case is two small GETs. An adopted artifact counts as
      * verified: the repository's own checksum vouched for it, exactly as it would for a download.
      */
-    Optional<Adopted> tryAdopt(String relativePath, URI uri) {
+    Optional<Adopted> tryAdopt(String relativePath, URI uri, @Nullable String expectedSha256) {
         if (!enabled()) return Optional.empty();
         if (!remote) return Optional.empty();
         try {
@@ -137,6 +138,10 @@ final class M2Adoption {
             // comparison and the memo the adoption records.
             ChecksumSidecars sidecars = ChecksumSidecars.start(transport, credential, uri);
             String sha256 = localSha256(candidate, relativePath);
+            if (expectedSha256 != null && !expectedSha256.equalsIgnoreCase(sha256)) {
+                sidecars.cancel();
+                return Optional.empty();
+            }
             Optional<ChecksumSidecars.Published> published = sidecars.strongestSha();
             if (published.isEmpty()) return Optional.empty();
             ChecksumSidecars.Algorithm algorithm = published.get().algorithm();

@@ -206,8 +206,12 @@ Kotlin compiler plugins are `[[kotlin-plugins]]`, [below](#kotlin-compiler-plugi
 ## Kotlin compiler plugins (`[[kotlin-plugins]]`)
 
 Each `[[kotlin-plugins]]` entry loads one Kotlin compiler plugin into the module's Kotlin
-compiles, main and test. The plugin jar is fetched from the module's repositories, and the
-entry is a compile input: adding, removing or changing one recompiles the module.
+compiles, main and test. `jk lock` pins each plugin jar by digest as a
+[`[[plugin]]` row](lockfile.md#what-else-the-lock-pins), at the version the coordinate names or the
+locked Kotlin compiler's, and the compile fetches exactly those bytes: a jar a repository or the
+store serves with another digest is refused, and a lock with no row for a declared plugin is stale,
+so the next build relocks first. The entry is a compile input: adding, removing or changing one
+recompiles the module.
 
 | Key | Meaning | Default |
 |---|---|---|

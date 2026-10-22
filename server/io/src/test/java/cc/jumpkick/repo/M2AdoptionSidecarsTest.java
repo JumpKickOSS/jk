@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
@@ -68,6 +69,25 @@ class M2AdoptionSidecarsTest {
         assertThat(sha1ArrivedDuringSha256Miss)
                 .as("the .sha1 was asked for while the .sha256 was still outstanding")
                 .isTrue();
+    }
+
+    /**
+     * Under a lock pin the candidate must be the pinned bytes too: a Maven-local copy the repository's
+     * checksum vouches for, after the repository republished it, is not adopted, and the download it
+     * falls through to is refused against the pin.
+     */
+    @Test
+    void a_pinned_fetch_adopts_only_the_pinned_bytes(@TempDir Path tmp) throws Exception {
+        seedM2(tmp.resolve("m2"), REAL);
+        repo.served().put("/" + REL, REAL);
+        repo.served().put("/" + REL + ".sha1", Hashing.hashHex("SHA-1", REAL).getBytes(StandardCharsets.UTF_8));
+        MavenRepo mavenRepo = new MavenRepo("test", repo.base(), new Http(), new Cas(tmp.resolve("store")));
+        String pinned = Hashing.sha256Hex("the bytes the lock was written against".getBytes(StandardCharsets.UTF_8));
+
+        assertThatThrownBy(() ->
+                        mavenRepo.fetchArtifact(Coordinate.of("com.example", "widget", "1.0"), pinned, () -> false))
+                .isInstanceOf(MavenRepo.ChecksumMismatchException.class)
+                .hasMessageContaining("jk-lock.toml pins sha256 " + pinned);
     }
 
     private static void seedM2(Path m2, byte[] bytes) throws Exception {

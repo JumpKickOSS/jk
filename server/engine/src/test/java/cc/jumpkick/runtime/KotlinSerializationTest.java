@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
@@ -86,6 +88,15 @@ class KotlinSerializationTest {
                 project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
+        Lockfile locked = LockfileReader.read(project.resolve("jk-lock.toml"));
+        assertThat(locked.plugins())
+                .as("the plugin jar is pinned at the locked compiler's version by its digest")
+                .anySatisfy(row -> {
+                    assertThat(row.coordinate())
+                            .isEqualTo("org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable");
+                    assertThat(row.version()).isEqualTo(locked.kotlin());
+                    assertThat(row.sha256Hex()).hasSize(64);
+                });
 
         BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 project,

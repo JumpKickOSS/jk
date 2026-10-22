@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -191,6 +192,36 @@ class LockFreshnessTest {
                 foo = "com.example:foo"
                 """);
         assertThat(LockFreshness.isStale(dir, lockFile)).isTrue();
+    }
+
+    /** A declared Kotlin compiler plugin is pinned by a digest row; a clean digest without one is stale. */
+    @Test
+    void a_kotlin_compiler_plugin_without_a_digest_row_is_stale(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group  = "g"
+                name   = "n"
+                version = "1"
+                kotlin = "2.4.10"
+
+                [[kotlin-plugins]]
+                coordinate = "org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable"
+                """);
+        Path lockFile = dir.resolve("jk-lock.toml");
+        LockfileWriter.write(Lockfile.empty("test"), lockFile);
+        assertThat(LockFreshness.isStale(dir, lockFile)).isTrue();
+
+        String ga = "org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable";
+        LockfileWriter.write(
+                Lockfile.empty("test").withPlugins(List.of(Lockfile.PluginEntry.versionOnly(ga, "2.4.10"))), lockFile);
+        assertThat(LockFreshness.isStale(dir, lockFile))
+                .as("a row without a digest pins no bytes")
+                .isTrue();
+
+        LockfileWriter.write(
+                Lockfile.empty("test")
+                        .withPlugins(List.of(new Lockfile.PluginEntry(ga, "2.4.10", "sha256:" + "a".repeat(64)))),
+                lockFile);
+        assertThat(LockFreshness.isStale(dir, lockFile)).isFalse();
     }
 
     @Test

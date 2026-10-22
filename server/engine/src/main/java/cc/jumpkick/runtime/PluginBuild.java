@@ -18,6 +18,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.MemberRows;
+import cc.jumpkick.lock.ToolEntry;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
@@ -214,7 +215,7 @@ public final class PluginBuild {
             throws IOException, InterruptedException {
         List<PluginContributions.StepDep> lane =
                 PluginContributions.stepDependencies(project, moduleDir, platformPins(moduleDir, lockFile));
-        return fetchTools(lane, project, cas, sdkPins(lockFile), lenient);
+        return fetchTools(lane, project, cas, lockOrNull(lockFile), lenient);
     }
 
     /**
@@ -263,17 +264,17 @@ public final class PluginBuild {
         }
 
         /**
-         * Fetch {@code deps} into the CAS, strictly: artifact name to path, in {@code deps} order.
-         * A tool this build fetched earlier is handed back without a second resolve.
+         * Fetch {@code deps} into the CAS, strictly, as the lock at {@code lockFile} pins them:
+         * artifact name to path, in {@code deps} order. A tool this build fetched earlier is handed
+         * back without a second resolve.
          */
-        public Map<String, Path> fetch(
-                List<PluginContributions.StepDep> deps, JkBuild project, Cas cas, Map<String, String> sdkPins)
+        public Map<String, Path> fetch(List<PluginContributions.StepDep> deps, JkBuild project, Cas cas, Path lockFile)
                 throws IOException, InterruptedException {
             List<PluginContributions.StepDep> missing = new ArrayList<>();
             for (PluginContributions.StepDep dep : deps) {
                 if (!fetched.containsKey(dep.artifact())) missing.add(dep);
             }
-            fetched.putAll(fetchTools(missing, project, cas, sdkPins, false));
+            if (!missing.isEmpty()) fetched.putAll(fetchTools(missing, project, cas, lockOrNull(lockFile), false));
             Map<String, Path> out = new LinkedHashMap<>();
             for (PluginContributions.StepDep dep : deps) {
                 out.put(dep.artifact(), Objects.requireNonNull(fetched.get(dep.artifact()), dep.artifact()));
@@ -292,18 +293,20 @@ public final class PluginBuild {
             throws IOException, InterruptedException {
         List<PluginContributions.StepDep> lane =
                 PluginContributions.commandDependencies(project, moduleDir, platformPins(moduleDir, lockFile));
-        return fetchTools(lane, project, cas, sdkPins(lockFile), lenient);
+        return fetchTools(lane, project, cas, lockOrNull(lockFile), lenient);
     }
 
+    /**
+     * Provision {@code deps}: an SDK component at the lock's {@code [[sdk]]} revision, a URL file, a
+     * closure, or one Maven artifact fetched as the lock's {@code [[tool]]} row pins it — a tool the
+     * lock has no row for is refused, and so are bytes other than the pinned ones.
+     */
     private static Map<String, Path> fetchTools(
-            List<PluginContributions.StepDep> deps,
-            JkBuild project,
-            Cas cas,
-            Map<String, String> sdkPins,
-            boolean lenient)
+            List<PluginContributions.StepDep> deps, JkBuild project, Cas cas, @Nullable Lockfile lock, boolean lenient)
             throws IOException, InterruptedException {
         Map<String, Path> out = new LinkedHashMap<>();
         if (deps.isEmpty()) return out;
+        Map<String, String> sdkPins = sdkPins(lock);
         RepoGroup repos = null;
         for (PluginContributions.StepDep dep : deps) {
             try {
@@ -322,8 +325,9 @@ public final class PluginBuild {
                         out.put(dep.artifact(), ToolClosures.materialize(dep, repos, cas));
                         continue;
                     }
-                    Coordinate coord = resolveCoordinate(repos, dep.coordinateSpec());
-                    fetched = repos.tryFetchArtifact(coord)
+                    Coordinate coord = lockedCoordinate(dep, lock);
+                    String sha256 = lockedSha256(coord, lock);
+                    fetched = repos.tryFetchArtifact(coord, sha256)
                             .orElseThrow(() -> new IOException("cannot fetch " + coord
                                     + " — the coordinate a plugin's step-dependency names must exist in a"
                                     + " declared repo"))
@@ -339,9 +343,43 @@ public final class PluginBuild {
         return out;
     }
 
+    /**
+     * {@code dep}'s coordinate as the lock pins it: a bare version is exact; a floating one takes the
+     * version of the lock's row for that tool.
+     */
+    static Coordinate lockedCoordinate(PluginContributions.StepDep dep, @Nullable Lockfile lock) throws IOException {
+        Coordinate raw = Coordinate.parse(Objects.requireNonNull(dep.coordinateSpec(), "coordinate"));
+        if (VersionSelector.parse(raw.version()) instanceof VersionSelector.Exact exact) {
+            return new Coordinate(raw.group(), raw.artifact(), exact.version(), raw.classifier(), raw.type());
+        }
+        if (lock != null) {
+            for (ToolEntry row : lock.tools()) {
+                Coordinate at =
+                        new Coordinate(raw.group(), raw.artifact(), row.version(), raw.classifier(), raw.type());
+                if (row.pins(at)) return at;
+            }
+        }
+        throw unpinned(dep.coordinateSpec());
+    }
+
+    /** The sha256 hex the lock pins for {@code coord}; a tool without a row is lock drift, refused. */
+    static String lockedSha256(Coordinate coord, @Nullable Lockfile lock) throws IOException {
+        ToolEntry row = lock == null ? null : lock.toolRow(coord);
+        if (row == null) throw unpinned(coord.toString());
+        return Objects.requireNonNull(row.sha256Hex(coord.classifier()), "pinned digest");
+    }
+
+    private static IOException unpinned(String coordinate) {
+        return new IOException(
+                "jk-lock.toml pins no [[tool]] row for " + coordinate + " on this platform — run `jk lock`");
+    }
+
     /** The {@code [[sdk]]} revision pins of {@code lockFile}, or empty (no lock / none recorded). */
     public static Map<String, String> sdkPins(Path lockFile) {
-        Lockfile lock = lockOrNull(lockFile);
+        return sdkPins(lockOrNull(lockFile));
+    }
+
+    private static Map<String, String> sdkPins(@Nullable Lockfile lock) {
         if (lock == null) return Map.of();
         Map<String, String> pins = new LinkedHashMap<>();
         for (var e : lock.sdk()) {
