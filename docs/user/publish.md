@@ -136,7 +136,10 @@ cannot classify. A finding covered by an unexpired `[audit] ignore` entry is rep
 counted. `--offline` is refused before anything is queried: an audit has no cached answer, and a
 clean report produced without asking OSV would be a claim about safety nobody made.
 
-A CI gate is `jk audit -s HIGH` and a non-zero exit.
+The run's verdict says the same: with a blocking finding the audit fails, one error per finding
+(severity, package and version, advisory, summary, the fix when OSV names one), so an agent's
+verdict and a CI log read what the exit status means. A CI gate is `jk audit -s HIGH` and a
+non-zero exit.
 jk's own repository runs exactly that in its self-host job, after the lock-drift check: the
 `-O jsonl` lines are kept as an artifact and each finding becomes one annotation
 (`scripts/ci-audit-annotate.sh`, one `::error` per blocking advisory), and the nightly run reports

@@ -22,13 +22,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk audit} plan: scan {@code jk-lock.toml} against OSV via {@code jk-auditor}. Findings
- * stream to the caller as the worker reports them; the ignore list, threshold and exit code are
- * judged outside the plan.
+ * stream to the caller as the worker reports them, each already judged against the ignore list;
+ * the {@code evaluate} step fails the plan, one error per finding, when any at or above the
+ * threshold is not ignored — so every verdict, a terminal's or an agent's, says what the exit says.
  */
 public final class AuditPlans {
 
@@ -37,17 +41,19 @@ public final class AuditPlans {
     /**
      * Build the audit plan for {@code lockPath}. Locates the plugin jar eagerly, so a missing plugin
      * fails here (with {@link cc.jumpkick.wire.PluginJarNotFoundException}'s side-load
-     * instructions) rather than mid-plan. {@code thresholdLabel} only feeds the evaluate step's
-     * label; {@code osvBatchUrl}/{@code osvVulnsUrl} are the hidden test overrides ({@code null} =
-     * the real OSV endpoints).
+     * instructions) rather than mid-plan. {@code judge} applies the ignore list to each finding
+     * before {@code observer} sees it; {@code osvBatchUrl}/{@code osvVulnsUrl} are the hidden test
+     * overrides ({@code null} = the real OSV endpoints).
      */
     public static BuildPlan auditBuildPlan(
             Path lockPath,
             Path cache,
-            @Nullable String thresholdLabel,
+            AuditReport.Severity threshold,
             @Nullable URI osvBatchUrl,
             @Nullable URI osvVulnsUrl,
+            UnaryOperator<AuditReport.Finding> judge,
             Consumer<AuditReport.Finding> observer) {
+        List<AuditReport.Finding> judged = new CopyOnWriteArrayList<>();
         Path workerJar = PluginJar.AUDITOR.locate(JkStores.storeCas());
 
         Task readLock = Task.builder(TaskNames.READ_LOCK)
@@ -67,7 +73,17 @@ public final class AuditPlans {
                 .execute(ctx -> {
                     ctx.label("query OSV via audit worker");
                     try {
-                        runWorker(workerJar, lockPath, osvBatchUrl, osvVulnsUrl, observer, ctx::output);
+                        runWorker(
+                                workerJar,
+                                lockPath,
+                                osvBatchUrl,
+                                osvVulnsUrl,
+                                finding -> {
+                                    AuditReport.Finding f = judge.apply(finding);
+                                    judged.add(f);
+                                    observer.accept(f);
+                                },
+                                ctx::output);
                     } catch (RuntimeException e) {
                         ctx.error("osv", Errors.text(e));
                         throw e;
@@ -80,8 +96,14 @@ public final class AuditPlans {
                 .requires(TaskNames.QUERY_OSV)
                 .ticks(1)
                 .execute(ctx -> {
-                    ctx.label("apply " + thresholdLabel + " threshold");
+                    ctx.label("apply " + threshold + " threshold");
+                    List<AuditReport.Finding> blocking = new AuditReport(judged).blocking(threshold);
+                    for (AuditReport.Finding f : blocking) ctx.error("audit", blockingText(f));
                     ctx.progress(1);
+                    if (!blocking.isEmpty()) {
+                        throw new RuntimeException(blocking.size() + (blocking.size() == 1 ? " finding" : " findings")
+                                + " at or above " + threshold);
+                    }
                 })
                 .build();
 
@@ -145,6 +167,12 @@ public final class AuditPlans {
             Thread.currentThread().interrupt();
             throw new RuntimeException("audit worker interrupted", e);
         }
+    }
+
+    /** One blocking finding as the error a verdict lists. */
+    static String blockingText(AuditReport.Finding f) {
+        return f.severity() + " " + f.module() + ":" + f.version() + " " + f.vulnId() + " — " + f.summary()
+                + (f.fixedIn() == null ? "" : " (fixed in " + f.fixedIn() + ")");
     }
 
     /** The worker's {@code finding} line as a typed finding; {@code null} when a required field is missing. */

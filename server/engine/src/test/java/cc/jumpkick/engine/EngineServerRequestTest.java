@@ -280,9 +280,16 @@ class EngineServerRequestTest extends EngineServerHarness {
             assertThat(planFinish)
                     .as("the audit plan never reached a terminal plan-finish%n%s", wire)
                     .isNotNull();
-            assertThat(Jsonl.bool(planFinish, "success", false))
-                    .as("the audit plan ran but failed — its step error says why%n%s", wire)
-                    .isTrue();
+            // A finding at the threshold fails the plan on purpose, with the finding as its error;
+            // a worker that died fails it too, but says "audit worker".
+            assertThat(Jsonl.bool(planFinish, "success", true))
+                    .as("the LOW finding at a LOW threshold fails the plan%n%s", wire)
+                    .isFalse();
+            assertThat(wire)
+                    .as("the plan's error is the blocking finding, not a dead worker")
+                    .contains("GHSA-test-1")
+                    .doesNotContain("audit worker:")
+                    .doesNotContain("audit worker exited");
 
             assertThat(finding)
                     .as("audit-finding event for the mock vulnerability%n%s", wire)
