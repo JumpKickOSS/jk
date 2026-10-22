@@ -113,7 +113,7 @@ when = { config = "hilt", equals = "true" }
 [[contribute.step-dependency]]
 artifact   = "aapt2"
 coordinate = "com.android.tools.build:aapt2:9.3.1-15703166:${host.os}"
-for-step   = "android-res"
+for-step   = ["android-res", "android-test-config"]
 
 # d8 lives in the r8 jar (com.android.tools.r8.D8) — a plain JVM tool. One of the two dex
 # steps is registered per build (R8 when minifying, d8 otherwise).
@@ -138,7 +138,7 @@ for-step   = ["android-manifest", "android-test-config"]
 artifact      = "android-jar"
 sdk-component = "platforms;android-${config.compile-sdk}"
 sdk-path      = "android.jar"
-for-step      = ["android-res", "android-dex", "android-r8"]
+for-step      = ["android-res", "android-test-config", "android-dex", "android-r8"]
 
 # javac/kotlinc compile against the platform (PROVIDED posture: the runtime, dex inputs,
 # and packaging never see it — dex takes it explicitly via --lib from the extra above).

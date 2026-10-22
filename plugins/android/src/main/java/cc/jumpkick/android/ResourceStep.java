@@ -15,9 +15,13 @@ import org.jspecify.annotations.Nullable;
 /**
  * {@code android-res} step: aapt2 compile+link → {@code resources.ap_}, {@code R.txt}, {@code
  * R.java}, {@code raw-res/}. Deps merge first ({@link ResourceMerger}); module resources overlay.
- * Non-transitive R: apps regenerate each AAR's R with final ids; libraries ship {@code R.txt}.
+ * Non-transitive R: apps regenerate each AAR's R with final ids; libraries ship {@code R.txt}. The
+ * link's resource ids land in {@code packaged/ids.txt} so {@link #linkUnitTestApk} keeps them.
  */
 final class ResourceStep {
+
+    /** The main link's {@code --emit-ids} file under {@code packaged/}: one {@code name = id} per line. */
+    private static final String IDS = "ids.txt";
 
     private ResourceStep() {}
 
@@ -40,21 +44,7 @@ final class ResourceStep {
         Path rawRes = exec.outputDir("raw-res");
         Path work = Files.createDirectories(exec.scratch().resolve("work"));
 
-        // Dependency resources merge into ONE tree first (AGP semantics — finding 9: two
-        // androidx AARs can define the same value resource, and aapt2 hard-errors on value
-        // conflicts across separate link inputs; the merger resolves them at resource
-        // granularity, earlier classpath entry wins), then compile once. The module's own
-        // resources stay the -R overlay below, so the app still beats every library.
-        List<Path> depFlats = new ArrayList<>();
-        Path mergedDepRes = ResourceMerger.mergeDepRes(aars, work.resolve("merged-dep-res"));
-        if (mergedDepRes != null && Files.isDirectory(mergedDepRes)) {
-            try (var listing = Files.list(mergedDepRes)) {
-                if (listing.findFirst().isPresent()) {
-                    exec.label("aapt2 compile (deps)");
-                    depFlats.add(compileRes(exec, aapt2, mergedDepRes, work.resolve("deps-compiled.zip")));
-                }
-            }
-        }
+        List<Path> depFlats = compileDeps(exec, aapt2, aars, work);
         Path ownFlats = null;
         if (Files.isDirectory(res)) {
             exec.label("aapt2 compile");
@@ -83,6 +73,8 @@ final class ResourceStep {
                         rTxt,
                         packaged.resolve("keep-rules.pro"),
                         false)
+                .arg("--emit-ids")
+                .arg(packaged.resolve(IDS).toAbsolutePath().toString())
                 .run();
         if (linked.exit() != 0) {
             throw new IllegalStateException("aapt2 link failed:\n" + linked.output());
@@ -128,6 +120,48 @@ final class ResourceStep {
                 if (depNamespace == null || depNamespace.equals(namespace)) continue;
                 writeDepR(gen, depNamespace, readSymbols(aar.rTxt()), finalSymbols);
             }
+        }
+    }
+
+    /**
+     * Link the unit-test resource package into {@code out}: the resources of every AAR on this
+     * step's runtime closure plus the module's own, against {@code manifest}. {@code android-res}'s
+     * ids stay stable, so the module's compiled {@code R} matches the package. Runs in a step that
+     * has the {@code aapt2} and {@code android-jar} tools.
+     */
+    static void linkUnitTestApk(TaskExec exec, Path manifest, Path out) throws Exception {
+        Path aapt2 = extractAapt2(exec);
+        Path res = exec.requireStepOutput("android-res");
+        Path rawRes = res.resolve("raw-res");
+        Path ids = res.resolve("packaged").resolve(IDS);
+        Path work = Files.createDirectories(exec.scratch().resolve("work"));
+        List<Path> depFlats = compileDeps(exec, aapt2, AndroidDeps.aars(exec.runtimeEntries()), work);
+        Path ownFlats = null;
+        if (Files.isDirectory(rawRes)) {
+            ownFlats = compileRes(exec, aapt2, rawRes, work.resolve("res-compiled.zip"));
+        }
+        Files.createDirectories(out.getParent());
+        TaskExec.ToolRun link = link(
+                exec,
+                aapt2,
+                exec.requireExtra("android-jar"),
+                manifest,
+                exec.config().string("namespace"),
+                exec.config().intValue("compile-sdk", 0),
+                exec.config().intValue("min-sdk", 0),
+                exec.config().bool("library", false),
+                depFlats,
+                ownFlats,
+                out,
+                null,
+                null,
+                null,
+                false);
+        if (Files.isRegularFile(ids))
+            link.arg("--stable-ids").arg(ids.toAbsolutePath().toString());
+        TaskExec.ToolRun.Result linked = link.run();
+        if (linked.exit() != 0) {
+            throw new IllegalStateException("aapt2 link (unit test) failed:\n" + linked.output());
         }
     }
 
@@ -179,6 +213,19 @@ final class ResourceStep {
             link.arg("-R").arg(ownFlats.toAbsolutePath().toString());
         }
         return link;
+    }
+
+    /**
+     * Merge every AAR's resources into one tree and compile it once (AGP semantics: two androidx
+     * AARs can define the same value resource, and aapt2 rejects value conflicts across separate
+     * link inputs; the merger resolves them per resource, earlier classpath entry wins).
+     */
+    private static List<Path> compileDeps(TaskExec exec, Path aapt2, List<AndroidDeps.Aar> aars, Path work)
+            throws Exception {
+        Path merged = ResourceMerger.mergeDepRes(aars, work.resolve("merged-dep-res"));
+        if (merged == null || !PathUtil.anyRegularFile(merged, dir -> false, file -> true)) return List.of();
+        exec.label("aapt2 compile (deps)");
+        return List.of(compileRes(exec, aapt2, merged, work.resolve("deps-compiled.zip")));
     }
 
     private static Path compileRes(TaskExec exec, Path aapt2, Path resDir, Path out) throws Exception {
