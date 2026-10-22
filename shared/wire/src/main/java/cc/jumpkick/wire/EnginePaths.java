@@ -57,6 +57,13 @@ public final class EnginePaths {
      * Resolve against the live {@link JkDirs} (honors {@code JK_HOME}/{@code JK_STATE_DIR}/{@code
      * JK_STORE_DIR}).
      */
+    /**
+     * Set to a true value, a client in this process may use an engine already serving but never
+     * starts or takes one over. The launcher sets it for every fast-tier test JVM: a test that needs
+     * a real engine is an integration test.
+     */
+    public static final String NO_SPAWN_ENV = "JK_ENGINE_NO_SPAWN";
+
     public static Paths current() {
         return resolve(JkDirs.state(), JkDirs.store());
     }

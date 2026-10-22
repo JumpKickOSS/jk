@@ -126,6 +126,12 @@ public final class EngineControls {
                     "unix; tcp on Windows",
                     ENGINE_START,
                     "Force tcp or unix for the client-engine wire."),
+            control(
+                    "",
+                    "JK_ENGINE_NO_SPAWN",
+                    "unset; 1 in fast-tier test JVMs",
+                    ENGINE_START,
+                    "1: a client in this process uses an engine already serving but never starts or takes one over."),
             control("", "JK_ENGINE_HEARTBEAT_MS", "30000", ENGINE_START, "Heartbeat while async jobs run. 0 disables."),
             control(
                     "",

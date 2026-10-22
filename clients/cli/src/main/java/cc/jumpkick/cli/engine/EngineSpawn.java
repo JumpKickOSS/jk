@@ -5,6 +5,7 @@ import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.tui.JdkInstallView;
 import cc.jumpkick.config.EngineAotCache;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.SessionContext;
@@ -114,7 +115,12 @@ public final class EngineSpawn {
                             + reach.getClass().getSimpleName().toLowerCase(Locale.ROOT) + " at " + socket);
         }
         // Absent / unusable / draining / version skew → spawn (takeover or cold start).
+        if (spawnForbidden()) throw new EngineSpawnForbiddenException(socket);
         return startWithSelfHeal(paths, clientVersion);
+    }
+
+    private static boolean spawnForbidden() {
+        return EnvValues.parseBool(System.getenv(EnginePaths.NO_SPAWN_ENV)).orElse(false);
     }
 
     /** Why a live engine does not serve this client, for the engine log. */

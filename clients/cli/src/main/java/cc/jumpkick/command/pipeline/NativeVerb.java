@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -116,7 +117,7 @@ final class NativeVerb implements BuildVerb {
             if (selected == null || selected.contains(moduleDir)) candidates.add(moduleDir);
         }
         try {
-            this.graalHomes = graalHomesForModules(candidates, graalHome, mainClass);
+            this.graalHomes = graalHomesForModules(candidates, graalHome, mainClass, ProjectInfos::orNull);
         } catch (AmbiguousMainException e) {
             run.fail(NativePreflight.MANY_MAINS);
             return Exit.CONFIG;
@@ -210,19 +211,22 @@ final class NativeVerb implements BuildVerb {
      * When none declare the table, every module with a unique main is eligible.
      */
     static Map<Path, Path> graalHomesForModules(
-            List<Path> moduleDirs, @Nullable Path graalHome, @Nullable String mainOverride)
+            List<Path> moduleDirs,
+            @Nullable Path graalHome,
+            @Nullable String mainOverride,
+            Function<Path, @Nullable ProjectInfo> infos)
             throws AmbiguousMainException {
         Map<Path, Path> withTable = new HashMap<>();
         Map<Path, Path> withMain = new HashMap<>();
         for (Path moduleDir : moduleDirs) {
             boolean hasNativeTable;
             boolean explicitlyDisabled;
-            var info = ProjectInfos.orNull(moduleDir);
+            var info = infos.apply(moduleDir);
             if (info != null) {
                 explicitlyDisabled = info.nativeExplicitlyDisabled();
                 hasNativeTable = !"DISABLED".equals(info.nativeMode());
             } else {
-                // Unit tests / engine-down: bootstrap [native] scan, not a plugin-schema parse.
+                // No engine answer: bootstrap [native] scan, not a plugin-schema parse.
                 var scan = TomlScan.scan(ManifestPaths.manifestIn(moduleDir), "native.enabled");
                 explicitlyDisabled = scan.hasSection("native")
                         && EnvValues.parseBool(scan.get("native.enabled"))
