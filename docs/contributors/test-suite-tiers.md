@@ -221,7 +221,7 @@ jvm-args) prints `TIMING_ASSERTS_SKIPPED` with the reason, since its numbers des
 user has. Run the one class alone on a quiet host:
 
 ```bash
-JK_NIA_OVERLAY=~/src/oss/jk-examples/04-android/nowinandroid/overlay \
+JK_NIA_OVERLAY=~/src/oss/jk-examples/04-clients/nowinandroid/overlay \
   jk test -p network -m server/resolver -w 1 \
     --class cc.jumpkick.resolver.NiaWarmLockTimingTest
 # JVM_CPUS=… HOST_CPUS=… LOADAVG=… names the machine the numbers were taken on
