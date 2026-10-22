@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Coordinates a publisher renamed without publishing a <relocation> POM at the old one.
+#
+# `jk outdated` reports a declared `group:artifact` matching `from` as moved to `to` when the old
+# coordinate publishes nothing at or past `since` and the new one does. A `*` in `from` matches the
+# artifact id and fills the `*` in `to`. A publisher that writes <relocation> needs no row here.
+
+[[rename]]
+# Testcontainers 2.0 prefixed every module's artifact id: org.testcontainers:postgresql became
+# org.testcontainers:testcontainers-postgresql.
+from  = "org.testcontainers:*"
+to    = "org.testcontainers:testcontainers-*"
+since = "2.0.0"

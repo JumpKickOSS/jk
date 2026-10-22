@@ -24,6 +24,9 @@ final class NodeUpdates {
     /** The handle a selection names to move the Node.js major. */
     static final String HANDLE = "node";
 
+    /** The coordinate a Node.js move reports. */
+    static final String MODULE = "nodejs";
+
     private NodeUpdates() {}
 
     /** One move of {@code node}: the table it was written in ({@code node} or {@code node.version}), from, to. */
@@ -40,10 +43,8 @@ final class NodeUpdates {
         } catch (RuntimeException unparsable) {
             return null;
         }
-        ToolchainSpec declared = own.project().nodeSpec();
-        if (declared.isEmpty()) return null;
-        NodeSpec spec = NodeSpec.of(declared);
-        if (spec.kind() != NodeSpec.Kind.MAJOR) return null;
+        NodeSpec spec = declaredMajor(own);
+        if (spec == null) return null;
         int newest = newestLtsMajor(releases.get());
         if (newest <= spec.major()) return null;
         String to = String.valueOf(newest);
@@ -58,6 +59,14 @@ final class NodeUpdates {
                 return null;
             }
         }
+    }
+
+    /** The plain {@code node = <major>} {@code own} declares itself, or null for any other spelling or none. */
+    static @Nullable NodeSpec declaredMajor(JkBuild own) {
+        ToolchainSpec declared = own.project().nodeSpec();
+        if (declared.isEmpty()) return null;
+        NodeSpec spec = NodeSpec.of(declared);
+        return spec.kind() == NodeSpec.Kind.MAJOR ? spec : null;
     }
 
     /** The newest major with an LTS release, or 0 when the catalog lists none. */
