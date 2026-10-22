@@ -6,12 +6,14 @@ import cc.jumpkick.guard.facts.AnnotationFacts;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.facts.MethodFacts;
+import cc.jumpkick.guard.rules.Allow;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +51,8 @@ final class TiersEvaluator implements Evaluator {
         boolean compact = ModuleLayout.isCompact(moduleDir);
         List<String> suites = TestSuites.discover(moduleDir, compact);
 
+        Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
+        for (Allow a : rule.allow()) allowUsed.put(a, false);
         List<Observation> sites = new ArrayList<>();
         long examined = 0;
         for (ClassFacts c : test.classList()) {
@@ -56,6 +60,11 @@ final class TiersEvaluator implements Evaluator {
             examined++;
             String cause = cause(c, typeGlobs, tagged);
             if (cause == null) continue;
+            Allow allowed = ForbidEvaluator.allowing(rule.allow(), c, ctx.module());
+            if (allowed != null) {
+                allowUsed.put(allowed, true);
+                continue;
+            }
             Home home = homeOf(c, moduleDir, compact, suites);
             String own = home == null ? null : home.suite();
             String where = own == null ? "an unknown suite" : "src/" + own;
@@ -73,7 +82,20 @@ final class TiersEvaluator implements Evaluator {
                         c.binaryName() + " " + cause + " but carries no @Tag(\"" + tag + "\")"));
             }
         }
-        return Evaluation.of(Map.of("test-classes", examined), sites);
+        Map<String, Long> population = Map.of("test-classes", examined);
+        List<String> stale = new ArrayList<>();
+        for (var e : allowUsed.entrySet()) {
+            if (!e.getValue() && ForbidEvaluator.appliesHere(e.getKey(), test, ctx))
+                stale.add(e.getKey().in());
+        }
+        if (!stale.isEmpty() && examined > 0) {
+            return new Evaluation(
+                    Outcome.STALE_ALLOW,
+                    population,
+                    sites,
+                    "allow entries matched nothing: " + String.join(", ", stale));
+        }
+        return Evaluation.of(population, sites);
     }
 
     private static @Nullable String cause(ClassFacts c, List<Pattern> typeGlobs, List<String> tagged) {

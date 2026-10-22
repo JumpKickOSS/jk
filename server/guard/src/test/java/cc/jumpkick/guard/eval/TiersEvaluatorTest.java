@@ -140,6 +140,26 @@ class TiersEvaluatorTest {
     }
 
     @Test
+    void an_allow_entry_exempts_its_classes_and_one_that_matches_nothing_is_stale(@TempDir Path root) throws Exception {
+        ClassFacts container = testClass("ContainerTest", "org/testcontainers/containers/GenericContainer");
+        source(root, "e2e", "ContainerTest");
+        String rule = "uses  = [\"org.testcontainers.**\"]\nsuite = \"integration\"\n";
+        Evaluation allowed = eval(
+                root,
+                rule(root, rule + "allow = [{ in = \"p.**\", reason = \"the browser tier needs the database\" }]\n"),
+                index(container));
+        assertThat(allowed.outcome()).isEqualTo(Outcome.CLEAN);
+
+        ClassFacts plain = testClass("PlainTest", "java/util/List");
+        source(root, "test", "PlainTest");
+        Evaluation stale = eval(
+                root,
+                rule(root, rule + "allow = [{ in = \"p.PlainTest\", reason = \"it no longer uses a container\" }]\n"),
+                index(container, plain));
+        assertThat(stale.outcome()).isEqualTo(Outcome.STALE_ALLOW);
+    }
+
+    @Test
     void a_site_names_the_source_root_that_holds_the_class(@TempDir Path root) throws Exception {
         ClassFacts kotlin = testClassFrom(
                 "KtContainerTest", "KtContainerTest.kt", "org/testcontainers/containers/GenericContainer");
