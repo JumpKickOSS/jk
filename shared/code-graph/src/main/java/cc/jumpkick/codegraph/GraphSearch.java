@@ -28,6 +28,31 @@ public final class GraphSearch {
     static final double ATTRIBUTE = 0.75;
     static final double DOC = 0.6;
 
+    /**
+     * A query word that is one whole camel-case word of a name ({@code errors} in {@code ApiErrors},
+     * {@code exception} in {@code ExceptionHandler}): half a prefix match, since the name says the
+     * same thing a word later.
+     */
+    static final double WORD = PREFIX / 2;
+
+    /** A non-code node (a config key, a dependency, a heading) scores this share of a declaration's tier. */
+    static final double NON_CODE = 0.25;
+
+    /**
+     * Words a question uses for what code names otherwise: "which endpoint returns …" asks for a
+     * controller's mapping. Each also searches as its expansions.
+     */
+    static final Map<String, List<String>> VOCABULARY = Map.of(
+            "endpoint", List.of("controller", "mapping"),
+            "endpoints", List.of("controller", "mapping"),
+            "route", List.of("controller", "mapping"),
+            "routes", List.of("controller", "mapping"),
+            "login", List.of("signin", "authentication"),
+            "signin", List.of("login", "authentication"));
+
+    /** Words that make a question about tests, where tests are seeds too. */
+    private static final Set<String> TEST_WORDS = Set.of("test", "tests", "spec", "specs", "tested", "testing");
+
     private static final Set<String> STOPWORDS = Set.of(
             "how", "what", "why", "when", "where", "which", "who", "whom", "whose", "does", "did", "is", "are", "was",
             "were", "be", "been", "being", "can", "could", "should", "would", "will", "shall", "may", "might", "must",
@@ -86,12 +111,19 @@ public final class GraphSearch {
 
     record Scored(double score, String id) {}
 
-    /** Searchable terms of {@code question}: words over two letters, stopwords dropped unless that empties it. */
+    /**
+     * Searchable terms of {@code question}: words over two letters, stopwords dropped unless that
+     * empties it, each {@link #VOCABULARY} word followed by its expansions.
+     */
     static List<String> queryTerms(String question) {
         List<String> terms = new ArrayList<>();
         for (String raw : question.split("\\s+")) {
             for (String tok : wordTokens(raw.toLowerCase(Locale.ROOT))) {
-                if (searchable(tok)) terms.add(tok);
+                if (searchable(tok)) {
+                    terms.add(tok);
+                    for (String more : VOCABULARY.getOrDefault(tok, List.of()))
+                        if (!terms.contains(more)) terms.add(more);
+                }
             }
         }
         List<String> content =
@@ -174,6 +206,9 @@ public final class GraphSearch {
 
     private @Nullable Set<String> labels;
 
+    /** Whether the question being scored asks about tests. */
+    private boolean aboutTests;
+
     /** Every code node's label folded and stripped of {@code .} and {@code ()}. */
     private Set<String> labels() {
         Set<String> have = labels;
@@ -188,6 +223,7 @@ public final class GraphSearch {
     }
 
     Scores score(List<String> terms) {
+        aboutTests = terms.stream().anyMatch(TEST_WORDS::contains);
         List<String> norm = new ArrayList<>(new LinkedHashSet<>(
                 terms.stream().flatMap(t -> GraphText.searchTokens(t).stream()).toList()));
         String joined = String.join(" ", norm);
@@ -196,6 +232,10 @@ public final class GraphSearch {
         Map<String, BestSeed> best = new HashMap<>();
         for (GraphNode n : graph.nodes()) {
             if (!scope.contains(n)) continue;
+            // A question that does not ask about tests does not start at one: a test named as a
+            // sentence shares words with every question about the code it tests. The walk still
+            // reaches tests through their edges.
+            if (!aboutTests && isTest(n)) continue;
             double score = scoreNode(n, norm, joined, joinedWeight, best);
             if (score > 0) ranked.add(new Scored(score, n.id()));
         }
@@ -220,6 +260,10 @@ public final class GraphSearch {
         String attrs = attributeText(n);
         String doc = docText(n);
         String id = n.id().toLowerCase(Locale.ROOT);
+        List<String> words = GraphText.searchTokens(splitCamel(n.label())).stream()
+                .map(GraphSearch::stem)
+                .toList();
+        double kind = n.fileType().equals("code") ? 1.0 : NON_CODE;
         double score = 0;
         if (!joined.isEmpty()) {
             if (joined.equals(label) || joined.equals(bare) || joined.equals(tokens) || joined.equals(id)) {
@@ -232,28 +276,32 @@ public final class GraphSearch {
         double tiered = 0;
         for (String t : terms) {
             double w = idf(t);
+            String st = stem(t);
             double tier = 0;
             double flat = 0;
             if (t.equals(label) || t.equals(bare)) {
-                tier = EXACT * w;
+                tier = EXACT * w * kind;
                 matched++;
             } else if (label.startsWith(t) || bare.startsWith(t)) {
-                tier = PREFIX * w;
+                tier = PREFIX * w * kind;
+                matched++;
+            } else if (st.length() >= 3 && words.stream().anyMatch(word -> sameWord(st, word))) {
+                tier = WORD * w * kind;
                 matched++;
             } else if (label.contains(t)) {
                 flat += SUBSTRING * w;
                 matched++;
             }
             if (source.contains(t)) flat += SOURCE * w;
-            if (!attrs.isEmpty() && attrs.contains(t)) flat += ATTRIBUTE * w;
-            if (!doc.isEmpty() && doc.contains(" " + t)) flat += DOC * w;
+            if (!attrs.isEmpty() && attrs.contains(st)) flat += ATTRIBUTE * w;
+            if (!doc.isEmpty() && doc.contains(" " + st)) flat += DOC * w;
             score += flat;
             tiered += tier;
             double singleton = tier + flat;
             if (t.equals(label) || t.equals(bare) || t.equals(tokens) || t.equals(id)) {
-                singleton += EXACT * 10 * w;
+                singleton += EXACT * 10 * w * kind;
             } else if (label.startsWith(t) || bare.startsWith(t) || tokens.startsWith(t)) {
-                singleton += PREFIX * 10 * w;
+                singleton += PREFIX * 10 * w * kind;
             }
             if (singleton > 0) {
                 BestSeed candidate = new BestSeed(
@@ -342,6 +390,46 @@ public final class GraphSearch {
                 .limit(limit)
                 .map(Near::id)
                 .toList();
+    }
+
+    /**
+     * A word folded to the form its inflections share, enough to meet a name's words: plurals
+     * ({@code errors}, {@code passwords}, {@code queries}) and the past tense ({@code booked}). Not a
+     * stemmer; it never shortens a word below four letters.
+     */
+    static String stem(String word) {
+        int n = word.length();
+        if (n > 4 && word.endsWith("ies")) return word.substring(0, n - 3) + "y";
+        if (n > 4 && (word.endsWith("sses") || word.endsWith("xes") || word.endsWith("ches") || word.endsWith("shes")))
+            return word.substring(0, n - 2);
+        if (n > 3 && word.endsWith("s") && !word.endsWith("ss") && !word.endsWith("us"))
+            return word.substring(0, n - 1);
+        if (n > 5 && word.endsWith("ed")) return word.substring(0, n - 2);
+        return word;
+    }
+
+    /** A node in a test source root ({@code src/test}, {@code src/integration}, {@code src/e2e}, …). */
+    private static boolean isTest(GraphNode n) {
+        String f = n.sourceFile();
+        return f.contains("/src/test/")
+                || f.contains("/src/integration/")
+                || f.contains("/src/e2e/")
+                || f.contains("/src/testFixtures/")
+                || f.endsWith(".spec.ts")
+                || f.startsWith("src/test/");
+    }
+
+    /**
+     * Two folded words read as one: equal, or sharing a prefix of at least six letters that is three
+     * quarters of the shorter ({@code available} and {@code availability}, {@code cancel} and
+     * {@code cancellation}).
+     */
+    static boolean sameWord(String a, String b) {
+        if (a.equals(b)) return true;
+        int shorter = Math.min(a.length(), b.length());
+        int common = 0;
+        while (common < shorter && a.charAt(common) == b.charAt(common)) common++;
+        return common >= 6 && common * 4 >= shorter * 3;
     }
 
     /** {@code OrderService} → {@code Order Service}. */

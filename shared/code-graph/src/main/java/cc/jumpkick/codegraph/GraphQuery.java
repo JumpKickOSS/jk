@@ -30,6 +30,12 @@ public final class GraphQuery {
 
     private static final int MAX_LABEL = 256;
 
+    /** A walk an ambiguous inferred context narrows below this many nodes runs again unfiltered. */
+    static final int MIN_FILTERED = 10;
+
+    /** Contexts whose hint words are as often plain English as a question about the relation. */
+    private static final Set<String> AMBIGUOUS = Set.of("field", "parameter_type", "return_type", "generic_arg");
+
     /** Edge contexts a question's words imply, in graphify's order. */
     private static final List<Map.Entry<String, List<String>>> CONTEXT_HINTS = List.of(
             Map.entry("call", List.of("call", "calls", "called", "caller", "callers", "invoke", "invokes", "invoked")),
@@ -61,16 +67,37 @@ public final class GraphQuery {
     public String query(String question, Mode mode, int depth, int budget, List<String> contexts) {
         GraphSearch search = new GraphSearch(graph, scope);
         List<String> seeds = search.seeds(withAliases(question));
+        Map<String, Integer> relevant = new HashMap<>();
+        for (String id : search.rank(withAliases(question))) relevant.putIfAbsent(id, relevant.size());
         if (seeds.isEmpty()) return noMatch(search.nearest(question, 8));
         List<String> filters = contexts.isEmpty() ? inferContexts(question) : contexts;
         String source = contexts.isEmpty() ? "heuristic" : "explicit";
         Walk walk = mode == Mode.DFS ? dfs(seeds, depth, filters) : bfs(seeds, depth, filters);
+        if (contexts.isEmpty()
+                && AMBIGUOUS.containsAll(filters)
+                && !filters.isEmpty()
+                && walk.nodes().size() < MIN_FILTERED) {
+            // "returns", "member", "template" are ordinary English as often as they ask for a
+            // relation ("which endpoint returns …"); a context read off one that starves the walk
+            // was the wrong guess, so the walk runs unfiltered. "calls" and "imports" always mean it.
+            source = "heuristic, dropped: it left " + walk.nodes().size() + " nodes";
+            Walk open = mode == Mode.DFS ? dfs(seeds, depth, List.of()) : bfs(seeds, depth, List.of());
+            if (open.nodes().size() > walk.nodes().size()) {
+                walk = open;
+                List<String> header = new ArrayList<>();
+                header.add("Traversal: " + mode + " depth=" + depth);
+                header.add("Start: " + seeds.stream().map(this::label).toList());
+                header.add("Context: " + String.join(", ", filters) + " (" + source + ")");
+                header.add(walk.nodes().size() + " nodes found");
+                return String.join(" | ", header) + "\n\n" + render(walk, seeds, relevant, budget, List.of());
+            }
+        }
         List<String> header = new ArrayList<>();
         header.add("Traversal: " + mode + " depth=" + depth);
         header.add("Start: " + seeds.stream().map(this::label).toList());
         if (!filters.isEmpty()) header.add("Context: " + String.join(", ", filters) + " (" + source + ")");
         header.add(walk.nodes().size() + " nodes found");
-        return String.join(" | ", header) + "\n\n" + render(walk, seeds, budget, filters);
+        return String.join(" | ", header) + "\n\n" + render(walk, seeds, relevant, budget, filters);
     }
 
     record Walk(Set<String> nodes, List<String[]> edges) {}
@@ -120,13 +147,20 @@ public final class GraphQuery {
         return new Walk(visited, edges);
     }
 
-    private String render(Walk walk, List<String> seeds, int budget, List<String> filters) {
+    /**
+     * The walk as lines, cut to {@code budget}: the seeds, then the nodes the question's own words
+     * match, best match first, then the rest nearest first and by degree. When the budget cuts, what it
+     * cuts is the neighbourhood the question did not ask about.
+     */
+    private String render(
+            Walk walk, List<String> seeds, Map<String, Integer> relevant, int budget, List<String> filters) {
         List<String> seedHits = seeds.stream().filter(walk.nodes()::contains).toList();
         Map<String, Integer> dist = hops(seedHits, walk.nodes());
         List<String> ordered = new ArrayList<>(seedHits);
         walk.nodes().stream()
                 .filter(n -> !seedHits.contains(n))
-                .sorted(Comparator.comparingInt((String n) -> dist.getOrDefault(n, Integer.MAX_VALUE))
+                .sorted(Comparator.comparingInt((String n) -> relevant.getOrDefault(n, Integer.MAX_VALUE))
+                        .thenComparingInt(n -> dist.getOrDefault(n, Integer.MAX_VALUE))
                         .thenComparingInt(n -> -graph.degree(n))
                         .thenComparing(n -> n))
                 .forEach(ordered::add);
