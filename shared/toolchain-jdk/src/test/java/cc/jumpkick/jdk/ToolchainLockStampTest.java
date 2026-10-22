@@ -133,7 +133,7 @@ class ToolchainLockStampTest {
 
     private static Lockfile apply(Path home, JdkRegistry registry, ToolchainSpec jdk, boolean graalDeclared) {
         return requireNonNull(ToolchainLockStamp.apply(
-                Lockfile.empty("0.1"), null, home, registry, jdk, ToolchainSpec.NONE, graalDeclared));
+                Lockfile.empty("0.1"), null, true, home, registry, jdk, ToolchainSpec.NONE, graalDeclared));
     }
 
     @Test
@@ -146,12 +146,40 @@ class ToolchainLockStampTest {
         // what built it just because this machine runs Temurin — only jk update refreshes that.
         Lockfile previous = Lockfile.empty("0.1").withJdk(JdkPin.suggested("corretto", "25.0.1"));
         Lockfile kept = requireNonNull(ToolchainLockStamp.apply(
-                Lockfile.empty("0.1"), previous, home, registry, ToolchainSpec.NONE, ToolchainSpec.NONE, false));
+                Lockfile.empty("0.1"), previous, true, home, registry, ToolchainSpec.NONE, ToolchainSpec.NONE, false));
         assertThat(kept.jdk()).isEqualTo(JdkPin.suggested("corretto", "25.0.1"));
 
-        // jk update passes no previous, so the suggestion moves to what resolved.
-        Lockfile refreshed = apply(home, registry, ToolchainSpec.NONE, false);
-        assertThat(refreshed.jdk()).isEqualTo(JdkPin.suggested("temurin", "25.0.4"));
+        // With no lock before it, the suggestion is what resolved.
+        Lockfile first = apply(home, registry, ToolchainSpec.NONE, false);
+        assertThat(first.jdk()).isEqualTo(JdkPin.suggested("temurin", "25.0.4"));
+    }
+
+    /**
+     * {@code jk update} on a host with another patch of the same major keeps the suggestion, in
+     * either direction, so two machines never flip it; a new major refreshes it.
+     */
+    @Test
+    void an_update_keeps_the_suggestion_on_its_major_and_refreshes_it_across_one(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path home25 = fakeJdk(jdks.resolve("temurin-25.0.2"), "25.0.2", "Eclipse Adoptium", null);
+        Path home26 = fakeJdk(jdks.resolve("temurin-26.0.1"), "26.0.1", "Eclipse Adoptium", null);
+        JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
+
+        Lockfile newer = Lockfile.empty("0.1").withJdk(JdkPin.suggested("temurin", "25.0.4.1"));
+        assertThat(update(newer, home25, registry).jdk()).isEqualTo(JdkPin.suggested("temurin", "25.0.4.1"));
+        Lockfile older = Lockfile.empty("0.1").withJdk(JdkPin.suggested("corretto", "25.0.1"));
+        assertThat(update(older, home25, registry).jdk()).isEqualTo(JdkPin.suggested("corretto", "25.0.1"));
+
+        assertThat(update(newer, home26, registry).jdk()).isEqualTo(JdkPin.suggested("temurin", "26.0.1"));
+        // A plain relock keeps it even across the major.
+        Lockfile relocked = requireNonNull(ToolchainLockStamp.apply(
+                Lockfile.empty("0.1"), newer, true, home26, registry, ToolchainSpec.NONE, ToolchainSpec.NONE, false));
+        assertThat(relocked.jdk()).isEqualTo(JdkPin.suggested("temurin", "25.0.4.1"));
+    }
+
+    private static Lockfile update(Lockfile previous, Path home, JdkRegistry registry) {
+        return requireNonNull(ToolchainLockStamp.apply(
+                Lockfile.empty("0.1"), previous, false, home, registry, ToolchainSpec.NONE, ToolchainSpec.NONE, false));
     }
 
     @Test
@@ -162,7 +190,7 @@ class ToolchainLockStampTest {
 
         Lockfile previous = Lockfile.empty("0.1").withJdk(JdkPin.suggested("nosuchvendor", "99"));
         Lockfile rewritten = requireNonNull(ToolchainLockStamp.apply(
-                Lockfile.empty("0.1"), previous, home, registry, ToolchainSpec.NONE, ToolchainSpec.NONE, false));
+                Lockfile.empty("0.1"), previous, true, home, registry, ToolchainSpec.NONE, ToolchainSpec.NONE, false));
         assertThat(rewritten.jdk()).isEqualTo(JdkPin.suggested("temurin", "25.0.4"));
     }
 
@@ -176,6 +204,7 @@ class ToolchainLockStampTest {
         Lockfile stamped = requireNonNull(ToolchainLockStamp.apply(
                 Lockfile.empty("0.1"),
                 previous,
+                true,
                 home,
                 registry,
                 ToolchainSpec.parse("jdk", "microsoft-26"),

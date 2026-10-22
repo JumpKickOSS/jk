@@ -7,6 +7,7 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.GlobalCancel;
+import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.util.JkDirs;
@@ -393,6 +394,7 @@ public final class AppWatchLoop {
         command.addAll(appArgs);
         ProcessBuilder pb =
                 new ProcessBuilder(command).directory(Path.of(plan.workingDir()).toFile());
+        EnvLookup.layerUnder(pb.environment(), plan.appDotEnv());
         pb.environment().putAll(plan.appEnv());
         pb.environment().putAll(DevUrls.forApp(appName, exports));
         // Under -O jsonl stdout is a JSONL stream, so the app is piped and its lines ride the

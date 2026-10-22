@@ -627,6 +627,48 @@ class JkBuildEditorTest {
     }
 
     @Test
+    void set_version_keeps_an_aligned_trailing_comment_in_its_column() {
+        String start = BASE + """
+
+                [test-dependencies]
+                flyway-core = "13.7.0"     # migrations
+                postgresql  = "42.7.10"    # driver
+                """;
+        String out = JkBuildEditor.setDependencyVersion(start, Scope.TEST, "flyway-core", "13.11.1");
+        assertThat(out).contains("flyway-core = \"13.11.1\"    # migrations\n");
+        assertThat(out).contains("postgresql  = \"42.7.10\"    # driver\n");
+        String wider = JkBuildEditor.setDependencyVersion(start, Scope.TEST, "flyway-core", "13.7.0-beta.20261021");
+        assertThat(wider).contains("flyway-core = \"13.7.0-beta.20261021\" # migrations\n");
+    }
+
+    @Test
+    void set_table_string_keeps_an_aligned_trailing_comment_in_its_column() {
+        String start = BASE + """
+
+                [spring-boot]
+                version = "4.1.0"      # boot
+                aot     = false        # off
+                """;
+        String out = JkBuildEditor.setTableString(start, "spring-boot", "version", "4.1.10");
+        assertThat(out).contains("version = \"4.1.10\"     # boot\n");
+    }
+
+    @Test
+    void set_version_rewrites_a_variant_values_dependency_table() {
+        String start = BASE + """
+
+                [variants.contentType.prod.dependencies]
+                commons-lang3 = "3.18.0"
+                """;
+        String out = JkBuildEditor.setDependencyVersion(
+                start, "variants.contentType.prod.dependencies", "commons-lang3", "3.21.0");
+        assertThat(out).contains("commons-lang3 = \"3.21.0\"");
+        assertThatThrownBy(() -> JkBuildEditor.setDependencyVersion(
+                        start, "variants.contentType.demo.dependencies", "commons-lang3", "3.21.0"))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void set_version_accepts_a_literal_string_value_in_another_scope() {
         String out = JkBuildEditor.setDependencyVersion(PINNED, Scope.TEST, "junit-jupiter", "5.12.0");
         assertThat(out).contains("junit-jupiter = { group = \"org.junit.jupiter\", version = \"5.12.0\" }");

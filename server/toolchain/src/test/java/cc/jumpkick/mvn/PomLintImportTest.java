@@ -760,12 +760,12 @@ class PomLintImportTest {
         List<String> rows = messages(result);
         assertThat(rows).anySatisfy(m -> assertThat(m)
                 .contains("`flyway-maven-plugin`")
-                .contains("flyway-commandline:<version> --main org.flywaydb.commandline.Main --with")
+                .contains("flyway-commandline:<version> --main org.flywaydb.commandline.Main --bin flyway --with")
                 .contains("`FLYWAY_URL` (`jdbc:h2:file:./target/db`)")
                 .contains("database.md"));
         assertThat(rows).anySatisfy(m -> assertThat(m)
                 .contains("`liquibase-maven-plugin`")
-                .contains("LiquibaseCommandLine")
+                .contains("LiquibaseCommandLine --bin liquibase --with")
                 .contains("`LIQUIBASE_COMMAND_URL` in")
                 .contains("LIQUIBASE_COMMAND_CHANGELOG_FILE=config/liquibase/master.xml"));
         assertThat(rows).noneMatch(m -> m.contains("was not imported"));

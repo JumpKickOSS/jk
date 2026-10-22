@@ -521,21 +521,24 @@ public final class PlannerSupport {
      * EngineTestExtension}, which force-stops the engine after each class. Under pure-jk {@code jk
      * test} that must not share the host engine's {@code JK_STATE_DIR} (host would die mid-suite).
      */
-    static boolean needsNestedEngineIsolation(JkBuild project) {
+    public static boolean needsNestedEngineIsolation(JkBuild project) {
         if (project == null || project.project() == null) return false;
         String name = project.project().name();
         if ("jk-cli".equals(name)) return true;
         return "cc.jumpkick.cli.Jk".equals(project.mainClass());
     }
 
+    /** The workspace module a nested-engine suite launches, from its assembly jar. */
+    public static final String ENGINE_MODULE = "jk-engine";
+
+    /** True when {@code module} is the engine a nested-engine suite launches. */
+    public static boolean isEngineModule(JkBuild module) {
+        return module.project() != null && ENGINE_MODULE.equals(module.project().name());
+    }
+
     /**
      * Resolve engine assembly + every first-party worker jar so CLI tests find the engine and the
      * workers this build produced through {@code -Djk.engine.jar} / {@code -Djk.*.plugin.jar}.
-     *
-     * <p>{@code jk test} (testOnly) does not package the engine assembly, so the workspace
-     * {@code *-all.jar} is often missing. Fall back to the host engine jar (the process serving
-     * this build) or the product-lib install under {@code EngineInstall} — the same fat jar the
-     * CLI's integration tests spawn.
      */
     static void enrichCliTestProps(Path moduleDir, Map<String, String> props) throws IOException {
         Map<String, Path> siblings = siblingMainJars(moduleDir);
@@ -559,13 +562,13 @@ public final class PlannerSupport {
     }
 
     /**
-     * Engine jar for nested CLI suites: workspace assembly when present, else the host process's
-     * fat jar / installed EngineInstall materialization.
+     * Engine jar for nested CLI suites: the workspace engine's assembly, which a test run packages
+     * before the suite starts ({@link #isEngineModule}). Outside a workspace with an engine module,
+     * the host process's fat jar or the installed engine.
      */
     static @Nullable Path resolveEngineJarForNestedTests(Map<String, Path> siblings) {
-        Path engine = siblings != null ? siblings.get("jk-engine") : null;
-        if (engine == null && siblings != null) engine = siblings.get("engine");
-        if (engine != null && Files.isRegularFile(engine)) return engine.normalize();
+        Path engine = siblings.get(ENGINE_MODULE);
+        if (engine != null) return engine.normalize();
         return locateHostEngineJar();
     }
 
