@@ -57,14 +57,16 @@ public final class JUnitUniqueIds {
     }
 
     /**
-     * Method label: a plain {@code [method:…]}, or a {@code @ParameterizedTest} /
-     * {@code @TestTemplate} / {@code @TestFactory} template with its invocation path appended
-     * ({@code m()[#1/#2]}). Empty when the id names no method-ish segment.
+     * Method label: a plain {@code [method:…]}, an ArchUnit rule field ({@code [field:…]}), or a
+     * {@code @ParameterizedTest} / {@code @TestTemplate} / {@code @TestFactory} template with its
+     * invocation path appended ({@code m()[#1/#2]}). Empty when the id names no method-ish segment.
      */
     public static String methodOf(@Nullable String id) {
         if (id == null) return "";
         String method = segment(id, "method");
         if (!method.isEmpty()) return method;
+        String field = segment(id, "field");
+        if (!field.isEmpty()) return field;
         String template = segment(id, "test-template");
         if (template.isEmpty()) template = segment(id, "test-factory");
         if (template.isEmpty()) return vintageMethodOf(id);

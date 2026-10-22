@@ -22,6 +22,13 @@ class JUnitUniqueIdsTest {
     }
 
     @Test
+    void an_archunit_rule_field_is_the_test_name() {
+        String id = "[engine:archunit]/[class:com.example.ArchitectureTest]/[field:no_field_injection]";
+        assertEquals("com.example.ArchitectureTest", JUnitUniqueIds.classOf(id));
+        assertEquals("no_field_injection", JUnitUniqueIds.methodOf(id));
+    }
+
+    @Test
     void vintage_names_the_class_in_the_runner_and_the_method_in_the_display_name() {
         String id = "[engine:junit-vintage]/[runner:com.example.AdderTest]/[test:adds(com.example.AdderTest)]";
         assertEquals("junit-vintage", JUnitUniqueIds.engineOf(id));
