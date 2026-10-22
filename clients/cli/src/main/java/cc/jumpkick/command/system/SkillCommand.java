@@ -74,7 +74,7 @@ public final class SkillCommand implements CliCommand {
         }
         if (!pos.isEmpty() && "agents".equals(pos.get(0))) {
             Path dir = pos.size() > 1 ? Path.of(pos.get(1)) : projectRoot();
-            if (!dir.isAbsolute()) dir = Path.of("").toAbsolutePath().resolve(dir);
+            dir = Path.of("").toAbsolutePath().resolve(dir).normalize();
             try {
                 AgentsGuide.Change change = AgentsGuide.sync(dir);
                 CliOutput.outRaw(agentsLine(change, dir.resolve(AgentsGuide.FILE)) + "\n");
