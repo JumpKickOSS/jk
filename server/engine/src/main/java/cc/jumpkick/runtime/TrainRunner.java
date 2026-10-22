@@ -6,6 +6,7 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TrainConfig;
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.host.Hashing;
@@ -344,10 +345,10 @@ public final class TrainRunner {
         return List.of("-jar", mainJar.toAbsolutePath().toString());
     }
 
-    /** Last ~600 chars of child output, for error messages. */
+    /** The last lines the application wrote, for error messages; the JVM's AOT logging left out. */
     private static String tail(String text) {
-        String t = text.strip();
-        return t.length() > 600 ? "…" + t.substring(t.length() - 600) : t;
+        String t = AotCacheFiles.appTail(text, 12);
+        return t.length() > 1200 ? "…" + t.substring(t.length() - 1200) : t;
     }
 
     /** Boot launcher layout, or any jar whose manifest names its own {@code Class-Path}. */

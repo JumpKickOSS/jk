@@ -15,7 +15,6 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -555,8 +554,6 @@ final class AotCacheTrainer {
     }
 
     private static String tail(String text) {
-        String[] lines = text.split("\n");
-        int from = Math.max(0, lines.length - 20);
-        return String.join("\n", Arrays.copyOfRange(lines, from, lines.length));
+        return AotCacheFiles.appTail(text, 20);
     }
 }

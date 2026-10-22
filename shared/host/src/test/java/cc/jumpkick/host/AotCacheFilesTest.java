@@ -123,4 +123,19 @@ class AotCacheFilesTest {
      * permanent while the worker trainer expired one after a week, so the same sidecar in the same
      * directory meant two different things depending on which process read it.
      */
+    @Test
+    void a_failed_training_run_shows_the_applications_last_words_not_the_jvms_aot_noise() {
+        String out = """
+                Starting HotelApplication
+                Caused by: java.net.ConnectException: Connection refused
+                APPLICATION FAILED TO START
+                [2.488s][warning][aot] Skipping jdk/proxy1/$Proxy3: Unsupported location
+                [2.489s][warning][aot,class] Skipping org/example/Foo: Failed verification
+                [2.490s][info   ][cds] Dumping shared data
+                """;
+        assertThat(AotCacheFiles.appTail(out, 2))
+                .isEqualTo("Caused by: java.net.ConnectException: Connection refused\nAPPLICATION FAILED TO START");
+        assertThat(AotCacheFiles.appTail("[1s][warning][aot] only noise", 5))
+                .isEqualTo("[1s][warning][aot] only noise");
+    }
 }
