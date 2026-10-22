@@ -150,11 +150,11 @@ final class BuildTails {
 
     /**
      * A standalone project's success tail: {@code Build successful, project up to date} when the
-     * build did nothing, else {@code Build successful. Built <artifact>} naming the headline output.
+     * forecast proved the project clean and scheduled nothing, else {@code Build successful. Built
+     * <artifact>} naming the headline output — a restore from the action cache wrote it too.
      */
     static String projectTail(List<ModuleOutcome> modules, Path projectDir) {
-        boolean didWork = modules.stream().anyMatch(ModuleOutcome::didWork);
-        if (!modules.isEmpty() && !didWork) return buildOk() + ", project up to date";
+        if (modules.isEmpty()) return buildOk() + ", project up to date";
         ProjectInfo info = ProjectInfos.orNull(projectDir);
         String art = info == null ? "" : builtArtifact(projectDir, info);
         return buildOk() + (art.isEmpty() ? ", project built" : art);

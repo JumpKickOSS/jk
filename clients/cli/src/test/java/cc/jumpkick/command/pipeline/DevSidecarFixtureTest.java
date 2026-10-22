@@ -377,13 +377,13 @@ class DevSidecarFixtureTest {
                 .as("Ctrl-C finishes the transcript\n%s", String.join("\n", transcript))
                 .isEqualTo("session-finish");
         assertThat(Jsonl.intValue(transcript.getLast(), "exit", -1)).isEqualTo(Exit.INTERRUPTED);
-        long builds = lines(out).stream().filter(typed("buildplan-start")).count();
+        long builds = lines(out).stream().filter(typed("workspace-start")).count();
         assertThat(builds).as("the loop built more than once").isGreaterThan(1);
         assertThat(transcript.stream().filter(typed("job")).count())
                 .as("one job line per build the loop ran\n%s", String.join("\n", transcript))
                 .isEqualTo(builds);
-        assertThat(transcript.stream().filter(typed("buildplan-start")).count()).isEqualTo(builds);
-        assertThat(transcript.stream().filter(typed("buildplan-finish")).count())
+        assertThat(transcript.stream().filter(typed("workspace-start")).count()).isEqualTo(builds);
+        assertThat(transcript.stream().filter(typed("workspace-finish")).count())
                 .isEqualTo(builds);
         List<String> live = lines(out).stream().filter(DEV_EVENT).toList();
         assertThat(live).isNotEmpty();

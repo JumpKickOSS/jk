@@ -146,7 +146,7 @@ public final class WorkspacePreflightPhase {
                 immutableOrderedSet(moduleDirs),
                 immutableOrderedSet(jarConsumed),
                 launchedAssemblies(graph),
-                scheduled(units, forecast.dirty(), forecast.restoreNeeded()),
+                scheduled(units, withAlwaysRunTails(forecast.dirty(), units, request), forecast.restoreNeeded()),
                 forecast.preflight()));
     }
 
@@ -303,6 +303,14 @@ public final class WorkspacePreflightPhase {
         return graph.restrict(cone);
     }
 
+    /** {@code dirty} plus the modules whose tail runs however clean they are. */
+    static Set<Path> withAlwaysRunTails(Set<Path> dirty, List<BuildGraph.BuildUnit> units, WorkspaceRequest request) {
+        if (!request.target().alwaysRunsTail()) return dirty;
+        LinkedHashSet<Path> all = new LinkedHashSet<>(dirty);
+        all.addAll(terminalTargetDirs(units, request));
+        return all;
+    }
+
     /** Module dirs eligible for target-specific terminal work during forecast and prepare. */
     public static Set<Path> terminalTargetDirs(List<BuildGraph.BuildUnit> units, WorkspaceRequest request) {
         WorkspaceTarget target = request.target();
@@ -314,7 +322,9 @@ public final class WorkspacePreflightPhase {
             }
             return all;
         }
-        if (target != WorkspaceTarget.NATIVE && target != WorkspaceTarget.IMAGE) return Set.of();
+        if (target != WorkspaceTarget.NATIVE && target != WorkspaceTarget.IMAGE && !target.alwaysRunsTail()) {
+            return Set.of();
+        }
         Set<Path> terminals = new LinkedHashSet<>();
         for (BuildGraph.BuildUnit unit : units) {
             Path dir = unit.dir();
