@@ -11,9 +11,11 @@ import java.util.Map;
 
 /**
  * Writes Robolectric's {@code test_config.properties} onto the test runtime classpath (unit-test
- * manifest, raw resources, aapt2 resource package). The unit-test manifest is AGP's: the module's
- * manifest merged as an application with every AAR on the test runtime closure, so a test-scope
- * AAR's components ({@code ui-test-manifest}'s {@code ComponentActivity}) resolve under Robolectric.
+ * manifest, raw resources, unit-test resource package). The unit-test manifest is AGP's: the
+ * module's manifest merged as an application with every AAR on the test runtime closure, so a
+ * test-scope AAR's components ({@code ui-test-manifest}'s {@code ComponentActivity}) resolve under
+ * Robolectric. Binary-resources mode reads the manifest compiled into the resource package, so the
+ * step relinks {@code android-res}'s compiled resources against that manifest.
  */
 final class TestConfigStep {
 
@@ -24,7 +26,9 @@ final class TestConfigStep {
         ManifestStep.merge(exec, ManifestStep.aarManifests(exec.runtimeEntries()), false, manifest);
         Path res = exec.requireStepOutput("android-res");
         Path rawRes = res.resolve("raw-res");
-        Path apk = res.resolve("packaged/resources.ap_");
+        Path apk = exec.outputDir("packaged").resolve("resources.ap_");
+        exec.label("aapt2 link (unit test)");
+        ResourceStep.linkUnitTestApk(exec, manifest, apk);
         String pkg = exec.config().string("namespace");
 
         Map<String, String> entries = new LinkedHashMap<>();

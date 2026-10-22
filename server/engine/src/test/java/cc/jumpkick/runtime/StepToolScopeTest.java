@@ -229,7 +229,7 @@ class StepToolScopeTest {
                 .containsExactly("r8", "android-jar");
         assertThat(tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "android-test-config"))
                 .extracting(PluginContributions.StepDep::artifact)
-                .containsExactly("manifest-merger");
+                .containsExactly("aapt2", "manifest-merger", "android-jar");
         assertThat(tools.named(
                         build,
                         tmp,
