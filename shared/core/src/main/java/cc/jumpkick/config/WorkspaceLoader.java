@@ -9,6 +9,7 @@ import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.WorkspaceMerge;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -16,6 +17,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -132,6 +134,10 @@ public final class WorkspaceLoader {
             throw new JkBuildParseException("workspace modules missing jk.toml: " + bad);
         }
         checkIdentityCollisions(workspaceRoot, root, modules);
+        // A member's shared-library edges are coordinates for every reader, as its own parse sees
+        // them: a consumer's classpath inherits them through the sibling closure.
+        Collection<JkBuild> members = List.copyOf(modules.values());
+        modules.replaceAll((dir, member) -> WorkspaceMerge.resolveSharedDependencies(root, member, members));
         return modules;
     }
 
