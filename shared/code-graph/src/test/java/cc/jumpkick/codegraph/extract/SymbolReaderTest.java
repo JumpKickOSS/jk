@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.codegraph.CodeGraph;
+import cc.jumpkick.codegraph.Linker;
 import cc.jumpkick.codegraph.Scope;
 import cc.jumpkick.codegraph.SymbolReader;
 import cc.jumpkick.codegraph.SymbolReader.View;
@@ -13,6 +14,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -99,6 +101,17 @@ class SymbolReaderTest {
         assertThat(read("src/main/java/**;!**/OrderService.java", View.HEADLINE, 2000))
                 .contains("BaseService.java")
                 .doesNotContain("OrderService.java");
+    }
+
+    @Test
+    void aTypeNameIsNotAmbiguousWithItsConstructor() {
+        CodeGraph g = Linker.link(List.of(Objects.requireNonNull(Extractors.forPath("src/main/java/a/Pet.java"))
+                .extract("src/main/java/a/Pet.java", "package a;\npublic class Pet {\n    public Pet() {}\n}\n")));
+        String out = new SymbolReader(g, Scope.ALL, rel -> "package a;\npublic class Pet {\n    public Pet() {}\n}\n")
+                .read("Pet", View.HEADLINE, 2000);
+        assertThat(out).startsWith("a.Pet [class public]");
+        assertThat(new SymbolReader(g, Scope.ALL, rel -> null).read("Pet.Pet", View.HEADLINE, 2000))
+                .startsWith("Pet.Pet [constructor public]");
     }
 
     @Test

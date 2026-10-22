@@ -244,7 +244,7 @@ public final class SymbolReader {
             if (n.extra().get(Linker.QUALIFIED_NAME) instanceof String q
                     && q.replace('$', '.').equals(bare)) {
                 qualified.add(n.id());
-            } else if (dot < 0 && plain(n.label()).equals(bare)) {
+            } else if (dot < 0 && plain(n.label()).equals(bare) && !"constructor".equals(Decl.kind(n))) {
                 labelled.add(n.id());
             }
         }
