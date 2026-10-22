@@ -8,6 +8,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.mvn.TestImporters;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -44,6 +45,44 @@ class ProjectImportTest {
                 .as("the root manifest is not written either")
                 .doesNotExist();
         assertThat(Files.readString(root.resolve("core/jk.toml"))).isEqualTo("name = \"prior\"\n");
+    }
+
+    /** {@code -t other.toml}: the pin check still runs, on a {@code jk.toml}, and its raises land in the file. */
+    @Test
+    void a_manifest_written_under_another_name_is_pin_checked_too(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.example</groupId>
+                  <artifactId>solo</artifactId>
+                  <version>1.0.0</version>
+                </project>
+                """);
+        Path out = root.resolve("target/reimport.toml");
+
+        ProjectImport.Outcome outcome = ProjectImport.run(
+                TestImporters.offline(root.resolve("importer")),
+                GradleBuildImport.scannerOnly(),
+                root.resolve("pom.xml"),
+                out,
+                root,
+                null,
+                false,
+                false,
+                root.resolve("report.md"),
+                note -> {},
+                lockDir -> {
+                    Path manifest = lockDir.resolve("jk.toml");
+                    Files.writeString(manifest, Files.readString(manifest) + "# raised\n");
+                    return List.of("raised one pin");
+                });
+
+        assertThat(outcome.exit()).isZero();
+        assertThat(Files.readString(out)).contains("name     = \"solo\"").endsWith("# raised\n");
+        assertThat(Files.readString(root.resolve("report.md")))
+                .contains("raised one pin")
+                .doesNotContain("not checked");
+        assertThat(root.resolve("target/jk.toml")).doesNotExist();
     }
 
     @Test
