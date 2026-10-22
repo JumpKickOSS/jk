@@ -49,6 +49,12 @@ public final class GraphTools {
         List<String> scoped =
                 anywhere.stream().filter(id -> scope.contains(graph.node(id))).toList();
         List<String> exact = scoped.isEmpty() ? anywhere : scoped;
+        if (exact.size() > 1) {
+            List<String> types = exact.stream()
+                    .filter(id -> !String.valueOf(label(id)).startsWith("."))
+                    .toList();
+            if (types.size() == 1) return new Resolved(types.getFirst(), null);
+        }
         if (exact.size() == 1) return new Resolved(exact.getFirst(), null);
         if (exact.size() > 1) {
             List<String> lines = new ArrayList<>();
