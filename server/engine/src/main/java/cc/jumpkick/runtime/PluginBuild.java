@@ -221,6 +221,28 @@ public final class PluginBuild {
     }
 
     /**
+     * Every tool the lock pins for the module at {@code moduleDir} on this platform — the step,
+     * command and packager lanes' Maven artifacts, closures and URL files — fetched into the CAS
+     * and verified as a build fetches them; SDK components are left to their own provisioning.
+     * What {@code jk sync} prefetches. Answers the tools' names.
+     */
+    public static List<String> prefetchTools(JkBuild project, Path moduleDir, Cas cas, Path lockFile)
+            throws IOException, InterruptedException {
+        Map<String, String> pins = platformPins(moduleDir, lockFile);
+        List<PluginContributions.StepDep> lanes = new ArrayList<>();
+        for (PluginContributions.StepDep dep : PluginContributions.stepDependencies(project, moduleDir, pins)) {
+            if (dep.sdkComponent() == null) lanes.add(dep);
+        }
+        for (PluginContributions.StepDep dep : PluginContributions.commandDependencies(project, moduleDir, pins)) {
+            if (dep.sdkComponent() == null) lanes.add(dep);
+        }
+        List<String> out = new ArrayList<>(
+                fetchTools(lanes, project, cas, lockOrNull(lockFile), false).keySet());
+        out.addAll(fetchPackagerDependencies(project, moduleDir, cas, lockFile).keySet());
+        return out;
+    }
+
+    /**
      * One module build's step-lane tools: the declared lane, derived once, partitioned by the
      * step or packager that reads each tool ({@code for-step}), plus every path fetched so far.
      * A step body, the packager and the compile classpath share one instance, so a tool two of

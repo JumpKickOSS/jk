@@ -25,7 +25,7 @@ the root lock. Never write per-module lockfiles.
 |---------|------|
 | `jk lock` | Resolve and write the lock, keeping every version it already holds; only what a changed constraint rules out moves. Metadata warm within 24h TTL (local first) |
 | `jk lock -F` | The same resolve, but every opt-in selector (`^`, `~`, range, `latest`) takes the newest version it allows; exact pins do not move and nothing drops below the old lock. Revalidates metadata past the TTL |
-| `jk sync` | Materialize cache; `--offline-prepare` for offline CI; `--sources` fetches every library's `-sources.jar` for the IDE |
+| `jk sync` | Materialize cache, including every [plugin tool](#plugin-tools) the lock pins for this platform; `--offline-prepare` for offline CI; `--sources` fetches every library's `-sources.jar` for the IDE |
 | `jk outdated` | Current / Compatible / Latest table (exit 0 always on success) |
 | `jk update` | Rewrite declared pins in `jk.toml` to the newest stable on the same major, then relock — [below](#jk-update) |
 | `jk build` | Uses the lock; does not re-resolve |
@@ -449,6 +449,10 @@ checksum   = "sha256:…"
 The build resolves nothing: it fetches exactly the jars the closure row names, each against its
 row, and a tool with no closure row fails naming it. A plain `jk lock` keeps a closure as pinned;
 `jk lock -F` and `jk update` resolve it again.
+
+`jk sync` fetches every tool the lock pins for this platform — artifacts, closures, URL files — into
+the store and verifies each against its row, so the next build, or an `--offline` one, downloads
+nothing; bytes that disagree with a row fail the sync naming it.
 
 A `[[plugin]]` row normally pins the plugin jar by `checksum`: a jar that is fetched later and
 disagrees with it is refused. A plugin the workspace builds itself — a module whose
