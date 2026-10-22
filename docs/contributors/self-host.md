@@ -10,19 +10,20 @@ compares jk against.
 
 ## The gate
 
-Run in this order, in your checkout, with the installed jk; all four must be green before a change
-is done:
+Run in this order, in your checkout, with the installed jk. The first three are the merge gate,
+green before a change merges into local `main`; the integration profile is the push gate, green on
+the local `main` before it is pushed to `origin`:
 
 ```bash
 jk format                        # formats; `jk format -c` is the same verdict without writing
 jk guard                         # every house-rule lane, the tree lane and the fixture proofs included
 jk build                         # every module compiled, packaged and its fast test tier run
-jk test -p integration           # the pre-merge bar: engine, e2e and worker suites
+jk test -p integration           # the push gate: engine, e2e and worker suites
 ```
 
 `jk build` must not rewrite the committed `jk-lock.toml`: the manifests pin exactly, so a build
 that moves the lock means a pin drifted or the lock writer put something non-deterministic in the
-file. `jk test -p slow` is due when a change touches a framework or language plugin; the
+file. `jk test -p slow` is due before the push that carries a change to a framework or language plugin; the
 `network` and `bench` profiles are nightly and gate nothing.
 
 The shell fixtures and lints are part of the same bar when a script or a workflow moves:
@@ -225,7 +226,7 @@ jk lock
 jk build -S
 jk install
 jk test                          # the fast tier, every module
-jk test -p integration           # the pre-merge bar
+jk test -p integration           # the push gate
 ```
 
 Workspace members: libraries, `clients/cli`, `clients/cli-terminal`, `clients/web`, `server/engine`
@@ -282,7 +283,7 @@ tier:
 
 ```bash
 jk test                          # fast tier, untagged only
-jk test -p integration           # the pre-merge bar
+jk test -p integration           # the push gate
 jk test -p slow                  # framework / language e2e (nightly)
 jk test -p network               # talks to a real remote (nightly)
 jk test -p bench                 # microbenchmarks (nightly)

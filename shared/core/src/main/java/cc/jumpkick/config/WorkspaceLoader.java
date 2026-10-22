@@ -189,7 +189,7 @@ public final class WorkspaceLoader {
      * the CLI rehomes to the root before it scans them. The other half did not, so naming a
      * profile the root alone declares failed the build on the first member that did not:
      * {@code jk test -p integration} died with "no profile named `integration`" against a
-     * root whose {@code jk.toml} defines it, and the documented pre-merge command could not run.
+     * root whose {@code jk.toml} defines it, and the documented push-gate command could not run.
      *
      * <p>Not a {@code key.workspace = true} inherit: those are opt-in per field because they say
      * what a module IS. A profile names an invocation, so the workspace answers for it, and a

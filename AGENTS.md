@@ -134,7 +134,7 @@ jk engine status          # engine answers, no version-skew crash; `Source` name
 jk new smoke-app -l java && cd smoke-app && jk build
 ```
 
-Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIBUTING.md)). Module and class filters are fine mid-ticket; the full gate (`jk format`, `jk guard`, `jk build`, `jk test -p integration`) and the reinstall smoke are required **before moving a code-changing ticket to done**.
+Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIBUTING.md)). Module and class filters are fine mid-ticket; the merge gate (`jk format`, `jk guard`, `jk build`) and the reinstall smoke are required **before merging a code-changing ticket into local `main`**; `jk test -p integration` is the push gate, run once before pushing `main` to `origin`.
 
 ## Planning / tickets (KanArtist — not this repo)
 
@@ -164,31 +164,41 @@ Prefer a small WIP limit (a few claimed tickets). If blocked: `ka set-status JK-
 
 ### Done criteria
 
-**Two-tier tests** (keep the default loop under ~5 minutes; details: [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md)):
+**Two gates** (keep the merge loop under ~5 minutes; details: [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md)):
+
+- **Merge gate** — before every local merge into `main`: `jk format`, `jk guard`, `jk build`.
+- **Push gate** — before every `git push` of `main` to `origin`: `jk test -p integration` on the
+  local `main` you are about to push. One run covers every branch merged since the last push, so
+  worktrees merge on the fast gate and pay for integration once per push, not once per merge.
 
 | Command | What runs | When |
 |---------|-----------|------|
-| `jk guard` | Every house-rule lane, the tree lane and the fixture proofs included | Every ticket and PR |
-| `jk build` | Every module compiled and packaged, its fast tier run, the model/module/workspace/output lanes | Every ticket and PR |
-| `jk test -p integration` | Engine/CLI e2e, workers, install, lock | The pre-merge bar |
-| `jk test -p slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | When the ticket touches a plugin or a toolchain; nightly |
+| `jk guard` | Every house-rule lane, the tree lane and the fixture proofs included | Every local merge |
+| `jk build` | Every module compiled and packaged, its fast tier run, the model/module/workspace/output lanes | Every local merge |
+| `jk test -p integration` | Engine/CLI e2e, workers, install, lock | Every push to `origin` (the push gate) |
+| `jk test -p slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | Before the push that carries a plugin or toolchain change; nightly |
 
 Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not** put multi-minute e2e in the default `test` task.
 
 **Docs-only / non-Java** tickets (markdown, comments-only, pure config with no runtime impact): ticket acceptance met is enough — no reinstall required. Still run any tests that would catch doc-linked fixtures if you touched them.
 
-**Any ticket that changes Java (or other runtime) code** must **not** move to `done` in kanartist until all of the following pass:
+**Any ticket that changes Java (or other runtime) code** must **not** merge into local `main` or move to `done` in kanartist until all of the following pass:
 
 1. **Tests (required, non-negotiable)** — prove the change did not break the build:
-   - **Always:** `jk format`, a clean `jk guard` (every house-rule lane, the tree lane included) and a green `jk build` (every module's fast tier).
-   - **Also** green `jk test -p integration` — the pre-merge bar — and `jk test -p slow` when the ticket touches a framework or language plugin.
-   - Mid-ticket, narrow with `-m <module>` and `--class <fqcn>`; do not treat a 20+ minute full e2e as the only loop.
-   - Do not land on `main` with a red or un-run test suite for areas you changed. A broken main is a stop-the-line defect: fix tests first, then resume tickets.
+   - **Merge gate:** `jk format`, a clean `jk guard` (every house-rule lane, the tree lane included) and a green `jk build` (every module's fast tier).
+   - Mid-ticket, narrow with `-m <module>` and `--class <fqcn>`; run a targeted `-p integration --class …` when the change lives in engine/CLI e2e territory, but do not run the full integration profile per merge.
+   - Do not merge into local `main` with a red or un-run fast gate. A broken local `main` is a stop-the-line defect: fix it first, then resume tickets.
 2. **Reinstall** — `jk build -S && jk install -S`.
 3. **Engine smoke** — `jk engine status` succeeds (engine up or able to start; no immediate failure).
 4. **Project smoke** — a simple project builds with the reinstalled binary, e.g. `jk init … && jk build` (or equivalent lock/build path the ticket affects).
 
 Record failures on the kanartist ticket (`status: blocked` or body notes); do not mark done on green unit tests alone if dist/install/dogfood is broken.
+
+**Before pushing `main` to `origin`** (the push gate): green `jk test -p integration` on the exact
+local `main` being pushed, plus `jk test -p slow` when any merged change touches a framework or
+language plugin. Never push a red or un-run push gate. When it fails, `main` stops: fix forward on
+`main` (re-running the merge gate), re-run the push gate, then push, and note the regression on the
+ticket that caused it (back to `in-progress` if the fix is not trivial).
 
 ## Comments and Javadoc
 
@@ -319,7 +329,7 @@ job, including leftover from the last agent.
 
 - **Trivial** fixes (typos, one-liner comment, obvious bug with no ticket): commit on `main` is fine.
 - **Everything else:** work on a **dedicated branch** (prefer a **git worktree** so `main` stays clean and other agents can coordinate). Name branches after the ticket when possible, e.g. `JK-1044-build-logic-spi` (legacy `ticket-NNNN-…` names are fine for older branches).
-- While the repo is private: **no pull requests**. Merge into `main` when the work is **done** (see **Done criteria** above; ticket acceptance met), then **push `main`** so the code stays the shared truth. Update the kanartist ticket status when the work lands.
+- While the repo is private: **no pull requests**. Merge into local `main` when the work passes the merge gate (see **Done criteria** above; ticket acceptance met) and update the kanartist ticket status. Batch merges from several worktrees, then run the push gate once and **push `main`** so the code stays the shared truth. Push often enough that `origin` does not lag local `main` by more than a working session.
 - Do not leave half-finished tickets on `main`. Do not rewrite published history on `main` without an explicit human request.
 - Every commit compiles and passes on its own: a file rename lands in the same commit as the class rename it carries, and a signature change lands with its callers. `git bisect` must never stop on a tree that cannot build.
 - Author commits as a normal human contributor. No tool or model co-author trailers, no “generated by …” attribution, and no third-party AI product or model brand names in commits, comments, Javadoc, or user-facing docs. Local guard: `jk guard hooks install` writes the `commit-msg` hook that refuses such a trailer (the `no-agent-trailers` rule) and the `pre-commit` hook that protects the guard baseline.

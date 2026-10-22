@@ -101,8 +101,8 @@ modules = [
 # table and proves, over every subset of the vocabulary, that each is run by exactly one
 # tier — so the routing and the check cannot drift.
 #
-#   jk test                        fast tier, untagged only. The PR gate.
-#   jk test -p integration         engine / e2e / worker suites. The pre-merge bar.
+#   jk test                        fast tier, untagged only. The merge gate.
+#   jk test -p integration         engine / e2e / worker suites. The push gate.
 #   jk test -p slow                framework and language e2e. Nightly, never gating.
 #   jk test -p network             talks to a real remote. Nightly, never gating.
 #   jk test -p bench               microbenchmarks. On demand, gates nothing.
@@ -114,7 +114,7 @@ exclude-tags = ["integration", "slow", "network", "bench"]
 # methods take under 2.5s alone; a method that needs more belongs in a slower tier.
 fast-method-budget = "5s"
 
-# Part of the documented pre-merge bar, alongside the fast tier. Walled off from the release site:
+# The documented push gate, run before pushing main. Walled off from the release site:
 # a test that needs a published jk release is a `network` test, since the version under test is not
 # published until it ships.
 [profiles.integration]
