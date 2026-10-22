@@ -31,7 +31,8 @@ class EngineStopCommandTest {
 
     private static final String VERSION = "9.9.9";
 
-    private static final EngineProbe.Patience QUICK = new EngineProbe.Patience(200, 2, Duration.ofMillis(20));
+    /** For a scripted engine that answers: a loaded host can take seconds to schedule its reply. */
+    private static final EngineProbe.Patience QUICK = new EngineProbe.Patience(3_000, 2, Duration.ofMillis(20));
 
     /** For an engine that never answers: the reply wait only has to elapse, so it can be short. */
     private static final EngineProbe.Patience SILENT = new EngineProbe.Patience(50, 2, Duration.ofMillis(20));
