@@ -260,8 +260,11 @@ fast-method-budget = "1s"   # "500ms", "2m", or a number of seconds
 
 A fast-tier method over the budget is a warning against the module's `run-tests` step, naming the
 method and its time: `demo.OrderFlowTest#ships_overnight took 9.8s, over the fast-tier budget of
-1.0s ([test] fast-method-budget)`. It does not fail the run, a run with `-p <profile>` is not held
-to it, and there is no budget unless one is set. At the workspace root it holds every member; a
+1.0s ([test] fast-method-budget)`. Being over the budget does not fail the run: a loaded host slows
+every method. A JUnit Jupiter method still running at **four times** the budget is stopped: its
+thread is interrupted and the method fails as timed out, so a hung test cannot hold the fast tier
+(a method's own `@Timeout` wins). A run with `-p <profile>` is not held to either, and there is no
+budget unless one is set. At the workspace root it holds every member; a
 member's own `fast-method-budget` wins over the root's.
 
 ## What a test printed

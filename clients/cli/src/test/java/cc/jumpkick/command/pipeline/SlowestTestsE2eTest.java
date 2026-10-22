@@ -17,7 +17,8 @@ import org.junit.jupiter.api.io.TempDir;
  * A {@code jk test} with a slow fast-tier method names it three ways — the {@code slowest-tests}
  * line under {@code -O jsonl}, the class-finish line's {@code slow} methods, and the {@code jk
  * results} table — and the root's {@code fast-method-budget} warns about it in a member. A replay
- * from the green stamp times nothing, so it ranks nothing.
+ * from the green stamp times nothing, so it ranks nothing. A method still running at four budgets
+ * is stopped and fails.
  */
 // Network: JUnit from Central; two forked test JVMs.
 @Tag("integration")
@@ -25,7 +26,7 @@ class SlowestTestsE2eTest {
 
     @Test
     void a_slow_method_is_ranked_and_over_the_roots_budget_warns(@TempDir Path tmp) throws Exception {
-        Path ws = workspace(tmp);
+        Path ws = workspace(tmp, 1_200);
         String cache = tmp.resolve("cache").toString();
         assertThat(run("lock", "-C", ws.toString(), "--cache-dir", cache)).isEqualTo(0);
 
@@ -51,8 +52,24 @@ class SlowestTestsE2eTest {
         assertThat(replay).as("a suite served from cache is not timed").doesNotContain("slowest-tests");
     }
 
-    /** One member, {@code lib}, with a 1.2s test and a quick one; the root holds it to 500ms. */
-    private static Path workspace(Path tmp) throws IOException {
+    @Test
+    void a_method_at_four_budgets_is_stopped_and_fails(@TempDir Path tmp) throws Exception {
+        Path ws = workspace(tmp, 600_000);
+        String cache = tmp.resolve("cache").toString();
+        assertThat(run("lock", "-C", ws.toString(), "--cache-dir", cache)).isEqualTo(0);
+
+        long start = System.nanoTime();
+        String out = Capture.stdout(() -> assertThat(run("test", "-a", "-C", ws.toString(), "--cache-dir", cache))
+                .isNotEqualTo(0));
+        System.out.println(out);
+        assertThat(out).contains("NapTest#naps").contains("naps() timed out after 2000 milliseconds");
+        assertThat(System.nanoTime() - start)
+                .as("stopped at 2s, not after the 10 minute nap")
+                .isLessThan(120_000_000_000L);
+    }
+
+    /** One member, {@code lib}, with a test that naps {@code napMillis} and a quick one; the root holds it to 500ms. */
+    private static Path workspace(Path tmp, int napMillis) throws IOException {
         Path ws = Files.createDirectories(tmp.resolve("ws"));
         Files.writeString(ws.resolve("jk.toml"), """
                 group   = "com.example"
@@ -87,7 +104,8 @@ class SlowestTestsE2eTest {
                 }
                 """);
         Files.createDirectories(lib.resolve("test/src/com/example"));
-        Files.writeString(lib.resolve("test/src/com/example/NapTest.java"), """
+        Files.writeString(
+                lib.resolve("test/src/com/example/NapTest.java"), """
                 package com.example;
 
                 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -97,7 +115,7 @@ class SlowestTestsE2eTest {
                 class NapTest {
                     @Test
                     void naps() throws InterruptedException {
-                        Thread.sleep(1_200);
+                        Thread.sleep(%NAP%);
                         assertEquals(1, Lib.one());
                     }
 
@@ -106,7 +124,7 @@ class SlowestTestsE2eTest {
                         assertEquals(1, Lib.one());
                     }
                 }
-                """);
+                """.replace("%NAP%", Integer.toString(napMillis)));
         return ws;
     }
 }

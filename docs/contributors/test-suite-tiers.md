@@ -32,6 +32,13 @@ Tag new heavy tests at class level:
 @Tag("bench")       // microbench only (never PR)
 ```
 
+**The fast tier cannot hang, and cannot reach an engine.** The root's `fast-method-budget` is 5s:
+a fast method over it is a warning, and one still running at four budgets (20s) is stopped and
+fails. Every fast-tier JVM also carries `JK_ENGINE_NO_SPAWN=1`: a client that finds no engine
+serving it fails at once with `EngineSpawnForbiddenException` instead of starting or taking one
+over. Code under test that asks the engine for something (`ProjectInfos`, `EngineClient`) takes that
+lookup as a parameter in a unit test; a test that needs a real engine is an integration test.
+
 **The fast tier is walled off from Maven Central.** The launcher hands every JVM of a launch that
 includes no tag and excludes at least one `JK_HTTP_DENY_HOSTS=repo.maven.apache.org,<mirror>`;
 `Http` refuses a request to a listed host before it leaves the process, redirects and the Central

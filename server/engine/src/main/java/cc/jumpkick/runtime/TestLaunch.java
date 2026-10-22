@@ -49,10 +49,12 @@ import cc.jumpkick.test.TestProgressListener;
 import cc.jumpkick.test.TestWorkers;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.TestHomes;
+import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -242,16 +244,19 @@ final class TestLaunch {
     }
 
     /**
-     * The default tier's wall against Maven Central. A launch that includes no tag and excludes at
-     * least one is the module's plain {@code jk test} tier, the one {@code jk build} runs, and its
-     * JVMs — and any engine they nest — find {@code repo.maven.apache.org} and its failover mirror
-     * refused by {@link Http} with the host named. A profile that includes a tag names a tier that may
-     * fetch, and a module that sets {@link Http#DENY_HOSTS_ENV} in {@code [test] env} keeps its value.
+     * The default tier's walls. A launch that includes no tag and excludes at least one is the
+     * module's plain {@code jk test} tier, the one {@code jk build} runs. Its JVMs find {@code
+     * repo.maven.apache.org} and its failover mirror refused by {@link Http} with the host named, and
+     * may not start or take over an engine ({@link EnginePaths#NO_SPAWN_ENV}). A profile that
+     * includes a tag names a tier that may do both, and a module that sets either variable in
+     * {@code [test] env} keeps its value.
      */
-    static WorkerEnv withHostWall(WorkerEnv testEnv, TestSelection sel) {
+    static WorkerEnv withFastTierWalls(WorkerEnv testEnv, TestSelection sel) {
         if (!sel.includeTags().isEmpty() || sel.excludeTags().isEmpty()) return testEnv;
-        if (testEnv.extras().containsKey(Http.DENY_HOSTS_ENV)) return testEnv;
-        return testEnv.with(Map.of(Http.DENY_HOSTS_ENV, Http.centralHosts()));
+        Map<String, String> walls = new LinkedHashMap<>();
+        if (!testEnv.extras().containsKey(Http.DENY_HOSTS_ENV)) walls.put(Http.DENY_HOSTS_ENV, Http.centralHosts());
+        if (!testEnv.extras().containsKey(EnginePaths.NO_SPAWN_ENV)) walls.put(EnginePaths.NO_SPAWN_ENV, "1");
+        return testEnv.with(walls);
     }
 
     /**

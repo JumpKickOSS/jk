@@ -36,6 +36,27 @@ record TestTier(String name, long budgetMs) {
         return String.join("+", includeTags);
     }
 
+    /**
+     * How many budgets a fast-tier method may run before it is stopped: over the budget is a warning,
+     * since a loaded host slows every method; this far over is a hang or a test in the wrong tier.
+     */
+    static final int STOP_AT_BUDGETS = 4;
+
+    /**
+     * The JUnit Jupiter default timeout that stops a fast-tier method at {@link #STOP_AT_BUDGETS}
+     * budgets, as system properties for the test JVM; none without a budget. The test thread is
+     * interrupted and the method fails; an explicit {@code @Timeout} keeps its own.
+     */
+    List<String> timeoutArgs() {
+        if (budgetMs <= 0) return List.of();
+        return List.of("-Djunit.jupiter.execution.timeout.testable.method.default=" + stopMs() + " ms");
+    }
+
+    /** When a fast-tier method is stopped, in milliseconds; 0 without a budget. */
+    long stopMs() {
+        return budgetMs <= 0 ? 0 : budgetMs * STOP_AT_BUDGETS;
+    }
+
     /** Whether a test of {@code millis} is over this tier's budget. */
     boolean overBudget(long millis) {
         return budgetMs > 0 && millis > budgetMs;

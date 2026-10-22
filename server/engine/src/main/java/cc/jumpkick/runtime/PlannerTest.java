@@ -637,7 +637,7 @@ public final class PlannerTest {
         // matches what the suite actually loads — same set forecast uses.
         Map<String, String> workerJars = testStampWorkerJars(in.dir(), projectUnderTest);
         WorkerEnv testEnv =
-                TestLaunch.withHostWall(TestLaunch.testEnvironment(ctx, in, projectUnderTest), effectiveSel);
+                TestLaunch.withFastTierWalls(TestLaunch.testEnvironment(ctx, in, projectUnderTest), effectiveSel);
         List<String> testJvmArgs = TestLaunch.testJvmArgs(ctx, in, projectUnderTest, pluginDecls);
         String stampKey = testStampKey(
                 ctx, in, projectUnderTest, effectiveSel, affected, workerJars, testJvmArgs, testSrcs, testRtCp);
@@ -670,6 +670,7 @@ public final class PlannerTest {
                 PlannerTest::awaitTestGate);
         TestSummary result;
         TagExcludedCapture tagExcluded;
+        TestTier tier = TestTier.of(effectiveSel, in.profileName(), fastMethodBudget(projectUnderTest, in.dir()));
         try {
             // Module pin ([test] workers / [build] test-workers) wins over CLI for
             // hermetic opt-out. Auto hands the launcher the share; it applies the
@@ -678,17 +679,11 @@ public final class PlannerTest {
             boolean auto = !debug && TestLaunch.autoDispatch(in, projectUnderTest.build(), pluginDecls);
             int testWorkers = debug ? 1 : TestLaunch.dispatchWorkers(in, projectUnderTest.build(), pluginDecls);
             tagExcluded = new TagExcludedCapture(TestSupport.bridgeListener(
-                    ctx,
-                    testWorkers,
-                    in.verbose(),
-                    moduleLabel,
-                    in.dir(),
-                    snippets,
-                    suites,
-                    TestTier.of(effectiveSel, in.profileName(), fastMethodBudget(projectUnderTest, in.dir()))));
+                    ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets, suites, tier));
             // The module path is read off the runtime classpath, which the stamp already keys.
             List<String> forkJvmArgs = new ArrayList<>(testJvmArgs);
             forkJvmArgs.addAll(JvmModulePath.args(projectUnderTest, in.dir(), runtimeCp));
+            forkJvmArgs.addAll(tier.timeoutArgs());
             JUnitLauncher launcher = TestLaunch.launcher(
                             in, projectUnderTest, effectiveSel, forkJvmArgs, affected, jacoco, coverageExec)
                     .withSuites(suites)

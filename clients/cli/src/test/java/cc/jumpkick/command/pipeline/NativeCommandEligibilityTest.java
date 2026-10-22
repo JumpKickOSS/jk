@@ -3,10 +3,13 @@ package cc.jumpkick.command.pipeline;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -17,6 +20,9 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class NativeCommandEligibilityTest {
 
+    /** The scan path: these modules are judged from their manifests, never by an engine. */
+    private static final Function<Path, @Nullable ProjectInfo> NO_ENGINE = dir -> null;
+
     @TempDir
     Path tmp;
 
@@ -26,7 +32,7 @@ class NativeCommandEligibilityTest {
         Path cli = module("cli", true, true);
         Path graal = Files.createDirectories(tmp.resolve("graal"));
 
-        Map<Path, Path> homes = NativeVerb.graalHomesForModules(List.of(plugin, cli), graal, null);
+        Map<Path, Path> homes = NativeVerb.graalHomesForModules(List.of(plugin, cli), graal, null, NO_ENGINE);
         assertThat(homes).containsOnlyKeys(cli);
         assertThat(homes.get(cli)).isEqualTo(graal);
     }
@@ -37,7 +43,7 @@ class NativeCommandEligibilityTest {
         Path lib = module("lib", false, false);
         Path graal = Files.createDirectories(tmp.resolve("graal"));
 
-        Map<Path, Path> homes = NativeVerb.graalHomesForModules(List.of(app, lib), graal, null);
+        Map<Path, Path> homes = NativeVerb.graalHomesForModules(List.of(app, lib), graal, null, NO_ENGINE);
         assertThat(homes).containsOnlyKeys(app);
     }
 
@@ -49,11 +55,12 @@ class NativeCommandEligibilityTest {
         Path app = module("app", true, false);
         Path graal = Files.createDirectories(tmp.resolve("graal"));
 
-        Map<Path, Path> homes = NativeVerb.graalHomesForModules(List.of(off, app), graal, null);
+        Map<Path, Path> homes = NativeVerb.graalHomesForModules(List.of(off, app), graal, null, NO_ENGINE);
         assertThat(homes).containsOnlyKeys(app);
 
         // A lone disabled module yields nothing (jk native then fails preflight, by design).
-        assertThat(NativeVerb.graalHomesForModules(List.of(off), graal, null)).isEmpty();
+        assertThat(NativeVerb.graalHomesForModules(List.of(off), graal, null, NO_ENGINE))
+                .isEmpty();
     }
 
     private Path moduleDisabledNative(String name) throws Exception {
@@ -67,7 +74,8 @@ class NativeCommandEligibilityTest {
     void empty_when_no_mains() throws Exception {
         Path lib = module("lib", false, false);
         Path graal = Files.createDirectories(tmp.resolve("graal"));
-        assertThat(NativeVerb.graalHomesForModules(List.of(lib), graal, null)).isEmpty();
+        assertThat(NativeVerb.graalHomesForModules(List.of(lib), graal, null, NO_ENGINE))
+                .isEmpty();
     }
 
     private Path module(String name, boolean withMain, boolean withNativeTable) throws Exception {

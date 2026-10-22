@@ -572,6 +572,7 @@ inherited once would be every later terminal's truth. Workers are narrowed again
 | `JK_ENGINE_AOT_RECORD` | unset | Internal: the spawned engine records its startup cache to this path. |
 | `JK_ENGINE_OWNER_PID` | unset | Internal: the spawned engine stops once this pid exits. |
 | `JK_ENGINE_TRANSPORT` | unix; tcp on Windows | Force tcp or unix for the client-engine wire. |
+| `JK_ENGINE_NO_SPAWN` | unset; 1 in fast-tier test JVMs | 1: a client in this process uses an engine already serving but never starts or takes one over. |
 | `JK_ENGINE_HEARTBEAT_MS` | 30000 | Heartbeat while async jobs run. 0 disables. |
 | `JK_ENGINE_JOB_DEADLINE_MS` | 0 | Wall deadline for a job a client owns over its socket, in ms. 0 = off. |
 | `JK_ENGINE_JOB_DEADLINE_GRACE_MS` | 30000 | Join grace after a deadline cancel, in ms. |
