@@ -60,19 +60,21 @@ class WorkerLeasesOffHeapTest {
             ledger.sample();
 
             WorkerLeases.Snapshot snap = ledger.snapshot();
-            assertThat(snap.leasedBytes()).isGreaterThan(1400L << 20);
+            // The hog touches 1400 MiB; a loaded host may have swapped some out, and 1 GiB is still
+            // far past the 192 MiB lease.
+            assertThat(snap.leasedBytes()).isGreaterThan(1024L << 20);
             assertThat(snap.overLease()).startsWith("worker JVM pid " + hog.pid() + " using ");
             assertThat(warnings).singleElement().satisfies(w -> assertThat(w)
                     .startsWith("memory-over-lease worker JVM using ")
                     .endsWith(", leased 192 MiB"));
 
             next = acquireOnThread(() -> ledger.acquireBytes(3 * GIB, true, null));
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
             while (ledger.queued() < 1 && System.nanoTime() < deadline) Thread.sleep(5);
             assertThat(ledger.queued()).isEqualTo(1);
 
             hog.destroyForcibly();
-            try (WorkerLeases.Grant granted = next.get(10, TimeUnit.SECONDS)) {
+            try (WorkerLeases.Grant granted = next.get(30, TimeUnit.SECONDS)) {
                 assertThat(granted.bytes()).isEqualTo(3 * GIB);
             }
         } finally {

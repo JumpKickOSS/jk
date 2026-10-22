@@ -39,6 +39,13 @@ serving it fails at once with `EngineSpawnForbiddenException` instead of startin
 over. Code under test that asks the engine for something (`ProjectInfos`, `EngineClient`) takes that
 lookup as a parameter in a unit test; a test that needs a real engine is an integration test.
 
+**The integration tier is walled off from the release site.** `[profiles.integration] env` hands
+its JVMs `JK_HTTP_DENY_HOSTS=jumpkick.build`: the version under test is never published while it
+is being tested, so a test that needs a published release (an engine download, a release
+checksum) is a `network` test. Maven Central stays reachable for now: `jk new` looks up the
+newest stable version of what it scaffolds there, and about twenty integration tests start with
+`jk new`.
+
 **The fast tier is walled off from Maven Central.** The launcher hands every JVM of a launch that
 includes no tag and excludes at least one `JK_HTTP_DENY_HOSTS=repo.maven.apache.org,<mirror>`;
 `Http` refuses a request to a listed host before it leaves the process, redirects and the Central

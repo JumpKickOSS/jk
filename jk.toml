@@ -114,10 +114,13 @@ exclude-tags = ["integration", "slow", "network", "bench"]
 # methods take under 2.5s alone; a method that needs more belongs in a slower tier.
 fast-method-budget = "5s"
 
-# Part of the documented pre-merge bar, alongside the fast tier.
+# Part of the documented pre-merge bar, alongside the fast tier. Walled off from the release site:
+# a test that needs a published jk release is a `network` test, since the version under test is not
+# published until it ships.
 [profiles.integration]
 include-tags = ["integration"]
 exclude-tags = ["slow", "network", "bench"]
+env = { JK_HTTP_DENY_HOSTS = "jumpkick.build" }
 
 # Framework / language end-to-end: does an Android / Grails / Scala / KSP / Protobuf
 # project still build all the way through. Off the gate — what it asserts breaks when a

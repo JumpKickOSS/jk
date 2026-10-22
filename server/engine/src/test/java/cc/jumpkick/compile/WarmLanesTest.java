@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import cc.jumpkick.compile.JavaCompilerHost.Lanes;
 import cc.jumpkick.compile.JavaCompilerHost.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.HostPressure;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WarmLinger;
 import cc.jumpkick.run.JkThreads;
@@ -26,6 +27,7 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -36,6 +38,16 @@ import org.junit.jupiter.api.io.TempDir;
  * compiling for a job that has ended is stopped without touching its neighbours.
  */
 class WarmLanesTest {
+
+    @BeforeEach
+    void normalHostPressure() {
+        HostPressure.forTests(HostPressure.Level.NORMAL);
+    }
+
+    @AfterEach
+    void hostPressureFromTheHost() {
+        HostPressure.forTests(null);
+    }
 
     @AfterEach
     void reset() {

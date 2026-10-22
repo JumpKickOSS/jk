@@ -35,8 +35,8 @@ class MemberSolvesTest {
     @Test
     void no_more_solves_run_at_once_than_the_slots_allow() throws Exception {
         MemberSolves solves = new MemberSolves(3, 1024 * MIB);
-        solves.runAll(sleepers(10, MIB));
-        assertThat(solves.peak()).isBetween(2, 3);
+        solves.runAll(gated(10, MIB, 3));
+        assertThat(solves.peak()).isEqualTo(3);
     }
 
     @Test
@@ -89,6 +89,24 @@ class MemberSolvesTest {
         assertThat(solves.runAll(jobs)).containsExactly(0, 1, 2, 3, 4);
         assertThat(started).containsExactly(0, 1, 2, 3, 4);
         assertThat(solves.peak()).isEqualTo(1);
+    }
+
+    /**
+     * Jobs that each wait, up to ten seconds, until {@code overlap} of them have started: a peak of
+     * {@code overlap} is reached whatever the scheduler does, and slots or budget are what cap it.
+     */
+    private static List<MemberSolves.Job<Integer>> gated(int count, long bytes, int overlap) {
+        CountDownLatch started = new CountDownLatch(overlap);
+        List<MemberSolves.Job<Integer>> jobs = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            int n = i;
+            jobs.add(new MemberSolves.Job<>(bytes, () -> {
+                started.countDown();
+                started.await(10, TimeUnit.SECONDS);
+                return n;
+            }));
+        }
+        return jobs;
     }
 
     private static List<MemberSolves.Job<Integer>> sleepers(int count, long bytes) {

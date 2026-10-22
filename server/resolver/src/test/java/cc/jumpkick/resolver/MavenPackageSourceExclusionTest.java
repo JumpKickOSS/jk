@@ -29,6 +29,9 @@ import org.junit.jupiter.api.io.TempDir;
 class MavenPackageSourceExclusionTest {
 
     @RegisterExtension
+    final QuiescedSources sources = new QuiescedSources();
+
+    @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
 
     private final MavenStub upstream = new MavenStub(http);
@@ -522,7 +525,7 @@ class MavenPackageSourceExclusionTest {
 
         RepoGroup repos = repoGroup(tempDir);
         EffectivePomBuilder pomBuilder = new EffectivePomBuilder(repos);
-        MavenPackageSource shared = new MavenPackageSource(repos, pomBuilder);
+        MavenPackageSource shared = sources.track(new MavenPackageSource(repos, pomBuilder));
 
         // Main scope: the only path to target is clean, so leaf stays (and target's exclusion
         // set converges to empty).

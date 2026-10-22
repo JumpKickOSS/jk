@@ -18,6 +18,16 @@ import org.junit.jupiter.api.io.TempDir;
 
 class WarmWorkersTest {
 
+    @BeforeEach
+    void normalHostPressure() {
+        HostPressure.forTests(HostPressure.Level.NORMAL);
+    }
+
+    @AfterEach
+    void hostPressureFromTheHost() {
+        HostPressure.forTests(null);
+    }
+
     @TempDir
     Path dir;
 

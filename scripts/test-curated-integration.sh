@@ -24,8 +24,8 @@ server/engine  | cc.jumpkick.engine.EngineServerTest      | wire      | success,
 clients/cli    | cc.jumpkick.command.pipeline.BuildCommandTest | workspace | success,failure | The build verb over a real workspace, compile error included.
 EOF
 printed="$(CURATED_REGISTRY="$WORK/registry.txt" JK=jk-under-test "$LANE" --print)"
-expected="jk-under-test test --profile integration --no-ansi -m clients/cli --class cc.jumpkick.cli.engine.EngineClientTest --class cc.jumpkick.command.pipeline.BuildCommandTest
-jk-under-test test --profile integration --no-ansi -m server/engine --class cc.jumpkick.engine.EngineServerTest"
+expected="jk-under-test test -p integration --no-ansi -m clients/cli --class cc.jumpkick.cli.engine.EngineClientTest --class cc.jumpkick.command.pipeline.BuildCommandTest
+jk-under-test test -p integration --no-ansi -m server/engine --class cc.jumpkick.engine.EngineServerTest"
 [[ "$printed" == "$expected" ]] || {
   printf '%s\n' "$printed" >&2
   fail "the printed commands differ from the expected ones"

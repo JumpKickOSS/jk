@@ -2,6 +2,7 @@
 package cc.jumpkick.model;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
@@ -23,7 +24,9 @@ public record Profile(
         /** JUnit tags to exclude when this profile is active (meaningful when {@link #excludeTagsSet}). */
         List<String> excludeTags,
         boolean includeTagsSet,
-        boolean excludeTagsSet) {
+        boolean excludeTagsSet,
+        /** Environment for every forked test JVM while this profile is active; wins over {@code [test] env}. */
+        Map<String, String> env) {
 
     public Profile {
         Objects.requireNonNull(name, "name");
@@ -33,6 +36,20 @@ public record Profile(
         jvmArgs = List.copyOf(jvmArgs);
         includeTags = includeTags == null ? List.of() : List.copyOf(includeTags);
         excludeTags = excludeTags == null ? List.of() : List.copyOf(excludeTags);
+        env = env == null ? Map.of() : Map.copyOf(env);
+    }
+
+    /** No test environment of its own. */
+    public Profile(
+            String name,
+            @Nullable String inherits,
+            List<String> javacArgs,
+            List<String> jvmArgs,
+            List<String> includeTags,
+            List<String> excludeTags,
+            boolean includeTagsSet,
+            boolean excludeTagsSet) {
+        this(name, inherits, javacArgs, jvmArgs, includeTags, excludeTags, includeTagsSet, excludeTagsSet, Map.of());
     }
 
     /** No tag keys set (profile does not override {@code [test]} tag filters). */

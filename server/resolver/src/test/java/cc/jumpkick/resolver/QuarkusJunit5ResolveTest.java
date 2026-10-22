@@ -26,10 +26,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 @Tag("network")
 class QuarkusJunit5ResolveTest {
+
+    @RegisterExtension
+    final QuiescedSources sources = new QuiescedSources();
 
     @Test
     @Timeout(value = QuarkusLockPerfTest.NETWORK_TIMEOUT_SECONDS, unit = TimeUnit.SECONDS)
@@ -46,7 +50,7 @@ class QuarkusJunit5ResolveTest {
         }
         AtomicInteger versions = new AtomicInteger();
         AtomicInteger deps = new AtomicInteger();
-        MavenPackageSource inner = new MavenPackageSource(repos, pomBuilder, bom);
+        MavenPackageSource inner = sources.track(new MavenPackageSource(repos, pomBuilder, bom));
         var src = new PackageSource() {
             @Override
             public List<String> versions(String pkg) throws IOException, InterruptedException {

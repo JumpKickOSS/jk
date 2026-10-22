@@ -331,8 +331,17 @@ jobs:
         run: |
           set -euo pipefail
           failed=0
+          official=https://jumpkick.build/repo
           for manifest in docs/user/examples/*/jk.toml; do
             sample="$(dirname "$manifest")"
+            # A sample pinned to the plugin SDK at this checkout's version cannot lock until that
+            # version is released to the JumpKick repository; ThirdPartyPluginExampleTest builds it
+            # against the checkout's own SDK meanwhile.
+            sdk="$(sed -n 's/^jk-plugin-sdk = "cc.jumpkick:jk-plugin-sdk:\(.*\)"$/\1/p' "$manifest")"
+            if [ -n "$sdk" ] && ! curl -fsSL "$official/cc/jumpkick/jk-plugin-sdk/maven-metadata.xml" | grep -q "<version>$sdk</version>"; then
+              echo "::notice file=$manifest::skipped: jk-plugin-sdk $sdk is not released yet (ThirdPartyPluginExampleTest covers it)"
+              continue
+            fi
             echo "::group::$sample"
             if ! ( cd "$sample" && jk lock --no-ansi && jk build --no-ansi && jk test --no-ansi ); then
               echo "::error file=$manifest::sample failed: $sample"

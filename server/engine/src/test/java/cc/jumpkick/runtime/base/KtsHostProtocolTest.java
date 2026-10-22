@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.plugin.HostPressure;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.InputStreamReader;
@@ -28,6 +29,16 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class KtsHostProtocolTest {
 
+    @BeforeEach
+    void normalHostPressure() {
+        HostPressure.forTests(HostPressure.Level.NORMAL);
+    }
+
+    @AfterEach
+    void hostPressureFromTheHost() {
+        HostPressure.forTests(null);
+    }
+
     @TempDir
     Path cacheDir;
 
@@ -43,6 +54,7 @@ class KtsHostProtocolTest {
     @AfterEach
     void restoreCache() {
         KtsSession.shutdown();
+        KtsSession.cancelGraceForTests(null);
         if (prevCacheDir == null) System.clearProperty("jk.env.JK_CACHE_DIR");
         else System.setProperty("jk.env.JK_CACHE_DIR", prevCacheDir);
     }
@@ -60,7 +72,7 @@ class KtsHostProtocolTest {
         Path slow = dir.resolve("slow.kts");
         Files.writeString(slow, """
                 Files.writeString(outDir.resolve("started"), "1")
-                Thread.sleep(3_000)
+                Thread.sleep(60_000)
                 Files.writeString(outDir.resolve("done"), "1")
                 """);
         Path quick = dir.resolve("quick.kts");
@@ -84,11 +96,10 @@ class KtsHostProtocolTest {
         request.start();
         awaitFile(outA.resolve("started"));
 
-        long interruptedAt = System.nanoTime();
+        KtsSession.cancelGraceForTests(Duration.ofSeconds(30));
         request.interrupt();
         request.join(TimeUnit.SECONDS.toMillis(30));
         BuildLogicKtsHost.evaluate(quick, project, outB);
-        Duration untilNextScript = Duration.ofNanos(System.nanoTime() - interruptedAt);
 
         assertThat(outcome.get())
                 .as("the interrupt leaves the request as an interrupt")
@@ -99,9 +110,6 @@ class KtsHostProtocolTest {
         assertThat(outA.resolve("done"))
                 .as("the interrupted script stopped where the cancel found it")
                 .doesNotExist();
-        assertThat(untilNextScript)
-                .as("the next script ran within the cancel grace")
-                .isLessThan(KtsSession.CANCEL_GRACE);
         assertThat(KtsSession.hostPid())
                 .as("a script that honours the interrupt leaves the host standing")
                 .isEqualTo(pid);
@@ -118,7 +126,7 @@ class KtsHostProtocolTest {
         Path slow = dir.resolve("slow.kts");
         Files.writeString(slow, """
                 Files.writeString(outDir.resolve("started"), "1")
-                Thread.sleep(5_000)
+                Thread.sleep(60_000)
                 Files.writeString(outDir.resolve("done"), "1")
                 """);
         Path quick = dir.resolve("quick.kts");

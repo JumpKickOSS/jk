@@ -207,12 +207,12 @@ class CancellationPrecedenceTest extends EngineServerHarness {
     @Test
     void a_wall_deadline_is_a_third_reason_and_names_itself_on_the_wire() throws Exception {
         // The deadline is measured from job start, and the point of the test is a job cut off while
-        // parked on the held download. Three seconds is far past the time the lock takes to reach
-        // that download on a loaded machine, and far short of the latch's own 30 s release, so the
-        // kill lands where the test says it does rather than in an earlier metadata fetch.
+        // parked on the held download. Fifteen seconds is past the time a cold lock takes to reach
+        // that download on a loaded machine, and short of the latch's own 30 s release, so the kill
+        // lands where the test says it does rather than in an earlier metadata fetch.
         Iterator<String> sse = startEngine(JkEngineConfig.DEFAULTS.withJobLimits(new JobLimits(
                 0L,
-                3_000L,
+                15_000L,
                 JobLimits.DEFAULT_DETACHED_DEADLINE_MS,
                 200L,
                 500L,
@@ -254,7 +254,7 @@ class CancellationPrecedenceTest extends EngineServerHarness {
         String finish = awaitSseData(sse, "request-finish");
         assertThat(Jsonl.bool(finish, "cancelled", false)).isTrue();
         assertThat(Jsonl.str(finish, "cancelReason"))
-                .isEqualTo("exceeded the 3000ms wall deadline (JK_ENGINE_JOB_DEADLINE_MS); cancelled")
+                .isEqualTo("exceeded the 15000ms wall deadline (JK_ENGINE_JOB_DEADLINE_MS); cancelled")
                 .isNotEqualTo(BY_USER)
                 .isNotEqualTo(BY_DISCONNECT);
     }
