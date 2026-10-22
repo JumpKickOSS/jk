@@ -14,7 +14,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
@@ -93,7 +92,7 @@ final class ProvenanceJavac implements JavaCompiler {
         // decides: it outranks -encoding, which BaseFileManager.getDecoder only falls back to.
         // Same constant as the flag, so the two spellings of the charset cannot drift apart.
         StandardJavaFileManager fm = ReusedJavacFileManager.acquire(
-                javac, encoding, diags, declaredLocations(options), archivesNamed(options));
+                javac, encoding, diags, declaredLocations(options), pathEntriesNamed(options));
         try {
             Files.createDirectories(classOut);
             fm.setLocationFromPaths(StandardLocation.CLASS_OUTPUT, List.of(classOut));
@@ -192,10 +191,10 @@ final class ProvenanceJavac implements JavaCompiler {
     }
 
     /**
-     * The archives the path options of {@code options} name: the jars a held file manager may have
-     * open from an earlier compile. A directory entry is not one; javac lists it afresh each task.
+     * The entries the path options of {@code options} name, jars and directories alike: what a held
+     * file manager may have opened, or found missing, during an earlier compile.
      */
-    static List<Path> archivesNamed(String[] options) {
+    static List<Path> pathEntriesNamed(String[] options) {
         List<Path> out = new ArrayList<>();
         for (int i = 0; i + 1 < options.length; i++) {
             switch (options[i]) {
@@ -207,12 +206,7 @@ final class ProvenanceJavac implements JavaCompiler {
                         "--module-path",
                         "-p",
                         "--upgrade-module-path",
-                        "--processor-module-path" -> {
-                    for (Path entry : Classpaths.split(options[i + 1])) {
-                        String lower = entry.toString().toLowerCase(Locale.ROOT);
-                        if (lower.endsWith(".jar") || lower.endsWith(".zip")) out.add(entry);
-                    }
-                }
+                        "--processor-module-path" -> out.addAll(Classpaths.split(options[i + 1]));
                 default -> {}
             }
         }
