@@ -50,8 +50,11 @@ class EngineServerLameDuckTest extends EngineServerHarness {
 
     private static final String HELD_PATH = "/com/foo/leaf/maven-metadata.xml";
 
-    /** Short enough for a test, long enough that status is read before it passes on a loaded host. */
-    private static final long DRAIN_DEADLINE_MS = 4_000L;
+    /**
+     * Past everything the test does before the deadline is due: up to 10 s waiting for HTTP to close,
+     * then a status read and a refused request, each slow on a loaded host.
+     */
+    private static final long DRAIN_DEADLINE_MS = 20_000L;
 
     private @Nullable String previousM2;
     private @Nullable String previousTransport;
