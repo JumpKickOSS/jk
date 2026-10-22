@@ -91,6 +91,12 @@ public final class PublishVerb implements HostedVerb {
     }
 
     /** The publishing type as the CLI spells it: {@code user-managed} unless the request said {@code automatic}. */
+    /** Where a publish run sends its files, as the results file names it. */
+    static String destination(boolean central, String publishingType, @Nullable URI repoUrl) {
+        if (central) return "Central Portal (" + publishingType + ")";
+        return repoUrl == null ? "no repository" : repoUrl.toString();
+    }
+
     private static String publishingType(PublishPlans.Request req) {
         String type = req.publishingType();
         return type == null || type.isBlank()
@@ -151,9 +157,7 @@ public final class PublishVerb implements HostedVerb {
                     host.accPublish(
                             rid,
                             new BuildRecord.Publish(
-                                    req.central()
-                                            ? "Central Portal (" + publishingType(req) + ")"
-                                            : String.valueOf(req.repoUrl()),
+                                    destination(req.central(), publishingType(req), req.repoUrl()),
                                     Math.max(files, 0),
                                     req.dryRun(),
                                     deployment == null ? null : deployment.id(),
