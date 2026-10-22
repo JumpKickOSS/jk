@@ -123,6 +123,26 @@ class WorkerEnvTest {
     }
 
     @Test
+    void the_container_runtime_variables_come_through_with_the_requests_values_over_the_engines() {
+        Map<String, String> engine = new LinkedHashMap<>(ENGINE);
+        engine.put("DOCKER_HOST", "unix:///var/run/docker.sock");
+        engine.put("DOCKER_AUTH_TOKEN", "secret");
+        Map<String, String> request =
+                Map.of("DOCKER_HOST", "unix:///tmp/podman.sock", "TESTCONTAINERS_RYUK_DISABLED", "true");
+
+        Map<String, String> out = WorkerEnv.compose(engine, request, false, Map.of(), false);
+
+        assertThat(out)
+                .as("a Testcontainers suite reaches the runtime the terminal running jk names")
+                .containsEntry("DOCKER_HOST", "unix:///tmp/podman.sock")
+                .containsEntry("TESTCONTAINERS_RYUK_DISABLED", "true")
+                .doesNotContainKey("DOCKER_AUTH_TOKEN");
+        assertThat(WorkerEnv.compose(engine, Map.of(), false, Map.of(), false))
+                .as("with nothing on the request the engine's own value passes")
+                .containsEntry("DOCKER_HOST", "unix:///var/run/docker.sock");
+    }
+
+    @Test
     void inherit_hands_over_the_whole_environment() {
         assertThat(WorkerEnv.compose(ENGINE, Map.of(), true, Map.of(), false))
                 .containsExactlyInAnyOrderEntriesOf(ENGINE);

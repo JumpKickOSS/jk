@@ -8,7 +8,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * The environment a spawned engine starts with: an allow-list of the spawning shell's, never the
@@ -32,7 +31,7 @@ final class EngineEnvironment {
      * through; the SDK and JDK discovery roots; the display preferences shared config reads; and on
      * Windows the system roots a process needs to run anything at all. Both platforms' spellings,
      * so the rule reads the same everywhere. {@code LC_*} and {@code JK_*} are prefixes, the
-     * proxy variables are {@link BuildEnv#PROXY} and the display's {@link BuildEnv#DISPLAY}, all
+     * proxy, display and container-runtime variables are {@link BuildEnv#SHELL}, all
      * matched in {@link #inherited}, less the
      * {@link #PER_REQUEST} names that travel on each request. No per-user application-data
      * variable is carried: nothing the
@@ -134,12 +133,11 @@ final class EngineEnvironment {
     }
 
     /**
-     * The proxy and display variables ({@link BuildEnv#PROXY}, {@link BuildEnv#DISPLAY}) ride each
+     * The proxy, display and container-runtime variables ({@link BuildEnv#SHELL}) ride each
      * request too, and the request's values win; the engine inherits them so a request that
      * carries none — a shell that unset them — still has the spawning shell's to fall back on.
      */
-    private static final Set<String> SHELL =
-            Stream.concat(BuildEnv.PROXY.stream(), BuildEnv.DISPLAY.stream()).collect(Collectors.toUnmodifiableSet());
+    private static final Set<String> SHELL = Set.copyOf(BuildEnv.SHELL);
 
     private static final Set<String> SHELL_UPPER =
             SHELL.stream().map(n -> n.toUpperCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());

@@ -18,7 +18,6 @@ import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -46,8 +45,10 @@ public final class WorkerEnv {
      * platforms' spellings, so the rule reads the same everywhere; {@link BuildEnv#MACHINE} is the
      * per-platform subset the client forwards on a request. {@code LC_*} is a prefix, matched in
      * {@link #allowed}. The proxy the machine talks through is part of how it talks:
-     * {@link BuildEnv#PROXY} passes too, and {@link #environment()} lays the request's values over
-     * the engine's, so a worker goes through the proxy of the shell running {@code jk}.
+     * {@link BuildEnv#SHELL} (proxy, display, container runtime) passes too, and
+     * {@link #environment()} lays the request's values over the engine's, so a worker goes through
+     * the proxy, draws on the display and reaches the container runtime of the shell running
+     * {@code jk}.
      */
     static final Set<String> MACHINE = Set.of(
             "PATH",
@@ -257,9 +258,8 @@ public final class WorkerEnv {
     private static final Set<String> MACHINE_UPPER =
             MACHINE.stream().map(n -> n.toUpperCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
 
-    /** The names that ride each request by exact spelling: the proxy and the display. */
-    private static final Set<String> SHELL =
-            Stream.concat(BuildEnv.PROXY.stream(), BuildEnv.DISPLAY.stream()).collect(Collectors.toUnmodifiableSet());
+    /** The names that ride each request by exact spelling: the proxy, the display, the container runtime. */
+    private static final Set<String> SHELL = Set.copyOf(BuildEnv.SHELL);
 
     private static final Set<String> SHELL_UPPER =
             SHELL.stream().map(n -> n.toUpperCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
