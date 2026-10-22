@@ -31,9 +31,8 @@ public final class EngineTestSupport {
 
     /**
      * Idempotent materialize of the engine assembly into EngineInstall under the test {@code
-     * JK_HOME}. Prefers {@code -Djk.engine.jar} (the run-tests step); falls back to a
-     * workspace-relative assembly jar so a miswired fork fails with a path hint rather than a bare
-     * missing-property error.
+     * JK_HOME}: {@code -Djk.engine.jar} (the run-tests step names the workspace engine's fat jar),
+     * else the checkout's assembly. Never the installed engine, which is not the code under test.
      */
     public static void ensureEngineMaterialized() {
         if (MATERIALIZED.get()) return;
@@ -41,9 +40,11 @@ public final class EngineTestSupport {
             if (MATERIALIZED.get()) return;
             Path engineJar = resolveEngineJar();
             if (engineJar == null || !Files.isRegularFile(engineJar)) {
-                throw new IllegalStateException(
-                        "jk.engine.jar system property is not set (and no workspace engine assembly found) — "
-                                + "CLI tests need -Djk.engine.jar=… (the engine assembly the run-tests step names)");
+                throw new IllegalStateException("no engine assembly at "
+                        + (engineJar == null
+                                ? "server/engine/target/jk-engine-" + JkVersion.VERSION + "-all.jar"
+                                : engineJar)
+                        + " — CLI tests run the checkout's engine; `jk test -m jk-cli` packages it");
             }
             try {
                 // Ensure UDS parent exists (pure-jk isolation creates it once; do not rely on a
@@ -53,11 +54,8 @@ public final class EngineTestSupport {
                     Files.createDirectories(Path.of(state));
                 }
                 EngineInstall install = EngineInstall.current();
-                // ALWAYS materialize — EngineInstall is content-aware (same bytes return
+                // Always materialize: EngineInstall is content-aware (same bytes return
                 // immediately; same version + different bytes publishes a sibling jar).
-                // The old presence-check skipped the refresh, so a persistent test JK_HOME
-                // kept serving a STALE engine across rebuilds (every
-                // :cli:integrationTest run tonight resolved with last week's resolver).
                 String wantSha = Hashing.sha256Hex(engineJar);
                 boolean bitsChanged = !install.engineSha(JkVersion.VERSION)
                         .map(wantSha::equals)
@@ -83,35 +81,21 @@ public final class EngineTestSupport {
     }
 
     /**
-     * {@code -Djk.engine.jar}, workspace assembly (module-local or Mill-style {@code
-     * target/<rel>/}), or the installed engine under {@link EngineInstall}.
+     * {@code -Djk.engine.jar} when set, else the checkout's engine assembly found from {@code
+     * user.dir} upward ({@code server/engine/target/…-all.jar}, then {@code target/dist/lib}).
      */
     static @Nullable Path resolveEngineJar() {
         String jarProp = System.getProperty("jk.engine.jar");
-        if (jarProp != null && !jarProp.isBlank()) {
-            Path p = Path.of(jarProp);
-            if (Files.isRegularFile(p)) return p;
-        }
+        if (jarProp != null && !jarProp.isBlank()) return Path.of(jarProp);
         Path cwd = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
         String ver = JkVersion.VERSION;
-        // Walk cwd → parent → grandparent so a nested run (user.dir = clients/cli) and a
-        // checkout-root run both find the jar: the module's own target/, then dist/.
         Path walk = cwd;
         for (int up = 0; up < 3 && walk != null; up++, walk = walk.getParent()) {
             for (Path cand : List.of(
                     walk.resolve("server/engine/target/jk-engine-" + ver + "-all.jar"),
-                    walk.resolve("server/engine/target/jk-engine-" + ver + ".jar"),
                     walk.resolve("target/dist/lib/jk-engine-" + ver + ".jar"))) {
                 if (Files.isRegularFile(cand)) return cand.normalize();
             }
-        }
-        try {
-            var mat = EngineInstall.current().resolve(JkVersion.VERSION);
-            if (mat.isPresent() && Files.isRegularFile(mat.get().engineJar())) {
-                return mat.get().engineJar().toAbsolutePath().normalize();
-            }
-        } catch (RuntimeException ignored) {
-            // isolated JK_HOME with no engine jar
         }
         return null;
     }

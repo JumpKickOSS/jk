@@ -231,7 +231,10 @@ jk test -p integration           # the pre-merge bar
 Workspace members: libraries, `clients/cli`, `clients/cli-terminal`, `clients/web`, `server/engine`
 (assembly fat jar), the rule packs, and all first-party `plugins/*` workers (thin jars;
 `PluginMain` implied by `jk-plugin.toml`). The CLI's integration classes spawn nested engines in
-isolated sandboxes, so `jk test` in this tree never touches your resident engine's state.
+isolated sandboxes, so `jk test` in this tree never touches your resident engine's state. Those
+engines run this checkout's engine: `jk test -m jk-cli` packages `server/engine`'s fat jar before
+the suite starts and hands it to the tests as `-Djk.engine.jar`, so an engine or library change is
+exercised without `jk install` first.
 
 ## Default repositories
 
