@@ -88,7 +88,7 @@ interface-only API a Boot module compiles with no extra libraries: `interfaceOnl
 what `options` says. Naming a `documentationProvider` in `options` leaves the annotation library to
 the generator, which checks the two together.
 
-The worked example: [`examples/openapi-spring`](examples/openapi-spring/) — a Boot controller
+The worked example: [`05-recipes/codegen/openapi`](https://github.com/JumpKickOSS/jk-examples/tree/main/05-recipes/codegen/openapi) — a Boot controller
 implementing the generated interface. `jk import` writes this table from a POM's
 `openapi-generator-maven-plugin` ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
 
@@ -258,7 +258,7 @@ for that step.
 A module runs every plugin whose table it declares, each in its own worker, so `[generate]` or a
 preset sits beside `[spring-boot]`, `[quarkus]`, `[micronaut]`, `[protobuf]` or `[android]` in one
 module: the generator contributes its step, the framework packages the artifact.
-[`examples/openapi-spring`](examples/openapi-spring/) is that shape. What a module cannot hold is
+[`05-recipes/codegen/openapi`](https://github.com/JumpKickOSS/jk-examples/tree/main/05-recipes/codegen/openapi) is that shape. What a module cannot hold is
 two tables that both package its main artifact (`[spring-boot]` and `[quarkus]`); the build
 refuses that pair by name ([Using plugins](plugins.md#more-than-one-plugin-in-a-module)).
 

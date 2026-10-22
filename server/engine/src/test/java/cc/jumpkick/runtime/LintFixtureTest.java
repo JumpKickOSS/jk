@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The manual's {@code examples/lint-checkstyle} through the engine: {@code [lint]} fetches
+ * The {@code lint-checkstyle} fixture project through the engine: {@code [lint]} fetches
  * Checkstyle from Central and its worker runs it after compile. A clean module passes and the
  * second build finds the lint step cached; a violation written into the source re-runs the step,
  * fails the build, and the finding is a diagnostic naming the file, the line and the rule.
@@ -33,10 +33,10 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Network test (Maven Central); the CAS persists under build/ so repeat runs are warm.
  */
 @Tag("network")
-class LintExampleTest {
+class LintFixtureTest {
 
     private static final Path EXAMPLE =
-            RepoRoot.find(LintExampleTest.class).resolve("docs/user/examples/lint-checkstyle");
+            RepoRoot.find(LintFixtureTest.class).resolve("server/engine/fixtures/projects/lint-checkstyle");
 
     @Test
     void the_example_lints_clean_hits_the_cache_and_reports_a_violation_by_rule(@TempDir Path tmp) throws Exception {
@@ -88,7 +88,7 @@ class LintExampleTest {
     /** The worker jar this build produced, when the resident engine did not hand it over. */
     private static void workerJarFromWorkspace(PluginJar worker, String module) throws IOException {
         if (System.getProperty(worker.jarProperty()) != null) return;
-        Path dir = RepoRoot.find(LintExampleTest.class).resolve(module);
+        Path dir = RepoRoot.find(LintFixtureTest.class).resolve(module);
         Path jar =
                 BuildLayout.of(dir, JkBuildParser.parse(dir.resolve("jk.toml"))).mainJar();
         assertThat(jar).as(worker.artifactId() + " built by this workspace").isRegularFile();

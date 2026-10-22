@@ -245,7 +245,7 @@ JK_JVM_ARGS=-Djk.format.file-timeout-ms=0 jk format   # no bound at all
   change it — see [the per-file timeout](#slow-files-and-the-per-file-timeout).
 - **Not a linter.** `jk format` rewrites style; it does not run Checkstyle, PMD, SpotBugs or
   detekt — those are the [`[lint]` table](lint.md), cached steps after compile whose findings
-  land in `jk-results.md` ([lint-checkstyle example](examples/lint-checkstyle/)).
+  land in `jk-results.md` ([lint-checkstyle example](https://github.com/JumpKickOSS/jk-examples/tree/main/05-recipes/lint/checkstyle)).
 - Palantir/Google **skip unnamed/simple compilation units** they cannot format.
 - **optimize-imports cannot shorten a name that is not in the type index** — dependency
   jars, and collisions; see [what it can shorten](#what-optimize-imports-can-shorten).

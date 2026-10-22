@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The manual's {@code examples/openapi-spring} through the engine: two code plugins in one module.
+ * The {@code openapi-spring} fixture project through the engine: two code plugins in one module.
  * {@code [openapi]} fetches openapi-generator-cli from Central and its worker runs it in the
  * generate stage; {@code [spring-boot]} compiles the module against the generated interface and
  * its worker packs the Boot jar, generated classes included. A second build finds the generate
@@ -38,7 +38,7 @@ import org.junit.jupiter.api.io.TempDir;
 class OpenApiGeneratorTest {
 
     private static final Path EXAMPLE =
-            RepoRoot.find(OpenApiGeneratorTest.class).resolve("docs/user/examples/openapi-spring");
+            RepoRoot.find(OpenApiGeneratorTest.class).resolve("server/engine/fixtures/projects/openapi-spring");
 
     @Test
     void the_example_generates_compiles_hits_and_regenerates_on_a_spec_edit(@TempDir Path tmp) throws Exception {

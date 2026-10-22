@@ -40,7 +40,7 @@ import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The manual's {@code examples/vite-sidecar} under {@code jk dev}: the JVM API and the dev server jk
+ * The {@code vite-sidecar} fixture project under {@code jk dev}: the JVM API and the dev server jk
  * infers from its {@code [node]} build come up, {@code dev-ready} waits for the JVM's own {@code
  * [dev] ready} probe so the API answers the moment it is announced, the front door answers, every
  * dev-server line is an event with its source, a source change restarts the JVM and leaves the dev
@@ -53,10 +53,10 @@ import org.junit.jupiter.api.io.TempDir;
  */
 @Tag("integration")
 @DisabledOnOs(OS.WINDOWS)
-class DevSidecarExampleTest {
+class DevSidecarFixtureTest {
 
     private static final Path EXAMPLE =
-            RepoRoot.find(DevSidecarExampleTest.class).resolve("docs/user/examples/vite-sidecar");
+            RepoRoot.find(DevSidecarFixtureTest.class).resolve("clients/cli/fixtures/projects/vite-sidecar");
 
     /** A cold engine, a compile, a JVM start and a probe all fit; a hang does not. */
     private static final long READY_WAIT_SECONDS = 180;
@@ -150,7 +150,7 @@ class DevSidecarExampleTest {
                     .isPresent();
             assertThat(awaitCount(out, listening(), 2, jk)).isTrue();
             assertThat(get("http://127.0.0.1:" + apiPort + "/api/hello")).contains("hello from the JVM");
-            assertThat(lines(out).stream().filter(typed("app-exited")).map(DevSidecarExampleTest::pid))
+            assertThat(lines(out).stream().filter(typed("app-exited")).map(DevSidecarFixtureTest::pid))
                     .contains(appPid);
             assertThat(lines(out).stream().filter(typed("dev-ready")).count())
                     .as("a sidecar front door is announced once\n%s", read(out))

@@ -9,4 +9,4 @@ User-facing product pages:
 - [Dynamic surface](../user/dynamic-surface.md)
 
 Design records and PRDs: KanArtist `projects/jk/docs/prds/`.
-Examples: [../user/examples/](../user/examples/).
+Examples: [jk-examples](https://github.com/JumpKickOSS/jk-examples).

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# After the nightly has re-locked, built, tested and run every sample, the committed lockfiles must
+# After the nightly has re-locked, built, tested and run every jk-examples scenario, the committed lockfiles must
 # read as they did before — that is lockfile-as-law, enforced on the samples that are supposed to
 # demonstrate it. Two lockfiles, two rules:
 #
@@ -13,9 +13,7 @@
 #                      package.json, so a lock the job rewrote (an `npm install`, a Node upgrade)
 #                      would otherwise be noticed only when the install fails on a contributor's machine.
 #
-# Usage: scripts/examples-lock-drift.sh [checkout] [jk-examples checkout]
-#   checkout             the jk tree whose docs/user/examples/** are checked (default: .)
-#   jk-examples checkout also check every scenario in it (default: $JK_EXAMPLES_DIR, if set)
+# Usage: scripts/examples-lock-drift.sh <jk-examples checkout>
 # Exit 1 with every drifted file named; the `::error::` prefix is a GitHub Actions annotation and
 # reads fine in a terminal.
 set -euo pipefail
@@ -46,11 +44,6 @@ check() {
   fi
 }
 
-check "${1:-.}" docs/user/examples
-
-examples="${2:-${JK_EXAMPLES_DIR:-}}"
-if [[ -n "$examples" ]]; then
-  check "$examples" .
-fi
+check "${1:?usage: examples-lock-drift.sh <jk-examples checkout>}" .
 
 exit "$failed"

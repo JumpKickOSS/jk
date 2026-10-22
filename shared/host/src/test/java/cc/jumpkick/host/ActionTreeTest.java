@@ -127,7 +127,7 @@ class ActionTreeTest {
      * workspace list declares, so the walk reads exactly the modules the build does. Walking for
      * {@code /src/main/java/}
      * anywhere instead picks up 100+ files that are nobody's production code: the
-     * {@code docs/user/examples} fixtures, jk's self-hosted {@code target/} output, and — worst —
+     * fixture projects under each module's {@code fixtures/projects}, jk's self-hosted {@code target/} output, and — worst —
      * the third-party git checkouts an engine suite leaves under
      * {@code server/engine/build/test-jk-home/store/git/}, where somebody else's
      * {@code resolve("keys")} would fail this guard.

@@ -186,15 +186,14 @@ Refresh locks after dependency changes: `jk lock` (commit the workspace-root `jk
 
 ### Showcase monorepo smoke
 
-Multi-module sample under
-[`docs/user/examples/workspace-showcase/`](docs/user/examples/workspace-showcase/):
+A multi-module workspace from [jk-examples](https://github.com/JumpKickOSS/jk-examples), checked
+out beside this repository:
 
 ```bash
 jk install -S
 
-cd docs/user/examples/workspace-showcase
-jk lock && jk build && jk test -m app
-# optional: jk build -m app
+cd ../jk-examples/01-start/java-workspace
+jk build && jk test -m cli
 ```
 
 ## Project layout
