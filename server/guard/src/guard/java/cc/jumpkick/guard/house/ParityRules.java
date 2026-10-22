@@ -422,7 +422,7 @@ final class ParityRules {
             String takeover = selfHost.contains(TAKEOVER_SCRIPT) && exists(text, TAKEOVER_SCRIPT)
                     ? HouseRules.owner(text, TAKEOVER_SCRIPT)
                     : "";
-            for (String verb : List.of("jk build", "jk install", "jk guard", "jk test"))
+            for (String verb : List.of("jk install", "jk guard", "jk test"))
                 if (!selfHost.contains(verb) && !takeover.contains(verb))
                     problems.add(CI + "'s self-host job must run `" + verb + "`");
             if (selfHost.contains("gradlew"))

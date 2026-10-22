@@ -114,15 +114,17 @@ After code changes, reinstall the **local** JumpKick so dogfood uses the build y
 (client on PATH under `~/.jk/bin`, engine jar under `~/.jk/lib/jk-engine/`):
 
 ```bash
-jk build -S && jk install -S
+jk install -S
 ```
 
-| Step | What it does |
+`jk install` is `jk build` plus the install steps: the same plan, the same lanes, tests unless `-S`.
+Never run `jk build` first; it repeats work the install does anyway.
+
+| Command | What it does |
 |---|---|
-| `jk build -S` | Every module compiled and packaged; `target/dist/jk` (native CLI) + `target/dist/lib/jk-engine-<version>.jar` |
-| `jk install -S` | Shelves every library and worker jar under `~/.jk/store/repos/jk-local` (bytes into the artifact CAS first), materializes the engine jar into `~/.jk/lib/jk-engine/`, pins the shelved jars to that engine by sha in `~/.jk/lib/jk-engine/jk-shelf.toml` and swaps the native client into `~/.jk/bin/jk`. The next invocation takes over the resident engine; every fork of an engine runs the workers its own install pinned, so a second worktree's install never swaps a worker under a running engine, and the displaced engine drains with its own |
+| `jk install -S` | Everything `jk build -S` does (every module compiled and packaged; `target/dist/jk` native CLI + `target/dist/lib/jk-engine-<version>.jar`), then shelves every library and worker jar under `~/.jk/store/repos/jk-local` (bytes into the artifact CAS first), materializes the engine jar into `~/.jk/lib/jk-engine/`, pins the shelved jars to that engine by sha in `~/.jk/lib/jk-engine/jk-shelf.toml` and swaps the native client into `~/.jk/bin/jk`. The next invocation takes over the resident engine; every fork of an engine runs the workers its own install pinned, so a second worktree's install never swaps a worker under a running engine, and the displaced engine drains with its own |
 | `./install.sh target/dist/jk` | The same ship layout onto a machine with no jk yet |
-| `scripts/reinstall-chain.sh` | The same two steps when the installed jk is too old to build the checkout: installs stepping stones from a scratch worktree first ([self-host](docs/contributors/self-host.md#the-bootstrap-chain)) |
+| `scripts/reinstall-chain.sh` | The same install when the installed jk is too old to build the checkout: installs stepping stones from a scratch worktree first ([self-host](docs/contributors/self-host.md#the-bootstrap-chain)) |
 
 A host with no native client gets the JVM client from the same installer ([releases](docs/contributors/releases.md#platforms-without-a-hosted-client)).
 
@@ -166,7 +168,8 @@ Prefer a small WIP limit (a few claimed tickets). If blocked: `ka set-status JK-
 
 **Two gates** (keep the merge loop under ~5 minutes; details: [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md)):
 
-- **Merge gate** — before every local merge into `main`: `jk format`, `jk guard`, `jk build`.
+- **Merge gate** — before every local merge into `main`: `jk format`, `jk guard`, `jk install`
+  (`jk build` plus the reinstall; never run `jk build` before it).
 - **Push gate** — before every `git push` of `main` to `origin`: `jk test -p integration` on the
   local `main` you are about to push. One run covers every branch merged since the last push, so
   worktrees merge on the fast gate and pay for integration once per push, not once per merge.
@@ -174,7 +177,7 @@ Prefer a small WIP limit (a few claimed tickets). If blocked: `ka set-status JK-
 | Command | What runs | When |
 |---------|-----------|------|
 | `jk guard` | Every house-rule lane, the tree lane and the fixture proofs included | Every local merge |
-| `jk build` | Every module compiled and packaged, its fast tier run, the model/module/workspace/output lanes | Every local merge |
+| `jk install` | Exactly what `jk build` runs (every module compiled and packaged, its fast tier, the model/module/workspace/output lanes), then the reinstall | Every local merge |
 | `jk test -p integration` | Engine/CLI e2e, workers, install, lock | Every push to `origin` (the push gate) |
 | `jk test -p slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | Before the push that carries a plugin or toolchain change; nightly |
 
@@ -185,10 +188,10 @@ Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not**
 **Any ticket that changes Java (or other runtime) code** must **not** merge into local `main` or move to `done` in kanartist until all of the following pass:
 
 1. **Tests (required, non-negotiable)** — prove the change did not break the build:
-   - **Merge gate:** `jk format`, a clean `jk guard` (every house-rule lane, the tree lane included) and a green `jk build` (every module's fast tier).
+   - **Merge gate:** `jk format`, a clean `jk guard` (every house-rule lane, the tree lane included) and a green `jk install` (every module's fast tier, then the reinstall).
    - Mid-ticket, narrow with `-m <module>` and `--class <fqcn>`; run a targeted `-p integration --class …` when the change lives in engine/CLI e2e territory, but do not run the full integration profile per merge.
    - Do not merge into local `main` with a red or un-run fast gate. A broken local `main` is a stop-the-line defect: fix it first, then resume tickets.
-2. **Reinstall** — `jk build -S && jk install -S`.
+2. **Reinstall** — done by the merge gate's `jk install`. Never run `jk build` and then `jk install`; the install is the build.
 3. **Engine smoke** — `jk engine status` succeeds (engine up or able to start; no immediate failure).
 4. **Project smoke** — a simple project builds with the reinstalled binary, e.g. `jk init … && jk build` (or equivalent lock/build path the ticket affects).
 

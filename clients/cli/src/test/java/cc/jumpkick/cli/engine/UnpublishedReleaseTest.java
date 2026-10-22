@@ -31,7 +31,7 @@ class UnpublishedReleaseTest {
                             release.base(), VERSION, new Cas(root.resolve("cache")), install, release.verifier()))
                     .isInstanceOf(IOException.class)
                     .hasMessage("jk 0.15.3 is not a published release, so its engine cannot be downloaded — this"
-                            + " looks like an unpublished build from a checkout: run `jk build -S && jk install -S`"
+                            + " looks like an unpublished build from a checkout: run `jk install -S`"
                             + " there, or set JK_HOME to a home where this build is installed");
             assertThat(install.resolve(VERSION)).isEmpty();
             assertThat(release.requested()).containsExactly("SHA256SUMS");

@@ -6,10 +6,11 @@
 # it, and the second install finds nothing to do. Then the home is proven to be the checkout's:
 # its client and engine byte for byte, and every first-party worker on the shelf describes itself.
 #
-# Usage: scripts/ci-takeover.sh [--build] [--install-only] [--yes]
-#   --build          build the tree first (jobs whose earlier step did not)
+# Each install builds the tree first; no job runs a separate `jk build` before this.
+#
+# Usage: scripts/ci-takeover.sh [--install-only] [--yes]
 #   --install-only   the two installs and nothing else (jobs that check the home their own way)
-#   --yes            passed to jk build and jk install
+#   --yes            passed to jk install
 # Any failure prints the tail of jk's client log, which records each failed command's stack, and
 # of the newest engine log, so a red run names its cause.
 set -euo pipefail
@@ -19,12 +20,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # A runner's Windows JK_HOME (D:\a\_temp/jk-home) would turn the log globs below into escapes.
 case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) JK_HOME="$(cygpath -u "$JK_HOME")" && export JK_HOME ;; esac
 
-build=0
 checks=1
 yes=()
 for arg in "$@"; do
   case "$arg" in
-    --build) build=1 ;;
     --install-only) checks=0 ;;
     --yes) yes=(--yes) ;;
     *)
@@ -97,7 +96,6 @@ install_pass() {
 
 cd "$ROOT"
 state_log="$(mktemp)"
-if ((build)); then run jk build --skip-tests ${yes[@]+"${yes[@]}"} --no-ansi; fi
 install_pass jk install --skip-tests ${yes[@]+"${yes[@]}"} --no-ansi
 install_pass "$JK_HOME/bin/jk" install --skip-tests ${yes[@]+"${yes[@]}"} --no-ansi
 ((checks)) || exit 0

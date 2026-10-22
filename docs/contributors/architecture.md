@@ -773,7 +773,7 @@ have) are open.
 ## Status
 
 Pre-1.0 alpha. **Self-hosted:** the root workspace covers every library, client, worker and rule
-pack; `jk build`, `jk install`, `jk guard` and `jk test` are the gate and the release, after a
+pack; `jk install` (the build plus the install), `jk guard` and `jk test` are the gate and the release, after a
 `curl … install.sh` bootstrap from the hosted release. The native client is the shipped client;
 platforms with no hosted client yet are listed in [releases](releases.md#platforms-without-a-hosted-client).
 Breaking changes remain acceptable until 1.0.

@@ -7,3 +7,5 @@ Layout is the directory shape, not a manifest key. Traditional: `src/main/java`,
 `jk new` and `jk init` scaffold a project. `jk new -t <ref>` applies a template. MCP `new` with `action=templates` lists ids. Pass `preview=true` before writing.
 
 Build outputs live under `target/`. `jk clean` deletes `target/`. The action cache can restore inputs that did not change.
+
+`jk install` is `jk build` plus the install: the same steps and tests (`-S` skips them), then the local repo and the launcher on PATH. Never run `jk build` before it.

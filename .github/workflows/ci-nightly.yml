@@ -3,7 +3,7 @@
 # Manual re-run: Actions → "CI (nightly)" → Run workflow.
 #
 # Every job bootstraps the way ci.yml's self-host job does: the hosted release
-# .jk/ci-bootstrap-version pins builds the checkout, then `jk install` hands the isolated JK_HOME
+# .jk/ci-bootstrap-version pins installs the checkout (building it), which hands the isolated JK_HOME
 # to the checkout's own client, engine and workers, so each tier is run by the commit's jk.
 name: CI (nightly)
 
@@ -47,7 +47,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: bash scripts/ci-takeover.sh --build --install-only
+        run: bash scripts/ci-takeover.sh --install-only
 
       # A red class is a verdict about its module; --continue reports every module's.
       - name: Integration profile
@@ -83,7 +83,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: bash scripts/ci-takeover.sh --build --install-only
+        run: bash scripts/ci-takeover.sh --install-only
 
       - name: Slow profile
         run: jk test -p slow --continue --no-ansi
@@ -110,7 +110,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: bash scripts/ci-takeover.sh --build --install-only
+        run: bash scripts/ci-takeover.sh --install-only
 
       - name: Network profile
         run: jk test -p network --continue --no-ansi
@@ -138,7 +138,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: bash scripts/ci-takeover.sh --build --install-only
+        run: bash scripts/ci-takeover.sh --install-only
 
       - name: Bench profile
         run: jk test -p bench --continue --no-ansi
@@ -166,7 +166,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: bash scripts/ci-takeover.sh --build --install-only
+        run: bash scripts/ci-takeover.sh --install-only
 
       - name: Audit the locked graph at LOW
         continue-on-error: true
@@ -210,7 +210,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: bash scripts/ci-takeover.sh --build --install-only
+        run: bash scripts/ci-takeover.sh --install-only
 
       - name: Unit tier under the JaCoCo agent
         run: jk test --coverage --no-ansi
@@ -270,7 +270,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: bash scripts/ci-takeover.sh --build --install-only
+        run: bash scripts/ci-takeover.sh --install-only
 
       - name: Run the house-rule lanes; every guard fixture must bite
         run: jk guard --no-ansi
@@ -325,7 +325,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: bash scripts/ci-takeover.sh --build --install-only
+        run: bash scripts/ci-takeover.sh --install-only
 
       - name: Build and test every sample
         run: |
@@ -436,7 +436,7 @@ jobs:
             export PATH
             jk engine stop --now --no-ansi
           fi
-          bash scripts/ci-takeover.sh --build --install-only
+          bash scripts/ci-takeover.sh --install-only
 
       - name: Product smoke
         shell: bash
@@ -497,7 +497,7 @@ jobs:
         run: bash scripts/ci-bootstrap.sh
 
       - name: The checkout's own jk takes over
-        run: bash scripts/ci-takeover.sh --build --install-only --yes
+        run: bash scripts/ci-takeover.sh --install-only --yes
 
       - name: The JVM client answers and builds a sample through the installed engine
         run: |

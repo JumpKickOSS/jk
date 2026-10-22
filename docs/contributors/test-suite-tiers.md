@@ -10,7 +10,8 @@ subset of the tag vocabulary, that each is run by exactly one tier, and **G52** 
 renders the same tables into the block below, so the two cannot drift
 ([self-host](self-host.md#test-tiers)).
 
-`jk build` runs every module's fast tier and gates every local merge into `main`;
+`jk build` runs every module's fast tier; `jk install`, which is that same build plus the reinstall,
+gates every local merge into `main`;
 `jk test -p integration` is the push gate, run on the local `main` before it is pushed. The
 house rules run under `jk build` and `jk guard` ([self-host](self-host.md#house-rule-gate)).
 
@@ -179,7 +180,7 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 
 ## CI
 
-- **PR / push (`ci.yml`):** the self-host job (`jk build`, `jk install`, `jk guard`, `jk test`: the
+- **PR / push (`ci.yml`):** the self-host job (`jk install`, which builds, then `jk guard`, `jk test`: the
   fast tier and every house-rule lane, run by the checkout's own jk; then the curated integration
   lane and `jk audit -s HIGH` over the lock), the shell fixtures, the workflow lint and the
   commit-authorship scan. No coverage, no benches.
@@ -199,7 +200,7 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
   checkout: `../jk-examples/scripts/scenarios.py check <scenario>`,
   `scripts/example-dev-smoke.sh --examples ../jk-examples` and
   `scripts/examples-lock-drift.sh . ../jk-examples`.
-- Local gate: `jk format`, `jk guard`, `jk build`, `jk test -p integration`;
+- Local gate: `jk format`, `jk guard`, `jk install` (the build plus the reinstall), `jk test -p integration`;
   `scripts/curated-integration.sh` runs what the pull request's boundary lane will run.
 - Never the `network` or `bench` profile as a merge gate.
 

@@ -76,7 +76,7 @@ final class EngineJarFetcher {
     private static IOException unpublished(ReleaseArtifacts.NotPublished e) {
         return new IOException(
                 "jk " + e.version() + " is not a published release, so its engine cannot be downloaded — this"
-                        + " looks like an unpublished build from a checkout: run `jk build -S && jk install -S`"
+                        + " looks like an unpublished build from a checkout: run `jk install -S`"
                         + " there, or set JK_HOME to a home where this build is installed",
                 e);
     }
