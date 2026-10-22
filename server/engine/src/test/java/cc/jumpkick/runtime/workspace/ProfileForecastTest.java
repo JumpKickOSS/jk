@@ -14,6 +14,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.BuildGraph;
@@ -23,7 +24,6 @@ import cc.jumpkick.runtime.PlannerTails;
 import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
-import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -99,7 +99,7 @@ class ProfileForecastTest {
                         .as("the profile's -Werror keys a different compile")
                         .isFalse();
                 BuildForecasting.Preflight preflight = BuildForecasting.forecastWithFingerprints(
-                        graph, cache, false, project, WorkspaceTarget.PACKAGE, Set.of(), false, "strict");
+                        graph, cache, false, project, WorkspaceTarget.PACKAGE, false, "strict");
                 assertThat(preflight.dirty())
                         .as("the preflight schedules the module")
                         .contains(project);
@@ -143,7 +143,7 @@ class ProfileForecastTest {
     private static List<TaskForecast.Module> forecast(BuildGraph.Result graph, Path cache, @Nullable String profile) {
         Cas cas = JkStores.storeCas();
         ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
-        return TaskForecaster.of(graph, cas, actionCache, cache, false, WorkspaceTarget.PACKAGE, Set.of(), profile);
+        return TaskForecaster.of(graph, cas, actionCache, cache, false, WorkspaceTarget.PACKAGE, profile);
     }
 
     private static TaskForecast.Task compileMain(List<TaskForecast.Module> modules) {

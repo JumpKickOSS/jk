@@ -57,14 +57,19 @@ class WorkspaceInstallCoordinatorRootTest {
     }
 
     @Test
-    void install_terminals_skip_the_coordinator_root() throws Exception {
+    void install_tails_skip_the_coordinator_root() throws Exception {
         Path lib = member("lib");
         Path root = coordinatorRoot("lib");
 
-        Set<Path> terminals = WorkspacePreflightPhase.terminalTargetDirs(
-                List.of(unit(root, "ex:ws"), unit(lib, "ex:lib")), installRequest());
-        assertThat(terminals)
-                .as("the forecast must expect a terminal exactly where assemblePlan plans one")
+        Set<Path> scheduled = WorkspacePreflightPhase.withRunningTails(
+                Set.of(),
+                List.of(unit(root, "ex:ws"), unit(lib, "ex:lib")),
+                installRequest(),
+                Set.of(root, lib),
+                Set.of(),
+                Set.of());
+        assertThat(scheduled)
+                .as("the root's plan holds no cache-install, so its tail schedules nothing")
                 .containsExactly(lib);
     }
 
@@ -79,13 +84,20 @@ class WorkspaceInstallCoordinatorRootTest {
     }
 
     @Test
-    void reshelve_terminals_skip_the_coordinator_root() throws Exception {
+    void reshelve_tails_skip_the_coordinator_root() throws Exception {
         Path lib = member("lib");
         Path root = coordinatorRoot("lib");
 
-        Set<Path> terminals = WorkspacePreflightPhase.terminalTargetDirs(
-                List.of(unit(root, "ex:ws"), unit(lib, "ex:lib")), reshelveRequest());
-        assertThat(terminals).containsExactly(lib);
+        Set<Path> scheduled = WorkspacePreflightPhase.withRunningTails(
+                Set.of(),
+                List.of(unit(root, "ex:ws"), unit(lib, "ex:lib")),
+                reshelveRequest(),
+                Set.of(root, lib),
+                Set.of(),
+                Set.of());
+        assertThat(scheduled)
+                .as("the root's plan holds no cache-install, so its tail schedules nothing")
+                .containsExactly(lib);
     }
 
     private BuildPlan assertThatInstallPlanBuilds(BuildGraph.BuildUnit u, Set<Path> moduleDirs) {

@@ -136,9 +136,15 @@ final class WorkspaceFinalPhase {
         ModuleInputProvenance.record(entryDir, graph, fingerprints);
     }
 
-    /** Only a complete, unhinted PACKAGE build can certify the whole graph clean. */
+    /**
+     * Only a complete, unhinted run of the lifecycle through PACKAGE can certify the graph clean:
+     * {@code jk build}, or any goal that builds it before its tail, since the memo the next
+     * preflight reads is that lifecycle's.
+     */
     static boolean shouldStoreCleanMemo(WorkspaceRequest request) {
-        return request.dirtyHint() == null && !request.testOnly() && request.target() == WorkspaceTarget.PACKAGE;
+        return request.dirtyHint() == null
+                && !request.testOnly()
+                && WorkspacePreflightPhase.coreTarget(request.target()) == WorkspaceTarget.PACKAGE;
     }
 
     private static Optional<Double> medianRate(List<Double> rates) {

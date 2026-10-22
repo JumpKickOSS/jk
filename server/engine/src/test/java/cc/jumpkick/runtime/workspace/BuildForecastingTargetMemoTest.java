@@ -7,24 +7,21 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.PreflightMemo;
-import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- *: the preflight dirty memo certifies package outputs only. A terminal-target run
- * (native/image) hitting a PACKAGE-stored all-clean memo would skip the target-aware forecast
- * and never produce its binary ({@code jk build && jk native} reporting success with no
- * artifact). Terminal targets must neither consult nor store the memo.
+ * The preflight dirty memo certifies a module's inputs, which is the lifecycle's whole question
+ * for every goal that packages. A goal's tail (a native image, an install, an image push) asks
+ * its own question in {@link WorkspacePreflightPhase#withRunningTails}, so a memo hit can never
+ * hide a missing binary or an unshelved jar.
  */
 class BuildForecastingTargetMemoTest {
 
@@ -49,38 +46,25 @@ class BuildForecastingTargetMemoTest {
         return BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
     }
 
+    /** Every goal past PACKAGE prices {@code jk build}'s lifecycle; its tail is priced apart. */
     @Test
-    void native_target_bypasses_and_preserves_the_package_memo(@TempDir Path tmp) throws Exception {
-        BuildGraph.Result graph = writeProjectAndResolve(tmp);
-        assertThat(graph.hasErrors()).isFalse();
-
-        // A successful jk build stores an all-clean memo.
-        var fps = PreflightMemo.snapshotFingerprints(graph, false);
-        PreflightMemo.storeDirty(tmp, graph, false, Set.of(), fps.fingerprints());
-        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isPresent();
-
-        Path cache = tmp.resolve("cache");
-
-        // PACKAGE trusts the memo: fully cached, no forecast walk.
-        var pkg = BuildForecasting.forecastWithFingerprints(graph, cache, false, tmp, WorkspaceTarget.PACKAGE);
-        assertThat(pkg.dirty()).isEmpty();
-
-        // NATIVE must ignore the memo and run the target-aware walk (fresh cache ⇒ dirty).
-        var nat = BuildForecasting.forecastWithFingerprints(graph, cache, false, tmp, WorkspaceTarget.NATIVE);
-        assertThat(nat.dirty()).isNotEmpty();
-
-        // ...and must not have overwritten the package memo with its own verdict.
-        var reload = PreflightMemo.tryLoadDirty(tmp, graph, false);
-        assertThat(reload).isPresent();
-        assertThat(reload.get().dirty()).isEmpty();
-
-        // IMAGE behaves like NATIVE.
-        var img = BuildForecasting.forecastWithFingerprints(graph, cache, false, tmp, WorkspaceTarget.IMAGE);
-        assertThat(img.dirty()).isNotEmpty();
+    void every_goal_that_packages_prices_the_lifecycle_jk_build_prices() {
+        for (WorkspaceTarget target : WorkspaceTarget.values()) {
+            WorkspaceTarget core = WorkspacePreflightPhase.coreTarget(target);
+            switch (target) {
+                case COMPILE, TEST -> assertThat(core).as(target.name()).isEqualTo(target);
+                case RESHELVE -> assertThat(core).as(target.name()).isNull();
+                default -> assertThat(core).as(target.name()).isEqualTo(WorkspaceTarget.PACKAGE);
+            }
+        }
     }
 
+    /**
+     * The memo vouches for inputs, so an install, a native image or an image push reads it like a
+     * build: clean with outputs present, a restore when the jar is gone, dirty after an edit.
+     */
     @Test
-    void an_install_memo_hit_with_jars_present_forecasts_only_cache_install(@TempDir Path tmp) throws Exception {
+    void the_lifecycle_memo_answers_for_every_packaging_goal(@TempDir Path tmp) throws Exception {
         BuildGraph.Result graph = writeProjectAndResolve(tmp);
         BuildGraph.BuildUnit unit = graph.topoOrder().getFirst();
         JkBuild project = unit.manifest();
@@ -92,28 +76,20 @@ class BuildForecastingTargetMemoTest {
         var fps = PreflightMemo.snapshotFingerprints(graph, false);
         PreflightMemo.storeDirty(tmp, graph, false, Set.of(), fps.fingerprints());
 
-        var install = BuildForecasting.forecastWithFingerprints(
-                graph, tmp.resolve("cache"), false, tmp, WorkspaceTarget.INSTALL, Set.of(unit.dir()), false);
-        assertThat(install.modules()).isNotEmpty();
-        assertThat(install.modules().getFirst().steps())
-                .extracting(TaskForecast.Task::name)
-                .containsExactly(TaskNames.CACHE_INSTALL);
+        var clean = BuildForecasting.forecastWithFingerprints(
+                graph, tmp.resolve("cache"), false, tmp, WorkspaceTarget.PACKAGE, false, null);
+        assertThat(clean.dirty()).isEmpty();
+        assertThat(clean.restoreNeeded()).isEmpty();
 
         Files.delete(layout.mainJar());
         var missing = BuildForecasting.forecastWithFingerprints(
-                graph, tmp.resolve("cache"), false, tmp, WorkspaceTarget.INSTALL, Set.of(unit.dir()), false);
-        assertThat(missing.modules()).noneMatch(BuildForecastingTargetMemoTest::onlyCacheInstall);
+                graph, tmp.resolve("cache"), false, tmp, WorkspaceTarget.PACKAGE, false, null);
         assertThat(missing.restoreNeeded()).isNotEmpty();
 
         Files.write(layout.mainJar(), new byte[] {1, 2, 3});
         Files.writeString(tmp.resolve("src/main/java/App.java"), "class App { int changed; }\n");
         var edited = BuildForecasting.forecastWithFingerprints(
-                graph, tmp.resolve("cache"), false, tmp, WorkspaceTarget.INSTALL, Set.of(unit.dir()), false);
+                graph, tmp.resolve("cache"), false, tmp, WorkspaceTarget.PACKAGE, false, null);
         assertThat(edited.dirty()).isNotEmpty();
-        assertThat(edited.modules()).noneMatch(BuildForecastingTargetMemoTest::onlyCacheInstall);
-    }
-
-    private static boolean onlyCacheInstall(TaskForecast.Module module) {
-        return module.steps().stream().map(TaskForecast.Task::name).toList().equals(List.of(TaskNames.CACHE_INSTALL));
     }
 }

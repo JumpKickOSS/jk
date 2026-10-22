@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compile.ClasspathProcessors;
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.task.JavaCompile;
-import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;

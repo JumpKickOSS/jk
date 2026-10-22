@@ -20,6 +20,7 @@ import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
@@ -84,6 +85,7 @@ final class NodeImagePlans {
             @Nullable String tarballArg,
             @Nullable String dockerExecutableArg) {
         return Task.builder(TaskNames.IMAGE_PLAN)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildStage.IMAGE)
                 .requires(TaskNames.NODE_BUILD)
                 .ticks(1)
@@ -175,6 +177,7 @@ final class NodeImagePlans {
 
     private static Task writeStep(BuildPlanner.Inputs inputs, Path projectDir, Path cache) {
         return Task.builder(TaskNames.WRITE_IMAGE)
+                .forecast(StepForecast.always("an image push, load or tarball write is a side effect"))
                 .stage(BuildStage.IMAGE)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.IMAGE_PLAN)

@@ -34,7 +34,8 @@ phase silently.
 1. Add or change its row in `WorkspaceTarget`: the last phase and the test policy.
 2. If it does work past PACKAGE, write a `Tail` beside the other tails. Append every step with
    `plan.extend(task)`; a step that must run before the build (a refusal) is `addTask` with a
-   `requires` on `parse-build`, and the extended step requires it.
+   `requires` on `parse-build`, and the extended step requires it. Every tail step declares how it
+   is forecast (`Task.Builder.forecast`, see [Forecasting](#forecasting)).
 3. Give `ModulePipeline` the tail (from the spec, or from the verb's request).
 4. Point the client `BuildVerb` at the target. Its options and test skipping follow.
 5. Add the goal's tail steps to `LifecycleParityTest.TAIL_STEPS`. The test plans every goal on
@@ -44,6 +45,22 @@ Never call `BuildPlanner.coreBuilder`, `PlannerTails.appendDeclaredTails` or `jo
 construct `BuildPlanner.Inputs`, outside the pipeline: the `one-module-planner` guard refuses it.
 Never re-root a plan with `terminal(name)` from a tail. Never decide "skip tests" in a verb: the
 goal's policy and `--skip-tests` decide it, in `BuildRun.skipTests()` and `ModulePipeline`.
+
+## Forecasting
+
+The preflight decides which modules a run schedules in two parts:
+
+- **The lifecycle.** Every goal that packages forecasts `jk build`'s lifecycle, through PACKAGE
+  (COMPILE and TEST through their own phase): the same walk, and the same dirty memo, which any
+  complete run through PACKAGE certifies clean. So an install, a native image or a publish agrees
+  with `jk build` on which modules are dirty.
+- **The tail.** `WorkspacePreflightPhase.withRunningTails` builds each module's plan with
+  `ModulePipeline.planned`, which reports the steps the goal's tail appended, and prices each by
+  its `StepForecast`: `always(why)` runs on every invocation (an upload, an image push, a training
+  run), `PRICED` asks the caches its live step keys on (`cache-install`, `native-image`), `RIDES`
+  never schedules its module alone. A module is scheduled when its lifecycle is dirty or a tail step
+  runs. An undeclared tail step fails the preflight, and `LifecycleParityTest` requires every tail
+  step of every goal to declare one.
 
 ## One orchestrator
 
@@ -59,6 +76,6 @@ engine verb and no per-goal request type.
 - `jk sync` runs the SYNC phase's plan through its own `sync-request`, without the graph or the
   workspace preflight. Its `parse-lock` writes a missing or stale lock (the IDE's first import
   relies on that); a build's reads the lock its preflight freshened.
-- The forecaster (`ModuleForecast`, behind `jk explain` and the up-to-date shortcut) models each
-  step's cache key separately from the plan it forecasts, with its own per-goal rules for which
-  modules a run schedules.
+- The lifecycle's forecast (`ModuleForecast`, behind `jk explain` and the up-to-date shortcut)
+  derives its own step list and re-derives some steps' cache keys beside the plan it forecasts;
+  `forecast-key-parity` holds each such pair to the same token prefixes.

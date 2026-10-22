@@ -3,6 +3,7 @@ package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EtaEvent;
@@ -14,7 +15,6 @@ import cc.jumpkick.wire.protocol.ExplainTaskEvent;
 import cc.jumpkick.wire.protocol.PreflightEvent;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.runtime.ExplainPlan;
-import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;

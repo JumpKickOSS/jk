@@ -13,12 +13,12 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.testing.TestCaches;
-import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -107,7 +107,7 @@ class KotlinTestStampParityTest {
 
                 BuildGraph.Result graph = BuildGraph.resolve(project, parsed);
                 List<TaskForecast.Module> modules = TaskForecaster.of(
-                        graph, JkStores.storeCas(), actionCache, cache, false, WorkspaceTarget.PACKAGE, Set.of(), null);
+                        graph, JkStores.storeCas(), actionCache, cache, false, WorkspaceTarget.PACKAGE, null);
                 assertThat(modules).hasSize(1);
                 TaskForecast.Task runTests = modules.getFirst().steps().stream()
                         .filter(step -> step.name().equals(TaskNames.RUN_TESTS))

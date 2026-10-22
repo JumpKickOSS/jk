@@ -39,6 +39,9 @@ public final class Task {
 
     private final Body body;
 
+    /** How the forecast prices this step; null until the step's factory declares it. */
+    private final @Nullable StepForecast forecast;
+
     Task(
             String name,
             @Nullable String label,
@@ -48,7 +51,8 @@ public final class Task {
             @Nullable IntSupplier weight,
             boolean interpolated,
             @Nullable BuildStage stage,
-            Body body) {
+            Body body,
+            @Nullable StepForecast forecast) {
         this.name = Objects.requireNonNull(name);
         this.label = label != null ? label : name;
         this.kind = Objects.requireNonNull(kind);
@@ -58,6 +62,17 @@ public final class Task {
         this.interpolated = interpolated;
         this.stage = stage != null ? stage : BuildStage.ofTaskName(name);
         this.body = Objects.requireNonNull(body);
+        this.forecast = forecast;
+    }
+
+    /** How the forecast prices this step, or null when its factory declared nothing. */
+    public @Nullable StepForecast forecast() {
+        return forecast;
+    }
+
+    /** This task declaring {@code how} it is forecast. */
+    public Task forecastAs(StepForecast how) {
+        return new Task(name, label, kind, requires, ticks, weight, interpolated, stage, body, how);
     }
 
     /**
@@ -140,7 +155,7 @@ public final class Task {
     public Task alsoRequiring(String... more) {
         List<String> merged = new ArrayList<>(requires);
         for (String n : more) if (!merged.contains(n)) merged.add(n);
-        return new Task(name, label, kind, merged, ticks, weight, interpolated, stage, body);
+        return new Task(name, label, kind, merged, ticks, weight, interpolated, stage, body, forecast);
     }
 
     public static Builder builder(String name) {
@@ -163,6 +178,7 @@ public final class Task {
         private @Nullable BuildStage stage = null;
         private boolean stageExplicit = false;
         private Body body = ctx -> {};
+        private @Nullable StepForecast forecast = null;
 
         Builder(String name) {
             this.name = Objects.requireNonNull(name);
@@ -246,9 +262,15 @@ public final class Task {
             return this;
         }
 
+        /** How the forecast prices this step without running it. */
+        public Builder forecast(StepForecast how) {
+            this.forecast = Objects.requireNonNull(how, "how");
+            return this;
+        }
+
         public Task build() {
             BuildStage resolved = stageExplicit && stage != null ? stage : BuildStage.ofTaskName(name);
-            return new Task(name, label, kind, requires, ticks, weight, interpolated, resolved, body);
+            return new Task(name, label, kind, requires, ticks, weight, interpolated, resolved, body, forecast);
         }
     }
 }

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
@@ -94,6 +95,31 @@ class LifecycleParityTest {
         }
     }
 
+    /**
+     * The forecast prices a goal's tail apart from the lifecycle it shares with {@code jk build}, so
+     * the plan must say which steps the tail appended, and each must declare how it is forecast:
+     * an undeclared tail step would leave its module unscheduled on a clean tree.
+     */
+    @Test
+    void a_tail_reports_its_steps_and_each_declares_its_forecast() throws Exception {
+        for (WorkspaceTarget target : EnumSet.allOf(WorkspaceTarget.class)) {
+            if (!target.packages()) continue;
+            for (BuildGraph.BuildUnit unit : units) {
+                ModulePipeline.Planned planned = planned(unit, target, false);
+                Set<String> expected = selects(target, unit) ? TAIL_STEPS.get(target) : Set.of();
+                assertThat(planned.tailSteps())
+                        .as(target + " on " + unit.coord() + " reports its tail")
+                        .containsExactlyInAnyOrderElementsOf(expected);
+                for (Task step : planned.plan().steps()) {
+                    if (!planned.tailSteps().contains(step.name())) continue;
+                    assertThat(step.forecast())
+                            .as(target + "'s tail step " + step.name() + " declares its forecast")
+                            .isNotNull();
+                }
+            }
+        }
+    }
+
     @Test
     void a_goal_that_stops_early_plans_only_steps_the_build_has() throws Exception {
         for (BuildGraph.BuildUnit unit : units) {
@@ -159,6 +185,11 @@ class LifecycleParityTest {
     }
 
     private BuildPlan plan(BuildGraph.BuildUnit unit, WorkspaceTarget target, boolean skipTests) throws Exception {
+        return planned(unit, target, skipTests).plan();
+    }
+
+    private ModulePipeline.Planned planned(BuildGraph.BuildUnit unit, WorkspaceTarget target, boolean skipTests)
+            throws Exception {
         Path app = units.getLast().dir();
         WorkspaceSpec spec =
                 switch (target) {
@@ -189,7 +220,7 @@ class LifecycleParityTest {
         WorkspaceRequest request = new WorkspaceRequest(
                         tmp, tmp.resolve("cache"), null, 0, null, skipTests, false, 0, null, false, false)
                 .withSpec(spec);
-        return ModulePipeline.plan(unit, request, moduleDirs, false, Set.of(), Set.of(), SiblingArtifacts.NONE);
+        return ModulePipeline.planned(unit, request, moduleDirs, false, Set.of(), Set.of(), SiblingArtifacts.NONE);
     }
 
     private Path module(String name, String type, String extra, String body) throws Exception {
