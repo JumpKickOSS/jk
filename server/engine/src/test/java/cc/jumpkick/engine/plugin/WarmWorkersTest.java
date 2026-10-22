@@ -187,6 +187,8 @@ class WarmWorkersTest {
         WarmLinger.forTests(100);
         WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
         long older = run(launch(WarmLinger.KOTLIN_COMPILER, "a", null), "ok", out).pid;
+        // Past the linger while the first is still the latest: its reaper has already kept it.
+        Thread.sleep(300);
         long latest = run(launch(WarmLinger.KOTLIN_COMPILER, "b", null), "ok", out).pid;
         long other = run(launch("formatter", "c", null), "ok", out).pid;
 

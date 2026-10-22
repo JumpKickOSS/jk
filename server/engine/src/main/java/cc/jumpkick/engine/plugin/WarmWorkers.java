@@ -25,6 +25,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 
@@ -237,7 +238,9 @@ public final class WarmWorkers {
         // A bigger idle sibling serves whatever these would: they exit rather than hold a lease.
         for (Worker s : covered) s.exit();
         if (covered.contains(w)) return;
-        LATEST.put(w.name, w);
+        Worker displaced = LATEST.put(w.name, w);
+        // A worker CI kept as the latest is now held by the linger: its reaper looks again now.
+        if (displaced != null && displaced != w) displaced.wake();
         w.armReaper();
     }
 
@@ -407,12 +410,15 @@ public final class WarmWorkers {
                     if (unlistIdle(this)) exit();
                     return;
                 }
-                try {
-                    Thread.sleep(Duration.ofNanos(wait));
-                } catch (InterruptedException e) {
-                    return;
-                }
+                LockSupport.parkNanos(this, wait);
+                if (Thread.currentThread().isInterrupted()) return;
             }
+        }
+
+        /** Has the reaper measure the linger again now rather than when its sleep ends. */
+        void wake() {
+            Thread t = reaper;
+            if (t != null) LockSupport.unpark(t);
         }
 
         /** Under CI, the most recently used worker of a kept tool, which the linger does not end. */
