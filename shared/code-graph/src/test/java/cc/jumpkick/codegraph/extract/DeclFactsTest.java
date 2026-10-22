@@ -77,6 +77,49 @@ class DeclFactsTest {
     }
 
     @Test
+    void namedConstantsAreMembersOfTheirType() {
+        Fragment f = Objects.requireNonNull(Extractors.forPath("src/main/java/a/Pricing.java"))
+                .extract("src/main/java/a/Pricing.java", """
+                        package a;
+
+                        public final class Pricing {
+                            /** Seven nights or more. */
+                            public static final int LONG_STAY_NIGHTS = 7;
+                            private static final java.util.List<String> NAMES =
+                                    java.util.List.of("a");
+                            private static final org.slf4j.Logger log = null;
+                            private final int limit = 3;
+
+                            void price() {
+                                final int LOCAL = 1;
+                            }
+                        }
+                        """);
+        GraphNode nights = node(f, ".LONG_STAY_NIGHTS");
+        assertThat(Decl.kind(nights)).isEqualTo("constant");
+        assertThat(Decl.vis(nights)).isEqualTo("public");
+        GraphNode names = node(f, ".NAMES");
+        assertThat(Decl.vis(names)).isEqualTo("private");
+        assertThat(Decl.end(names)).isEqualTo(7);
+        assertThat(f.nodes()).extracting(GraphNode::label).doesNotContain(".log", ".limit", ".LOCAL");
+
+        Fragment kt = Objects.requireNonNull(Extractors.forPath("src/main/kotlin/a/Limits.kt"))
+                .extract("src/main/kotlin/a/Limits.kt", """
+                        package a
+
+                        const val MAX_GUESTS = 4
+
+                        class Limits {
+                            companion object {
+                                const val MAX_NIGHTS = 30
+                            }
+                        }
+                        """);
+        assertThat(Decl.kind(node(kt, "MAX_GUESTS"))).isEqualTo("constant");
+        assertThat(Decl.kind(node(kt, ".MAX_NIGHTS"))).isEqualTo("constant");
+    }
+
+    @Test
     void kotlinDeclarationsDefaultToPublicAndReadExpressionBodies() {
         Fragment f = Objects.requireNonNull(Extractors.forPath("src/main/kotlin/a/Cart.kt"))
                 .extract("src/main/kotlin/a/Cart.kt", """
