@@ -988,7 +988,10 @@ final class PlannerGuards {
 
     /** The rule layers parsed once per content stamp; every lane of every module shares the result. */
     static LoadResult rules(GuardsPlan g) throws IOException {
-        return rules(g, () -> GuardRules.load(g.root(), g.config(), JkDirs.store()));
+        return rules(g, () -> {
+            GuardPackFetch.fetchMissing(g.root());
+            return GuardRules.load(g.root(), g.config(), JkDirs.store());
+        });
     }
 
     /**
