@@ -139,6 +139,18 @@ before it settles (a missing database, a bad flag) fails the build with its last
 shipping a cache that describes a process which never started. The cache is then started once and
 checked before it becomes a layer.
 
+The training runs see the image's `[image.env]`, with `[image.training-env]` laid over it, and
+the image's `JAVA_OPTS`. `training-env` reaches the training runs alone, never the image: it is
+how an application that needs a database or a broker at startup trains without one. The cache
+depends on the JVM's flags, which stay the entrypoint's, so the image still uses it. For Spring
+Boot, skipping the migrations and exiting once the context has refreshed trains the whole startup:
+
+```toml
+[image.training-env]
+SPRING_FLYWAY_ENABLED = "false"     # no database during the build
+SPRING_CONTEXT_EXIT   = "onRefresh" # start every bean, then exit: the run settles on its own
+```
+
 Spring Boot images are unpacked into Boot’s CDS/AOT-friendly layout first (thin launcher
 jar + `lib/`). A non-Boot exploded-classes layout remains unsupported: a CDS dump refuses
 directory classpath entries.

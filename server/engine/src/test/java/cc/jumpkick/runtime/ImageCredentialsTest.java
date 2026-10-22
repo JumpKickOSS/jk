@@ -178,6 +178,7 @@ class ImageCredentialsTest {
                 List.of(),
                 Map.of(),
                 Map.of(),
+                Map.of(),
                 registry,
                 "1",
                 List.of("linux/amd64"),

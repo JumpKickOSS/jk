@@ -17,6 +17,12 @@ public record ImageConfig(
         @Nullable String user,
         List<Integer> ports,
         Map<String, String> env,
+        /**
+         * Environment of the AOT training runs alone (record, assemble, verify), laid over the
+         * image's {@code env}: settings that let the app start without its production dependencies.
+         * The cache depends on the JVM's flags, never on these, so the image still runs it.
+         */
+        Map<String, String> trainingEnv,
         Map<String, String> labels,
         @Nullable String registry,
         @Nullable String tag,
@@ -35,6 +41,7 @@ public record ImageConfig(
     public ImageConfig {
         ports = ports == null ? List.of() : List.copyOf(ports);
         env = env == null ? Map.of() : Map.copyOf(env);
+        trainingEnv = trainingEnv == null ? Map.of() : Map.copyOf(trainingEnv);
         labels = labels == null ? Map.of() : Map.copyOf(labels);
         platforms = (platforms == null || platforms.isEmpty()) ? List.of("linux/amd64") : List.copyOf(platforms);
         // base, name, user, registry, tag, main, dockerExecutable, dockerFile may be null

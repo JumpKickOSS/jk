@@ -551,6 +551,10 @@ public final class JkBuildRenderer {
             sb.append("platforms = ").append(list(image.platforms())).append('\n');
         if (!image.env().isEmpty())
             sb.append("env = ").append(inlineTable(image.env())).append('\n');
+        if (!image.trainingEnv().isEmpty())
+            sb.append("training-env = ")
+                    .append(inlineTable(image.trainingEnv()))
+                    .append('\n');
         if (!image.labels().isEmpty())
             sb.append("labels = ").append(inlineTable(image.labels())).append('\n');
         string(sb, "docker-executable", image.dockerExecutable());

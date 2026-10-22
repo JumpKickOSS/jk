@@ -18,6 +18,7 @@ class ImageConfigTest {
                 List.of(),
                 Map.of(),
                 Map.of(),
+                Map.of(),
                 registry,
                 tag,
                 List.of(),

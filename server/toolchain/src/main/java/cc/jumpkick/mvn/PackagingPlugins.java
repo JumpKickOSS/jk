@@ -457,6 +457,7 @@ final class PackagingPlugins {
                 List.of(),
                 Map.of(),
                 Map.of(),
+                Map.of(),
                 reference.registry(),
                 reference.tag(),
                 List.of(),
