@@ -130,9 +130,9 @@ class RunCommandTest {
                 "--layout",
                 "traditional",
                 tempDir.toString());
-        // Strip the scaffolded main declaration but keep the [application] table.
+        // Strip the whole [application] table: a declared table without main is a parse error.
         Path toml = tempDir.resolve("jk.toml");
-        Files.writeString(toml, Files.readString(toml).replaceAll("(?m)^main\\s*=.*$", ""));
+        Files.writeString(toml, Files.readString(toml).replaceAll("(?ms)^\\[application\\].*?(?=^\\[|\\z)", ""));
         Path src = tempDir.resolve("src/main/java/com/example/Main.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, """

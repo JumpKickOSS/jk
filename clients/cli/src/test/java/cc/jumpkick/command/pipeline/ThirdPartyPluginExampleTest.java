@@ -4,7 +4,6 @@ package cc.jumpkick.command.pipeline;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.host.Hashing;
@@ -16,7 +15,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.jar.JarFile;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Tag;
@@ -41,28 +39,25 @@ class ThirdPartyPluginExampleTest {
     private static final Path ROOT = RepoRoot.find(ThirdPartyPluginExampleTest.class);
     private static final Path EXAMPLE = ROOT.resolve("docs/user/examples/third-party-plugin");
     private static final String VERSION = JkVersion.VERSION;
-    private static final List<String> PUBLISHED_SUFFIXES = List.of(".jar", "-sources.jar", "-javadoc.jar");
 
     @Test
     void a_plugin_compiled_against_the_published_sdk_loads_in_a_consumer_build(@TempDir Path dir) throws Exception {
-        Path sdkLib = ROOT.resolve("shared/plugin-sdk/target");
-        Path hostLib = ROOT.resolve("shared/host/target");
-        // `jk test` packages only a consumed module's main jar; the sources and javadoc jars the
-        // release step publishes come from a full `jk build`.
-        assumeTrue(
-                builtJarsPresent(sdkLib, "jk-plugin-sdk") && builtJarsPresent(hostLib, "jk-host"),
-                "the checkout's own SDK jars are the fixture: run `jk build` first");
-
         // 1. The release step: the SDK's dependency, then the SDK, into one Maven repository.
         Path repo = Files.createDirectories(dir.resolve("sdk-repo"));
         URI repoUrl = repo.toUri();
-        publish(dir.resolve("host"), "jk-host", "The JDK-only floor every plugin worker shares", "", hostLib, repoUrl);
+        publish(
+                dir.resolve("host"),
+                "jk-host",
+                "The JDK-only floor every plugin worker shares",
+                "[dependencies]\njspecify = \"1.0.1\"\n",
+                ROOT.resolve("shared/host"),
+                repoUrl);
         publish(
                 dir.resolve("sdk"),
                 "jk-plugin-sdk",
                 "Plugin SPI",
                 "[dependencies]\njk-host = \"cc.jumpkick:jk-host:" + VERSION + "\"\n",
-                sdkLib,
+                ROOT.resolve("shared/plugin-sdk"),
                 repoUrl);
         Path sdkPom = repo.resolve("cc/jumpkick/jk-plugin-sdk/" + VERSION + "/jk-plugin-sdk-" + VERSION + ".pom");
         assertThat(sdkPom).exists();
@@ -180,31 +175,26 @@ class ThirdPartyPluginExampleTest {
     }
 
     /**
-     * A standalone project shaped like the workspace module — same coordinate, description and
-     * dependencies — carrying the jars the checkout built, published with {@code jk publish}.
+     * A standalone project shaped like the workspace module — same coordinate, description,
+     * dependencies and sources — built and published with {@code jk publish}, which builds first.
+     * {@code cc.jumpkick} resolves from {@code repoUrl}, where the SDK's own dependency lands first.
      */
-    private static void publish(Path project, String name, String description, String deps, Path lib, URI repoUrl)
+    private static void publish(Path project, String name, String description, String deps, Path module, URI repoUrl)
             throws IOException {
-        Files.createDirectories(project.resolve("target"));
+        copyTree(module.resolve("src/main"), project.resolve("src/main"));
         Files.writeString(project.resolve("jk.toml"), """
                 group       = "cc.jumpkick"
                 name        = "%s"
                 version     = "%s"
                 description = "%s"
                 java        = 17
-                %s""".formatted(name, VERSION, description, deps));
-        for (String suffix : PUBLISHED_SUFFIXES) {
-            Path built = lib.resolve(name + "-" + VERSION + suffix);
-            Files.copy(built, project.resolve("target/" + built.getFileName()));
-        }
-        assertThat(run("publish", "-C", project.toString(), "--repo-url", repoUrl.toString()))
+                %s
+                [repositories.jumpkick]
+                url    = "%s"
+                groups = ["cc.jumpkick", "cc.jumpkick.*"]
+                """.formatted(name, VERSION, description, deps, repoUrl));
+        assertThat(run("publish", "-C", project.toString(), "--repo-url", repoUrl.toString(), "--skip-tests"))
                 .isEqualTo(0);
-    }
-
-    /** True when {@code lib} holds every jar {@link #publish} ships for {@code name}. */
-    private static boolean builtJarsPresent(Path lib, String name) {
-        return PUBLISHED_SUFFIXES.stream()
-                .allMatch(suffix -> Files.isRegularFile(lib.resolve(name + "-" + VERSION + suffix)));
     }
 
     private static void copyTree(Path from, Path to) throws IOException {

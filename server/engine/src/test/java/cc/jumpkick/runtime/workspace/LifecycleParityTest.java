@@ -123,6 +123,29 @@ class LifecycleParityTest {
         }
     }
 
+    @Test
+    void a_module_without_jvm_sources_still_gets_its_tail() throws Exception {
+        Path web = Files.createDirectories(tmp.resolve("web"));
+        Files.writeString(web.resolve("jk.toml"), """
+                group = "ex"
+                name = "web"
+                version = "1.0.0"
+
+                [node]
+                version = 24
+                start = "node server.js"
+                """);
+        Files.writeString(web.resolve("package.json"), "{\"name\":\"web\",\"version\":\"1.0.0\"}");
+        BuildGraph.BuildUnit unit = unit(web, "ex:web");
+        WorkspaceRequest request = new WorkspaceRequest(
+                        tmp, tmp.resolve("cache"), null, 0, null, false, false, 0, null, false, false)
+                .withSpec(WorkspaceSpec.image(Set.of(web), null, null, null, "", null));
+        var plan = ModulePipeline.plan(unit, request, Set.of(web), false);
+        assertThat(plan.steps().stream().map(t -> t.name()))
+                .as("a node module's image tail")
+                .contains(TaskNames.IMAGE_PLAN, TaskNames.WRITE_IMAGE);
+    }
+
     private boolean selects(WorkspaceTarget target, BuildGraph.BuildUnit unit) {
         if (unit.coord().equals("ex:ws")) return false; // the coordinator root has no tail
         return switch (target) {
