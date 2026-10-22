@@ -250,6 +250,9 @@ public final class PlannerGuardSuite {
                         ctx.progress(1);
                         return;
                     }
+                    // The suite compiles on the test compile classpath, which names the fixtures and
+                    // test classes a sibling edge selects: wait until those exist.
+                    PlannerSetup.awaitSiblingTestOutputs(ctx, in);
                     Path root = WorkspaceScan.findRoot(in.dir()).orElse(in.dir());
                     Path library = GuardSuiteLibrary.locate(root, cas).path();
                     List<Path> testCp = ctx.get(COMPILE_TEST_CP).orElseGet(() -> ctx.require(CLASSPATH));

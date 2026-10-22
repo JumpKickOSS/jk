@@ -27,7 +27,6 @@ import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
-import cc.jumpkick.model.Variants;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.publish.PublishablePom;
@@ -199,7 +198,7 @@ public final class InstallPlans {
                     JkBuild project = VariantApply.apply(
                                     BuildPlanner.applyAssemblyOverride(JkBuildParser.parse(jkBuildPath), session),
                                     projectDir,
-                                    Variants.Selection.parse(session.variant()),
+                                    VariantApply.selection(session.variant(), session),
                                     session.clientEnv())
                             .build();
                     BuildLayout layout = BuildLayout.of(projectDir, project);

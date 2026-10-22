@@ -207,6 +207,34 @@ class ReusedJavacFileManagerTest {
         assertThat(compileAgainst(fm, dir, out, dep, "v")).isFalse();
     }
 
+    /**
+     * javac caches a classpath entry it found missing until the manager closes. A sibling's output
+     * directory that a compile named before it existed (a guard suite compiled ahead of the fixtures
+     * it lists) must resolve in the next compile that names it once it is there.
+     */
+    @Test
+    void a_classpath_directory_created_since_a_compile_found_it_missing_is_seen(@TempDir Path dir) throws Exception {
+        Path dep = dir.resolve("dep");
+        Path out = Files.createDirectories(dir.resolve("out"));
+        String[] options = {"-classpath", dep.toString()};
+
+        StandardJavaFileManager before = ReusedJavacFileManager.acquire(
+                JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of(), ProvenanceJavac.pathEntriesNamed(options));
+        assertThat(compileAgainst(before, dir, out, dep, "v")).isFalse();
+
+        Files.createDirectories(dep);
+        buildDep(dir, dep, "public int v() { return 1; }");
+        StandardJavaFileManager after = ReusedJavacFileManager.acquire(
+                JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of(), ProvenanceJavac.pathEntriesNamed(options));
+
+        assertThat(after).isNotSameAs(before);
+        assertThat(compileAgainst(after, dir, out, dep, "v")).isTrue();
+        assertThat(ReusedJavacFileManager.acquire(
+                        JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of(), ProvenanceJavac.pathEntriesNamed(options)))
+                .as("a class written into a directory that exists keeps the manager")
+                .isSameAs(after);
+    }
+
     /** Compiles {@code pkg.Dep} into {@code dep} with its own manager, so nothing here is cached. */
     private static void buildDep(Path dir, Path dep, String body) throws Exception {
         Path src = dir.resolve("depsrc/pkg/Dep.java");

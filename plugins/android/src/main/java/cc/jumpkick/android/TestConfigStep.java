@@ -10,15 +10,18 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Writes Robolectric's {@code test_config.properties} onto the test runtime classpath (merged
- * manifest, raw resources, aapt2 resource package).
+ * Writes Robolectric's {@code test_config.properties} onto the test runtime classpath (unit-test
+ * manifest, raw resources, aapt2 resource package). The unit-test manifest is AGP's: the module's
+ * manifest merged as an application with every AAR on the test runtime closure, so a test-scope
+ * AAR's components ({@code ui-test-manifest}'s {@code ComponentActivity}) resolve under Robolectric.
  */
 final class TestConfigStep {
 
     private TestConfigStep() {}
 
     static void run(TaskExec exec) throws Exception {
-        Path manifest = exec.requireStepOutput("android-manifest").resolve("merged/AndroidManifest.xml");
+        Path manifest = exec.outputDir("manifest").resolve("AndroidManifest.xml");
+        ManifestStep.merge(exec, ManifestStep.aarManifests(exec.runtimeEntries()), false, manifest);
         Path res = exec.requireStepOutput("android-res");
         Path rawRes = res.resolve("raw-res");
         Path apk = res.resolve("packaged/resources.ap_");

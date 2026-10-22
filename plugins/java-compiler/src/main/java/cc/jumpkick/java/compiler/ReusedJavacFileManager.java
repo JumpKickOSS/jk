@@ -34,11 +34,13 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Reuse is bounded by what is on disk, not by the job: the engine keeps a worker for a short
  * linger after its job, so the next build's compile may get the manager the last one left. javac
- * re-resolves the classpath on every task, so a directory entry whose contents changed since the
- * last compile is seen — a class added to an upstream output directory resolves, and one removed
- * stops resolving. An archive is different: the manager holds it open and reads the file it opened,
- * so one rewritten since (a snapshot re-resolved, a local jar rebuilt) discards the manager, judged
- * by its size, mtime and file key. {@code ReusedJavacFileManagerTest} pins all three.
+ * lists a directory entry afresh on every task, so a class added to an upstream output directory
+ * resolves, and one removed stops resolving. Everything else about an entry the manager remembers
+ * as it first found it: an archive stays open on the file it opened, and an entry that was missing
+ * stays missing (javac caches the absence until the manager closes). So an entry rewritten since (a
+ * snapshot re-resolved, a local jar rebuilt) or one that has appeared since (a sibling's output
+ * directory created after a compile named it) discards the manager. {@code
+ * ReusedJavacFileManagerTest} pins these.
  *
  * <p>Per thread rather than static because the worker is single-threaded today but the protocol is
  * specified to allow concurrent items; {@link StandardJavaFileManager} is not thread-safe, so a
@@ -61,8 +63,8 @@ final class ReusedJavacFileManager {
     /** Every option-set location a compile has declared on the held manager since it was built. */
     private final Set<StandardLocation> carried = EnumSet.noneOf(StandardLocation.class);
 
-    /** Every archive a compile on the held manager named, as it was on disk then. */
-    private final Map<Path, ArchiveStamp> archives = new HashMap<>();
+    /** Every path entry a compile on the held manager named, as it was on disk then. */
+    private final Map<Path, EntryStamp> entries = new HashMap<>();
 
     private ReusedJavacFileManager() {}
 
@@ -85,16 +87,17 @@ final class ReusedJavacFileManager {
     }
 
     /**
-     * As above, for a compile whose path options name {@code archives}: a held manager that opened
-     * one of them as it was before a rewrite is thrown away rather than handed over.
+     * As above, for a compile whose path options name {@code entries}: a held manager that saw one
+     * of them as it was before a rewrite, or before it existed, is thrown away rather than handed
+     * over.
      */
     static StandardJavaFileManager acquire(
             JavaCompiler javac,
             Charset encoding,
             DiagnosticListener<JavaFileObject> diags,
             Set<StandardLocation> declared,
-            List<Path> archives) {
-        return PER_THREAD.get().get(javac, encoding, diags, declared, archives);
+            List<Path> entries) {
+        return PER_THREAD.get().get(javac, encoding, diags, declared, entries);
     }
 
     /**
@@ -120,12 +123,12 @@ final class ReusedJavacFileManager {
             Set<StandardLocation> declared,
             List<Path> named) {
         relay.to = diags;
-        Map<Path, ArchiveStamp> now = new HashMap<>();
-        for (Path archive : named) now.put(archive, ArchiveStamp.of(archive));
+        Map<Path, EntryStamp> now = new HashMap<>();
+        for (Path entry : named) now.put(entry, EntryStamp.of(entry));
         StandardJavaFileManager current = fm;
         if (current != null && wanted.equals(encoding) && !staleLocation(current, declared) && !rewritten(now)) {
             carried.addAll(declared);
-            archives.putAll(now);
+            entries.putAll(now);
             return current;
         }
         close(current);
@@ -134,29 +137,34 @@ final class ReusedJavacFileManager {
         encoding = wanted;
         carried.clear();
         carried.addAll(declared);
-        archives.clear();
-        archives.putAll(now);
+        entries.clear();
+        entries.putAll(now);
         return fresh;
     }
 
-    /** Whether an archive the held manager may have open is not the file it was when last named. */
-    private boolean rewritten(Map<Path, ArchiveStamp> now) {
-        for (Map.Entry<Path, ArchiveStamp> e : now.entrySet()) {
-            ArchiveStamp then = archives.get(e.getKey());
+    /** Whether an entry the held manager may have seen is not what it was when last named. */
+    private boolean rewritten(Map<Path, EntryStamp> now) {
+        for (Map.Entry<Path, EntryStamp> e : now.entrySet()) {
+            EntryStamp then = entries.get(e.getKey());
             if (then != null && !then.equals(e.getValue())) return true;
         }
         return false;
     }
 
-    /** An archive as it is on disk: a rewrite moves its size, its mtime or, for a rename over it, its file key. */
-    record ArchiveStamp(
-            long size, long mtimeMillis, @Nullable Object key) {
-        static final ArchiveStamp MISSING = new ArchiveStamp(-1L, -1L, null);
+    /**
+     * An entry as it is on disk: a rewrite moves an archive's size, its mtime or, for a rename over
+     * it, its file key. A directory is stamped by its existence alone, because javac lists it afresh
+     * and a class written into it must not cost the manager.
+     */
+    record EntryStamp(long size, long mtimeMillis, @Nullable Object key) {
+        static final EntryStamp MISSING = new EntryStamp(-1L, -1L, null);
+        static final EntryStamp DIRECTORY = new EntryStamp(-2L, -2L, null);
 
-        static ArchiveStamp of(Path archive) {
+        static EntryStamp of(Path entry) {
             try {
-                BasicFileAttributes a = Files.readAttributes(archive, BasicFileAttributes.class);
-                return new ArchiveStamp(a.size(), a.lastModifiedTime().toMillis(), a.fileKey());
+                BasicFileAttributes a = Files.readAttributes(entry, BasicFileAttributes.class);
+                if (a.isDirectory()) return DIRECTORY;
+                return new EntryStamp(a.size(), a.lastModifiedTime().toMillis(), a.fileKey());
             } catch (IOException e) {
                 return MISSING;
             }
