@@ -506,6 +506,21 @@ public final class ManifestTables {
             List<String> excludeTags = excludeTagsSet
                     ? optionalStringList(body, "exclude-tags", "profiles." + name + ".exclude-tags")
                     : List.of();
+            Map<String, String> env = new LinkedHashMap<>();
+            if (body.contains("env")) {
+                if (!body.isTable("env")) {
+                    throw new JkBuildParseException(
+                            "profiles." + name + ".env must be a table: env = { NAME = \"value\" }");
+                }
+                TomlTable envTable = Objects.requireNonNull(body.getTable("env"));
+                for (String key : envTable.keySet()) {
+                    Object v = envTable.get(List.of(key));
+                    if (!(v instanceof String) && !(v instanceof Boolean) && !(v instanceof Long)) {
+                        throw new JkBuildParseException("profiles." + name + ".env." + key + " must be a string");
+                    }
+                    env.put(key, String.valueOf(v));
+                }
+            }
             byName.put(
                     name,
                     new Profile(
@@ -516,7 +531,8 @@ public final class ManifestTables {
                             includeTags,
                             excludeTags,
                             includeTagsSet,
-                            excludeTagsSet));
+                            excludeTagsSet,
+                            env));
         }
         return new Profiles(byName);
     }

@@ -165,11 +165,13 @@ javac = ["-Werror"]                 # appended to the compiler argv
 [profiles.probe]
 inherits = "strict"                 # parent first, then this table
 jvm-args = ["-Dprobe=1", "-Xmx1g"]  # every forked test JVM (jk test, and the test step of jk build)
+env = { PROBE = "1" }               # every forked test JVM's environment, over [test] env
 exclude-tags = ["slow"]             # replaces the [test] list when present
 ```
 
-`jvm-args` are a test input: `-p probe` re-runs a suite a plain run left green, and `jk
-explain` keys the step the same way. They do not reach `jk run` — an application's JVM flags are
+`jvm-args` and `env` are test inputs: `-p probe` re-runs a suite a plain run left green, and `jk
+explain` keys the step the same way. A child profile's `env` entries replace its parent's of the
+same name. They do not reach `jk run` — an application's JVM flags are
 its own, not a profile's. Tag precedence and the `ci` auto-profile: [Test](test.md#tag-filters).
 
 ```toml

@@ -24,6 +24,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -31,6 +32,7 @@ import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.LiveUnits;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.StepTimings;
@@ -79,6 +81,12 @@ final class TestLaunch {
         List<String> args = new ArrayList<>(PlannerKsp.pluginTestJvmArgs(ctx.require(LAYOUT), pluginDecls));
         args.addAll(PlannerSupport.testJvmArgs(project, in.profileName()));
         return args;
+    }
+
+    /** The active profile's {@code env}: what every forked test JVM of this run is given on top of {@code [test] env}. */
+    static Map<String, String> profileEnv(JkBuild project, @Nullable String profileName) {
+        Profile profile = CompileSupport.resolveProfile(project.profiles(), profileName);
+        return profile == null ? Map.of() : profile.env();
     }
 
     /**
