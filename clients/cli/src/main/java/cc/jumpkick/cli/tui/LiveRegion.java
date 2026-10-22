@@ -37,6 +37,7 @@ public interface LiveRegion {
 
     /** Register {@code region} as the region currently on screen. */
     static void setActive(LiveRegion region) {
+        if (!(region instanceof StartupPulse)) StartupPulse.release();
         Holder.ACTIVE.set(region);
     }
 

@@ -4,6 +4,7 @@ package cc.jumpkick.cli.engine;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.tui.JdkInstallView;
+import cc.jumpkick.cli.tui.StartupPulse;
 import cc.jumpkick.config.EngineAotCache;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.GlobalConfig;
@@ -88,6 +89,15 @@ public final class EngineSpawn {
     static EngineProbe.Handshake ensure(
             EnginePaths.Paths paths, String clientVersion, EngineProbe.Patience patience, SilentPeer.Grace grace)
             throws IOException {
+        StartupPulse.phase("Connecting to engine");
+        EngineProbe.Handshake hs = reach(paths, clientVersion, patience, grace);
+        StartupPulse.phase("Waiting for engine");
+        return hs;
+    }
+
+    private static EngineProbe.Handshake reach(
+            EnginePaths.Paths paths, String clientVersion, EngineProbe.Patience patience, SilentPeer.Grace grace)
+            throws IOException {
         Path socket = EnginePaths.activeSocket(paths);
         Reachability reach = probePatiently(socket, clientVersion, patience);
         if (reach instanceof Reachability.Silent)
@@ -116,6 +126,7 @@ public final class EngineSpawn {
         }
         // Absent / unusable / draining / version skew → spawn (takeover or cold start).
         if (spawnForbidden()) throw new EngineSpawnForbiddenException(socket);
+        StartupPulse.phase("Starting engine");
         return startWithSelfHeal(paths, clientVersion);
     }
 

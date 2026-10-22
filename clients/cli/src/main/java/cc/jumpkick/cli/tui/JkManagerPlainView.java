@@ -80,7 +80,7 @@ final class JkManagerPlainView {
     void ensureProgressStarted(long num, long den) {
         if (m.done || !animating() || den <= 0 || progressStarted) return;
         progressMode = true;
-        printInitializing();
+        printStarting();
         String status = currentStatus();
         String subject = currentSubject();
         if (PlainPhase.PREPARE.equals(status) || firstActiveRow() == null) {
@@ -104,7 +104,7 @@ final class JkManagerPlainView {
         if (PlainPhase.PREPARE.equals(status)
                 || PlainPhase.DONE.equals(status)
                 || PlainPhase.BUILT.equals(status)
-                || PlainPhase.INITIALIZING.equals(status)) {
+                || PlainPhase.STARTING.equals(status)) {
             return;
         }
         // Same gate as phase-change: wait for "compiling N sources" / "running N tests".
@@ -117,7 +117,7 @@ final class JkManagerPlainView {
         if (m.done || !animating()) return;
         if (etaAnnounced) return;
         progressMode = true;
-        printInitializing();
+        printStarting();
         String root = planCoordOrEmpty();
         if (!PlainPhase.PREPARE.equals(lastStatus) && firstActiveRow() == null && !root.isEmpty()) {
             printSnapshot(0, PlainPhase.PREPARE, false, root, "");
@@ -130,7 +130,7 @@ final class JkManagerPlainView {
     void emitPhaseChange() {
         if (m.done || !animating()) return;
         progressMode = true;
-        printInitializing();
+        printStarting();
         if (m.header.countdown.seeded()) etaAnnounced = true;
         String status = currentStatus();
         if (PlainPhase.PREPARE.equals(status)) return;
@@ -143,7 +143,7 @@ final class JkManagerPlainView {
     void emitModuleBuilt(String module) {
         if (m.done || !animating()) return;
         progressMode = true;
-        printInitializing();
+        printStarting();
         String subject = module == null ? "" : module;
         printSnapshot(currentPercent(), PlainPhase.BUILT, false, subject, "");
     }
@@ -191,13 +191,13 @@ final class JkManagerPlainView {
         String extra = detail == null ? "" : PlainAscii.rewrite(detail);
         if (extra.isBlank()) return;
         progressMode = true;
-        printInitializing();
+        printStarting();
         printSnapshot(currentPercent(), currentStatus(), false, currentSubject(), extra);
     }
 
-    private void printInitializing() {
+    private void printStarting() {
         if (chromeStarted || m.done) return;
-        m.out.println(JkWedge.plainWedge(Glyphs.PULSE_PLAIN, m.planName(), PlainPhase.INITIALIZING));
+        m.out.println(JkWedge.plainWedge(Glyphs.PULSE_PLAIN, m.planName(), PlainPhase.STARTING));
         chromeStarted = true;
         m.out.flush();
     }
@@ -220,7 +220,7 @@ final class JkManagerPlainView {
         if (!animating()) return;
         if (progressMode) {
             if (!progressStarted) {
-                printInitializing();
+                printStarting();
             }
             printSnapshot(100, PlainPhase.DONE, true, planCoordOrEmpty(), "");
             return;
@@ -332,13 +332,13 @@ final class JkManagerPlainView {
         if (done) {
             return JkWedge.plainStatusLine(command, null, JkWedge.PlainTail.PERCENT_DONE);
         }
-        String msg = (message == null || message.isBlank()) ? PlainPhase.INITIALIZING : message;
+        String msg = (message == null || message.isBlank()) ? PlainPhase.STARTING : message;
         return JkWedge.plainStatusLine(command, msg, JkWedge.PlainTail.BARE);
     }
 
     private String indeterminateLine(@Nullable boolean doneLine) {
         if (m.planMode) {
-            return indeterminateLine(m.planName(), doneLine ? null : PlainPhase.INITIALIZING, doneLine);
+            return indeterminateLine(m.planName(), doneLine ? null : PlainPhase.STARTING, doneLine);
         }
         return indeterminateLine(null, m.label, doneLine);
     }

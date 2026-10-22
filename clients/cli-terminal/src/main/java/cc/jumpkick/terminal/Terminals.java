@@ -20,6 +20,9 @@ import org.jspecify.annotations.Nullable;
 public final class Terminals {
     private static final Object LOCK = new Object();
     private static volatile @Nullable NativeTerminal singleton;
+    private static volatile Runnable beforeForeground = () -> {};
+
+    private static final int STD_ERROR_HANDLE = -12;
 
     private Terminals() {}
 
@@ -70,12 +73,36 @@ public final class Terminals {
     public static boolean stdoutIsTty() {
         try {
             if (Os.isWindows()) {
-                return windowsStdoutIsTty();
+                return windowsIsConsole(WindowsUtf8.STD_OUTPUT_HANDLE);
             }
             return posixIsatty(1);
         } catch (Throwable ignored) {
             return System.console() != null;
         }
+    }
+
+    /** Error axis: POSIX {@code isatty(2)}; Windows {@code GetConsoleMode} on {@code STD_ERROR_HANDLE}. */
+    public static boolean stderrIsTty() {
+        try {
+            if (Os.isWindows()) {
+                return windowsIsConsole(STD_ERROR_HANDLE);
+            }
+            return posixIsatty(2);
+        } catch (Throwable ignored) {
+            return System.console() != null;
+        }
+    }
+
+    /**
+     * Run {@code hook} whenever something takes the terminal in the foreground: a raw or prompt
+     * mode, the {@code /dev/tty} writer, or a child handoff. Their bytes bypass {@link System#out}.
+     */
+    public static void beforeForeground(Runnable hook) {
+        beforeForeground = hook;
+    }
+
+    static void foreground() {
+        beforeForeground.run();
     }
 
     public static MemoryTerminal memory(InputStream in, OutputStream out) {
@@ -116,6 +143,7 @@ public final class Terminals {
     }
 
     public static void restoreForChild() {
+        foreground();
         NativeTerminal s = singleton;
         if (s != null) {
             s.restoreForChild();
@@ -132,7 +160,7 @@ public final class Terminals {
     }
 
     @SuppressWarnings("restricted")
-    private static boolean windowsStdoutIsTty() throws Throwable {
+    private static boolean windowsIsConsole(int stdHandle) throws Throwable {
         Linker linker = Linker.nativeLinker();
         SymbolLookup k32 = SymbolLookup.libraryLookup("kernel32", Arena.global());
         MethodHandle getStdHandle = linker.downcallHandle(
@@ -140,7 +168,7 @@ public final class Terminals {
         MethodHandle getMode = linker.downcallHandle(
                 k32.findOrThrow("GetConsoleMode"),
                 FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        MemorySegment handle = (MemorySegment) getStdHandle.invokeExact(WindowsUtf8.STD_OUTPUT_HANDLE);
+        MemorySegment handle = (MemorySegment) getStdHandle.invokeExact(stdHandle);
         if (handle.address() == 0L || handle.address() == -1L) {
             return false;
         }

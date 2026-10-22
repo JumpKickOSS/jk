@@ -18,7 +18,7 @@ public final class PlainPhase {
     public static final String START = "start";
     public static final String BUILT = "built";
     public static final String DONE = "done";
-    public static final String INITIALIZING = "initializing...";
+    public static final String STARTING = "starting...";
     public static final String RUNNING_TESTS = "running tests";
 
     private static final Pattern RUNNING_TESTS_COUNT = Pattern.compile("(?i)^running (\\d+) tests$");

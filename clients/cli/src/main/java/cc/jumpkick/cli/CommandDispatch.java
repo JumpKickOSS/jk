@@ -16,6 +16,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.LiveRegion;
+import cc.jumpkick.cli.tui.StartupPulse;
 import cc.jumpkick.command.interop.BspCommand;
 import cc.jumpkick.command.interop.ExportCommand;
 import cc.jumpkick.command.interop.GradleCommand;
@@ -427,6 +428,9 @@ public final class CommandDispatch {
         boolean agent = AgentMode.requested(in);
         boolean script = GlobalOptions.outputIsJson(in) || cmd.scriptMode(in) || agent;
         boolean capture = agent && AgentMode.capturesOutput(cmd.name());
+        // Machine output is never preceded by chrome; a human command names itself as the phase.
+        if (script) StartupPulse.release();
+        else StartupPulse.phase("Running " + qualified);
         PrintStream prevOut = System.out;
         PrintStream prevErr = System.err;
         ByteArrayOutputStream outBuf = new ByteArrayOutputStream();

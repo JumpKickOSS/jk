@@ -90,7 +90,7 @@ come from each member's `jk.toml` `name`, not the workspace path:
 Under `--no-ansi` the caption and every other jk chrome line is prefixed with `jk: ` so tool output (when `-v` is on) is distinguishable:
 
 ```
-jk: * Build > initializing...
+jk: * Build > starting...
 jk: * Build > cc.jumpkick:jk :: 0% - prepare
 jk: * Build > cc.jumpkick:jk :: 4% (ETA ~1m 14s) - start
 jk: * Build > cc.jumpkick:jk-cli :: 4% (ETA ~1m 14s) - resolving
@@ -142,6 +142,12 @@ Optional blank lines **between** chrome and follow-up tips (e.g. after `jk add`)
 **Script-mode** commands override `scriptMode(Invocation)` on `CliCommand`. Dispatch consults it once, before `run`, and it suppresses the envelope **and** the Unicode→ASCII rewrite on stdout, so the payload reaches its consumer byte-exact. stderr stays human — spaced and formatted — even then. `-O jsonl` enters the same mode. `jk --version` writes `System.out` directly and is outside the envelope, as are parse/usage errors and help screens.
 
 Do **not** write human chrome with raw `System.out.println` — that bypasses `CliOutput` and skips the blank.
+
+### Startup pulse
+
+`jk` never sits silent for more than 250 ms. `Jk.main` arms `StartupPulse` before any config or manifest read; if nothing has printed after 250 ms, it paints the phase jk is waiting on (` ● Initializing…` with the breathing dot, or ` * Initializing...` under `--no-ansi`). The first real output replaces it: any write to `System.out`/`System.err`, a `LiveRegion` opening, a terminal mode or `/dev/tty` write, a child handoff, or the process ending. ANSI release wipes the row and steps back onto the blank above it, so the command's own leading blank lands where it always does; plain release ends the line with ` Done.`.
+
+Code names a phase with `StartupPulse.phase("Starting engine")` at a few coarse checkpoints only (dispatch, engine connect, engine spawn). A phase is shown only once it has itself been current for 250 ms, so fast phases never appear and the row cannot flicker; plain mode appends slow phases to the same line rather than adding lines. The pulse is off unless both stdout and stderr are a terminal, and for `-q`, `--no-progress`, `-O`, help, `CI`, `TERM=dumb`, and script-mode commands.
 
 ## Script-mode allowlist (no wedge)
 
@@ -305,6 +311,7 @@ Under `-O jsonl`, suppress human chrome (no envelope, no wedge). See [machine-ou
 | Trees | `cli/tui/Tree.java` — optional title/root, {@code Gap} / {@code BodyFit}, pills, hanging rich text |
 | Glyphs | `cli/tui/Glyphs.java` |
 | Live plan | `cli/tui/JkManager.java` |
+| Startup pulse | `cli/tui/StartupPulse.java` |
 | Spinner / bar | `Spinner.java` (frame content, `update` message, plain 60s heartbeat cadence and `working...`/`done.` lines — the region itself is `LiveLine`), `SpinnerProgressBar.java` |
 | Theme / ANSI gate | `cli/theme/Theme.java` (`styleNamed` for RichText tokens) |
 | Mode fixtures | `cli/tui/TuiModeFixturesTest.java` |
