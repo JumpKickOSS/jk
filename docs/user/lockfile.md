@@ -346,6 +346,11 @@ metadata-repository` in `jk.toml`. It is not an `[[artifact]]` row: it is on no 
 and in no scope. It *is* an input to `native-image`, so it is pinned like one. See
 [Native images](native.md#the-graalvm-metadata-repository).
 
+A tool a plugin's build step fetches by coordinate — protoc and its plugins under `[protobuf]`, a
+`[generate.<name>] tool` — has no row. The exact version in `jk.toml` is its pin, and its bytes are
+checked against the checksum the repository publishes beside them, the store's copy too while the
+repository is reachable ([Protobuf](frameworks.md#protobuf)).
+
 A `[[plugin]]` row normally pins the plugin jar by `checksum`: a jar that is fetched later and
 disagrees with it is refused. A plugin the workspace builds itself — a module whose
 coordinate is the plugin's, such as jk's own tree building `cc.jumpkick:jk-guards-junit` for
