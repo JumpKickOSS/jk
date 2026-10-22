@@ -67,8 +67,9 @@ public final class AndroidPlugin implements Plugin, BuildPlugin {
                         In.testRuntimeEntries(),
                         In.stepOutput("android-res"),
                         In.config())
-                .outputs("cp", "manifest", "packaged")
+                .outputs("cp", "manifest", "packaged", TestConfigStep.TEST_JVM)
                 .contributesTestClasspath("cp")
+                .contributesTestJvmArgs(TestConfigStep.TEST_JVM_ARGS)
                 .run(TestConfigStep::run));
         if (ctx.config().bool("build-config", false)) {
             ctx.task(TaskSpec.named("android-buildconfig")

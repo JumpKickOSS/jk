@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -18,6 +19,19 @@ import java.util.Map;
  * step relinks {@code android-res}'s compiled resources against that manifest.
  */
 final class TestConfigStep {
+
+    /** The output holding {@link #TEST_JVM_ARGS}. */
+    static final String TEST_JVM = "test-jvm";
+
+    /** One test-JVM flag per line: what Robolectric needs from the JDK, empty without Robolectric. */
+    static final String TEST_JVM_ARGS = TEST_JVM + "/jvm.args";
+
+    /**
+     * Robolectric intercepts {@code FileDescriptor} through {@code jdk.internal.access.SharedSecrets}
+     * and reflects into {@code java.io}; on JDK 17+ neither is reachable without these.
+     */
+    static final List<String> ROBOLECTRIC_JVM_ARGS = List.of(
+            "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED", "--add-opens=java.base/java.io=ALL-UNNAMED");
 
     private TestConfigStep() {}
 
@@ -47,5 +61,10 @@ final class TestConfigStep {
         // Escape so Windows paths round-trip through Properties.load (Robolectric's reader).
         Files.writeString(out, DeterministicProperties.render(entries), StandardCharsets.UTF_8);
         exec.label("test_config.properties for " + pkg);
+
+        boolean robolectric =
+                exec.runtimeEntries().stream().anyMatch(e -> e.group().equals("org.robolectric"));
+        Path args = exec.outputDir(TEST_JVM).resolve("jvm.args");
+        Files.write(args, robolectric ? ROBOLECTRIC_JVM_ARGS : List.of(), StandardCharsets.UTF_8);
     }
 }

@@ -162,7 +162,10 @@ That manifest is the module's own merged as an application with every AAR on the
 closure, test-scope ones included, and the resource package links the same closure's resources and
 the module's against it, since Robolectric reads the manifest from the package. So
 `androidx.compose.ui:ui-test-manifest` as a `[test-dependencies]` entry is enough for a
-`ComposeTestRule` to launch its `ComponentActivity`.
+`ComposeTestRule` to launch its `ComponentActivity`. The same step gives the test JVM the JDK
+flags Robolectric needs on JDK 17 and later (`--add-exports java.base/jdk.internal.access`,
+`--add-opens java.base/java.io`), so `[test] jvm-args` stays yours. Robolectric runs JUnit 4
+tests: declare `junit:junit` and `org.junit.vintage:junit-vintage-engine` beside it.
 
 ## IntelliJ Platform plugins
 
