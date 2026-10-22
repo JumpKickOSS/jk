@@ -43,10 +43,14 @@ templates that are not a framework (`cli`, `ktor-3`, …).
 | `jk new -t hello -l kotlin` | `kotlin/none/hello` |
 | `jk new -t spring-boot/hello` | `java/spring-boot/hello` when java exists |
 | `jk new -t grails/hello` | miss java/kotlin, hit `groovy/grails/hello` |
+| `jk new -t webapp` | `java/spring-boot/webapp` (no `none/webapp`; java before kotlin) |
+| `jk new -t webapp -l kotlin` | `kotlin/spring-boot/webapp` |
 | `jk new -t java/spring-boot/hello` | exact id |
 
-Bare `name` is always framework `none`. `-t spring-boot` is a **framework**, not a
-template: the engine lists templates under that framework.
+A bare `name` tries framework `none` first, then any framework. Without `-l` it takes the
+first of java → kotlin → groovy that has the name; two frameworks in that one language
+with the same name is ambiguous and the error lists both ids. `-t spring-boot` is a
+**framework**, not a template: the engine lists templates under that framework.
 
 Local path, `owner/repo`, or git/HTTPS URI also work.
 

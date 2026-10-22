@@ -89,12 +89,33 @@ class Giter8TemplateIndexTest {
                 .get()
                 .extracting(TemplateSpec::id)
                 .isEqualTo("java/spring-boot/webmvc");
-        // Two candidates without a lang → sorted candidates, not a generic not-found.
-        org.assertj.core.api.Assertions.assertThatThrownBy(
-                        () -> Giter8TemplateIndex.resolve("webmvc", null, List.of(temp)))
+        assertThat(Giter8TemplateIndex.resolve("webmvc", "kotlin", List.of(temp)))
+                .get()
+                .extracting(TemplateSpec::id)
+                .isEqualTo("kotlin/spring-boot/webmvc");
+        // No lang: java is the default language, so the java template wins over kotlin's.
+        assertThat(Giter8TemplateIndex.resolve("webmvc", null, List.of(temp)))
+                .get()
+                .extracting(TemplateSpec::id)
+                .isEqualTo("java/spring-boot/webmvc");
+    }
+
+    @Test
+    void bare_name_under_two_frameworks_of_one_language_is_ambiguous(@TempDir Path temp) throws Exception {
+        writeTemplate(temp, "java", "spring-boot", "webapp", "Boot", "\"traditional\"");
+        writeTemplate(temp, "java", "quarkus", "webapp", "Quarkus", "\"traditional\"");
+        writeTemplate(temp, "kotlin", "spring-boot", "webapp", "Boot", "\"traditional\"");
+        assertThatThrownBy(() -> Giter8TemplateIndex.resolve("webapp", null, List.of(temp)))
                 .hasMessageContaining("ambiguous")
-                .hasMessageContaining("java/spring-boot/webmvc")
-                .hasMessageContaining("kotlin/spring-boot/webmvc");
+                .hasMessageContaining("java/quarkus/webapp")
+                .hasMessageContaining("java/spring-boot/webapp")
+                .hasMessageNotContaining("kotlin/");
+        assertThatThrownBy(() -> Giter8TemplateIndex.resolve("webapp", "java", List.of(temp)))
+                .hasMessageContaining("ambiguous");
+        assertThat(Giter8TemplateIndex.resolve("webapp", "kotlin", List.of(temp)))
+                .get()
+                .extracting(TemplateSpec::id)
+                .isEqualTo("kotlin/spring-boot/webapp");
     }
 
     @Test
