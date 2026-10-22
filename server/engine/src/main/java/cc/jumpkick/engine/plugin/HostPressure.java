@@ -194,8 +194,11 @@ public final class HostPressure {
         }
     }
 
-    /** Test seam: pin the level; {@code null} reads the host again. */
-    static void forTests(@Nullable Level level) {
+    /**
+     * Test seam: pin the level; {@code null} reads the host again. A test that keeps warm workers
+     * pins {@link Level#NORMAL}, or a loaded host's real pressure sheds them mid-test.
+     */
+    public static void forTests(@Nullable Level level) {
         forTests = level;
     }
 }

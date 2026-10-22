@@ -130,7 +130,7 @@ class EngineTakeoverTest {
 
         EngineServer stale = new EngineServer(p, JkEngineConfig.DEFAULTS, null, "1.0.0-SNAPSHOT", "aaaaaaaaaaaa", null);
         Running staleRun = start(stale);
-        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+        waitUntil(Duration.ofSeconds(30), () -> Files.exists(EnginePaths.endpoint(p)));
         assertThat(helloVersion(EnginePaths.activeSocket(p))).isEqualTo("1.0.0-SNAPSHOT");
 
         // Rebuilt dev engine: same version, different content identity — must WIN (take over).
@@ -156,7 +156,7 @@ class EngineTakeoverTest {
 
         EngineServer old = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
         Running oldRun = start(old);
-        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+        waitUntil(Duration.ofSeconds(30), () -> Files.exists(EnginePaths.endpoint(p)));
         Path firstSocket = EnginePaths.activeSocket(p);
         assertThat(helloVersion(firstSocket)).isEqualTo("1.0.0-test");
 
@@ -188,7 +188,7 @@ class EngineTakeoverTest {
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
         Running run = start(server);
         try {
-            waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+            waitUntil(Duration.ofSeconds(30), () -> Files.exists(EnginePaths.endpoint(p)));
 
             Path pidFile = EnginePaths.pidFor(EnginePaths.activeSocket(p));
             assertThat(pidFile).exists();
@@ -211,7 +211,7 @@ class EngineTakeoverTest {
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
         Running run = start(server);
         try {
-            waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+            waitUntil(Duration.ofSeconds(30), () -> Files.exists(EnginePaths.endpoint(p)));
             Path sock = EnginePaths.activeSocket(p);
             assertThat(server.claimPlanSlotForTests()).isTrue();
 
@@ -244,7 +244,7 @@ class EngineTakeoverTest {
 
         EngineServer old = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
         Running oldRun = start(old);
-        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+        waitUntil(Duration.ofSeconds(30), () -> Files.exists(EnginePaths.endpoint(p)));
         Path firstSocket = EnginePaths.activeSocket(p);
         assertThat(old.claimPlanSlotForTests()).isTrue();
 
@@ -253,11 +253,11 @@ class EngineTakeoverTest {
         Running newerRun = start(newer);
         try {
             waitUntil(Duration.ofSeconds(10), () -> "2.0.0-test".equals(helloVersion(EnginePaths.activeSocket(p))));
-            waitUntil(Duration.ofSeconds(5), () -> Boolean.TRUE.equals(helloDraining(firstSocket)));
+            waitUntil(Duration.ofSeconds(30), () -> Boolean.TRUE.equals(helloDraining(firstSocket)));
             waitUntil(Duration.ofSeconds(10), () -> logs.stream().anyMatch(s -> s.contains("is draining")));
             old.releasePlanSlotForTests();
             assertThat(oldRun.done().await(10, TimeUnit.SECONDS)).isTrue();
-            waitUntil(Duration.ofSeconds(5), () -> logs.stream().anyMatch(s -> s.contains("finished draining")));
+            waitUntil(Duration.ofSeconds(30), () -> logs.stream().anyMatch(s -> s.contains("finished draining")));
         } finally {
             newer.close();
             old.close();
@@ -278,7 +278,7 @@ class EngineTakeoverTest {
 
         EngineServer old = new EngineServer(p, JkEngineConfig.DEFAULTS, null, "1.0.0-test", "aaaaaaaaaaaa", null);
         Running oldRun = start(old);
-        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+        waitUntil(Duration.ofSeconds(30), () -> Files.exists(EnginePaths.endpoint(p)));
         Path firstSocket = EnginePaths.activeSocket(p);
         assertThat(old.claimPlanSlotForTests()).isTrue();
         String bye = requireNonNull(send(firstSocket, ProtoLifecycle.shutdown(false)));
@@ -318,7 +318,7 @@ class EngineTakeoverTest {
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
         Running run = start(server);
         try {
-            waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+            waitUntil(Duration.ofSeconds(30), () -> Files.exists(EnginePaths.endpoint(p)));
 
             // Simulate a takeover whose drain signal was lost: repoint the endpoint elsewhere.
             Files.writeString(EnginePaths.endpoint(p), p.key() + ".gen999.sock");

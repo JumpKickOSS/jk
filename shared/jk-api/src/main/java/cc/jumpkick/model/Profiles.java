@@ -4,6 +4,7 @@ package cc.jumpkick.model;
 import cc.jumpkick.config.EnvValues;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -30,7 +31,8 @@ public record Profiles(Map<String, Profile> byName) {
     }
 
     /**
-     * Walk the inherits chain and merge — javac/JVM args: parent first, child appends. Tag lists:
+     * Walk the inherits chain and merge — javac/JVM args: parent first, child appends; env: a child
+     * entry replaces the parent's of the same name. Tag lists:
      * child replaces parent when the child sets that key; otherwise inherit the parent's list and
      * set-flag. Cycle in the chain → {@link IllegalStateException}.
      */
@@ -58,7 +60,9 @@ public record Profiles(Map<String, Profile> byName) {
         List<String> include = current.includeTagsSet() ? current.includeTags() : parent.includeTags();
         boolean excludeSet = current.excludeTagsSet() || parent.excludeTagsSet();
         List<String> exclude = current.excludeTagsSet() ? current.excludeTags() : parent.excludeTags();
-        return new Profile(name, null, mergedJavac, mergedJvm, include, exclude, includeSet, excludeSet);
+        Map<String, String> mergedEnv = new LinkedHashMap<>(parent.env());
+        mergedEnv.putAll(current.env());
+        return new Profile(name, null, mergedJavac, mergedJvm, include, exclude, includeSet, excludeSet, mergedEnv);
     }
 
     /** Picks the auto-selected profile name based on env, or {@code null}. */

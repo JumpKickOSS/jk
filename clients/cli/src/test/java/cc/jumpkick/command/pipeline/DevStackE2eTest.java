@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cli.engine.EngineSpawn;
+import cc.jumpkick.cli.testing.DevPorts;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
@@ -14,7 +15,6 @@ import cc.jumpkick.node.DiscoveredNode;
 import cc.jumpkick.node.NodeDiscovery;
 import java.io.File;
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -60,8 +60,9 @@ class DevStackE2eTest {
             List<String> events = session.lines();
             assertThat(events.stream().filter(typed("sidecar-started")).map(l -> Jsonl.str(l, "name")))
                     .containsExactly("web");
-            assertThat(events.stream().filter(typed("app-output")).map(l -> Jsonl.str(l, "line")))
-                    .contains("JK_DEV_WEB_URL=http://localhost:" + webPort);
+            assertThat(awaitLine(session, output("JK_DEV_WEB_URL=http://localhost:" + webPort)))
+                    .as("the app sees the dev server's url")
+                    .isPresent();
 
             long firstApp =
                     pid(events.stream().filter(typed("app-started")).findFirst().orElseThrow());
@@ -124,8 +125,7 @@ class DevStackE2eTest {
         try {
             Optional<String> ready = awaitLine(session, typed("dev-ready"));
             assertThat(ready).as("no dev-ready\n%s", session.err()).isPresent();
-            assertThat(session.lines().stream().filter(typed("app-output")).map(l -> Jsonl.str(l, "line")))
-                    .contains("dev on " + webPort);
+            assertThat(awaitLine(session, output("dev on " + webPort))).isPresent();
             assertThat(session.lines().stream().filter(typed("sidecar-started")))
                     .isEmpty();
         } finally {
@@ -327,6 +327,11 @@ class DevStackE2eTest {
         }
     }
 
+    /** An {@code app-output} event whose line is {@code text}: written by its own pump, after or before ready. */
+    private static Predicate<String> output(String text) {
+        return typed("app-output").and(l -> text.equals(Jsonl.str(l, "line")));
+    }
+
     private static Optional<String> awaitLine(Session s, Predicate<String> match) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(WAIT_SECONDS);
         while (System.nanoTime() < deadline) {
@@ -374,8 +379,6 @@ class DevStackE2eTest {
     }
 
     private static int freePort() throws IOException {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            return socket.getLocalPort();
-        }
+        return DevPorts.free();
     }
 }

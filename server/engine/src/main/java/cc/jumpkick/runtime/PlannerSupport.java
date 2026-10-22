@@ -73,6 +73,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -739,13 +740,24 @@ public final class PlannerSupport {
         // live run (PlannerTest feeds in.session().testSelection()), or a widened build
         // (`jk build -A`) forecasts "tests cached" off the unit-tier marker and the whole
         // workspace short-circuits to "up to date" without running the widened tier.
-        return NodeTestStamp.testStampExtras(
+        List<String> extras = new ArrayList<>(NodeTestStamp.testStampExtras(
                 testStampWorkerJars(dir, project),
                 effectiveSelection(SessionContext.current().testSelection(), dir),
                 project,
                 testJvmArgs(project, profileName),
                 dir,
-                identity);
+                identity));
+        extras.addAll(profileEnvExtras(project, profileName));
+        return extras;
+    }
+
+    /** The active profile's {@code env} as stamp extras, sorted: a profile's environment retests the suite. */
+    static List<String> profileEnvExtras(JkBuild project, @Nullable String profileName) {
+        Profile profile = CompileSupport.resolveProfile(project.profiles(), profileName);
+        if (profile == null || profile.env().isEmpty()) return List.of();
+        List<String> out = new ArrayList<>();
+        new TreeMap<>(profile.env()).forEach((k, v) -> out.add("profile-env:" + k + "=" + v));
+        return out;
     }
 
     /**

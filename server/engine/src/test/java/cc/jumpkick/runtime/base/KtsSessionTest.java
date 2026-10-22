@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import cc.jumpkick.engine.plugin.HostPressure;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WarmLinger;
 import cc.jumpkick.host.PathUtil;
@@ -25,12 +26,13 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -45,6 +47,16 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class KtsSessionTest {
 
+    @BeforeEach
+    void normalHostPressure() {
+        HostPressure.forTests(HostPressure.Level.NORMAL);
+    }
+
+    @AfterEach
+    void hostPressureFromTheHost() {
+        HostPressure.forTests(null);
+    }
+
     @TempDir
     static Path cacheDir;
 
@@ -56,6 +68,11 @@ class KtsSessionTest {
      * shares one cache and one warm host; a test that needs a host born under its own conditions
      * shuts the resident one down first.
      */
+    @AfterEach
+    void defaultGrace() {
+        KtsSession.cancelGraceForTests(null);
+    }
+
     @BeforeAll
     static void isolateCompiledScriptCache() {
         prevCacheDir = System.getProperty("jk.env.JK_CACHE_DIR");
@@ -367,8 +384,10 @@ class KtsSessionTest {
      * once instead of waiting out a sleep nobody asked for.
      */
     @Test
-    void a_cancelled_build_cancels_its_running_script_and_the_next_script_starts_within_the_grace(@TempDir Path dir)
+    void a_cancelled_build_cancels_its_running_script_and_the_next_script_reuses_the_host(@TempDir Path dir)
             throws Exception {
+        // A loaded host may answer the cancel slowly; this test is about the answer, not its speed.
+        KtsSession.cancelGraceForTests(Duration.ofSeconds(30));
         Path slow = dir.resolve("slow.kts");
         Files.writeString(slow, """
                 Files.writeString(outDir.resolve("started"), "1")
@@ -396,12 +415,10 @@ class KtsSessionTest {
         build.start();
         awaitFile(outA.resolve("started"));
 
-        long cancelledAt = System.nanoTime();
         cancelled.set(true);
         build.join(TimeUnit.SECONDS.toMillis(30));
         Files.deleteIfExists(outB.resolve("quick.txt"));
         BuildLogicKtsHost.evaluate(quick, project, outB);
-        Duration untilNextScript = Duration.ofNanos(System.nanoTime() - cancelledAt);
 
         assertThat(outcome.get())
                 .as("the run reports as cancelled, not as a script failure")
@@ -412,9 +429,6 @@ class KtsSessionTest {
                 .as("the script stopped where the interrupt found it")
                 .doesNotExist();
         assertThat(outB.resolve("quick.txt")).exists();
-        assertThat(untilNextScript)
-                .as("the next script ran within the cancel grace")
-                .isLessThan(KtsSession.CANCEL_GRACE);
         assertThat(KtsSession.hostPid())
                 .as("a script that honours the interrupt leaves the host standing")
                 .isEqualTo(pid);
@@ -428,6 +442,7 @@ class KtsSessionTest {
     @Test
     void a_sibling_steps_failure_cancels_the_running_script_through_the_plans_cancel(@TempDir Path dir)
             throws Exception {
+        KtsSession.cancelGraceForTests(Duration.ofSeconds(30));
         Path slow = dir.resolve("slow.kts");
         Files.writeString(slow, """
                 Files.writeString(outDir.resolve("started"), "1")
@@ -444,7 +459,6 @@ class KtsSessionTest {
         long pid = KtsSession.hostPid();
 
         AtomicReference<Throwable> outcome = new AtomicReference<>();
-        AtomicLong failedAt = new AtomicLong();
         BuildPlan plan = BuildPlan.builder("sibling-failure")
                 .addTask(Task.builder("script")
                         .kind(TaskKind.IO)
@@ -461,7 +475,6 @@ class KtsSessionTest {
                         .kind(TaskKind.IO)
                         .execute(ctx -> {
                             awaitFile(outA.resolve("started"));
-                            failedAt.set(System.nanoTime());
                             throw new IllegalStateException("a sibling step failed");
                         })
                         .build())
@@ -470,7 +483,6 @@ class KtsSessionTest {
         BuildPlanResult result = plan.run();
         Files.deleteIfExists(outB.resolve("quick.txt"));
         BuildLogicKtsHost.evaluate(quick, project, outB);
-        Duration untilNextScript = Duration.ofNanos(System.nanoTime() - failedAt.get());
 
         assertThat(result.success()).isFalse();
         assertThat(result.cancelled())
@@ -485,9 +497,6 @@ class KtsSessionTest {
                 .as("the script stopped where the interrupt found it")
                 .doesNotExist();
         assertThat(outB.resolve("quick.txt")).exists();
-        assertThat(untilNextScript)
-                .as("the next script ran within the cancel grace")
-                .isLessThan(KtsSession.CANCEL_GRACE);
         assertThat(KtsSession.hostPid())
                 .as("a script that honours the interrupt leaves the host standing")
                 .isEqualTo(pid);

@@ -22,6 +22,9 @@ import org.junit.jupiter.api.io.TempDir;
 class MavenPackageSourceTest {
 
     @RegisterExtension
+    final QuiescedSources sources = new QuiescedSources();
+
+    @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
 
     private final MavenStub upstream = new MavenStub(http);
@@ -81,11 +84,11 @@ class MavenPackageSourceTest {
     void preferredVersion_lock_beats_bom(@TempDir Path tempDir) {
         Cas cas = new Cas(tempDir.resolve("cache"));
         MavenRepo repo = new MavenRepo("local", http.base(), new Http(), cas);
-        MavenPackageSource src = new MavenPackageSource(
+        MavenPackageSource src = sources.track(new MavenPackageSource(
                 RepoGroup.of(repo),
                 new EffectivePomBuilder(repo),
                 Map.of("com.foo:widget", "1.0"),
-                Map.of("com.foo:widget", "2.0"));
+                Map.of("com.foo:widget", "2.0")));
         assertThat(src.preferredVersion("com.foo:widget")).contains("2.0");
         assertThat(src.preferredVersion("com.foo:widget:jar:")).contains("2.0");
         assertThat(src.preferredVersion("com.other:lib")).isEmpty();
@@ -104,13 +107,13 @@ class MavenPackageSourceTest {
         MavenRepo b = new MavenRepo("second", second.toUri(), new Http(), cas);
         RepoGroup repos = new RepoGroup(List.of(a, b));
 
-        MavenPackageSource unpinned = new MavenPackageSource(repos, new EffectivePomBuilder(repos));
+        MavenPackageSource unpinned = sources.track(new MavenPackageSource(repos, new EffectivePomBuilder(repos)));
         assertThat(unpinned.versions("com.foo:widget:jar:"))
                 .as("nothing asked for by name")
                 .containsExactly("1.0");
 
-        MavenPackageSource pinned =
-                new MavenPackageSource(repos, new EffectivePomBuilder(repos), Map.of("com.foo:widget", "2.0"));
+        MavenPackageSource pinned = sources.track(
+                new MavenPackageSource(repos, new EffectivePomBuilder(repos), Map.of("com.foo:widget", "2.0")));
         assertThat(pinned.versions("com.foo:widget:jar:"))
                 .as("the BOM pin is walked to")
                 .contains("2.0");
@@ -134,7 +137,7 @@ class MavenPackageSourceTest {
         MavenRepo a = new MavenRepo("first", first.toUri(), new Http(), cas);
         MavenRepo b = new MavenRepo("second", second.toUri(), new Http(), cas);
         RepoGroup repos = new RepoGroup(List.of(a, b));
-        MavenPackageSource src = new MavenPackageSource(repos, new EffectivePomBuilder(repos));
+        MavenPackageSource src = sources.track(new MavenPackageSource(repos, new EffectivePomBuilder(repos)));
 
         assertThat(src.versions("com.foo:widget:jar:")).containsExactly("1.0");
         assertThat(src.expandedVersions("com.foo:widget:jar:")).containsExactly("1.0");
@@ -170,6 +173,6 @@ class MavenPackageSourceTest {
     private MavenPackageSource newSource(Path tempDir) {
         Cas cas = new Cas(tempDir.resolve("cache"));
         MavenRepo repo = new MavenRepo("local", http.base(), new Http(), cas);
-        return new MavenPackageSource(repo, new EffectivePomBuilder(repo));
+        return sources.track(new MavenPackageSource(repo, new EffectivePomBuilder(repo)));
     }
 }

@@ -30,6 +30,9 @@ import org.junit.jupiter.api.io.TempDir;
 class PubGrubResolverTest {
 
     @RegisterExtension
+    final QuiescedSources sources = new QuiescedSources();
+
+    @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
 
     private final MavenStub upstream = new MavenStub(http);
@@ -287,6 +290,6 @@ class PubGrubResolverTest {
     private MavenPackageSource newSource(Path tempDir) {
         Cas cas = new Cas(tempDir.resolve("cache"));
         MavenRepo repo = new MavenRepo("local", http.base(), new Http(), cas);
-        return new MavenPackageSource(repo, new EffectivePomBuilder(repo));
+        return sources.track(new MavenPackageSource(repo, new EffectivePomBuilder(repo)));
     }
 }

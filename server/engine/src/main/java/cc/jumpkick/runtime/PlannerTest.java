@@ -644,8 +644,9 @@ public final class PlannerTest {
         // nested-engine CLI modules enrich with engine + every PluginJar so the stamp
         // matches what the suite actually loads — same set forecast uses.
         Map<String, String> workerJars = testStampWorkerJars(in.dir(), projectUnderTest);
-        WorkerEnv testEnv =
-                TestLaunch.withFastTierWalls(TestLaunch.testEnvironment(ctx, in, projectUnderTest), effectiveSel);
+        Map<String, String> profileEnv = TestLaunch.profileEnv(projectUnderTest, in.profileName());
+        WorkerEnv testEnv = TestLaunch.withFastTierWalls(
+                TestLaunch.testEnvironment(ctx, in, projectUnderTest).with(profileEnv), effectiveSel);
         List<String> testJvmArgs = TestLaunch.testJvmArgs(ctx, in, projectUnderTest, pluginDecls);
         String stampKey = testStampKey(
                 ctx, in, projectUnderTest, effectiveSel, affected, workerJars, testJvmArgs, testSrcs, testRtCp);
@@ -805,6 +806,7 @@ public final class PlannerTest {
                         in.dir(),
                         ClasspathFingerprint.ON_DISK),
                 compileTestKeys(ctx)));
+        extras.addAll(PlannerSupport.profileEnvExtras(projectUnderTest, in.profileName()));
         if (affected != null && !affected.stampToken().isBlank()) {
             extras.add("affected:" + affected.stampToken());
         }
