@@ -38,7 +38,9 @@ packaging). DevTools is picked up by [`jk watch run` / `jk dev`](run.md).
 
 `META-INF/build-info.properties` (what `BuildProperties` and the `/actuator/info` endpoint read)
 and `git.properties` (`GitProperties`) come from the core [`[build-info]` table](packaging.md#build-info-gitproperties-and-boots-build-infoproperties),
-which writes both into the classes tree the Boot jar nests.
+which writes both into the classes tree the Boot jar nests. The loader and jarmode tools the Boot
+jar nests are pinned in `jk-lock.toml` at the locked Boot version, by digest, as is each Kotlin
+compiler plugin `[spring-boot]` adds to a Kotlin module ([Lockfile](lockfile.md#plugin-tools)).
 
 The processor starts the application context in AOT mode and then generates code from it. When
 the step fails, its message says which of the two failed and names the root cause first: the

@@ -360,6 +360,9 @@ minified = true
 # r8-version = "9.5.28"     # default: the com.android.tools:r8 release that shrinks
 ```
 
+The r8 jar is a `[[tool]]` row in `jk-lock.toml`, pinned by digest at `jk lock`
+([Lockfile](lockfile.md#plugin-tools)).
+
 JumpKick derives keep rules from by-name indexes (`META-INF/services/*` and
 `META-INF/<vendor>/<interface>/<impl>` markers) and composes GraalVM metadata published
 under `META-INF/native-image`. The effective rule set is written next to the artifact as
