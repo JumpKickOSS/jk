@@ -52,6 +52,8 @@ import org.jspecify.annotations.Nullable;
 public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExtension, TestExtension {
 
     static final String AUGMENT_STEP = "quarkus-augment";
+
+    static final String NATIVE_SOURCES = "native-sources";
     static final String TEST_MODEL_STEP = "quarkus-test-model";
     static final String TEST_MODEL_DIR = "test-model";
     /** The file the engine reads for the test JVM's arguments, under {@link #TEST_MODEL_DIR}. */
@@ -77,7 +79,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         // Declared as an output so the engine can find it and the action cache covers it.
         ctx.named(AUGMENT_STEP)
                 .inputs(In.classes(), In.runtimeEntries(), In.config(), In.repositories())
-                .outputs("quarkus-app", "native-sources")
+                .outputs("quarkus-app", NATIVE_SOURCES)
                 .run(QuarkusPlugin::runAugment);
     }
 
@@ -104,7 +106,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         }
 
         Path outRoot = exec.outputDir("quarkus-app");
-        Path nativeSourcesOut = exec.outputDir("native-sources");
+        Path nativeSourcesOut = exec.outputDir(NATIVE_SOURCES);
         Path listFile = writeRuntimeList(exec, exec.scratch().resolve("runtime-jars.tsv"));
         List<Path> cp = toolClasspath(exec);
 
@@ -400,15 +402,21 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         }
     }
 
-    /** Uber-jar runner written by augment ({@code quarkus-uber.jar} staging or {@code *-runner.jar}). */
+    /**
+     * Uber-jar runner written by augment ({@code quarkus-uber.jar} staging or {@code *-runner.jar}).
+     * Never the {@code *-runner.jar} in {@code native-sources/}: that is native-image's input, and a
+     * fast-jar build that declares {@code [native]} has one.
+     */
     private static @Nullable Path findUberJar(Path root) throws IOException {
         if (!Files.isDirectory(root)) return null;
         Path staged = root.resolve("quarkus-uber.jar");
         if (Files.isRegularFile(staged)) return staged;
+        Path nativeSources = root.resolve(NATIVE_SOURCES);
         try (Stream<Path> walk = Files.walk(root, 5)) {
             // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
             // the path for a fresh stat even for entries the name test discards.
             return walk.filter(p -> p.getFileName().toString().endsWith("-runner.jar"))
+                    .filter(p -> !p.startsWith(nativeSources))
                     .filter(Files::isRegularFile)
                     .findFirst()
                     .orElse(null);

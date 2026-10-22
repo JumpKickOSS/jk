@@ -77,6 +77,23 @@ class QuarkusPluginTest {
     }
 
     @Test
+    void the_native_sources_runner_is_not_taken_for_an_uber_jar(@TempDir Path dir) throws Exception {
+        Path augment = dir.resolve("augment");
+        Path app = augment.resolve("quarkus-app/quarkus-app");
+        Files.createDirectories(app.resolve("lib/main"));
+        Files.writeString(app.resolve("quarkus-run.jar"), "RUN");
+        Path nativeSources = Files.createDirectories(augment.resolve("native-sources/lib"));
+        Files.writeString(nativeSources.resolveSibling("hello-runner.jar"), "NATIVE INPUT");
+
+        Path target = dir.resolve("target");
+        Path outJar = target.resolve("hello.jar");
+        QuarkusPlugin.produceFastJar(fake(dir, outJar, augment));
+
+        assertThat(outJar).hasContent("RUN");
+        assertThat(target.resolve("quarkus-app/quarkus-run.jar")).exists();
+    }
+
+    @Test
     void uber_jar_wins_and_needs_no_siblings(@TempDir Path dir) throws Exception {
         Path augment = dir.resolve("augment");
         Files.createDirectories(augment);
