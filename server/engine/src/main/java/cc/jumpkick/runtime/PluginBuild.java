@@ -524,30 +524,12 @@ public final class PluginBuild {
             var resolver = new ClasspathResolver(cas);
             for (var entry : resolver.entriesFor(
                     memberLock(lockFile, projectDir), ClasspathResolver.RUNTIME, true, project, projectDir)) {
-                var a = entry.artifact();
-                String ext = entry.container() != null ? ".aar" : ".jar";
-                out.add(new ProdEntry(
-                        a.moduleArtifact() + "-" + a.version() + ext,
-                        entry.jar(),
-                        a.version().contains("SNAPSHOT"),
-                        entry.container(),
-                        a.moduleGroup(),
-                        a.moduleArtifact(),
-                        a.version()));
+                out.add(lockEntry(entry));
             }
         }
         try {
             var siblings = WorkspaceClasspath.resolve(projectDir, project, Set.of(Scope.EXPORT, Scope.MAIN));
-            for (Path jar : siblings.jars()) {
-                Path container = null;
-                String name = jar.getFileName().toString();
-                Path aar = jar.resolveSibling(name.substring(0, name.length() - ".jar".length()) + ".aar");
-                if (Files.isRegularFile(aar)) {
-                    container = ExplodedArchives.explodeFile(cas, aar);
-                    name = aar.getFileName().toString();
-                }
-                out.add(new ProdEntry(name, Files.isRegularFile(jar) ? jar : null, true, container));
-            }
+            for (Path jar : siblings.jars()) out.add(siblingEntry(cas, jar));
         } catch (Exception e) {
             /* no workspace — fine */
             Log.debug("ProdEntry: no workspace", e);
@@ -555,9 +537,36 @@ public final class PluginBuild {
         return out;
     }
 
+    /** A lock row as an entry: an AAR rides as its exploded container, named {@code .aar}. */
+    private static ProdEntry lockEntry(ClasspathResolver.Entry entry) {
+        var a = entry.artifact();
+        String ext = entry.container() != null ? ".aar" : ".jar";
+        return new ProdEntry(
+                a.moduleArtifact() + "-" + a.version() + ext,
+                entry.jar(),
+                a.version().contains("SNAPSHOT"),
+                entry.container(),
+                a.moduleGroup(),
+                a.moduleArtifact(),
+                a.version());
+    }
+
+    /** A sibling's jar as an entry, with its AAR's exploded container when it packaged one beside the jar. */
+    private static ProdEntry siblingEntry(Cas cas, Path jar) throws IOException {
+        String name = jar.getFileName().toString();
+        Path aar = jar.resolveSibling(name.substring(0, name.length() - ".jar".length()) + ".aar");
+        if (!Files.isRegularFile(aar)) return new ProdEntry(name, Files.isRegularFile(jar) ? jar : null, true, null);
+        return new ProdEntry(
+                aar.getFileName().toString(),
+                Files.isRegularFile(jar) ? jar : null,
+                true,
+                ExplodedArchives.explodeFile(cas, aar));
+    }
+
     /**
      * The test runtime entries a step sees ({@code In.testRuntimeEntries()}): the lock's test
-     * closure in lock order, then the workspace siblings the test scopes reach. What the forked
+     * closure in lock order, then the workspace siblings the test scopes reach, an AAR as its
+     * exploded container as in {@link #productionEntries}. What the forked
      * test JVM's classpath is made of, as entries with coordinates; the rows resolve against
      * {@code cas} as in {@link #productionEntries}, a row the store lacks left out.
      */
@@ -568,23 +577,13 @@ public final class PluginBuild {
             var resolver = new ClasspathResolver(cas);
             for (var entry :
                     resolver.testRuntimeEntriesFor(memberLock(lockFile, projectDir), false, project, projectDir)) {
-                var a = entry.artifact();
-                out.add(new ProdEntry(
-                        a.moduleArtifact() + "-" + a.version() + ".jar",
-                        entry.jar(),
-                        a.version().contains("SNAPSHOT"),
-                        entry.container(),
-                        a.moduleGroup(),
-                        a.moduleArtifact(),
-                        a.version()));
+                out.add(lockEntry(entry));
             }
         }
         try {
             var siblings = WorkspaceClasspath.resolve(
                     projectDir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
-            for (Path jar : siblings.siblingClosureJars()) {
-                out.add(new ProdEntry(jar.getFileName().toString(), Files.isRegularFile(jar) ? jar : null, true, null));
-            }
+            for (Path jar : siblings.siblingClosureJars()) out.add(siblingEntry(cas, jar));
         } catch (Exception e) {
             /* no workspace — fine */
             Log.debug("testRuntimeEntries: no workspace", e);

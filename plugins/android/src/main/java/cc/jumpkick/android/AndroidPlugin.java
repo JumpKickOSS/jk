@@ -57,11 +57,17 @@ public final class AndroidPlugin implements Plugin, BuildPlugin {
                 .outputs("gen", "packaged", "raw-res")
                 .contributesSources("gen")
                 .run(ResourceStep::run));
-        // Robolectric wiring: a test_config.properties dir on the module's
-        // test runtime classpath, pointing at the merged manifest + linked resources.
+        // Robolectric wiring: a test_config.properties dir on the module's test runtime
+        // classpath, pointing at the unit-test manifest (merged over the test runtime closure)
+        // and the linked resources.
         ctx.task(TaskSpec.named("android-test-config")
-                .inputs(In.stepOutput("android-manifest"), In.stepOutput("android-res"), In.config())
-                .outputs("cp")
+                .inputs(
+                        In.projectFiles("AndroidManifest.xml"),
+                        In.projectFiles("src/main/AndroidManifest.xml"),
+                        In.testRuntimeEntries(),
+                        In.stepOutput("android-res"),
+                        In.config())
+                .outputs("cp", "manifest")
                 .contributesTestClasspath("cp")
                 .run(TestConfigStep::run));
         if (ctx.config().bool("build-config", false)) {
