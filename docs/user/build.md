@@ -269,6 +269,11 @@ not reach a compiler worker or your test code by accident. Workers inherit only:
   shell running `jk` over the engine's own — a JavaFX or Swing suite opens the display of the
   terminal that ran `jk test`, and `xvfb-run jk test` hands a headless host a virtual one
   ([Test](test.md#a-suite-that-needs-a-display))
+- the container runtime's variables `DOCKER_HOST`, `DOCKER_CONTEXT`, `DOCKER_CONFIG`,
+  `DOCKER_CERT_PATH`, `DOCKER_TLS_VERIFY` and Testcontainers' `TESTCONTAINERS_HOST_OVERRIDE`,
+  `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE`, `TESTCONTAINERS_RYUK_DISABLED`,
+  `TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED`, the shell running `jk` over the engine's own — a
+  Testcontainers suite and `jk image` reach the Docker, Podman or remote daemon that terminal names
 - on Windows also `USERPROFILE`, `SystemRoot`, `SystemDrive`, `windir`, `PATHEXT`, `COMSPEC`,
   `NUMBER_OF_PROCESSORS`
 - the `JK_*` settings a worker reads: the product roots (`JK_HOME`, `JK_STATE_DIR`,
@@ -278,12 +283,12 @@ not reach a compiler worker or your test code by accident. Workers inherit only:
   tuning (`JK_COMPILE_PHASES`, `JK_FILE_OPS`,
   `JK_ANDROID_FEED_URL`)
 
-Everything else — `SSH_AUTH_SOCK`, `DOCKER_HOST`, `GITHUB_TOKEN`, a repository's
-`JK_REPO_*_TOKEN` — is dropped unless the module asks for it:
+Everything else — `SSH_AUTH_SOCK`, `GITHUB_TOKEN`, a repository's `JK_REPO_*_TOKEN` — is
+dropped unless the module asks for it:
 
 ```toml
 [env]
-vars = ["DOCKER_HOST", { TZ = "UTC" }]   # forward a name, or set a value
+vars = ["SSH_AUTH_SOCK", { TZ = "UTC" }]   # forward a name, or set a value
 ```
 
 `vars` has the `[test] env` shape: a bare name forwards the caller's value when it is set, a

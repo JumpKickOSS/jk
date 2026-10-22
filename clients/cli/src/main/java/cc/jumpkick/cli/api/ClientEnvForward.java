@@ -47,6 +47,10 @@ import org.jspecify.annotations.Nullable;
  * has, and {@code xvfb-run jk test} hands a headless host a virtual one, as it does for Surefire.
  * Like the proxy they reach every forked worker over the engine's own values and enter no key.
  *
+ * <p><b>The container runtime's variables ride too</b> — {@link BuildEnv#CONTAINER}, by exact name:
+ * {@code DOCKER_HOST} and the Testcontainers overrides a Podman or remote daemon needs. A
+ * Testcontainers suite and {@code jk image} talk to the runtime this shell names, the same way.
+ *
  * <p><b>The managed JDK root rides too</b> — {@link BuildEnv#JDK_ROOT}, by exact name. The client
  * pre-flights a missing JDK into the root of the shell running {@code jk}; the engine's own
  * ensure-jdk must then look in that same root, not in the one of the shell that started the
@@ -81,7 +85,7 @@ public final class ClientEnvForward {
 
     /**
      * Those of {@link #names()} the caller actually has, in listed order, then the
-     * {@link BuildEnv#PROXY} and {@link BuildEnv#DISPLAY} variables it has, the
+     * {@link BuildEnv#SHELL} variables it has (proxy, display, container runtime), the
      * {@link BuildEnv#JDK_ROOT} and {@link BuildEnv#NODE} it has, then every {@link #REPO_PREFIX} and
      * {@link BuildEnv#NODE_PREFIXES} variable.
      * {@code System::getenv} is passed explicitly — the client resolves from its own shell, never
@@ -90,8 +94,7 @@ public final class ClientEnvForward {
      */
     public static Map<String, String> resolve() {
         Map<String, String> out = new LinkedHashMap<>(BuildEnv.machine(System::getenv));
-        out.putAll(BuildEnv.resolve(BuildEnv.PROXY, System::getenv));
-        out.putAll(BuildEnv.resolve(BuildEnv.DISPLAY, System::getenv));
+        out.putAll(BuildEnv.resolve(BuildEnv.SHELL, System::getenv));
         out.putAll(BuildEnv.resolve(BuildEnv.JDK_ROOT, System::getenv));
         out.putAll(BuildEnv.resolve(BuildEnv.NODE, System::getenv));
         for (Map.Entry<String, String> e : System.getenv().entrySet()) {
@@ -120,8 +123,7 @@ public final class ClientEnvForward {
         return name.startsWith(REPO_PREFIX)
                 || nodePrefixed(name)
                 || BuildEnv.NODE.contains(name)
-                || BuildEnv.PROXY.contains(name)
-                || BuildEnv.DISPLAY.contains(name)
+                || BuildEnv.SHELL.contains(name)
                 || BuildEnv.JDK_ROOT.contains(name);
     }
 

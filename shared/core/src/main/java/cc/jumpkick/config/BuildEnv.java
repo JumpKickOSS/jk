@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.Function;
+import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -115,6 +116,32 @@ public final class BuildEnv {
     public static final List<String> DISPLAY = List.of("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY");
 
     /**
+     * The variables that name the container runtime this machine talks to — Docker's client
+     * settings and the Testcontainers overrides a Podman, Colima or remote daemon needs. Where the
+     * machine runs containers, like {@link #DISPLAY} is where it draws, and read the same way: the
+     * request's shell first, the engine's own environment second, so a Testcontainers suite and
+     * {@code jk image} reach the runtime the terminal running {@code jk} names. They enter no action
+     * key; a suite that starts containers is not hermetic with or without them.
+     */
+    public static final List<String> CONTAINER = List.of(
+            "DOCKER_HOST",
+            "DOCKER_CONTEXT",
+            "DOCKER_CONFIG",
+            "DOCKER_CERT_PATH",
+            "DOCKER_TLS_VERIFY",
+            "TESTCONTAINERS_HOST_OVERRIDE",
+            "TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE",
+            "TESTCONTAINERS_RYUK_DISABLED",
+            "TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED");
+
+    /**
+     * Every variable that rides each request by exact name to the workers it forks, the request's
+     * value over the engine's: {@link #PROXY}, {@link #DISPLAY} and {@link #CONTAINER}.
+     */
+    public static final List<String> SHELL =
+            Stream.of(PROXY, DISPLAY, CONTAINER).flatMap(List::stream).toList();
+
+    /**
      * The one variable that says where this machine keeps the JDKs jk manages ({@code JK_JDKS_DIR}).
      * Forwarded by exact name like {@link #PROXY}, and for the same reason: the engine is a daemon,
      * so left to its own environment it installs and resolves under whichever root the shell that
@@ -159,16 +186,14 @@ public final class BuildEnv {
     }
 
     /**
-     * {@link #PROXY} and {@link #DISPLAY} values the request carried — the shell running {@code jk},
-     * and nothing of the engine's own — omitting names it did not. What a forked worker is handed
+     * {@link #SHELL} values the request carried — the shell running {@code jk}, and nothing of the
+     * engine's own — omitting names it did not. What a forked worker is handed
      * over the engine's inherited values, so a developer who moves networks and re-exports {@code
      * https_proxy} has the next build, and its compilers, plugins and test JVMs, go through the new
      * one, and a suite opens the display of the terminal running {@code jk}. Empty off a request.
      */
     public static Map<String, String> fromRequest() {
-        Map<String, String> out = new LinkedHashMap<>(resolve(PROXY, clientEnv()::get));
-        out.putAll(resolve(DISPLAY, clientEnv()::get));
-        return Collections.unmodifiableMap(out);
+        return Collections.unmodifiableMap(resolve(SHELL, clientEnv()::get));
     }
 
     /** {@code names} resolved through {@code env}, in listed order, omitting those it does not have. */
