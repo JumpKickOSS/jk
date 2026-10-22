@@ -10,7 +10,6 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.testing.SysProps;
@@ -256,7 +255,9 @@ class AndroidSpikeTest {
         Cas cas = new Cas(CACHE);
         // The platform is PROVIDED via the manifest's [[contribute.provided-classpath]] — the
         // lock carries no platform artifact at all.
-        LockfileWriter.write(
+        ToolLockFixtures.writeWithTools(
+                project,
+                CACHE,
                 new Lockfile(
                         Lockfile.CURRENT_VERSION,
                         "test",
@@ -264,8 +265,7 @@ class AndroidSpikeTest {
                         null,
                         null,
                         List.of(),
-                        List.of()),
-                project.resolve("jk-lock.toml"));
+                        List.of()));
 
         BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 project,

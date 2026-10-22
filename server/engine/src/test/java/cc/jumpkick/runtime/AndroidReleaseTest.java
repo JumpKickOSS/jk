@@ -9,7 +9,6 @@ import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -64,7 +63,9 @@ class AndroidReleaseTest {
         writeApp(app);
         acceptLicenses();
 
-        LockfileWriter.write(
+        ToolLockFixtures.writeWithTools(
+                app,
+                cache,
                 new Lockfile(
                         Lockfile.CURRENT_VERSION,
                         "test",
@@ -72,8 +73,7 @@ class AndroidReleaseTest {
                         null,
                         null,
                         List.of(),
-                        List.of()),
-                app.resolve("jk-lock.toml"));
+                        List.of()));
         BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                         app,
                         cache,

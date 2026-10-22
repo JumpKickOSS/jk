@@ -8,7 +8,6 @@ import cc.jumpkick.androidsdk.AndroidSdk;
 import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.testing.SysProps;
@@ -126,7 +125,9 @@ class AndroidWorkspaceTest {
     }
 
     private static BuildPlanResult build(Path module, Path cache) throws Exception {
-        LockfileWriter.write(
+        ToolLockFixtures.writeWithTools(
+                module,
+                cache,
                 new Lockfile(
                         Lockfile.CURRENT_VERSION,
                         "test",
@@ -134,8 +135,7 @@ class AndroidWorkspaceTest {
                         null,
                         null,
                         List.of(),
-                        List.of()),
-                module.resolve("jk-lock.toml"));
+                        List.of()));
         BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 module,
                 cache,
