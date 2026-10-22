@@ -94,8 +94,8 @@ metadata. `scripts/test-publish-maven-repo.sh` runs the merge against a fixture,
 
 `jk-guards-junit` (the guard-test library a project's `src/guard` suite compiles against) rides the
 same path as the worker jars: `jk install` shelves `cc/jumpkick/jk-guards-junit/<ver>/` (jar + POM)
-into `store/repos/jk-local`, the engine copies it from `~/.m2` when the store lacks it (`jk sync`,
-or the first `compile-guard`), and the lock pins it under `[[plugin]]` at jk's version.
+into `store/repos/jk-local`, the first `compile-guard` copies it from `~/.m2` when the store lacks
+it, and the lock pins it under `[[plugin]]` at jk's version.
 
 ## Why not only `releases/`?
 

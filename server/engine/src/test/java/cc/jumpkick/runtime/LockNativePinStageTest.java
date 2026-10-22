@@ -175,7 +175,8 @@ class LockNativePinStageTest {
                 new AtomicInteger(),
                 new AtomicInteger(),
                 null,
-                false));
+                false,
+                true));
         assertThat(result.success()).as("sync errors: %s", result.errors()).isTrue();
         assertThat(extracted.resolve(".complete")).exists();
 

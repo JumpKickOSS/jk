@@ -14,7 +14,6 @@ import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
@@ -34,7 +33,6 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.VariantApply;
-import cc.jumpkick.resolver.CacheSync;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.run.BuildStage;
@@ -262,53 +260,14 @@ public final class PlannerSetup {
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.RESOLVE_DEPS)
                 .stage(BuildStage.RESOLVE)
-                .label("Syncing")
+                .label("Classpath")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_BUILD)
                 .weight(() -> plan.get().sync())
-                .ticks(() -> {
-                    try {
-                        return LockfileReader.read(in.lockFile()).artifacts().size();
-                    } catch (Exception ignored) {
-                        return 10;
-                    }
-                })
+                .ticks(1)
                 .execute(ctx -> {
-                    Lockfile lock = ctx.require(LOCKFILE);
-                    JkBuild project = ctx.require(PROJECT);
-                    boolean mirrorToM2 = project.project().m2integration();
-                    // Ticks are already counted up front by estimateTicks (artifact
-                    // count); progress(1)-per-artifact below fills it.
-                    var observer = new CacheSync.ProgressObserver() {
-                        @Override
-                        public void fetched(Lockfile.Artifact pkg) {
-                            ctx.label("fetched " + pkg.displayCoord());
-                            ctx.progress(1);
-                        }
-
-                        @Override
-                        public void upToDate(Lockfile.Artifact pkg) {
-                            ctx.progress(1);
-                        }
-
-                        @Override
-                        public void skipped(Lockfile.Artifact pkg) {
-                            ctx.progress(1);
-                        }
-
-                        @Override
-                        public void failed(Lockfile.Artifact pkg, @Nullable String err) {
-                            ctx.error("dep", pkg.displayCoord() + " — " + err);
-                            ctx.progress(1);
-                        }
-                    };
-                    boolean refresh = in.session().config().forceOr(false);
-                    var report = new CacheSync(cas, new Http(), mirrorToM2).sync(lock, observer, refresh);
-                    if (report.hasErrors()) throw new RuntimeException("dep sync had errors");
-                    // Classpaths must be resolved HERE, after jars are on disk. parse-build used
-                    // to snapshot them first; on a cold store ClasspathResolver soft-skipped
-                    // missing rows and compile saw an empty CP → javac "package does not exist"
-                    // even though resolve-deps then fetched everything successfully.
+                    // The workspace's SYNC phase put every locked artifact on disk before this plan
+                    // ran; this step derives the module's classpaths from them.
                     ctx.label("resolve classpath");
                     try {
                         publishClasspaths(ctx, in, cas, cx.tools());
@@ -324,8 +283,8 @@ public final class PlannerSetup {
     }
 
     /**
-     * Lock + workspace sibling classpaths for compile / test / processors. Called only after
-     * {@code resolve-deps} sync so every checksummed lock row is on disk ({@code requirePresent}).
+     * Lock + workspace sibling classpaths for compile / test / processors. Called only after the
+     * SYNC phase, so every checksummed lock row is on disk ({@code requirePresent}).
      *
      * <p>Siblings enter the compile classpaths through their classes trees, never their jars: a
      * tree is whole once the sibling has compiled, so this module is admitted — and reaches this
