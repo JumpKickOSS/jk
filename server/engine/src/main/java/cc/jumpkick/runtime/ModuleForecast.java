@@ -10,7 +10,6 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
@@ -859,10 +858,9 @@ final class ModuleForecast {
         List<Path> ktSrc = prepared.ktSrc();
         List<Path> gvSrc = prepared.gvSrc();
         // ---- package-jar ----
-        // Tokens MUST match BuildPlanner.packageJarStep (target/classes/sbom/manifest).
-        // After jk clean the classes tree is gone: reconstruct the classes: token from the
-        // compile action record + resource roots (same merge the live build produces) so we
-        // still hit the packaging action cache instead of forecasting perpetual "repackage".
+        // The key is PackagingKeys.packageJar's, the live step's. After jk clean the classes tree
+        // is gone: its token is projected from the compile record and the resource roots (the
+        // same merge the live build produces), so a wiped module still hits the packaging cache.
         boolean noSources = mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty();
         if (noSources && (Files.isRegularFile(layout.mainJar()) || project.isWorkspaceRoot())) {
             // A source-less member packages an empty jar (its copied resources) that sibling
@@ -888,7 +886,6 @@ final class ModuleForecast {
                     project, dir, layout, cache, lockFile, cas, javaHome, plugin, actionCache));
         } else {
             Path jar = layout.mainJar();
-            String mainClass = PackagingKeys.mainClass(dir, project);
             long tp = Perf.start();
             byte[] sbom = null;
             if (project.isApplication()) {
@@ -907,20 +904,13 @@ final class ModuleForecast {
                 classesTok = PackagingKeys.classesTokenForPackage(
                         dir, compact, layout, project, actionCache, compileMainKey, knownResourceDrift);
             }
-            // The live package-jar's tokens exactly. A worker's vendored sibling class dirs are the
-            // declared set the build lists, each read as the tree the build restores.
-            List<Path> contributed = new ArrayList<>(PlannerSupport.packagedDirs(pkgDecls, layout, project));
-            contributed.addAll(PlannerSupport.workerCodecClassDirs(dir, project));
-            String contribTok = PlannerSupport.contributionsToken(contributed, restored.identity());
-            List<String> tokens = List.of(
-                    "classes:" + classesTok,
-                    "contrib:" + contribTok,
-                    "main:" + (mainClass == null ? "" : mainClass),
-                    "sbom:" + (sbom == null ? "" : Hashing.sha256Hex(sbom)),
-                    "manifest:" + project.manifest());
+            // A worker's vendored sibling class dirs are the declared set the build lists, each
+            // read as the tree the build restores.
+            String contribTok = PlannerSupport.contributionsToken(
+                    PackagingKeys.packagedContributions(pkgDecls, layout, dir, project), restored.identity());
+            String pkgKey = PackagingKeys.packageJar(jar, dir, project, classesTok, contribTok, sbom)
+                    .key();
             Perf.end("  package-fingerprint", tp);
-            String pkgKey = ActionKey.forArtifact(
-                    ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, jar), BuildIdentity.cacheKeyVersion(), tokens);
             boolean hit = ForecastSteps.present(actionCache, pkgKey);
             // A source-less module's jar (its copied resources) is one sibling classpaths demand:
             // forecasting nothing would leave it unscheduled while its consumers fail on it, so a

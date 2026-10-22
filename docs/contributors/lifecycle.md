@@ -77,5 +77,6 @@ engine verb and no per-goal request type.
   workspace preflight. Its `parse-lock` writes a missing or stale lock (the IDE's first import
   relies on that); a build's reads the lock its preflight freshened.
 - The lifecycle's forecast (`ModuleForecast`, behind `jk explain` and the up-to-date shortcut)
-  derives its own step list and re-derives some steps' cache keys beside the plan it forecasts;
-  `forecast-key-parity` holds each such pair to the same token prefixes.
+  derives its own step list beside the plan it forecasts. Its cache keys are not its own: every
+  keyed step it prices goes through the key owner its live step calls (`PackagingKeys`,
+  `GuardKeys`, the shared compile requests), which `forecast-key-parity` enforces.

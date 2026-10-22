@@ -27,12 +27,13 @@ final class EngineRules {
 
     private static final String ENGINE_MAIN = "server/engine/src/main/java/**/*.java";
 
-    /** A build site and its forecast twin, addressed as {@code <file>|<key variable>}. */
-    private static final List<String[]> PAIRS =
-            List.<String[]>of(new String[] {"package-jar", "PlannerPackage.java|pkgKey", "ModuleForecast.java|pkgKey"});
-
     /** One body, both callers: the owner site to the {@code <file>|<literal>} reach points. */
     private static final Map<String, List<String>> SHARED = Map.of(
+            "PackagingKeys.java|jarKey",
+                    List.of(
+                            "package-jar",
+                            "PlannerPackage.java|PackagingKeys.packageJar(",
+                            "ModuleForecast.java|PackagingKeys.packageJar("),
             "PackagingKeys.java|asmKey",
                     List.of(
                             "package-assembly",
@@ -110,8 +111,6 @@ final class EngineRules {
             "LocalProjectBuilder.java", 1,
             "ScriptPlans.java", 1);
 
-    private static final String BAG = "List<String> tokens = List.of(";
-
     /** Engine main sources by simple file name, comments blanked. */
     private static final class Sources {
         final Map<String, String> byName = new HashMap<>();
@@ -145,112 +144,6 @@ final class EngineRules {
         v.add(new TextSite(path, 0, key), detail);
     }
 
-    private static String balancedFrom(String src, char open, char close, int at) {
-        int depth = 0;
-        boolean inStr = false;
-        boolean inChar = false;
-        boolean esc = false;
-        for (int i = at; i < src.length(); i++) {
-            char c = src.charAt(i);
-            if (esc) {
-                esc = false;
-            } else if (inStr || inChar) {
-                if (c == '\\') esc = true;
-                else if (inStr && c == '"') inStr = false;
-                else if (inChar && c == '\'') inChar = false;
-            } else if (c == '"') {
-                inStr = true;
-            } else if (c == '\'') {
-                inChar = true;
-            } else if (c == open) {
-                depth++;
-            } else if (c == close && --depth == 0) {
-                return src.substring(at + 1, i);
-            }
-        }
-        throw new IllegalStateException("unbalanced '" + open + "' at offset " + at);
-    }
-
-    private static List<String> splitTopLevel(String args) {
-        List<String> out = new ArrayList<>();
-        StringBuilder sb = new StringBuilder();
-        int depth = 0;
-        boolean inStr = false;
-        boolean inChar = false;
-        boolean esc = false;
-        for (char c : args.toCharArray()) {
-            if (esc) {
-                esc = false;
-            } else if (inStr || inChar) {
-                if (c == '\\') esc = true;
-                else if (inStr && c == '"') inStr = false;
-                else if (inChar && c == '\'') inChar = false;
-            } else {
-                if (c == '"') inStr = true;
-                else if (c == '\'') inChar = true;
-                else if (c == '(' || c == '[' || c == '{') depth++;
-                else if (c == ')' || c == ']' || c == '}') depth--;
-                else if (c == ',' && depth == 0) {
-                    out.add(sb.toString());
-                    sb.setLength(0);
-                    continue;
-                }
-            }
-            sb.append(c);
-        }
-        if (!sb.toString().isBlank()) out.add(sb.toString());
-        return out;
-    }
-
-    /** The {@code "prefix:"} literals opening each token of {@code siteId}'s bag; faults go to {@code v}. */
-    private static TreeSet<String> tokenPrefixes(Sources src, String siteId, Violations v) {
-        String file = siteId.substring(0, siteId.indexOf('|'));
-        String keyVar = siteId.substring(siteId.indexOf('|') + 1);
-        String code = src.read(file);
-        TreeSet<String> out = new TreeSet<>();
-        int callAt = code.indexOf("String " + keyVar + " = ActionKey.forArtifact(");
-        if (callAt < 0) {
-            fault(v, src.path(file), siteId, "declared site " + siteId + " no longer exists; update the table");
-            return out;
-        }
-        int bagAt = code.lastIndexOf(BAG, callAt);
-        if (bagAt < 0) {
-            fault(
-                    v,
-                    src.path(file),
-                    siteId,
-                    siteId + " no longer keys a `" + BAG
-                            + "…)` bag — a bag this cannot read is a bag it cannot compare");
-            return out;
-        }
-        String between = code.substring(bagAt, callAt);
-        if (between.contains("tokens.add") || between.contains("ActionKey.forArtifact(")) {
-            fault(
-                    v,
-                    src.path(file),
-                    siteId,
-                    siteId
-                            + "'s token bag is amended between its List.of and its key, so the literal list is not the whole fact set");
-        }
-        Pattern prefix = Pattern.compile("^\"([A-Za-z][A-Za-z0-9_.-]*):");
-        for (String raw : splitTopLevel(balancedFrom(code, '(', ')', bagAt + BAG.length() - 1))) {
-            String element = raw.strip();
-            Matcher m = prefix.matcher(element);
-            if (!m.find()) {
-                fault(
-                        v,
-                        src.path(file),
-                        siteId + " " + element,
-                        siteId
-                                + " token does not open with a \"prefix:\" literal, so no side can be compared against it: "
-                                + element);
-                continue;
-            }
-            out.add(m.group(1));
-        }
-        return out;
-    }
-
     private static void assertReaches(Sources src, Violations v, String reach, String label, String kind) {
         String file = reach.substring(0, reach.indexOf('|'));
         String literal = reach.substring(reach.indexOf('|') + 1);
@@ -269,7 +162,7 @@ final class EngineRules {
             why =
                     "a forecast key that hashes a different fact set than the build key reports a phantom rebuild or blesses a stale artifact",
             instead =
-                    "pair the site with its forecast twin, or route both through one shared owner; declare an unpaired site with the reason there is no twin")
+                    "route the build and the forecast through one shared key owner; declare a site with no forecast twin, and why")
     void forecastKeyParity(Text text, Violations v) {
         Sources src = new Sources(text);
         // every forArtifact site is declared
@@ -280,10 +173,6 @@ final class EngineRules {
             while (m.find()) found.add(rel.substring(rel.lastIndexOf('/') + 1) + "|" + m.group(1));
         }
         TreeSet<String> declared = new TreeSet<>();
-        for (String[] p : PAIRS) {
-            declared.add(p[1]);
-            declared.add(p[2]);
-        }
         declared.addAll(SHARED.keySet());
         declared.addAll(UNPAIRED.keySet());
         for (String f : found)
@@ -300,18 +189,6 @@ final class EngineRules {
                         src.path(d.substring(0, d.indexOf('|'))),
                         d,
                         "declared site " + d + " no longer exists; update the table");
-        // paired keys hash the same prefixes
-        for (String[] p : PAIRS) {
-            TreeSet<String> a = tokenPrefixes(src, p[1], v);
-            TreeSet<String> b = tokenPrefixes(src, p[2], v);
-            if (!a.equals(b))
-                fault(
-                        v,
-                        src.path(p[2].substring(0, p[2].indexOf('|'))),
-                        p[0],
-                        p[0] + ": the build hashes " + a + " and the forecast " + b
-                                + ", so jk explain reports a phantom rebuild or misses a real one");
-        }
         // shared owners really have both callers
         for (var e : SHARED.entrySet()) {
             List<String> spec = e.getValue();
