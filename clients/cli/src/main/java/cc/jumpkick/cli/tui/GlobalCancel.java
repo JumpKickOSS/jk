@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * App-level SIGINT handler — cancel the live engine job through the same
+ * App-level SIGINT, SIGTERM and SIGHUP handler — cancel the live engine job through the same
  * {@code cancel-request} path as {@code jk cancel}, settle the TUI as cancelled, then hard-exit
  * the CLI ({@link Runtime#halt(int) halt}({@link Exit#INTERRUPTED})) as a backup so Ctrl-C never
  * hangs.
@@ -46,17 +46,24 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public final class GlobalCancel {
 
     /**
-     * Set the instant SIGINT lands, before anything that can block. The halt below is only a
-     * backup and often loses on a TTY when the verb settles first. {@link #exitCodeFor} makes both
-     * routes exit {@link Exit#INTERRUPTED} (130), not a plain failure.
+     * The exit code of the signal that landed, set the instant it does, before anything that can
+     * block; {@code 0} until then. The halt below is only a backup and often loses on a TTY when
+     * the verb settles first. {@link #exitCodeFor} makes both routes exit {@code 128 + signal}
+     * ({@link Exit#INTERRUPTED} for SIGINT), not a plain failure.
      */
-    private static volatile boolean interrupted;
+    private static volatile int signalExit;
+
+    /** {@code 128 + SIGTERM}: an IDE's stop button, an agent's tool runner, {@code kill}. */
+    static final int TERMINATED = 128 + 15;
+
+    /** {@code 128 + SIGHUP}: the terminal went away. */
+    static final int HUNG_UP = 128 + 1;
 
     /**
      * What a verb wants done before this process halts: children to stop, mostly. {@link
      * Runtime#halt} skips finally blocks and shutdown hooks, so a {@code jk run} or {@code jk dev}
      * that owns a child would otherwise leave it running whenever SIGINT reaches only jk — an IDE
-     * stop button, a {@code kill -INT}, a terminal that did not forward to the process group.
+     * stop button, a {@code kill}, a terminal that closed or did not forward to the process group.
      */
     private static final List<Runnable> INTERRUPT_HOOKS = new CopyOnWriteArrayList<>();
 
@@ -65,7 +72,7 @@ public final class GlobalCancel {
 
     private GlobalCancel() {}
 
-    /** Register {@code cleanup} to run on SIGINT; close the handle when the verb has cleaned up itself. */
+    /** Register {@code cleanup} to run on SIGINT, SIGTERM or SIGHUP; close the handle when the verb has cleaned up itself. */
     public static Registration onInterrupt(Runnable cleanup) {
         INTERRUPT_HOOKS.add(cleanup);
         return () -> INTERRUPT_HOOKS.remove(cleanup);
@@ -105,7 +112,8 @@ public final class GlobalCancel {
      * and the engine's journal row agree about the same run.
      */
     public static int exitCodeFor(int verbExit) {
-        return interrupted ? Exit.INTERRUPTED : verbExit;
+        int signalled = signalExit;
+        return signalled != 0 ? signalled : verbExit;
     }
 
     /**
@@ -137,60 +145,67 @@ public final class GlobalCancel {
         System.out.flush();
     }
 
+    /**
+     * Ctrl-C, and the two ways a process is told to go without one: SIGTERM and SIGHUP. All three
+     * take the same path, so the children a verb owns stop whichever arrives; without a handler
+     * SIGTERM and SIGHUP end the process outright and leave them running.
+     */
     public static void install() {
-        Signals.register("INT", () -> {
-            // 0) Claim the exit code before anything that can block or throw: from here on this
-            // process is interrupted no matter which thread reaches the exit.
-            interrupted = true;
-            // 1) Cooperative cancel is synchronous (cheap, in-process); the engine RPCs go on a
-            // background thread so the user sees the cancelled settle immediately instead of a
-            // still-animating spinner while a wedged engine eats socket watchdogs.
-            SessionContext.current().cancel().cancel();
-            // The session's working dir honors -C/--dir (the raw process CWD does not),
-            // and jobs register their workspace-root ENTRY dir — resolve to it so Ctrl-C from a
-            // member dir cancels the covering workspace build.
-            Path invocationDir;
-            try {
-                invocationDir = SessionContext.current().workingDir();
-            } catch (RuntimeException e) {
-                invocationDir = null;
-            }
-            if (invocationDir == null) {
-                invocationDir = Path.of("").toAbsolutePath().normalize();
-            }
-            Path dir = WorkspaceScan.findRoot(invocationDir).orElse(invocationDir);
-            Thread rpc = Thread.ofPlatform()
-                    .daemon(true)
-                    .name("jk-sigint-cancel")
-                    .start(() -> EngineCancel.cancelBestEffortForInterrupt(dir));
-            // 2) Settle the live region (plan → cancelled job line) or a one-line notice.
-            settleAsCanceled();
+        Signals.register("INT", () -> onSignal(Exit.INTERRUPTED));
+        Signals.register("TERM", () -> onSignal(TERMINATED));
+        Signals.register("HUP", () -> onSignal(HUNG_UP));
+    }
 
-            // 3) The verb's own children — an app under `jk dev`, its sidecars — stop here, before
-            // the halt below skips every finally block that would have stopped them.
-            runInterruptHooks(HOOKS_BOUND_MILLIS);
+    private static void onSignal(int exitCode) {
+        // 0) Claim the exit code before anything that can block or throw: from here on this
+        // process is signalled no matter which thread reaches the exit.
+        if (signalExit == 0) signalExit = exitCode;
+        // 1) Cooperative cancel is synchronous (cheap, in-process); the engine RPCs go on a
+        // background thread so the user sees the cancelled settle immediately instead of a
+        // still-animating spinner while a wedged engine eats socket watchdogs.
+        SessionContext.current().cancel().cancel();
+        // The session's working dir honors -C/--dir (the raw process CWD does not),
+        // and jobs register their workspace-root ENTRY dir — resolve to it so Ctrl-C from a
+        // member dir cancels the covering workspace build.
+        Path invocationDir;
+        try {
+            invocationDir = SessionContext.current().workingDir();
+        } catch (RuntimeException e) {
+            invocationDir = null;
+        }
+        if (invocationDir == null) {
+            invocationDir = Path.of("").toAbsolutePath().normalize();
+        }
+        Path dir = WorkspaceScan.findRoot(invocationDir).orElse(invocationDir);
+        Thread rpc = Thread.ofPlatform()
+                .daemon(true)
+                .name("jk-sigint-cancel")
+                .start(() -> EngineCancel.cancelBestEffortForInterrupt(dir));
+        // 2) Settle the live region (plan → cancelled job line) or a one-line notice.
+        settleAsCanceled();
 
-            // 4) Restore the tty (cooked attrs + stdin wake) on a bounded daemon thread —
-            // halt() skips shutdown hooks, so nothing else puts the terminal back. Bounded so
-            // a wedged JLine close can never break the Ctrl-C-never-hangs guarantee.
-            Thread tty = Thread.ofPlatform()
-                    .daemon(true)
-                    .name("jk-sigint-tty-restore")
-                    .start(Terminals::shutdown);
-            try {
-                tty.join(500L);
-            } catch (InterruptedException ignored) {
-                // halt follows regardless
-            }
+        // 3) The verb's own children — an app under `jk dev`, its sidecars — stop here, before
+        // the halt below skips every finally block that would have stopped them.
+        runInterruptHooks(HOOKS_BOUND_MILLIS);
 
-            // 5) Give the cancel RPCs a short, bounded window (they also self-limit), then hard
-            // kill this CLI process — guaranteed death even if everything above is wedged.
-            try {
-                rpc.join(3_000L);
-            } catch (InterruptedException ignored) {
-                // halt follows regardless
-            }
-            Runtime.getRuntime().halt(Exit.INTERRUPTED);
-        });
+        // 4) Restore the tty (cooked attrs + stdin wake) on a bounded daemon thread —
+        // halt() skips shutdown hooks, so nothing else puts the terminal back. Bounded so
+        // a wedged JLine close can never break the Ctrl-C-never-hangs guarantee.
+        Thread tty =
+                Thread.ofPlatform().daemon(true).name("jk-sigint-tty-restore").start(Terminals::shutdown);
+        try {
+            tty.join(500L);
+        } catch (InterruptedException ignored) {
+            // halt follows regardless
+        }
+
+        // 5) Give the cancel RPCs a short, bounded window (they also self-limit), then hard
+        // kill this CLI process — guaranteed death even if everything above is wedged.
+        try {
+            rpc.join(3_000L);
+        } catch (InterruptedException ignored) {
+            // halt follows regardless
+        }
+        Runtime.getRuntime().halt(signalExit);
     }
 }

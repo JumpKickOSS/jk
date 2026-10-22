@@ -17,15 +17,11 @@ name      = "$name$"
 base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
 aot-cache = true
 
-# `jk dev` here runs the Vite dev server beside the JVM: its /api proxy points at :8080, and the
-# front door is the URL printed once both are up. `jk dev --no-sidecars` runs the app alone.
-[dev.sidecars]
-web = { command = "npm run dev", cwd = "../web", ready = "http://localhost:5173", front-door = true }
-
 [dependencies]
 starter-webmvc = "org.springframework.boot:spring-boot-starter-webmvc"
 kotlin-reflect = "managed"
-# the SPA bundle: web's resource jar, its dist/ under static/
+# the SPA bundle: web's resource jar, its dist/ under static/. `jk dev` also runs web's dev
+# server beside the app, on the locked Node.js, with no sidecar to declare.
 web = { workspace = true }
 
 [test-dependencies]
