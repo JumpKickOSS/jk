@@ -76,7 +76,7 @@ The Maven major is the first numeric segment (`2.18.2` → 2.x, `33.4.8-jre` →
 are never "stable", so an RC is taken only by an opt-in selector that admits it. The rewritten
 manifest keeps its spelling — a catalog one-liner stays a one-liner, a GAV string stays a GAV
 string, a trailing comment keeps its column — and the reviewable diff is `jk.toml` plus `jk-lock.toml`. `jk update` also revalidates
-metadata and refreshes the recorded toolchain ([below](#toolchain-pins)). MCP has the same verb
+metadata and refreshes the recorded toolchain when its major moved ([below](#toolchain-pins)). MCP has the same verb
 with a preview: [`update`](mcp.md#tools).
 
 Each moved pin prints as it is written (`guava  31.0-jre → 31.1-jre`). Once the relock lands, every
@@ -165,8 +165,11 @@ required-version  = "25.0.4"      # exact: 25.0.3, 25.1.0 and 26.0.2 all fail
 `suggested-*` is a record of what created the lock. It binds nothing but the major: a build on a
 newer JDK is fine, an older one is not — and because it is a record, `jk lock` leaves it as it
 found it. A `jdk` in `jk.toml` outranks it: the project's, or a workspace member's own under the
-workspace lock, names the install that module builds with, at any major. Re-locking on a machine with a different vendor does not rewrite what built the lock;
-only `jk update`, whose job is moving forward, refreshes it. An exception: a previous suggestion
+workspace lock, names the install that module builds with, at any major. Re-locking on a machine
+with a different vendor or patch does not rewrite what built the lock, and neither does `jk
+update` while the JDK that resolved is on the suggestion's major: two machines on 25.0.2 and
+25.0.4 leave `suggested-version` as they found it. `jk update` refreshes it only when the major
+that resolved differs (a project moved from 25 to 26). An exception: a previous suggestion
 that names a vendor jk cannot install is dropped and rewritten from the toolchain that resolved.
 Copying `nosuchvendor-99` forward would make the next `jk build` try to install a catalog-missing
 spec after the agent already removed the pin.
