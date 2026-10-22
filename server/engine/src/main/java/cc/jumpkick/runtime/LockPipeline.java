@@ -391,7 +391,7 @@ public final class LockPipeline {
         lock = NodeLockStamp.apply(
                 lock,
                 policy.keepToolchainSuggestion() ? existing : null,
-                NodeLockStamp.declared(nodeModules(members)),
+                NodeLockStamp.declared(modules(members)),
                 new NodeResolver(new NodeCatalog()),
                 new PackageManagerResolver(),
                 NodePlatform.host());
@@ -399,8 +399,8 @@ public final class LockPipeline {
         return lock;
     }
 
-    /** The root and every member, each with inheritance applied, for the {@code [node]} stamp. */
-    private Map<Path, JkBuild> nodeModules(LockPlans.LockMembers members) {
+    /** The root and every member, each with inheritance applied. */
+    private Map<Path, JkBuild> modules(LockPlans.LockMembers members) {
         Map<Path, JkBuild> out = new LinkedHashMap<>();
         out.put(lockDir, effective);
         for (LockOrchestrator.Member m : members.members()) {
@@ -650,7 +650,35 @@ public final class LockPipeline {
                 throw new IllegalStateException("rule pack " + c.gav() + " — " + e.getMessage(), e);
             }
         }
+        pinKotlinPlugins(lock, repos, seen, entries, progress);
         return lock.withPlugins(entries).withJkMin(floor);
+    }
+
+    /**
+     * A {@code [[plugin]]} row for every {@code [[kotlin-plugins]]} jar the root or a member compiles
+     * with, pinned by digest like a declared plugin. A coordinate without a version takes the
+     * compiler version this lock resolved.
+     */
+    private void pinKotlinPlugins(
+            Lockfile lock, RepoGroup repos, Set<String> seen, List<Lockfile.PluginEntry> entries, Progress progress) {
+        for (JkBuild module : modules(LockPlans.lockMembers(lockDir, effective)).values()) {
+            for (Coordinate coord : PlannerLang.declaredKotlinPlugins(module, lock)) {
+                if (!seen.add(coord.module() + ":" + coord.version())) continue;
+                progress.label("lock " + coord.toGav());
+                try {
+                    var fetched = repos.tryFetchArtifact(coord)
+                            .orElseThrow(() -> new IllegalStateException("not found in any repo"));
+                    entries.add(new Lockfile.PluginEntry(
+                            coord.module(),
+                            coord.version(),
+                            "sha256:" + fetched.fetched().sha256()));
+                } catch (IOException | InterruptedException | RuntimeException e) {
+                    if (e instanceof InterruptedException)
+                        Thread.currentThread().interrupt();
+                    throw new IllegalStateException("[[kotlin-plugins]] " + coord.toGav() + " — " + e.getMessage(), e);
+                }
+            }
+        }
     }
 
     private boolean hasGuardSuite() {

@@ -54,12 +54,68 @@ public final class PlannerLang {
 
     /**
      * One Kotlin compiler plugin the module compiles with, by coordinate. The jar is fetched when
-     * the compile actually runs; naming the coordinate is enough to decide whether it has to.
+     * the compile actually runs; naming the coordinate is enough to decide whether it has to. A
+     * {@code [[kotlin-plugins]]} declaration is {@code locked}: its jar must be the {@code
+     * [[plugin]]} row's {@code sha256}, null when the lock has no row for it.
      */
-    record KotlinPluginUse(String id, String group, String artifact, String version, List<String> options) {
+    record KotlinPluginUse(
+            String id,
+            String group,
+            String artifact,
+            String version,
+            List<String> options,
+            boolean locked,
+            @Nullable String sha256) {
         KotlinPluginUse {
             options = List.copyOf(options);
         }
+
+        Coordinate coordinate() {
+            return Coordinate.of(group, artifact, version);
+        }
+
+        /**
+         * The digest this plugin's jar must have, or null when it follows the compiler unpinned.
+         *
+         * @throws IllegalStateException when a declared plugin has no lock row: the lock is stale
+         */
+        @Nullable
+        String requiredSha256() {
+            if (!locked || sha256 != null) return sha256;
+            throw new IllegalStateException("[[kotlin-plugins]] " + group + ":" + artifact + ":" + version
+                    + " has no [[plugin]] row in jk-lock.toml — run `jk lock`");
+        }
+    }
+
+    /**
+     * The coordinates of {@code project}'s {@code [[kotlin-plugins]]}, an omitted version taking
+     * the compiler's — the {@code org.jetbrains.kotlin} plugin convention. What {@code jk lock}
+     * pins and the compile fetches.
+     */
+    static List<Coordinate> declaredKotlinPlugins(JkBuild project, Lockfile lock) {
+        String pluginVersion = kotlinPluginVersion(lock, project);
+        List<Coordinate> out = new ArrayList<>();
+        for (var decl : project.build().kotlinPlugins()) {
+            String[] parts = decl.coordinate().split(":");
+            out.add(Coordinate.of(parts[0], parts[1], parts.length == 3 ? parts[2] : pluginVersion));
+        }
+        return out;
+    }
+
+    /** The version a compiler plugin without one of its own takes: the compiler's. */
+    private static String kotlinPluginVersion(Lockfile lock, JkBuild project) {
+        String kotlinVersion = CompileToolchain.kotlinVersionFor(lock, project);
+        return (kotlinVersion == null || kotlinVersion.isBlank()) ? KotlinResolver.DEFAULT_VERSION : kotlinVersion;
+    }
+
+    /** The {@code sha256} hex {@code lock}'s {@code [[plugin]]} row pins for {@code coord}, or null. */
+    static @Nullable String lockedSha256(Lockfile lock, Coordinate coord) {
+        for (Lockfile.PluginEntry row : lock.plugins()) {
+            if (row.coordinate().equals(coord.module()) && row.version().equals(coord.version())) {
+                return row.sha256Hex();
+            }
+        }
+        return null;
     }
 
     /**
@@ -102,7 +158,7 @@ public final class PlannerLang {
             for (String arg : args) parts.add("arg:" + arg);
             for (KotlinPluginUse p : plugins) {
                 parts.add("plugin:" + p.id() + ":" + p.group() + ":" + p.artifact() + ":" + p.version() + ":"
-                        + String.join(",", p.options()));
+                        + String.join(",", p.options()) + (p.sha256() == null ? "" : ":" + p.sha256()));
             }
             return parts;
         }
@@ -201,7 +257,9 @@ public final class PlannerLang {
                 RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
                 kt = KotlinPluginSetup.prepare(repos, cas, config.kotlinVersion());
                 for (KotlinPluginUse use : config.plugins()) {
-                    Path jar = repos.tryFetchArtifact(Coordinate.of(use.group(), use.artifact(), use.version()))
+                    // A declared plugin is fetched as the lock pins it: a copy or a repository
+                    // serving other bytes is refused, never compiled with.
+                    Path jar = repos.tryFetchArtifact(use.coordinate(), use.requiredSha256())
                             .map(hit -> hit.fetched().cachePath())
                             .orElseThrow(() -> new RuntimeException("cannot fetch the " + use.id()
                                     + " Kotlin compiler plugin (" + use.group() + ":" + use.artifact() + ":"
@@ -347,8 +405,7 @@ public final class PlannerLang {
         String kotlinVersion = CompileToolchain.kotlinVersionFor(lock, project);
         // A plugin without a version of its own resolves to the compiler's: the only version
         // that can load into this kotlinc anyway. Same null-defaulting as KotlinPluginSetup.
-        String pluginVersion =
-                (kotlinVersion == null || kotlinVersion.isBlank()) ? KotlinResolver.DEFAULT_VERSION : kotlinVersion;
+        String pluginVersion = kotlinPluginVersion(lock, project);
         Set<String> lockModules = lockModules(lock);
         List<KotlinPluginUse> plugins = new ArrayList<>();
         // The installed plugins' [[contribute.kotlin-plugin]] entries (e.g. spring-boot's
@@ -356,15 +413,23 @@ public final class PlannerLang {
         // from the manifest, version-locked to the compiler actually used. The embeddable
         // variants match the BTA plugin's embeddable compiler.
         for (var use : PluginContributions.kotlinPlugins(project, moduleDir, pluginVersion, lockModules)) {
-            plugins.add(new KotlinPluginUse(use.id(), use.group(), use.artifact(), use.version(), use.options()));
+            plugins.add(new KotlinPluginUse(
+                    use.id(), use.group(), use.artifact(), use.version(), use.options(), false, null));
         }
-        // Project-declared [[kotlin-plugins]] (serialization et al.) ride the same lane; an
-        // omitted coordinate version means "match the compiler" — the org.jetbrains.kotlin
-        // plugin convention.
-        for (var decl : project.build().kotlinPlugins()) {
-            String[] parts = decl.coordinate().split(":");
-            String version = parts.length == 3 ? parts[2] : pluginVersion;
-            plugins.add(new KotlinPluginUse(decl.id(), parts[0], parts[1], version, decl.options()));
+        // Project-declared [[kotlin-plugins]] (serialization et al.) ride the same lane, pinned by
+        // the lock's [[plugin]] rows.
+        List<Coordinate> declared = declaredKotlinPlugins(project, lock);
+        for (int i = 0; i < declared.size(); i++) {
+            var decl = project.build().kotlinPlugins().get(i);
+            Coordinate coord = declared.get(i);
+            plugins.add(new KotlinPluginUse(
+                    decl.id(),
+                    coord.group(),
+                    coord.artifact(),
+                    coord.version(),
+                    decl.options(),
+                    true,
+                    lockedSha256(lock, coord)));
         }
         List<String> args = new ArrayList<>();
         // The in-process plugin has no kotlin-home to auto-supply the stdlib; it rides the

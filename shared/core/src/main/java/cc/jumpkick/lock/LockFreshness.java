@@ -3,10 +3,13 @@ package cc.jumpkick.lock;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -18,10 +21,9 @@ import org.jspecify.annotations.Nullable;
  * once to stamp one; there is no mtime fallback.
  *
  * <p>A clean digest is necessary but not sufficient: a lock can also be missing a <em>fact</em>
- * jk writes for the current manifests. Today that is the {@code [native] metadata-repository}
- * pin — a native-image project whose lock predates the pin digests clean forever, so
- * {@link #isStale} also rules stale when {@link LockNativePin} selects a repository the lock
- * never stamped.
+ * jk writes for the current manifests — the {@code [native] metadata-repository} pin, the {@code
+ * [node]} pin, a {@code [[kotlin-plugins]]} jar's {@code [[plugin]]} row — and {@link #isStale}
+ * rules such a lock stale.
  */
 public final class LockFreshness {
 
@@ -60,6 +62,8 @@ public final class LockFreshness {
      *       {@code [native]} pin: stale (re-lock to stamp the pin).
      *   <li>Digest clean but a manifest declares {@code node} and the lock carries no {@code [node]}
      *       pin: stale.
+     *   <li>Digest clean but a manifest declares a {@code [[kotlin-plugins]]} jar the lock pins no
+     *       digest for: stale.
      * </ul>
      *
      * <p>Both the project {@code jk.toml} and the lock must exist for a non-stale answer; missing
@@ -79,7 +83,9 @@ public final class LockFreshness {
             Path owner = LockPaths.lockOwnerDir(dir);
             String live = LockManifestDigest.compute(owner);
             if (!stored.equalsIgnoreCase(live)) return true;
-            return missingNativePin(owner, lock) || missingNodePin(owner, lock);
+            if (missingNativePin(owner, lock)) return true;
+            List<JkBuild> modules = modules(owner);
+            return missingNodePin(modules, lock) || missingKotlinPluginPin(modules, lock);
         } catch (Exception e) {
             return true; // unreadable lock / digest failure → re-lock
         }
@@ -99,15 +105,42 @@ public final class LockFreshness {
         }
     }
 
-    /** True when a manifest under {@code owner} declares a Node.js version and {@code lock} pins none. */
-    private static boolean missingNodePin(Path owner, Lockfile lock) throws IOException {
-        if (lock.node() != null) return false;
+    /** The manifest under {@code owner} and, for a workspace root, every member's. */
+    private static List<JkBuild> modules(Path owner) throws IOException {
         Path dir = owner.toAbsolutePath().normalize();
         JkBuild root = JkBuildParser.parseLocal(ManifestPaths.manifestIn(dir));
-        if (!root.project().nodeSpec().isEmpty()) return true;
-        if (!root.isWorkspaceRoot()) return false;
-        for (JkBuild member : WorkspaceLoader.loadModules(dir, root).values()) {
-            if (!member.project().nodeSpec().isEmpty()) return true;
+        List<JkBuild> out = new ArrayList<>();
+        out.add(root);
+        if (root.isWorkspaceRoot())
+            out.addAll(WorkspaceLoader.loadModules(dir, root).values());
+        return out;
+    }
+
+    /** True when a manifest declares a Node.js version and {@code lock} pins none. */
+    private static boolean missingNodePin(List<JkBuild> modules, Lockfile lock) {
+        if (lock.node() != null) return false;
+        for (JkBuild module : modules) {
+            if (!module.project().nodeSpec().isEmpty()) return true;
+        }
+        return false;
+    }
+
+    /**
+     * True when a manifest declares a {@code [[kotlin-plugins]]} coordinate {@code lock} has no
+     * digest-pinned {@code [[plugin]]} row for. A coordinate without a version matches any row of
+     * its {@code group:artifact}: its version is the locked compiler's.
+     */
+    private static boolean missingKotlinPluginPin(List<JkBuild> modules, Lockfile lock) {
+        for (JkBuild module : modules) {
+            for (BuildBlock.KotlinPluginDecl decl : module.build().kotlinPlugins()) {
+                String[] parts = decl.coordinate().split(":");
+                String ga = parts[0] + ":" + parts[1];
+                boolean pinned = lock.plugins().stream()
+                        .anyMatch(row -> row.coordinate().equals(ga)
+                                && row.sha256Hex() != null
+                                && (parts.length < 3 || row.version().equals(parts[2])));
+                if (!pinned) return true;
+            }
         }
         return false;
     }

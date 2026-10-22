@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.groups.Tuple.tuple;
 
 import cc.jumpkick.config.JkBuildParser;
@@ -162,6 +163,51 @@ class PlannerLangKotlinConfigTest {
                                 project, lock, module, 25, javaHome, List.of(module.resolve("src/main/java")))
                         .digest())
                 .isNotEqualTo(base);
+    }
+
+    /**
+     * A declared {@code [[kotlin-plugins]]} jar is fetched as the lock's {@code [[plugin]]} row pins
+     * it — the version the compiler resolved, the row's digest — and a lock with no row for it is
+     * stale, refused before any fetch. A contributed plugin follows the compiler unpinned.
+     */
+    @Test
+    void a_declared_kotlin_plugin_compiles_with_the_jar_its_lock_row_pins(@TempDir Path tmp) throws Exception {
+        Path module = Files.createDirectories(tmp.resolve("app"));
+        Path javaHome = Path.of(System.getProperty("java.home"));
+        JkBuild project = JkBuildParser.parse("""
+                name    = "demo"
+                group   = "com.demo"
+                version = "0.1.0"
+                java    = 25
+                kotlin  = "^2.4"
+
+                [[kotlin-plugins]]
+                coordinate = "org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable"
+                """);
+        String ga = "org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable";
+        Lockfile unpinned = Lockfile.empty("test").withKotlin("2.4.10");
+        Lockfile pinned = unpinned.withPlugins(List.of(new Lockfile.PluginEntry(ga, "2.4.10", "sha256:" + SHA)));
+
+        assertThat(PlannerLang.declaredKotlinPlugins(project, pinned))
+                .extracting(c -> c.module() + ":" + c.version())
+                .containsExactly(ga + ":2.4.10");
+        PlannerLang.KotlinPluginUse use = PlannerLang.kotlinConfig(project, pinned, module, 25, javaHome, null)
+                .plugins()
+                .getFirst();
+        assertThat(use.requiredSha256()).isEqualTo(SHA);
+
+        PlannerLang.KotlinPluginUse missing = PlannerLang.kotlinConfig(project, unpinned, module, 25, javaHome, null)
+                .plugins()
+                .getFirst();
+        assertThatThrownBy(missing::requiredSha256)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(ga + ":2.4.10")
+                .hasMessageContaining("run `jk lock`");
+        assertThat(PlannerLang.kotlinConfig(project, pinned, module, 25, javaHome, null)
+                        .digest())
+                .as("the pinned digest is an input of the compile")
+                .isNotEqualTo(PlannerLang.kotlinConfig(project, unpinned, module, 25, javaHome, null)
+                        .digest());
     }
 
     private static String digest(String manifest, Lockfile lock, Path module, int release, Path javaHome)
