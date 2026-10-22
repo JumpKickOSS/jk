@@ -187,6 +187,7 @@ public enum BuildStage {
                     TaskNames.SYNC_MODULES,
                     TaskNames.SYNC_PLUGINS,
                     TaskNames.SYNC_SOURCES,
+                    TaskNames.SYNC_TOOLS,
                     TaskNames.SYNC_WORKERS -> RESOLVE;
             case TaskNames.BUILD_LOGIC_BEFORE_COMPILE -> GENERATE;
             case TaskNames.COMPILE_JAVA,

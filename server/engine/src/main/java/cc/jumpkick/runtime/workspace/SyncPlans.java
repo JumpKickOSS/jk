@@ -6,6 +6,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compat.NodeProvisioning;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
@@ -33,6 +34,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.AutoLock;
 import cc.jumpkick.runtime.LockFlow;
 import cc.jumpkick.runtime.PlannerNodeSetup;
+import cc.jumpkick.runtime.PluginBuild;
 import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.runtime.ToolPlanProgress;
 import cc.jumpkick.runtime.base.JkPluginSync;
@@ -43,7 +45,9 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
@@ -113,6 +117,7 @@ public final class SyncPlans {
                 .addTask(syncCasStep(dir, cache, repoUrl, preScanDenominator, label, totalFetched, totalUpToDate))
                 .addTask(syncSourcesStep(sources))
                 .addTask(syncPluginsStep(dir, cache, repoUrl))
+                .addTask(syncToolsStep(dir))
                 .addTask(syncWorkersStep())
                 .addTask(writeManifestStep(cache, lockFile))
                 .addTask(syncModulesStep())
@@ -345,6 +350,54 @@ public final class SyncPlans {
                     // Extract the fetched jars' manifests so the very next parse validates
                     // the plugins' tables (and applies their contributions).
                     PluginDescriptorOps.ensureMaterialized(dir, cache);
+                })
+                .build();
+    }
+
+    /**
+     * Fetch every tool the lock pins for this platform — each module's plugin tools, closures and
+     * URL files — into the CAS, verified against its {@code [[tool]]} row, so the next build (and
+     * an {@code --offline} one) runs on them without a download. A tool that fails fails the sync.
+     */
+    private static Task syncToolsStep(Path dir) {
+        return Task.builder(TaskNames.SYNC_TOOLS)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.SYNC_PLUGINS)
+                .ticks(0)
+                .execute(ctx -> {
+                    Lockfile lock = ctx.require(LOCKFILE);
+                    if (lock.tools().isEmpty()) return;
+                    Path root = dir.toAbsolutePath().normalize();
+                    JkBuild build = JkBuildParser.parse(ManifestPaths.manifestIn(root));
+                    Map<Path, JkBuild> modules = new LinkedHashMap<>();
+                    modules.put(root, build);
+                    if (build.isWorkspaceRoot()) {
+                        for (Path member :
+                                WorkspaceLoader.loadModules(root, build).keySet()) {
+                            modules.put(member, JkBuildParser.parse(ManifestPaths.manifestIn(member)));
+                        }
+                    }
+                    ctx.updateTicks(modules.size());
+                    ctx.label("sync tools");
+                    Cas cas = JkStores.storeCas();
+                    Path lockFile = LockPaths.lockFile(root);
+                    boolean failed = false;
+                    for (Map.Entry<Path, JkBuild> module : modules.entrySet()) {
+                        try {
+                            for (String tool :
+                                    PluginBuild.prefetchTools(module.getValue(), module.getKey(), cas, lockFile)) {
+                                ctx.label("synced " + tool);
+                            }
+                        } catch (IOException | RuntimeException e) {
+                            ctx.error("tool", Errors.text(e));
+                            failed = true;
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new RuntimeException("interrupted syncing tools", e);
+                        }
+                        ctx.progress(1);
+                    }
+                    if (failed) throw new RuntimeException("a pinned tool did not sync");
                 })
                 .build();
     }
