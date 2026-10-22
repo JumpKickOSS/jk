@@ -97,11 +97,15 @@ class ClassPatternSuiteE2eTest {
     void a_class_of_the_integration_suite_named_under_the_default_suite_says_where_it_lives() throws Exception {
         Run run = run(TestSelection.DEFAULT.withClasses(List.of("FooIT")));
         assertThat(run.result().success()).isFalse();
-        assertThat(run.tests().failures())
-                .singleElement()
-                .extracting(f -> f.message())
-                .isEqualTo("no test classes matched --class FooIT — FooIT is in the integration suite"
-                        + " (jk test -s integration -S FooIT)");
+        assertThat(run.plan().get(BuildPlanner.TEST_RESULT))
+                .as("a selection that matched nothing is no red test")
+                .isEmpty();
+        assertThat(run.result().errors()).singleElement().satisfies(d -> {
+            assertThat(d.code()).isEqualTo(TestClassMatch.NO_TESTS_MATCHED);
+            assertThat(d.message())
+                    .isEqualTo("no test classes matched --class FooIT — FooIT is in the integration suite"
+                            + " (jk test -s integration -S FooIT)");
+        });
     }
 
     private record Run(BuildPlan plan, BuildPlanResult result) {
