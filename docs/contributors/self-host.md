@@ -234,7 +234,11 @@ Workspace members: libraries, `clients/cli`, `clients/cli-terminal`, `clients/we
 isolated sandboxes, so `jk test` in this tree never touches your resident engine's state. Those
 engines run this checkout's engine: `jk test -m jk-cli` packages `server/engine`'s fat jar before
 the suite starts and hands it to the tests as `-Djk.engine.jar`, so an engine or library change is
-exercised without `jk install` first.
+exercised without `jk install` first. The workers those engines fork are the checkout's too
+(`-Djk.<worker>.plugin.jar`), and so are the libraries they run on: a first-party worker jar
+carries the workspace libraries it depends on (its POM names only external ones), and
+`shared/plugin-sdk` and `shared/host` join its classpath from their `target/` trees, so a library
+change reaches a nested engine's workers once the worker's module is rebuilt.
 
 ## Default repositories
 
