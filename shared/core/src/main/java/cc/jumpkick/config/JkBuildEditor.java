@@ -580,10 +580,12 @@ public final class JkBuildEditor {
                 throw new IllegalStateException(
                         displayPath + " has no `version` to rewrite (git, path, sha256 or platform-managed)");
             }
-            return before
-                    + after.substring(0, m.start(2))
-                    + MinimalToml.quote(versionLiteral)
-                    + after.substring(m.end(2));
+            return keepCommentColumn(
+                    line,
+                    before
+                            + after.substring(0, m.start(2))
+                            + MinimalToml.quote(versionLiteral)
+                            + after.substring(m.end(2)));
         }
         Matcher m = FIRST_STRING.matcher(after);
         if (!m.find() || m.start() != after.length() - rhs.length()) {
@@ -609,7 +611,22 @@ public final class JkBuildEditor {
         } else {
             replacement = versionLiteral;
         }
-        return before + after.substring(0, m.start()) + MinimalToml.quote(replacement) + after.substring(m.end());
+        return keepCommentColumn(
+                line,
+                before + after.substring(0, m.start()) + MinimalToml.quote(replacement) + after.substring(m.end()));
+    }
+
+    /**
+     * {@code edited} with its trailing comment back at the column it held in {@code original}, so a
+     * hand-aligned block stays aligned when a value changes width. A value too wide for the old
+     * column keeps one space before the {@code #}.
+     */
+    private static String keepCommentColumn(String original, String edited) {
+        int was = codeIndexOf(original, '#');
+        int now = codeIndexOf(edited, '#');
+        if (was < 0 || now < 0 || was == now) return edited;
+        String code = edited.substring(0, now).stripTrailing();
+        return code + " ".repeat(Math.max(was - code.length(), 1)) + edited.substring(now);
     }
 
     /** A name an existing entry may carry: any non-blank key, quoted in the file when it must be. */
@@ -698,7 +715,10 @@ public final class JkBuildEditor {
             if (!literal.find() || literal.start() != 0) {
                 throw new IllegalStateException("[" + tablePath + "] " + key + " is not a string");
             }
-            lines.set(i, m.group() + MinimalToml.quote(value) + rest.substring(literal.end()));
+            lines.set(
+                    i,
+                    keepCommentColumn(
+                            lines.get(i), m.group() + MinimalToml.quote(value) + rest.substring(literal.end())));
             return validated(manifest.join());
         }
         throw new IllegalStateException("[" + tablePath + "] has no `" + key + "` to rewrite");
@@ -722,7 +742,7 @@ public final class JkBuildEditor {
             Matcher m = entry.matcher(lines.get(i));
             if (!m.find()) continue;
             String comment = trailingComment(lines.get(i).substring(m.end()));
-            lines.set(i, m.group() + value + comment);
+            lines.set(i, keepCommentColumn(lines.get(i), m.group() + value + comment));
             return validated(manifest.join());
         }
         throw new IllegalStateException("[" + tablePath + "] has no `" + key + "` to rewrite");
@@ -753,7 +773,7 @@ public final class JkBuildEditor {
             Matcher m = rootKey.matcher(line);
             if (m.find()) {
                 String comment = trailingComment(line.substring(m.end()));
-                lines.set(i, m.group(1) + key + m.group(2) + "= " + value + comment);
+                lines.set(i, keepCommentColumn(line, m.group(1) + key + m.group(2) + "= " + value + comment));
                 return validated(manifest.join());
             }
         }

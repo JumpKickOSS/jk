@@ -75,7 +75,7 @@ names — its group and artifact filled from the table the way the step fills th
 The Maven major is the first numeric segment (`2.18.2` → 2.x, `33.4.8-jre` → 33.x). Pre-releases
 are never "stable", so an RC is taken only by an opt-in selector that admits it. The rewritten
 manifest keeps its spelling — a catalog one-liner stays a one-liner, a GAV string stays a GAV
-string — and the reviewable diff is `jk.toml` plus `jk-lock.toml`. `jk update` also revalidates
+string, a trailing comment keeps its column — and the reviewable diff is `jk.toml` plus `jk-lock.toml`. `jk update` also revalidates
 metadata and refreshes the recorded toolchain ([below](#toolchain-pins)). MCP has the same verb
 with a preview: [`update`](mcp.md#tools).
 
