@@ -38,7 +38,7 @@ population = { files = 2203 }
 "server/io" = { classes = 56, sites = 3311 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "server/toolchain" = { classes = 20, sites = 1776 }
-"shared/client-io" = { classes = 106, sites = 5913 }
+"shared/client-io" = { classes = 119, sites = 6437 }
 "shared/core" = { classes = 373, sites = 21199 }
 "shared/dynamic-surface" = { classes = 10, sites = 607 }
 "shared/host" = { classes = 46, sites = 1921 }
@@ -483,10 +483,6 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 [[blind-tree-walks.entries]]
 in     = "shared/client-io"
 at     = "cc.jumpkick.repo.RepoArtifactStore#hasTrackedFile(Ljava/nio/file/Path;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "shared/client-io"
-at     = "cc.jumpkick.repo.RepoArtifactStore#modules()Ljava/util/List; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "shared/client-io"
