@@ -138,8 +138,15 @@ it, whatever else ran:
 --class named 1 class the tag filter excluded: com.example.OrdersIT [integration]; pass --include-tags integration (or a -p profile that includes it) to run it; -p integration runs it
 ```
 
-Run it again with that `--profile` (or `--include-tags`). `--no-profile` lifts only a profile's
-filters, not `[test] exclude-tags`. A wildcard composes with the tag filter: `--class '*Orders*'`
+Under `-p` the line names the profile, and when the class runs in the default tier (the
+`[test]` tags, no `-p`) it says so instead:
+
+```
+no test in profile integration matches --class com.example.WarmWorkersTest: the tag filter excluded com.example.WarmWorkersTest (untagged); it runs in the default tier (drop -p integration)
+```
+
+Run it again with that `--profile` (or `--include-tags`), or without `-p`. `--no-profile` lifts
+only a profile's filters, not `[test] exclude-tags`. A wildcard composes with the tag filter: `--class '*Orders*'`
 runs the matches the filter keeps and warns about the ones it drops; a run in which the dropped
 ones were the only matches fails with that line.
 
@@ -156,7 +163,9 @@ suites contain no matching class is skipped — its `run-tests` step reads
 `no classes matched --class OrdersTest — skipped`, the same shape as a module that lacks the
 selected suite. The run **fails** with `no test classes matched --class OrdersTest` (`no test
 methods matched` for a `Class#method`) only when no module matched anything: a typo must not pass green. A standalone project is its own run, so
-there the empty match fails on the spot. `[test] serial-tags` partitions inside one module are
+there the empty match fails on the spot. A selection that ran nothing is a **usage error**, exit
+64, not a failed test: no `Tests:` count, and the error carries code `no-tests-matched` in
+`details.jsonl` and the results. Red tests beside a dropped class still exit 4. `[test] serial-tags` partitions inside one module are
 judged together: a pattern that only matches serial-tagged classes is a match.
 
 `-m` narrows the run to the selected modules **and their prerequisites**, and a prerequisite
@@ -212,7 +221,7 @@ classpath is part of the run's stamp, so changing the list re-runs the suite.
 
 A workspace `jk test` in which no module has a test suite exits **0**, as `mvn test` does, and
 the terminal line reads `No tests to run`; so does a `--profile` run over modules that carry no
-such tier. A `--class` selection that matches nothing is still `no test classes matched`, exit 4.
+such tier. A `--class` selection that matches nothing is still `no test classes matched`, exit 64.
 A suite replayed from its green stamp counts as run, and the terminal line says how many were:
 `Tests passed for 49 modules, 47 served from cache` — the two others ran — or `all served from
 cache` over an unchanged tree; a run that replayed nothing reads `Tests passed for 49 modules`. A

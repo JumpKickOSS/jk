@@ -142,4 +142,20 @@ class NativePlansTest {
         org.assertj.core.api.Assertions.assertThat(NativePlans.failureExitCode(plan, noMain))
                 .isEqualTo(Exit.USAGE);
     }
+
+    @Test
+    void failure_exit_code_maps_a_class_selection_that_matched_nothing_to_usage() {
+        var plan = BuildPlan.builder("test").stateKeys(BuildPlanner.TEST_RESULT).build();
+        var noMatch = new BuildPlanResult(
+                "test",
+                false,
+                Duration.ZERO,
+                List.of(),
+                List.of(),
+                List.of(new BuildPlanResult.Diagnostic(
+                        "run-tests", TestClassMatch.NO_TESTS_MATCHED, "no test classes matched --class Nope")),
+                false);
+        org.assertj.core.api.Assertions.assertThat(NativePlans.failureExitCode(plan, noMatch))
+                .isEqualTo(Exit.USAGE);
+    }
 }
