@@ -1,6 +1,6 @@
 # Test suite tiers (one tier per tag)
 
-**Goal:** keep the branch gate under **~5 minutes** and high-signal e2e on demand.
+**Goal:** keep the merge gate under **~5 minutes** and run the full e2e once per push, not once per merge.
 
 ## Commands
 
@@ -10,7 +10,8 @@ subset of the tag vocabulary, that each is run by exactly one tier, and **G52** 
 renders the same tables into the block below, so the two cannot drift
 ([self-host](self-host.md#test-tiers)).
 
-`jk build` runs every module's fast tier; `jk test -p integration` is the pre-merge bar. The
+`jk build` runs every module's fast tier and gates every local merge into `main`;
+`jk test -p integration` is the push gate, run on the local `main` before it is pushed. The
 house rules run under `jk build` and `jk guard` ([self-host](self-host.md#house-rule-gate)).
 
 <!-- test-tiers:start -->

@@ -126,8 +126,12 @@ The client never embeds the engine. Spawning uses
 jk format                                    # before every commit
 jk guard                                     # every house-rule lane, fixtures included
 jk build                                     # every module, fast tier included
-jk test -p integration                       # the pre-merge bar
+jk test -p integration                       # the push gate: before pushing main to origin
 ```
+
+The first three are the merge gate, run before every local merge into `main`. The integration
+profile is the push gate: it runs once on the local `main` about to be pushed, covering every
+branch merged since the last push.
 
 On Windows the same gate is expected to pass, so a red test there is a finding, not the platform.
 The integration profile is long; run it a module at a time (`-m jk-engine`, `-m jk-cli`, …,
@@ -175,7 +179,7 @@ assembly the same step names (`-Djk.engine.jar`), in an isolated sandbox `JK_HOM
 dual path. The fast tier (`jk test`) is the pure unit tier (TUI/args/jsonl) with no engine spawn.
 
 Use `-m` and `--class` mid-ticket (`jk test -m clients/cli -S cc.jumpkick.cli.engine.EngineClientTest -p integration`);
-the pre-merge bar is the whole integration profile. Tier model:
+the push gate is the whole integration profile. Tier model:
 [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md).
 
 Refresh locks after dependency changes: `jk lock` (commit the workspace-root `jk-lock.toml`).
