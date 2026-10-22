@@ -184,8 +184,9 @@ public final class PluginBuild {
     // ---- execution -----------------------------------------------------------------------------
 
     /**
-     * The resolved packager-dependency artifacts, fetched into the CAS by coordinate. The lock at
-     * {@code lockFile} supplies the platform versions a {@code ${config.<key>}} segment reads.
+     * The packager-dependency artifacts, fetched into the CAS as the lock at {@code lockFile} pins
+     * them — a tool without a {@code [[tool]]} row, or other bytes, is refused. The lock also
+     * supplies the platform versions a {@code ${config.<key>}} segment reads.
      */
     public static Map<String, Path> fetchPackagerDependencies(JkBuild project, Path moduleDir, Cas cas, Path lockFile)
             throws IOException, InterruptedException {
@@ -193,11 +194,12 @@ public final class PluginBuild {
         List<PluginContributions.PackagerDep> deps =
                 PluginContributions.packagerDependencies(project, moduleDir, platformPins(moduleDir, lockFile));
         if (deps.isEmpty()) return out;
+        Lockfile lock = lockOrNull(lockFile);
         RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
         for (PluginContributions.PackagerDep dep : deps) {
-            // A manifest may float its tool ("^4"); resolve to a concrete release.
-            String version = resolveToolVersion(repos, dep.module(), dep.version());
-            out.put(dep.artifact(), fetchArtifact(repos, dep.module(), version));
+            out.put(
+                    dep.artifact(),
+                    fetchPinned(repos, lockedCoordinate(dep.module() + ":" + dep.version(), lock), lock));
         }
         return out;
     }
@@ -325,14 +327,8 @@ public final class PluginBuild {
                         out.put(dep.artifact(), ToolClosures.materialize(dep, repos, cas));
                         continue;
                     }
-                    Coordinate coord = lockedCoordinate(dep, lock);
-                    String sha256 = lockedSha256(coord, lock);
-                    fetched = repos.tryFetchArtifact(coord, sha256)
-                            .orElseThrow(() -> new IOException("cannot fetch " + coord
-                                    + " — the coordinate a plugin's step-dependency names must exist in a"
-                                    + " declared repo"))
-                            .fetched()
-                            .cachePath();
+                    fetched = fetchPinned(
+                            repos, lockedCoordinate(Objects.requireNonNull(dep.coordinateSpec()), lock), lock);
                 }
                 out.put(dep.artifact(), dep.unpack() ? ToolArchives.unpack(fetched, cas) : fetched);
             } catch (IOException | RuntimeException e) {
@@ -343,12 +339,23 @@ public final class PluginBuild {
         return out;
     }
 
+    /** {@code coord}'s bytes as the lock's {@code [[tool]]} row pins them, fetched into the CAS. */
+    static Path fetchPinned(RepoGroup repos, Coordinate coord, @Nullable Lockfile lock)
+            throws IOException, InterruptedException {
+        String sha256 = lockedSha256(coord, lock);
+        return repos.tryFetchArtifact(coord, sha256)
+                .orElseThrow(() -> new IOException("cannot fetch " + coord
+                        + " — the coordinate a plugin's tool names must exist in a declared repo"))
+                .fetched()
+                .cachePath();
+    }
+
     /**
-     * {@code dep}'s coordinate as the lock pins it: a bare version is exact; a floating one takes the
-     * version of the lock's row for that tool.
+     * {@code spec}'s coordinate as the lock pins it: a bare version is exact; a floating one takes
+     * the version of the lock's row for that tool.
      */
-    static Coordinate lockedCoordinate(PluginContributions.StepDep dep, @Nullable Lockfile lock) throws IOException {
-        Coordinate raw = Coordinate.parse(Objects.requireNonNull(dep.coordinateSpec(), "coordinate"));
+    static Coordinate lockedCoordinate(String spec, @Nullable Lockfile lock) throws IOException {
+        Coordinate raw = Coordinate.parse(spec);
         if (VersionSelector.parse(raw.version()) instanceof VersionSelector.Exact exact) {
             return new Coordinate(raw.group(), raw.artifact(), exact.version(), raw.classifier(), raw.type());
         }
@@ -359,7 +366,7 @@ public final class PluginBuild {
                 if (row.pins(at)) return at;
             }
         }
-        throw unpinned(dep.coordinateSpec());
+        throw unpinned(spec);
     }
 
     /** The sha256 hex the lock pins for {@code coord}; a tool without a row is lock drift, refused. */
@@ -452,18 +459,6 @@ public final class PluginBuild {
         String resolved = resolveToolVersion(repos, raw.module(), raw.version());
         if (resolved.equals(raw.version())) return raw;
         return new Coordinate(raw.group(), raw.artifact(), resolved, raw.classifier(), raw.type());
-    }
-
-    /** Fetch one {@code module:version} jar into the CAS and return its path. */
-    private static Path fetchArtifact(RepoGroup repos, String module, String version)
-            throws IOException, InterruptedException {
-        int colon = module.indexOf(':');
-        Coordinate coord = Coordinate.of(module.substring(0, colon), module.substring(colon + 1), version);
-        return repos.tryFetchArtifact(coord)
-                .orElseThrow(() -> new IOException("cannot fetch " + coord
-                        + " — the version a plugin's packager-dependency names must exist in a declared repo"))
-                .fetched()
-                .cachePath();
     }
 
     /**

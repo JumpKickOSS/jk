@@ -379,8 +379,9 @@ and in no scope. It *is* an input to `native-image`, so it is pinned like one. S
 
 ### Plugin tools
 
-A tool a plugin's step or command fetches as one Maven artifact — protoc and its plugins under
-`[protobuf]`, r8 and aapt2 under `[android]`, the IDE distribution under `[intellij]` — is a
+A tool a plugin's step, command or packager fetches as one Maven artifact — protoc and its plugins
+under `[protobuf]`, r8 and aapt2 under `[android]`, the IDE distribution under `[intellij]`, the
+Boot loader and jarmode tools `[spring-boot]` nests in its jar, r8 under `[minified]` — is a
 `[[tool]]` row, pinned by the sha256 of its bytes. A tool published per platform (a `${host.os}` or
 `${host.os-arch}` classifier) carries one digest per platform the repository publishes (of
 `linux-x86_64`, `linux-aarch_64`, `osx-x86_64`, `osx-aarch_64` and `windows-x86_64`), as `[node]`
