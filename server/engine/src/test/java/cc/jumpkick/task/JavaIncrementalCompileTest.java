@@ -232,6 +232,31 @@ class JavaIncrementalCompileTest {
         assertThat(p.build().outcome).startsWith("cache-hit");
     }
 
+    /**
+     * A tree short of a class its incremental state claims — a write that failed mid-way on a full
+     * disk, a restore cut off part-way — is no base for an incremental compile: the next compile
+     * starts over, so the tree it records holds every class the sources define.
+     */
+    @Test
+    void a_tree_short_of_a_class_the_state_claims_compiles_whole(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir);
+        p.write("a/B.java", "package a; public class B { public String greet() { return \"hi\"; } }");
+        p.write("a/A.java", "package a; public class A { public String use() { return new B().greet(); } }");
+        p.build();
+        Files.delete(p.out.resolve("a/B.class"));
+
+        p.write("a/A.java", "package a; public class A { public String use() { return new B().greet() + \"!\"; } }");
+        Run r = p.build();
+
+        assertThat(r.outcome).isEqualTo("compiled");
+        assertThat(p.classExists("a/B.class"))
+                .as("the class the short tree lost")
+                .isTrue();
+        assertThat(p.actionCache.lastFor("compile-main").orElseThrow().outputs())
+                .as("the record restores every class")
+                .containsKeys("a/A.class", "a/B.class");
+    }
+
     @Test
     void a_source_put_back_after_a_mid_compile_edit_is_still_recompiled(@TempDir Path dir) throws Exception {
         Project p = new Project(dir);

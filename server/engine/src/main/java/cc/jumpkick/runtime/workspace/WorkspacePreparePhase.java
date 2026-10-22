@@ -127,6 +127,7 @@ final class WorkspacePreparePhase {
                     resources.request(),
                     resources.preflight().moduleDirs(),
                     resources.preflight().jarConsumed(),
+                    resources.preflight().launchedAssemblies(),
                     true,
                     siblings.gateFor(unit.dir()),
                     shelfOnly.contains(BuildGraph.canonicalPath(unit.dir())));
@@ -161,6 +162,7 @@ final class WorkspacePreparePhase {
                                 resources.request(),
                                 resources.preflight().moduleDirs(),
                                 resources.preflight().jarConsumed(),
+                                resources.preflight().launchedAssemblies(),
                                 true,
                                 siblings.gateFor(unit.dir()),
                                 shelfOnly.contains(BuildGraph.canonicalPath(unit.dir())));
@@ -231,12 +233,14 @@ final class WorkspacePreparePhase {
             WorkspaceRequest request,
             Set<Path> moduleDirs,
             Set<Path> jarConsumed,
+            Set<Path> launchedAssemblies,
             boolean forceRebuild,
             SiblingArtifacts.Gate siblings,
             boolean shelfOnly) {
         Path dir = unit.dir();
         if (!Files.exists(ManifestPaths.manifestIn(dir))) return null;
-        BuildPlan plan = assemblePlan(unit, request, moduleDirs, forceRebuild, jarConsumed, siblings, shelfOnly);
+        BuildPlan plan = assemblePlan(
+                unit, request, moduleDirs, forceRebuild, jarConsumed, launchedAssemblies, siblings, shelfOnly);
         // One evaluation serves prepare and run: each step keeps its estimate and the run sizes
         // the bar from it. The run evaluates under over-reserve, so the estimate is taken under
         // over-reserve too — every module prepared here is dirty, and a jar-derived tail priced
@@ -270,7 +274,8 @@ final class WorkspacePreparePhase {
             Set<Path> moduleDirs,
             boolean forceRebuild,
             Set<Path> jarConsumed) {
-        return assemblePlan(unit, request, moduleDirs, forceRebuild, jarConsumed, SiblingArtifacts.NONE, false);
+        return assemblePlan(
+                unit, request, moduleDirs, forceRebuild, jarConsumed, Set.of(), SiblingArtifacts.NONE, false);
     }
 
     /** {@code siblings} is this module's side of the schedule's artifact wait; {@link SiblingArtifacts#NONE} outside one. */
@@ -281,12 +286,13 @@ final class WorkspacePreparePhase {
             boolean forceRebuild,
             Set<Path> jarConsumed,
             SiblingArtifacts.Gate siblings) {
-        return assemblePlan(unit, request, moduleDirs, forceRebuild, jarConsumed, siblings, false);
+        return assemblePlan(unit, request, moduleDirs, forceRebuild, jarConsumed, Set.of(), siblings, false);
     }
 
     /**
      * {@code shelfOnly} is set for an INSTALL module whose forecast has only {@code cache-install}
-     * left to run — same thin plan as {@link WorkspaceTarget#RESHELVE}.
+     * left to run — same thin plan as {@link WorkspaceTarget#RESHELVE}. {@code launchedAssemblies}
+     * are the modules a sibling's suite runs from their fat jar, which a test run packages too.
      */
     static BuildPlan assemblePlan(
             BuildGraph.BuildUnit unit,
@@ -294,6 +300,7 @@ final class WorkspacePreparePhase {
             Set<Path> moduleDirs,
             boolean forceRebuild,
             Set<Path> jarConsumed,
+            Set<Path> launchedAssemblies,
             SiblingArtifacts.Gate siblings,
             boolean shelfOnly) {
         Path dir = unit.dir();
@@ -364,8 +371,9 @@ final class WorkspacePreparePhase {
         // nothing a delivery adds; a module nothing consumes stops at its tests. A node module's
         // plan already joins its install, build, tests and resource jar, and has no jar step.
         boolean nodeModule = NodeShape.kind(unit.manifest(), dir) == NodeShape.Kind.MODULE;
-        if (testRun && consumed && !nodeModule) PlannerTails.joinTests(builder, inputs);
-        else if (!testRun) {
+        if (testRun && consumed && !nodeModule) {
+            PlannerTails.joinTests(builder, inputs, launchedAssemblies.contains(BuildGraph.canonicalPath(dir)));
+        } else if (!testRun) {
             PlannerTails.appendDeclaredTails(builder, inputs, GraalHomes.lookup(dir, spec.graalByDir()), true);
         }
         return builder.build();

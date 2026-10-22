@@ -520,7 +520,8 @@ public final class ActionCache {
      * verifying every copied blob against its recorded digest. Stale files from a prior compile
      * are removed before restoring. Returns {@code false} — with {@code outputDir} left empty —
      * when a blob is missing or corrupt (the corrupt blob is dropped so the next store re-puts
-     * it), so the caller falls through to a real run instead of building on wrong bytes.
+     * it), or an output cannot be written (a full disk), so the caller falls through to a real run
+     * instead of building on a short or wrong tree.
      */
     public boolean restore(ActionRecord record, Path outputDir) throws IOException {
         return WorkCounters.restored(restoreInto(record, outputDir));
@@ -564,25 +565,25 @@ public final class ActionCache {
         meter(blobs, outputs); // cache hit: these bytes come back out of the cache
         for (Map.Entry<String, String> entry : outputs.entrySet()) {
             Path target = outputDir.resolve(entry.getKey());
-            // COPY, never link: compilers rewrite restored class files IN PLACE on the next
-            // build, and a hard link would let that rewrite mutate the CAS blob (see
-            // Cas.putFile). Costs O(bytes) instead of O(entries) — correctness wins.
-            Files.createDirectories(target.getParent());
             // Leave a byte-identical target alone — the mtime it keeps is what stops the KSP/Kotlin
             // thrash described above. Digest while copying otherwise: the memo seed below asserts
             // these exact bytes, so a truncated/corrupt blob must surface as a miss here, not as
             // green tests over wrong classes downstream.
             Blob blob = Objects.requireNonNull(blobs.get(entry.getValue()));
-            if (!identicalTo(target, blob, entry.getValue())) {
-                Files.deleteIfExists(target);
-                if (!copyVerified(blob.path(), target, entry.getValue())) {
-                    dropCorruptBlob(entry.getValue());
-                    // The contract is an empty outputDir on failure, so a partial restore is wiped
-                    // rather than pruned.
-                    deleteRecursively(outputDir);
-                    Files.createDirectories(outputDir);
-                    return false;
-                }
+            boolean laid;
+            try {
+                laid = layDown(blob, target, entry.getValue());
+            } catch (IOException failedWrite) {
+                // A full disk or a blocked path: what is on disk is not the record's tree.
+                Log.warn("jk: action-cache restore cut short", "path", target, "cause", failedWrite.toString());
+                laid = false;
+            }
+            if (!laid) {
+                // The contract is an empty outputDir on failure, so a partial restore is wiped
+                // rather than pruned.
+                deleteRecursively(outputDir);
+                Files.createDirectories(outputDir);
+                return false;
             }
             // CAS blobs carry no mode; the record does. Same reason as restoreArtifacts.
             if (record.executables().contains(entry.getKey())) {
@@ -592,6 +593,21 @@ public final class ActionCache {
             FileHashMemo.rememberContent(target, entry.getValue());
         }
         return true;
+    }
+
+    /**
+     * Put {@code blob} at {@code target} unless a byte-identical file is already there. False when
+     * the copied bytes do not hash to {@code sha} (the blob is dropped so the next store re-puts it).
+     * COPY, never link: compilers and packagers rewrite restored files in place, and a hard link
+     * would let that rewrite mutate the CAS blob (see {@code Cas.putFile}).
+     */
+    private boolean layDown(Blob blob, Path target, String sha) throws IOException {
+        Files.createDirectories(target.getParent());
+        if (identicalTo(target, blob, sha)) return true;
+        Files.deleteIfExists(target);
+        if (copyVerified(blob.path(), target, sha)) return true;
+        dropCorruptBlob(sha);
+        return false;
     }
 
     /**
@@ -636,7 +652,8 @@ public final class ActionCache {
      * Restore recorded outputs by copying them into {@code baseDir} WITHOUT clearing it first
      * for single/few-file artifact tasks (jars, fat-jars, native binaries) whose output dir ({@code
      * target/}) holds unrelated files. Overwrites a stale artifact already at the path. Returns
-     * {@code false} (restoring nothing) if any cached blob is missing, so the caller rebuilds.
+     * {@code false} if any cached blob is missing, or if an output cannot be laid down whole — then
+     * with none of the record's outputs left behind — so the caller rebuilds.
      */
     public boolean restoreArtifacts(ActionRecord record, Path baseDir) throws IOException {
         return restoreArtifacts(record, baseDir, true);
@@ -686,22 +703,24 @@ public final class ActionCache {
         meter(blobs, record.outputs());
         for (Map.Entry<String, String> e : record.outputs().entrySet()) {
             Path target = baseDir.resolve(e.getKey());
-            Files.createDirectories(target.getParent());
             // Leave a byte-identical target alone. Re-copying it is not merely wasted I/O: it
             // bumps the file's mtime, and FreshnessStamp compares classpath entries by mtime — so
             // restoring an unchanged sibling jar invalidated every downstream stamp and forced a
-            // full KSP round (and Kotlin recompile) on every single build.
+            // full KSP round (and Kotlin recompile) on every single build. Blobs may live in the
+            // store CAS after a release promote (Class-C).
             Blob blob = Objects.requireNonNull(blobs.get(e.getValue()));
-            if (!identicalTo(target, blob, e.getValue())) {
-                Files.deleteIfExists(target);
-                // COPY, never link: a packager may later rewrite the target in place, and a link
-                // would let that rewrite mutate the blob (see Cas.putFile). Digest while copying —
-                // the memo seed below asserts these exact bytes. Blobs may live in the store CAS
-                // after a release promote (Class-C).
-                if (!copyVerified(blob.path(), target, e.getValue())) {
-                    dropCorruptBlob(e.getValue());
-                    return false;
-                }
+            boolean laid;
+            try {
+                laid = layDown(blob, target, e.getValue());
+            } catch (IOException failedWrite) {
+                Log.warn("jk: action-cache restore cut short", "path", target, "cause", failedWrite.toString());
+                laid = false;
+            }
+            if (!laid) {
+                // A short restore is a miss, and leaves none of the record's outputs behind: the
+                // caller re-runs the action over a target that holds nothing it half-restored.
+                discardOutputs(record, baseDir);
+                return false;
             }
             // CAS blobs carry no mode; the record does. Applied on every restore, not only the
             // copying branch — a byte-identical target left alone may still have lost the bit.
@@ -712,6 +731,17 @@ public final class ActionCache {
             FileHashMemo.rememberContent(target, e.getValue());
         }
         return true;
+    }
+
+    /** Best-effort removal of every output {@code record} names under {@code baseDir}. */
+    private static void discardOutputs(ActionRecord record, Path baseDir) {
+        for (String rel : record.outputs().keySet()) {
+            try {
+                Files.deleteIfExists(baseDir.resolve(rel));
+            } catch (IOException ignored) {
+                // a path a directory now occupies, or one the disk will not let go of
+            }
+        }
     }
 
     /**
@@ -761,7 +791,9 @@ public final class ActionCache {
      * packaging.
      *
      * <p>Refuses an empty output set. {@link #restoreArtifacts} treats empty outputs as a miss, so
-     * persisting one would look like a hit and then rebuild anyway.
+     * persisting one would look like a hit and then rebuild anyway. Refuses an artifact that is not
+     * on disk too: the step did not write everything it names, and a record of the rest would
+     * restore a short set under a key that promises all of it.
      */
     public ActionRecord storeArtifacts(
             @Nullable String taskId,
@@ -775,7 +807,9 @@ public final class ActionCache {
         Map<String, String> outputs = new TreeMap<>();
         Set<String> executables = new TreeSet<>();
         for (Path a : artifacts) {
-            if (!Files.isRegularFile(a)) continue;
+            if (!Files.isRegularFile(a)) {
+                throw new IOException("not caching an action whose output was not written: " + a);
+            }
             // Memo, and seed it — see store.
             String hex = FileHashMemo.contentHash(a);
             cas.putFile(a, hex); // never link a mutable target/ artifact into the CAS
