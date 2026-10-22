@@ -30,6 +30,9 @@ import org.junit.jupiter.api.io.TempDir;
 class DeclaredVersionResolutionTest {
 
     @RegisterExtension
+    final QuiescedSources sources = new QuiescedSources();
+
+    @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
 
     private final MavenStub upstream = new MavenStub(http);
@@ -256,11 +259,11 @@ class DeclaredVersionResolutionTest {
                         "arquillian-spacelift",
                         "1.0.2"));
         RepoGroup repos = repoGroup(tempDir);
-        MavenPackageSource source = new MavenPackageSource(
+        MavenPackageSource source = sources.track(new MavenPackageSource(
                 repos,
                 new EffectivePomBuilder(repos),
                 Map.of(),
-                Map.of("org.arquillian.spacelift:arquillian-spacelift", "1.0.2"));
+                Map.of("org.arquillian.spacelift:arquillian-spacelift", "1.0.2")));
         Term drone = Term.positive(
                 "org.jboss.arquillian.extension:arquillian-drone-webdriver:jar:", VersionSet.exact("3.0.1.Final"));
 
