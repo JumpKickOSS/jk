@@ -51,7 +51,8 @@ final class DevUrls {
         for (ExecPlan.Sidecar s : sidecars) {
             Map<String, String> env = new LinkedHashMap<>(forApp(s.name(), exports));
             env.putAll(s.env());
-            out.add(new ExecPlan.Sidecar(s.name(), s.command(), s.cwd(), env, s.probe(), s.frontDoor(), s.restart()));
+            out.add(new ExecPlan.Sidecar(
+                    s.name(), s.command(), s.cwd(), env, s.dotEnv(), s.probe(), s.frontDoor(), s.restart()));
         }
         return out;
     }

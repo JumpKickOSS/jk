@@ -9,6 +9,7 @@ import cc.jumpkick.config.DotEnv;
 import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
@@ -20,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -42,7 +44,9 @@ public final class EnvCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         // Shadowed-file values ride the global -v/--verbose (a local flag would collide).
-        return List.of(Opt.flag("Include all process environment keys (not only .env and JK_*).", "-A", "--all"));
+        return List.of(
+                Opt.flag("Include all process environment keys (not only .env and JK_*).", "-A", "--all"),
+                Opt.flag("Print the .env values this shell lacks as commands it can evaluate.", "-e", "--export"));
     }
 
     @Override
@@ -52,6 +56,10 @@ public final class EnvCommand implements CliCommand {
         boolean verbose = global.verbose;
         boolean all = in.isSet("all");
         boolean json = global.outputIsJson();
+        if (in.isSet("export")) {
+            CliOutput.outRaw(exportLines(EnvLookup.dotEnv(dir), System::getenv, Os.isWindows()));
+            return 0;
+        }
 
         Path workspaceRoot;
         try {
@@ -87,6 +95,32 @@ public final class EnvCommand implements CliCommand {
             emitHuman(rows, verbose, dir, workspaceRoot);
         }
         return 0;
+    }
+
+    /**
+     * One shell command per {@code .env} value {@code realEnv} lacks: {@code export NAME='value'},
+     * or {@code set "NAME=value"} for {@code cmd.exe}, which cannot hold a multi-line value and so
+     * skips one. Values print unmasked: this output is meant to be evaluated, not read.
+     */
+    static String exportLines(
+            Map<String, String> fileValues, Function<String, @Nullable String> realEnv, boolean windows) {
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, String> e : fileValues.entrySet()) {
+            String name = e.getKey();
+            String value = e.getValue();
+            if (realEnv.apply(name) != null) continue;
+            if (windows) {
+                if (value.indexOf('\n') >= 0 || value.indexOf('\r') >= 0) continue;
+                sb.append("set \"").append(name).append('=').append(value).append("\"\n");
+            } else {
+                sb.append("export ")
+                        .append(name)
+                        .append("='")
+                        .append(value.replace("'", "'\\''"))
+                        .append("'\n");
+            }
+        }
+        return sb.toString();
     }
 
     /** Package-private for tests. */

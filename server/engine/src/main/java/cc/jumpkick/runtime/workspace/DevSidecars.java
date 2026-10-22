@@ -30,7 +30,8 @@ import org.jspecify.annotations.Nullable;
  * root's {@code [dev.sidecars]} entries, then the module's, the module winning a name clash. An
  * entry named like an inferred dev server is laid over it key by key; any other must have a {@code
  * command}. {@code cwd} is made absolute against the manifest that declared it; {@code env} is the
- * {@code .env} values the real environment does not already set, then the entry's own table on top.
+ * entry's own table, and {@code dotEnv} the {@code .env} values of the module that declared it, which
+ * the client sets only where the caller's environment lacks them.
  * The app's own probe: the module's alone — the root does not know which of its members' apps is
  * running. Nothing here touches an action key — none of it is a task.
  */
@@ -59,7 +60,7 @@ final class DevSidecars {
                 put(inferred, e.getValue().project().name(), NodeRun.dev(e.getKey(), e.getValue(), path));
             }
         }
-        return combine(inferred, written(moduleDir, module), clientEnv, false);
+        return combine(inferred, written(moduleDir, module), false);
     }
 
     /**
@@ -77,7 +78,7 @@ final class DevSidecars {
         }
         List<Written> written = new ArrayList<>();
         for (Sidecar s : rootBuild.build().devSidecars()) written.add(new Written(root, s));
-        return combine(inferred, written, clientEnv, true);
+        return combine(inferred, written, true);
     }
 
     /** A node module's dev server, named {@code name}, when it has a dev script. */
@@ -87,7 +88,7 @@ final class DevSidecars {
                 ? ExecPlan.Probe.NONE
                 : new ExecPlan.Probe(dev.url(), "", DevReady.DEFAULT_TIMEOUT_MILLIS);
         return new ExecPlan.Sidecar(
-                name, dev.argv(), dev.dir().toString(), dev.env(), probe, false, Sidecar.Restart.NEVER);
+                name, dev.argv(), dev.dir().toString(), dev.env(), dev.dotEnv(), probe, false, Sidecar.Restart.NEVER);
     }
 
     private static void put(Map<String, ExecPlan.Sidecar> inferred, String name, NodeRun.@Nullable Dev dev) {
@@ -116,11 +117,7 @@ final class DevSidecars {
      * doors: every one when {@code everyDoor}, else the only one.
      */
     private static List<ExecPlan.Sidecar> combine(
-            Map<String, ExecPlan.Sidecar> inferred,
-            List<Written> written,
-            Map<String, String> clientEnv,
-            boolean everyDoor)
-            throws IOException {
+            Map<String, ExecPlan.Sidecar> inferred, List<Written> written, boolean everyDoor) throws IOException {
         Map<String, ExecPlan.Sidecar> out = new LinkedHashMap<>(inferred);
         boolean doorWritten = false;
         for (Written w : written) {
@@ -128,12 +125,12 @@ final class DevSidecars {
             if (s.declared().contains("front-door") && s.frontDoor()) doorWritten = true;
             ExecPlan.Sidecar base = inferred.get(s.name());
             if (base != null) {
-                out.put(s.name(), over(base, resolve(w.declaredIn(), s, clientEnv), s.declared()));
+                out.put(s.name(), over(base, resolve(w.declaredIn(), s), s.declared()));
             } else if (s.command().isEmpty()) {
                 throw new IOException("[dev.sidecars." + s.name() + "] has no command, and no node module named `"
                         + s.name() + "` to take one from");
             } else {
-                out.put(s.name(), resolve(w.declaredIn(), s, clientEnv));
+                out.put(s.name(), resolve(w.declaredIn(), s));
             }
         }
         if (!doorWritten && (everyDoor || inferred.size() == 1)) {
@@ -146,7 +143,7 @@ final class DevSidecars {
                     out.put(
                             name,
                             new ExecPlan.Sidecar(
-                                    s.name(), s.command(), s.cwd(), s.env(), s.probe(), true, s.restart()));
+                                    s.name(), s.command(), s.cwd(), s.env(), s.dotEnv(), s.probe(), true, s.restart()));
                 }
             }
         }
@@ -157,6 +154,8 @@ final class DevSidecars {
     private static ExecPlan.Sidecar over(ExecPlan.Sidecar base, ExecPlan.Sidecar written, Set<String> keys) {
         Map<String, String> env = new LinkedHashMap<>(base.env());
         env.putAll(written.env());
+        Map<String, String> dotEnv = new LinkedHashMap<>(base.dotEnv());
+        dotEnv.putAll(written.dotEnv());
         boolean probe = keys.contains("ready") || keys.contains("ready-pattern");
         ExecPlan.Probe p = new ExecPlan.Probe(
                 probe ? written.probe().ready() : base.probe().ready(),
@@ -169,26 +168,19 @@ final class DevSidecars {
                 keys.contains("command") ? written.command() : base.command(),
                 keys.contains("cwd") ? written.cwd() : base.cwd(),
                 env,
+                dotEnv,
                 p,
                 keys.contains("front-door") ? written.frontDoor() : base.frontDoor(),
                 keys.contains("restart") ? written.restart() : base.restart());
     }
 
-    private static ExecPlan.Sidecar resolve(Path declaredIn, Sidecar s, Map<String, String> clientEnv) {
-        EnvLookup lookup = EnvLookup.forModule(declaredIn, clientEnv::get);
-        Map<String, String> env = new LinkedHashMap<>();
-        for (String name : lookup.fileNames()) {
-            if (!clientEnv.containsKey(name)) {
-                String value = lookup.get(name);
-                if (value != null) env.put(name, value);
-            }
-        }
-        env.putAll(s.env());
+    private static ExecPlan.Sidecar resolve(Path declaredIn, Sidecar s) {
         return new ExecPlan.Sidecar(
                 s.name(),
                 s.command(),
                 declaredIn.resolve(s.cwd()).toAbsolutePath().normalize().toString(),
-                env,
+                s.env(),
+                EnvLookup.dotEnv(declaredIn),
                 ExecPlan.Probe.of(s.ready()),
                 s.frontDoor(),
                 s.restart());
