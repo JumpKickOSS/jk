@@ -791,8 +791,8 @@ public final class LockPipeline {
     // ---- stage 4b: [[tool]] rows ---------------------------------------------
 
     /**
-     * Pin every plugin tool the root or a member fetches as one Maven artifact — both the step and
-     * the command lane — by the sha256 of its bytes. A tool whose coordinate follows the host is
+     * Pin every plugin tool the root or a member fetches as one Maven artifact — the step, command
+     * and packager lanes — by the sha256 of its bytes. A tool whose coordinate follows the host is
      * pinned for each {@link Interpolation.Host#LOCKED} platform that publishes it, so a machine on
      * another OS verifies its own download against the lock; the running host's artifact must
      * exist. A plain {@code jk lock} keeps a floating tool's locked version and reuses the digests
@@ -811,20 +811,13 @@ public final class LockPipeline {
             Lockfile view = dir.equals(lockDir)
                     ? lock
                     : lock.forMember(lockDir.relativize(dir).toString().replace('\\', '/'));
-            Map<String, String> platformPins = view.platformPins();
-            List<PluginContributions.StepDep> tools = new ArrayList<>();
-            tools.addAll(PluginContributions.stepDependencies(build, dir, platformPins));
-            tools.addAll(PluginContributions.commandDependencies(build, dir, platformPins));
             RepoGroup repos = null;
-            for (PluginContributions.StepDep tool : tools) {
-                if (!tool.isPinnedArtifact()) continue;
+            for (PluginContributions.LockedArtifact tool :
+                    PluginContributions.lockedArtifacts(build, dir, view.platformPins())) {
                 if (repos == null) repos = RepoGroupBuilder.buildFor(build, repoUrl, cas, BuildEnv.forModule(dir));
-                for (String spec : tool.lockedCoordinates()) {
-                    Coordinate coord = toolCoordinate(spec, previous, repos);
-                    boolean host = spec.equals(tool.coordinateSpec());
-                    wanted.merge(coord, host, Boolean::logicalOr);
-                    reposFor.putIfAbsent(coord, repos);
-                }
+                Coordinate coord = toolCoordinate(tool.coordinate(), previous, repos);
+                wanted.merge(coord, tool.host(), Boolean::logicalOr);
+                reposFor.putIfAbsent(coord, repos);
             }
         }
         if (wanted.isEmpty()) return lock.withTools(List.of());

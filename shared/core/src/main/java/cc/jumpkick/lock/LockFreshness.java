@@ -11,12 +11,9 @@ import cc.jumpkick.plugin.manifest.PluginContributions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -29,7 +26,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>A clean digest is necessary but not sufficient: a lock can also be missing a <em>fact</em>
  * jk writes for the current manifests — the {@code [native] metadata-repository} pin, the {@code
- * [node]} pin, a {@code [[kotlin-plugins]]} jar's {@code [[plugin]]} row, a plugin step tool's
+ * [node]} pin, a {@code [[kotlin-plugins]]} jar's {@code [[plugin]]} row, a plugin tool's
  * {@code [[tool]]} row — and {@link #isStale} rules such a lock stale.
  */
 public final class LockFreshness {
@@ -167,13 +164,10 @@ public final class LockFreshness {
             Lockfile view = dir.equals(root)
                     ? lock
                     : lock.forMember(root.relativize(dir).toString().replace('\\', '/'));
-            Map<String, String> platformPins = view.platformPins();
-            List<PluginContributions.StepDep> tools = new ArrayList<>();
-            tools.addAll(PluginContributions.stepDependencies(module.getValue(), dir, platformPins));
-            tools.addAll(PluginContributions.commandDependencies(module.getValue(), dir, platformPins));
-            for (PluginContributions.StepDep tool : tools) {
-                if (!tool.isPinnedArtifact()) continue;
-                Coordinate coord = Coordinate.parse(Objects.requireNonNull(tool.coordinateSpec()));
+            for (PluginContributions.LockedArtifact tool :
+                    PluginContributions.lockedArtifacts(module.getValue(), dir, view.platformPins())) {
+                if (!tool.host()) continue;
+                Coordinate coord = Coordinate.parse(tool.coordinate());
                 String exact =
                         VersionSelector.parse(coord.version()) instanceof VersionSelector.Exact e ? e.version() : null;
                 boolean pinned = lock.tools().stream()

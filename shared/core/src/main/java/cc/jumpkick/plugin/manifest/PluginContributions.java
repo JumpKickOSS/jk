@@ -243,6 +243,33 @@ public final class PluginContributions {
     public record PackagerDep(String artifact, String module, String version) {}
 
     /**
+     * One coordinate an active plugin fetches as a single Maven artifact, as this host or a locked
+     * platform resolves it: what a {@code [[tool]]} row pins. {@code host} marks this machine's.
+     */
+    public record LockedArtifact(String coordinate, boolean host) {}
+
+    /**
+     * Every coordinate the active plugins fetch as one Maven artifact — the step, command and
+     * packager lanes — on this host and on each {@link Interpolation.Host#LOCKED} platform.
+     */
+    public static List<LockedArtifact> lockedArtifacts(
+            JkBuild build, Path moduleDir, Map<String, String> platformPins) {
+        List<StepDep> tools = new ArrayList<>(stepDependencies(build, moduleDir, platformPins));
+        tools.addAll(commandDependencies(build, moduleDir, platformPins));
+        List<LockedArtifact> out = new ArrayList<>();
+        for (StepDep tool : tools) {
+            if (!tool.isPinnedArtifact()) continue;
+            for (String spec : tool.lockedCoordinates()) {
+                out.add(new LockedArtifact(spec, spec.equals(tool.coordinateSpec())));
+            }
+        }
+        for (PackagerDep dep : packagerDependencies(build, moduleDir, platformPins)) {
+            out.add(new LockedArtifact(dep.module() + ":" + dep.version(), true));
+        }
+        return out;
+    }
+
+    /**
      * One resolved step-dependency, handed to the step as {@code artifact}: a Maven coordinate
      * spec ({@code group:artifact:version[:classifier]}, {@code transitive} = the runtime closure),
      * a provisioned SDK component ({@code sdkComponent}/{@code sdkPath}), or a file at an http(s)

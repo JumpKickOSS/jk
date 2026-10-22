@@ -247,8 +247,10 @@ tools only), `${kotlin.version}`, `${project.group|name|version}`, `${host.os}`,
 `[[contribute.packager-dependency]]`, `…:8.5.35` is a hard pin and costs no network: a tool
 version in a manifest is *your* choice, and a literal usually exists because the tool has to
 match some other line (android's r8 tracks the AGP tools line). Write `^` or `~` when you mean
-float-within-line, resolving against the tool's own `maven-metadata.xml`. `latest` and open
-ranges are rejected in a tool coordinate.
+float-within-line, resolving against the tool's own `maven-metadata.xml` once, at `jk lock`: the
+lock's `[[tool]]` row keeps the version and the sha256 of its bytes, and the build fetches only
+those ([Lockfile](../user/lockfile.md#plugin-tools)). `latest` and open ranges are rejected in a
+tool coordinate.
 
 **The platform line's key is the locked version.** The user writes a *selector* into the key
 your `[[contribute.platform-dependency]]` reads (`[spring-boot] version = "4.1.1"`, `"^4"`,
