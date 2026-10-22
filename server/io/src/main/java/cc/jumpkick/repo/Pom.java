@@ -28,7 +28,12 @@ public record Pom(
         List<Dep> managedDependencies,
         @Nullable Relocation relocation,
         List<Repository> repositories,
-        List<Dep> inheritableManaged) {
+        List<Dep> inheritableManaged,
+        /** {@code <licenses>} as written, in order; empty when the POM declares none. */
+        List<License> licenses) {
+
+    /** One {@code <license>}: its {@code <name>} and {@code <url>}, either of which may be absent. */
+    public record License(@Nullable String name, @Nullable String url) {}
 
     /**
      * A POM with no {@code <distributionManagement>} redirect and no {@code <repositories>}, whose
@@ -54,7 +59,8 @@ public record Pom(
                 managedDependencies,
                 null,
                 List.of(),
-                managedDependencies);
+                managedDependencies,
+                List.of());
     }
 
     public Pom {
@@ -67,6 +73,7 @@ public record Pom(
         managedDependencies = List.copyOf(managedDependencies);
         repositories = List.copyOf(repositories);
         inheritableManaged = List.copyOf(inheritableManaged);
+        licenses = List.copyOf(licenses);
     }
 
     /**

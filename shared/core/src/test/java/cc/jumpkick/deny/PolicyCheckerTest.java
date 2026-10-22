@@ -97,15 +97,44 @@ class PolicyCheckerTest {
     }
 
     @Test
-    void toml_parser_rejects_unenforced_licenses() {
-        assertThatThrownBy(() -> deny("""
+    void licences_are_judged_from_what_the_lock_records() throws IOException {
+        DenyPolicy policy = deny("""
                 group = "g"
                 name = "a"
                 version = "1"
                 jdk = 25
                 [deny.licenses]
-                deny = ["GPL-3.0"]
-                """)).isInstanceOf(JkBuildParseException.class);
+                deny = ["GPL-*", "AGPL-*"]
+                """);
+        Lockfile lock = new Lockfile(
+                1,
+                "jk",
+                "pubgrub-v1",
+                List.of(
+                        row("com.acme:gpl:jar:").withLicenses(List.of("GPL-3.0-only")),
+                        row("com.acme:dual:jar:").withLicenses(List.of("GPL-2.0-only", "MIT")),
+                        row("com.acme:none:jar:").withLicenses(List.of()),
+                        row("com.acme:unrecorded:jar:")));
+        assertThat(new PolicyChecker(policy).check(lock))
+                .extracting(PolicyChecker.Violation::module)
+                .containsExactly("com.acme:gpl:jar:");
+
+        DenyPolicy allowOnly = deny("""
+                group = "g"
+                name = "a"
+                version = "1"
+                jdk = 25
+                [deny.licenses]
+                allow = ["Apache-2.0", "MIT", "BSD-*"]
+                """);
+        assertThat(new PolicyChecker(allowOnly).check(lock))
+                .extracting(PolicyChecker.Violation::module)
+                .containsExactly("com.acme:gpl:jar:", "com.acme:none:jar:");
+    }
+
+    private static Lockfile.Artifact row(String name) {
+        return new Lockfile.Artifact(
+                name, "1.0", "central+https://repo.example/", null, null, List.of(), List.of(), null);
     }
 
     @Test

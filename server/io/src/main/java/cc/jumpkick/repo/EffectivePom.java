@@ -46,7 +46,9 @@ public record EffectivePom(
         @Nullable Relocation relocation,
         Map<String, String> hostClassified,
         List<Pom.Repository> repositories,
-        List<Pom.Dep> inheritedManaged) {
+        List<Pom.Dep> inheritedManaged,
+        /** The POM's {@code <licenses>}, else the nearest parent's: Maven inherits them whole. */
+        List<Pom.License> licenses) {
 
     /** A POM whose managed entries are all its own, inherited as they are, and that declares no relocation. */
     public EffectivePom(
@@ -69,7 +71,8 @@ public record EffectivePom(
                 null,
                 Map.of(),
                 List.of(),
-                managedDependencies);
+                managedDependencies,
+                List.of());
     }
 
     public EffectivePom {
@@ -84,5 +87,6 @@ public record EffectivePom(
         hostClassified = Map.copyOf(hostClassified);
         repositories = List.copyOf(repositories);
         inheritedManaged = List.copyOf(inheritedManaged);
+        licenses = List.copyOf(licenses);
     }
 }

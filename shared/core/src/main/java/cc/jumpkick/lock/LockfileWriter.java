@@ -234,6 +234,14 @@ public final class LockfileWriter {
                 }
                 out.append("]\n");
             }
+            if (pkg.licenses() != null) {
+                out.append("licenses = [");
+                for (int i = 0; i < pkg.licenses().size(); i++) {
+                    if (i > 0) out.append(", ");
+                    out.append(quote(pkg.licenses().get(i)));
+                }
+                out.append("]\n");
+            }
             if (!pkg.members().isEmpty()) {
                 out.append("members  = [");
                 for (int i = 0; i < pkg.members().size(); i++) {

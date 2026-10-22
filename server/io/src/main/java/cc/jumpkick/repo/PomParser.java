@@ -121,7 +121,23 @@ public final class PomParser {
                 managed,
                 parseRelocation(project, ctx),
                 parseRepositories(project, ctx, gav),
-                inheritable.equals(managed) ? managed : inheritable);
+                inheritable.equals(managed) ? managed : inheritable,
+                parseLicenses(project, ctx));
+    }
+
+    /** {@code <licenses><license><name/><url/></license></licenses>}, properties substituted. */
+    private static List<Pom.License> parseLicenses(Element project, Map<String, String> ctx) {
+        Element licenses = childElement(project, "licenses");
+        if (licenses == null) return List.of();
+        List<Pom.License> out = new ArrayList<>();
+        for (Element license : childElements(licenses, "license")) {
+            String name = childText(license, "name");
+            String url = childText(license, "url");
+            if (name == null && url == null) continue;
+            out.add(new Pom.License(
+                    name == null ? null : substitute(name, ctx), url == null ? null : substitute(url, ctx)));
+        }
+        return out;
     }
 
     /**
