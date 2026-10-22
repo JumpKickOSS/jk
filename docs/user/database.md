@@ -10,7 +10,8 @@ from the environment.
 
 One shape for both tools:
 
-1. **Install once**, pinned, with the driver: `jk tool install <tool coordinate> --with <driver>`.
+1. **Install once**, pinned, with the driver, under the tool's own command name:
+   `jk tool install <tool coordinate> --bin <command> --with <driver>`.
 2. **Point it at the database through the environment**: the tool's own variables in the
    project's `.env` (`FLYWAY_URL`, `LIQUIBASE_COMMAND_URL`). The launcher reads the `.env` of the
    directory it runs in (and of the workspace root above it), as `jk tool run` does — and the
@@ -26,10 +27,12 @@ scripts without a database at all.
 
 ```bash
 jk tool install org.flywaydb:flyway-commandline:12.9.0 -T org.flywaydb.commandline.Main \
-  --with org.postgresql:postgresql:42.7.9            # the driver your URL needs
+  --bin flyway --with org.postgresql:postgresql:42.7.9   # the driver your URL needs
 ```
 
-`flyway-commandline`'s jar names no `Main-Class`, so `--main` names the command line's class.
+`flyway-commandline`'s jar names no `Main-Class`, so `--main` names the command line's class, and
+`--bin flyway` names the launcher — without it the launcher is the artifact id,
+`flyway-commandline`.
 12.9.0 is the line the recipe pins: `flyway-commandline` 13.x declares a runtime dependency
 (`flyway-database-ignite`) that Maven Central does not carry, so its closure does not resolve.
 
@@ -55,7 +58,7 @@ the JDBC driver is yours to add with `--with`.
 
 ```bash
 jk tool install org.liquibase:liquibase-core:5.0.4 \
-  --main liquibase.integration.commandline.LiquibaseCommandLine \
+  --main liquibase.integration.commandline.LiquibaseCommandLine --bin liquibase \
   --with org.postgresql:postgresql:42.7.9 \
   --with info.picocli:picocli:4.7.7
 ```
