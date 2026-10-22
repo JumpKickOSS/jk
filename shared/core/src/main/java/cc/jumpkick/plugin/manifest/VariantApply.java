@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.manifest;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.Interpolation;
 import cc.jumpkick.config.JkBuildParseException;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.EnvDecl;
@@ -26,7 +27,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * Folds selected {@code [variants]} overlays into a flat effective {@link JkBuild} (and plugin
  * configs). Precedence: custom dimensions in declaration order, then {@code build-type} last.
- * Dimensions without defaults must be selected; undeclared dimension selections are ignored.
+ * Dimensions without defaults must be selected, except on a guard run, where they take their first
+ * declared value; undeclared dimension selections are ignored.
  *
  * <p>Signing sub-tables flatten to {@code signing.*}; {@code env:NAME} resolves client env then
  * process env. {@code secret = true} keys go only on {@link Applied#secrets} (digests in action keys).
@@ -34,6 +36,29 @@ import org.jspecify.annotations.Nullable;
 public final class VariantApply {
 
     private VariantApply() {}
+
+    /**
+     * The selection a run builds: {@code raw}'s wire form, with unselected dimensions taking their
+     * first value on a guard run ({@link Session#lanesOnly()}).
+     */
+    public static Selection selection(@Nullable String raw, Session session) {
+        return Selection.parse(raw).withFirstUnselected(session.lanesOnly());
+    }
+
+    /**
+     * Why {@code selection} cannot build {@code build}: an unselected mandatory dimension or a value
+     * the module does not declare. Null when it applies. Reads the declaration alone, so a workspace
+     * checks every module before any work starts.
+     */
+    public static @Nullable String selectionError(JkBuild build, Selection selection) {
+        try {
+            for (Variants.Dimension dimension : build.variants().custom()) chooseCustom(dimension, selection, false);
+            chooseBuildType(build.variants(), selection);
+            return null;
+        } catch (JkBuildParseException e) {
+            return e.getMessage();
+        }
+    }
 
     /** The variant-applied build plus the resolved secret values (package-spec side channel). */
     public record Applied(JkBuild build, Map<String, String> secrets) {}
@@ -113,6 +138,8 @@ public final class VariantApply {
         String name = selection.values().get(dimension.name());
         if (name == null) name = selection.values().get("*"); // bare --variant <value>
         if (name == null) name = dimension.defaultValue();
+        if (name == null && selection.firstUnselected() && !dimension.values().isEmpty())
+            name = dimension.values().keySet().iterator().next();
         if (name == null) {
             if (lenient) return null;
             throw new JkBuildParseException("[variants." + dimension.name() + "] declares values "

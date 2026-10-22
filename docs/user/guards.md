@@ -115,6 +115,14 @@ an edit re-runs only the lanes it can affect. The fixture proofs are keyed the s
 rules, the fixture files, the guard suites and the classes the fixtures compile against. A
 proof only reruns when one of those changes, and its cases run side by side.
 
+**Variants.** A guard run needs no `--variant`. Every module builds one variant: the values you
+select, else each dimension's `default`, else its first declared value — so in a workspace with
+`[variants.contentType.demo]` before `[variants.contentType.prod]`, `jk guard` compiles `demo`. The
+bytecode, model and output lanes judge that variant; the tree lane reads every file whatever the
+selection, so text rules cover every value's sources. Judge another value's classes with
+`jk guard --variant contentType=prod`. A value a module does not declare fails before any
+module's work starts, naming the module.
+
 ## Keys
 
 Every key the loader accepts, by kind; `common` keys apply to every kind.

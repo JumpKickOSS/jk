@@ -7,7 +7,6 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.Variants;
 import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.runtime.TaskForecaster.DepHint;
 import cc.jumpkick.runtime.base.Perf;
@@ -344,7 +343,8 @@ final class ForecastSteps {
         Session session = SessionContext.current();
         try {
             JkBuild build = BuildPlanner.applyAssemblyOverride(manifest, session);
-            return VariantApply.apply(build, dir, Variants.Selection.parse(session.variant()), session.clientEnv())
+            return VariantApply.apply(
+                            build, dir, VariantApply.selection(session.variant(), session), session.clientEnv())
                     .build();
         } catch (RuntimeException e) {
             Log.debug("forecast of " + dir + " prices the parsed manifest: its variants do not apply", e);

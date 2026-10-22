@@ -4,6 +4,8 @@ package cc.jumpkick.runtime.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
@@ -79,6 +81,40 @@ class WorkspaceLifecyclePhasesTest {
         assertThat(result.errors()).singleElement().asString().contains("selection matched no workspace module");
         assertThat(listener.events).containsExactly("preflight:graph:0/0", "preflight:graph:1/1", "finish:2");
         assertThat(listener.finished).hasSize(1);
+    }
+
+    @Test
+    void an_unselected_variant_fails_before_any_module_work_and_a_guard_run_takes_the_first_value() throws Exception {
+        Path workspace = workspace(List.of("lib", "app"));
+        Files.writeString(workspace.resolve("app/jk.toml"), Files.readString(workspace.resolve("app/jk.toml")) + """
+
+                [variants.contentType.demo]
+                extra-src = ["src-demo"]
+                [variants.contentType.prod]
+                extra-src = ["src-prod"]
+                """);
+        Files.createDirectories(workspace.resolve("app/src/main/java"));
+        RecordingListener listener = new RecordingListener();
+
+        WorkspaceResult result = WorkspaceExecute.buildWorkspace(request(workspace), listener);
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.exitCode()).isEqualTo(2);
+        assertThat(result.errors())
+                .containsExactly("example:app: [variants.contentType] declares values [demo, prod]"
+                        + " — select one with --variant contentType=<value>");
+        assertThat(listener.events).containsExactly("preflight:graph:0/0", "preflight:graph:1/1", "finish:2");
+
+        var root = JkBuildParser.parse(Files.readString(workspace.resolve("jk.toml")));
+        List<BuildGraph.BuildUnit> units = BuildGraph.resolve(workspace, root).topoOrder();
+        assertThat(SessionContext.where(
+                        Session.defaults().withLanesOnly(true),
+                        () -> WorkspacePreflightPhase.selectionErrors(units, request(workspace))))
+                .as("a guard run builds the first declared value")
+                .isEmpty();
+        assertThat(WorkspacePreflightPhase.selectionErrors(
+                        units, request(workspace).withVariant("contentType=prod", Map.of())))
+                .isEmpty();
     }
 
     @Test
