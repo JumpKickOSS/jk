@@ -448,7 +448,9 @@ checksum   = "sha256:…"
 
 The build resolves nothing: it fetches exactly the jars the closure row names, each against its
 row, and a tool with no closure row fails naming it. A plain `jk lock` keeps a closure as pinned;
-`jk lock -F` and `jk update` resolve it again.
+`jk lock -F` and `jk update` resolve it again. A closure is resolved for the host that locks: a
+closure whose root names `${host.os}` (no shipped plugin's does) is pinned for that OS alone, and a
+build on another OS fails naming the missing closure.
 
 `jk sync` fetches every tool the lock pins for this platform — artifacts, closures, URL files — into
 the store and verifies each against its row, so the next build, or an `--offline` one, downloads
