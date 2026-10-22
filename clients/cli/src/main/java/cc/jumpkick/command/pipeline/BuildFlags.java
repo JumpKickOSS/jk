@@ -22,6 +22,7 @@ import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,8 +30,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The options every build verb shares, declared once ({@link #options}) and parsed once ({@link
- * #from}). Which of them a verb takes follows from how far its goal runs ({@link Reach}); a verb
- * adds only options no other verb has.
+ * #from}). Which of them a verb takes follows from its goal's {@link WorkspaceTarget#tests()}
+ * policy; a verb adds only options no other verb has.
  */
 public record BuildFlags(
         GlobalOptions global,
@@ -50,16 +51,6 @@ public record BuildFlags(
         @Nullable String affectedSince,
         boolean affectedWip) {
 
-    /** How far a verb's goal runs, which decides the shared options it takes. */
-    public enum Reach {
-        /** Compiles; runs no test. */
-        COMPILE,
-        /** Runs tests; they are the point, so they cannot be skipped. */
-        TEST,
-        /** Delivers an artifact; tests run unless {@code --skip-tests}. */
-        DELIVER
-    }
-
     /** What {@code --affected} / {@code --affected-since} mean to a verb. */
     public enum Affected {
         /** The modules a change touched: the work list. */
@@ -71,14 +62,14 @@ public record BuildFlags(
     public static final String GUARD_SUITE_OVERRIDE_WARNING = "--guard ignored because --suite was set";
     public static final String SCRIPTS_FLAGS_CONFLICT = "--scripts-only and --no-scripts cannot be combined";
 
-    /** The shared options a verb that runs to {@code reach} declares, before its own. */
-    public static List<Opt> options(Reach reach, Affected affected) {
+    /** The shared options of a verb whose goal runs tests as {@code tests} says, before its own. */
+    public static List<Opt> options(WorkspaceTarget.Tests tests, Affected affected) {
         List<Opt> opts = new ArrayList<>();
         opts.add(Opt.value("<name>", "Build profile (default auto)", "-p", "--profile"));
-        if (reach != Reach.COMPILE) {
+        if (tests != WorkspaceTarget.Tests.NOT_RUN) {
             opts.add(Opt.flag("Skip profile tag filters", "-n", "--no-profile"));
             opts.add(Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers"));
-            if (reach == Reach.DELIVER) opts.add(CommonOpts.skipTests());
+            if (tests == WorkspaceTarget.Tests.UNLESS_SKIPPED) opts.add(CommonOpts.skipTests());
             opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
                     .repeat());
             opts.add(Opt.flag("Run every test suite (tags included)", "-A", "--all"));

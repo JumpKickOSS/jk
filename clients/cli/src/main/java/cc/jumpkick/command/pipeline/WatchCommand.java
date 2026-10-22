@@ -18,6 +18,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -52,7 +53,8 @@ public final class WatchCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         // Every watched verb is a build verb: the loop takes the build options and hands them on.
-        var opts = new ArrayList<>(BuildFlags.options(BuildFlags.Reach.DELIVER, BuildFlags.Affected.MODULES));
+        var opts =
+                new ArrayList<>(BuildFlags.options(WorkspaceTarget.Tests.UNLESS_SKIPPED, BuildFlags.Affected.MODULES));
         opts.add(Opt.value(
                 "<ms>",
                 "Debounce source changes (default " + SourceWatch.DEBOUNCE_MILLIS + " ms)",
@@ -218,7 +220,7 @@ public final class WatchCommand implements CliCommand {
 
     /** One pass of {@code verb} with the loop's own options, so {@code jk watch test -m x} tests x. */
     private static int runVerb(String verb, Invocation in) {
-        Invocation pass = BuildVerbCommand.forward(in, BuildFlags.Reach.DELIVER, b -> {
+        Invocation pass = BuildVerbCommand.forward(in, WorkspaceTarget.Tests.UNLESS_SKIPPED, b -> {
             // The loop rebuilds to run the result; it does not gate on a suite.
             if (verb.equals("build")) b.flag("skip-tests", true);
         });

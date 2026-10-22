@@ -18,7 +18,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.runtime.workspace.BuildService;
-import cc.jumpkick.runtime.workspace.CompilePlans;
+import cc.jumpkick.runtime.workspace.ModulePipeline;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.CompileRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -197,10 +197,21 @@ public final class CompileVerb implements HostedVerb {
                 }
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 // Constructed in-session — see runImage's note on ambient-session capture.
-                BuildPlan plan = SessionContext.where(
-                        session,
-                        () -> CompilePlans.compileBuildPlan(
-                                session.workingDir(), session.cacheDir(), body.profile(), body.verbose()));
+                WorkspaceRequest request = new WorkspaceRequest(
+                                session.workingDir(),
+                                session.cacheDir(),
+                                session.jdksDir(),
+                                0,
+                                body.profile(),
+                                true,
+                                body.verbose(),
+                                0,
+                                null,
+                                false,
+                                false)
+                        .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                        .withSpec(WorkspaceSpec.compile(Set.of()));
+                BuildPlan plan = SessionContext.where(session, () -> ModulePipeline.standalone(request, null));
                 return host.streamSinglePlan(
                         plan, session, writer, result -> ProtoEvents.planFinish(dir, result.success()));
             } catch (ShadowManifests.NotBuiltHere refused) {

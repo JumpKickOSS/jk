@@ -21,6 +21,7 @@ import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
@@ -64,8 +65,8 @@ final class PackageVerb implements BuildVerb {
     }
 
     @Override
-    public BuildFlags.Reach reach() {
-        return BuildFlags.Reach.DELIVER;
+    public WorkspaceTarget target() {
+        return WorkspaceTarget.PACKAGE;
     }
 
     @Override
@@ -105,7 +106,7 @@ final class PackageVerb implements BuildVerb {
     public WorkspaceResult workspace(BuildRun run, Path entryDir, List<String> modules, WorkspaceBuildListener listener)
             throws IOException {
         BuildFlags flags = run.flags();
-        WorkspaceRequest request = run.workspaceRequest(entryDir, modules, flags.skipTests(), flags.jobs())
+        WorkspaceRequest request = run.workspaceRequest(entryDir, modules, flags.jobs())
                 .withSpec(WorkspaceSpec.DEFAULT.withGraalByDir(graalHomes));
         return EngineClient.buildWorkspace(EnginePaths.current(), request, listener);
     }
@@ -126,7 +127,7 @@ final class PackageVerb implements BuildVerb {
         // distrusting build (--force / --redo) never takes the trust-the-cache shortcut.
         if (BuildPlanConsole.isInteractiveTerminal() && !run.global().outputIsJson() && !flags.rebuild()) {
             try {
-                var forecast = EngineClient.forecast(EnginePaths.current(), dir, flags.cache(), flags.skipTests());
+                var forecast = EngineClient.forecast(EnginePaths.current(), dir, flags.cache(), run.skipTests());
                 if (!forecast.hasErrors() && !forecast.empty() && forecast.fullyCached()) {
                     run.ok(BuildTails.buildOk() + ", project up to date " + BuildTails.elapsedSince(start));
                     return 0;
@@ -154,7 +155,7 @@ final class PackageVerb implements BuildVerb {
                 flags.jdksDir(),
                 flags.workers(),
                 flags.profile(),
-                flags.skipTests(),
+                run.skipTests(),
                 run.global().verbose,
                 session.offline(),
                 session.force(),

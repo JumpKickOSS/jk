@@ -846,6 +846,9 @@ public final class BuildPlan {
         private final List<BuildPlanListener> listeners = new ArrayList<>();
         private final List<BuildPlanKey<?>> stateKeys = new ArrayList<>();
         private @Nullable String terminal;
+        /** Every terminal this plan was re-rooted away from, paired with the one that replaced it. */
+        private final List<String[]> reroots = new ArrayList<>();
+
         private final List<String> alsoKept = new ArrayList<>();
         private Clock clock = Clock.SYSTEM;
 
@@ -907,11 +910,23 @@ public final class BuildPlan {
         /**
          * Keep only the terminal task and its upstream {@link Task#requires()} closure. Call after
          * all tasks are added (including command tails). Unknown terminal names fail at
-         * {@link #build()}.
+         * {@link #build()}. A plan may be re-rooted only onto a task that still requires the
+         * terminal it displaces; {@link #build()} refuses one that would prune it.
          */
         public Builder terminal(String taskName) {
+            if (terminal != null && !terminal.equals(taskName)) reroots.add(new String[] {terminal, taskName});
             this.terminal = taskName;
             return this;
+        }
+
+        /**
+         * Append {@code task} after everything the plan does so far: it requires the current
+         * terminal and becomes the new one. The way a verb's tail joins the plan.
+         */
+        public Builder extend(Task task) {
+            Task joined = terminal == null ? task : task.alsoRequiring(terminal);
+            steps.add(joined);
+            return terminal(joined.name());
         }
 
         /**
@@ -935,6 +950,7 @@ public final class BuildPlan {
         }
 
         public BuildPlan build() {
+            for (String[] reroot : reroots) requireReaches(steps, reroot[1], reroot[0]);
             List<Task> selected = terminal == null ? steps : pruneToTerminal(steps, terminal, alsoKept);
             validateStateKeys(stateKeys);
             return new BuildPlan(name, interactive, selected, listeners, stateKeys, clock);
@@ -948,6 +964,18 @@ public final class BuildPlan {
             if (existing != null && !existing.sameType(key)) {
                 throw incompatibleKey(existing, key);
             }
+        }
+    }
+
+    /** Refuse a re-root whose new terminal no longer reaches the one it displaced. */
+    private static void requireReaches(List<Task> all, String newTerminal, String displaced) {
+        if (all.stream().noneMatch(t -> t.name().equals(newTerminal))) return; // build() names the unknown terminal
+        boolean reaches = pruneToTerminal(all, newTerminal).stream()
+                .anyMatch(t -> t.name().equals(displaced));
+        if (!reaches) {
+            throw new IllegalStateException("terminal '" + newTerminal + "' does not require '" + displaced
+                    + "', the terminal it replaced, so the plan would drop it and everything it joined;"
+                    + " append the step with extend(task) instead of re-rooting with terminal(name)");
         }
     }
 

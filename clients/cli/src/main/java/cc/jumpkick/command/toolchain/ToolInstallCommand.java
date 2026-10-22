@@ -40,6 +40,7 @@ import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.runtime.HostedEvents;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -90,7 +91,7 @@ public final class ToolInstallCommand implements CliCommand {
                 Opt.value("<url>", "Override the Maven repository URL (for tests).", "--repo-url")
                         .hide()));
         // A project target builds through the test stage before it installs: the build options.
-        opts.addAll(BuildFlags.options(BuildFlags.Reach.DELIVER, BuildFlags.Affected.MODULES));
+        opts.addAll(BuildFlags.options(WorkspaceTarget.INSTALL.tests(), BuildFlags.Affected.MODULES));
         return opts;
     }
 

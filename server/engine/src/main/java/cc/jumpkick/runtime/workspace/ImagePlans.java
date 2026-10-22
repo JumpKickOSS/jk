@@ -6,7 +6,6 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.ModuleRuntimeClasspath;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.ManifestImage;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.PluginClient;
@@ -18,11 +17,9 @@ import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.MainClassScanner;
-import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
-import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
@@ -39,7 +36,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.PluginBuild;
-import cc.jumpkick.runtime.TestSupport;
+import cc.jumpkick.runtime.Tail;
 import cc.jumpkick.runtime.base.ImageCredentials;
 import cc.jumpkick.runtime.base.PluginLaunch;
 import cc.jumpkick.task.ClasspathFingerprint;
@@ -62,12 +59,11 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
-import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk image} plan: full build plus OCI tail (Jib plugin or docker/podman Dockerfile
- * mode). Success details ride structured keys ({@link #IMAGE_REF}/{@link #TARBALL_PATH}/…).
+ * {@code jk image}: the OCI {@link Tail} (Jib plugin or docker/podman Dockerfile mode) after the
+ * build. Success details ride structured keys ({@link #IMAGE_REF}/{@link #TARBALL_PATH}/…).
  */
 public final class ImagePlans {
 
@@ -89,59 +85,34 @@ public final class ImagePlans {
             "bellsoft/liberica-runtime-container:jre-{java-major-version}-slim-glibc";
 
     /**
-     * Build the image plan for {@code projectDir}: the core plan (via {@link
-     * BuildPlanner#coreBuilder}) plus the image-plan/write-image tail. {@code tarballArg} is
-     * tri-state exactly like {@code --tarball}'s optional value: {@code null} (no tarball), {@code
-     * ""} (default layout path), or an explicit path. {@code decorate} is the request-level Inputs
-     * decoration the workspace orchestrator applies so the IMAGE branch honors the same knobs as
-     * PACKAGE; {@code null} = none.
+     * {@code jk image}'s tail: {@code image-plan} then {@code write-image} (a node module's own pair
+     * for a node module). {@code tarballArg} is tri-state exactly like {@code --tarball}'s optional
+     * value: {@code null} (no tarball), {@code ""} (default layout path), or an explicit path.
      */
-    public static BuildPlan imageBuildPlan(
-            Path projectDir,
-            Path cache,
-            @Nullable Path jdksDir,
-            boolean skipTests,
-            boolean verbose,
+    public static Tail tail(
             @Nullable String mainClass,
             @Nullable String registry,
             @Nullable String tag,
             @Nullable String tarballArg,
-            @Nullable String dockerExecutableArg,
-            @Nullable UnaryOperator<BuildPlanner.Inputs> decorate) {
-        Path jkBuildPath = ManifestPaths.manifestIn(projectDir);
-        Path lockFile = LockPaths.lockFile(projectDir);
-        boolean compact = ModuleLayout.isCompact(projectDir);
-        int estimatedTestCount = TestSupport.estimateAllSuiteTestCount(projectDir, compact);
-        BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
-                projectDir,
-                cache,
-                jkBuildPath,
-                lockFile,
-                projectDir,
-                SessionContext.current().requestedTestWorkers(),
-                estimatedTestCount,
-                SessionContext.current().profile(),
-                jdksDir,
-                skipTests,
-                verbose,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
-        if (decorate != null) inputs = decorate.apply(inputs);
-
-        BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
-        if (NodeImagePlans.isNodeModule(jkBuildPath, projectDir)) {
-            return NodeImagePlans.tail(
-                            builder, inputs, projectDir, cache, registry, tag, tarballArg, dockerExecutableArg)
-                    .terminal(TaskNames.WRITE_IMAGE)
-                    .build();
-        }
-        builder.stateKeys(CONFIG, TARBALL_PATH, RUNTIME_JARS, IMAGE_REF)
-                .addTask(imagePlanStep(
-                        projectDir, cache, jkBuildPath, mainClass, registry, tag, tarballArg, dockerExecutableArg))
-                .addTask(writeImageStep(projectDir, cache, mainClass));
-        return builder.terminal(TaskNames.WRITE_IMAGE).build();
+            @Nullable String dockerExecutableArg) {
+        return (plan, in) -> {
+            Path projectDir = in.dir();
+            if (NodeImagePlans.isNodeModule(in.buildFile(), projectDir)) {
+                NodeImagePlans.tail(plan, in, projectDir, in.cache(), registry, tag, tarballArg, dockerExecutableArg);
+                return;
+            }
+            plan.stateKeys(CONFIG, TARBALL_PATH, RUNTIME_JARS, IMAGE_REF)
+                    .extend(imagePlanStep(
+                            projectDir,
+                            in.cache(),
+                            in.buildFile(),
+                            mainClass,
+                            registry,
+                            tag,
+                            tarballArg,
+                            dockerExecutableArg))
+                    .extend(writeImageStep(projectDir, in.cache(), mainClass));
+        };
     }
 
     /** Resolve the image config and, in Jib mode, the main class and the dependency layers. */

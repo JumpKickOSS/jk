@@ -19,7 +19,6 @@ import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
-import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
@@ -73,8 +72,8 @@ public final class PublishPlans {
         }
     }
 
-    public static final BuildPlanKey<JkBuild> PROJECT = BuildPlanKey.scalar("project", JkBuild.class);
-    public static final BuildPlanKey<Path> JAR = BuildPlanKey.scalar("jar", Path.class);
+    public static final BuildPlanKey<JkBuild> PROJECT = BuildPlanKey.scalar("publish-project", JkBuild.class);
+    public static final BuildPlanKey<Path> JAR = BuildPlanKey.scalar("publish-jar", Path.class);
 
     /** The plugin's uploaded-file count (0 for {@code --dry-run}), populated by the publish step. */
     public static final BuildPlanKey<Integer> FILES = BuildPlanKey.scalar("pub-files", Integer.class);
@@ -88,12 +87,20 @@ public final class PublishPlans {
     /** The Central Portal deployment the run ended on; absent for a plain repository publish and a dry run. */
     public static final BuildPlanKey<Deployment> DEPLOYMENT = BuildPlanKey.scalar("pub-deployment", Deployment.class);
 
-    /** Build the publish plan for {@code projectDir}. Locates the plugin jar eagerly (fail fast, with side-load hints). */
-    public static BuildPlan publishBuildPlan(Path projectDir, Path cache, Request req) {
-        Path workerJar = PluginJar.PUBLISHER.locate(JkStores.storeCas());
-        Path jkBuildPath = ManifestPaths.manifestIn(projectDir);
+    /** The plugin jar publish forks; located at plan time so a missing one fails fast, with side-load hints. */
+    public static Path workerJar() {
+        return PluginJar.PUBLISHER.locate(JkStores.storeCas());
+    }
 
-        Task parseBuild = Task.builder(TaskNames.PARSE_BUILD)
+    /**
+     * Publish's refusals and the artifact it uploads, decided from the manifest alone so a refused
+     * publish fails before anything builds.
+     */
+    public static Task checkStep(Path projectDir, Request req) {
+        Path jkBuildPath = ManifestPaths.manifestIn(projectDir);
+        return Task.builder(TaskNames.PUBLISH_CHECK)
+                .stage(BuildStage.PUBLISH)
+                .requires(TaskNames.PARSE_BUILD)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("parse jk.toml + validate version");
@@ -127,23 +134,29 @@ public final class PublishPlans {
                     Path jar = req.jarPath() != null
                             ? req.jarPath()
                             : project.assembly() ? layout.assemblyJar() : layout.mainJar();
-                    if (!Files.exists(jar)) {
-                        ctx.error("missing-jar", "jar not found at " + jar + " — run `jk build` first or pass --jar.");
-                        throw new RuntimeException("missing jar");
-                    }
                     ctx.put(PROJECT, project);
                     ctx.put(JAR, jar);
                     ctx.progress(1);
                 })
                 .build();
+    }
 
-        Task publish = Task.builder("publish")
+    /** The upload of the artifact {@link #checkStep} chose; it runs after the build left it. */
+    public static Task publishStep(Path projectDir, Path workerJar, Request req) {
+        return Task.builder(TaskNames.PUBLISH)
                 .stage(BuildStage.PUBLISH)
                 .kind(TaskKind.IO)
-                .requires(TaskNames.PARSE_BUILD)
+                .requires(TaskNames.PUBLISH_CHECK)
                 .ticks(1)
                 .execute(ctx -> {
                     Path jar = ctx.require(JAR);
+                    if (!Files.exists(jar)) {
+                        ctx.error(
+                                "missing-jar",
+                                "jar not found at " + jar
+                                        + " — the build did not write it; pass --jar to name another.");
+                        throw new RuntimeException("missing jar");
+                    }
                     ctx.label(
                             req.dryRun()
                                     ? "dry-run — assembling publish bundle"
@@ -167,12 +180,6 @@ public final class PublishPlans {
                     }
                     ctx.progress(1);
                 })
-                .build();
-
-        return BuildPlan.builder("publish")
-                .stateKeys(PROJECT, JAR, FILES, WRITTEN, BUNDLE, DEPLOYMENT)
-                .addTask(parseBuild)
-                .addTask(publish)
                 .build();
     }
 

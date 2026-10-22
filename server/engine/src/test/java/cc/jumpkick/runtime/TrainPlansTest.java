@@ -7,7 +7,11 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.workspace.ModulePipeline;
 import cc.jumpkick.runtime.workspace.TrainPlans;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -16,7 +20,7 @@ import org.junit.jupiter.api.io.TempDir;
 class TrainPlansTest {
 
     @Test
-    void train_plan_terminals_on_train_not_native(@TempDir Path dir) throws Exception {
+    void train_extends_the_build_and_runs_no_tests(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
                 group = "com.example"
                 name = "t"
@@ -28,25 +32,17 @@ class TrainPlansTest {
 
                 [train]
                 """);
+        Files.writeString(dir.resolve("jk-lock.toml"), "schema = 1\n");
         JkBuild build = JkBuildParser.parse(dir.resolve("jk.toml"));
-        BuildPlan plan = TrainPlans.moduleBuildPlan(
-                dir,
-                build,
-                dir.resolve("cache"),
-                null,
-                null,
-                Path.of(System.getProperty("java.home")),
-                null,
-                false,
-                true,
-                false);
-        assertThat(plan.steps().stream().map(s -> s.name())).contains(TaskNames.TRAIN);
-        assertThat(plan.steps().stream().map(s -> s.name())).doesNotContain(TaskNames.NATIVE_IMAGE);
-        // Train requires package-jar
-        var train = plan.steps().stream()
-                .filter(s -> TaskNames.TRAIN.equals(s.name()))
-                .findFirst()
-                .orElseThrow();
-        assertThat(train.requires()).contains(TaskNames.PACKAGE_JAR);
+        WorkspaceRequest request = new WorkspaceRequest(
+                        dir, dir.resolve("cache"), null, 0, null, false, false, 0, null, false, false)
+                .withSpec(WorkspaceSpec.of(WorkspaceTarget.TRAIN));
+        BuildPlan plan = ModulePipeline.standalone(
+                request, TrainPlans.tail(build, null, Path.of(System.getProperty("java.home")), null, false));
+        assertThat(plan.steps().stream().map(s -> s.name())).contains(TaskNames.TRAIN, TaskNames.PACKAGE_JAR);
+        assertThat(plan.steps().stream().map(s -> s.name()))
+                .as("train runs no tests unless asked: its goal's policy, not a different plan")
+                .doesNotContain(TaskNames.NATIVE_IMAGE, TaskNames.RUN_TESTS);
+        assertThat(plan.steps().getLast().name()).isEqualTo(TaskNames.TRAIN);
     }
 }

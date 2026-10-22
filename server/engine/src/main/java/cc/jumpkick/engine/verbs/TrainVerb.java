@@ -10,11 +10,15 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.runtime.workspace.ModulePipeline;
 import cc.jumpkick.runtime.workspace.TrainPlans;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.TrainRequest;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
@@ -59,19 +63,24 @@ public final class TrainVerb implements HostedVerb {
                 Path graalHome = graalHomeStr != null && !graalHomeStr.isBlank() ? Path.of(graalHomeStr) : null;
                 Path jdksDir = jdksDirStr != null && !jdksDirStr.isBlank() ? Path.of(jdksDirStr) : null;
                 Path javaHome = Path.of(System.getProperty("java.home"));
+                WorkspaceRequest request = new WorkspaceRequest(
+                                session.workingDir(),
+                                session.cacheDir(),
+                                jdksDir,
+                                session.requestedTestWorkers(),
+                                session.profile(),
+                                body.skipTests(),
+                                body.verbose(),
+                                0,
+                                null,
+                                false,
+                                false)
+                        .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                        .withSpec(WorkspaceSpec.of(WorkspaceTarget.TRAIN));
                 BuildPlan plan = SessionContext.where(session, () -> {
                     JkBuild module = JkBuildParser.parse(ManifestPaths.manifestIn(session.workingDir()));
-                    return TrainPlans.moduleBuildPlan(
-                            session.workingDir(),
-                            module,
-                            session.cacheDir(),
-                            jdksDir,
-                            graalHome,
-                            javaHome,
-                            body.trainProfile(),
-                            body.force(),
-                            body.skipTests(),
-                            body.verbose());
+                    return ModulePipeline.standalone(
+                            request, TrainPlans.tail(module, graalHome, javaHome, body.trainProfile(), body.force()));
                 });
                 return host.streamSinglePlan(
                         plan, session, writer, result -> ProtoEvents.planFinish(dir, result.success()));

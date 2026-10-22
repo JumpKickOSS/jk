@@ -14,6 +14,7 @@ import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -79,7 +80,7 @@ class BuildForecastingTargetMemoTest {
     }
 
     @Test
-    void an_install_memo_hit_with_jars_present_is_shelf_only(@TempDir Path tmp) throws Exception {
+    void an_install_memo_hit_with_jars_present_forecasts_only_cache_install(@TempDir Path tmp) throws Exception {
         BuildGraph.Result graph = writeProjectAndResolve(tmp);
         BuildGraph.BuildUnit unit = graph.topoOrder().getFirst();
         JkBuild project = unit.manifest();
@@ -93,7 +94,7 @@ class BuildForecastingTargetMemoTest {
 
         var install = BuildForecasting.forecastWithFingerprints(
                 graph, tmp.resolve("cache"), false, tmp, WorkspaceTarget.INSTALL, Set.of(unit.dir()), false);
-        assertThat(install.modules()).isNotEmpty().allMatch(TaskForecast.Module::shelfOnly);
+        assertThat(install.modules()).isNotEmpty();
         assertThat(install.modules().getFirst().steps())
                 .extracting(TaskForecast.Task::name)
                 .containsExactly(TaskNames.CACHE_INSTALL);
@@ -101,7 +102,7 @@ class BuildForecastingTargetMemoTest {
         Files.delete(layout.mainJar());
         var missing = BuildForecasting.forecastWithFingerprints(
                 graph, tmp.resolve("cache"), false, tmp, WorkspaceTarget.INSTALL, Set.of(unit.dir()), false);
-        assertThat(missing.modules()).noneMatch(TaskForecast.Module::shelfOnly);
+        assertThat(missing.modules()).noneMatch(BuildForecastingTargetMemoTest::onlyCacheInstall);
         assertThat(missing.restoreNeeded()).isNotEmpty();
 
         Files.write(layout.mainJar(), new byte[] {1, 2, 3});
@@ -109,6 +110,10 @@ class BuildForecastingTargetMemoTest {
         var edited = BuildForecasting.forecastWithFingerprints(
                 graph, tmp.resolve("cache"), false, tmp, WorkspaceTarget.INSTALL, Set.of(unit.dir()), false);
         assertThat(edited.dirty()).isNotEmpty();
-        assertThat(edited.modules()).noneMatch(TaskForecast.Module::shelfOnly);
+        assertThat(edited.modules()).noneMatch(BuildForecastingTargetMemoTest::onlyCacheInstall);
+    }
+
+    private static boolean onlyCacheInstall(TaskForecast.Module module) {
+        return module.steps().stream().map(TaskForecast.Task::name).toList().equals(List.of(TaskNames.CACHE_INSTALL));
     }
 }

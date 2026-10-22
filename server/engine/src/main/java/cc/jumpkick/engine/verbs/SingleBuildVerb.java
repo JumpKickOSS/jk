@@ -10,8 +10,6 @@ import cc.jumpkick.engine.jobs.JobRequest;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.layout.ModuleLayout;
-import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
@@ -20,16 +18,17 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.Calibration;
-import cc.jumpkick.runtime.PlannerTails;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.ShadowManifests;
-import cc.jumpkick.runtime.TestSupport;
 import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.runtime.workspace.ModuleInputProvenance;
+import cc.jumpkick.runtime.workspace.ModulePipeline;
 import cc.jumpkick.runtime.workspace.StandalonePlanTimings;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.SingleBuildRequest;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.Map;
@@ -88,39 +87,14 @@ public final class SingleBuildVerb implements HostedVerb {
             Path cache = Path.of(cacheStr);
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
             Path buildFile = ManifestPaths.manifestIn(entryDir);
-            Path lockFile = LockPaths.lockFile(entryDir);
             int workerCount = Math.max(0, workers);
-
-            int estimatedTestCount = skipTests
-                    ? 0
-                    : TestSupport.estimateSelectedSuiteTestCount(
-                            entryDir, ModuleLayout.isCompact(entryDir), body.selection());
-
             Session session = ProtoSession.sessionOf(requestLine, cancelToken);
-
-            BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
-                            entryDir,
-                            cache,
-                            buildFile,
-                            lockFile,
-                            LockPaths.lockOwnerDir(entryDir),
-                            workerCount,
-                            estimatedTestCount,
-                            profile,
-                            jdksDir,
-                            skipTests,
-                            verbose,
-                            /* testOnly */ false,
-                            /* compileOnly */ false,
-                            Set.of(),
-                            session)
-                    .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
-            BuildPlan plan = SessionContext.where(session, () -> {
-                BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs, false);
-                Path graal = body.graalHome() == null ? null : Path.of(body.graalHome());
-                PlannerTails.appendDeclaredTails(builder, inputs, graal);
-                return builder.build();
-            });
+            Path graal = body.graalHome() == null ? null : Path.of(body.graalHome());
+            WorkspaceRequest request = new WorkspaceRequest(
+                            entryDir, cache, jdksDir, workerCount, profile, skipTests, verbose, 0, null, false, false)
+                    .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                    .withSpec(WorkspaceSpec.DEFAULT.withGraalByDir(graal == null ? Map.of() : Map.of(entryDir, graal)));
+            BuildPlan plan = SessionContext.where(session, () -> ModulePipeline.standalone(request, null));
             long barWeight = plan.estimatedTotalWeight();
             StandalonePlanTimings.attach(plan, entryDir, cache, Clock.SYSTEM);
 

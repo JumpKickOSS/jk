@@ -73,8 +73,8 @@ final class NodeImagePlans {
             @Nullable String tarballArg,
             @Nullable String dockerExecutableArg) {
         return builder.stateKeys(ImagePlans.CONFIG, ImagePlans.TARBALL_PATH, ImagePlans.IMAGE_REF, STATIC)
-                .addTask(planStep(projectDir, registry, tag, tarballArg, dockerExecutableArg))
-                .addTask(writeStep(inputs, projectDir, cache));
+                .extend(planStep(projectDir, registry, tag, tarballArg, dockerExecutableArg))
+                .extend(writeStep(inputs, projectDir, cache));
     }
 
     private static Task planStep(

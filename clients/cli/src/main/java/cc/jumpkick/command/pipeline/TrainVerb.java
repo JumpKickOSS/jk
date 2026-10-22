@@ -14,6 +14,7 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -45,8 +46,8 @@ final class TrainVerb implements BuildVerb {
     }
 
     @Override
-    public BuildFlags.Reach reach() {
-        return BuildFlags.Reach.DELIVER;
+    public WorkspaceTarget target() {
+        return WorkspaceTarget.TRAIN;
     }
 
     @Override
@@ -95,7 +96,7 @@ final class TrainVerb implements BuildVerb {
                 graalHome,
                 trainProfile,
                 session.force() || run.global().force,
-                flags.skipTests(),
+                run.skipTests(),
                 session.offline(),
                 run.global().verbose);
         ConsoleSpec spec = new ConsoleSpec(

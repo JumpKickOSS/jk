@@ -2,68 +2,33 @@
 package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TrainConfig;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.layout.ModuleLayout;
-import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildPlanner;
-import cc.jumpkick.runtime.TestSupport;
+import cc.jumpkick.runtime.Tail;
 import cc.jumpkick.runtime.TrainRunner;
 import java.nio.file.Path;
-import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
-/**
- * {@code jk train} plan: core build through package-jar, then a single train observation task.
- * Never attaches native-image or minified.
- */
+/** {@code jk train}: the {@link Tail} that runs the training observation after the build. */
 public final class TrainPlans {
 
     private TrainPlans() {}
 
-    public static BuildPlan moduleBuildPlan(
-            Path moduleDir,
-            JkBuild module,
-            Path cache,
-            @Nullable Path jdksDir,
-            @Nullable Path graalHome,
-            Path javaHome,
-            @Nullable String profileFilter,
-            boolean force,
-            boolean skipTests,
-            boolean verbose) {
-        Path buildFile = ManifestPaths.manifestIn(moduleDir);
-        Path lockFile = LockPaths.lockFile(moduleDir);
-        boolean compact = ModuleLayout.isCompact(moduleDir);
-        int estimatedTests = TestSupport.estimateAllSuiteTestCount(moduleDir, compact);
-        BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
-                moduleDir,
-                cache,
-                buildFile,
-                lockFile,
-                moduleDir,
-                SessionContext.current().requestedTestWorkers(),
-                estimatedTests,
-                SessionContext.current().profile(),
-                jdksDir,
-                skipTests,
-                verbose,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
-        BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
-        // No assembly/native/minified tails — train only needs a runnable package.
-        builder.addTask(trainStep(moduleDir, module, cache, lockFile, graalHome, javaHome, profileFilter, force));
-        return builder.terminal(TaskNames.TRAIN).build();
+    /**
+     * {@code jk train}'s tail: the training run against the jar PACKAGE left. {@code javaHome} is
+     * the fallback when the plan resolved no module toolchain.
+     */
+    public static Tail tail(
+            JkBuild module, @Nullable Path graalHome, Path javaHome, @Nullable String profileFilter, boolean force) {
+        return (plan, in) -> plan.extend(
+                trainStep(in.dir(), module, in.cache(), in.lockFile(), graalHome, javaHome, profileFilter, force));
     }
 
     static Task trainStep(

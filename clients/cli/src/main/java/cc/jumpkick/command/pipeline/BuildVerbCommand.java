@@ -31,6 +31,7 @@ import cc.jumpkick.model.command.Param;
 import cc.jumpkick.wire.protocol.EngineWireException;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -54,7 +55,7 @@ public final class BuildVerbCommand implements CliCommand {
     private BuildVerbCommand(Supplier<BuildVerb> verbs) {
         this.verbs = verbs;
         this.shape = verbs.get();
-        requireNoSharedOptions(shape.name(), shape.reach(), shape.affected(), shape.ownOptions());
+        requireNoSharedOptions(shape.name(), shape.target().tests(), shape.affected(), shape.ownOptions());
     }
 
     /** {@code jk compile}. */
@@ -92,9 +93,9 @@ public final class BuildVerbCommand implements CliCommand {
      * and a second parse, which is how the build commands drifted apart.
      */
     static void requireNoSharedOptions(
-            String command, BuildFlags.Reach reach, BuildFlags.Affected affected, List<Opt> own) {
+            String command, WorkspaceTarget.Tests tests, BuildFlags.Affected affected, List<Opt> own) {
         Set<String> shared = new HashSet<>();
-        for (Opt opt : BuildFlags.options(reach, affected)) shared.addAll(opt.names());
+        for (Opt opt : BuildFlags.options(tests, affected)) shared.addAll(opt.names());
         for (Opt opt : own) {
             for (String name : opt.names()) {
                 if (shared.contains(name)) {
@@ -127,7 +128,7 @@ public final class BuildVerbCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        List<Opt> opts = new ArrayList<>(BuildFlags.options(shape.reach(), shape.affected()));
+        List<Opt> opts = new ArrayList<>(BuildFlags.options(shape.target().tests(), shape.affected()));
         opts.addAll(shape.ownOptions());
         return opts;
     }
@@ -392,10 +393,10 @@ public final class BuildVerbCommand implements CliCommand {
      * options and the shared build options of {@code reach} as given, then whatever {@code extra}
      * sets.
      */
-    static Invocation forward(Invocation in, BuildFlags.Reach reach, Consumer<Invocation.Builder> extra) {
+    static Invocation forward(Invocation in, WorkspaceTarget.Tests tests, Consumer<Invocation.Builder> extra) {
         Invocation.Builder b = Invocation.builder();
         for (Opt opt : GlobalOptions.globalOpts()) copy(in, opt, b);
-        for (Opt opt : BuildFlags.options(reach, BuildFlags.Affected.MODULES)) copy(in, opt, b);
+        for (Opt opt : BuildFlags.options(tests, BuildFlags.Affected.MODULES)) copy(in, opt, b);
         extra.accept(b);
         return b.build();
     }

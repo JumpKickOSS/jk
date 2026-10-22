@@ -6,23 +6,20 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.layout.ModuleLayout;
-import cc.jumpkick.lock.LockPaths;
-import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.runtime.TestClassMatch;
-import cc.jumpkick.runtime.TestSupport;
+import cc.jumpkick.runtime.workspace.ModulePipeline;
 import cc.jumpkick.runtime.workspace.StandalonePlanTimings;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.TestRequest;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
-import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /** Single-project {@code test-request}. */
@@ -68,34 +65,13 @@ public final class TestVerb implements HostedVerb {
             Path entryDir = Path.of(entryDirStr);
             Path cache = Path.of(cacheStr);
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
-            Path buildFile = ManifestPaths.manifestIn(entryDir);
-            Path lockFile = LockPaths.lockFile(entryDir);
             int workerCount = Math.max(0, workers);
-
-            boolean compactTests = ModuleLayout.isCompact(entryDir);
-            int estimatedTestCount =
-                    TestSupport.estimateSelectedSuiteTestCount(entryDir, compactTests, body.selection());
-
             Session session = ProtoSession.sessionOf(requestLine, cancelToken);
-
-            BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
-                            entryDir,
-                            cache,
-                            buildFile,
-                            lockFile,
-                            LockPaths.lockOwnerDir(entryDir),
-                            workerCount,
-                            estimatedTestCount,
-                            profile,
-                            jdksDir,
-                            /* skipTests */ false,
-                            verbose,
-                            /* testOnly */ true,
-                            /* compileOnly */ false,
-                            Set.of(),
-                            session)
-                    .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
-            BuildPlan plan = BuildPlanner.coreBuilder(inputs).build();
+            WorkspaceRequest request = new WorkspaceRequest(
+                            entryDir, cache, jdksDir, workerCount, profile, false, verbose, 0, null, false, false)
+                    .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                    .withTestOnly(true);
+            BuildPlan plan = SessionContext.where(session, () -> ModulePipeline.standalone(request, null));
             StandalonePlanTimings.attach(plan, entryDir, cache, Clock.SYSTEM);
 
             PlanBurst.announce(host, plan, writer);

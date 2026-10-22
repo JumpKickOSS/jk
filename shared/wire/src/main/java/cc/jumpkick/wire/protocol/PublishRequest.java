@@ -30,7 +30,9 @@ public record PublishRequest(
         boolean offline,
         boolean verbose,
         boolean central,
-        @Nullable String publishingType) {
+        @Nullable String publishingType,
+        /** Publish builds through PACKAGE first; true skips that build's tests. */
+        boolean skipTests) {
 
     public String encode() {
         return RequestJson.request(EngineProtocol.PUBLISH_REQUEST)
@@ -55,6 +57,7 @@ public record PublishRequest(
                 .bool("verbose", verbose)
                 .bool("centralPortal", central)
                 .string("publishingType", publishingType)
+                .bool("skipTests", skipTests)
                 .finish();
     }
 
@@ -80,6 +83,7 @@ public record PublishRequest(
                 Jsonl.bool(json, "offline", false),
                 Jsonl.bool(json, "verbose", false),
                 Jsonl.bool(json, "centralPortal", false),
-                Jsonl.str(json, "publishingType"));
+                Jsonl.str(json, "publishingType"),
+                Jsonl.bool(json, "skipTests", false));
     }
 }

@@ -18,6 +18,7 @@ import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.runtime.workspace.ImagePlans;
+import cc.jumpkick.runtime.workspace.ModulePipeline;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ImageRequest;
@@ -137,23 +138,27 @@ public final class ImageVerb implements HostedVerb {
                     }
                 }
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
-                // Constructed in-session: the plan factory's BuildPlanner.Inputs captures the
-                // ambient SessionContext at construction, so building it outside where would
-                // silently pin this request to the engine's default config (dropping --force et al).
-                BuildPlan plan = SessionContext.where(
-                        session,
-                        () -> ImagePlans.imageBuildPlan(
+                WorkspaceRequest request = new WorkspaceRequest(
                                 entryDir,
                                 cache,
                                 jdksDir,
+                                session.requestedTestWorkers(),
+                                session.profile(),
                                 body.skipTests(),
                                 body.verbose(),
+                                0,
+                                null,
+                                false,
+                                false)
+                        .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                        .withSpec(WorkspaceSpec.image(
+                                Set.of(),
                                 body.mainClass(),
                                 body.registry(),
                                 body.tag(),
                                 body.tarball(),
-                                body.dockerExecutable(),
-                                null));
+                                body.dockerExecutable()));
+                BuildPlan plan = SessionContext.where(session, () -> ModulePipeline.standalone(request, null));
                 return host.streamSinglePlan(plan, session, writer, result -> {
                     TestSummary testResult = plan.get(BuildPlanner.TEST_RESULT).orElse(null);
                     ModuleOutcome.Image image = Objects.requireNonNullElse(

@@ -164,7 +164,8 @@ final class EngineHosted {
                                 req.offline(),
                                 req.verbose(),
                                 req.central(),
-                                req.publishingType())
+                                req.publishingType(),
+                                req.skipTests())
                         .encode(),
                 "publish",
                 listenerFactory,
