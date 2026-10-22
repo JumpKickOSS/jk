@@ -76,7 +76,7 @@ class JkManagerPlainProgressTest {
             String out = buf.toString(StandardCharsets.UTF_8);
             assertThat(out).doesNotContain("\u001B[");
             assertThat(out).doesNotContain(Spinner.PULSE_GLYPH);
-            assertThat(out).contains("jk: * Format > initializing...");
+            assertThat(out).contains("jk: * Format > starting...");
             assertThat(out).contains("jk: * Format > Examining source files :: 0% - prepare");
             assertThat(out).doesNotContain("jk: * Format > Examining source files :: 10% - prepare");
             assertThat(out).doesNotContain("jk: * Format > Examining source files :: 20% - prepare");
@@ -108,7 +108,7 @@ class JkManagerPlainProgressTest {
             cm.setPlanCoord("cc.jumpkick:jk");
             cm.setRemainingWorkEstimate(91_000);
             String out = buf.toString(StandardCharsets.UTF_8);
-            assertThat(out).contains("jk: * Build > initializing...");
+            assertThat(out).contains("jk: * Build > starting...");
             assertThat(out).contains("jk: * Build > cc.jumpkick:jk :: 0% - prepare");
             // The countdown is wall-clock anchored: the seconds digit can slip while a
             // loaded suite JVM gets from plan() to the render, so pin the announce (ETA
@@ -138,7 +138,7 @@ class JkManagerPlainProgressTest {
             cm.finishModule("cc.jumpkick:jk-engine", true);
             cm.finishBuildPlanSuccess("Build successful, built 1 module - took 1s", List.of());
             String out = buf.toString(StandardCharsets.UTF_8);
-            assertThat(out).contains("jk: * Build > initializing...");
+            assertThat(out).contains("jk: * Build > starting...");
             assertThat(out).contains("jk: * Build > cc.jumpkick:jk :: 0% - prepare");
             assertThat(out).contains("- compiling 12 sources");
             assertThat(out).contains("- running 80 tests");

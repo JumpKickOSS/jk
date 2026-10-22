@@ -5,6 +5,7 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.GlobalCancel;
 import cc.jumpkick.cli.tui.GlobalSuspend;
+import cc.jumpkick.cli.tui.StartupPulse;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkConfigLoader;
 import cc.jumpkick.config.Session;
@@ -62,6 +63,8 @@ public final class Jk {
         // `jk tool run …` in every case — including --help — so the alias has
         // one mental model.
         args = rewriteForProgramName(args, Argv0.programName());
+        // From here a silent quarter second shows what jk is waiting on; the first output replaces it.
+        StartupPulse.arm(args);
         // : the slim client never hosts the engine. Spawning uses
         // lib/jk-engine/<jar> / JK_ENGINE_EXE only — no --engine-server monolyth path.
         if (args.length > 0 && "--engine-server".equals(args[0])) {
@@ -93,6 +96,7 @@ public final class Jk {
                 code = CliFailure.unhandled(t, args);
             }
         } finally {
+            StartupPulse.release();
             // Wake any JLine NonBlocking stdin reader before the JVM shutdown hooks run — also
             // on the exception path, where the JVM's default handler still runs those hooks. On
             // macOS, JLine's terminal closer otherwise blocks until a key arrives after

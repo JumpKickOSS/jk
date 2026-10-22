@@ -62,6 +62,7 @@ final class NativeTerminal implements TerminalSession {
 
     @Override
     public ModeGuard enter(InputMode mode) {
+        Terminals.foreground();
         lock.lock();
         try {
             if (!live) {
@@ -121,6 +122,7 @@ final class NativeTerminal implements TerminalSession {
 
     @Override
     public PrintWriter ttyOut() {
+        Terminals.foreground();
         return out;
     }
 

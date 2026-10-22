@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli;
 
+import cc.jumpkick.cli.tui.StartupPulse;
 import cc.jumpkick.config.JkConfig;
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -46,6 +47,7 @@ public final class Quietable {
     public static synchronized void applyIfQuiet(JkConfig config) {
         if (applied) return;
         if (config.quietOr(false)) {
+            StartupPulse.release();
             System.setOut(SINK);
             applied = true;
         }
