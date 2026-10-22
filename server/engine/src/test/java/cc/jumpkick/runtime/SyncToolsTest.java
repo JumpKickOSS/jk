@@ -150,7 +150,8 @@ class SyncToolsTest {
                         new AtomicInteger(),
                         new AtomicInteger(),
                         null,
-                        false)
+                        false,
+                        true)
                 .run();
     }
 

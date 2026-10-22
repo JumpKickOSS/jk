@@ -4,7 +4,7 @@ Every command that builds a project — `jk compile`, `test`, `build`, `install`
 `image`, `publish`, `train`, `run`, `dev` — runs one lifecycle:
 
 ```
-resolve + fetch  →  compile  →  test  →  package  →  (the goal's tail)
+preflight (lock, graph)  →  sync  →  plan  →  compile  →  test  →  package  →  (the goal's tail)
 ```
 
 The steps up to a goal's last phase are the **same steps, built by the same code**, for every
@@ -16,6 +16,7 @@ the install, `jk publish` is `jk build` plus the upload.
 
 | Piece | Where | What it owns |
 |-------|-------|--------------|
+| The SYNC phase | `WorkspaceSyncPhase` (`runtime.workspace`) | `SyncPlans.syncBuildPlan`, the plan `jk sync` runs, once per build: locked artifacts, plugins, tools and the JDK on disk before any module plans. A module's `resolve-deps` only derives its classpaths from them |
 | The goal table | `WorkspaceTarget` (`shared/wire`) | each goal's last phase (`COMPILE`, `TEST`, `PACKAGE`) and test policy (`ALWAYS`, `UNLESS_SKIPPED`, `NOT_RUN`) |
 | The planner | `ModulePipeline` (`server/engine`, `runtime.workspace`) | the module's `BuildPlanner.Inputs`, the core through the goal's phase, the PACKAGE phase's declared deliveries and test join, then the tail |
 | A tail | `Tail` (`runtime`); `InstallPlans.tail`, `NativePlans.tail`, `ImagePlans.tail`, `TrainPlans.tail`, `PublishTail` | the goal's own steps, appended with `BuildPlan.Builder.extend` |
@@ -55,7 +56,9 @@ engine verb and no per-goal request type.
 
 ## Not yet one path
 
-- The SYNC phase: `jk sync` is its own plan, and a build fetches through `resolve-deps`.
+- `jk sync` runs the SYNC phase's plan through its own `sync-request`, without the graph or the
+  workspace preflight. Its `parse-lock` writes a missing or stale lock (the IDE's first import
+  relies on that); a build's reads the lock its preflight freshened.
 - The forecaster (`ModuleForecast`, behind `jk explain` and the up-to-date shortcut) models each
   step's cache key separately from the plan it forecasts, with its own per-goal rules for which
   modules a run schedules.

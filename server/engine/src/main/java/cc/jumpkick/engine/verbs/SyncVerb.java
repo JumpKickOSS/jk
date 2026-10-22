@@ -69,7 +69,7 @@ public final class SyncVerb implements HostedVerb {
                 AtomicInteger fetched = new AtomicInteger();
                 AtomicInteger upToDate = new AtomicInteger();
                 BuildPlan plan = SyncPlans.syncBuildPlan(
-                        entryDir, cache, jdksDir, repoUrl, body.sources(), fetched, upToDate, null, false);
+                        entryDir, cache, jdksDir, repoUrl, body.sources(), fetched, upToDate, null, false, true);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 for (Task p : plan.steps()) {
                     host.sendQuiet(

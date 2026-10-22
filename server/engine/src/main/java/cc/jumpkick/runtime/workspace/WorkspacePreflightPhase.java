@@ -41,7 +41,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NullMarked;
 
-/** Parses, locks, resolves, selects, forecasts, and restores before planning begins. */
+/** Parses, locks, resolves, selects, syncs, forecasts, and restores before planning begins. */
 @NullMarked
 public final class WorkspacePreflightPhase {
 
@@ -121,6 +121,9 @@ public final class WorkspacePreflightPhase {
 
         List<String> selectionErrors = selectionErrors(units, request);
         if (!selectionErrors.isEmpty()) return completed(false, Exit.CONFIG, selectionErrors);
+
+        Optional<List<String>> syncErrors = WorkspaceSyncPhase.run(request, listener, clock);
+        if (syncErrors.isPresent()) return completed(false, Exit.FAILURE, syncErrors.orElseThrow());
 
         Set<Path> moduleDirs = new LinkedHashSet<>();
         for (BuildGraph.BuildUnit unit : units) moduleDirs.add(unit.dir());

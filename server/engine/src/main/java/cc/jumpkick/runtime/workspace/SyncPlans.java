@@ -37,7 +37,6 @@ import cc.jumpkick.runtime.PlannerNodeSetup;
 import cc.jumpkick.runtime.PluginBuild;
 import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.runtime.ToolPlanProgress;
-import cc.jumpkick.runtime.base.JkPluginSync;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import cc.jumpkick.runtime.base.ReachabilityMetadata;
 import cc.jumpkick.task.SyncManifest;
@@ -70,15 +69,16 @@ public final class SyncPlans {
             BuildPlanKey.scalar("jdk-outcome", JdkEnsure.Outcome.class);
     public static final BuildPlanKey<CacheSync.Report> CAS_REPORT =
             BuildPlanKey.scalar("cas-report", CacheSync.Report.class);
-    public static final BuildPlanKey<JkPluginSync.Result> WORKER_REPORT =
-            BuildPlanKey.scalar("worker-report", JkPluginSync.Result.class);
     public static final BuildPlanKey<Integer> WORKSPACE_MODULES =
             BuildPlanKey.scalar("workspace-modules", Integer.class);
     public static final BuildPlanKey<Boolean> LOCKFILE_CREATED = BuildPlanKey.scalar("lockfile-created", Boolean.class);
 
     /**
-     * Sync plan for {@code dir}. {@code refresh} comes from ambient {@link SessionContext}.
-     * {@code allowJdkInstall} is true only for in-process paths.
+     * The SYNC phase for {@code dir}: {@code jk sync} runs it alone, every build runs it before its
+     * modules plan. {@code refresh} comes from ambient {@link SessionContext}. {@code relock} lets
+     * {@code parse-lock} write a missing or stale lock; a build has already freshened it (or was
+     * told to use it verbatim), so it reads the lock as it stands. {@code allowJdkInstall} is false
+     * where the client pre-flights installs.
      */
     public static BuildPlan syncBuildPlan(
             Path dir,
@@ -89,7 +89,8 @@ public final class SyncPlans {
             AtomicInteger totalFetched,
             AtomicInteger totalUpToDate,
             @Nullable BiFunction<String, String, String> coordLabel,
-            boolean allowJdkInstall) {
+            boolean allowJdkInstall,
+            boolean relock) {
         Path lockFile = LockPaths.lockFile(dir);
         // Plain engine path uses Artifact.displayCoord() (g:a:v, or g:a:v!aar / :classifier when
         // non-default). An explicit coordLabel overrides for themed in-process clients.
@@ -110,27 +111,32 @@ public final class SyncPlans {
         final int preScanDenominator = preScannedTotal;
 
         return BuildPlan.builder("sync")
-                .stateKeys(LOCKFILE, BUILD, JDK_OUTCOME, CAS_REPORT, WORKER_REPORT, WORKSPACE_MODULES, LOCKFILE_CREATED)
-                .addTask(parseLockStep(dir, cache, lockFile, repoUrl))
+                .stateKeys(LOCKFILE, BUILD, JDK_OUTCOME, CAS_REPORT, WORKSPACE_MODULES, LOCKFILE_CREATED)
+                .addTask(parseLockStep(dir, cache, lockFile, repoUrl, relock))
                 .addTask(ensureJdkStep(dir, jdksDir, allowJdkInstall))
                 .addTask(ensureNodeStep())
                 .addTask(syncCasStep(dir, cache, repoUrl, preScanDenominator, label, totalFetched, totalUpToDate))
                 .addTask(syncSourcesStep(sources))
                 .addTask(syncPluginsStep(dir, cache, repoUrl))
                 .addTask(syncToolsStep(dir))
-                .addTask(syncWorkersStep())
                 .addTask(writeManifestStep(cache, lockFile))
-                .addTask(syncModulesStep())
                 .build();
     }
 
-    /** Read the lock, resolving it first when absent and re-locking when jk.toml changed. */
-    private static Task parseLockStep(Path dir, Path cache, Path lockFile, @Nullable URI repoUrl) {
+    /**
+     * Read the lock. With {@code relock}, resolve it first when absent and re-lock when jk.toml
+     * changed.
+     */
+    private static Task parseLockStep(Path dir, Path cache, Path lockFile, @Nullable URI repoUrl, boolean relock) {
         return Task.builder(TaskNames.PARSE_LOCK)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("parse jk-lock.toml");
-                    if (!Files.exists(lockFile)) {
+                    if (!relock) {
+                        ctx.put(LOCKFILE, LockfileReader.read(lockFile));
+                        var build = parseBuildIfPresent(dir);
+                        if (build != null) ctx.put(BUILD, build);
+                    } else if (!Files.exists(lockFile)) {
                         ctx.label("resolve deps");
                         var result = LockFlow.run(dir, cache, List.of(), false, repoUrl);
                         if (result.workspaceModuleCount() > 0) {
@@ -241,7 +247,7 @@ public final class SyncPlans {
                     Cas cas = JkStores.storeCas();
                     Http http = new Http();
                     JkBuild build = ctx.get(BUILD).orElse(null);
-                    boolean mirrorToM2 = build != null && build.project().m2integration();
+                    boolean mirrorToM2 = mirrorsToM2(lock, build);
                     var observer = new CacheSync.ProgressObserver() {
                         @Override
                         public void fetched(Lockfile.Artifact pkg) {
@@ -274,40 +280,6 @@ public final class SyncPlans {
                         throw new RuntimeException("dep fetch had errors");
                     }
                     materializeNativeMetadata(ctx, lock, build, cache, repoUrl, dir, cas);
-                })
-                .build();
-    }
-
-    private static Task syncWorkersStep() {
-        // jk's own plugin jars (test-runner, kotlin-compiler) — pulled from the
-        // local Maven repo into the CAS so `jk test` / Kotlin builds find them by
-        // SHA. Best-effort: absent plugins warn but don't fail the sync.
-        return Task.builder(TaskNames.SYNC_WORKERS)
-                .kind(TaskKind.IO)
-                .requires(TaskNames.PARSE_LOCK)
-                .ticks(1)
-                .execute(ctx -> {
-                    ctx.label("sync jk workers");
-                    Cas cas = JkStores.storeCas();
-                    try {
-                        var report = JkPluginSync.ensureInCas(cas, new JkPluginSync.Observer() {
-                            @Override
-                            public void fetched(String artifact) {
-                                ctx.label("fetched " + artifact);
-                            }
-
-                            @Override
-                            public void missing(String artifact, @Nullable String detail) {
-                                // Empty code → diagnostic render omits [step/code] brackets.
-                                ctx.warn("", artifact + " " + detail + ".");
-                            }
-                        });
-                        ctx.put(WORKER_REPORT, report);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException("interrupted syncing jk workers", e);
-                    }
-                    ctx.progress(1);
                 })
                 .build();
     }
@@ -524,17 +496,13 @@ public final class SyncPlans {
                 .build();
     }
 
-    private static Task syncModulesStep() {
-        // Workspace modules no longer own lockfiles — the root jk-lock.toml is the only pin set
-        // (synced above via SYNC_CAS). SYNC_MODULES remains a no-op step for wire/plan stability.
-        return Task.builder(TaskNames.SYNC_MODULES)
-                .kind(TaskKind.IO)
-                .requires(TaskNames.WRITE_SYNC_MANIFEST)
-                .ticks(0)
-                .execute(ctx -> {
-                    /* intentionally empty — single workspace lock covers all modules */
-                })
-                .build();
+    /**
+     * Fetched jars are mirrored into {@code ~/.m2} when a locked module leaves {@code [m2]
+     * integration} on; a lock without module rows follows the project's own setting.
+     */
+    static boolean mirrorsToM2(Lockfile lock, @Nullable JkBuild build) {
+        if (lock.modules().isEmpty()) return build != null && build.project().m2integration();
+        return lock.modules().stream().anyMatch(m -> !Boolean.FALSE.equals(m.m2integration()));
     }
 
     /** Progress/diagnostic coordinate: themed label when provided, else {@link Lockfile.Artifact#displayCoord()}. */
