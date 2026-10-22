@@ -406,13 +406,25 @@ version    = "9.2.23"
 checksum   = "sha256:…"                   # one artifact for every host
 ```
 
+A file a plugin fetches from a URL — a Checkstyle rule set `[lint]` reads from
+raw.githubusercontent.com — is a `[[tool]]` row of its own, the URL and the sha256 of the file `jk
+lock` downloaded; a URL that names the host's OS gets one row per OS that serves it:
+
+```toml
+[[tool]]
+url      = "https://raw.githubusercontent.com/acme/style/v3/checkstyle.xml"
+checksum = "sha256:…"
+```
+
 The build fetches the host's artifact and refuses any other bytes, from a repository, the store or
-the Maven local repository alike; a tool with no row fails naming it. A lock that has no row for a
+the Maven local repository alike; a tool with no row fails naming it. A file whose URL serves
+other bytes than the lock pins (a rule set on a branch that moved) fails the build naming both
+digests until `jk lock -F` downloads and pins it again — a plain `jk lock` keeps the pin. A lock that has no row for a
 tool an active plugin fetches is stale, so the next build relocks first. A floating tool version
 (`^3.25`) is resolved once and kept by `jk lock`; `jk update` moves it. A plain `jk lock` reuses the
 digests a row already has instead of downloading every platform again. Tools a plugin fetches as a
-closure (`transitive`), SDK components (their `[[sdk]]` rows) and files at a URL are provisioned
-outside these rows.
+closure (`transitive`) and SDK components (their `[[sdk]]` rows) are provisioned outside these
+rows.
 
 A `[[plugin]]` row normally pins the plugin jar by `checksum`: a jar that is fetched later and
 disagrees with it is refused. A plugin the workspace builds itself — a module whose

@@ -121,7 +121,7 @@ class PackagerDependencyVersionTest {
         List<ToolEntry> tampered = new ArrayList<>();
         for (ToolEntry row : lock.tools()) {
             tampered.add(new ToolEntry(
-                    row.coordinate(), row.version(), row.type(), null, "sha256:" + "0".repeat(64), Map.of()));
+                    row.coordinate(), row.version(), row.type(), null, "sha256:" + "0".repeat(64), Map.of(), null));
         }
         Path lockFile = tmp.resolve("jk-lock.toml");
         LockfileWriter.write(lock.withTools(tampered), lockFile);

@@ -802,7 +802,7 @@ public final class LockPipeline {
 
     /**
      * Pin every plugin tool the root or a member fetches as one Maven artifact — the step, command
-     * and packager lanes — by the sha256 of its bytes. A tool whose coordinate follows the host is
+     * and packager lanes — or as a file at a URL, by the sha256 of its bytes. A tool whose coordinate follows the host is
      * pinned for each {@link Interpolation.Host#LOCKED} platform that publishes it, so a machine on
      * another OS verifies its own download against the lock; the running host's artifact must
      * exist. A plain {@code jk lock} keeps a floating tool's locked version and reuses the digests
@@ -814,6 +814,8 @@ public final class LockPipeline {
         // coordinate -> must exist (it is this host's); first module that asks owns the repositories
         Map<Coordinate, Boolean> wanted = new LinkedHashMap<>();
         Map<Coordinate, RepoGroup> reposFor = new LinkedHashMap<>();
+        // url -> must be fetched (it is this host's)
+        Map<String, Boolean> urls = new LinkedHashMap<>();
         for (Map.Entry<Path, JkBuild> module :
                 modules(LockPlans.lockMembers(lockDir, effective)).entrySet()) {
             Path dir = module.getKey();
@@ -822,15 +824,18 @@ public final class LockPipeline {
                     ? lock
                     : lock.forMember(lockDir.relativize(dir).toString().replace('\\', '/'));
             RepoGroup repos = null;
-            for (PluginContributions.LockedArtifact tool :
+            for (PluginContributions.LockedTool tool :
                     PluginContributions.lockedArtifacts(build, dir, view.platformPins())) {
                 if (repos == null) repos = RepoGroupBuilder.buildFor(build, repoUrl, cas, BuildEnv.forModule(dir));
-                Coordinate coord = toolCoordinate(tool.coordinate(), previous, repos);
+                Coordinate coord = toolCoordinate(tool.id(), previous, repos);
                 wanted.merge(coord, tool.host(), Boolean::logicalOr);
                 reposFor.putIfAbsent(coord, repos);
             }
+            for (PluginContributions.LockedTool url : PluginContributions.lockedUrls(build, dir, view.platformPins())) {
+                urls.merge(url.id(), url.host(), Boolean::logicalOr);
+            }
         }
-        if (wanted.isEmpty()) return lock.withTools(List.of());
+        if (wanted.isEmpty() && urls.isEmpty()) return lock.withTools(List.of());
         progress.label("lock tools");
         // group:artifact:version!type -> classifier -> hex
         Map<String, Map<@Nullable String, String>> digests = new LinkedHashMap<>();
@@ -860,7 +865,31 @@ public final class LockPipeline {
                 rows.add(new ToolEntry(head.module(), head.version(), head.type(), null, null, perPlatform));
             }
         }
+        for (Map.Entry<String, Boolean> url : urls.entrySet()) {
+            String hex = urlDigest(url.getKey(), url.getValue(), previous, cas);
+            if (hex != null) rows.add(ToolEntry.atUrl(url.getKey(), hex));
+        }
         return lock.withTools(rows);
+    }
+
+    /**
+     * The sha256 hex of the file at {@code url}: the previous lock's pin when it has one, else the
+     * download's. Null for another platform's URL that does not answer: a build on that platform
+     * then fails naming the missing row. This host's URL is {@code required}.
+     */
+    private static @Nullable String urlDigest(String url, boolean required, @Nullable Lockfile previous, Cas cas) {
+        String kept = previous == null ? null : previous.urlSha256(url);
+        if (kept != null) return kept;
+        try {
+            return Hashing.sha256Hex(UrlTools.download(url, cas));
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            if (!required && e instanceof IOException) {
+                Log.debug("urlDigest: " + url + " not pinned", e);
+                return null;
+            }
+            throw new IllegalStateException("tool " + url + " — " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -874,8 +903,13 @@ public final class LockPipeline {
         }
         if (previous != null) {
             for (ToolEntry row : previous.tools()) {
-                if (row.coordinate().equals(raw.module()) && row.type().equals(raw.type())) {
-                    return new Coordinate(raw.group(), raw.artifact(), row.version(), raw.classifier(), raw.type());
+                if (raw.module().equals(row.coordinate()) && row.type().equals(raw.type())) {
+                    return new Coordinate(
+                            raw.group(),
+                            raw.artifact(),
+                            Objects.requireNonNull(row.version()),
+                            raw.classifier(),
+                            raw.type());
                 }
             }
         }
