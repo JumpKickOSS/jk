@@ -61,7 +61,7 @@ final class JooqPlugin {
             if (jdbc != null) live |= jdbc(jdbc, values, report);
         }
         String version = PluginFacts.usable(plugin.getVersion());
-        if (version != null && !version.equals("3.21.8")) values.put("version", version);
+        if (version != null) values.put("version", version);
         if (output.startsWith("src/")) {
             report.warning("`" + ARTIFACT + "` generates into `" + output + "`, a source root; `[jooq]` generates"
                     + " into the build and folds the classes into the compile, so delete the checked-in copies.");
@@ -71,7 +71,7 @@ final class JooqPlugin {
                         ? "the live database the `jdbc-*` keys name, with the migrations under `sql` as the step's cache key"
                         : "the DDL scripts `sql` names, applied to an in-memory database")
                 + "; the module's `org.jooq:jooq` dependency stays and is expected at the generator's version ("
-                + (version != null ? version : "3.21.8") + ").");
+                + PluginFacts.versionOrDefault(version, "jooq", "version") + ").");
         return new Mapped(new PluginConfig("jooq", values), Map.of(output, ADD_SOURCE_ROW));
     }
 

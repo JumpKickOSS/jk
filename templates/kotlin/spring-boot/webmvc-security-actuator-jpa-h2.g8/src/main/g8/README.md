@@ -22,8 +22,8 @@ No Kotlin compiler plugins required: classes Spring or JPA must subclass declare
 themselves, and the entity carries an explicit default constructor. If you prefer
 `kotlin-spring`/`kotlin-jpa` semantics, wire them and drop the manual `open`s.
 
-Upgrade path: `jk update` re-locks `"latest"` selectors (Boot BOM and Kotlin) to a
-newer stable. Use `=4.1.0` / `=2.4.10` to freeze.
+Upgrade path: the Boot and Kotlin versions in `jk.toml` are exact pins; `jk update` moves them
+to the newest stable on the same major (`--major` crosses one).
 
 ## Tiers, guards, image
 

@@ -7,7 +7,7 @@ java = $java$
 main = "$package$.Main"
 
 [dependencies]
-jline = "4.4.3"
+jline = "4.4.8"
 
 [test-dependencies]
 junit-jupiter = "6.1.3"

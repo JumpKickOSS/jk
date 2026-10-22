@@ -2,7 +2,7 @@ group = "$organization$"
 name = "$name$"
 version = "0.1.0"
 java = $java$
-kotlin = "2.4.20"
+kotlin = "2.4.21"
 
 [application]
 main = "$package$.ApplicationKt"
@@ -20,7 +20,7 @@ starter-validation = "org.springframework.boot:spring-boot-starter-validation"
 starter-actuator = "org.springframework.boot:spring-boot-starter-actuator"
 starter-data-jpa = "org.springframework.boot:spring-boot-starter-data-jpa"
 h2 = "com.h2database:h2"
-kotlin-reflect = "2.4.20"
+kotlin-reflect = "2.4.21"
 jackson-kotlin = "com.fasterxml.jackson.module:jackson-module-kotlin"
 
 [dev-dependencies]

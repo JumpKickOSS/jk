@@ -417,7 +417,7 @@ public final class JkBuildRenderer {
      * and the table's defaults elide only against the schema. Null when no manifest can be had:
      * a fetch that fails leaves the table rendered from its values.
      */
-    private static @Nullable PluginDescriptor installedManifest(String idOrTable) {
+    public static @Nullable PluginDescriptor installedManifest(String idOrTable) {
         PluginDescriptor manifest = PluginTableRegistry.byIdOrTable(idOrTable);
         if (manifest != null) return manifest;
         PluginTableRegistry.tryFetchMissingBuiltIn(idOrTable);

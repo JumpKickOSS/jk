@@ -293,10 +293,10 @@ migration edit regenerates and an unchanged schema is a hit.
 # daos      = false                                        # implies pojos
 # fluent-setters = false
 # properties = { parseIgnoreComments = "true" }            # further DDLDatabase properties
-# version   = "3.21.8"                                     # the jOOQ release; a bare version is exact
+# version   = "3.21.9"                                     # the jOOQ release; a bare version is exact
 
 [dependencies]
-jooq = "3.21.8"                          # the generated classes read it at run time; keep it at the generator's version
+jooq = "3.21.9"                          # the generated classes read it at run time; keep it at the generator's version
 ```
 
 The step is `generate-jooq`. A **live database** is opt-in: `jdbc-url` (with `jdbc-user`,

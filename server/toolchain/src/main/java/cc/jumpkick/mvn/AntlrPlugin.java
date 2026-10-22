@@ -36,7 +36,6 @@ final class AntlrPlugin {
 
     private static final String DEFAULT_OUTPUT = "target/generated-sources/antlr4";
     private static final String DEFAULT_SRC = "src/main/antlr4";
-    private static final String DEFAULT_VERSION = "4.13.2";
 
     /** The table (null without the plugin) and the output root the plugin fills. */
     record Mapped(@Nullable PluginConfig table, Map<String, String> outputRoots) {
@@ -91,7 +90,7 @@ final class AntlrPlugin {
         if (!arguments.isEmpty()) values.put("arguments", arguments);
         if (!options.isEmpty()) values.put("options", options);
         String version = PluginFacts.usable(plugin.getVersion());
-        if (version != null && !version.equals(DEFAULT_VERSION)) values.put("version", version);
+        if (version != null) values.put("version", version);
         if (!uncovered.isEmpty()) {
             report.warning("`" + ARTIFACT + "` " + String.join(", ", uncovered) + " have no `[antlr]` key; the preset"
                     + " generates from every `.g4` under `" + src + "` into the main compile.");
@@ -99,7 +98,7 @@ final class AntlrPlugin {
         report.warning("`" + ARTIFACT + "` is `[antlr]`: the parsers are generated into the compile from the grammars"
                 + " under `" + src + "`, a package per grammar directory; the module's `org.antlr:antlr4-runtime`"
                 + " dependency stays and is expected at the tool's version ("
-                + (version != null ? version : DEFAULT_VERSION) + ").");
+                + PluginFacts.versionOrDefault(version, "antlr", "version") + ").");
         return new Mapped(new PluginConfig("antlr", values), Map.of(output, ADD_SOURCE_ROW));
     }
 

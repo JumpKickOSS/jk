@@ -30,7 +30,7 @@ jdbc-url  = { type = "string", example = "jdbc:postgresql://localhost:5432/app",
 jdbc-user = { type = "string" }
 jdbc-password = { type = "string" }
 driver    = { type = "string", default = "com.h2database:h2:2.5.250", example = "org.postgresql:postgresql:42.7.9", hint = "the JDBC driver on the generator's classpath; H2 serves the scripts, a live database needs its own" }
-version   = { type = "string", default = "3.21.8", example = "3.21.8", hint = "the jOOQ release; a bare version is exact, and the module's jooq dependency is expected to match" }
+version   = { type = "string", default = "3.21.9", example = "3.21.9", hint = "the jOOQ release; a bare version is exact, and the module's jooq dependency is expected to match" }
 
 # The code generator, the DDLDatabase meta extension (with H2) and the driver come together.
 [[contribute.step-dependency]]

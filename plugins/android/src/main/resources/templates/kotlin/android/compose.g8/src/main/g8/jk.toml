@@ -3,7 +3,7 @@ name = "$name$"
 version = "0.1.0"
 # Language level 21: d8 desugars 21-bytecode today; the host JDK 25 cross-compiles it.
 java = 21
-kotlin = "2.4.20"
+kotlin = "2.4.21"
 
 [android]
 namespace   = "$package$"

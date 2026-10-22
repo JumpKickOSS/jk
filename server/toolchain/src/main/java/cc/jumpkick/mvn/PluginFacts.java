@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.mvn;
 
+import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JavaRelease;
 import cc.jumpkick.host.JdkCompilerAccess;
 import cc.jumpkick.layout.Languages;
+import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.repo.Pom;
 import java.io.File;
 import java.nio.file.Path;
@@ -109,6 +111,19 @@ final class PluginFacts {
     private static final Set<String> LEVEL_OPTIONS = Set.of("--release", "-source", "-target", "--source", "--target");
 
     private PluginFacts() {}
+
+    /**
+     * {@code version} when the POM names one, else the default the built-in plugin owning
+     * {@code table} gives {@code key}, for a row that names the release the step will run.
+     */
+    static String versionOrDefault(@Nullable String version, String table, String key) {
+        if (version != null) return version;
+        PluginDescriptor manifest = JkBuildRenderer.installedManifest(table);
+        PluginDescriptor.SchemaKey schemaKey =
+                manifest == null ? null : manifest.schema().get(key);
+        Object fallback = schemaKey == null ? null : schemaKey.defaultValue();
+        return fallback != null ? fallback.toString() : "`" + key + "`'s default";
+    }
 
     static List<Plugin> plugins(Model model) {
         Build build = model.getBuild();

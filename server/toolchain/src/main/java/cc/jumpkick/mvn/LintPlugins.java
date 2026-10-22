@@ -82,9 +82,6 @@ final class LintPlugins {
     /** The ruleset {@code maven-pmd-plugin} runs when a POM names none, as the lint step spells it. */
     private static final String MAVEN_PMD_DEFAULT = "rulesets/java/maven-pmd-plugin-default.xml";
 
-    /** The PMD release the lint step runs when the table names none. */
-    private static final String DEFAULT_PMD = "7.27.0";
-
     /** The property every {@code maven-pmd-plugin} release's POM names its bundled PMD under. */
     private static final String PMD_VERSION_PROPERTY = "pmdVersion";
 
@@ -278,7 +275,7 @@ final class LintPlugins {
             if (version == null) continue;
             if ("checkstyle".equals(dependency.getArtifactId())
                     && "com.puppycrawl.tools".equals(dependency.getGroupId())) {
-                if (!version.equals("14.1.0")) values.put("checkstyle-version", version);
+                values.put("checkstyle-version", version);
                 continue;
             }
             classpath.add(dependency.getGroupId() + ":" + dependency.getArtifactId() + ":" + version);
@@ -630,7 +627,7 @@ final class LintPlugins {
      * {@code pmd-version}: the {@code pmd-java} (or {@code pmd-core}) the plugin's own dependencies
      * pin, else the PMD the plugin release bundles — the {@code pmdVersion} property of its POM,
      * read from the repositories. A PMD 6 is not written — the step runs PMD 7's command line —
-     * and is a row; jk's own default is not written either; a POM no repository serves is a row.
+     * and is a row; a POM no repository serves is a row.
      */
     private static void pmdVersion(
             Plugin plugin, Map<String, Object> values, ImportReport.Builder report, RepoGroup repos) {
@@ -649,12 +646,13 @@ final class LintPlugins {
             if (version == null) return;
         }
         if (version.startsWith("6.")) {
-            report.warning("`" + PMD + "` runs PMD " + version + "; the lint step runs PMD 7 (" + DEFAULT_PMD
+            report.warning("`" + PMD + "` runs PMD " + version + "; the lint step runs PMD 7 ("
+                    + PluginFacts.versionOrDefault(null, "lint", "pmd-version")
                     + " unless `pmd-version` says otherwise), whose rulesets and rule names differ from PMD 6's —"
                     + " a finding the Maven build did not report may be the newer release's.");
             return;
         }
-        if (!version.equals(DEFAULT_PMD)) values.put("pmd-version", version);
+        values.put("pmd-version", version);
     }
 
     /**
@@ -683,7 +681,8 @@ final class LintPlugins {
             why = "the read of its POM was interrupted";
         }
         report.warning("`" + PMD + "` " + pluginVersion + " bundles a PMD release this import could not learn — " + why
-                + "; `pmd-version` is left to the step's default (" + DEFAULT_PMD + "), so set it to the PMD the"
+                + "; `pmd-version` is left to the step's default ("
+                + PluginFacts.versionOrDefault(null, "lint", "pmd-version") + "), so set it to the PMD the"
                 + " Maven build ran if a finding the build did not report appears.");
         return null;
     }
@@ -750,10 +749,9 @@ final class LintPlugins {
         if (!plugins.isEmpty()) values.put("spotbugs-plugins", plugins);
         String version = PluginFacts.usable(plugin.getVersion());
         if (version != null) {
-            // The Maven plugin's version is SpotBugs's plus a plugin digit: 4.10.4.1 runs SpotBugs 4.10.4.
+            // The Maven plugin's version is SpotBugs's plus a plugin digit: 4.10.5.0 runs SpotBugs 4.10.5.
             int dots = version.length() - version.replace(".", "").length();
-            String spotbugs = dots == 3 ? version.substring(0, version.lastIndexOf('.')) : version;
-            if (!spotbugs.equals("4.10.4")) values.put("spotbugs-version", spotbugs);
+            values.put("spotbugs-version", dots == 3 ? version.substring(0, version.lastIndexOf('.')) : version);
         }
         return failOn;
     }
