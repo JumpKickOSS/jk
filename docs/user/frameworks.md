@@ -198,7 +198,10 @@ groups = ["com.jetbrains.intellij.*"]
   started with the distribution's own launcher flags from its `product-info.json`, a sandbox
   under `target/intellij-sandbox/<version>/`, the module's `plugin.xml` read from the classpath,
   and the jars of every bundled plugin the named ones require. All of a module's tests run in one
-  JVM, as one IDE. The test JVM is the module's JDK, so pick a platform build that runs on it:
+  JVM, as one IDE. The platform's test bases (`BasePlatformTestCase`, `HeavyPlatformTestCase`) are
+  JUnit 3 `TestCase` classes: declare `junit = "junit:junit:4.13.2"` in `[test-dependencies]` and jk
+  adds the JUnit Vintage engine, which runs them as written. Without it the run fails, naming the
+  missing engine, rather than reporting no tests. The test JVM is the module's JDK, so pick a platform build that runs on it:
   2026.2 requires 25, and older platforms' debuggers do not start on 25.
 - **The zip.** `target/<name>-<version>.zip` holds `<name>/lib/`: the module's classes as
   `<name>-<version>.jar` and its runtime dependencies. The packaged `META-INF/plugin.xml` gets

@@ -15,7 +15,7 @@ import org.jspecify.annotations.Nullable;
  * Whether a class file is one the JUnit Platform would have admitted as a test class, read from
  * its bytes without loading it: a concrete class that declares a test method or a test annotation
  * (Jupiter's, JUnit 4's, TestNG's, or a project annotation composed of one), extends a class that
- * does, or extends a framework's specification base. The probe over the classes discovery dropped
+ * does, or extends a framework's specification base (Spock's, JUnit 3's {@code TestCase}). The probe over the classes discovery dropped
  * keeps to these, so a helper under the test root that cannot load — a fixture compiled against a
  * dependency absent at test time — is not a failed run.
  */
@@ -35,7 +35,7 @@ final class TestClassShape {
             "Lorg/testng/annotations/Test;");
 
     /** Supertypes whose concrete subclasses are specifications with no annotation of their own. */
-    static final Set<String> TEST_BASES = Set.of("spock/lang/Specification");
+    static final Set<String> TEST_BASES = Set.of("spock/lang/Specification", "junit/framework/TestCase");
 
     /** Kotest's spec styles all live under this package. */
     static final String KOTEST_SPECS = "io/kotest/core/spec/";
