@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.host;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -19,7 +22,26 @@ public final class AotCacheFiles {
      */
     private static final Pattern ERROR_LEVEL = Pattern.compile("\\[error\\s*]");
 
+    /**
+     * A unified-logging line of the JVM's AOT or CDS subsystem ({@code [2.488s][warning][aot] Skipping
+     * …}). A recording JVM prints hundreds of them as it exits; none says why the application did.
+     */
+    private static final Pattern JVM_AOT_LINE = Pattern.compile("^\\[[^]]*]\\[\\w+\\s*]\\[(aot|cds)[\\],].*");
+
     private AotCacheFiles() {}
+
+    /**
+     * The last {@code lines} lines of a training run's output, the JVM's own AOT and CDS logging left
+     * out: what the application said before it stopped, which is what a failed run has to show.
+     * The JVM's lines are kept only when they are all there is.
+     */
+    public static String appTail(String output, int lines) {
+        String[] all = output.strip().split("\n");
+        List<String> app = new ArrayList<>();
+        for (String line : all) if (!JVM_AOT_LINE.matcher(line).matches()) app.add(line);
+        List<String> kept = app.isEmpty() ? Arrays.asList(all) : app;
+        return String.join("\n", kept.subList(Math.max(0, kept.size() - lines), kept.size()));
+    }
 
     /** True when {@code jvmLog} proves the JVM would not use the cache. */
     public static boolean refused(String jvmLog) {
