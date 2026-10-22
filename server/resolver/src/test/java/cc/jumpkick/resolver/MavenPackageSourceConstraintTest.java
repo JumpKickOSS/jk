@@ -14,6 +14,7 @@ import cc.jumpkick.resolver.pubgrub.VersionSet;
 import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -21,6 +22,9 @@ import org.junit.jupiter.api.io.TempDir;
  * platform, bare versions stay highest-wins floors.
  */
 class MavenPackageSourceConstraintTest {
+
+    @RegisterExtension
+    final QuiescedSources sources = new QuiescedSources();
 
     @Test
     void platform_pin_matching_bare_version_is_exact(@TempDir Path tmp) {
@@ -168,21 +172,28 @@ class MavenPackageSourceConstraintTest {
         assertThat(vs.contains("2.0.0")).isFalse();
     }
 
-    private static MavenPackageSource source(Path tmp, Map<String, String> bom) {
+    private MavenPackageSource source(Path tmp, Map<String, String> bom) {
         return source(tmp, bom, PlatformPolicy.ENFORCED);
     }
 
-    private static MavenPackageSource source(Path tmp, Map<String, String> bom, PlatformPolicy policy) {
+    private MavenPackageSource source(Path tmp, Map<String, String> bom, PlatformPolicy policy) {
         MavenRepo repo = neverDialed(tmp);
         RepoGroup group = RepoGroup.of(repo);
-        return new MavenPackageSource(group, new EffectivePomBuilder(group), bom, Map.of(), KmpRedirects.NONE, policy);
+        return sources.track(new MavenPackageSource(
+                group, new EffectivePomBuilder(group), bom, Map.of(), KmpRedirects.NONE, policy));
     }
 
-    private static MavenPackageSource strictSource(Path tmp, Map<String, String> bom, PlatformPolicy policy) {
+    private MavenPackageSource strictSource(Path tmp, Map<String, String> bom, PlatformPolicy policy) {
         MavenRepo repo = neverDialed(tmp);
         RepoGroup group = RepoGroup.of(repo);
-        return new MavenPackageSource(
-                group, new EffectivePomBuilder(group), bom, Map.of(), KmpRedirects.NONE, policy, UnmappedPolicy.STRICT);
+        return sources.track(new MavenPackageSource(
+                group,
+                new EffectivePomBuilder(group),
+                bom,
+                Map.of(),
+                KmpRedirects.NONE,
+                policy,
+                UnmappedPolicy.STRICT));
     }
 
     /** These constraints resolve before any fetch; an empty local repo makes an accidental one a miss. */

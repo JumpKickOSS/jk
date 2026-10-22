@@ -23,11 +23,16 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /** Diagnostic walk of the quarkus-junit5 graph (network). Prefer {@link QuarkusJunit5ResolveTest}. */
 @Tag("network")
 class QuarkusJunit5WalkTest {
+
+    @RegisterExtension
+    final QuiescedSources sources = new QuiescedSources();
+
     @Test
     void walk_with_highest(@TempDir Path tmp) throws Exception {
         Cas cas = new Cas(QuarkusLockPerfTest.developerStore());
@@ -39,7 +44,7 @@ class QuarkusJunit5WalkTest {
                 .managedDependencies()) {
             if (m.version() != null && !m.version().isBlank()) bom.putIfAbsent(m.module(), m.version());
         }
-        MavenPackageSource src = new MavenPackageSource(repos, b, bom);
+        MavenPackageSource src = sources.track(new MavenPackageSource(repos, b, bom));
         Map<String, String> chosen = new HashMap<>();
         ArrayDeque<String> q = new ArrayDeque<>();
         String root = PackageId.ofGa("io.quarkus:quarkus-junit5").key();
