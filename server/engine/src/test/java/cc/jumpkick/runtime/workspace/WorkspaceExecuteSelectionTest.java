@@ -10,6 +10,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.testing.Symlinks;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
@@ -121,6 +122,76 @@ class WorkspaceExecuteSelectionTest {
                 .as("leaf keeps the jk test shape (no packaging)")
                 .contains(TaskNames.RUN_TESTS)
                 .doesNotContain(TaskNames.PACKAGE_JAR);
+    }
+
+    /**
+     * A suite that spawns nested engines runs the workspace engine's fat jar, so {@code jk test}
+     * packages it: the suite then exercises the checkout's engine and every library bundled in it,
+     * never an installed one.
+     */
+    @Test
+    void test_plans_package_the_engine_assembly_a_nested_engine_suite_launches() throws Exception {
+        Path engine = module("jk-engine", "engine", """
+                [application]
+                main = "ex.Main"
+                assembly = true
+                """);
+        Path cli = module("jk-cli", "cli", """
+                [application]
+                main = "cc.jumpkick.cli.Jk"
+
+                [test-dependencies]
+                jk-engine = { workspace = true }
+                """);
+        Path app = module("app", "app", """
+                [test-dependencies]
+                jk-engine = { workspace = true }
+                """);
+        JkBuild engineB = JkBuildParser.parse(engine.resolve("jk.toml"));
+        var engineUnit = new BuildGraph.BuildUnit(engine, engineB, "ex:jk-engine", BuildGraph.Origin.MODULE);
+        var cliUnit = new BuildGraph.BuildUnit(
+                cli, JkBuildParser.parse(cli.resolve("jk.toml")), "ex:jk-cli", BuildGraph.Origin.MODULE);
+        var appUnit = new BuildGraph.BuildUnit(
+                app, JkBuildParser.parse(app.resolve("jk.toml")), "ex:app", BuildGraph.Origin.MODULE);
+
+        var withCli = new BuildGraph.Result(
+                List.of(engineUnit, cliUnit), Map.of(cli, Set.of(engine), engine, Set.of()), List.of());
+        var withoutCli = new BuildGraph.Result(
+                List.of(engineUnit, appUnit), Map.of(app, Set.of(engine), engine, Set.of()), List.of());
+        Set<Path> launched = WorkspacePreflightPhase.launchedAssemblies(withCli);
+        assertThat(launched).containsExactly(BuildGraph.canonicalPath(engine));
+        assertThat(WorkspacePreflightPhase.launchedAssemblies(withoutCli)).isEmpty();
+
+        WorkspaceRequest test = new WorkspaceRequest(
+                        tmp, tmp.resolve("cache"), null, 0, null, false, false, 0, null, true, true)
+                .withTestOnly(true);
+        Set<Path> jarConsumed = Set.of(BuildGraph.canonicalPath(engine));
+        Set<String> launchedPlan = WorkspacePreparePhase.assemblePlan(
+                        engineUnit,
+                        test,
+                        Set.of(engine, cli),
+                        false,
+                        jarConsumed,
+                        launched,
+                        SiblingArtifacts.NONE,
+                        false)
+                .steps()
+                .stream()
+                .map(s -> s.name())
+                .collect(Collectors.toSet());
+        assertThat(launchedPlan)
+                .as("the nested-engine suite's engine jar is this run's")
+                .contains(TaskNames.PACKAGE_JAR, TaskNames.PACKAGE_ASSEMBLY, TaskNames.RUN_TESTS);
+        Set<String> consumedPlan =
+                WorkspacePreparePhase.assemblePlan(engineUnit, test, Set.of(engine, app), false, jarConsumed)
+                        .steps()
+                        .stream()
+                        .map(s -> s.name())
+                        .collect(Collectors.toSet());
+        assertThat(consumedPlan)
+                .as("a sibling that only compiles against the jar needs no fat jar")
+                .contains(TaskNames.PACKAGE_JAR)
+                .doesNotContain(TaskNames.PACKAGE_ASSEMBLY);
     }
 
     /**

@@ -15,6 +15,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.FirstPartyPins;
+import cc.jumpkick.runtime.PlannerSupport;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
@@ -56,6 +57,7 @@ public final class WorkspacePreflightPhase {
             List<BuildGraph.BuildUnit> units,
             Set<Path> moduleDirs,
             Set<Path> jarConsumed,
+            Set<Path> launchedAssemblies,
             Set<Path> dirty,
             Optional<BuildForecasting.Preflight> forecast) {}
 
@@ -136,6 +138,7 @@ public final class WorkspacePreflightPhase {
                 List.copyOf(units),
                 immutableOrderedSet(moduleDirs),
                 immutableOrderedSet(jarConsumed),
+                launchedAssemblies(graph),
                 scheduled(units, forecast.dirty(), forecast.restoreNeeded()),
                 forecast.preflight()));
     }
@@ -256,6 +259,29 @@ public final class WorkspacePreflightPhase {
             for (Path prereq : prereqs) consumed.add(BuildGraph.canonicalPath(prereq));
         }
         return consumed;
+    }
+
+    /**
+     * The engine modules a nested-engine suite in {@code graph} launches from their fat jar: a test
+     * run packages that jar before the suite starts, so the suite runs the checkout's engine and
+     * every library bundled in it.
+     */
+    static Set<Path> launchedAssemblies(BuildGraph.Result graph) {
+        Map<Path, JkBuild> byDir = new LinkedHashMap<>();
+        for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
+            byDir.put(BuildGraph.canonicalPath(unit.dir()), unit.manifest());
+        }
+        Set<Path> launched = new LinkedHashSet<>();
+        for (Map.Entry<Path, Set<Path>> edge : graph.edges().entrySet()) {
+            JkBuild consumer = byDir.get(BuildGraph.canonicalPath(edge.getKey()));
+            if (consumer == null || !PlannerSupport.needsNestedEngineIsolation(consumer)) continue;
+            for (Path prereq : edge.getValue()) {
+                Path dir = BuildGraph.canonicalPath(prereq);
+                JkBuild module = byDir.get(dir);
+                if (module != null && module.assembly() && PlannerSupport.isEngineModule(module)) launched.add(dir);
+            }
+        }
+        return Collections.unmodifiableSet(launched);
     }
 
     static BuildGraph.Result applySelectionCone(BuildGraph.Result graph, WorkspaceRequest request) {
