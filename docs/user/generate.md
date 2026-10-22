@@ -245,7 +245,7 @@ graphql-dgs-codegen-shared-core = "8.6.0"   # the client's base classes, a catal
 The types land under `<package>.types`, the client under `<package>.client`; a schema edit
 re-runs the step and an unchanged schema is a cache hit. The tool is Kotlin: its closure's
 multiplatform roots (clikt, mordant) are redirected to their JVM jars the way the lock redirects a
-module's. The worked example: [`graphql/dgs-codegen`](https://github.com/JumpKickOSS/jk-examples)
+module's. The worked example: [`05-recipes/codegen/graphql`](https://github.com/JumpKickOSS/jk-examples/tree/main/05-recipes/codegen/graphql)
 in jk-examples.
 
 [graphql-java-codegen](https://github.com/kobylynskyi/graphql-java-codegen) ships no command

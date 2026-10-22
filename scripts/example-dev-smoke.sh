@@ -11,7 +11,7 @@
 #
 #   scripts/example-dev-smoke.sh docs/user/examples/vite-sidecar '/api/hello=hello from the JVM'
 #
-# --examples: every web/<scenario> of a jk-examples checkout that has a jk.toml, each built
+# --examples: every 03-fullstack/<scenario> of a jk-examples checkout that has a jk.toml, each built
 # beforehand (its node_modules installed by `jk build`), with the checks listed below.
 #
 # `jk` is taken from JK_BIN (default: jk on PATH). A node build's dependencies are installed by
@@ -21,11 +21,12 @@ set -euo pipefail
 jk="${JK_BIN:-jk}"
 wait_seconds=180
 
-# The API checks of the jk-examples web/ scenarios: a scenario not listed is checked by its front
+# The API checks of the jk-examples 03-fullstack/ scenarios: a scenario not listed is checked by its front
 # doors alone.
 web_checks() {
   case "$1" in
     vite-react | two-frontends) echo '/api/hello=Hello, world!' ;;
+    spring-boot-spa) echo '/api/hello=hello from the JVM' ;;
     *) ;;
   esac
 }
@@ -115,14 +116,14 @@ smoke() {
 if [[ "${1:-}" == "--examples" ]]; then
   checkout="${2:?jk-examples checkout}"
   found=0
-  for manifest in "$checkout"/web/*/jk.toml; do
+  for manifest in "$checkout"/03-fullstack/*/jk.toml; do
     [[ -f "$manifest" ]] || continue
     scenario="$(dirname "$manifest")"
     found=1
     mapfile -t checks < <(web_checks "$(basename "$scenario")")
     smoke "$scenario" "${checks[@]}"
   done
-  (( found )) || fail "no web/<scenario>/jk.toml under $checkout"
+  (( found )) || fail "no 03-fullstack/<scenario>/jk.toml under $checkout"
 else
   example="${1:?example directory, or --examples <jk-examples checkout>}"
   shift

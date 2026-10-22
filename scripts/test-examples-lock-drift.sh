@@ -83,9 +83,9 @@ rm "$WORK/$npm_lock"
 refuses_naming "an npm lock the job deleted" "$npm_lock"
 reset
 
-# A jk-examples checkout's web/ scenarios, given as the second argument, are held to the same rules.
+# A jk-examples checkout's 03-fullstack/ scenarios, given as the second argument, are held to the same rules.
 EX="$WORK/jk-examples"
-scenario="web/scenario"
+scenario="03-fullstack/scenario"
 mkdir -p "$EX/$scenario"
 git -C "$EX" init -q
 git -C "$EX" config user.email fixture@example.com

@@ -275,7 +275,7 @@ once per mirrored repository, and `jk doctor` lists the mirrors the engine appli
 
 ### Where import stands on real repositories
 
-The [Maven top-20 corpus](https://github.com/JumpKickOSS/jk-examples/tree/main/corpus/maven-top20)
+The [Maven top-20 corpus](https://github.com/JumpKickOSS/jk-examples/tree/main/bench/maven-top20)
 in jk-examples clones the twenty most-starred GitHub repositories that build with Maven on Java 17
 or newer and drives Maven and jk through one protocol: import, lock, build, test, and the same
 cold / no-op / one-file-edit walls for both tools. Its `RESULTS.md` is the ratchet; a run that

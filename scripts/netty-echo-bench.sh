@@ -5,7 +5,7 @@
 # Optional: RUNS=5 JK_BIN=jk
 set -euo pipefail
 
-PROJ="${1:-${JK_EXAMPLES:-$HOME/src/oss/jk-examples}/jvm/netty-echo}"
+PROJ="${1:-${JK_EXAMPLES:-$HOME/src/oss/jk-examples}/02-services/netty-echo}"
 JK_BIN="${JK_BIN:-jk}"
 RUNS="${RUNS:-3}"
 
