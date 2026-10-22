@@ -29,7 +29,7 @@ final class MigrationPlugins {
             String locations = value(flyway, "locations");
             report.warning("`" + FLYWAY + "` is the Flyway tool recipe, not a build step: `jk tool install"
                     + " org.flywaydb:flyway-commandline:<version> --main org.flywaydb.commandline.Main"
-                    + " --with <jdbc driver>` once, then `flyway migrate`"
+                    + " --bin flyway --with <jdbc driver>` once, then `flyway migrate`"
                     + " with `FLYWAY_URL`" + (url == null ? "" : " (`" + url + "`)") + " in `.env`"
                     + (locations == null ? "" : " and `FLYWAY_LOCATIONS=" + locations + "`")
                     + " — see docs/user/database.md; nothing was written.");
@@ -40,7 +40,7 @@ final class MigrationPlugins {
             String changeLog = value(liquibase, "changeLogFile");
             report.warning("`" + LIQUIBASE + "` is the Liquibase tool recipe, not a build step: `jk tool install"
                     + " org.liquibase:liquibase-core:<version> --main liquibase.integration.commandline.LiquibaseCommandLine"
-                    + " --with <jdbc driver> --with info.picocli:picocli:<version>` once, then `liquibase update` with"
+                    + " --bin liquibase --with <jdbc driver> --with info.picocli:picocli:<version>` once, then `liquibase update` with"
                     + " `LIQUIBASE_COMMAND_URL`" + (url == null ? "" : " (`" + url + "`)") + " in `.env`"
                     + (changeLog == null ? "" : " and `LIQUIBASE_COMMAND_CHANGELOG_FILE=" + changeLog + "`")
                     + " — see docs/user/database.md; nothing was written.");
