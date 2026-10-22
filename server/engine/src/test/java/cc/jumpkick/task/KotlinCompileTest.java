@@ -159,6 +159,64 @@ class KotlinCompileTest {
         assertThat(state.resolve("caches.bin")).isRegularFile();
     }
 
+    /**
+     * A tree short of a class the incremental state claims — a write cut short, a restore of
+     * another tree that lacks it — is no base for an incremental compile: the state starts over,
+     * so the compile is whole. A tree that holds every claimed class keeps the state.
+     */
+    @Test
+    void a_tree_short_of_a_class_the_state_claims_starts_the_state_over(@TempDir Path dir) throws IOException {
+        Cas cas = new Cas(dir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, dir.resolve("actions"));
+        Path src = write(dir.resolve("A.kt"), "package x\nclass A\nclass B");
+        Path out = dir.resolve("out");
+        Path worker = write(dir.resolve("worker.jar"), "not a real jar");
+        Path state = dir.resolve("ic");
+        KotlincRequest req = KotlincRequest.builder()
+                .sources(List.of(src))
+                .classpath(List.of())
+                .outputDir(out)
+                .jvmTarget(21)
+                .workerClasspath(List.of(worker))
+                .javaHome(Path.of(System.getProperty("java.home")))
+                .workingDir(state)
+                .build();
+        Files.createDirectories(out.resolve("x"));
+        write(out.resolve("x/A.class"), "A");
+        write(out.resolve("x/B.class"), "B");
+        Files.createDirectories(state);
+        write(state.resolve("caches.bin"), "state");
+        LangCompile.recordTree(state, "the-state-key", Map.of("x/A.class", "aa", "x/B.class", "bb"));
+
+        compileMissing(req, cas, cache);
+        assertThat(state.resolve("caches.bin"))
+                .as("a whole tree keeps the state")
+                .isRegularFile();
+
+        Files.delete(out.resolve("x/B.class"));
+        compileMissing(req, cas, cache);
+        assertThat(state.resolve("caches.bin"))
+                .as("a tree short of B starts the state over")
+                .doesNotExist();
+    }
+
+    /** A compile with no record: the bogus worker cannot run it, so only what happens before the fork is observed. */
+    private static void compileMissing(KotlincRequest req, Cas cas, ActionCache cache) {
+        try {
+            LangCompile.run(
+                    "compile-kotlin",
+                    req,
+                    "jk-test",
+                    true,
+                    cas,
+                    cache,
+                    WorkerEnv.strict(),
+                    KotlinClasspathAbi.MEMOIZED_ONLY);
+        } catch (IOException | RuntimeException workerCannotStart) {
+            // The fork is not what this test reads.
+        }
+    }
+
     @Test
     void the_ledger_round_trips_the_key_and_the_tree(@TempDir Path dir) throws IOException {
         Path state = Files.createDirectories(dir.resolve("ic"));

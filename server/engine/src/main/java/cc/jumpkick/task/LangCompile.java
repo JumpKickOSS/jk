@@ -115,13 +115,15 @@ public final class LangCompile {
 
         Files.createDirectories(request.outputDir());
         // Incremental state is only valid alongside the outputs it produced: if the output
-        // dir is (now) empty of classes while IC state survives (a cleaned target/, a fresh
-        // checkout with a warm cache), BTA would compile "only what changed" into the void
-        // and report success with a near-empty dir. Start the IC state over instead.
+        // dir is empty of classes, or short of one the state's compile wrote (a cleaned target/,
+        // a write cut short, a restore of another tree), BTA would compile "only what changed"
+        // and record the short tree. Start the IC state over instead.
         if (request.incremental()
                 && workingDir != null
                 && Files.isDirectory(workingDir)
-                && (!hasClasses(request.outputDir()) || javaDeclarationsMoved(actionCache, workingDir, request))) {
+                && (!hasClasses(request.outputDir())
+                        || treeShortOfState(workingDir, request.outputDir())
+                        || javaDeclarationsMoved(actionCache, workingDir, request))) {
             PathUtil.deleteRecursively(workingDir);
         }
         return forkAndStore(
@@ -324,9 +326,11 @@ public final class LangCompile {
      * change tracking — sources against its snapshot, classpath entries against their ABI
      * snapshots, the compiler's arguments — recompiles what moved between the two compiles on the
      * next edit and deletes what a since-removed source wrote, so the state stays and the next edit
-     * is incremental. A record under the very same key that wrote another tree is a compile the
-     * state cannot explain, and a state with no ledger vouches for nothing: both start over, and a
-     * rebuild from no state clears the output dir before it writes.
+     * is incremental, unless the tree lacks a file the state's compile wrote: the next compile
+     * starts that state over ({@link #treeShortOfState}). A record under the very same key that
+     * wrote another tree is a compile the state cannot explain, and a state with no ledger vouches
+     * for nothing: both start over, and a rebuild from no state clears the output dir before it
+     * writes.
      */
     private static void reconcileState(@Nullable Path stateDir, String key, Map<String, String> restored)
             throws IOException {
@@ -393,6 +397,16 @@ public final class LangCompile {
             if (e.getKey().startsWith(ActionKey.JAVA_API)) recorded.put(e.getKey(), e.getValue());
         }
         return !now.equals(recorded);
+    }
+
+    /** True when {@code outputDir} lacks a file the ledger in {@code stateDir} says the state's compile wrote. */
+    static boolean treeShortOfState(Path stateDir, Path outputDir) throws IOException {
+        Ledger ledger = readLedger(stateDir.resolve(TREE_LEDGER));
+        if (ledger == null) return false;
+        for (String rel : ledger.outputs().keySet()) {
+            if (!Files.isRegularFile(outputDir.resolve(rel))) return true;
+        }
+        return false;
     }
 
     /** Any {@code .class} anywhere under {@code dir}? */

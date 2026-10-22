@@ -55,7 +55,9 @@ A class file whose source is gone leaves the classes tree on the next compile, w
 there. The Java and Scala compile sweeps every class its incremental analysis does not own before
 it runs — a restore from the action cache rewrites the tree without telling the analysis, so a
 tree can hold the class of a source the analysis never saw — and the Kotlin compile starts its
-incremental state over when a restore lays down a tree other than the one that state produced.
+incremental state over when a restore under that state's own key lays down another tree. The
+other way round holds too: a tree short of a class its incremental state claims (a write cut short,
+a restore of a tree that lacks it) compiles whole, in Java, Scala and Kotlin alike.
 The record a compile stores is the swept tree, so a later restore of it cannot bring a deleted
 test back to the runner or a deleted class into the jar.
 
