@@ -115,6 +115,13 @@ final class KtsSession {
     /** How long a cancelled script may take to stop before its host is killed instead. */
     static final Duration CANCEL_GRACE = Duration.ofSeconds(2);
 
+    private static volatile Duration cancelGrace = CANCEL_GRACE;
+
+    /** Test seam: the grace a cancelled script's host has to answer; {@code null} restores {@link #CANCEL_GRACE}. */
+    static void cancelGraceForTests(@Nullable Duration grace) {
+        cancelGrace = grace == null ? CANCEL_GRACE : grace;
+    }
+
     /** How long a starting host may take to say {@code READY} before it is killed instead. */
     static final Duration START_TIMEOUT = Duration.ofMinutes(2);
 
@@ -334,7 +341,7 @@ final class KtsSession {
             process.waitFor(5, TimeUnit.SECONDS);
             return;
         }
-        String reply = replies.poll(CANCEL_GRACE.toMillis(), TimeUnit.MILLISECONDS);
+        String reply = replies.poll(cancelGrace.toMillis(), TimeUnit.MILLISECONDS);
         if (reply == null || EOF.equals(reply)) {
             process.destroyForcibly();
             // Waited for, so the caller's liveness check sees the kill and drops the session.
