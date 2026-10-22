@@ -3,22 +3,11 @@ package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.run.BuildPlanListener;
-import cc.jumpkick.run.BuildPlanResult;
-import cc.jumpkick.run.Task;
-import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.BuildRequest;
-import cc.jumpkick.wire.protocol.CompileRequest;
-import cc.jumpkick.wire.protocol.EngineProtocol;
-import cc.jumpkick.wire.protocol.ImageRequest;
-import cc.jumpkick.wire.protocol.InstallRequest;
-import cc.jumpkick.wire.protocol.NativeRequest;
 import cc.jumpkick.wire.protocol.ProtoJobs;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.RequestEnvironment;
-import cc.jumpkick.wire.protocol.SingleBuildRequest;
-import cc.jumpkick.wire.protocol.TestRequest;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -26,13 +15,11 @@ import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -127,9 +114,7 @@ final class EngineJobs {
                                 req.keepGoing(),
                                 workspaceTarget,
                                 graalHomes,
-                                spec != null && spec.m2Dir() != null
-                                        ? spec.m2Dir().toString()
-                                        : null,
+                                spec == null ? null : spec.tail(),
                                 RequestEnvironment.trigger(),
                                 RequestEnvironment.progressMode(),
                                 session.coverage(),
@@ -138,237 +123,6 @@ final class EngineJobs {
                         .encode(),
                 null,
                 RequestEnvironment.session());
-    }
-
-    /**
-     * Run a single project's test plan against the engine. {@code listenerFactory} builds the
-     * console {@link BuildPlanListener} once the plan's step list is known (mirroring {@code
-     * BuildPlanConsole.runBuildPlan}'s own mode-based listener choice, which also needs {@code
-     * plan.steps} before it can construct a {@code CommandManagerListener}) — the wire doesn't have
-     * a real {@code BuildPlan} to ask, so the steps arrive as their own small event burst first.
-     * {@code testResultOut}, if non-null, is populated with the test-run counts (for exit-code and
-     * summary logic) before the terminal {@code plan-finish} event reaches {@code
-     * listenerFactory}'s listener, exactly mirroring how the in-process path's {@code
-     * plan.get(TEST_RESULT)} is already populated by the time the console listener's own {@code
-     * planFinish} fires.
-     */
-    static BuildPlanResult runTest(
-            EnginePaths.Paths paths,
-            EngineRequests.TestRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory,
-            TestSummary[] testResultOut)
-            throws IOException {
-        Session session = SessionContext.current();
-        var sel = req.testSelection() != null ? req.testSelection() : session.testSelection();
-        var debug = req.debugJvm() != null ? req.debugJvm() : session.debugJvm();
-        return singlePlan(
-                paths,
-                ProtoSession.withSessionFields(
-                        ProtoSession.withSession(
-                                ProtoSession.withOrigin(
-                                        new TestRequest(
-                                                        req.entryDir().toString(),
-                                                        req.cache().toString(),
-                                                        req.jdksDir() != null
-                                                                ? req.jdksDir().toString()
-                                                                : null,
-                                                        req.workers(),
-                                                        req.profile(),
-                                                        req.verbose(),
-                                                        req.offline(),
-                                                        req.force(),
-                                                        req.parallelTests() || session.parallelTests(),
-                                                        sel,
-                                                        ProtoJobs.debugJvmSpelling(debug),
-                                                        RequestEnvironment.trigger(),
-                                                        RequestEnvironment.progressMode(),
-                                                        req.coverage() || session.coverage(),
-                                                        testFailures(session),
-                                                        session.skipNode())
-                                                .encode(),
-                                        null,
-                                        RequestEnvironment.session()),
-                                session.variant(),
-                                session.clientEnv(),
-                                session.jvm(),
-                                session.config().rebuildOr(false),
-                                TimelineOpts.noTimeline()),
-                        SessionContext.current()),
-                listenerFactory,
-                testResultOut,
-                null);
-    }
-
-    /**
-     * Run a single (non-workspace) project's real build plan against the engine ({@code jk build} on
-     * a standalone project). Same shape as {@link #runTest}, plus {@code buildOutcomeOut}
-     * (populated with {@code PlannerPackage.BUILD_OUTCOME}, if the plan reported one, before the
-     * terminal {@code plan-finish} reaches {@code listenerFactory}'s listener) so the caller's
-     * summary line (e.g. "project up to date" vs "project built") can match the in-process path.
-     */
-    static BuildPlanResult runSingleBuild(
-            EnginePaths.Paths paths,
-            EngineRequests.SingleBuildRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory,
-            TestSummary @Nullable [] testResultOut,
-            @Nullable String @Nullable [] buildOutcomeOut)
-            throws IOException {
-        Session session = SessionContext.current();
-        return singlePlan(
-                paths,
-                ProtoSession.withSessionFields(
-                        ProtoSession.withSession(
-                                new SingleBuildRequest(
-                                                req.entryDir().toString(),
-                                                req.cache().toString(),
-                                                req.jdksDir() != null
-                                                        ? req.jdksDir().toString()
-                                                        : null,
-                                                req.workers(),
-                                                req.profile(),
-                                                req.skipTests(),
-                                                req.verbose(),
-                                                req.offline(),
-                                                req.force(),
-                                                req.graalHome() != null
-                                                        ? req.graalHome().toString()
-                                                        : null,
-                                                // jk build -A / tag flags on a single project.
-                                                session.testSelection(),
-                                                testFailures(session),
-                                                session.skipNode())
-                                        .encode(),
-                                req.variant(),
-                                req.clientEnv(),
-                                session.jvm(),
-                                session.config().rebuildOr(false),
-                                TimelineOpts.noTimeline(),
-                                session.assemblyOverride()),
-                        SessionContext.current()),
-                listenerFactory,
-                testResultOut,
-                buildOutcomeOut);
-    }
-
-    /**
-     * Run {@code jk native}'s hosted module cascade against the engine — it speaks {@link
-     * EngineProtocol#BUILD_REQUEST}'s workspace event vocabulary (see {@link
-     * EngineProtocol#NATIVE_REQUEST}), so the stream replays through the exact same {@link
-     * WorkspaceBuildListener} plumbing {@link #buildWorkspace} uses. Module and workspace exit
-     * codes are engine-computed ({@code jk native}'s 64/4/1 mapping).
-     */
-    static WorkspaceResult runNative(
-            EnginePaths.Paths paths, EngineRequests.NativeRequest req, WorkspaceBuildListener listener)
-            throws IOException {
-        Map<String, String> graalHomes = new LinkedHashMap<>();
-        for (Map.Entry<Path, Path> e : req.graalByDir().entrySet()) {
-            graalHomes.put(e.getKey().toString(), e.getValue().toString());
-        }
-        List<String> moduleDirs = new ArrayList<>();
-        if (req.selectedModuleDirs() != null) {
-            for (Path p : req.selectedModuleDirs()) {
-                if (p != null) moduleDirs.add(p.toString());
-            }
-        }
-        return workspace(
-                paths,
-                envelope(new NativeRequest(
-                                req.entryDir().toString(),
-                                req.cache().toString(),
-                                req.jdksDir() != null ? req.jdksDir().toString() : null,
-                                req.mainClass(),
-                                req.skipTests(),
-                                req.offline(),
-                                req.force(),
-                                req.verbose(),
-                                req.extraArgs(),
-                                graalHomes,
-                                moduleDirs)
-                        .encode()),
-                req.cache(),
-                listener);
-    }
-
-    /**
-     * Workspace-member {@code jk image}: {@code IMAGE_REQUEST} on the module dir; the engine
-     * expands the workspace cone and streams workspace events (same as {@link #runNative}).
-     */
-    static WorkspaceResult runImageWorkspace(
-            EnginePaths.Paths paths, EngineRequests.ImageRequest req, WorkspaceBuildListener listener)
-            throws IOException {
-        return workspace(
-                paths,
-                envelope(new ImageRequest(
-                                req.entryDir().toString(),
-                                req.cache().toString(),
-                                req.jdksDir() != null ? req.jdksDir().toString() : null,
-                                req.mainClass(),
-                                req.registry(),
-                                req.tag(),
-                                req.tarballArg(),
-                                req.dockerExecutable(),
-                                req.skipTests(),
-                                req.offline(),
-                                req.force(),
-                                req.verbose())
-                        .encode()),
-                req.cache(),
-                listener);
-    }
-
-    /**
-     * Workspace {@code jk compile} (root or member): {@code COMPILE_REQUEST} on the entry dir;
-     * the engine expands the cone (prereqs package, selection compiles-only) and streams
-     * workspace events — the one-orchestrator COMPILE path.
-     */
-    static WorkspaceResult runCompileWorkspace(
-            EnginePaths.Paths paths, EngineRequests.CompileRequest req, WorkspaceBuildListener listener)
-            throws IOException {
-        return workspace(
-                paths,
-                envelope(new CompileRequest(
-                                req.entryDir().toString(),
-                                req.cache().toString(),
-                                req.jdksDir() == null ? null : req.jdksDir().toString(),
-                                req.profile(),
-                                req.offline(),
-                                req.force(),
-                                req.verbose(),
-                                req.keepGoing(),
-                                req.modules())
-                        .encode()),
-                req.cache(),
-                listener);
-    }
-
-    /**
-     * Run {@code jk install}'s hosted build + cache-install plan against the engine — {@link
-     * #runTest}'s exact shape ({@code testResultOut} settles before the terminal {@code
-     * plan-finish} reaches the listener); the launcher-writing "make install" half runs in the
-     * caller afterwards.
-     */
-    static BuildPlanResult runInstall(
-            EnginePaths.Paths paths,
-            EngineRequests.InstallRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory,
-            TestSummary[] testResultOut)
-            throws IOException {
-        return singlePlan(
-                paths,
-                envelope(new InstallRequest(
-                                req.entryDir().toString(),
-                                req.cache().toString(),
-                                req.jdksDir() != null ? req.jdksDir().toString() : null,
-                                req.m2Dir().toString(),
-                                req.graalHome() != null ? req.graalHome().toString() : null,
-                                req.skipTests(),
-                                req.offline(),
-                                req.force(),
-                                req.verbose())
-                        .encode()),
-                listenerFactory,
-                testResultOut,
-                null);
     }
 
     /**
@@ -399,20 +153,5 @@ final class EngineJobs {
                 paths,
                 requestLine,
                 (reader, ch) -> EngineEventDecoder.streamWorkspaceEvents(reader, listener, cache, ch));
-    }
-
-    /** Send {@code requestLine} and replay the single-plan event stream into the built listener. */
-    private static BuildPlanResult singlePlan(
-            EnginePaths.Paths paths,
-            String requestLine,
-            Function<List<Task>, BuildPlanListener> listenerFactory,
-            TestSummary @Nullable [] testResultOut,
-            @Nullable String @Nullable [] buildOutcomeOut)
-            throws IOException {
-        return EngineWire.stream(
-                paths,
-                requestLine,
-                (reader, ch) -> EngineEventDecoder.streamSingleBuildPlanEvents(
-                        reader, listenerFactory, testResultOut, buildOutcomeOut, ch));
     }
 }

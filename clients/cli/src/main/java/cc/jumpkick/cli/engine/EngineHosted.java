@@ -1,41 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
-import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
-import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.AuditFindingEvent;
 import cc.jumpkick.wire.protocol.AuditRequest;
 import cc.jumpkick.wire.protocol.CachePruneRequest;
-import cc.jumpkick.wire.protocol.CompileRequest;
 import cc.jumpkick.wire.protocol.FormatFileEvent;
 import cc.jumpkick.wire.protocol.FormatRequest;
 import cc.jumpkick.wire.protocol.GitFetchRequest;
-import cc.jumpkick.wire.protocol.ImageRequest;
 import cc.jumpkick.wire.protocol.ImportNoteEvent;
 import cc.jumpkick.wire.protocol.ImportRequest;
 import cc.jumpkick.wire.protocol.MvnResultsRequest;
 import cc.jumpkick.wire.protocol.PlanFinishCacheEvent;
 import cc.jumpkick.wire.protocol.PlanFinishFormatEvent;
 import cc.jumpkick.wire.protocol.PlanFinishGitFetchEvent;
-import cc.jumpkick.wire.protocol.PlanFinishImageEvent;
 import cc.jumpkick.wire.protocol.PlanFinishImportEvent;
-import cc.jumpkick.wire.protocol.PlanFinishPublishEvent;
 import cc.jumpkick.wire.protocol.PlanFinishScriptEvent;
 import cc.jumpkick.wire.protocol.PlanFinishToolEvent;
 import cc.jumpkick.wire.protocol.ProvisionRequest;
 import cc.jumpkick.wire.protocol.PruneWaitEvent;
-import cc.jumpkick.wire.protocol.PublishRequest;
 import cc.jumpkick.wire.protocol.ScriptPrepareRequest;
 import cc.jumpkick.wire.protocol.ToolResolveRequest;
-import cc.jumpkick.wire.protocol.TrainRequest;
 import cc.jumpkick.wire.runtime.HostedEvents;
-import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
-import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
@@ -119,112 +109,6 @@ final class EngineHosted {
                 finish.result(),
                 Jsonl.has(finishLine, "formatTotal") ? e.total() : -1,
                 Jsonl.has(finishLine, "formatWorkerExit") ? e.workerExit() : -1);
-    }
-
-    /** Run {@code jk publish}'s plan against the engine (the publisher worker forks engine-side). */
-    static EngineRequests.PublishOutcome runPublish(
-            EnginePaths.Paths paths,
-            EngineRequests.PublishRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory)
-            throws IOException {
-        String authType;
-        String user = null;
-        String pass = null;
-        String token = null;
-        if (req.credential() instanceof RepoCredential.Basic b) {
-            authType = "basic";
-            user = b.username();
-            pass = b.password();
-        } else if (req.credential() instanceof RepoCredential.Bearer b) {
-            authType = "bearer";
-            token = b.token();
-        } else {
-            authType = "anonymous";
-        }
-        EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
-                paths,
-                new PublishRequest(
-                                req.entryDir().toString(),
-                                req.cache().toString(),
-                                Objects.toString(req.repoUrl(), null),
-                                req.region(),
-                                req.endpoint(),
-                                req.jarPath() != null ? req.jarPath().toString() : null,
-                                req.allowSnapshot(),
-                                req.dryRun(),
-                                req.keyFile() != null ? req.keyFile().toString() : null,
-                                req.gpgPassphrase(),
-                                req.sigstore(),
-                                req.slsa(),
-                                req.sbom(),
-                                authType,
-                                user,
-                                pass,
-                                token,
-                                req.offline(),
-                                req.verbose(),
-                                req.central(),
-                                req.publishingType(),
-                                req.skipTests())
-                        .encode(),
-                "publish",
-                listenerFactory,
-                (type, line) -> {});
-        // An absent file count is unknown (-1) here, where the record reads 0.
-        if (!Jsonl.has(finish.finishLine(), "publishFiles"))
-            return new EngineRequests.PublishOutcome(finish.result(), -1, List.of(), List.of(), null, null, List.of());
-        PlanFinishPublishEvent event = PlanFinishPublishEvent.decode(finish.finishLine());
-        return new EngineRequests.PublishOutcome(
-                finish.result(),
-                event.files(),
-                event.written(),
-                event.bundle(),
-                event.deploymentId(),
-                event.deploymentState(),
-                event.deploymentErrors());
-    }
-
-    /**
-     * Run {@code jk image}'s plan against the engine (full plan + image tail engine-side).
-     * {@code summaryOut} (a single-slot holder) is populated from the terminal plan-finish
-     * <em>before</em> it reaches {@code listenerFactory}'s listener — whose own {@code planFinish}
-     * handler renders the success tail from those fields, exactly the {@code runTest} holder
-     * pattern.
-     */
-    static BuildPlanResult runImage(
-            EnginePaths.Paths paths,
-            EngineRequests.ImageRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory,
-            EngineRequests.ImageSummary[] summaryOut)
-            throws IOException {
-        return EnginePluginAdapter.stream(
-                        paths,
-                        new ImageRequest(
-                                        req.entryDir().toString(),
-                                        req.cache().toString(),
-                                        req.jdksDir() != null ? req.jdksDir().toString() : null,
-                                        req.mainClass(),
-                                        req.registry(),
-                                        req.tag(),
-                                        req.tarballArg(),
-                                        req.dockerExecutable(),
-                                        req.skipTests(),
-                                        req.offline(),
-                                        req.force(),
-                                        req.verbose())
-                                .encode(),
-                        "image",
-                        listenerFactory,
-                        (type, line) -> {},
-                        line -> {
-                            PlanFinishImageEvent e = PlanFinishImageEvent.decode(line);
-                            TestSummary counts = e.total() < 0
-                                    ? null
-                                    : new TestSummary(e.total(), e.succeeded(), e.failed(), e.skipped(), List.of());
-                            summaryOut[0] = new EngineRequests.ImageSummary(
-                                    counts, e.ref(), e.tarball(), e.name(), e.version(), e.daemonExe());
-                        })
-                .result();
     }
 
     /** Run {@code jk import}'s plan against the engine, streaming progress notes to {@code notes}. */
@@ -321,89 +205,6 @@ final class EngineHosted {
             String tool, String version, Path toolsRoot, boolean noDiscover, boolean acceptUnverified) {
         return new ProvisionRequest(
                 toolsRoot.toString(), toolsRoot.toString(), noDiscover, acceptUnverified, false, tool, version);
-    }
-
-    /**
-     * Run {@code jk compile}'s compile-only plan against the engine — {@code jk test}'s
-     * listener-factory shape, plain terminal plan-finish.
-     */
-    static BuildPlanResult runCompile(
-            EnginePaths.Paths paths,
-            EngineRequests.CompileRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory)
-            throws IOException {
-        return EnginePluginAdapter.stream(
-                        paths,
-                        new CompileRequest(
-                                        req.entryDir().toString(),
-                                        req.cache().toString(),
-                                        req.jdksDir() == null
-                                                ? null
-                                                : req.jdksDir().toString(),
-                                        req.profile(),
-                                        req.offline(),
-                                        req.force(),
-                                        req.verbose(),
-                                        req.keepGoing(),
-                                        req.modules())
-                                .encode(),
-                        "compile",
-                        listenerFactory,
-                        (type, line) -> {})
-                .result();
-    }
-
-    /** Run {@code jk train}: package then observe under the tracing agent. */
-    static BuildPlanResult runTrain(
-            EnginePaths.Paths paths,
-            EngineRequests.TrainRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory)
-            throws IOException {
-        return EnginePluginAdapter.stream(
-                        paths,
-                        new TrainRequest(
-                                        req.entryDir().toString(),
-                                        req.cache().toString(),
-                                        req.jdksDir() != null ? req.jdksDir().toString() : null,
-                                        req.graalHome() != null
-                                                ? req.graalHome().toString()
-                                                : null,
-                                        req.trainProfile(),
-                                        req.force(),
-                                        req.skipTests(),
-                                        req.offline(),
-                                        req.verbose())
-                                .encode(),
-                        "train",
-                        listenerFactory,
-                        (type, line) -> {})
-                .result();
-    }
-
-    /**
-     * Run {@code jk native}'s hosted module cascade against the engine, driving {@code listener}
-     * exactly as {@link EngineClient#buildWorkspace} does (the cascade speaks the workspace event vocabulary; a
-     * single project is a cascade of one). The returned result's {@code exitCode} is authoritative
-     * — computed engine-side with {@code jk native}'s 64/4/1 mapping.
-     */
-    static WorkspaceResult runNative(
-            EnginePaths.Paths paths, EngineRequests.NativeRequest req, WorkspaceBuildListener listener)
-            throws IOException {
-        return EngineJobs.runNative(paths, req, listener);
-    }
-
-    /**
-     * Run {@code jk install}'s build + cache-install plan against the engine — {@link EngineClient#runTest}'s
-     * exact contract ({@code testResultOut} settles before the terminal plan-finish reaches the
-     * listener). The launcher-writing "make install" half stays in the calling command.
-     */
-    static BuildPlanResult runInstall(
-            EnginePaths.Paths paths,
-            EngineRequests.InstallRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory,
-            TestSummary[] testResultOut)
-            throws IOException {
-        return EngineJobs.runInstall(paths, req, listenerFactory, testResultOut);
     }
 
     /**

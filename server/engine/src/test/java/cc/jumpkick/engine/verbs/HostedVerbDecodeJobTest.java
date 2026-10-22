@@ -31,7 +31,9 @@ class HostedVerbDecodeJobTest {
     void build_test_and_assemble_decode_to_build_requests(@TempDir Path dir) throws Exception {
         project(dir);
         WorkspaceBuildVerb verb = new WorkspaceBuildVerb(new InertVerbHost());
-        assertThat(verb.jobKinds()).containsExactly("build", "assemble", "test", "guard");
+        assertThat(verb.jobKinds())
+                .containsExactly(
+                        "build", "assemble", "test", "guard", "compile", "image", "install", "native", "publish");
 
         String build = verb.decodeJob(JobSpec.of("build", dir.toString()));
         assertThat(EngineProtocol.typeOf(build)).isEqualTo(EngineProtocol.BUILD_REQUEST);
@@ -98,14 +100,17 @@ class HostedVerbDecodeJobTest {
     void publish_install_and_import_decode_to_their_wire_requests(@TempDir Path dir) throws Exception {
         project(dir);
         // Detached publish is always a dry run — credential resolution never enters the engine.
-        String publish = new PublishVerb(new InertVerbHost()).decodeJob(JobSpec.of("publish", dir.toString()));
-        assertThat(EngineProtocol.typeOf(publish)).isEqualTo(EngineProtocol.PUBLISH_REQUEST);
-        assertThat(Jsonl.bool(publish, "dryRun", false)).isTrue();
-        assertThat(Jsonl.str(publish, "authType")).isEqualTo("anonymous");
+        WorkspaceBuildVerb verb = new WorkspaceBuildVerb(new InertVerbHost());
+        String publish = verb.decodeJob(JobSpec.of("publish", dir.toString()));
+        assertThat(EngineProtocol.typeOf(publish)).isEqualTo(EngineProtocol.BUILD_REQUEST);
+        assertThat(Jsonl.str(publish, "workspaceTarget")).isEqualTo("publish");
+        String tail = Jsonl.nested(publish, "tail");
+        assertThat(Jsonl.bool(tail, "dryRun", false)).isTrue();
+        assertThat(Jsonl.str(tail, "authType")).isEqualTo("anonymous");
 
-        String install = new InstallVerb(new InertVerbHost()).decodeJob(JobSpec.of("install", dir.toString()));
-        assertThat(EngineProtocol.typeOf(install)).isEqualTo(EngineProtocol.INSTALL_REQUEST);
-        assertThat(Jsonl.str(install, "m2Dir")).endsWith("repository");
+        String install = verb.decodeJob(JobSpec.of("install", dir.toString()));
+        assertThat(EngineProtocol.typeOf(install)).isEqualTo(EngineProtocol.BUILD_REQUEST);
+        assertThat(Jsonl.str(install, "workspaceTarget")).isEqualTo("install");
 
         Files.writeString(dir.resolve("pom.xml"), "<project/>");
         String imp = new ImportVerb(new InertVerbHost()).decodeJob(JobSpec.of("import", dir.toString()));

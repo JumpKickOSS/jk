@@ -6,8 +6,7 @@ import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.engine.EngineRequests;
-import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.jsonl.OutputLine;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -23,10 +22,12 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.repo.RepoCredentialResolver;
-import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ProjectInfo;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
+import cc.jumpkick.wire.runtime.TailArgs;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -189,56 +190,27 @@ public final class PublishCommand implements CliCommand {
         }
         String gpgPass = sign ? (keyPassphrase != null ? keyPassphrase : System.getenv("JK_GPG_PASSPHRASE")) : null;
 
-        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
-        BuildPlanResult result;
-        EngineRequests.PublishOutcome outcome;
-        try {
-            outcome = EngineClient.runPublish(
-                    EnginePaths.current(),
-                    new EngineRequests.PublishRequest(
-                            projectDir,
-                            cache,
-                            repoUrl,
-                            region,
-                            endpoint,
-                            jarPath,
-                            allowSnapshot,
-                            dryRun,
-                            sign ? keyFile : null,
-                            gpgPass,
-                            sigstore,
-                            slsa,
-                            sbom,
-                            cred,
-                            global.offline,
-                            global.verbose,
-                            central,
-                            publishingType,
-                            skipTests),
-                    steps -> BuildPlanConsole.chooseConsoleListener("publish", steps, mode));
-        } catch (IOException e) {
-            CommandWedge.printFail("Publish", e.getMessage());
-            return Exit.SOFTWARE;
-        }
-        result = outcome.result();
-
-        if (!result.success()) {
-            for (BuildPlanResult.Diagnostic d : result.errors()) {
-                if ("snapshot".equals(d.code())) return Exit.DATA_ERR;
-                if ("missing-jar".equals(d.code())) return Exit.NO_INPUT;
-            }
-            // A deployment the Portal refused is the one failure with facts of its own to print:
-            // the id to look up and every validation error, beside the diagnostics already shown.
-            if (outcome.deploymentId() != null && !global.outputIsJson()) {
-                CliOutput.err(
-                        "Central Portal deployment " + outcome.deploymentId() + " · " + outcome.deploymentState());
-                for (String error : outcome.deploymentErrors()) CliOutput.err("  - " + error);
-            }
-            return 1;
-        }
-
-        report(info, outcome, projectDir);
-        return 0;
+        TailArgs.Publish args = new TailArgs.Publish(
+                repoUrl,
+                region,
+                endpoint,
+                jarPath,
+                allowSnapshot,
+                dryRun,
+                sign ? keyFile : null,
+                gpgPass,
+                sigstore,
+                slsa,
+                sbom,
+                cred,
+                central,
+                publishingType);
+        // The build and the upload run as every build verb runs: the same phases through PACKAGE,
+        // the upload as the goal's tail, a workspace member's prerequisites first.
+        return BuildVerbCommand.run(
+                new PublishVerb(args, (module, published) -> report(module, published, projectDir)),
+                BuildVerbCommand.forward(in, WorkspaceTarget.PUBLISH.tests(), b -> {}),
+                true);
     }
 
     /** The flag combinations that cannot publish anywhere, refused with the flag that fixes them; {@code 0} when the set is coherent. */
@@ -283,31 +255,41 @@ public final class PublishCommand implements CliCommand {
     }
 
     /**
-     * The success lines: the coordinate and where it went, the Portal deployment when there is
-     * one, the documents the run left under target/ (the SBOMs, a Central bundle) by path, and on
-     * a dry run the bundle's entries. Paths are workspace-relative like every other path jk
-     * prints: a member's target/ sits under the root, outside the member's own dir.
+     * A module's publish lines: the coordinate and where it went, the Portal deployment when there
+     * is one, the documents the run left under target/ (the SBOMs, a Central bundle) by path, and
+     * on a dry run the bundle's entries. A module that failed prints only a refused deployment's id
+     * and errors. Paths are workspace-relative like every other path jk prints.
      */
-    private void report(ProjectInfo info, EngineRequests.PublishOutcome outcome, Path projectDir) throws IOException {
+    private void report(ModuleOutcome module, ModuleOutcome.Published published, Path projectDir) throws IOException {
+        if (!module.success()) {
+            if (published.deploymentId() != null && !global.outputIsJson()) {
+                CliOutput.err(
+                        "Central Portal deployment " + published.deploymentId() + " · " + published.deploymentState());
+                for (String error : published.deploymentErrors()) CliOutput.err("  - " + error);
+            }
+            return;
+        }
         Path workspaceRoot = WorkspaceLocator.findRoot(projectDir).orElse(projectDir);
         if (!global.outputIsJson()) {
-            String summary = dryRun ? "(dry-run)" : "(" + outcome.files() + " files)";
+            String summary = published.dryRun() ? "(dry-run)" : "(" + published.files() + " files)";
             String where = central ? " to the Central Portal " : " ";
-            CliOutput.out("Published " + Coords.gav(info.group(), info.name(), info.version()) + where + summary);
-            if (outcome.deploymentId() != null) {
-                CliOutput.out("  deployment " + outcome.deploymentId() + " · " + outcome.deploymentState()
-                        + ("VALIDATED".equals(outcome.deploymentState())
+            ProjectInfo info = ProjectInfos.orNull(module.dir());
+            String coord = info == null ? module.coord() : Coords.gav(info.group(), info.name(), info.version());
+            CliOutput.out("Published " + coord + where + summary);
+            if (published.deploymentId() != null) {
+                CliOutput.out("  deployment " + published.deploymentId() + " · " + published.deploymentState()
+                        + ("VALIDATED".equals(published.deploymentState())
                                 ? " — release it from the Portal, or publish with --publishing-type automatic"
                                 : ""));
             }
-            for (String written : outcome.written()) {
+            for (String written : published.written()) {
                 CliOutput.out("  wrote " + displayPath(Path.of(written), workspaceRoot, projectDir));
             }
-            if (dryRun) {
-                for (String entry : outcome.bundle()) CliOutput.out("    " + entry);
+            if (published.dryRun()) {
+                for (String entry : published.bundle()) CliOutput.out("    " + entry);
             }
         } else {
-            for (String written : outcome.written()) {
+            for (String written : published.written()) {
                 CliOutput.out(new OutputLine(
                                 Clock.SYSTEM.millis(),
                                 "publish",

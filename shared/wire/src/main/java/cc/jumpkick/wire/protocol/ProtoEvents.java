@@ -509,7 +509,22 @@ public final class ProtoEvents {
             boolean cancelled,
             ModuleOutcome.@Nullable Image image,
             ModuleOutcome.@Nullable Shelved shelved) {
-        return new ModuleFinishEvent(dir, coord, success, exitCode, millis, didWork, cancelled, image, shelved)
+        return moduleFinish(dir, coord, success, exitCode, millis, didWork, cancelled, image, shelved, null);
+    }
+
+    public static String moduleFinish(
+            String dir,
+            String coord,
+            boolean success,
+            int exitCode,
+            long millis,
+            boolean didWork,
+            boolean cancelled,
+            ModuleOutcome.@Nullable Image image,
+            ModuleOutcome.@Nullable Shelved shelved,
+            ModuleOutcome.@Nullable Published published) {
+        return new ModuleFinishEvent(
+                        dir, coord, success, exitCode, millis, didWork, cancelled, image, shelved, published)
                 .encode();
     }
 

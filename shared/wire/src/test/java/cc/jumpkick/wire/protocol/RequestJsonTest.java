@@ -31,15 +31,13 @@ class RequestJsonTest {
      */
     @Test
     void trigger_and_progress_mode_are_components_not_environment_reads() {
-        TestRequest cli = new TestRequest(
-                "/p", "/c", null, 0, null, false, false, false, true, TestSelection.DEFAULT, null, "ci", "plain");
+        BuildRequest cli = request("ci", "plain");
         String json = cli.encode();
         assertThat(json).contains("\"trigger\":\"ci\"").contains("\"progressMode\":\"plain\"");
-        TestRequest back = TestRequest.decode(json);
+        BuildRequest back = BuildRequest.decode(json);
         assertThat(back.trigger()).isEqualTo("ci");
         assertThat(back.progressMode()).isEqualTo("plain");
-        TestRequest bare = new TestRequest(
-                "/p", "/c", null, 0, null, false, false, false, true, TestSelection.DEFAULT, null, null, null);
+        BuildRequest bare = request(null, null);
         assertThat(bare.encode()).doesNotContain("trigger").doesNotContain("progressMode");
     }
 
@@ -72,7 +70,7 @@ class RequestJsonTest {
     @Test
     void every_job_request_round_trips_its_defaults() throws Exception {
         List<Class<?>> records = requestRecords();
-        assertThat(records).hasSize(49);
+        assertThat(records).hasSize(41);
         for (Class<?> type : records) {
             Object original = defaultInstance(type);
             String encoded = (String) type.getMethod("encode").invoke(original);
@@ -121,15 +119,40 @@ class RequestJsonTest {
                         "\"keepGoing\"",
                         "\"workspaceTarget\"",
                         "\"graalHomes\"",
-                        "\"m2Dir\"");
+                        "\"tail\"");
 
-        String single = new SingleBuildRequest(
-                        null, null, null, 0, null, false, false, false, false, null, TestSelection.DEFAULT, null, false)
-                .encode();
-        assertThat(single).doesNotContain("\"allSuites\"", "\"suites\"", "\"includeTags\"");
+        assertThat(request(null, null).encode()).doesNotContain("\"allSuites\"", "\"suites\"", "\"includeTags\"");
 
         String provision = new ProvisionRequest(null, null, false, false, false, null, null).encode();
         assertThat(provision).doesNotContain("\"tool\"", "\"version\"");
+    }
+
+    private static BuildRequest request(@Nullable String trigger, @Nullable String progressMode) {
+        return new BuildRequest(
+                "/p",
+                "/c",
+                null,
+                0,
+                null,
+                false,
+                false,
+                0,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                null,
+                TestSelection.DEFAULT,
+                null,
+                List.of(),
+                false,
+                null,
+                Map.of(),
+                null,
+                trigger,
+                progressMode);
     }
 
     @Test

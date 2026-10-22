@@ -174,7 +174,7 @@ class WireKeyClosureTest {
 
     private static final Pattern REQUEST_FIELD = Pattern.compile(
             "(?:\\.|\\b)(?:bool|number|string|array|map|token|optionalTrue|optionalString|optionalNonBlankString"
-                    + "|optionalNonEmptyString|optionalNumber|optionalArray|optionalMap)"
+                    + "|optionalNonEmptyString|optionalNumber|optionalArray|optionalMap|optionalToken)"
                     + "\\(\\s*\"([^\"]+)\"\\s*,");
 
     /** Every key read as a string literal — the second argument of a {@code Jsonl} reader call. */

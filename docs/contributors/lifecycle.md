@@ -44,11 +44,18 @@ construct `BuildPlanner.Inputs`, outside the pipeline: the `one-module-planner` 
 Never re-root a plan with `terminal(name)` from a tail. Never decide "skip tests" in a verb: the
 goal's policy and `--skip-tests` decide it, in `BuildRun.skipTests()` and `ModulePipeline`.
 
+## One orchestrator
+
+Every goal enters the engine as one `build-request` naming its `WorkspaceTarget` and the tail's
+arguments (`TailArgs`), served by `WorkspaceBuildVerb` and run by `WorkspaceExecute`. A standalone
+project is a workspace of one: the client's `BuildVerbCommand` routes it through the same
+`workspace()` path with a standalone chrome (no `[k of N]` rows, the lone-project wording), and
+`InstallCommand` and `PublishCommand` hand their builds to the same path. There is no per-goal
+engine verb and no per-goal request type.
+
 ## Not yet one path
 
-- Standalone projects still enter through per-goal engine verbs (`SingleBuildVerb`,
-  `InstallVerb`, `TrainVerb`, …) that plan through `ModulePipeline.standalone`, beside the
-  workspace orchestrator (`WorkspaceExecute`) every workspace build runs.
+- The SYNC phase: `jk sync` is its own plan, and a build fetches through `resolve-deps`.
 - The forecaster (`ModuleForecast`, behind `jk explain` and the up-to-date shortcut) models each
   step's cache key separately from the plan it forecasts, with its own per-goal rules for which
   modules a run schedules.

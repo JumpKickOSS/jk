@@ -20,7 +20,8 @@ import java.util.List;
  * module selection, the JDK preflight, the workspace run and its settle, the exit code. A verb
  * supplies only what differs.
  */
-sealed interface BuildVerb permits CompileVerb, TestVerb, PackageVerb, NativeVerb, ImageVerb, TrainVerb, RunVerb {
+sealed interface BuildVerb
+        permits CompileVerb, TestVerb, PackageVerb, NativeVerb, ImageVerb, TrainVerb, RunVerb, PublishVerb {
 
     /** The words a run is told in: {@code Build}, {@code building}, {@code build}, {@code Building}. */
     record Words(String name, String gerund, String infinitive, String title) {}
@@ -42,14 +43,6 @@ sealed interface BuildVerb permits CompileVerb, TestVerb, PackageVerb, NativeVer
 
     /** This verb's goal: the phases it runs, its test policy and its tail. */
     WorkspaceTarget target();
-
-    /**
-     * False for a verb that runs one module and has no workspace run: a member directory or a
-     * one-module selection runs that module standalone, and a workspace root asks for {@code -m}.
-     */
-    default boolean workspaceShaped() {
-        return true;
-    }
 
     default BuildFlags.Affected affected() {
         return BuildFlags.Affected.MODULES;
@@ -91,20 +84,15 @@ sealed interface BuildVerb permits CompileVerb, TestVerb, PackageVerb, NativeVer
         return -1;
     }
 
-    /** Drive the workspace run of {@code entryDir} over {@code modules}. */
+    /**
+     * Drive the run of {@code entryDir} over {@code modules}: a workspace, or a standalone project
+     * as a workspace of one ({@link BuildRun#standalone()}).
+     */
     WorkspaceResult workspace(BuildRun run, Path entryDir, List<String> modules, WorkspaceBuildListener listener)
             throws IOException;
 
     /** The success and failure wedges of a workspace run that started at {@code startNanos}. */
     WorkspaceRunView.Tails tails(BuildRun run, WorkspaceRunView view, long startNanos);
-
-    /** Build one standalone project; the run's helpers settle it. */
-    int single(BuildRun run, Path dir) throws IOException;
-
-    /** Work after a standalone build ({@code --aot-cache}): the exit code to report. */
-    default int afterSingle(BuildRun run, Path dir, int code) {
-        return code;
-    }
 
     /** Runs once the run is over, however it ended: the exit code to report. */
     default int after(BuildRun run, int code) {

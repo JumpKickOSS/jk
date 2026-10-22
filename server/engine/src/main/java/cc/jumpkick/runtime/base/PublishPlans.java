@@ -32,6 +32,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
@@ -84,10 +85,16 @@ public final class PublishPlans {
     /** The entries of the Central bundle the worker assembled; empty for a plain repository publish. */
     public static final BuildPlanKey<List<String>> BUNDLE = BuildPlanKey.list("pub-bundle", String.class);
 
+    /** Where the run sent its files, as the results file names it. */
+    public static final BuildPlanKey<String> DESTINATION = BuildPlanKey.scalar("pub-destination", String.class);
+
+    /** True for a dry run: the bundle was assembled and nothing uploaded. */
+    public static final BuildPlanKey<Boolean> DRY_RUN = BuildPlanKey.scalar("pub-dry-run", Boolean.class);
+
     /** The Central Portal deployment the run ended on; absent for a plain repository publish and a dry run. */
     public static final BuildPlanKey<Deployment> DEPLOYMENT = BuildPlanKey.scalar("pub-deployment", Deployment.class);
 
-    /** The plugin jar publish forks; located at plan time so a missing one fails fast, with side-load hints. */
+    /** The plugin jar publish forks; a missing one fails with side-load hints. */
     public static Path workerJar() {
         return PluginJar.PUBLISHER.locate(JkStores.storeCas());
     }
@@ -104,6 +111,8 @@ public final class PublishPlans {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("parse jk.toml + validate version");
+                    // Located here, beside the build, so a missing publisher fails before anything compiles.
+                    workerJar();
                     JkBuild project = JkBuildParser.parse(jkBuildPath);
                     if (project.project().version().endsWith("-SNAPSHOT") && !req.allowSnapshot()) {
                         ctx.error(
@@ -142,13 +151,16 @@ public final class PublishPlans {
     }
 
     /** The upload of the artifact {@link #checkStep} chose; it runs after the build left it. */
-    public static Task publishStep(Path projectDir, Path workerJar, Request req) {
+    public static Task publishStep(Path projectDir, Request req) {
         return Task.builder(TaskNames.PUBLISH)
                 .stage(BuildStage.PUBLISH)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PUBLISH_CHECK)
                 .ticks(1)
                 .execute(ctx -> {
+                    Path workerJar = workerJar();
+                    ctx.put(DESTINATION, destination(req));
+                    ctx.put(DRY_RUN, req.dryRun());
                     Path jar = ctx.require(JAR);
                     if (!Files.exists(jar)) {
                         ctx.error(
@@ -181,6 +193,17 @@ public final class PublishPlans {
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /** Where a publish run sends its files, as the results file names it. */
+    static String destination(Request req) {
+        if (req.central()) {
+            String type = req.publishingType() == null || req.publishingType().isBlank()
+                    ? "user-managed"
+                    : req.publishingType().toLowerCase(Locale.ROOT).replace('_', '-');
+            return "Central Portal (" + type + ")";
+        }
+        return req.repoUrl() == null ? "no repository" : req.repoUrl().toString();
     }
 
     /**

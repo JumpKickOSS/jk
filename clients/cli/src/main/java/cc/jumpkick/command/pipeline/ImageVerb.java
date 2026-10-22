@@ -3,25 +3,21 @@ package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.engine.EngineRequests;
-import cc.jumpkick.cli.engine.ProjectInfos;
-import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -98,6 +94,7 @@ final class ImageVerb implements BuildVerb {
 
     @Override
     public int prepareWorkspace(BuildRun run, Path entryDir, BuildRun.Selection selection) {
+        if (run.standalone()) moduleDir = entryDir;
         if (moduleDir == null) {
             run.fail("an image is built for exactly one module — pass -m <module> or run from its directory");
             return Exit.USAGE;
@@ -108,9 +105,13 @@ final class ImageVerb implements BuildVerb {
     @Override
     public WorkspaceResult workspace(BuildRun run, Path entryDir, List<String> modules, WorkspaceBuildListener listener)
             throws IOException {
-        // The module's own directory: the engine expands the workspace cone around it.
-        Path dir = moduleDir != null ? moduleDir : entryDir;
-        return EngineClient.runImageWorkspace(EnginePaths.current(), request(run, dir), listener);
+        return EngineClient.buildWorkspace(
+                EnginePaths.current(),
+                run.request(
+                        entryDir,
+                        modules,
+                        WorkspaceSpec.image(Set.of(), mainClass, registry, tag, tarball, dockerExecutable)),
+                listener);
     }
 
     @Override
@@ -127,52 +128,6 @@ final class ImageVerb implements BuildVerb {
                     return tail + " " + BuildTails.elapsedSince(startNanos);
                 },
                 r -> "image failed " + BuildTails.elapsedSince(startNanos));
-    }
-
-    @Override
-    public int single(BuildRun run, Path dir) {
-        EngineRequests.ImageSummary[] summary = new EngineRequests.ImageSummary[1];
-        @Nullable TestSummary[] tests = new TestSummary[1];
-        // The success tail renders from the structured fields the terminal plan-finish carries,
-        // populated before the console listener's own planFinish fires.
-        ConsoleSpec spec = new ConsoleSpec(
-                WORDS.name(),
-                r -> summary[0] != null
-                        ? imageSuccessTail(
-                                summary[0].tarball(),
-                                summary[0].name(),
-                                summary[0].version(),
-                                summary[0].daemonExe(),
-                                summary[0].ref())
-                        : "",
-                r -> "Image build failed",
-                true);
-        String module = ProjectInfos.buildTarget(ManifestPaths.manifestIn(dir), dir);
-        var request = request(run, dir);
-        return run.settleSingle(spec, module, tests, listeners -> {
-            var result = EngineClient.runImage(EnginePaths.current(), request, listeners, summary);
-            tests[0] = summary[0] != null ? summary[0].testResult() : null;
-            return result;
-        });
-    }
-
-    private EngineRequests.ImageRequest request(BuildRun run, Path dir) {
-        var session = SessionContext.current();
-        BuildFlags flags = run.flags();
-        return new EngineRequests.ImageRequest(
-                dir,
-                flags.cache(),
-                flags.jdksDir(),
-                mainClass,
-                registry,
-                tag,
-                tarball,
-                dockerExecutable,
-                run.skipTests(),
-                session.offline(),
-                session.force(),
-                session.config().rebuildOr(false),
-                run.global().verbose);
     }
 
     /**

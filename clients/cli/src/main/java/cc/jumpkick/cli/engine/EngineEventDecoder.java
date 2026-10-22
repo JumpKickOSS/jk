@@ -513,7 +513,8 @@ final class EngineEventDecoder {
                 e.didWork(),
                 e.cancelled(),
                 e.image(),
-                e.shelved());
+                e.shelved(),
+                e.published());
     }
 
     /**

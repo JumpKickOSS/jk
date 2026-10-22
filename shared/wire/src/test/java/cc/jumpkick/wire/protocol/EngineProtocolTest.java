@@ -490,79 +490,6 @@ class EngineProtocolTest {
     }
 
     @Test
-    void publish_request_round_trips_the_credential_fields() {
-        String json = new PublishRequest(
-                        "/work",
-                        "/cache",
-                        "https://repo/m2",
-                        "us-east-1",
-                        null,
-                        "/out/app.jar",
-                        true,
-                        false,
-                        "/key.asc",
-                        "s3cret",
-                        false,
-                        true,
-                        true,
-                        "basic",
-                        "alice",
-                        "hunter2",
-                        null,
-                        true,
-                        false,
-                        false,
-                        null,
-                        false)
-                .encode();
-        assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.PUBLISH_REQUEST);
-        // A publish uploads to someone else's server: the offline decision rides the request so
-        // the worker can refuse rather than PUT behind an offline run's back.
-        assertThat(Jsonl.bool(json, "offline", false)).isTrue();
-        assertThat(Jsonl.str(json, "repoUrl")).isEqualTo("https://repo/m2");
-        assertThat(Jsonl.str(json, "region")).isEqualTo("us-east-1");
-        assertThat(Jsonl.str(json, "endpoint")).isNull();
-        assertThat(Jsonl.str(json, "jar")).isEqualTo("/out/app.jar");
-        assertThat(Jsonl.bool(json, "allowSnapshot", false)).isTrue();
-        assertThat(Jsonl.str(json, "keyFile")).isEqualTo("/key.asc");
-        assertThat(Jsonl.str(json, "gpgPassphrase")).isEqualTo("s3cret");
-        assertThat(Jsonl.bool(json, "slsa", false)).isTrue();
-        assertThat(Jsonl.bool(json, "sbom", false)).isTrue();
-        assertThat(Jsonl.str(json, "authType")).isEqualTo("basic");
-        assertThat(Jsonl.str(json, "user")).isEqualTo("alice");
-        assertThat(Jsonl.str(json, "pass")).isEqualTo("hunter2");
-        assertThat(Jsonl.str(json, "token")).isNull();
-
-        String finish = ProtoEvents.planFinishPublish("", true, 9, List.of("/w/target/sbom/a-1.cdx.json"));
-        assertThat(EngineProtocol.typeOf(finish)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
-        assertThat(Jsonl.intValue(finish, "publishFiles", -1)).isEqualTo(9);
-        assertThat(PlanFinishPublishEvent.decode(finish).written()).containsExactly("/w/target/sbom/a-1.cdx.json");
-        assertThat(PlanFinishPublishEvent.decode(ProtoEvents.planFinishPublish("", true, 9))
-                        .written())
-                .isEmpty();
-    }
-
-    @Test
-    void image_request_keeps_the_tarball_tristate() {
-        String none = new ImageRequest(
-                        "/w", "/c", null, "com.example.Main", null, null, null, null, false, false, false, false)
-                .encode();
-        assertThat(EngineProtocol.typeOf(none)).isEqualTo(EngineProtocol.IMAGE_REQUEST);
-        assertThat(Jsonl.str(none, "tarball")).isNull();
-        String defaulted =
-                new ImageRequest("/w", "/c", null, null, null, null, "", null, false, false, false, false).encode();
-        assertThat(Jsonl.str(defaulted, "tarball")).isEmpty();
-        String explicit = new ImageRequest(
-                        "/w", "/c", null, null, "reg.io", "v2", "/out/img.tar", "podman", true, true, true, true)
-                .encode();
-        assertThat(Jsonl.str(explicit, "tarball")).isEqualTo("/out/img.tar");
-        assertThat(Jsonl.str(explicit, "registry")).isEqualTo("reg.io");
-        assertThat(Jsonl.str(explicit, "dockerExecutable")).isEqualTo("podman");
-        assertThat(Jsonl.bool(explicit, "skipTests", false)).isTrue();
-        // rebuild rides the session envelope (withSession), not the image builder.
-    }
-
-    @Test
     void goal_finish_image_variant_carries_the_success_tail_fields_and_test_counts() {
         String json = ProtoEvents.planFinishImage("", true, 12, 12, 0, 0, "reg.io/app:1.0", null, "app", "1.0", null);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
@@ -660,84 +587,6 @@ class EngineProtocolTest {
         assertThat(Jsonl.str(ProtoLifecycle.hello("1.0.0"), "purpose")).isEqualTo("connect");
         assertThat(Jsonl.str(ProtoLifecycle.hello("1.0.0", "probe"), "purpose")).isEqualTo("probe");
         assertThat(Jsonl.intValue(ProtoLifecycle.hello("1.0.0"), "proto", -1)).isEqualTo(EngineProtocol.PROTOCOL);
-    }
-
-    @Test
-    void hosted_request_project_directory_field_is_always_dir() {
-        // Sample of hosted builders — none may invent a second spelling for the project path.
-        assertThat(Jsonl.str(
-                        new CompileRequest("/w", "/c", null, null, false, false, false, false, List.of()).encode(),
-                        "dir"))
-                .isEqualTo("/w");
-        assertThat(Jsonl.str(buildRequest(false, false, null), "dir")).isEqualTo("/w");
-        assertThat(Jsonl.str(new ProvisionRequest("/w", "/t", false, false, false, null, null).encode(), "dir"))
-                .isEqualTo("/w");
-        assertThat(Jsonl.str(ProtoEvents.planFinish("/w", true), "dir")).isEqualTo("/w");
-    }
-
-    @Test
-    void compile_request_round_trips_all_fields() {
-        String json =
-                new CompileRequest("/work", "/cache", "/jdks", "ci", true, false, true, true, List.of("a")).encode();
-        assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.COMPILE_REQUEST);
-        assertThat(Jsonl.str(json, "dir")).isEqualTo("/work");
-        assertThat(Jsonl.str(json, "cache")).isEqualTo("/cache");
-        assertThat(Jsonl.str(json, "profile")).isEqualTo("ci");
-        assertThat(Jsonl.bool(json, "offline", false)).isTrue();
-        assertThat(Jsonl.bool(json, "force", true)).isFalse();
-        assertThat(Jsonl.bool(json, "verbose", false)).isTrue();
-        assertThat(CompileRequest.decode(json))
-                .isEqualTo(new CompileRequest("/work", "/cache", "/jdks", "ci", true, false, true, true, List.of("a")));
-
-        String noProfile = new CompileRequest("/w", "/c", null, null, false, false, false, false, List.of()).encode();
-        assertThat(Jsonl.str(noProfile, "profile")).isNull();
-    }
-
-    @Test
-    void native_request_round_trips_the_graal_home_map() {
-        var graal = new LinkedHashMap<String, String>();
-        graal.put("/work/app", "/graal/a");
-        graal.put("/work/tool", "/graal/b");
-        String json = new NativeRequest(
-                        "/work",
-                        "/cache",
-                        "/jdks",
-                        "com.example.Main",
-                        true,
-                        false,
-                        true,
-                        false,
-                        List.of("-O2"),
-                        graal,
-                        List.of())
-                .encode();
-        assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.NATIVE_REQUEST);
-        assertThat(Jsonl.str(json, "dir")).isEqualTo("/work");
-        assertThat(Jsonl.str(json, "jdksDir")).isEqualTo("/jdks");
-        assertThat(Jsonl.str(json, "mainClass")).isEqualTo("com.example.Main");
-        assertThat(Jsonl.bool(json, "skipTests", false)).isTrue();
-        assertThat(Jsonl.bool(json, "force", false)).isTrue();
-        assertThat(Jsonl.strArray(json, "extraArgs")).containsExactly("-O2");
-        assertThat(Jsonl.strMap(json, "graalHomes"))
-                .containsExactly(Map.entry("/work/app", "/graal/a"), Map.entry("/work/tool", "/graal/b"));
-    }
-
-    @Test
-    void install_request_round_trips_all_fields() {
-        String json = new InstallRequest("/work", "/cache", "/jdks", "/home/u/.m2", "/graal", true, false, false, true)
-                .encode();
-        assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.INSTALL_REQUEST);
-        assertThat(Jsonl.str(json, "dir")).isEqualTo("/work");
-        assertThat(Jsonl.str(json, ProtoJobs.JDKS_DIR)).isEqualTo("/jdks");
-        assertThat(InstallRequest.decode(json).jdksDir()).isEqualTo("/jdks");
-        assertThat(Jsonl.str(json, "m2Dir")).isEqualTo("/home/u/.m2");
-        assertThat(Jsonl.str(json, "graalHome")).isEqualTo("/graal");
-        assertThat(Jsonl.bool(json, "skipTests", false)).isTrue();
-        assertThat(Jsonl.bool(json, "verbose", false)).isTrue();
-
-        String jvmOnly = new InstallRequest("/w", "/c", null, "/m2", null, false, false, false, false).encode();
-        assertThat(Jsonl.str(jvmOnly, "graalHome")).isNull();
-        assertThat(Jsonl.str(jvmOnly, ProtoJobs.JDKS_DIR)).isNull();
     }
 
     @Test
@@ -914,5 +763,14 @@ class EngineProtocolTest {
                         null,
                         null)
                 .encode();
+    }
+
+    @Test
+    void hosted_request_project_directory_field_is_always_dir() {
+        // Sample of hosted builders — none may invent a second spelling for the project path.
+        assertThat(Jsonl.str(buildRequest(false, false, null), "dir")).isEqualTo("/w");
+        assertThat(Jsonl.str(new ProvisionRequest("/w", "/t", false, false, false, null, null).encode(), "dir"))
+                .isEqualTo("/w");
+        assertThat(Jsonl.str(ProtoEvents.planFinish("/w", true), "dir")).isEqualTo("/w");
     }
 }

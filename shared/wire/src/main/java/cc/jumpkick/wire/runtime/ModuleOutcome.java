@@ -2,6 +2,7 @@
 package cc.jumpkick.wire.runtime;
 
 import java.nio.file.Path;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -27,7 +28,8 @@ public record ModuleOutcome(
         boolean didWork,
         boolean cancelled,
         @Nullable Image image,
-        @Nullable Shelved shelved) {
+        @Nullable Shelved shelved,
+        @Nullable Published published) {
 
     /**
      * Image-terminal outcome for a {@code jk image} workspace module — what the terminal step
@@ -50,25 +52,49 @@ public record ModuleOutcome(
      */
     public record Shelved(String coordinate, String jarSha256, String pomSha256) {}
 
+    /**
+     * What a publish pass sent: where to, how many files (none on a dry run), the files it wrote
+     * under {@code target/}, a Central bundle's entries, and the Portal deployment it ended on.
+     */
+    public record Published(
+            String destination,
+            boolean dryRun,
+            int files,
+            List<String> written,
+            List<String> bundle,
+            @Nullable String deploymentId,
+            @Nullable String deploymentState,
+            List<String> deploymentErrors) {
+        public Published {
+            written = written == null ? List.of() : List.copyOf(written);
+            bundle = bundle == null ? List.of() : List.copyOf(bundle);
+            deploymentErrors = deploymentErrors == null ? List.of() : List.copyOf(deploymentErrors);
+        }
+    }
+
     public ModuleOutcome(
             String coord, Path dir, boolean success, int exitCode, long millis, boolean didWork, boolean cancelled) {
-        this(coord, dir, success, exitCode, millis, didWork, cancelled, null, null);
+        this(coord, dir, success, exitCode, millis, didWork, cancelled, null, null, null);
     }
 
     /** Assume work was done when the caller does not know (fail-open for "built"). */
     public ModuleOutcome(String coord, Path dir, boolean success, int exitCode, long millis) {
-        this(coord, dir, success, exitCode, millis, true, false, null, null);
+        this(coord, dir, success, exitCode, millis, true, false, null, null, null);
     }
 
     public ModuleOutcome(String coord, Path dir, boolean success, int exitCode, long millis, boolean didWork) {
-        this(coord, dir, success, exitCode, millis, didWork, false, null, null);
+        this(coord, dir, success, exitCode, millis, didWork, false, null, null, null);
     }
 
     public ModuleOutcome withImage(Image img) {
-        return new ModuleOutcome(coord, dir, success, exitCode, millis, didWork, cancelled, img, shelved);
+        return new ModuleOutcome(coord, dir, success, exitCode, millis, didWork, cancelled, img, shelved, published);
     }
 
     public ModuleOutcome withShelved(Shelved shelf) {
-        return new ModuleOutcome(coord, dir, success, exitCode, millis, didWork, cancelled, image, shelf);
+        return new ModuleOutcome(coord, dir, success, exitCode, millis, didWork, cancelled, image, shelf, published);
+    }
+
+    public ModuleOutcome withPublished(Published pub) {
+        return new ModuleOutcome(coord, dir, success, exitCode, millis, didWork, cancelled, image, shelved, pub);
     }
 }

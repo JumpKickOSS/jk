@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.pipeline;
 
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Coord;
@@ -148,16 +149,14 @@ final class BuildTails {
     }
 
     /**
-     * Single-project success tail from the engine's project summary (thin-client path — the client
-     * has no local {@code BuildLayout}): {@code Build successful, project up to date} when nothing
-     * was rebuilt, else {@code Build successful. Built <artifact>} naming the headline output. No
-     * duration — the framework appends it.
+     * A standalone project's success tail: {@code Build successful, project up to date} when the
+     * build did nothing, else {@code Build successful. Built <artifact>} naming the headline output.
      */
-    static String projectTail(String buildOutcome, Path moduleRoot, @Nullable ProjectInfo info) {
-        if ("up-to-date".equals(buildOutcome)) {
-            return buildOk() + ", project up to date";
-        }
-        String art = info == null ? "" : builtArtifact(moduleRoot, info);
+    static String projectTail(List<ModuleOutcome> modules, Path projectDir) {
+        boolean didWork = modules.stream().anyMatch(ModuleOutcome::didWork);
+        if (!modules.isEmpty() && !didWork) return buildOk() + ", project up to date";
+        ProjectInfo info = ProjectInfos.orNull(projectDir);
+        String art = info == null ? "" : builtArtifact(projectDir, info);
         return buildOk() + (art.isEmpty() ? ", project built" : art);
     }
 

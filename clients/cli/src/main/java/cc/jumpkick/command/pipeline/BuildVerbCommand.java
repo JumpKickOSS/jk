@@ -185,14 +185,9 @@ public final class BuildVerbCommand implements CliCommand {
         if (!JdkPreflight.ensure(dir, info, run.flags().jdksDir(), run.mode())) return Exit.FAILURE;
         refreshAgentsGuide(
                 info != null && info.workspaceRoot() ? dir : scope.workspaceMember() ? scope.workspaceRoot() : dir);
-        if (info != null && info.workspaceRoot()) {
-            return verb.workspaceShaped() ? workspace(verb, run, dir, info) : oneModule(verb, run, dir);
-        }
-        if (scope.workspaceMember()) {
-            Path root = scope.workspaceRoot();
-            return verb.workspaceShaped() ? workspace(verb, run, root, null) : oneModule(verb, run, root);
-        }
-        return single(verb, run, dir);
+        if (info != null && info.workspaceRoot()) return workspace(verb, run, dir, info);
+        if (scope.workspaceMember()) return workspace(verb, run, scope.workspaceRoot(), null);
+        return standalone(verb, run, dir);
     }
 
     /**
@@ -209,60 +204,21 @@ public final class BuildVerbCommand implements CliCommand {
         }
     }
 
-    /** A verb with no workspace run inside a workspace: the one selected module, standalone. */
-    private static int oneModule(BuildVerb verb, BuildRun run, Path root) {
-        BuildRun.Selection sel = run.select(root);
-        if (sel.error() != null) {
-            run.fail(sel.error());
-            return Exit.CONFIG;
-        }
-        if (sel.empty()) {
-            run.ok(run.nothingSelected());
-            return 0;
-        }
-        if (sel.dirs().size() != 1) {
-            run.fail("jk " + verb.name() + " runs one module — pass -m <module> or run from its directory");
-            return Exit.USAGE;
-        }
-        return single(verb, run, Path.of(sel.dirs().getFirst()));
-    }
-
     // ---- standalone project ------------------------------------------------------------------
 
-    private static int single(BuildVerb verb, BuildRun run, Path dir) {
+    /** A project outside any workspace: the same run as a workspace, over its one module. */
+    private static int standalone(BuildVerb verb, BuildRun run, Path dir) {
         if (!ManifestPaths.describesProject(dir)) {
             run.fail("no jk.toml in " + PathDisplay.styledRaw(dir));
             return Exit.CONFIG;
-        }
-        // -m / --affected still validate on a lone project: `-m bogus` must not silently build, and
-        // a selection that leaves this project out is a no-op.
-        if (run.flags().selects()) {
-            BuildRun.Selection sel = run.select(dir);
-            if (sel.error() != null) {
-                run.fail(sel.error());
-                return Exit.CONFIG;
-            }
-            Path here = dir.toAbsolutePath().normalize();
-            boolean hit = sel.dirs().stream()
-                    .anyMatch(d -> Path.of(d).toAbsolutePath().normalize().equals(here));
-            if (sel.empty() || !hit) {
-                run.ok(run.nothingSelected());
-                return 0;
-            }
         }
         try {
             dir = dir.toRealPath();
         } catch (IOException ignored) {
             // the lexical path is the next best key
         }
-        int code;
-        try {
-            code = verb.single(run, dir);
-        } catch (IOException e) {
-            run.fail(Errors.text(e));
-            return Exit.SOFTWARE;
-        }
-        return verb.afterSingle(run, dir, code);
+        run.standalone(true);
+        return workspace(verb, run, dir, null);
     }
 
     // ---- workspace ---------------------------------------------------------------------------
@@ -308,8 +264,8 @@ public final class BuildVerbCommand implements CliCommand {
         view.setPlanCoord(BuildRun.projectGaLabel(entryDir));
         view.setWindowTitle("JumpKick - " + verb.words().title() + " " + BuildRun.projectGavLabel(entryDir) + "...");
         AggregateContext agg = new AggregateContext(view);
-        var runView =
-                new WorkspaceRunView(new WorkspaceRunView.Chrome(run.name(), true), entryDir, run.session(), false);
+        var runView = new WorkspaceRunView(
+                new WorkspaceRunView.Chrome(run.name(), true, run.standalone()), entryDir, run.session(), false);
         if (verb.ranksSlowestTests()) runView.rankSlowestTests();
         WorkspaceResult result;
         try {
@@ -340,8 +296,8 @@ public final class BuildVerbCommand implements CliCommand {
     /** No region ({@code -O jsonl}, {@code --verbose}, a pipe): the same events and the same settle. */
     private static int workspaceHeadless(BuildVerb verb, BuildRun run, Path entryDir, List<String> modules) {
         boolean json = run.global().outputIsJson();
-        var runView =
-                new WorkspaceRunView(new WorkspaceRunView.Chrome(run.name(), true), entryDir, run.session(), json);
+        var runView = new WorkspaceRunView(
+                new WorkspaceRunView.Chrome(run.name(), true, run.standalone()), entryDir, run.session(), json);
         if (verb.ranksSlowestTests()) runView.rankSlowestTests();
         long start = Clock.SYSTEM.nanos();
         WorkspaceResult result;

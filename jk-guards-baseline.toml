@@ -717,7 +717,7 @@ population = { examined = 4 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 16, sites = 1277 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1121, sites = 73055 }
+"server/engine" = { classes = 1342, sites = 90304 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 59, sites = 3494 }
 "server/resolver" = { classes = 123, sites = 7334 }
@@ -1056,14 +1056,6 @@ reason = "wall-clock reads on 2026-09-07; five sites moved with their classes in
 [[clock-owner.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.engine.verbs.CalibrateVerb#run(Ljava/lang/String;Lcc/jumpkick/config/Session$CancelToken;Ljava/io/BufferedWriter;)Lcc/jumpkick/engine/jobs/JobOutcome; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.verbs.SingleBuildVerb#run(Ljava/lang/String;Lcc/jumpkick/config/Session$CancelToken;Ljava/io/BufferedWriter;)Lcc/jumpkick/engine/jobs/JobOutcome; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.verbs.SingleBuildVerb#run(Ljava/lang/String;Lcc/jumpkick/config/Session$CancelToken;Ljava/io/BufferedWriter;)Lcc/jumpkick/engine/jobs/JobOutcome; -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"
@@ -1596,7 +1588,7 @@ population = { files = 2203 }
 population = { files = 4230 }
 
 [no-fqcn]
-population = { units = 4640 }
+population = { units = 4647 }
 [[no-fqcn.entries]]
 unit   = "clients/cli-terminal/src/main/java/cc/jumpkick/terminal/package-info.java"
 value  = 1
@@ -1671,10 +1663,6 @@ value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]
 unit   = "server/engine/src/main/java/cc/jumpkick/engine/plugin/PluginProcess.java"
-value  = 1
-reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
-[[no-fqcn.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/engine/verbs/NativeVerb.java"
 value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]
@@ -1926,6 +1914,7 @@ population = { files = 2240 }
 
 [one-module-planner]
 [one-module-planner.populations]
+"server/engine" = { classes = 1342, sites = 90304 }
 "server/io" = { classes = 59, sites = 0 }
 
 [one-recursive-delete]

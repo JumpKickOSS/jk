@@ -175,17 +175,20 @@ abstract class EngineServerHarness {
     }
 
     /** Drive one request to its plan-finish and return that terminal line. */
-    static String runToBuildPlanFinish(EnginePaths.Paths p, String request) throws IOException {
+    /** Every line a build request streams, through its {@code workspace-finish}. */
+    static List<String> runToWorkspaceFinish(EnginePaths.Paths p, String request) throws IOException {
+        List<String> lines = new ArrayList<>();
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
             c.sendLine(request);
             String line;
             while ((line = c.readLine()) != null) {
+                lines.add(line);
                 String type = EngineProtocol.typeOf(line);
-                if (EngineProtocol.BUILDPLAN_FINISH.equals(type)) return line;
+                if (EngineProtocol.WORKSPACE_FINISH.equals(type)) return lines;
                 if (EngineProtocol.ERROR.equals(type)) throw new IOException("request failed: " + line);
             }
         }
-        throw new IOException("disconnected before plan-finish");
+        throw new IOException("disconnected before workspace-finish");
     }
 
     /** Minimal metadata + dependency-free POM + stub jar for one coordinate on the mock repo. */

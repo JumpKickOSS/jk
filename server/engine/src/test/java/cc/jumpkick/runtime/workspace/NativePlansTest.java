@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.runtime;
+package cc.jumpkick.runtime.workspace;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -8,9 +8,13 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.runtime.workspace.ModulePipeline;
-import cc.jumpkick.runtime.workspace.NativePlans;
+import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.BuildPlanner;
+import cc.jumpkick.runtime.TestClassMatch;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.nio.file.Files;
@@ -75,7 +79,11 @@ class NativePlansTest {
         WorkspaceRequest request = new WorkspaceRequest(
                         dir, cache(), null, 0, null, skipTests, false, 0, null, false, false)
                 .withSpec(WorkspaceSpec.nativeImage(selected, graal, null, List.of()));
-        return ModulePipeline.standalone(request, null);
+        return ModulePipeline.plan(
+                new BuildGraph.BuildUnit(dir, parse(dir), "ex:" + dir.getFileName(), BuildGraph.Origin.MODULE),
+                request,
+                Set.of(dir),
+                false);
     }
 
     private static Set<String> names(BuildPlan plan) {
@@ -164,5 +172,28 @@ class NativePlansTest {
                         "run-tests", TestClassMatch.NO_TESTS_MATCHED, "no test classes matched --class Nope")),
                 false);
         assertThat(NativePlans.failureExitCode(plan, noMatch)).isEqualTo(Exit.USAGE);
+    }
+
+    /** Red tests outrank a class selection that dropped one: the run failed its tests. */
+    @Test
+    void red_tests_beside_a_dropped_class_still_exit_as_test_failures() {
+        TestSummary red =
+                new TestSummary(1, 0, 1, 0, List.of(new TestFailureInfo("m", "a.FooTest", "x", "x()", "", "boom", "")));
+        var plan = BuildPlan.builder("test")
+                .stateKeys(BuildPlanner.TEST_RESULT)
+                .addTask(Task.builder("run-tests")
+                        .execute(ctx -> ctx.put(BuildPlanner.TEST_RESULT, red))
+                        .build())
+                .build();
+        plan.run();
+        var noMatch = new BuildPlanResult(
+                "test",
+                false,
+                Duration.ZERO,
+                List.of(),
+                List.of(),
+                List.of(new BuildPlanResult.Diagnostic("run-tests", TestClassMatch.NO_TESTS_MATCHED, "why")),
+                false);
+        assertThat(NativePlans.failureExitCode(plan, noMatch)).isEqualTo(Exit.TESTS_FAILED);
     }
 }

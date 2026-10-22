@@ -75,21 +75,9 @@ class ProtoSessionRequestTest {
                 false);
     }
 
-    private static String testLine() {
-        return enveloped(
-                new TestRequest(DIR, CACHE, JDKS, 3, "ci", true, false, false, false, SELECTION, null, null, null)
-                        .encode(),
-                true);
-    }
-
     @Test
     void build_and_explain_derive_the_same_session_from_the_same_knobs() {
         assertThat(facts(explainLine())).isEqualTo(facts(buildLine()));
-    }
-
-    @Test
-    void build_and_test_derive_the_same_session_from_the_same_knobs() {
-        assertThat(facts(testLine())).isEqualTo(facts(buildLine()));
     }
 
     /** Equal sessions prove nothing if both are empty; the knobs have to have landed. */
@@ -113,22 +101,16 @@ class ProtoSessionRequestTest {
         assertThat(s.cancel()).isSameAs(TOKEN);
     }
 
-    /** A test or build line asking for a debugger lands the listener on the session; a silent line leaves it null. */
+    /** A build line asking for a debugger lands the listener on the session; a silent line leaves it null. */
     @Test
     void a_coverage_request_on_the_line_lands_on_the_session_and_is_absent_otherwise() {
-        String test = new TestRequest(
-                        DIR, CACHE, JDKS, 3, "ci", true, false, false, false, SELECTION, null, null, null, true, null,
-                        false)
-                .encode();
         String build = new BuildRequest(
                         DIR, CACHE, JDKS, 3, "ci", false, true, 4, false, false, false, false, false, false, null,
                         SELECTION, null, List.of(), false, null, Map.of(), null, null, null, true, null, false)
                 .encode();
-        assertThat(ProtoSession.sessionOf(test, TOKEN).coverage()).isTrue();
         assertThat(ProtoSession.sessionOf(build, TOKEN).coverage()).isTrue();
-        assertThat(ProtoSession.sessionOf(testLine(), TOKEN).coverage()).isFalse();
-        assertThat(testLine()).as("a plain run does not spell the flag").doesNotContain("\"coverage\"");
-        assertThat(TestRequest.decode(test).coverage()).isTrue();
+        assertThat(ProtoSession.sessionOf(buildLine(), TOKEN).coverage()).isFalse();
+        assertThat(buildLine()).as("a plain run does not spell the flag").doesNotContain("\"coverage\"");
         assertThat(BuildRequest.decode(build).coverage()).isTrue();
     }
 
@@ -142,46 +124,33 @@ class ProtoSessionRequestTest {
         assertThat(ProtoSession.sessionOf(buildLine(), TOKEN).lanesOnly()).isFalse();
     }
 
-    /** A test-failure mode on a test or build line lands on the session; a silent line leaves each module's own. */
+    /** A test-failure mode on a build line lands on the session; a silent line leaves each module's own. */
     @Test
     void a_test_failure_mode_on_the_line_lands_on_the_session() {
-        String test = new TestRequest(
-                        DIR, CACHE, JDKS, 3, "ci", true, false, false, false, SELECTION, null, null, null, false,
-                        "report", false)
-                .encode();
         String build = new BuildRequest(
                         DIR, CACHE, JDKS, 3, "ci", false, true, 4, false, false, false, false, false, false, null,
                         SELECTION, null, List.of(), false, null, Map.of(), null, null, null, false, "fail", false)
                 .encode();
-        assertThat(ProtoSession.sessionOf(test, TOKEN).testFailures()).isEqualTo(TestFailureMode.REPORT);
         assertThat(ProtoSession.sessionOf(build, TOKEN).testFailures()).isEqualTo(TestFailureMode.FAIL);
-        assertThat(ProtoSession.sessionOf(testLine(), TOKEN).testFailures()).isNull();
-        assertThat(testLine()).doesNotContain("\"testFailures\"");
+        assertThat(ProtoSession.sessionOf(buildLine(), TOKEN).testFailures()).isNull();
+        assertThat(buildLine()).doesNotContain("\"testFailures\"");
     }
 
-    /** {@code --skip-node} on a test or build line lands on the session; a silent line runs the node steps. */
+    /** {@code --skip-node} on a build line lands on the session; a silent line runs the node steps. */
     @Test
     void skip_node_on_the_line_lands_on_the_session() {
-        String test = new TestRequest(
-                        DIR, CACHE, JDKS, 3, "ci", true, false, false, false, SELECTION, null, null, null, false, null,
-                        true)
-                .encode();
         String build = new BuildRequest(
                         DIR, CACHE, JDKS, 3, "ci", false, true, 4, false, false, false, false, false, false, null,
                         SELECTION, null, List.of(), false, null, Map.of(), null, null, null, false, null, true)
                 .encode();
-        assertThat(ProtoSession.sessionOf(test, TOKEN).skipNode()).isTrue();
         assertThat(ProtoSession.sessionOf(build, TOKEN).skipNode()).isTrue();
-        assertThat(ProtoSession.sessionOf(testLine(), TOKEN).skipNode()).isFalse();
-        assertThat(testLine()).doesNotContain("\"skipNode\"");
+        assertThat(ProtoSession.sessionOf(buildLine(), TOKEN).skipNode()).isFalse();
+        assertThat(buildLine()).doesNotContain("\"skipNode\"");
     }
 
     @Test
     void a_debug_listener_on_the_line_lands_on_the_session() {
         DebugJvm debug = DebugJvm.parse("*:6006,suspend=n");
-        String test = new TestRequest(
-                        DIR, CACHE, JDKS, 3, "ci", true, false, false, false, SELECTION, debug.spelling(), null, null)
-                .encode();
         String build = new BuildRequest(
                         DIR,
                         CACHE,
@@ -209,11 +178,9 @@ class ProtoSessionRequestTest {
                         null)
                 .encode();
 
-        assertThat(ProtoSession.sessionOf(test, TOKEN).debugJvm()).isEqualTo(debug);
         assertThat(ProtoSession.sessionOf(build, TOKEN).debugJvm()).isEqualTo(debug);
-        assertThat(ProtoSession.sessionOf(testLine(), TOKEN).debugJvm()).isNull();
-        assertThat(TestRequest.decode(test).debugJvm()).isEqualTo(debug.spelling());
-        assertThat(testLine()).doesNotContain("debugJvm");
+        assertThat(ProtoSession.sessionOf(buildLine(), TOKEN).debugJvm()).isNull();
+        assertThat(buildLine()).doesNotContain("debugJvm");
     }
 
     /** The forecast's {@code --guard} is the selection's guard flag, read the same way as a build's. */

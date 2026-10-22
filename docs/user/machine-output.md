@@ -169,7 +169,7 @@ export JK_OUTPUT=jsonl     # the same for every command
 
 ### One vocabulary for every build-kind verb
 
-`jk build`, `jk test`, `jk compile`, `jk image`, `jk native`, `jk install` and `jk run` emit the
+`jk build`, `jk test`, `jk compile`, `jk image`, `jk native`, `jk install`, `jk publish`, `jk train` and `jk run` emit the
 **same** workspace envelope. The verb selects which stages the build includes; it is not a
 different kind of job, so a parser written against one works against all of them:
 

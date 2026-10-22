@@ -6,7 +6,6 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
-import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.AffectedTestsReport;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
@@ -86,47 +85,6 @@ public final class EngineClient {
     public static WorkspaceResult buildWorkspace(
             EnginePaths.Paths paths, WorkspaceRequest req, WorkspaceBuildListener listener) throws IOException {
         return EngineJobs.buildWorkspace(paths, req, listener);
-    }
-
-    /** Workspace-member {@code jk image} — workspace events, image terminal on the module. */
-    public static WorkspaceResult runImageWorkspace(
-            EnginePaths.Paths paths, EngineRequests.ImageRequest req, WorkspaceBuildListener listener)
-            throws IOException {
-        return EngineJobs.runImageWorkspace(paths, req, listener);
-    }
-
-    /** Workspace {@code jk compile} — workspace events, compile-only terminal on the selection. */
-    public static WorkspaceResult runCompileWorkspace(
-            EnginePaths.Paths paths, EngineRequests.CompileRequest req, WorkspaceBuildListener listener)
-            throws IOException {
-        return EngineJobs.runCompileWorkspace(paths, req, listener);
-    }
-
-    /**
-     * Run a single project's test plan against the engine (Task 3) — see {@link
-     * EngineJobs#runTest} for the exact contract.
-     */
-    public static BuildPlanResult runTest(
-            EnginePaths.Paths paths,
-            EngineRequests.TestRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory,
-            TestSummary[] testResultOut)
-            throws IOException {
-        return EngineJobs.runTest(paths, req, listenerFactory, testResultOut);
-    }
-
-    /**
-     * Run a single (non-workspace) project's build against the engine — see {@link
-     * EngineJobs#runSingleBuild} for the exact contract.
-     */
-    public static BuildPlanResult runSingleBuild(
-            EnginePaths.Paths paths,
-            EngineRequests.SingleBuildRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory,
-            TestSummary @Nullable [] testResultOut,
-            @Nullable String @Nullable [] buildOutcomeOut)
-            throws IOException {
-        return EngineJobs.runSingleBuild(paths, req, listenerFactory, testResultOut, buildOutcomeOut);
     }
 
     /** One engine-hosted jk.toml edit (EDIT_REQUEST): returns changed; throws on error. */
@@ -490,23 +448,6 @@ public final class EngineClient {
         return EngineHosted.runFormat(paths, req, listenerFactory, files);
     }
 
-    public static EngineRequests.PublishOutcome runPublish(
-            EnginePaths.Paths paths,
-            EngineRequests.PublishRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory)
-            throws IOException {
-        return EngineHosted.runPublish(paths, req, listenerFactory);
-    }
-
-    public static BuildPlanResult runImage(
-            EnginePaths.Paths paths,
-            EngineRequests.ImageRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory,
-            EngineRequests.ImageSummary[] summaryOut)
-            throws IOException {
-        return EngineHosted.runImage(paths, req, listenerFactory, summaryOut);
-    }
-
     public static EngineRequests.ImportOutcome runImport(
             EnginePaths.Paths paths,
             EngineRequests.ImportRequest req,
@@ -544,37 +485,6 @@ public final class EngineClient {
             boolean acceptUnverified)
             throws IOException {
         return EngineHosted.provisionTool(paths, tool, version, toolsRoot, noDiscover, acceptUnverified);
-    }
-
-    public static BuildPlanResult runCompile(
-            EnginePaths.Paths paths,
-            EngineRequests.CompileRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory)
-            throws IOException {
-        return EngineHosted.runCompile(paths, req, listenerFactory);
-    }
-
-    public static BuildPlanResult runTrain(
-            EnginePaths.Paths paths,
-            EngineRequests.TrainRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory)
-            throws IOException {
-        return EngineHosted.runTrain(paths, req, listenerFactory);
-    }
-
-    public static WorkspaceResult runNative(
-            EnginePaths.Paths paths, EngineRequests.NativeRequest req, WorkspaceBuildListener listener)
-            throws IOException {
-        return EngineHosted.runNative(paths, req, listener);
-    }
-
-    public static BuildPlanResult runInstall(
-            EnginePaths.Paths paths,
-            EngineRequests.InstallRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory,
-            TestSummary[] testResultOut)
-            throws IOException {
-        return EngineHosted.runInstall(paths, req, listenerFactory, testResultOut);
     }
 
     public static EngineRequests.GitFetchOutcome runGitFetch(

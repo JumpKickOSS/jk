@@ -56,10 +56,10 @@ class VerbVerdictJournalTest {
     // --- a verb that threw -------------------------------------------------------------------
 
     @Test
-    void a_single_build_whose_verb_throws_journals_a_failure() {
+    void a_build_whose_verb_throws_journals_a_failure() {
         RecordingHost host = new RecordingHost();
         // No "dir" in the request: the verb throws on its very first line, before any plan runs.
-        JobOutcome outcome = new SingleBuildVerb(host).run("{\"type\":\"single-build-request\"}", token(), null);
+        JobOutcome outcome = new WorkspaceBuildVerb(host).run("{\"type\":\"build-request\"}", token(), null);
 
         assertThat(host.quietSends)
                 .as("guard: the verb really did fail and say so on the wire")
@@ -77,7 +77,8 @@ class VerbVerdictJournalTest {
     @Test
     void a_test_run_whose_verb_throws_journals_a_failure() {
         RecordingHost host = new RecordingHost();
-        JobOutcome outcome = new TestVerb(host).run("{\"type\":\"test-request\"}", token(), null);
+        JobOutcome outcome =
+                new WorkspaceBuildVerb(host).run("{\"type\":\"build-request\",\"testOnly\":true}", token(), null);
 
         BuildAccumulator acc = accumulator("test");
         acc.stamp(outcome);

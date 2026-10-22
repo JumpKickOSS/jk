@@ -75,8 +75,13 @@ final class WorkspaceRunView {
      * @param buffered whether module output is captured per module and flushed as one block on
      *     completion — also the flag that says this verb owns append-only output when the region is
      *     not animating
+     * @param standalone a project outside any workspace: one module, so no {@code [k of N]} rows
      */
-    record Chrome(String planName, boolean buffered) {}
+    record Chrome(String planName, boolean buffered, boolean standalone) {
+        Chrome(String planName, boolean buffered) {
+            this(planName, buffered, false);
+        }
+    }
 
     /** Which arm of the settle ladder fired. */
     enum Settled {
@@ -285,7 +290,7 @@ final class WorkspaceRunView {
                 observer.accept(o);
                 String completion = completionLineFor(o);
                 if (view.animating()) {
-                    view.addCompletion(completion);
+                    if (completion != null) view.addCompletion(completion);
                     // Paint with this module's link context now; the deferredOutput() re-paint is a
                     // no-op on already-styled lines.
                     if (chrome.buffered()) deferred.addAll(paint(o.dir()));
@@ -294,8 +299,8 @@ final class WorkspaceRunView {
                 if (!chrome.buffered()) return; // this verb owns no output of its own
                 StringBuilder block = new StringBuilder();
                 for (String l : paint(o.dir())) block.append(l).append('\n');
-                block.append(completion);
-                view.writeAbove(block.toString());
+                if (completion != null) block.append(completion);
+                if (!block.isEmpty()) view.writeAbove(block.toString().stripTrailing());
             }
         };
     }
@@ -375,7 +380,7 @@ final class WorkspaceRunView {
                 String completion = completionLineFor(o);
                 synchronized (OUT_LOCK) {
                     for (String line : painted) CliOutput.out(line);
-                    CliOutput.out(completion);
+                    if (completion != null) CliOutput.out(completion);
                 }
             }
         };
@@ -573,7 +578,9 @@ final class WorkspaceRunView {
         return failed.size() + " modules";
     }
 
-    private String completionLineFor(ModuleOutcome o) {
+    /** The module's {@code [k of N]} completion row; null for a standalone project, which has one module. */
+    private @Nullable String completionLineFor(ModuleOutcome o) {
+        if (chrome.standalone()) return null;
         int index = completed.incrementAndGet();
         return BuildTails.completionLine(o.success(), index, Math.max(planned(), index), o.coord(), o.millis());
     }

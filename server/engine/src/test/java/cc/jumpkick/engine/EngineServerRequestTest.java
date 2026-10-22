@@ -14,12 +14,11 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.AuditRequest;
+import cc.jumpkick.wire.protocol.BuildRequest;
 import cc.jumpkick.wire.protocol.CachePruneRequest;
-import cc.jumpkick.wire.protocol.CompileRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.LockRequest;
 import cc.jumpkick.wire.protocol.ProtoSession;
-import cc.jumpkick.wire.protocol.SingleBuildRequest;
 import cc.jumpkick.wire.protocol.ToolResolveRequest;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
@@ -323,6 +322,13 @@ class EngineServerRequestTest extends EngineServerHarness {
      * {@code withSession(..., rebuild=true)} must genuinely re-run the compile — never label it
      * "up to date". (Regression: --redo once vanished between the CLI and the stamp checks.)
      */
+    /** True when a module of the run did work rather than finding itself up to date. */
+    private static boolean didWork(List<String> lines) {
+        return lines.stream()
+                .filter(l -> EngineProtocol.MODULE_FINISH.equals(EngineProtocol.typeOf(l)))
+                .anyMatch(l -> Jsonl.bool(l, "didWork", false));
+    }
+
     @Test
     void rebuild_in_the_session_envelope_defeats_the_freshness_fast_path() throws Exception {
         Path project = shortTempDir();
@@ -356,7 +362,7 @@ class EngineServerRequestTest extends EngineServerHarness {
         Thread serverThread = runInBackground(server);
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
         try {
-            String plain = new SingleBuildRequest(
+            String plain = new BuildRequest(
                             project.toString(),
                             cache.toString(),
                             null,
@@ -364,23 +370,34 @@ class EngineServerRequestTest extends EngineServerHarness {
                             null,
                             true,
                             false,
+                            0,
+                            false,
+                            false,
+                            false,
+                            false,
                             false,
                             false,
                             null,
                             TestSelection.DEFAULT,
                             null,
-                            false)
+                            List.of(),
+                            false,
+                            null,
+                            Map.of(),
+                            null,
+                            null,
+                            null)
                     .encode();
 
             // First build: real compile, stamps + caches populated.
-            assertThat(runToBuildPlanFinish(p, plain)).doesNotContain("\"buildOutcome\":\"up-to-date\"");
+            assertThat(didWork(runToWorkspaceFinish(p, plain))).isTrue();
             // Sanity: a plain second build IS the fast path.
-            assertThat(runToBuildPlanFinish(p, plain)).contains("\"buildOutcome\":\"up-to-date\"");
+            assertThat(didWork(runToWorkspaceFinish(p, plain))).isFalse();
             // The envelope's rebuild defeats it.
             String distrust = ProtoSession.withSession(plain, null, null, null, true);
-            assertThat(runToBuildPlanFinish(p, distrust))
+            assertThat(didWork(runToWorkspaceFinish(p, distrust)))
                     .as("rebuild must reach the engine's stamp checks")
-                    .doesNotContain("\"buildOutcome\":\"up-to-date\"");
+                    .isTrue();
         } finally {
             server.close();
             serverThread.join(10_000);
@@ -420,39 +437,39 @@ class EngineServerRequestTest extends EngineServerHarness {
         Thread serverThread = runInBackground(server);
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
 
-        List<String> types = new ArrayList<>();
-        List<String> diagnostics = new ArrayList<>();
-        String planFinish = null;
-        String buildError = null;
-        try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            c.sendLine(new CompileRequest(
-                            project.toString(), cache.toString(), null, null, false, false, false, false, List.of())
-                    .encode());
-            String line;
-            while ((line = c.readLine()) != null) {
-                String type = requireNonNull(EngineProtocol.typeOf(line), line);
-                types.add(type);
-                switch (type) {
-                    case EngineProtocol.BUILDPLAN_FINISH -> planFinish = line;
-                    case EngineProtocol.BUILDPLAN_DIAGNOSTIC -> diagnostics.add(line);
-                    // Terminal too — break instead of waiting for a plan-finish that will never
-                    // come (the mutual-wait shape the audit test also guards against).
-                    case EngineProtocol.ERROR -> buildError = line;
-                    default -> {
-                        /* plan/progress events — presence asserted via `types` below */
-                    }
-                }
-                if (planFinish != null || buildError != null) break;
-            }
-        }
-
-        assertThat(buildError)
-                .as("engine reported a pre-plan error instead of hosting the compile")
-                .isNull();
-        assertThat(types).contains(EngineProtocol.PLAN_TASK, EngineProtocol.PLAN_DONE);
-        assertThat(planFinish).isNotNull();
-        assertThat(Jsonl.bool(planFinish, "success", false))
-                .as("hosted compile succeeded; diagnostics: " + diagnostics)
+        String compile = new BuildRequest(
+                        project.toString(),
+                        cache.toString(),
+                        null,
+                        0,
+                        null,
+                        true,
+                        false,
+                        0,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        null,
+                        TestSelection.DEFAULT,
+                        null,
+                        List.of(),
+                        false,
+                        "compile",
+                        Map.of(),
+                        null,
+                        null,
+                        null)
+                .encode();
+        List<String> lines = runToWorkspaceFinish(p, compile);
+        List<String> types = lines.stream()
+                .map(l -> requireNonNull(EngineProtocol.typeOf(l), l))
+                .toList();
+        assertThat(types).contains(EngineProtocol.MODULE_FINISH, EngineProtocol.WORKSPACE_FINISH);
+        assertThat(Jsonl.bool(lines.getLast(), "success", false))
+                .as("hosted compile succeeded: " + lines)
                 .isTrue();
         // The engine (not the client) ran the compile.
         assertThat(Files.isRegularFile(project.resolve("target/classes/example/Hello.class")))
