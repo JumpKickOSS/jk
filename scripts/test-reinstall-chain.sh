@@ -17,14 +17,14 @@ export JK_HOME="$WORK/home" TMPDIR="$WORK/tmp"
 mkdir -p "$REPO" "$STATE" "$JK_HOME/lib/jk-engine" "$WORK/bin" "$TMPDIR"
 
 # The fake jk. build: refuses a tree that needs a newer engine, an unowned table in a listed
-# member, or an edited jk.toml under an unforced lock. install: raises the level, adds the tree's
-# plugin tables, stamps the engine jar with the commit time and logs what it installed.
+# member, or an edited jk.toml under an unforced lock. install: builds the same way, then raises the
+# level, adds the tree's plugin tables, stamps the engine jar with the commit time and logs what it
+# installed.
 cat >"$WORK/bin/jk" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
 level="$(cat "$FAKE_STATE/level")"
-case "$1" in
-  build)
+build() {
     [ -f .broken ] && { echo "E compile: broken"; exit 1; }
     [ "$(cat .needs)" -le "$level" ] || { echo "E build: this engine is too old"; exit 1; }
     while IFS= read -r member; do
@@ -36,8 +36,11 @@ case "$1" in
     if ! git diff --quiet -- jk.toml && git diff --quiet -- jk-lock.toml; then
       echo "E lock: jk-lock.toml was written by an older build of the same version"; exit 1
     fi
-    ;;
+}
+case "$1" in
+  build) build ;;
   install)
+    build
     cat .provides >"$FAKE_STATE/level"
     for plugin in plugins/*/jk-plugin.toml; do
       [ -f "$plugin" ] && sed -n 's/^table = "\(.*\)"$/\1/p' "$plugin" >>"$FAKE_STATE/tables"

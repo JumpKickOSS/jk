@@ -332,7 +332,7 @@ jk --help
 Or from this repo, with that release building it:
 
 ```bash
-jk build -S && jk install -S
+jk install -S
 ```
 
 Developer setup: [CONTRIBUTING.md](CONTRIBUTING.md).

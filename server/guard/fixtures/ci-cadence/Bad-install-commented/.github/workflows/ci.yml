@@ -21,9 +21,6 @@ jobs:
         # run: bash scripts/ci-bootstrap.sh
         run: echo bootstrap skipped
 
-      - name: Self-host build
-        run: jk build --skip-tests --no-ansi
-
       - name: The checkout's own jk takes over
         run: jk install --skip-tests --no-ansi
 

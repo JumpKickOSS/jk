@@ -173,14 +173,9 @@ jobs:
           jk --version
           jk engine status
 
-      # The release builds the checkout: the graph, its lock and every module through the pinned
-      # jk. The native client and the engine jar land under target/dist.
-      - name: Self-host build
-        run: |
-          set -euo pipefail
-          jk build --skip-tests --no-ansi 2>&1 | tee "$RUNNER_TEMP/self-host-build.log"
-
-      # The checkout's jk takes the home over: its client under $JK_HOME/bin, its engine under
+      # The release installs the checkout, which builds it first: the graph, its lock and every
+      # module through the pinned jk, with the native client and the engine jar under target/dist.
+      # Then the checkout's jk takes the home over: its client under $JK_HOME/bin, its engine under
       # $JK_HOME/lib/jk-engine, its workers on the shelf. The two comparisons are the proof that
       # from here on the commit is judged by its own jk, byte for byte.
       - name: The checkout's own jk takes over

@@ -51,7 +51,7 @@ eight minutes). A guard failure is annotated with the rule that owns it.
 | Wall-clock series | `bench/scoreboard --tier night` on the reference host, banked in `scoreboard.toml` ([perf](../perf/README.md)) |
 
 Guard **G57** (`ci-cadence`) keeps the self-host job, its isolated `JK_HOME`, the four verbs it
-runs (`jk build`, `jk install`, `jk guard`, `jk test`), its bootstrap through `install.sh` at the
+runs (`jk install`, `jk guard`, `jk test`; the install is the build), its bootstrap through `install.sh` at the
 pinned version, the nightly tiers, the JVM client smoke and the scoreboard in place. It fails on a
 `gradlew` in the self-host job, on a `JK_VERSION=<digits>` literal in any workflow, and on
 `continue-on-error` on any job of `ci.yml`: that flag is how a merge requirement becomes a
@@ -80,7 +80,7 @@ After a release ships to jumpkick.build:
    ```bash
    export HOME=$PWD/../bootstrap-probe JK_HOME=$HOME/.jk
    curl -fsSL https://jumpkick.build/install.sh | JK_VERSION=<new> bash
-   "$JK_HOME/bin/jk" build --skip-tests && "$JK_HOME/bin/jk" install --skip-tests && "$JK_HOME/bin/jk" guard
+   "$JK_HOME/bin/jk" install --skip-tests && "$JK_HOME/bin/jk" guard
    ```
 2. Write `<new>` to `.jk/ci-bootstrap-version`, delete `.jk/ci-bootstrap-reader` if a bridge was
    named, and run `scripts/bootstrap-reads.sh v<new>`.
@@ -121,15 +121,15 @@ By hand, for a branch under development the same chain is:
 export JK_HOME=/some/scratch/home            # never your ~/.jk
 git worktree add ../jk-reader <last commit the pinned release reads>
 (cd ../jk-reader && curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$(cat .jk/ci-bootstrap-version)" bash \
-   && "$JK_HOME/bin/jk" lock --force && "$JK_HOME/bin/jk" build --skip-tests \
+   && "$JK_HOME/bin/jk" lock --force \
    && { "$JK_HOME/bin/jk" install --skip-tests || true; } && "$JK_HOME/bin/jk" install --skip-tests)   # a jk that reads the branch
-"$JK_HOME/bin/jk" build --skip-tests && "$JK_HOME/bin/jk" install --skip-tests            # the branch, built by it
+"$JK_HOME/bin/jk" install --skip-tests            # the branch, built by it
 JK_HOME="$JK_HOME" jk engine stop -n
 ```
 
 Your own `~/.jk` falls behind the same way: an install older than a commit that adds a plugin
 and uses it in the same tree cannot build that tree. `scripts/reinstall-chain.sh` reinstalls from
-the checkout anyway. It tries the plain `jk build -S && jk install -S` first.
+the checkout anyway. It tries the plain `jk install -S` first.
 When the failure is a table no installed plugin owns, it installs HEAD from a scratch worktree
 without the members that open that table, so the tree's own plugin for it is installed. Any other
 failure bisects the first-parent history after the installed jk's source (its engine jar's
@@ -168,8 +168,7 @@ Install the released jk and let it build the tree; the tree's own jk then takes 
 curl -fsSL https://jumpkick.build/install.sh | bash   # or JK_VERSION="$(cat .jk/ci-bootstrap-version)" bash
 export PATH="$HOME/.jk/bin:$PATH"
 jk engine status
-jk build -S
-jk install -S   # this checkout's client, engine and workers replace the release's
+jk install -S   # builds the tree; this checkout's client, engine and workers replace the release's
 jk install -S   # once more: the release's client stops after the pass its engine ran
 ```
 
@@ -223,8 +222,7 @@ After `jk` is on `PATH`, stay in this checkout:
 
 ```bash
 jk lock
-jk build -S
-jk install
+jk install                       # builds, runs the fast tier, then installs
 jk test                          # the fast tier, every module
 jk test -p integration           # the push gate
 ```

@@ -95,7 +95,7 @@ env_block() {
   # produce a number nobody can reproduce.
   if [[ -x "$JK" ]] && [[ -f "$ROOT/target/dist/jk" ]] \
      && cmp -s "$JK" "$ROOT/target/dist/jk"; then jkbuilt="yes (matches target/dist/jk)"
-  else jkbuilt="UNVERIFIED — client differs from target/dist/jk; run jk build --skip-tests && jk install --skip-tests"; fi
+  else jkbuilt="UNVERIFIED — client differs from target/dist/jk; run jk install --skip-tests"; fi
 
   {
     echo "### Environment"

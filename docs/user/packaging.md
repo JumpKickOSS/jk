@@ -388,7 +388,10 @@ Training (`jk train`) is **not** part of `jk build`. See [Dynamic surface](dynam
 
 ## `jk install` (project)
 
-Writes the thin jar and POM to the local repo (`repos/jk-local`), then prefers a native
+`jk install` is `jk build` plus the install steps: the same plan, the same tests (unless `-S`)
+and guard lanes, then the install. Do not run `jk build` first.
+
+The install writes the thin jar and POM to the local repo (`repos/jk-local`), then prefers a native
 binary in `~/.jk/bin` if one exists, else a minified/fat jar under `~/.jk/lib/<name>/`
 plus a `java -jar` script, else a thin `java -cp` script over the repo jars.
 
