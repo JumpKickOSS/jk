@@ -19,23 +19,23 @@ import org.junit.jupiter.api.Test;
 class VerbRegistryTest {
 
     @Test
-    void standard_lists_workspace_test_and_single_build() {
+    void standard_serves_every_build_like_goal_through_one_verb() {
         VerbRegistry reg = VerbRegistry.standard(new FakeHost());
-        assertThat(reg.all()).hasSize(49);
+        assertThat(reg.all()).hasSize(41);
         HostedVerb build = verb(reg, EngineProtocol.BUILD_REQUEST);
-        HostedVerb test = verb(reg, EngineProtocol.TEST_REQUEST);
-        HostedVerb single = verb(reg, EngineProtocol.SINGLE_BUILD_REQUEST);
         assertThat(build).isInstanceOf(WorkspaceBuildVerb.class);
-        assertThat(test).isInstanceOf(TestVerb.class);
-        assertThat(single).isInstanceOf(SingleBuildVerb.class);
+        assertThat(build.jobKinds())
+                .containsExactlyInAnyOrder(
+                        "build", "assemble", "test", "guard", "compile", "image", "install", "native", "publish");
         assertThat(verb(reg, EngineProtocol.LOCK_REQUEST)).isInstanceOf(LockVerb.class);
         assertThat(verb(reg, EngineProtocol.UPDATE_REQUEST)).isInstanceOf(UpdateVerb.class);
         assertThat(verb(reg, EngineProtocol.SYNC_REQUEST)).isInstanceOf(SyncVerb.class);
         assertThat(build.shape()).isInstanceOf(VerbShape.AsyncPlan.class);
-        assertThat(test.jobKind().verb()).isEqualTo("test");
-        assertThat(single.toJobRequest("{\"type\":\"single-build-request\"}").verb())
-                .isEqualTo("build");
-        assertThat(single.toJobRequest("{\"type\":\"single-build-request\",\"guard\":true}")
+        assertThat(build.toJobRequest("{\"type\":\"build-request\"}").verb()).isEqualTo("build");
+        assertThat(build.toJobRequest("{\"type\":\"build-request\",\"workspaceTarget\":\"native\"}")
+                        .verb())
+                .isEqualTo("native");
+        assertThat(build.toJobRequest("{\"type\":\"build-request\",\"guard\":true}")
                         .verb())
                 .isEqualTo("guard");
         assertThat(verb(reg, EngineProtocol.AUDIT_REQUEST)).isInstanceOf(AuditVerb.class);

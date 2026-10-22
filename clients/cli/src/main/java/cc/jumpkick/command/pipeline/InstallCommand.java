@@ -15,14 +15,12 @@ import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.JobCancelledException;
-import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.AggregateContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
-import cc.jumpkick.cli.tui.Coord;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.command.CwdModuleScope;
@@ -42,7 +40,6 @@ import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.run.BuildPlanResult;
-import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.tool.AppLauncher;
 import cc.jumpkick.tool.JarManifest;
 import cc.jumpkick.tool.LauncherName;
@@ -341,10 +338,9 @@ public final class InstallCommand {
         // A pinned JDK that is not installed downloads here, with the `jk jdk install` bar, before
         // the build console opens — never as a silent step inside the engine.
         if (!JdkPreflight.ensure(projectDir, proj, jdksDir, BuildPlanConsole.modeFor(global))) return Exit.FAILURE;
-        if (proj.workspaceRoot() || cwdScope.workspaceMember()) {
-            return runWorkspaceInstall(cwdScope.workspaceRoot(), cwdScope);
-        }
-        if (proj.application()
+        if (!proj.workspaceRoot()
+                && !cwdScope.workspaceMember()
+                && proj.application()
                 && "DISABLED".equals(proj.nativeMode())
                 && proj.mainClass().isEmpty()
                 && !proj.springBoot()) {
@@ -354,95 +350,8 @@ public final class InstallCommand {
                             + " has no `main` class set in [application]");
             return Exit.USAGE;
         }
-        // ALWAYS: native is part of the standard build and install produces a native binary.
-        // SUPPORTED: user runs `jk native` explicitly; install deploys the jar.
-        boolean isNative = proj.application() && "ALWAYS".equals(proj.nativeMode());
-
-        // `jk build` no longer auto-builds native (that's `jk native`), so an installed native
-        // application builds its binary here. Resolve the GraalVM up front — before any progress
-        // UI opens, and before the request ships (a prompt/install owns this terminal and must
-        // never run inside the engine).
-        Path graalHome = null;
-        if (isNative) {
-            Optional<Path> resolved =
-                    new GraalResolver(null, false, BuildPlanConsole.modeFor(global)).resolve(projectDir, proj.graal());
-            if (resolved.isEmpty()) return 1; // GraalResolver already printed why
-            graalHome = resolved.get();
-        }
-
-        // Build + cache-install through the shared InstallPlans plan (jar always; assembly/native
-        // per jk.toml; jar + generated pom into ~/.m2 / repos/jk-local) — engine-hosted for a real
-        // invocation, in-process for the test-only bypass. The make-install half runs below,
-        // client-side either way: it writes the user-home launcher/binary this process owns.
-        // The console `jk build`'s single-project path opens: the live region with the bar and
-        // countdown, the diagnostics above the settle line, the chip. The copy step under it is this
-        // process's own and reports after the chip — it writes the user-home launcher and the
-        // product layout, which the engine never touches.
-        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
-        String target = ProjectInfos.buildTarget(ManifestPaths.manifestIn(projectDir), projectDir);
-        ConsoleSpec spec = new ConsoleSpec(
-                "Install",
-                r -> BuildTails.buildOk() + BuildTails.builtArtifact(projectDir, proj),
-                r -> Coord.module(target).renderLine(),
-                true);
-        BuildPlanResult result;
-        TestSummary testResult;
-        // The request envelope carries the session's client env; resolve it here, from the shell
-        // running jk, or the module's [test] env names reach the test JVM only on jk build.
-        VariantSelection.installEnv(projectDir);
-        var session = SessionContext.current();
-        TestSummary[] testResultHolder = new TestSummary[1];
-        try {
-            result = EngineClient.runInstall(
-                    EnginePaths.current(),
-                    new EngineRequests.InstallRequest(
-                            projectDir,
-                            cacheDir,
-                            jdksDir,
-                            m2Dir(),
-                            graalHome,
-                            buildOpts.skipTests,
-                            session.offline(),
-                            session.force(),
-                            global.verbose),
-                    steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target),
-                    testResultHolder);
-        } catch (JobCancelledException e) {
-            CommandWedge.printFail("Install", "job was cancelled");
-            return Exit.FAILURE;
-        } catch (IOException e) {
-            CommandWedge.printFail("Install", e.getMessage());
-            return Exit.SOFTWARE;
-        }
-        testResult = testResultHolder[0];
-
-        if (!result.success()) {
-            if (testResult != null && !testResult.allPassed()) return 4;
-            return failureExit(result, "jk install", cacheDir);
-        }
-
-        Coordinate coord = Coordinate.of(proj.group(), proj.name(), proj.version());
-        Path launcher = null;
-        // Same gate as the workspace path: a declared product-lib module routes through
-        // EngineInstall (downgrade refusal, pointer stamping) no matter which entry point ran the
-        // install — the generic copy below provides none of that.
-        boolean productLib = !proj.productLib().isBlank();
-        boolean productBin = !proj.productBin().isBlank();
-        if (productLib || productBin || (!isPluginWorker(proj, projectDir) && proj.application())) {
-            try {
-                launcher = applyInstallPlan(projectDir, cacheDir, proj.productLib(), proj.productBin());
-            } catch (IOException e) {
-                CommandWedge.printFail("Install", "make install failed: " + e.getMessage());
-                return Exit.FAILURE;
-            }
-        }
-        if (!global.outputIsJson()) {
-            for (String line :
-                    installedLines(Coords.gav(coord), launcher, binDir, proj.productLib(), proj.productBin())) {
-                CliOutput.out(line);
-            }
-        }
-        return 0;
+        // A standalone project installs as a workspace of one: the same passes, the same shelf.
+        return runWorkspaceInstall(cwdScope.workspaceRoot(), cwdScope);
     }
 
     /**
@@ -469,6 +378,7 @@ public final class InstallCommand {
             return Exit.CONFIG;
         }
         List<Path> moduleDirs = new ArrayList<>();
+        if (!root.workspaceRoot()) moduleDirs.add(wsRoot.toAbsolutePath().normalize());
         for (String rel : root.moduleDirs()) {
             Path d = Path.of(rel).isAbsolute() ? Path.of(rel) : wsRoot.resolve(rel);
             moduleDirs.add(d.toAbsolutePath().normalize());

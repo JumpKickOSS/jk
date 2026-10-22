@@ -216,6 +216,8 @@ final class WorkspaceRunPhase {
             if (image != null) outcome = outcome.withImage(image);
             ModuleOutcome.Shelved shelved = InstallPlans.shelvedOf(module.plan());
             if (shelved != null) outcome = outcome.withShelved(shelved);
+            ModuleOutcome.Published published = PublishTail.outcomeOf(module.plan());
+            if (published != null) outcome = outcome.withPublished(published);
             listener.onModuleFinish(outcome);
             return outcome;
         } catch (RuntimeException e) {

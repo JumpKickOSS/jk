@@ -4,47 +4,36 @@ package cc.jumpkick.wire.runtime;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Target basket + optional module cone for {@link WorkspaceRequest}. Empty {@link #selectedModules()}
- * means the whole graph. Native/image extras are ignored for other targets.
+ * The goal of a {@link WorkspaceRequest} and the modules it selects. Empty {@link
+ * #selectedModules()} means the whole graph; {@code graalByDir} names the GraalVM the client
+ * resolved for each module whose build links a native image; {@link #tail()} carries the goal's
+ * own arguments.
  */
 public record WorkspaceSpec(
         WorkspaceTarget target,
         Set<Path> selectedModules,
         Map<Path, Path> graalByDir,
-        @Nullable String nativeMain,
-        List<String> nativeExtraArgs,
-        @Nullable String imageMain,
-        @Nullable String imageRegistry,
-        @Nullable String imageTag,
-        @Nullable String imageTarball,
-        @Nullable String imageDocker,
-        /** Install only: client-resolved m2 repo root ({@code --m2-dir}); null → {@code ~/.m2}. */
-        @Nullable Path m2Dir) {
+        @Nullable TailArgs tail) {
 
-    public static final WorkspaceSpec DEFAULT = new WorkspaceSpec(
-            WorkspaceTarget.PACKAGE, Set.of(), Map.of(), null, List.of(), null, null, null, null, null, null);
+    public static final WorkspaceSpec DEFAULT = of(WorkspaceTarget.PACKAGE);
 
     public WorkspaceSpec {
         target = target == null ? WorkspaceTarget.PACKAGE : target;
         selectedModules = selectedModules == null ? Set.of() : Set.copyOf(selectedModules);
         graalByDir = graalByDir == null ? Map.of() : Map.copyOf(graalByDir);
-        nativeExtraArgs = nativeExtraArgs == null ? List.of() : List.copyOf(nativeExtraArgs);
-        if (nativeMain != null && nativeMain.isBlank()) nativeMain = null;
     }
 
     public static WorkspaceSpec of(WorkspaceTarget target) {
-        return new WorkspaceSpec(target, Set.of(), Map.of(), null, List.of(), null, null, null, null, null, null);
+        return new WorkspaceSpec(target, Set.of(), Map.of(), null);
     }
 
     public static WorkspaceSpec nativeImage(
             Set<Path> selected, Map<Path, Path> graalByDir, @Nullable String main, List<String> extraArgs) {
-        return new WorkspaceSpec(
-                WorkspaceTarget.NATIVE, selected, graalByDir, main, extraArgs, null, null, null, null, null, null);
+        return new WorkspaceSpec(WorkspaceTarget.NATIVE, selected, graalByDir, new TailArgs.Native(main, extraArgs));
     }
 
     public static WorkspaceSpec image(
@@ -55,89 +44,54 @@ public record WorkspaceSpec(
             @Nullable String tarball,
             @Nullable String docker) {
         return new WorkspaceSpec(
-                WorkspaceTarget.IMAGE, selected, Map.of(), null, List.of(), main, registry, tag, tarball, docker, null);
+                WorkspaceTarget.IMAGE, selected, Map.of(), new TailArgs.Image(main, registry, tag, tarball, docker));
     }
 
     /** {@code jk compile}: a compile-only plan for every module in the cone; nothing packages. */
     public static WorkspaceSpec compile(Set<Path> selected) {
-        return new WorkspaceSpec(
-                WorkspaceTarget.COMPILE, selected, Map.of(), null, List.of(), null, null, null, null, null, null);
+        return new WorkspaceSpec(WorkspaceTarget.COMPILE, selected, Map.of(), null);
     }
 
-    /**
-     * {@code jk install}: package + cache-install on the cone; {@code graalByDir} for ALWAYS
-     * native, {@code m2Dir} the client-resolved local-repo root so a workspace install honors
-     * {@code --m2-dir} the same way a lone module does.
-     */
+    /** {@code jk install}: {@code m2Dir} is the client-resolved local-repo root; null for {@code ~/.m2}. */
     public static WorkspaceSpec install(Set<Path> selected, Map<Path, Path> graalByDir, @Nullable Path m2Dir) {
-        return new WorkspaceSpec(
-                WorkspaceTarget.INSTALL, selected, graalByDir, null, List.of(), null, null, null, null, null, m2Dir);
+        return new WorkspaceSpec(WorkspaceTarget.INSTALL, selected, graalByDir, new TailArgs.Install(m2Dir));
     }
 
-    /**
-     * Install's second pass after the engine jar changes: shelf {@code cache-install} / packager
-     * stamp only. {@code m2Dir} is the same client-resolved root {@link #install} uses.
-     */
+    /** Install's second pass after the engine jar changes: {@code cache-install} against jars on disk. */
     public static WorkspaceSpec reshelve(Set<Path> selected, @Nullable Path m2Dir) {
-        return new WorkspaceSpec(
-                WorkspaceTarget.RESHELVE, selected, Map.of(), null, List.of(), null, null, null, null, null, m2Dir);
+        return new WorkspaceSpec(WorkspaceTarget.RESHELVE, selected, Map.of(), new TailArgs.Install(m2Dir));
     }
 
-    /** This spec with the client-resolved GraalVM home per always-native module. */
+    public static WorkspaceSpec train(
+            Set<Path> selected, Map<Path, Path> graalByDir, @Nullable String profile, boolean force) {
+        return new WorkspaceSpec(WorkspaceTarget.TRAIN, selected, graalByDir, new TailArgs.Train(profile, force));
+    }
+
+    public static WorkspaceSpec publish(Set<Path> selected, TailArgs.Publish args) {
+        return new WorkspaceSpec(WorkspaceTarget.PUBLISH, selected, Map.of(), args);
+    }
+
+    /** This spec with the client-resolved GraalVM home per module that links a native image. */
     public WorkspaceSpec withGraalByDir(Map<Path, Path> homes) {
-        return new WorkspaceSpec(
-                target,
-                selectedModules,
-                homes,
-                nativeMain,
-                nativeExtraArgs,
-                imageMain,
-                imageRegistry,
-                imageTag,
-                imageTarball,
-                imageDocker,
-                m2Dir);
+        return new WorkspaceSpec(target, selectedModules, homes, tail);
+    }
+
+    /** This spec narrowed to {@code selected}. */
+    public WorkspaceSpec withSelection(Set<Path> selected) {
+        return new WorkspaceSpec(target, selected, graalByDir, tail);
     }
 
     public boolean hasSelection() {
         return !selectedModules.isEmpty();
     }
 
+    /** Install's local Maven repo root, or null for {@code ~/.m2} and every other goal. */
+    public @Nullable Path m2Dir() {
+        return tail instanceof TailArgs.Install install ? install.m2Dir() : null;
+    }
+
     public WorkspaceTarget effectiveTarget(boolean testOnly) {
         if (target != WorkspaceTarget.PACKAGE) return target;
         return testOnly ? WorkspaceTarget.TEST : WorkspaceTarget.PACKAGE;
-    }
-
-    @Override
-    public boolean equals(@Nullable Object o) {
-        if (this == o) return true;
-        if (!(o instanceof WorkspaceSpec s)) return false;
-        return target == s.target
-                && selectedModules.equals(s.selectedModules)
-                && graalByDir.equals(s.graalByDir)
-                && Objects.equals(nativeMain, s.nativeMain)
-                && nativeExtraArgs.equals(s.nativeExtraArgs)
-                && Objects.equals(imageMain, s.imageMain)
-                && Objects.equals(imageRegistry, s.imageRegistry)
-                && Objects.equals(imageTag, s.imageTag)
-                && Objects.equals(imageTarball, s.imageTarball)
-                && Objects.equals(imageDocker, s.imageDocker)
-                && Objects.equals(m2Dir, s.m2Dir);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(
-                target,
-                selectedModules,
-                graalByDir,
-                nativeMain,
-                nativeExtraArgs,
-                imageMain,
-                imageRegistry,
-                imageTag,
-                imageTarball,
-                imageDocker,
-                m2Dir);
     }
 }

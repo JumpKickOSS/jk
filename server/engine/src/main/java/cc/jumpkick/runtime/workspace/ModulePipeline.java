@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.NodeShape;
-import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildPlanner;
@@ -13,15 +11,15 @@ import cc.jumpkick.runtime.Tail;
 import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
+import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
-import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 import org.jspecify.annotations.NullMarked;
-import org.jspecify.annotations.Nullable;
 
 /**
  * The one planner of a module's build, for every build-like goal. The goal's phases run from the
@@ -63,19 +61,6 @@ public final class ModulePipeline {
             Set<Path> jarConsumed,
             Set<Path> launchedAssemblies,
             SiblingArtifacts.Gate siblings) {
-        return plan(unit, request, moduleDirs, forceRebuild, jarConsumed, launchedAssemblies, siblings, null);
-    }
-
-    /** As above; a non-null {@code selectedTail} is the tail of the modules the request selects. */
-    public static BuildPlan plan(
-            BuildGraph.BuildUnit unit,
-            WorkspaceRequest request,
-            Set<Path> moduleDirs,
-            boolean forceRebuild,
-            Set<Path> jarConsumed,
-            Set<Path> launchedAssemblies,
-            SiblingArtifacts.Gate siblings,
-            @Nullable Tail selectedTail) {
         Path dir = unit.dir();
         WorkspaceTarget target = request.target();
         WorkspaceSpec spec = request.spec() == null ? WorkspaceSpec.DEFAULT : request.spec();
@@ -93,32 +78,40 @@ public final class ModulePipeline {
             }
             return plan.build();
         }
-        Tail tail = !selected(spec, dir)
-                ? Tail.NONE
-                : selectedTail != null ? selectedTail : tail(target, spec, unit, request.cache());
+        Tail tail = selected(spec, dir) ? tail(target, spec, unit, request.cache()) : Tail.NONE;
         PlannerTails.appendDeclaredTails(
                 plan, in, GraalHomes.lookup(dir, spec.graalByDir()), !tail.buildsNativeImage());
         tail.append(plan, in);
         return plan.build();
     }
 
-    /** The tail of a module the request selects, from the spec the client sent. */
+    /** The tail of a module the request selects, from the arguments the client sent. */
     private static Tail tail(WorkspaceTarget target, WorkspaceSpec spec, BuildGraph.BuildUnit unit, Path cache) {
+        Path graal = GraalHomes.lookup(unit.dir(), spec.graalByDir());
+        TailArgs args = spec.tail();
         return switch (target) {
             case INSTALL -> InstallPlans.tail(unit.manifest(), cache, m2Dir(spec));
-            case NATIVE ->
-                NativePlans.tail(
-                        GraalHomes.lookup(unit.dir(), spec.graalByDir()), spec.nativeMain(), spec.nativeExtraArgs());
-            case IMAGE ->
-                ImagePlans.tail(
-                        spec.imageMain(),
-                        spec.imageRegistry(),
-                        spec.imageTag(),
-                        spec.imageTarball(),
-                        spec.imageDocker());
+            case NATIVE -> {
+                TailArgs.Native a = args instanceof TailArgs.Native n ? n : new TailArgs.Native(null, List.of());
+                yield NativePlans.tail(graal, a.main(), a.extraArgs());
+            }
+            case IMAGE -> {
+                TailArgs.Image a =
+                        args instanceof TailArgs.Image i ? i : new TailArgs.Image(null, null, null, null, null);
+                yield ImagePlans.tail(a.main(), a.registry(), a.tag(), a.tarball(), a.docker());
+            }
+            case TRAIN -> {
+                TailArgs.Train a = args instanceof TailArgs.Train t ? t : new TailArgs.Train(null, false);
+                yield TrainPlans.tail(
+                        unit.manifest(), graal, Path.of(System.getProperty("java.home")), a.profile(), a.force());
+            }
+            case PUBLISH -> {
+                if (!(args instanceof TailArgs.Publish a)) {
+                    throw new IllegalStateException("a publish request carries its publish arguments");
+                }
+                yield PublishTail.of(a);
+            }
             case PACKAGE, RUN -> Tail.NONE;
-            case TRAIN, PUBLISH ->
-                throw new IllegalStateException(target + " reaches the planner with its tail, never from the spec");
             case COMPILE, TEST, RESHELVE -> throw new IllegalStateException(target + " does not package");
         };
     }
@@ -131,21 +124,6 @@ public final class ModulePipeline {
         BuildPlan.Builder plan = BuildPlanner.coreBuilder(in, true);
         PlannerTails.appendDeclaredTails(plan, in);
         return plan.build();
-    }
-
-    /**
-     * A project built on its own: its one unit, planned exactly as a workspace module. A non-null
-     * {@code tail} is the goal's tail; null takes it from the request's spec.
-     */
-    public static BuildPlan standalone(WorkspaceRequest request, @Nullable Tail tail) throws IOException {
-        Path dir = request.entryDir();
-        BuildGraph.Result graph = BuildGraph.resolve(dir, JkBuildParser.parse(ManifestPaths.manifestIn(dir)));
-        Path canonical = BuildGraph.canonicalPath(dir);
-        BuildGraph.BuildUnit unit = graph.topoOrder().stream()
-                .filter(u -> BuildGraph.canonicalPath(u.dir()).equals(canonical))
-                .findFirst()
-                .orElseThrow(() -> new IOException("no build unit for " + dir));
-        return plan(unit, request, Set.of(unit.dir()), false, Set.of(), Set.of(), SiblingArtifacts.NONE, tail);
     }
 
     /** Install's second pass: shelve the jars already on disk. A coordinator has none. */

@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.testing.RepoRoot;
+import cc.jumpkick.wire.runtime.TailArgs;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -223,6 +224,7 @@ class WireRecordContractTest {
             return values;
         }
         if (type.isRecord()) return build(type, seq);
+        if (type == TailArgs.class) return new TailArgs.Native("v" + n, List.of("v" + (n + 1)));
         if (type.isEnum()) {
             Object[] constants = type.getEnumConstants();
             return constants[n % constants.length];

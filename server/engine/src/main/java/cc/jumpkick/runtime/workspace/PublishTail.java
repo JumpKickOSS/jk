@@ -3,12 +3,17 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.Tail;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.PublishPlans;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
+import cc.jumpkick.wire.runtime.TailArgs;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
+import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk publish}'s {@link Tail}: its refusals run beside the build, so a refused publish fails
@@ -18,11 +23,8 @@ public final class PublishTail {
 
     private PublishTail() {}
 
-    public static Tail of(PublishPlans.Request req) {
-        return of(req, PublishPlans.workerJar());
-    }
-
-    static Tail of(PublishPlans.Request req, Path workerJar) {
+    public static Tail of(TailArgs.Publish args) {
+        PublishPlans.Request req = request(args);
         return (plan, in) -> {
             if (CompileSupport.coordinatorOnly(manifest(in.buildFile()), in.dir())) return;
             plan.stateKeys(
@@ -31,10 +33,47 @@ public final class PublishTail {
                             PublishPlans.FILES,
                             PublishPlans.WRITTEN,
                             PublishPlans.BUNDLE,
-                            PublishPlans.DEPLOYMENT)
+                            PublishPlans.DEPLOYMENT,
+                            PublishPlans.DESTINATION,
+                            PublishPlans.DRY_RUN)
                     .addTask(PublishPlans.checkStep(in.dir(), req))
-                    .extend(PublishPlans.publishStep(in.dir(), workerJar, req));
+                    .extend(PublishPlans.publishStep(in.dir(), req));
         };
+    }
+
+    /** The publish worker's request from the arguments the client resolved. */
+    static PublishPlans.Request request(TailArgs.Publish a) {
+        return new PublishPlans.Request(
+                a.repoUrl(),
+                a.region(),
+                a.endpoint(),
+                a.jar(),
+                a.allowSnapshot(),
+                a.dryRun(),
+                a.keyFile(),
+                a.gpgPassphrase(),
+                a.sigstore(),
+                a.slsa(),
+                a.sbom(),
+                a.credential(),
+                a.central(),
+                a.publishingType());
+    }
+
+    /** What a publish pass sent, from its plan's state; null for a plan that published nothing. */
+    public static ModuleOutcome.@Nullable Published outcomeOf(BuildPlan plan) {
+        String destination = plan.get(PublishPlans.DESTINATION).orElse(null);
+        if (destination == null) return null;
+        PublishPlans.Deployment deployment = plan.get(PublishPlans.DEPLOYMENT).orElse(null);
+        return new ModuleOutcome.Published(
+                destination,
+                plan.get(PublishPlans.DRY_RUN).orElse(false),
+                Math.max(plan.get(PublishPlans.FILES).orElse(0), 0),
+                plan.get(PublishPlans.WRITTEN).orElse(List.of()),
+                plan.get(PublishPlans.BUNDLE).orElse(List.of()),
+                deployment == null ? null : deployment.id(),
+                deployment == null ? null : deployment.state(),
+                deployment == null ? List.of() : deployment.errors());
     }
 
     private static JkBuild manifest(Path buildFile) {

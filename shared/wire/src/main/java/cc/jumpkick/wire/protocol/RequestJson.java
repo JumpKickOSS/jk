@@ -114,6 +114,11 @@ final class RequestJson {
         return this;
     }
 
+    /** A nested JSON object or array, verbatim; absent when null. */
+    RequestJson optionalToken(String name, @Nullable String jsonToken) {
+        return jsonToken == null ? this : token(name, jsonToken);
+    }
+
     RequestJson optionalTool(@Nullable String tool, @Nullable String version) {
         return tool == null || tool.isBlank() ? this : string("tool", tool).string("version", version, "");
     }

@@ -255,13 +255,7 @@ public final class EngineProtocol {
      */
     public static final String HEARTBEAT = "heartbeat";
 
-    /** Client → server: single-project test plan ({@code jk test}). */
-    public static final String TEST_REQUEST = "test-request";
-
-    /** Client → server: single-project build; same wire shape as {@link #TEST_REQUEST}. */
-    public static final String SINGLE_BUILD_REQUEST = "single-build-request";
-
-    /** The {@code dir} tag {@link #TEST_REQUEST}/{@link #SINGLE_BUILD_REQUEST}'s single plan events carry. */
+    /** The {@code dir} tag a single (non-workspace) plan's events carry. */
     public static final String SINGLE_PLAN_DIR = "";
 
     /**
@@ -509,12 +503,6 @@ public final class EngineProtocol {
     /** Server → client, repeated: one file's format result ({@code changed}/{@code clean}/{@code error}). */
     public static final String FORMAT_FILE = "format-file";
 
-    /** Client → server: publish artifacts ({@code jk publish}); credentials ride the request. */
-    public static final String PUBLISH_REQUEST = "publish-request";
-
-    /** Client → server: build an OCI image ({@code jk image}). */
-    public static final String IMAGE_REQUEST = "image-request";
-
     /** Client → server: Maven/Gradle → {@code jk.toml} ({@code jk import}). */
     public static final String IMPORT_REQUEST = "import-request";
 
@@ -561,21 +549,6 @@ public final class EngineProtocol {
     public static final String MVN_RESULTS_RESULT = "mvn-results-result";
 
     // ---- hosted plan commands ------------------------------------------------------------------
-
-    /** Client → server: type-check ({@code jk compile}); single-plan shape. */
-    public static final String COMPILE_REQUEST = "compile-request";
-
-    /** Client → server: native-image ({@code jk native}); Graal homes resolved client-side. */
-    public static final String NATIVE_REQUEST = "native-request";
-
-    /**
-     * Client → server: observe a full-app run under the tracing agent ({@code jk train}); Graal home
-     * resolved client-side when available.
-     */
-    public static final String TRAIN_REQUEST = "train-request";
-
-    /** Client → server: build + cache install ({@code jk install}); launcher write is client-side. */
-    public static final String INSTALL_REQUEST = "install-request";
 
     /** Client → server: materialize a git checkout for {@code jk install <git-url>}. */
     public static final String GIT_FETCH_REQUEST = "git-fetch-request";

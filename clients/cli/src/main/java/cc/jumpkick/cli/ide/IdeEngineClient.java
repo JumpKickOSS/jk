@@ -6,6 +6,7 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.config.DebugJvm;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.lock.ManifestPaths;
@@ -15,7 +16,6 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskStatus;
-import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.IdeWireModel;
@@ -152,105 +152,26 @@ public class IdeEngineClient {
         return new SyncOutcome(success, fetched[0], upToDate[0], List.copyOf(errors));
     }
 
-    /**
-     * Run a build with structured module/step events for the IDE progress UI. Non-workspace
-     * projects use a single-module build; workspace roots use the workspace cascade.
-     */
+    /** A build with structured module/step events for the IDE progress UI. */
     public BuildOutcome build(@Nullable BuildListener listener) throws IOException {
-        BuildListener progress = listener == null ? BuildListener.NOOP : listener;
-
-        ProjectInfo info = projectInfo();
-        if (info.error() != null && !info.error().isBlank()) {
-            return new BuildOutcome(false, 0, 0, List.of(info.error()));
-        }
-        List<String> errors = new ArrayList<>();
-        int[] modules = {0};
-        int[] failed = {0};
-        if (info.workspaceRoot()) {
-            WorkspaceRequest req =
-                    new WorkspaceRequest(projectDir, cacheDir, jdksDir, 1, null, false, false, 0, null, true, true);
-            WorkspaceBuildListener wbl = new WorkspaceBuildListener() {
-                @Override
-                public void onPlan(List<ModulePlan> plan) {
-                    modules[0] = plan.size();
-                    progress.onPlan(plan.size());
-                }
-
-                @Override
-                public BuildPlanListener onModuleStart(ModulePlan module) {
-                    progress.onModuleStart(module.coord(), module.dir());
-                    List<Task> steps =
-                            module.plan() == null ? List.of() : module.plan().steps();
-                    return progressListener(progress, steps);
-                }
-
-                @Override
-                public void onModuleFinish(ModuleOutcome outcome) {
-                    if (!outcome.success()) failed[0]++;
-                    progress.onModuleFinish(outcome.coord(), outcome.success());
-                }
-
-                @Override
-                public void onWorkspaceFinish(WorkspaceResult result) {
-                    if (result.errors() != null) errors.addAll(result.errors());
-                }
-            };
-            WorkspaceResult ws = EngineClient.buildWorkspace(EnginePaths.current(), req, wbl);
-            return new BuildOutcome(ws.success(), modules[0], failed[0], List.copyOf(errors));
-        }
-        // Single-module projects: surface the same module boundary callbacks workspaces get.
-        String coord =
-                info.coord() != null && !info.coord().isBlank() ? info.coord() : info.group() + ":" + info.name();
-        progress.onModuleStart(coord, projectDir);
-        BuildPlanResult r = EngineClient.runSingleBuild(
-                EnginePaths.current(),
-                new EngineRequests.SingleBuildRequest(
-                        projectDir, cacheDir, jdksDir, 1, null, false, false, false, false),
-                steps -> progressListener(progress, steps),
-                null,
-                null);
-        for (var d : r.errors()) errors.add(d.message());
-        progress.onModuleFinish(coord, r.success());
-        return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors), warningMessages(r));
+        return run(null, false, listener == null ? BuildListener.NOOP : listener, null, null);
     }
 
-    /**
-     * Build a single module directory. When {@code moduleDir} is null, same as
-     * {@link #build(BuildListener)}. Workspace roots still cascade when {@code moduleDir} is null.
-     */
+    /** Build one module and its prerequisites; {@code moduleDir} null builds the whole project. */
     public BuildOutcome buildModule(@Nullable Path moduleDir, @Nullable BuildListener listener) throws IOException {
-        if (moduleDir == null) return build(listener);
-        BuildListener progress = listener == null ? BuildListener.NOOP : listener;
-        Path mod = moduleDir.toAbsolutePath().normalize();
-        String coord = mod.getFileName() != null ? mod.getFileName().toString() : mod.toString();
-        progress.onModuleStart(coord, mod);
-        List<String> errors = new ArrayList<>();
-        BuildPlanResult r = EngineClient.runSingleBuild(
-                EnginePaths.current(),
-                new EngineRequests.SingleBuildRequest(mod, cacheDir, jdksDir, 1, null, false, false, false, false),
-                steps -> progressListener(progress, steps),
-                null,
-                null);
-        for (var d : r.errors()) errors.add(d.message());
-        progress.onModuleFinish(coord, r.success());
-        return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors), warningMessages(r));
+        return run(moduleDir, false, listener == null ? BuildListener.NOOP : listener, null, null);
     }
 
-    /**
-     * Run the test plan for a module BSP {@code buildTarget/test}). When
-     * {@code moduleDir} is null on a workspace root, cascades every module (mirrors {@link
-     * #build(BuildListener)}). When null on a single project, tests that project. Uses the same
-     * engine path as {@code jk test}.
-     */
+    /** BSP {@code buildTarget/test}: the module's tests; {@code moduleDir} null tests the whole project. */
     public BuildOutcome testModule(@Nullable Path moduleDir, @Nullable BuildListener listener) throws IOException {
         return testModule(moduleDir, listener, null, null);
     }
 
     /**
-     * Run tests with optional suite/tag selection (BSP {@code data} / CLI TestSelection) and an
-     * optional JDWP listener for the test JVM. {@code selection} null → session default (usually
-     * suite {@code test} only); {@code debug} null → no listener. A workspace runs its modules one
-     * after another, so under {@code debug} each module's suite takes the same address in turn.
+     * Tests with optional suite/tag selection (BSP {@code data} / CLI TestSelection) and an optional
+     * JDWP listener for the test JVM. {@code selection} null → the session's; {@code debug} null →
+     * no listener. Under {@code debug} modules run one at a time, so each suite takes the address
+     * in turn.
      */
     public BuildOutcome testModule(
             @Nullable Path moduleDir,
@@ -258,79 +179,76 @@ public class IdeEngineClient {
             @Nullable TestSelection selection,
             @Nullable DebugJvm debug)
             throws IOException {
-        BuildListener progress = listener == null ? BuildListener.NOOP : listener;
-        if (moduleDir == null) {
-            ProjectInfo info = projectInfo();
-            if (info.error() != null && !info.error().isBlank()) {
-                return new BuildOutcome(false, 0, 0, List.of(info.error()));
-            }
-            if (info.workspaceRoot()) {
-                return testWorkspace(progress, selection, debug);
-            }
-        }
-        Path mod = moduleDir == null ? projectDir : moduleDir.toAbsolutePath().normalize();
-        return testOneModule(mod, progress, selection, debug);
+        return run(moduleDir, true, listener == null ? BuildListener.NOOP : listener, selection, debug);
     }
 
-    /** Sequential per-module {@code jk test} for a workspace root. */
-    private BuildOutcome testWorkspace(
-            BuildListener progress, @Nullable TestSelection selection, @Nullable DebugJvm debug) throws IOException {
-        IdeWireModel model = ideModel();
-        List<String> dirs = model != null && model.moduleDirs() != null ? model.moduleDirs() : List.of();
-        if (dirs.isEmpty()) {
-            // No module list — fall back to testing the workspace root directory alone.
-            return testOneModule(projectDir, progress, selection, debug);
+    /**
+     * One run through the engine's one build path, as {@code jk build} and {@code jk test} take
+     * it: the project as a workspace (a lone project is a workspace of one), narrowed to {@code
+     * moduleDir} and its prerequisites when one is named.
+     */
+    private BuildOutcome run(
+            @Nullable Path moduleDir,
+            boolean testOnly,
+            BuildListener progress,
+            @Nullable TestSelection selection,
+            @Nullable DebugJvm debug)
+            throws IOException {
+        ProjectInfo info = projectInfo();
+        if (info.error() != null && !info.error().isBlank()) {
+            return new BuildOutcome(false, 0, 0, List.of(info.error()));
         }
-        int modules = 0;
-        int failed = 0;
+        List<String> modules =
+                moduleDir == null || moduleDir.toAbsolutePath().normalize().equals(projectDir)
+                        ? List.of()
+                        : List.of(moduleDir.toAbsolutePath().normalize().toString());
+        Session session = SessionContext.current();
+        Session scoped = session.withDebugJvm(debug)
+                .withParallelTests(debug == null && session.parallelTests())
+                .withTestSelection(selection != null ? selection : session.testSelection());
+        WorkspaceRequest req = new WorkspaceRequest(
+                        projectDir, cacheDir, jdksDir, 1, null, false, false, debug != null ? 1 : 0, null, true, true)
+                .withModules(modules)
+                .withTestOnly(testOnly);
         List<String> errors = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
-        for (String d : dirs) {
-            if (d == null || d.isBlank()) continue;
-            Path mod = Path.of(d);
-            modules++;
-            BuildOutcome o = testOneModule(mod, progress, selection, debug);
-            if (!o.success()) {
-                failed++;
-                if (o.errors() != null) errors.addAll(o.errors());
+        int[] planned = {0};
+        int[] failed = {0};
+        WorkspaceBuildListener wbl = new WorkspaceBuildListener() {
+            @Override
+            public void onPlan(List<ModulePlan> plan) {
+                planned[0] = plan.size();
+                progress.onPlan(plan.size());
             }
-            if (o.warnings() != null) warnings.addAll(o.warnings());
-        }
-        return new BuildOutcome(failed == 0, modules, failed, List.copyOf(errors), List.copyOf(warnings));
-    }
 
-    private BuildOutcome testOneModule(
-            Path mod, BuildListener progress, @Nullable TestSelection selection, @Nullable DebugJvm debug)
-            throws IOException {
-        String coord = mod.getFileName() != null ? mod.getFileName().toString() : mod.toString();
-        progress.onModuleStart(coord, mod);
-        List<String> errors = new ArrayList<>();
-        TestSummary[] testOut = new TestSummary[1];
-        var session = SessionContext.current();
-        var sel = selection != null ? selection : session.testSelection();
-        BuildPlanResult r = EngineClient.runTest(
-                EnginePaths.current(),
-                new EngineRequests.TestRequest(
-                        mod,
-                        cacheDir,
-                        jdksDir,
-                        1,
-                        null,
-                        false,
-                        session.offline(),
-                        session.force(),
-                        // One listener, one JVM at a time.
-                        debug == null && session.parallelTests(),
-                        sel,
-                        debug),
-                steps -> progressListener(progress, steps),
-                testOut);
-        for (var d : r.errors()) errors.add(d.message());
-        if (!r.success() && testOut[0] != null && !testOut[0].allPassed() && errors.isEmpty()) {
-            errors.add("tests failed: " + testOut[0].failed() + " failed / " + testOut[0].total() + " total");
+            @Override
+            public BuildPlanListener onModuleStart(ModulePlan module) {
+                progress.onModuleStart(module.coord(), module.dir());
+                List<Task> steps =
+                        module.plan() == null ? List.of() : module.plan().steps();
+                return progressListener(progress, steps, warnings);
+            }
+
+            @Override
+            public void onModuleFinish(ModuleOutcome outcome) {
+                if (!outcome.success()) failed[0]++;
+                progress.onModuleFinish(outcome.coord(), outcome.success());
+            }
+
+            @Override
+            public void onWorkspaceFinish(WorkspaceResult result) {
+                if (result.errors() != null) errors.addAll(result.errors());
+            }
+        };
+        WorkspaceResult ws;
+        try {
+            ws = SessionContext.where(scoped, () -> EngineClient.buildWorkspace(EnginePaths.current(), req, wbl));
+        } catch (IOException | RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException(e);
         }
-        progress.onModuleFinish(coord, r.success());
-        return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors), warningMessages(r));
+        return new BuildOutcome(ws.success(), planned[0], failed[0], List.copyOf(errors), List.copyOf(warnings));
     }
 
     /**
@@ -427,7 +345,20 @@ public class IdeEngineClient {
     }
 
     private static BuildPlanListener progressListener(ProgressListener progress, List<Task> steps) {
+        return progressListener(progress, steps, new ArrayList<>());
+    }
+
+    /** As above, collecting each step warning's message into {@code warnings}. */
+    private static BuildPlanListener progressListener(
+            ProgressListener progress, List<Task> steps, List<String> warnings) {
         return new BuildPlanListener() {
+            @Override
+            public void warn(String step, String code, String message) {
+                synchronized (warnings) {
+                    warnings.add(message);
+                }
+            }
+
             @Override
             public void planStart(BuildPlanView view) {
                 int n = steps == null ? 0 : steps.size();
@@ -484,13 +415,6 @@ public class IdeEngineClient {
         default void onModuleStart(String coord, Path dir) {}
 
         default void onModuleFinish(String coord, boolean success) {}
-    }
-
-    /** {@code BuildPlanResult} keeps warnings as a second list; dropping it hid every compiler warning from the IDE. */
-    private static List<String> warningMessages(BuildPlanResult r) {
-        List<String> warnings = new ArrayList<>();
-        for (var d : r.warnings()) warnings.add(d.message());
-        return List.copyOf(warnings);
     }
 
     public record SyncOutcome(boolean success, long fetched, long upToDate, List<String> errors) {}

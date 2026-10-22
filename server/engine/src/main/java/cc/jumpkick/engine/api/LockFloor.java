@@ -24,16 +24,7 @@ public final class LockFloor {
      * Artifact-producing request types guarded by the floor. Reads (tree, why, history …) and
      * lock rewrites stay served — a re-lock by a current jk is how a checkout moves forward.
      */
-    public static final Set<String> GUARDED = Set.of(
-            EngineProtocol.BUILD_REQUEST,
-            EngineProtocol.TEST_REQUEST,
-            EngineProtocol.SINGLE_BUILD_REQUEST,
-            EngineProtocol.COMPILE_REQUEST,
-            EngineProtocol.NATIVE_REQUEST,
-            EngineProtocol.TRAIN_REQUEST,
-            EngineProtocol.IMAGE_REQUEST,
-            EngineProtocol.INSTALL_REQUEST,
-            EngineProtocol.PUBLISH_REQUEST);
+    public static final Set<String> GUARDED = Set.of(EngineProtocol.BUILD_REQUEST);
 
     /**
      * The floor when it exceeds {@code running}, else {@code null} (no lock, no floor,

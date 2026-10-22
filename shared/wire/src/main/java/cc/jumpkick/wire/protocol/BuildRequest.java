@@ -3,6 +3,7 @@ package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.wire.runtime.TailArgs;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,12 +35,11 @@ public record BuildRequest(
         @Nullable String workspaceTarget,
         Map<String, String> graalHomes,
         /**
-         * Install / reshelve: the client-resolved local Maven repo root ({@code --m2-dir}). Rides
-         * the wire for the same reason {@code graalHomes} does — the daemon does not inherit the
-         * caller's environment, so a spec rebuilt without this falls back to the <em>engine's</em>
-         * {@code ~/.m2} and a redirected install writes the real one.
+         * The goal's own arguments ({@code --m2-dir}, native main, image target, publish
+         * destination and credential). They ride the wire for the same reason {@code graalHomes}
+         * does: the daemon does not inherit the caller's environment.
          */
-        @Nullable String m2Dir,
+        @Nullable TailArgs tail,
         /** Who started the build ({@code cli}, {@code web}, {@code ci}, …); the requester's answer, journaled as such. */
         @Nullable String trigger,
         /** Progress-bar mode the requester's environment asked for; null for auto. */
@@ -82,7 +82,7 @@ public record BuildRequest(
             boolean keepGoing,
             @Nullable String workspaceTarget,
             Map<String, String> graalHomes,
-            @Nullable String m2Dir,
+            @Nullable TailArgs tail,
             @Nullable String trigger,
             @Nullable String progressMode) {
         this(
@@ -107,7 +107,7 @@ public record BuildRequest(
                 keepGoing,
                 workspaceTarget,
                 graalHomes,
-                m2Dir,
+                tail,
                 trigger,
                 progressMode,
                 false,
@@ -138,7 +138,7 @@ public record BuildRequest(
                 .optionalTrue("keepGoing", keepGoing)
                 .optionalNonBlankString("workspaceTarget", workspaceTarget)
                 .optionalMap("graalHomes", graalHomes)
-                .optionalNonBlankString("m2Dir", m2Dir)
+                .optionalToken("tail", tail == null ? null : TailArgsJson.encode(tail))
                 .optionalNonBlankString("trigger", trigger)
                 .optionalNonBlankString("progressMode", progressMode)
                 .optionalTrue(ProtoJobs.COVERAGE, coverage)
@@ -171,7 +171,7 @@ public record BuildRequest(
                 Jsonl.bool(json, "keepGoing", false),
                 Jsonl.str(json, "workspaceTarget"),
                 Jsonl.strMap(json, "graalHomes"),
-                Jsonl.str(json, "m2Dir"),
+                TailArgsJson.decode(Jsonl.nested(json, "tail")),
                 Jsonl.str(json, "trigger"),
                 Jsonl.str(json, "progressMode"),
                 Jsonl.bool(json, ProtoJobs.COVERAGE, false),

@@ -8,9 +8,8 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildGraph;
-import cc.jumpkick.runtime.Tail;
-import cc.jumpkick.runtime.base.PublishPlans;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
+import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
@@ -22,7 +21,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -167,42 +165,31 @@ class LifecycleParityTest {
                     case NATIVE -> WorkspaceSpec.nativeImage(Set.of(app), Map.of(app, graal), null, List.of());
                     case IMAGE -> WorkspaceSpec.image(Set.of(app), null, null, null, "", null);
                     case INSTALL -> WorkspaceSpec.install(Set.of(), Map.of(), tmp.resolve("m2"));
-                    case TRAIN ->
-                        new WorkspaceSpec(
-                                target, Set.of(app), Map.of(), null, List.of(), null, null, null, null, null, null);
+                    case TRAIN -> WorkspaceSpec.train(Set.of(app), Map.of(), null, false);
+                    case PUBLISH ->
+                        WorkspaceSpec.publish(
+                                Set.of(),
+                                new TailArgs.Publish(
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        false,
+                                        true,
+                                        null,
+                                        null,
+                                        false,
+                                        false,
+                                        false,
+                                        RepoCredential.ANONYMOUS,
+                                        false,
+                                        null));
                     default -> WorkspaceSpec.of(target);
                 };
         WorkspaceRequest request = new WorkspaceRequest(
                         tmp, tmp.resolve("cache"), null, 0, null, skipTests, false, 0, null, false, false)
                 .withSpec(spec);
-        return ModulePipeline.plan(
-                unit, request, moduleDirs, false, Set.of(), Set.of(), SiblingArtifacts.NONE, tail(target, unit));
-    }
-
-    /** TRAIN and PUBLISH carry engine-side arguments, so their verbs hand the planner the tail. */
-    private @Nullable Tail tail(WorkspaceTarget target, BuildGraph.BuildUnit unit) {
-        return switch (target) {
-            case TRAIN -> TrainPlans.tail(unit.manifest(), null, Path.of(System.getProperty("java.home")), null, false);
-            case PUBLISH ->
-                PublishTail.of(
-                        new PublishPlans.Request(
-                                null,
-                                null,
-                                null,
-                                null,
-                                false,
-                                true,
-                                null,
-                                null,
-                                false,
-                                false,
-                                false,
-                                RepoCredential.ANONYMOUS,
-                                false,
-                                null),
-                        tmp.resolve("publisher.jar"));
-            default -> null;
-        };
+        return ModulePipeline.plan(unit, request, moduleDirs, false, Set.of(), Set.of(), SiblingArtifacts.NONE);
     }
 
     private Path module(String name, String type, String extra, String body) throws Exception {

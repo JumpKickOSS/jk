@@ -110,7 +110,8 @@ public sealed interface EngineEvent {
             boolean didWork,
             boolean cancelled,
             ModuleOutcome.@Nullable Image image,
-            ModuleOutcome.@Nullable Shelved shelved)
+            ModuleOutcome.@Nullable Shelved shelved,
+            ModuleOutcome.@Nullable Published published)
             implements EngineEvent {}
 
     record Eta(long remainingMs) implements EngineEvent {}

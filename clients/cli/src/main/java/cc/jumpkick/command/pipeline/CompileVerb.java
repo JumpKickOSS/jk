@@ -2,20 +2,16 @@
 package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.engine.EngineRequests;
-import cc.jumpkick.cli.engine.ProjectInfos;
-import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 
 /**
  * {@code jk compile}: main and test sources compiled with the same incremental cache as {@code jk
@@ -59,7 +55,8 @@ final class CompileVerb implements BuildVerb {
     @Override
     public WorkspaceResult workspace(BuildRun run, Path entryDir, List<String> modules, WorkspaceBuildListener listener)
             throws IOException {
-        return EngineClient.runCompileWorkspace(EnginePaths.current(), request(run, entryDir, modules), listener);
+        return EngineClient.buildWorkspace(
+                EnginePaths.current(), run.request(entryDir, modules, WorkspaceSpec.compile(Set.of())), listener);
     }
 
     @Override
@@ -69,34 +66,7 @@ final class CompileVerb implements BuildVerb {
                 r -> BuildTails.failureTail(WorkspaceRunView.failedSubject(r, "compile"), startNanos));
     }
 
-    @Override
-    public int single(BuildRun run, Path dir) {
-        long start = Clock.SYSTEM.nanos();
-        ConsoleSpec spec = new ConsoleSpec(words.name(), r -> doneLine(start), r -> "Compilation failed");
-        String module = ProjectInfos.buildTarget(ManifestPaths.manifestIn(dir), dir);
-        return run.settleSingle(
-                spec,
-                module,
-                null,
-                listeners -> EngineClient.runCompile(EnginePaths.current(), request(run, dir, List.of()), listeners));
-    }
-
     private String doneLine(long startNanos) {
         return Theme.colorize(done, Theme.active().focused()) + " " + BuildTails.elapsedSince(startNanos);
-    }
-
-    private static EngineRequests.CompileRequest request(BuildRun run, Path dir, List<String> modules) {
-        var session = SessionContext.current();
-        BuildFlags flags = run.flags();
-        return new EngineRequests.CompileRequest(
-                dir,
-                flags.cache(),
-                flags.jdksDir(),
-                flags.profile(),
-                session.offline(),
-                session.force(),
-                run.global().verbose,
-                flags.keepGoing(),
-                modules);
     }
 }

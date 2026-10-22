@@ -71,8 +71,10 @@ public final class NativePlans {
 
     /**
      * Build-family exit-code mapping for a failed module plan: a native-step "main class"
-     * misconfiguration or an image "no-main" diagnostic exits {@link Exit#USAGE}, a test failure
-     * exits 4, a {@code --class} that matched no test {@link Exit#USAGE}, anything else 1. Shared by the workspace path for native AND image terminals.
+     * misconfiguration or an image "no-main" diagnostic exits {@link Exit#USAGE}, a refused SNAPSHOT
+     * publish {@link Exit#DATA_ERR}, a publish with no jar {@link Exit#NO_INPUT}, a test failure
+     * exits 4, a {@code --class} that matched no test {@link Exit#USAGE}, anything else 1. Every
+     * build-like goal's module exits through it.
      */
     public static int failureExitCode(BuildPlan plan, BuildPlanResult result) {
         for (BuildPlanResult.Diagnostic d : result.errors()) {
@@ -84,6 +86,12 @@ public final class NativePlans {
             }
             if ("no-main".equals(d.code())) {
                 return Exit.USAGE;
+            }
+            if ("snapshot".equals(d.code())) {
+                return Exit.DATA_ERR;
+            }
+            if ("missing-jar".equals(d.code())) {
+                return Exit.NO_INPUT;
             }
         }
         var testResult = plan.get(BuildPlanner.TEST_RESULT).orElse(null);

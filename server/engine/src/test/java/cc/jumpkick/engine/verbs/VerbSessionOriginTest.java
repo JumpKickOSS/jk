@@ -46,10 +46,10 @@ class VerbSessionOriginTest {
                 if (src.contains("requestLine") && BUILD_PATH.matcher(src).find()) verbs.add(f);
             }
         }
-        // The scan must have seen the build, test, explain and forecast verbs at least, or an empty
-        // walk would satisfy every assertion below.
+        // The scan must have seen the build, explain and forecast verbs at least, or an empty walk
+        // would satisfy every assertion below.
         assertThat(verbs.stream().map(p -> p.getFileName().toString()))
-                .contains("WorkspaceBuildVerb.java", "TestVerb.java", "ExplainVerb.java", "ForecastVerb.java");
+                .contains("WorkspaceBuildVerb.java", "ExplainVerb.java", "ForecastVerb.java");
         return verbs;
     }
 

@@ -7,7 +7,7 @@ import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.wire.protocol.BuildRequest;
-import cc.jumpkick.wire.protocol.SingleBuildRequest;
+import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.nio.file.Path;
@@ -52,34 +52,8 @@ class EngineJobsEncodeTest {
                 .doesNotContain("debugJvm");
     }
 
-    @Test
-    // The null selection is deliberate: the request normalizes it to the default.
-    @SuppressWarnings("NullAway")
-    void the_single_build_request_carries_a_selection_too() {
-        TestSelection widened = TestSelection.of(List.of(), true, List.of(), List.of(), true);
-
-        String json = new SingleBuildRequest(
-                        "/proj", "/cache", null, 0, null, false, false, false, false, null, widened, null, false)
-                .encode();
-
-        assertThat(SingleBuildRequest.decode(json).selection()).isEqualTo(widened);
-        SingleBuildRequest flagged = SingleBuildRequest.decode(new SingleBuildRequest(
-                        "/proj", "/cache", null, 0, null, false, false, false, false, null, widened, "report", true)
-                .encode());
-        assertThat(flagged.testFailures())
-                .as("a single build carries --test-failures")
-                .isEqualTo("report");
-        assertThat(flagged.skipNode()).as("and --skip-node").isTrue();
-        assertThat(new SingleBuildRequest(
-                                "/proj", "/cache", null, 0, null, false, false, false, false, null, null, null, false)
-                        .encode())
-                .doesNotContain("allSuites");
-    }
-
     /** A package build ships the client-resolved GraalVM home of every always-native module. */
     @Test
-    // The null selection is deliberate: the request normalizes it to the default.
-    @SuppressWarnings("NullAway")
     void graal_homes_ride_the_package_build_request() {
         // The wire carries each path as the platform renders it, so the expectation is the same
         // rendering rather than one platform's spelling of it.
@@ -93,22 +67,6 @@ class EngineJobsEncodeTest {
         BuildRequest back = BuildRequest.decode(json);
         assertThat(back.workspaceTarget()).as("still a plain package build").isNull();
         assertThat(back.graalHomes()).containsEntry(appDir.toString(), graalHome.toString());
-        assertThat(new SingleBuildRequest(
-                                "/proj/app",
-                                "/cache",
-                                null,
-                                0,
-                                null,
-                                false,
-                                false,
-                                false,
-                                false,
-                                "/jdks/graalvm-25",
-                                null,
-                                null,
-                                false)
-                        .encode())
-                .contains("\"graalHome\":\"/jdks/graalvm-25\"");
     }
 
     /**
@@ -125,7 +83,7 @@ class EngineJobsEncodeTest {
         BuildRequest back = BuildRequest.decode(EngineJobs.encodeWorkspaceRequest(req, Session.defaults()));
 
         assertThat(back.workspaceTarget()).isEqualTo("install");
-        assertThat(back.m2Dir()).as("as the platform renders it").isEqualTo(m2.toString());
+        assertThat(back.tail()).as("as the platform renders it").isEqualTo(new TailArgs.Install(m2));
         // Default ~/.m2 stays off the wire, so the engine's own fallback still applies.
         WorkspaceRequest plain = request().withSpec(WorkspaceSpec.install(Set.of(), Map.of(), null));
         assertThat(EngineJobs.encodeWorkspaceRequest(plain, Session.defaults())).doesNotContain("m2Dir");
@@ -139,7 +97,7 @@ class EngineJobsEncodeTest {
         BuildRequest back = BuildRequest.decode(EngineJobs.encodeWorkspaceRequest(req, Session.defaults()));
 
         assertThat(back.workspaceTarget()).isEqualTo("reshelve");
-        assertThat(back.m2Dir()).isEqualTo(m2.toString());
+        assertThat(back.tail()).isEqualTo(new TailArgs.Install(m2));
     }
 
     @Test

@@ -3,8 +3,10 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Redacted;
 import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.wire.protocol.ProtoEvents;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.BufferedWriter;
 import java.util.List;
@@ -68,6 +70,22 @@ final class WorkspaceTerminal {
         }
         host.flushTimeline(rid, writer);
 
+        if (rid > 0) {
+            for (ModuleOutcome module : result.modules()) {
+                ModuleOutcome.Published p = module.published();
+                if (p == null) continue;
+                host.accPublish(
+                        rid,
+                        new BuildRecord.Publish(
+                                p.destination(),
+                                p.files(),
+                                p.dryRun(),
+                                p.deploymentId(),
+                                p.deploymentState(),
+                                p.deploymentErrors(),
+                                p.bundle()));
+            }
+        }
         List<Redacted> errors = host.redactErrors(dir, result.errors());
         if (!succeeded && !cancelled && rid > 0) {
             host.accRunErrors(rid, errors.stream().map(Redacted::text).toList());

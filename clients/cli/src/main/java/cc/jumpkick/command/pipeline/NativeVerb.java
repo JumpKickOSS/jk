@@ -2,14 +2,9 @@
 package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
-import cc.jumpkick.cli.run.BuildPlanConsole;
-import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.Coord;
 import cc.jumpkick.config.EnvValues;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.layout.NativePreflight;
 import cc.jumpkick.lock.ManifestPaths;
@@ -18,13 +13,12 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
-import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -32,6 +26,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
@@ -111,6 +106,7 @@ final class NativeVerb implements BuildVerb {
                         .toList()
                 : null;
         List<Path> candidates = new ArrayList<>();
+        if (run.standalone()) candidates.add(entryDir.toAbsolutePath().normalize());
         for (String rel : rootInfo.moduleDirs()) {
             Path moduleDir = Path.of(rel).isAbsolute()
                     ? Path.of(rel).normalize()
@@ -135,8 +131,10 @@ final class NativeVerb implements BuildVerb {
             throws IOException {
         // The native targets are the engine selection: it expands their build prerequisites only,
         // never the siblings outside the native dependency cone.
-        return EngineClient.runNative(
-                EnginePaths.current(), request(run, entryDir, graalHomes, List.copyOf(graalHomes.keySet())), listener);
+        return EngineClient.buildWorkspace(
+                EnginePaths.current(),
+                run.request(entryDir, modules, WorkspaceSpec.nativeImage(Set.of(), graalHomes, mainClass, extraArgs)),
+                listener);
     }
 
     @Override
@@ -153,57 +151,6 @@ final class NativeVerb implements BuildVerb {
                                 + " "
                                 + BuildTails.elapsedSince(startNanos),
                 r -> BuildTails.failureTail(WorkspaceRunView.failedSubject(r, "native"), startNanos));
-    }
-
-    @Override
-    public int single(BuildRun run, Path dir) throws IOException {
-        var main = NativePreflight.resolveMain(dir, mainClass);
-        if (!(main instanceof NativePreflight.Main.Unique)) {
-            run.fail(NativePreflight.failMessage(main));
-            return Exit.CONFIG;
-        }
-        ProjectInfo info = ProjectInfos.orNull(dir);
-        if (info == null) {
-            run.fail("could not read the project.");
-            return Exit.CONFIG;
-        }
-        String coord = ProjectInfos.buildTarget(ManifestPaths.manifestIn(dir), dir);
-        BuildPlanConsole.Mode mode = run.mode();
-        // The success tail names the built artifact from the engine summary's candidate paths.
-        ConsoleSpec spec = new ConsoleSpec(
-                WORDS.name(),
-                r -> Theme.colorize("Native build successful", Theme.active().success())
-                        + BuildTails.builtArtifact(dir, info),
-                r -> Coord.module(coord).renderLine(),
-                true);
-        var listener = new WorkspaceBuildListener() {
-            @Override
-            public BuildPlanListener onModuleStart(ModulePlan m) {
-                return BuildPlanConsole.chooseConsoleListener(m.plan().steps(), mode, spec, coord);
-            }
-        };
-        WorkspaceResult result = EngineClient.runNative(
-                EnginePaths.current(), request(run, dir, Map.of(dir, graalHome), null), listener);
-        for (String err : result.errors()) run.fail(err);
-        return result.exitCode();
-    }
-
-    private EngineRequests.NativeRequest request(
-            BuildRun run, Path entryDir, Map<Path, Path> homes, @Nullable List<Path> selectedModuleDirs) {
-        var session = SessionContext.current();
-        BuildFlags flags = run.flags();
-        return new EngineRequests.NativeRequest(
-                entryDir,
-                flags.cache(),
-                flags.jdksDir(),
-                mainClass,
-                run.skipTests(),
-                session.offline(),
-                session.force(),
-                run.global().verbose,
-                extraArgs,
-                homes,
-                selectedModuleDirs);
     }
 
     /**

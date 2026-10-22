@@ -4,22 +4,20 @@ package cc.jumpkick.command.pipeline;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
-import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.DebugAttach;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Coord;
+import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.EnvLookup;
-import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
-import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ExecPlan;
@@ -109,6 +107,15 @@ public final class RunVerb implements BuildVerb {
     public WorkspaceRunView.Tails tails(BuildRun run, WorkspaceRunView view, long startNanos) {
         return new WorkspaceRunView.Tails(
                 (r, planned) -> {
+                    if (run.standalone()) {
+                        try {
+                            return execTail(
+                                    run.global().workingDir(),
+                                    execPlan(run.global().workingDir()));
+                        } catch (IOException e) {
+                            return "Executing";
+                        }
+                    }
                     int n = Math.max(planned, r.modules().size());
                     return n + (n == 1 ? " module ready" : " modules ready");
                 },
@@ -116,57 +123,6 @@ public final class RunVerb implements BuildVerb {
                         ? "workspace build failed"
                         : r.errors().getFirst(),
                 true);
-    }
-
-    @Override
-    public int single(BuildRun run, Path dir) {
-        String coord = ProjectInfos.buildTarget(ManifestPaths.manifestIn(dir), dir);
-        // In chip modes the build settles as the ▶ Run wedge with "Executing `java …`"; a build that
-        // succeeded with nothing runnable settles red with the sentence that names why.
-        ConsoleSpec spec = new ConsoleSpec(
-                WORDS.name(),
-                r -> {
-                    try {
-                        return execTail(dir, execPlan(dir));
-                    } catch (IOException e) {
-                        return "Executing";
-                    }
-                },
-                r -> Coord.module(coord).renderLine(),
-                true,
-                true,
-                r -> {
-                    if (!r.success()) return null;
-                    try {
-                        execPlan(dir);
-                        return null;
-                    } catch (EntryPointUnresolvedException e) {
-                        return mainIssueSentence(e.issue(), coord);
-                    } catch (IOException e) {
-                        return null;
-                    }
-                });
-        BuildFlags flags = run.flags();
-        var session = SessionContext.current();
-        var request = new EngineRequests.SingleBuildRequest(
-                dir,
-                flags.cache(),
-                flags.jdksDir(),
-                flags.workers(),
-                flags.profile(),
-                run.skipTests(),
-                run.global().verbose,
-                session.offline(),
-                session.force(),
-                run.variant(),
-                run.clientEnv());
-        var tests = new TestSummary[1];
-        return run.settleSingle(
-                spec,
-                coord,
-                tests,
-                listeners ->
-                        EngineClient.runSingleBuild(EnginePaths.current(), request, listeners, tests, new String[1]));
     }
 
     /**
@@ -198,11 +154,9 @@ public final class RunVerb implements BuildVerb {
                 return Exit.USAGE;
             }
         } catch (EntryPointUnresolvedException e) {
-            // A chip settled with this exact failure already; VERBOSE/JSON print no chip, so give
-            // them the plain text instead of leaving the command silent.
-            if (mode == BuildPlanConsole.Mode.VERBOSE || mode == BuildPlanConsole.Mode.JSON) {
-                CommandWedge.printFail("Run", e.getMessage());
-            }
+            String coord = ProjectInfos.buildTarget(ManifestPaths.manifestIn(projectDir), projectDir);
+            CommandWedge.printLine(
+                    JkWedge.failureLineCustom("Run", GlobalConfig.nerdFont(), mainIssueSentence(e.issue(), coord)));
             return Exit.DATA_ERR;
         } catch (IOException e) {
             CommandWedge.printFail("Run", e.getMessage());
