@@ -199,7 +199,38 @@ A planted dereference then fails the build with NullAway's diagnostic in `target
 Widget.java:7: error: [NullAway] dereferenced expression 'label' is @Nullable
 ```
 
-Kotlin compiler plugins are `[[kotlin-plugins]]`, a separate table.
+Kotlin compiler plugins are `[[kotlin-plugins]]`, [below](#kotlin-compiler-plugins-kotlin-plugins).
+
+## Kotlin compiler plugins (`[[kotlin-plugins]]`)
+
+Each `[[kotlin-plugins]]` entry loads one Kotlin compiler plugin into the module's Kotlin
+compiles, main and test. The plugin jar is fetched from the module's repositories, and the
+entry is a compile input: adding, removing or changing one recompiles the module.
+
+| Key | Meaning | Default |
+|---|---|---|
+| `coordinate` | The plugin jar, `group:artifact[:version]`. Without a version it is the module's Kotlin compiler version, which every `org.jetbrains.kotlin` plugin is released at. Name the `-embeddable` artifact: jk compiles with the embeddable compiler | required |
+| `id` | The plugin's registered id, the `<id>` in kotlinc's `-P plugin:<id>:<key>=<value>` (`org.jetbrains.kotlin.allopen`). Options reach the plugin only under its own id, so set it whenever `options` is set | the artifact name |
+| `options` | The plugin's options, each `"key=value"`, as kotlinc's `-P plugin:<id>:key=value` takes them | `[]` |
+
+```toml
+# kotlinx.serialization: generated serializers; no options, so no id.
+[[kotlin-plugins]]
+coordinate = "org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable"
+
+# all-open over classes annotated @com.acme.Open, at an exact compiler-plugin version.
+[[kotlin-plugins]]
+id         = "org.jetbrains.kotlin.allopen"
+coordinate = "org.jetbrains.kotlin:kotlin-allopen-compiler-plugin-embeddable:2.4.21"
+options    = ["annotation=com.acme.Open"]
+
+[dependencies]
+kotlinx-serialization-json = "1.12.0"
+```
+
+Framework plugins contribute their own: `[spring-boot]` adds all-open with the `spring` preset,
+and no-arg with the `jpa` preset when `jakarta.persistence-api` is on the classpath, so a Boot
+module declares neither.
 
 ## Debug info
 

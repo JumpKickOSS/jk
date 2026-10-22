@@ -517,8 +517,28 @@
       "description": "[forge] table; keys are documented in docs/user."
     },
     "kotlin-plugins": {
-      "type": "object",
-      "description": "[kotlin-plugins] table; keys are documented in docs/user."
+      "type": "array",
+      "description": "[[kotlin-plugins]]: Kotlin compiler plugins loaded into the module's Kotlin compiles, one table per plugin. A compile input.",
+      "items": {
+        "type": "object",
+        "required": ["coordinate"],
+        "properties": {
+          "coordinate": {
+            "type": "string",
+            "description": "The plugin jar, group:artifact[:version]; without a version, the module's Kotlin compiler version. Name the -embeddable artifact."
+          },
+          "id": {
+            "type": "string",
+            "description": "The plugin's registered id, the <id> in kotlinc's -P plugin:<id>:<key>=<value>; set it whenever options is set. Defaults to the artifact name."
+          },
+          "options": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "The plugin's options, each \"key=value\", as kotlinc's -P plugin:<id>:key=value takes them."
+          }
+        },
+        "additionalProperties": false
+      }
     },
     "javac": {
       "type": "object",

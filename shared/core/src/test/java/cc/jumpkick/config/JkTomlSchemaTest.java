@@ -128,6 +128,19 @@ class JkTomlSchemaTest {
     }
 
     @Test
+    void kotlin_plugins_is_an_array_of_tables_with_the_parser_s_keys() throws Exception {
+        String schema = Files.readString(SCHEMA);
+        String plugins = table(table(schema, "properties"), "kotlin-plugins");
+        assertThat(plugins.replaceAll("\\s", "")).startsWith("{\"type\":\"array\"");
+        String entry = table(plugins, "items");
+        assertThat(keysOf(table(entry, "properties")))
+                .containsExactlyInAnyOrderElementsOf(ManifestBuild.KOTLIN_PLUGIN_KEYS);
+        assertThat(Jsonl.bool(entry, "additionalProperties", true))
+                .as("an unknown key on a [[kotlin-plugins]] entry is what an editor should flag")
+                .isFalse();
+    }
+
+    @Test
     void dokka_properties_are_exactly_the_parser_s_dokka_keys() throws Exception {
         String schema = Files.readString(SCHEMA);
         String dokka = table(table(schema, "properties"), "dokka");
