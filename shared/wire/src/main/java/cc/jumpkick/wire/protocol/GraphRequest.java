@@ -10,7 +10,10 @@ import org.jspecify.annotations.Nullable;
  * {@code query}, {@code explain}, {@code path}, {@code node}, {@code neighbors}, {@code community},
  * {@code god-nodes}, {@code stats} or {@code report}; {@code args} are its positionals. Every read
  * refreshes the graph first unless {@code noRefresh}; {@code rebuild} discards stored fragments.
- * {@code mode} is {@code bfs} or {@code dfs}, breadth-first when unset.
+ * {@code mode} is {@code bfs} or {@code dfs}, breadth-first when unset. {@code scope} is path globs
+ * ({@code ;} between them, {@code !} excludes), {@code modules} a module selector as {@code -m} takes
+ * it, {@code sourceSet} {@code main} or {@code test}; {@code options} are an operation's named
+ * settings as {@code key=value} ({@code view} for {@code read}, the filters for {@code find}).
  */
 public record GraphRequest(
         @Nullable String dir,
@@ -26,11 +29,16 @@ public record GraphRequest(
         int topN,
         @Nullable String relation,
         boolean rebuild,
-        boolean noRefresh) {
+        boolean noRefresh,
+        @Nullable String scope,
+        @Nullable String modules,
+        @Nullable String sourceSet,
+        List<String> options) {
 
     public GraphRequest {
         args = List.copyOf(args);
         contexts = List.copyOf(contexts);
+        options = List.copyOf(options);
     }
 
     public String encode() {
@@ -49,6 +57,10 @@ public record GraphRequest(
                 .optionalString("relation", relation)
                 .bool("rebuild", rebuild)
                 .bool("noRefresh", noRefresh)
+                .optionalString("scope", scope)
+                .optionalString("modules", modules)
+                .optionalString("sourceSet", sourceSet)
+                .array("options", options)
                 .finish();
     }
 
@@ -67,6 +79,10 @@ public record GraphRequest(
                 Jsonl.intValue(json, "topN", 10),
                 Jsonl.str(json, "relation"),
                 Jsonl.bool(json, "rebuild", false),
-                Jsonl.bool(json, "noRefresh", false));
+                Jsonl.bool(json, "noRefresh", false),
+                Jsonl.str(json, "scope"),
+                Jsonl.str(json, "modules"),
+                Jsonl.str(json, "sourceSet"),
+                Jsonl.strArray(json, "options"));
     }
 }

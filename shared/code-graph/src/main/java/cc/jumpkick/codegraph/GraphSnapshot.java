@@ -26,7 +26,8 @@ import org.jspecify.annotations.Nullable;
  * <p>Layout: magic {@code JKGS}, format 1, the key, the string table, the nodes ({@code id, label,
  * file_type, source_file, source_location, extra-as-JSON, community}), the edges ({@code source,
  * target, relation, confidence ordinal, score, source_file, source_location, weight, context,
- * extra-as-JSON}, every string an index, {@code -1} for none), then the community names.
+ * extra-as-JSON}, every string an index, {@code -1} for none), the community names, then the
+ * modules ({@code prefix, compact}) and the stale document references as JSON.
  */
 public final class GraphSnapshot {
 
@@ -104,6 +105,13 @@ public final class GraphSnapshot {
             String name = graph.communityName(c);
             writeString(d, name == null ? "" : name);
         }
+        List<Modules.Module> modules = graph.modules().list();
+        d.writeInt(modules.size());
+        for (Modules.Module m : modules) {
+            writeString(d, m.prefix());
+            d.writeBoolean(m.compact());
+        }
+        writeString(d, MiniJson.write(StaleRef.tree(graph.stale())));
         d.flush();
     }
 
@@ -166,7 +174,13 @@ public final class GraphSnapshot {
             String name = readString(d);
             if (!name.isEmpty()) names.put(c, name);
         }
-        return new Loaded(key, CodeGraph.of(List.of(nodes), edges, community, names));
+        List<Modules.Module> modules = new ArrayList<>();
+        int moduleCount = d.readInt();
+        for (int i = 0; i < moduleCount; i++) modules.add(new Modules.Module(readString(d), d.readBoolean()));
+        CodeGraph graph = CodeGraph.of(List.of(nodes), edges, community, names);
+        graph.modules(new Modules(modules));
+        graph.stale(StaleRef.ofTree(MiniJson.parse(readString(d))));
+        return new Loaded(key, graph);
     }
 
     private static Key readKey(DataInputStream d) throws IOException {

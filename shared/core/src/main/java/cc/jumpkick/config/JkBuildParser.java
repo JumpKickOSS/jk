@@ -658,6 +658,12 @@ public final class JkBuildParser {
         return root == null ? TrainConfig.EMPTY : ManifestTrain.parse(root, String.valueOf(file));
     }
 
+    /** {@code [graph]} — the code graph's settings. {@link GraphConfig#EMPTY} when the table is absent. */
+    public static GraphConfig graphConfig(Path file) {
+        TomlParseResult root = documentIfPresent(file);
+        return root == null ? GraphConfig.EMPTY : ManifestGraph.parse(root);
+    }
+
     /** {@code [jvm]} — worker-fork JVM tuning. {@link PluginTuning#NONE} when the table is absent. */
     public static PluginTuning jvmTuning(Path file) {
         TomlParseResult root = documentIfPresent(file);

@@ -53,6 +53,30 @@ public final class FragmentBuilder {
         nodes.put(id, new GraphNode(id, n.label(), n.fileType(), n.sourceFile(), n.sourceLocation(), extra));
     }
 
+    /**
+     * Records the {@link Decl} facts of a declaration at {@code line} on node {@code id}. Overloads
+     * share one node: the first gives its facts, each later one adds its {@code [line, end]} to
+     * {@code more}.
+     */
+    public void declare(String id, int line, Map<String, Object> facts) {
+        GraphNode n = nodes.get(id);
+        if (n == null) return;
+        Map<String, Object> had = Decl.of(n);
+        if (had.isEmpty()) {
+            nodes.put(id, Decl.with(n, facts));
+            return;
+        }
+        if (line == Decl.line(n) || !(facts.get(Decl.END) instanceof Number end)) return;
+        Map<String, Object> merged = new LinkedHashMap<>(had);
+        List<Object> more = new ArrayList<>();
+        if (had.get(Decl.MORE) instanceof List<?> l) more.addAll(l);
+        more.add(List.of(line, end.intValue()));
+        merged.put(Decl.MORE, List.copyOf(more));
+        Map<String, Object> extra = new LinkedHashMap<>(n.extra());
+        extra.put(Decl.KEY, merged);
+        nodes.put(id, new GraphNode(id, n.label(), n.fileType(), n.sourceFile(), n.sourceLocation(), extra));
+    }
+
     public boolean has(String id) {
         return nodes.containsKey(id);
     }

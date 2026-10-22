@@ -4,7 +4,7 @@ package cc.jumpkick.codegraph;
 import java.util.List;
 
 /** graphify's output budget: about three characters per token, cut at a line boundary with a notice. */
-final class Budget {
+public final class Budget {
 
     private Budget() {}
 
@@ -49,7 +49,7 @@ final class Budget {
     }
 
     /** Plain lines under {@code budget}, cut with a count and {@code hint}. */
-    static String lines(List<String> lines, int budget, String hint) {
+    public static String lines(List<String> lines, int budget, String hint) {
         String output = String.join("\n", lines);
         int chars = budget * CHARS_PER_TOKEN;
         if (output.length() <= chars) return output;

@@ -8,6 +8,8 @@ import cc.jumpkick.codegraph.GraphJson;
 import cc.jumpkick.codegraph.GraphReport;
 import cc.jumpkick.codegraph.GraphSnapshot;
 import cc.jumpkick.codegraph.Linker;
+import cc.jumpkick.codegraph.Modules;
+import cc.jumpkick.codegraph.StaleRef;
 import cc.jumpkick.codegraph.extract.Extractor;
 import cc.jumpkick.codegraph.extract.Extractors;
 import cc.jumpkick.guard.facts.FactsFormat;
@@ -23,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -77,15 +80,22 @@ public final class GraphBuild {
             @Nullable String commit) {}
 
     public static Result refresh(
-            Path root, Path out, List<ClassIndex> indexes, ScriptReader scripts, boolean rebuild, Progress progress)
+            Path root,
+            Path out,
+            List<ClassIndex> indexes,
+            Modules modules,
+            ScriptReader scripts,
+            boolean rebuild,
+            Progress progress)
             throws IOException {
-        return refresh(root, out, indexes, scripts, rebuild, progress, Clock.SYSTEM);
+        return refresh(root, out, indexes, modules, scripts, rebuild, progress, Clock.SYSTEM);
     }
 
     static Result refresh(
             Path root,
             Path out,
             List<ClassIndex> indexes,
+            Modules modules,
             ScriptReader scripts,
             boolean rebuild,
             Progress progress,
@@ -119,7 +129,7 @@ public final class GraphBuild {
             String sha = shas.get(s.rel());
             if (sha != null) stats.put(s, sha);
         }
-        String classDigest = classDigest(indexes);
+        String classDigest = classDigest(indexes, modules);
         String commit = GitHead.read(base);
         String extractors = Extractors.VERSION + (scripts.active() ? "+oxc" : "");
         GraphSnapshot.Key key = new GraphSnapshot.Key(extractors, sources.size(), classDigest, commit);
@@ -177,6 +187,8 @@ public final class GraphBuild {
         int classes = mapClasses(sources, indexes, all);
         progress.phase("link and cluster");
         CodeGraph graph = Linker.link(all);
+        graph.modules(modules);
+        graph.stale(stale(base, graph.stale()));
         Communities.assign(graph);
         progress.phase("write graph");
         write(out, graph, key, commit);
@@ -187,6 +199,19 @@ public final class GraphBuild {
         GraphMemory.savedStore(out, store);
         long millis = (clock.nanos() - start) / 1_000_000;
         return new Result(graph, sources.size(), extracted.get(), classes, out, millis, true, commit);
+    }
+
+    /**
+     * The linker's candidates without links to files that exist outside the graph (images,
+     * licenses, directories), sorted by file and line and cut to {@link StaleRef#LIMIT}.
+     */
+    static List<StaleRef> stale(Path root, List<StaleRef> candidates) {
+        return candidates.stream()
+                .filter(r -> !r.kind().equals(StaleRef.FILE) || !Files.exists(root.resolve(r.target())))
+                .distinct()
+                .sorted(Comparator.comparing(StaleRef::file).thenComparingInt(StaleRef::line))
+                .limit(StaleRef.LIMIT)
+                .toList();
     }
 
     /** The store key of a file's fragment: an oxc read is kept apart from a scanner read of the same bytes. */
@@ -272,10 +297,12 @@ public final class GraphBuild {
         return indexes.stream().mapToInt(ClassIndex::classes).sum();
     }
 
-    private static String classDigest(List<ClassIndex> indexes) {
+    /** The class indexes and the module table a graph was built from: either changing rebuilds it. */
+    private static String classDigest(List<ClassIndex> indexes, Modules modules) {
         List<String> parts = new ArrayList<>();
         for (ClassIndex c : indexes)
             parts.add(c.modulePrefix() + "\t" + c.index().getFileName() + "\t" + c.digest());
+        for (Modules.Module m : modules.list()) parts.add("module\t" + m.prefix() + "\t" + m.compact());
         parts.sort(null);
         return Hashing.sha256Hex(String.join("\n", parts));
     }

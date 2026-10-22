@@ -63,8 +63,16 @@ public final class McpTools {
      * that find code without grepping and reading files, in reading order. Everything else is an
      * extended {@code tools/list}.
      */
-    public static final List<String> LOOP =
-            List.of("run", "diagnostics", "deps", "why", "query_graph", "get_neighbors", "shortest_path", "skill");
+    public static final List<String> LOOP = List.of(
+            "run",
+            "diagnostics",
+            "deps",
+            "why",
+            "query_graph",
+            "read_symbol",
+            "get_neighbors",
+            "shortest_path",
+            "skill");
 
     /** Which rows {@code tools/list} answers. */
     public enum Surface {
@@ -97,6 +105,7 @@ public final class McpTools {
                 + "diagnostics is every problem past the cap (file= for one). deps adds, removes, or pins and relocks. "
                 + "why(coord) is the path and the rule that picked the version. "
                 + "query_graph answers a question about the code with file:line, instead of grep and reads; "
+                + "read_symbol reads a symbol's source (Type.member, Type.*) instead of whole files; "
                 + "get_neighbors and shortest_path follow a symbol from there. skill is the playbook. "
                 + (pinned ? "" : "The first call that carries dir binds the connection. ")
                 + "Other tools: tools/list with extended=true.";

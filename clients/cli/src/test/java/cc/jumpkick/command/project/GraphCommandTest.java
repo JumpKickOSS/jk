@@ -38,6 +38,9 @@ class GraphCommandTest {
                         "neighbors",
                         "community",
                         "god-nodes",
+                        "read",
+                        "find",
+                        "rules",
                         "stats",
                         "report");
     }
@@ -65,6 +68,46 @@ class GraphCommandTest {
     }
 
     @Test
+    void scopeOptionsNarrowTheRead() {
+        Invocation in = Invocation.builder()
+                .addPositional("order")
+                .putValue("scope", "server/**;!**/generated/**")
+                .addValue("modules", "server/engine")
+                .addValue("modules", "shared/*")
+                .putValue("source-set", "main")
+                .build();
+        GraphRequest r = op("query").request(Path.of("/w"), in, false);
+        assertThat(r.scope()).isEqualTo("server/**;!**/generated/**");
+        assertThat(r.modules()).isEqualTo("server/engine,shared/*");
+        assertThat(r.sourceSet()).isEqualTo("main");
+        GraphRequest plain = op("query")
+                .request(
+                        Path.of("/w"),
+                        Invocation.builder().addPositional("order").build(),
+                        false);
+        assertThat(plain.scope()).isNull();
+        assertThat(plain.modules()).isNull();
+        assertThat(plain.sourceSet()).isNull();
+    }
+
+    @Test
+    void readAndFindSettingsTravelByName() {
+        Invocation read = Invocation.builder()
+                .addPositional("OrderService.*")
+                .putValue("view", "structure")
+                .build();
+        assertThat(op("read").request(Path.of("/w"), read, false).options()).containsExactly("view=structure");
+        Invocation find = Invocation.builder()
+                .addPositional("*Service")
+                .putValue("kind", "class,interface")
+                .putValue("annotated", "Transactional")
+                .build();
+        GraphRequest r = op("find").request(Path.of("/w"), find, false);
+        assertThat(r.args()).containsExactly("*Service");
+        assertThat(r.options()).containsExactly("kind=class,interface", "annotated=Transactional");
+    }
+
+    @Test
     void aNonNumberIsRefusedByName() {
         Invocation in = Invocation.builder().putValue("depth", "deep").build();
         assertThatThrownBy(() -> op("query").request(Path.of("/w"), in, false))
@@ -73,7 +116,7 @@ class GraphCommandTest {
 
     @Test
     void theBuildSummaryNamesWhatWasRead() {
-        GraphAck ack = new GraphAck(null, "", 61_304, 167_942, 1_771, 5_419, 0, 4_917, 460, "/w/target/graph");
+        GraphAck ack = new GraphAck(null, "", 61_304, 167_942, 1_771, 5_419, 0, 4_917, 460, "/w/target/graph", null);
         assertThat(GraphOpCommand.summary(ack))
                 .contains(
                         "61,304 nodes · 167,942 edges · 1,771 communities from 5,419 files (none changed, 4,917 classes)");

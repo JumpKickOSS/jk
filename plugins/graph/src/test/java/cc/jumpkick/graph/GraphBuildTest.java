@@ -4,8 +4,12 @@ package cc.jumpkick.graph;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.codegraph.CodeGraph;
+import cc.jumpkick.codegraph.Decl;
 import cc.jumpkick.codegraph.GraphEdge;
 import cc.jumpkick.codegraph.GraphJson;
+import cc.jumpkick.codegraph.GraphNode;
+import cc.jumpkick.codegraph.Modules;
+import cc.jumpkick.codegraph.StaleRef;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
@@ -15,6 +19,7 @@ import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
@@ -124,7 +129,14 @@ class GraphBuildTest {
 
     private static GraphBuild.Result refresh(Path root, boolean rebuild) throws IOException {
         return GraphBuild.refresh(
-                root, root.resolve("target/graph"), indexes(root), NO_NODE, rebuild, GraphBuild.Progress.NONE, LATER);
+                root,
+                root.resolve("target/graph"),
+                indexes(root),
+                Modules.NONE,
+                NO_NODE,
+                rebuild,
+                GraphBuild.Progress.NONE,
+                LATER);
     }
 
     private static boolean edge(CodeGraph g, String from, String to, String relation) {
@@ -158,6 +170,69 @@ class GraphBuildTest {
         String json = Files.readString(r.dir().resolve("graph.json"));
         assertThat(GraphJson.read(json).size()).isEqualTo(g.size());
         assertThat(r.dir().resolve("GRAPH_REPORT.md")).exists();
+    }
+
+    @Test
+    void sourceSpansAndClassFileFactsLandOnOneNode(@TempDir Path dir) throws IOException {
+        CodeGraph g = refresh(workspace(dir), false).graph();
+        String svc = "src_main_java_com_acme_shop_orderservice_orderservice";
+        GraphNode type = Objects.requireNonNull(g.node(svc));
+        assertThat(Decl.kind(type)).isEqualTo("class");
+        assertThat(Decl.vis(type)).isEqualTo("public");
+        assertThat(Decl.end(type)).isEqualTo(23);
+        GraphNode total = Objects.requireNonNull(g.node(svc + "_total"));
+        assertThat(Decl.kind(total)).isEqualTo("method");
+        assertThat(Decl.end(total)).isEqualTo(12);
+        assertThat(total.extra().get("attributes")).asString().contains("signatures");
+        assertThat(Decl.annotations(Objects.requireNonNull(g.node(svc + "_audit"))))
+                .containsExactly("Override");
+        GraphNode log = Objects.requireNonNull(g.node("src_main_java_com_acme_shop_baseservice_baseservice_log"));
+        assertThat(Decl.vis(log)).isEqualTo("protected");
+        GraphNode auditable = Objects.requireNonNull(g.node("src_main_java_com_acme_shop_auditable_auditable"));
+        assertThat(Decl.kind(auditable)).isEqualTo("interface");
+    }
+
+    @Test
+    void graphifyOutMirrorsTheGraphAndIsTakenBackWhenRewritten(@TempDir Path dir) throws IOException {
+        GraphMemory.clear();
+        Path root = workspace(dir);
+        GraphService.Request stats = request("stats");
+        assertThat(GraphService.run(workspace(root, false), stats, GraphBuild.Progress.NONE)
+                        .note())
+                .isNull();
+        assertThat(root.resolve("graphify-out")).doesNotExist();
+
+        assertThat(GraphService.run(workspace(root, true), stats, GraphBuild.Progress.NONE)
+                        .note())
+                .isNull();
+        Path mirror = root.resolve("graphify-out/graph.json");
+        assertThat(mirror).hasSameTextualContentAs(root.resolve("target/graph/graph.json"));
+        assertThat(root.resolve("graphify-out/GRAPH_REPORT.md")).exists();
+        assertThat(GraphService.run(workspace(root, true), stats, GraphBuild.Progress.NONE)
+                        .note())
+                .isNull();
+
+        Files.writeString(mirror, "{\"nodes\": [], \"links\": []}");
+        assertThat(GraphService.run(workspace(root, true), stats, GraphBuild.Progress.NONE)
+                        .note())
+                .contains("changed since jk wrote it");
+        assertThat(mirror).hasSameTextualContentAs(root.resolve("target/graph/graph.json"));
+
+        Files.delete(root.resolve("graphify-out/.jk-graph"));
+        Files.writeString(mirror, "{}");
+        assertThat(GraphService.run(workspace(root, true), stats, GraphBuild.Progress.NONE)
+                        .note())
+                .contains("was not jk's");
+    }
+
+    @Test
+    void aLinkToAFileOutsideTheGraphIsNotStale(@TempDir Path dir) throws IOException {
+        Path root = workspace(dir);
+        Files.writeString(root.resolve("LICENSE"), "Apache-2.0\n");
+        Files.writeString(root.resolve("README.md"), "# Shop\n\nSee [license](LICENSE) and [gone](gone.md).\n");
+        GraphBuild.Result r = refresh(root, false);
+        assertThat(r.graph().stale()).extracting(StaleRef::target).containsExactly("gone.md");
+        assertThat(Files.readString(r.dir().resolve("GRAPH_REPORT.md"))).contains("links to missing `gone.md`");
     }
 
     @Test
@@ -227,8 +302,22 @@ class GraphBuildTest {
     }
 
     private static String run(Path root, GraphService.Request r) throws IOException {
-        return GraphService.run(root, root.resolve("target/graph"), indexes(root), NO_NODE, r, GraphBuild.Progress.NONE)
+        return GraphService.run(workspace(root, false), r, GraphBuild.Progress.NONE)
                 .text();
+    }
+
+    private static GraphService.Workspace workspace(Path root, boolean graphify) throws IOException {
+        return new GraphService.Workspace(
+                root,
+                root.resolve("target/graph"),
+                indexes(root),
+                Modules.NONE,
+                NO_NODE,
+                graphify,
+                Map.of(),
+                List.of(),
+                List.of(),
+                null);
     }
 
     private static GraphService.Request request(String op, String... args) {

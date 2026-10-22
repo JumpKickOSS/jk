@@ -2,6 +2,7 @@
 package cc.jumpkick.graph;
 
 import cc.jumpkick.codegraph.Confidence;
+import cc.jumpkick.codegraph.Decl;
 import cc.jumpkick.codegraph.Fragment;
 import cc.jumpkick.codegraph.GraphEdge;
 import cc.jumpkick.codegraph.GraphIds;
@@ -42,6 +43,10 @@ final class JvmFacts {
     private static final int ACC_SYNTHETIC = 0x1000;
     private static final int ACC_BRIDGE = 0x0040;
     private static final int ACC_ENUM = 0x4000;
+    private static final int ACC_ANNOTATION = 0x2000;
+    private static final int ACC_PUBLIC = 0x0001;
+    private static final int ACC_PRIVATE = 0x0002;
+    private static final int ACC_PROTECTED = 0x0004;
 
     /** Members the compiler writes for every record or enum: not the author's API, so not nodes. */
     private static final Set<String> RECORD_GENERATED = Set.of("equals", "hashCode", "toString");
@@ -71,6 +76,7 @@ final class JvmFacts {
         List<GraphEdge> edges = new ArrayList<>();
         List<Mention> mentions = new ArrayList<>();
         Map<String, Set<String>> signatures = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> facts = new LinkedHashMap<>();
         for (ClassFacts c : index.classList()) {
             if (c.isPackageInfo() || c.name().endsWith("module-info") || c.sourceFile() == null) continue;
             String pkg = c.name().contains("/") ? c.name().substring(0, c.name().lastIndexOf('/')) : "";
@@ -80,6 +86,24 @@ final class JvmFacts {
             if (owner == null) continue;
             Set<String> generated = generated(c);
             if (owner.named()) {
+                boolean nested =
+                        c.name().substring(c.name().lastIndexOf('/') + 1).contains("$");
+                Map<String, Object> type = new LinkedHashMap<>();
+                type.put(Decl.KIND, typeKind(c));
+                if (!nested) type.put(Decl.VIS, visibility(c.access()));
+                List<String> ann = annotationNames(c.annotations());
+                if (!ann.isEmpty()) type.put(Decl.ANN, ann);
+                String sup = c.superName();
+                if (sup != null && !ROOT_TYPES.contains(sup)) type.put(Decl.EXT, List.of(Descriptors.binaryName(sup)));
+                if (!c.interfaces().isEmpty()) {
+                    type.put(
+                            Decl.IMPL,
+                            c.interfaces().stream()
+                                    .map(Descriptors::binaryName)
+                                    .sorted()
+                                    .toList());
+                }
+                facts.merge(owner.id(), type, Decl::merge);
                 supertypes(c, owner.id(), rel, mentions);
                 annotations(c.annotations(), owner.id(), mentions);
                 for (FieldFacts f : c.fields()) {
@@ -87,6 +111,7 @@ final class JvmFacts {
                     if ((f.access() & ACC_ENUM) != 0) {
                         String constant = GraphIds.member(owner.id(), f.name());
                         nodes.putIfAbsent(constant, new GraphNode(constant, f.name(), "code", rel, ""));
+                        facts.merge(constant, Map.of(Decl.KIND, "constant", Decl.VIS, "public"), Decl::merge);
                         edges.add(GraphEdge.of(owner.id(), constant, Relations.CONTAINS, Confidence.EXTRACTED, rel, 0));
                         continue;
                     }
@@ -96,9 +121,13 @@ final class JvmFacts {
             }
             for (MethodFacts m : c.methods()) {
                 if (generated.contains(m.name())) continue;
-                method(c, m, owner, rel, nodes, edges, mentions, signatures);
+                method(c, m, owner, rel, nodes, edges, mentions, signatures, facts);
             }
         }
+        facts.forEach((id, f) -> {
+            GraphNode n = nodes.get(id);
+            if (n != null) nodes.put(id, Decl.with(n, f));
+        });
         signatures.forEach((id, sigs) -> {
             GraphNode n = nodes.get(id);
             if (n != null && sigs.size() > 1) {
@@ -191,7 +220,8 @@ final class JvmFacts {
             Map<String, GraphNode> nodes,
             List<GraphEdge> edges,
             List<Mention> mentions,
-            Map<String, Set<String>> signatures) {
+            Map<String, Set<String>> signatures,
+            Map<String, Map<String, Object>> facts) {
         if (m.name().equals("<clinit>")) return;
         String name = m.name();
         Matcher lambda = LAMBDA.matcher(name);
@@ -219,6 +249,12 @@ final class JvmFacts {
                         rel,
                         m.firstLine()));
                 signatures.computeIfAbsent(from, k -> new TreeSet<>()).add(m.desc());
+                Map<String, Object> member = new LinkedHashMap<>();
+                member.put(Decl.KIND, property ? "property" : owner.facade() ? "function" : "method");
+                member.put(Decl.VIS, visibility(m.access()));
+                List<String> ann = annotationNames(m.annotations());
+                if (!ann.isEmpty()) member.put(Decl.ANN, ann);
+                facts.merge(from, member, Decl::merge);
                 signature(m.desc(), from, mentions);
                 annotations(m.annotations(), from, mentions);
             }
@@ -302,6 +338,30 @@ final class JvmFacts {
         if (!any && KEY_LITERAL.matcher(literal).matches()) {
             mentions.add(new Mention(from, Mention.Kind.CONFIG_KEY, literal, line));
         }
+    }
+
+    private static String typeKind(ClassFacts c) {
+        if ((c.access() & ACC_ANNOTATION) != 0) return "annotation";
+        if ((c.access() & ACC_INTERFACE) != 0) return "interface";
+        if ((c.access() & ACC_ENUM) != 0) return "enum";
+        return "java/lang/Record".equals(c.superName()) ? "record" : "class";
+    }
+
+    private static String visibility(int access) {
+        if ((access & ACC_PUBLIC) != 0) return "public";
+        if ((access & ACC_PROTECTED) != 0) return "protected";
+        if ((access & ACC_PRIVATE) != 0) return "private";
+        return "package";
+    }
+
+    /** Simple names, sorted: {@code Transactional} for {@code org.springframework…Transactional}. */
+    private static List<String> annotationNames(List<AnnotationFacts> annotations) {
+        Set<String> out = new TreeSet<>();
+        for (AnnotationFacts a : annotations) {
+            String name = a.typeName();
+            out.add(name.substring(Math.max(name.lastIndexOf('.'), name.lastIndexOf('$')) + 1));
+        }
+        return List.copyOf(out);
     }
 
     /** Parameter and return types of a method descriptor, as references. */

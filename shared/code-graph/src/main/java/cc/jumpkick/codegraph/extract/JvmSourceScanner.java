@@ -2,6 +2,7 @@
 package cc.jumpkick.codegraph.extract;
 
 import cc.jumpkick.codegraph.Confidence;
+import cc.jumpkick.codegraph.Decl;
 import cc.jumpkick.codegraph.Fragment;
 import cc.jumpkick.codegraph.FragmentBuilder;
 import cc.jumpkick.codegraph.GraphIds;
@@ -11,6 +12,7 @@ import cc.jumpkick.codegraph.Relations;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -32,7 +34,7 @@ final class JvmSourceScanner {
     private static final Pattern IMPORT =
             Pattern.compile("(?m)^\\s*import\\s+(static\\s+)?([\\w.]+?)(\\.\\*)?(?:\\s+as\\s+\\w+)?\\s*;?\\s*$");
     private static final Pattern TYPE = Pattern.compile(
-            "(?<![\\w.$])(?:(@interface)|class|interface|enum|record|object|trait)\\s+([A-Za-z_][A-Za-z0-9_]*)");
+            "(?<![\\w.$])(@interface|class|interface|enum|record|object|trait)\\s+(?!(?:class|interface|object)\\b)([A-Za-z_][A-Za-z0-9_]*)");
     private static final Pattern FUNCTION =
             Pattern.compile("(?<![\\w.])(?:fun|def)\\s+(?:<[^>]*>\\s*)?(?:[\\w.]+\\.)?([A-Za-z_]\\w*)\\s*\\(");
     private static final Pattern JAVA_METHOD = Pattern.compile(
@@ -54,6 +56,7 @@ final class JvmSourceScanner {
         int[] close = mask.closers();
         boolean kotlin = relPath.endsWith(".kt") || relPath.endsWith(".kts");
         boolean java = relPath.endsWith(".java");
+        String memberVis = java ? "package" : "public";
         Matcher pkg = PACKAGE.matcher(code);
         String packageName = pkg.find() ? pkg.group(1) : "";
         Map<String, String> imported = imports(b, code, lines);
@@ -70,16 +73,32 @@ final class JvmSourceScanner {
                     : parent.qualified + "$" + name;
             int line = lines.at(at);
             b.node(id, name, "code", line, Map.of(Linker.QUALIFIED_NAME, qualified));
+            DeclScan.Preamble pre = DeclScan.preamble(code, at);
+            String kind = typeKind(type.group(1), pre.modifiers());
+            boolean body = brace >= 0 && code.substring(type.end(), brace).indexOf(';') < 0;
+            String fallback = parent != null && parent.implicitPublic ? "public" : memberVis;
+            Map<String, Object> facts = new LinkedHashMap<>(DeclScan.facts(
+                    kind,
+                    Decl.visibility(pre.modifiers(), fallback),
+                    body ? lines.at(close[brace]) : line,
+                    pre.annotations()));
             b.edge(parent == null ? b.fileId() : parent.id, id, Relations.CONTAINS, Confidence.EXTRACTED, line);
-            supertypes(b, code, type.end(), kotlin, id, line, packageName, imported);
-            if (brace >= 0 && code.substring(type.end(), brace).indexOf(';') < 0) {
-                open.add(new Open(id, qualified, depth[brace] + 1, brace, close[brace]));
+            Supers supers = new Supers(new ArrayList<>(), new ArrayList<>());
+            supertypes(b, code, type.end(), kotlin, kind.equals("interface"), id, line, packageName, imported, supers);
+            if (!supers.ext().isEmpty()) facts.put(Decl.EXT, List.copyOf(supers.ext()));
+            if (!supers.impl().isEmpty()) facts.put(Decl.IMPL, List.copyOf(supers.impl()));
+            String doc = DeclScan.docSummary(text, code, pre.start(), at);
+            if (doc != null) facts.put(Decl.DOC, doc);
+            b.declare(id, line, facts);
+            if (body) {
+                boolean implicitPublic = java && (kind.equals("interface") || kind.equals("annotation"));
+                open.add(new Open(id, qualified, depth[brace] + 1, brace, close[brace], implicitPublic));
             }
         }
-        functions(b, code, lines, depth, open);
+        functions(b, text, code, lines, depth, close, open);
         if (java) {
-            javaMethods(b, code, lines, depth, open);
-            constructors(b, code, lines, depth, open);
+            javaMethods(b, text, code, lines, depth, close, open);
+            constructors(b, text, code, lines, depth, close, open);
         }
         if (relPath.endsWith(".gradle") || relPath.endsWith(".gradle.kts")) coordinates(b, text, lines);
         for (SourceMask.Comment c : mask.comments) {
@@ -96,7 +115,40 @@ final class JvmSourceScanner {
     }
 
     /** A type whose body runs from {@code brace} to {@code close} at brace depth {@code depth}. */
-    private record Open(String id, String qualified, int depth, int brace, int close) {}
+    private record Open(String id, String qualified, int depth, int brace, int close, boolean implicitPublic) {}
+
+    /** The declaration kind a type keyword and its modifiers spell: {@code enum class} is an enum. */
+    static String typeKind(String keyword, List<String> modifiers) {
+        if (keyword.equals("@interface")) return "annotation";
+        if (keyword.equals("class")) {
+            if (modifiers.contains("enum")) return "enum";
+            if (modifiers.contains("annotation")) return "annotation";
+        }
+        return keyword;
+    }
+
+    /** Facts for a member whose parameters open at {@code paren}. */
+    private static Map<String, Object> member(
+            String text,
+            String code,
+            int[] close,
+            Lines lines,
+            int at,
+            int paren,
+            String kind,
+            String fallback,
+            boolean expressions) {
+        DeclScan.Preamble pre = DeclScan.preamble(code, at);
+        int end = DeclScan.memberEnd(code, close, paren, expressions);
+        Map<String, Object> facts = new LinkedHashMap<>(DeclScan.facts(
+                kind,
+                Decl.visibility(pre.modifiers(), fallback),
+                end < 0 ? lines.at(at) : lines.at(end),
+                pre.annotations()));
+        String doc = DeclScan.docSummary(text, code, pre.start(), at);
+        if (doc != null) facts.put(Decl.DOC, doc);
+        return facts;
+    }
 
     private static Map<String, String> imports(FragmentBuilder b, String code, Lines lines) {
         Map<String, String> bySimpleName = new HashMap<>();
@@ -112,21 +164,34 @@ final class JvmSourceScanner {
         return bySimpleName;
     }
 
+    /** A type's superclass and interfaces as written, qualified through its imports where they can be. */
+    private record Supers(List<String> ext, List<String> impl) {}
+
     private static void supertypes(
             FragmentBuilder b,
             String code,
             int from,
             boolean kotlin,
+            boolean iface,
             String id,
             int line,
             String packageName,
-            Map<String, String> imported) {
+            Map<String, String> imported,
+            Supers supers) {
         if (kotlin) {
             Matcher k = KOTLIN_SUPERS.matcher(code).region(from, code.length());
             if (!k.lookingAt()) return;
             for (String part : splitTypes(k.group(1))) {
-                String relation = part.contains("(") ? Relations.INHERITS : Relations.IMPLEMENTS;
-                superMention(b, id, part.replaceAll("\\(.*", "").strip(), line, relation, packageName, imported);
+                boolean superclass = part.contains("(");
+                String q = superMention(
+                        b,
+                        id,
+                        part.replaceAll("\\(.*", "").strip(),
+                        line,
+                        superclass ? Relations.INHERITS : Relations.IMPLEMENTS,
+                        packageName,
+                        imported);
+                if (q != null) (superclass ? supers.ext() : supers.impl()).add(q);
             }
             return;
         }
@@ -134,17 +199,20 @@ final class JvmSourceScanner {
         if (!s.lookingAt()) return;
         if (s.group(1) != null) {
             for (String name : splitTypes(s.group(1))) {
-                superMention(b, id, name, line, Relations.INHERITS, packageName, imported);
+                String q = superMention(b, id, name, line, Relations.INHERITS, packageName, imported);
+                if (q != null) (iface ? supers.impl() : supers.ext()).add(q);
             }
         }
         if (s.group(2) != null) {
             for (String name : splitTypes(s.group(2))) {
-                superMention(b, id, name, line, Relations.IMPLEMENTS, packageName, imported);
+                String q = superMention(b, id, name, line, Relations.IMPLEMENTS, packageName, imported);
+                if (q != null) supers.impl().add(q);
             }
         }
     }
 
-    private static void superMention(
+    /** Mentions a supertype; returns its qualified name, or {@code null} for what is not a type name. */
+    private static @Nullable String superMention(
             FragmentBuilder b,
             String id,
             String name,
@@ -153,11 +221,12 @@ final class JvmSourceScanner {
             String packageName,
             Map<String, String> imported) {
         String simple = name.replaceAll("<.*", "").strip();
-        if (simple.isEmpty() || !Character.isUpperCase(simple.charAt(simple.lastIndexOf('.') + 1))) return;
+        if (simple.isEmpty() || !Character.isUpperCase(simple.charAt(simple.lastIndexOf('.') + 1))) return null;
         String qualified = simple.contains(".")
                 ? simple
                 : imported.getOrDefault(simple, packageName.isEmpty() ? simple : packageName + "." + simple);
         b.mention(id, Mention.Kind.CLASS, qualified, line, relation);
+        return qualified;
     }
 
     /** Top-level type names in a comma list, generic arguments dropped. */
@@ -179,7 +248,8 @@ final class JvmSourceScanner {
                 .toList();
     }
 
-    private static void functions(FragmentBuilder b, String code, Lines lines, int[] depth, List<Open> open) {
+    private static void functions(
+            FragmentBuilder b, String text, String code, Lines lines, int[] depth, int[] close, List<Open> open) {
         Matcher f = FUNCTION.matcher(code);
         while (f.find()) {
             Open owner = enclosing(open, f.start());
@@ -187,17 +257,30 @@ final class JvmSourceScanner {
             if (owner == null ? d != 0 : d != owner.depth) continue;
             String name = f.group(1);
             int line = lines.at(f.start());
+            Map<String, Object> facts = member(
+                    text,
+                    code,
+                    close,
+                    lines,
+                    f.start(),
+                    f.end() - 1,
+                    owner == null ? "function" : "method",
+                    "public",
+                    true);
             if (owner == null) {
                 String id = b.declared(name, name + "()", "code", line, Map.of());
+                b.declare(id, line, facts);
                 b.edge(b.fileId(), id, Relations.CONTAINS, Confidence.EXTRACTED, line);
             } else {
                 String id = b.node(GraphIds.member(owner.id, name), "." + name + "()", "code", line, Map.of());
+                b.declare(id, line, facts);
                 b.edge(owner.id, id, Relations.METHOD, Confidence.EXTRACTED, line);
             }
         }
     }
 
-    private static void javaMethods(FragmentBuilder b, String code, Lines lines, int[] depth, List<Open> open) {
+    private static void javaMethods(
+            FragmentBuilder b, String text, String code, Lines lines, int[] depth, int[] close, List<Open> open) {
         Matcher m = JAVA_METHOD.matcher(code);
         while (m.find()) {
             int at = m.start(1);
@@ -207,15 +290,21 @@ final class JvmSourceScanner {
             if (name.equals("return") || name.equals("new") || name.equals("throw")) continue;
             int line = lines.at(at);
             String id = b.node(GraphIds.member(owner.id, name), "." + name + "()", "code", line, Map.of());
+            b.declare(id, line, member(text, code, close, lines, at, m.end() - 1, "method", fallback(owner), false));
             b.edge(owner.id, id, Relations.METHOD, Confidence.EXTRACTED, line);
         }
+    }
+
+    private static String fallback(Open owner) {
+        return owner.implicitPublic ? "public" : "package";
     }
 
     private static final Pattern CONSTRUCTOR = Pattern.compile(
             "(?m)^[ \\t]*(?:@\\w+(?:\\([^)]*\\))?\\s+)*(?:(?:public|protected|private)\\s+)?([A-Z][\\w$]*)\\s*\\(");
 
     /** A Java constructor is a member named after its type, as graphify names it: {@code .Outer()}. */
-    private static void constructors(FragmentBuilder b, String code, Lines lines, int[] depth, List<Open> open) {
+    private static void constructors(
+            FragmentBuilder b, String text, String code, Lines lines, int[] depth, int[] close, List<Open> open) {
         Matcher m = CONSTRUCTOR.matcher(code);
         while (m.find()) {
             int at = m.start(1);
@@ -224,6 +313,8 @@ final class JvmSourceScanner {
             if (owner == null || depth[at] != owner.depth || !owner.qualified.endsWith(name)) continue;
             int line = lines.at(at);
             String id = b.node(GraphIds.member(owner.id, name), "." + name + "()", "code", line, Map.of());
+            b.declare(
+                    id, line, member(text, code, close, lines, at, m.end() - 1, "constructor", fallback(owner), false));
             b.edge(owner.id, id, Relations.METHOD, Confidence.EXTRACTED, line);
         }
     }

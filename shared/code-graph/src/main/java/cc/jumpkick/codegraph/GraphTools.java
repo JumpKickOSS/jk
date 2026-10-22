@@ -22,9 +22,16 @@ import org.jspecify.annotations.Nullable;
 public final class GraphTools {
 
     private final CodeGraph graph;
+    private final Scope scope;
 
     public GraphTools(CodeGraph graph) {
+        this(graph, Scope.ALL);
+    }
+
+    /** Tools whose names resolve, and whose connections and rankings list, inside {@code scope} first. */
+    public GraphTools(CodeGraph graph, Scope scope) {
         this.graph = graph;
+        this.scope = scope;
     }
 
     /** A resolved node id, or the message explaining why there is none. */
@@ -34,11 +41,14 @@ public final class GraphTools {
         String wanted = name.strip();
         if (graph.has(wanted)) return new Resolved(wanted, null);
         String folded = GraphText.fold(wanted);
-        List<String> exact = graph.nodes().stream()
+        List<String> anywhere = graph.nodes().stream()
                 .filter(n -> bare(n.normLabel()).equals(bare(folded)))
                 .map(GraphNode::id)
                 .sorted()
                 .toList();
+        List<String> scoped =
+                anywhere.stream().filter(id -> scope.contains(graph.node(id))).toList();
+        List<String> exact = scoped.isEmpty() ? anywhere : scoped;
         if (exact.size() == 1) return new Resolved(exact.getFirst(), null);
         if (exact.size() > 1) {
             List<String> lines = new ArrayList<>();
@@ -49,8 +59,20 @@ public final class GraphTools {
             }
             return new Resolved(null, String.join("\n", lines));
         }
-        List<String> ranked = new GraphSearch(graph).rank(wanted);
-        if (ranked.isEmpty()) return new Resolved(null, "No node matching '" + wanted + "' found.");
+        List<String> ranked = new GraphSearch(graph, scope).rank(wanted);
+        if (ranked.isEmpty() && !scope.all()) ranked = new GraphSearch(graph).rank(wanted);
+        if (ranked.isEmpty()) {
+            List<String> lines = new ArrayList<>();
+            lines.add("No node matching '" + wanted + "' found.");
+            List<String> near = new GraphSearch(graph, scope).nearest(wanted, 5);
+            if (!near.isEmpty()) lines.add("Closest names:");
+            for (String id : near) {
+                GraphNode n = graph.node(id);
+                if (n != null)
+                    lines.add("  " + GraphQuery.clean(n.label()) + "  " + n.sourceFile() + ":" + Decl.line(n));
+            }
+            return new Resolved(null, String.join("\n", lines));
+        }
         List<String> tokens = GraphText.searchTokens(wanted);
         for (String id : ranked) {
             GraphNode n = graph.node(id);
@@ -115,7 +137,7 @@ public final class GraphTools {
         List<String> lines = new ArrayList<>();
         lines.add("God nodes (most connected):");
         int i = 1;
-        for (String id : GraphAnalysis.godNodes(graph, topN)) {
+        for (String id : GraphAnalysis.godNodes(graph, topN, scope)) {
             lines.add("  " + i++ + ". " + GraphQuery.clean(label(id)) + " - " + graph.degree(id) + " edges");
         }
         return String.join("\n", lines);
@@ -205,6 +227,7 @@ public final class GraphTools {
         List<GraphEdge> edges = graph.incident(id).stream()
                 .filter(e -> relationFilter.isEmpty()
                         || e.relation().toLowerCase(Locale.ROOT).contains(relationFilter))
+                .filter(e -> scope.contains(graph.node(other(e, id))))
                 .sorted(Comparator.comparingInt((GraphEdge e) -> -graph.degree(other(e, id)))
                         .thenComparing(e -> other(e, id)))
                 .toList();

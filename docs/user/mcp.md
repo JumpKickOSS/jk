@@ -34,7 +34,7 @@ Outside a project `jk mcp` still serves, and the tools take `dir` as over HTTP.
 | Session | `initialize` answers with an `Mcp-Session-Id` header; echo it on every later request. One id is one **session**: the runs it starts journal as `trigger: mcp · session: <clientInfo.name> <id>`. `DELETE /mcp` with the header ends it |
 | Protocol | Advertised `protocolVersion` `2024-11-05` (Streamable-HTTP) |
 | Server name | `jk-engine` |
-| Tool list | `tools/list` answers eight tools (`run`, `diagnostics`, `deps`, `why`, `query_graph`, `get_neighbors`, `shortest_path`, `skill`). `{"extended": true}` on that call, or `[mcp] tools = "all"` (`JK_MCP_TOOLS=all`), lists every card. Every tool is callable by name either way |
+| Tool list | `tools/list` answers nine tools (`run`, `diagnostics`, `deps`, `why`, `query_graph`, `read_symbol`, `get_neighbors`, `shortest_path`, `skill`). `{"extended": true}` on that call, or `[mcp] tools = "all"` (`JK_MCP_TOOLS=all`), lists every card. Every tool is callable by name either way |
 | CLI | `jk engine status` shows **MCP**; JSON includes `mcpUrl` |
 
 Token: `jk engine status` / `jk web` URL fragment, or the file under the state directory
@@ -133,7 +133,7 @@ and the process was spawned by a coding-agent CLI. Human terminals keep today's 
 ## Tools
 
 Every tool card an agent's host shows the model is paid for on every turn. The default
-`tools/list` is eight tools: the fix-and-rerun loop and the three code graph calls that replace
+`tools/list` is nine tools: the fix-and-rerun loop and the four code graph calls that replace
 grep-and-read turns, which cost far more than their cards. The same sentences are the skill's tool table (`jk skill` / `skill`),
 which a test holds to the served list. Ask for every card with `tools/list` params
 `{"extended": true}`, or set `[mcp] tools = "all"` (`JK_MCP_TOOLS=all`) and restart the engine.
@@ -181,11 +181,14 @@ The whole registry:
 | **`export`** | Write `maven` \| `gradle` \| `bom` files |
 | **`ide`** | Write IDE project files (`kind=idea` \| `vscode` \| `all`) plus `.bsp/jk.json`, same generators as `jk ide`; `preview=true` lists without writing |
 | **`graph`** | Compact module/dep graph (transitive expansion opt-in and budget-capped) |
-| **`query_graph`** | The code graph's answer to a question (`question`), within `token_budget` (default 2000): NODE/EDGE lines with `file:line`. `mode` `bfs`\|`dfs`, `depth`, `context_filter` (`call`, `field`, `import`, …). Same as `jk graph query`; see [Code graph](graph.md) |
+| **`query_graph`** | The code graph's answer to a question (`question`), within `token_budget` (default 2000): NODE/EDGE lines with `file:line`. `mode` `bfs`\|`dfs`, `depth`, `context_filter` (`call`, `field`, `import`, …), and `scope` (path globs, `!` excludes), `modules`, `source_set` (`main`\|`test`) to narrow it. Same as `jk graph query`; see [Code graph](graph.md) |
+| **`read_symbol`** | A symbol's source instead of the whole file (`address`: `Type`, `Type.member`, `Type.*`, `Type.**`, a path or glob, `#line=N,M`). `token_budget` picks the view: `content`, then `structure` (declarations without bodies), then `headline`; `view` forces one. A type no workspace file declares is read from the locked jars. Same as `jk graph read` |
+| **`find_symbols`** | Declarations by `kind`, `visibility`, `extends`, `implements` (transitive, library supertypes too), `annotated` and a `name` glob, each a comma list; `scope`/`modules`/`source_set` narrow it; `libraries=true` searches the locked jars' types. Same as `jk graph find` |
+| **`rules_for`** | Before editing a file (`path`): the guard rules that govern it and its `NOTE:`/`WHY:` comments. Same as `jk graph rules` |
 | **`get_node`** | One code-graph node (`label` or `node_id`): source and line, type, community, degree |
 | **`get_neighbors`** | A node's direct connections (`label` or `node_id`, `relation_filter`, `token_budget`) |
 | **`get_community`** | The members of one community (`community_id`, `token_budget`) |
-| **`god_nodes`** | The most-connected entities (`top_n`) |
+| **`god_nodes`** | The most-connected entities (`top_n`; `scope`, `modules`, `source_set` narrow it) |
 | **`graph_stats`** | Node, edge and community counts and the confidence mix |
 | **`shortest_path`** | How two nodes connect (`source`, `target`, `max_hops`, `undirected`) |
 

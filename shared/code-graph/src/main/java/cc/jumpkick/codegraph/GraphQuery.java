@@ -40,15 +40,28 @@ public final class GraphQuery {
             Map.entry("generic_arg", List.of("generic", "generics", "template", "templates")));
 
     private final CodeGraph graph;
+    private final Scope scope;
+    private final Map<String, List<String>> aliases;
 
     public GraphQuery(CodeGraph graph) {
+        this(graph, Scope.ALL, Map.of());
+    }
+
+    /**
+     * Queries that seed and walk only inside {@code scope}; a question holding one of a term's
+     * {@code aliases} (term → outside words, {@code [graph.aliases]}) also seeds on the term.
+     */
+    public GraphQuery(CodeGraph graph, Scope scope, Map<String, List<String>> aliases) {
         this.graph = graph;
+        this.scope = scope;
+        this.aliases = aliases;
     }
 
     /** The budgeted answer to {@code question}; {@code contexts} empty infers them from its words. */
     public String query(String question, Mode mode, int depth, int budget, List<String> contexts) {
-        List<String> seeds = new GraphSearch(graph).seeds(question);
-        if (seeds.isEmpty()) return NO_MATCH;
+        GraphSearch search = new GraphSearch(graph, scope);
+        List<String> seeds = search.seeds(withAliases(question));
+        if (seeds.isEmpty()) return noMatch(search.nearest(question, 8));
         List<String> filters = contexts.isEmpty() ? inferContexts(question) : contexts;
         String source = contexts.isEmpty() ? "heuristic" : "explicit";
         Walk walk = mode == Mode.DFS ? dfs(seeds, depth, filters) : bfs(seeds, depth, filters);
@@ -177,10 +190,12 @@ public final class GraphQuery {
     }
 
     private List<String> neighbors(String id, List<String> filters) {
-        if (filters.isEmpty()) return List.copyOf(graph.neighbors(id));
+        if (filters.isEmpty() && scope.all()) return List.copyOf(graph.neighbors(id));
         Set<String> out = new LinkedHashSet<>();
         for (GraphEdge e : graph.incident(id)) {
-            if (filters.contains(e.context())) out.add(e.source().equals(id) ? e.target() : e.source());
+            if (!filters.isEmpty() && !filters.contains(e.context())) continue;
+            String other = e.source().equals(id) ? e.target() : e.source();
+            if (scope.contains(graph.node(other))) out.add(other);
         }
         out.remove(id);
         return List.copyOf(out);
@@ -199,6 +214,35 @@ public final class GraphQuery {
     private String label(String id) {
         GraphNode n = graph.node(id);
         return n == null ? id : n.label();
+    }
+
+    /** {@code question} with every term one of whose aliases it says appended. */
+    String withAliases(String question) {
+        if (aliases.isEmpty()) return question;
+        String words = " " + String.join(" ", GraphText.searchTokens(question)) + " ";
+        StringBuilder out = new StringBuilder(question);
+        aliases.forEach((term, outside) -> {
+            for (String w : outside) {
+                String phrase = String.join(" ", GraphText.searchTokens(w));
+                if (!phrase.isEmpty() && words.contains(" " + phrase + " ")) {
+                    out.append(' ').append(term);
+                    break;
+                }
+            }
+        });
+        return out.toString();
+    }
+
+    /** {@link #NO_MATCH}, with the closest names when there are any. */
+    String noMatch(List<String> nearest) {
+        if (nearest.isEmpty()) return NO_MATCH;
+        List<String> lines = new ArrayList<>();
+        lines.add(NO_MATCH + " Closest names:");
+        for (String id : nearest) {
+            GraphNode n = graph.node(id);
+            if (n != null) lines.add("  " + clean(n.label()) + "  " + n.sourceFile() + ":" + Decl.line(n));
+        }
+        return String.join("\n", lines);
     }
 
     static List<String> inferContexts(String question) {

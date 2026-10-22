@@ -2,10 +2,12 @@
 package cc.jumpkick.command.project;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.ProgressRow;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.CliCommand;
@@ -19,6 +21,7 @@ import cc.jumpkick.wire.protocol.GraphProgress;
 import cc.jumpkick.wire.protocol.GraphRequest;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
@@ -80,6 +83,8 @@ final class GraphOpCommand implements CliCommand {
             CommandWedge.printFail("Graph", ack.error());
             return Exit.FAILURE;
         }
+        String note = ack.note();
+        if (note != null) CommandWedge.printChipErr(Glyphs.BANG, "Graph", note);
         if (op.equals("build")) {
             CommandWedge.printOk("Graph", summary(ack));
             return 0;
@@ -103,8 +108,26 @@ final class GraphOpCommand implements CliCommand {
                 number(in, "top", 10),
                 in.value("relation").orElse(null),
                 rebuild,
-                in.isSet("no-refresh"));
+                in.isSet("no-refresh"),
+                in.value("scope").orElse(null),
+                CommonOpts.modulesSpec(in),
+                in.value("source-set").orElse(null),
+                options(in));
     }
+
+    /** The operation's named settings as {@code key=value}: whichever of {@link #SETTINGS} are set. */
+    private List<String> options(Invocation in) {
+        List<String> out = new ArrayList<>();
+        for (String name : SETTINGS) {
+            for (String v : in.values(name)) out.add(name + "=" + v);
+        }
+        if (in.isSet("graphify")) out.add("graphify=true");
+        if (in.isSet("libraries")) out.add("libraries=true");
+        return out;
+    }
+
+    /** Options passed through to the worker by name. */
+    static final List<String> SETTINGS = List.of("view", "kind", "visibility", "extends", "implements", "annotated");
 
     private static int number(Invocation in, String option, int fallback) {
         String raw = in.value(option).orElse(null);

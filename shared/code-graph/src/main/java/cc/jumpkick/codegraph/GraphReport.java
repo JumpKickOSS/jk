@@ -71,6 +71,18 @@ public final class GraphReport {
                 md.append('\n');
             }
         }
+        if (!graph.stale().isEmpty()) {
+            md.append("\n## Stale doc references\n\n");
+            for (StaleRef r : graph.stale()) {
+                md.append("- ")
+                        .append(r.file())
+                        .append(':')
+                        .append(r.line())
+                        .append(r.kind().equals(StaleRef.FILE) ? " links to missing `" : " names undeclared class `")
+                        .append(r.target())
+                        .append("`\n");
+            }
+        }
         md.append("\n## Communities\n\n");
         int shown = 0;
         for (Map.Entry<Integer, List<String>> c : communities.entrySet()) {

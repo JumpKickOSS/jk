@@ -16,7 +16,8 @@ import org.jspecify.annotations.Nullable;
  * Lexical node search, graphify's scorer: per query term an exact label match is worth 1000, a
  * prefix 100, a substring 1 and a source-path hit 0.5, each weighted by the term's IDF over labels;
  * the whole query matching a label exactly or as a prefix adds ten times that. Label tiers scale by
- * the square of the share of terms matched. No embeddings.
+ * the square of the share of terms matched. A word of a declaration's doc summary is worth 0.6. No
+ * embeddings.
  */
 public final class GraphSearch {
 
@@ -25,6 +26,7 @@ public final class GraphSearch {
     static final double SUBSTRING = 1.0;
     static final double SOURCE = 0.5;
     static final double ATTRIBUTE = 0.75;
+    static final double DOC = 0.6;
 
     private static final Set<String> STOPWORDS = Set.of(
             "how", "what", "why", "when", "where", "which", "who", "whom", "whose", "does", "did", "is", "are", "was",
@@ -66,10 +68,17 @@ public final class GraphSearch {
             "referenced");
 
     private final CodeGraph graph;
+    private final Scope scope;
     private final Map<String, Double> idf = new HashMap<>();
 
     public GraphSearch(CodeGraph graph) {
+        this(graph, Scope.ALL);
+    }
+
+    /** A search that only finds nodes in {@code scope}. */
+    public GraphSearch(CodeGraph graph, Scope scope) {
         this.graph = graph;
+        this.scope = scope;
     }
 
     /** Ranked matches plus, per term, its single best node. */
@@ -119,7 +128,7 @@ public final class GraphSearch {
     List<String> members(List<String> terms) {
         Map<String, List<String>> typesByLabel = new HashMap<>();
         for (GraphNode n : graph.nodes()) {
-            if (n.fileType().equals("code") && !n.label().endsWith(")")) {
+            if (n.fileType().equals("code") && !n.label().endsWith(")") && scope.contains(n)) {
                 typesByLabel
                         .computeIfAbsent(n.normLabel(), k -> new ArrayList<>())
                         .add(n.id());
@@ -186,6 +195,7 @@ public final class GraphSearch {
         List<Scored> ranked = new ArrayList<>();
         Map<String, BestSeed> best = new HashMap<>();
         for (GraphNode n : graph.nodes()) {
+            if (!scope.contains(n)) continue;
             double score = scoreNode(n, norm, joined, joinedWeight, best);
             if (score > 0) ranked.add(new Scored(score, n.id()));
         }
@@ -208,6 +218,7 @@ public final class GraphSearch {
         String tokens = String.join(" ", GraphText.searchTokens(n.label()));
         String source = n.sourceFile().toLowerCase(Locale.ROOT);
         String attrs = attributeText(n);
+        String doc = docText(n);
         String id = n.id().toLowerCase(Locale.ROOT);
         double score = 0;
         if (!joined.isEmpty()) {
@@ -235,6 +246,7 @@ public final class GraphSearch {
             }
             if (source.contains(t)) flat += SOURCE * w;
             if (!attrs.isEmpty() && attrs.contains(t)) flat += ATTRIBUTE * w;
+            if (!doc.isEmpty() && doc.contains(" " + t)) flat += DOC * w;
             score += flat;
             tiered += tier;
             double singleton = tier + flat;
@@ -289,6 +301,74 @@ public final class GraphSearch {
     private int labelLength(String id) {
         GraphNode n = graph.node(id);
         return n == null ? id.length() : n.label().length();
+    }
+
+    private static String docText(GraphNode n) {
+        String doc = Decl.doc(n);
+        return doc == null ? "" : " " + String.join(" ", GraphText.searchTokens(doc)) + " ";
+    }
+
+    /**
+     * Up to {@code limit} code names closest to {@code question}'s words, for an answer that matched
+     * nothing: a name within a few edits of a word, or one whose camel-case parts start with it.
+     */
+    public List<String> nearest(String question, int limit) {
+        List<String> terms =
+                queryTerms(question).stream().filter(t -> t.length() >= 3).toList();
+        if (terms.isEmpty()) return List.of();
+        record Near(int distance, int length, String label, String id) {}
+        Map<String, Near> best = new HashMap<>();
+        for (GraphNode n : graph.nodes()) {
+            if (!n.fileType().equals("code") || n.sourceFile().isEmpty() || !scope.contains(n)) continue;
+            String label = stripParens(n.normLabel());
+            if (label.startsWith(".")) label = label.substring(1);
+            if (label.isEmpty()) continue;
+            int d = Integer.MAX_VALUE;
+            for (String t : terms) {
+                int edits = edits(t, label, Math.max(1, t.length() / 3));
+                if (edits >= 0) d = Math.min(d, edits);
+                for (String part : GraphText.searchTokens(splitCamel(n.label()))) {
+                    if (part.startsWith(t) || t.startsWith(part) && part.length() >= 4) d = Math.min(d, 1);
+                }
+            }
+            if (d == Integer.MAX_VALUE) continue;
+            Near near = new Near(d, label.length(), n.label(), n.id());
+            best.merge(label, near, (a, b) -> a.id().compareTo(b.id()) <= 0 ? a : b);
+        }
+        return best.values().stream()
+                .sorted(Comparator.comparingInt(Near::distance)
+                        .thenComparingInt(Near::length)
+                        .thenComparing(Near::id))
+                .limit(limit)
+                .map(Near::id)
+                .toList();
+    }
+
+    /** {@code OrderService} → {@code Order Service}. */
+    private static String splitCamel(String label) {
+        return label.replaceAll("(?<=[a-z0-9])(?=[A-Z])", " ");
+    }
+
+    /** Levenshtein distance between {@code a} and {@code b}, or {@code -1} once it exceeds {@code max}. */
+    static int edits(String a, String b, int max) {
+        if (Math.abs(a.length() - b.length()) > max) return -1;
+        int[] prev = new int[b.length() + 1];
+        int[] cur = new int[b.length() + 1];
+        for (int j = 0; j <= b.length(); j++) prev[j] = j;
+        for (int i = 1; i <= a.length(); i++) {
+            cur[0] = i;
+            int rowMin = cur[0];
+            for (int j = 1; j <= b.length(); j++) {
+                int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
+                cur[j] = Math.min(Math.min(cur[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost);
+                rowMin = Math.min(rowMin, cur[j]);
+            }
+            if (rowMin > max) return -1;
+            int[] t = prev;
+            prev = cur;
+            cur = t;
+        }
+        return prev[b.length()] <= max ? prev[b.length()] : -1;
     }
 
     private static String attributeText(GraphNode n) {

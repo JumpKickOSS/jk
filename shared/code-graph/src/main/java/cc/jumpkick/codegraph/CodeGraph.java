@@ -26,6 +26,8 @@ public final class CodeGraph {
     private final Map<String, List<GraphEdge>> incident = new HashMap<>();
     private final Map<String, Integer> community = new HashMap<>();
     private final Map<Integer, String> communityNames = new HashMap<>();
+    private Modules modules = Modules.NONE;
+    private List<StaleRef> stale = List.of();
 
     private CodeGraph(Map<String, GraphNode> nodes, List<GraphEdge> edges) {
         this.nodes = nodes;
@@ -46,16 +48,13 @@ public final class CodeGraph {
         }
     }
 
-    /** One graph from {@code fragments}; a node declared twice keeps the copy that has a source file. */
+    /**
+     * One graph from {@code fragments}. A node declared twice keeps the copy that has a source file
+     * and line, with the other's extra fields added: the source scan's span and the class file's
+     * signatures land on one node.
+     */
     public static CodeGraph merge(Collection<Fragment> fragments) {
-        Map<String, GraphNode> nodes = new LinkedHashMap<>();
-        for (Fragment f : fragments) {
-            for (GraphNode n : f.nodes()) {
-                GraphNode had = nodes.get(n.id());
-                if (had == null
-                        || (had.sourceFile().isEmpty() && !n.sourceFile().isEmpty())) nodes.put(n.id(), n);
-            }
-        }
+        Map<String, GraphNode> nodes = mergeNodes(fragments);
         Map<String, GraphEdge> edges = new LinkedHashMap<>();
         for (Fragment f : fragments) {
             for (GraphEdge e : f.edges()) {
@@ -88,6 +87,8 @@ public final class CodeGraph {
         if (other.extra().isEmpty()) return base;
         Map<String, Object> extra = new LinkedHashMap<>(other.extra());
         extra.putAll(base.extra());
+        Map<String, Object> facts = Decl.merge(Decl.of(base), Decl.of(other));
+        if (!facts.isEmpty()) extra.put(Decl.KEY, facts);
         return new GraphNode(base.id(), base.label(), base.fileType(), base.sourceFile(), base.sourceLocation(), extra);
     }
 
@@ -164,6 +165,24 @@ public final class CodeGraph {
             if (c >= 0) out.computeIfAbsent(c, k -> new ArrayList<>()).add(id);
         }
         return out;
+    }
+
+    /** The workspace's modules, {@link Modules#NONE} until a build or a reader sets them. */
+    public Modules modules() {
+        return modules;
+    }
+
+    public void modules(Modules modules) {
+        this.modules = modules;
+    }
+
+    /** Document references that name nothing, by file and line. */
+    public List<StaleRef> stale() {
+        return stale;
+    }
+
+    public void stale(List<StaleRef> stale) {
+        this.stale = List.copyOf(stale);
     }
 
     void assignCommunities(Map<String, Integer> assignment, Map<Integer, String> names) {

@@ -3,10 +3,12 @@ package cc.jumpkick.codegraph;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -61,7 +63,45 @@ public final class Linker {
         List<Fragment> all = new ArrayList<>(fragments);
         all.add(types);
         all.add(calls);
-        return CodeGraph.merge(all);
+        CodeGraph graph = CodeGraph.merge(all);
+        graph.stale(linker.stale);
+        return graph;
+    }
+
+    /**
+     * Candidate stale references: a document's relative link no graph file answers, and a qualified
+     * class name in a package the workspace declares that no node is. The caller drops links to files
+     * that exist outside the graph (images, licenses).
+     */
+    private final List<StaleRef> stale = new ArrayList<>();
+
+    private void noteStale(Mention m, GraphNode from) {
+        if (!from.fileType().equals("document") || stale.size() >= StaleRef.LIMIT * 4) return;
+        if (m.kind() == Mention.Kind.FILE) {
+            String path = relative(from.sourceFile(), m.text());
+            if (!path.isEmpty()) stale.add(new StaleRef(from.sourceFile(), m.line(), StaleRef.FILE, path));
+        } else if (m.kind() == Mention.Kind.CLASS) {
+            String name = m.text().replace('$', '.');
+            int dot = name.lastIndexOf('.');
+            if (dot > 0 && packages().contains(name.substring(0, dot))) {
+                stale.add(new StaleRef(from.sourceFile(), m.line(), StaleRef.CLASS, name));
+            }
+        }
+    }
+
+    private @Nullable Set<String> packages;
+
+    /** Every package a workspace class is declared in. */
+    private Set<String> packages() {
+        Set<String> have = packages;
+        if (have != null) return have;
+        Set<String> out = new HashSet<>();
+        for (String fqcn : classes.keySet()) {
+            int dot = fqcn.lastIndexOf('.');
+            if (dot > 0) out.add(fqcn.substring(0, dot));
+        }
+        packages = out;
+        return out;
     }
 
     private void supertypes(List<GraphEdge> edges) {
@@ -77,7 +117,12 @@ public final class Linker {
         for (Fragment f : fragments) {
             for (Mention m : f.mentions()) {
                 if ((m.kind() == Mention.Kind.MEMBER) != members) continue;
-                for (GraphEdge e : resolve(m)) {
+                List<GraphEdge> resolved = resolve(m);
+                if (resolved.isEmpty() && !members) {
+                    GraphNode from = nodes.get(m.source());
+                    if (from != null) noteStale(m, from);
+                }
+                for (GraphEdge e : resolved) {
                     if (!e.source().equals(e.target())) {
                         edges.putIfAbsent(e.source() + '\u0000' + e.target() + '\u0000' + e.relation(), e);
                     }

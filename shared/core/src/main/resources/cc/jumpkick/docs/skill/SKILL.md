@@ -9,7 +9,7 @@ The manifest is `jk.toml`; the lock is `jk-lock.toml` (one per workspace, at its
 
 ## Loop
 
-Run, read the verdict, edit, rerun. The verdict is the whole answer; do not scrape other output or report files. Use short flags: `-m` modules, `-s` suite, `-r` redo, `-F` force, `-O jsonl`, `-C dir`.
+Run, read the verdict, edit, rerun. The verdict is the whole answer; scrape nothing else. Use short flags: `-m` modules, `-s` suite, `-r` redo, `-F` force, `-O jsonl`, `-C dir`.
 
 | | Shell | MCP |
 |---|---|---|
@@ -18,11 +18,12 @@ Run, read the verdict, edit, rerun. The verdict is the whole answer; do not scra
 | add / remove a dep | `jk add g:a`, `jk remove g:a` | `deps(action=add, coords=["g:a"])` |
 | why this version | `jk why g:a` | `why(coord=g:a)` |
 | find code | `jk graph query "…"` | `query_graph(question=…)` |
+| read a symbol | `jk graph read T.m` | `read_symbol(address=…)` |
 | links, A to B | `jk graph neighbors X`, `jk graph path A B` | `get_neighbors(label=X)`, `shortest_path(source=A, target=B)` |
-| every problem with its line | `jk results -A` | `diagnostics()` |
+| every problem, with lines | `jk results -A` | `diagnostics()` |
 | one skill topic | `jk skill <topic>` | `skill(topic=…)` |
 
-A dependency edit relocks in the same call. Register MCP as `jk mcp` in the project and the tools take no `dir`; over HTTP, pass `dir` (the project root) on the first call.
+A dependency edit relocks in the same call. Registered as `jk mcp`, tools take no `dir`; over HTTP, pass `dir` (the root) on the first call.
 
 ## Verdict
 

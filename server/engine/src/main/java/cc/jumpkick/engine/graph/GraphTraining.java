@@ -43,9 +43,17 @@ final class GraphTraining {
                 10,
                 null,
                 false,
-                false);
+                false,
+                null,
+                null,
+                null,
+                List.of());
         Path spec = scratch.resolve("train.spec");
-        Files.write(spec, GraphRunner.specWriter(root, request, List.of(), null).lines(), StandardCharsets.UTF_8);
+        Files.write(
+                spec,
+                GraphRunner.specWriter(root, request, List.of(), List.of(), null)
+                        .lines(),
+                StandardCharsets.UTF_8);
         PluginLoader.sealNetworkPolicy(spec);
         List<String> jvmFlags = new ArrayList<>();
         jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
