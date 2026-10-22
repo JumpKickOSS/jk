@@ -348,6 +348,11 @@ lanes and CI remain the enforcement.
   rather than guessing at their comments.
 - **Generated sources** count as sources unless a rule's `files` or `scope` excludes them;
   a text block in Java is a string, so `blank = "comments+strings"` hides its contents.
+- **`split-package` discounts generated packages**: a module whose share of a package exists
+  only under its generated trees (`target/generated-sources/*`, `target/ksp/java`,
+  `target/ksp/kotlin`) and under none of its source roots does not claim it, so a package a
+  processor writes into every module (Hilt's `hilt_aggregated_deps`) is not a split. The check is
+  by directory, so a Kotlin file whose package differs from its folder can hide behind it.
 
 ## Related
 
