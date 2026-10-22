@@ -619,6 +619,24 @@ path, and `jk why <child>` shows both — every path that brings it and every ed
 A pattern several paths declared lists each origin, comma-separated. A row with nothing pruned has
 no `excluded-by` key. See [Dependencies](dependencies.md#exclusions).
 
+## What a row says about its licence
+
+A row from a Maven repository records the licences its POM declares — the POM's own `<licenses>`,
+else its nearest parent's, as Maven inherits them — as SPDX ids where the name or URL maps to one
+(`The Apache Software License, Version 2.0` → `Apache-2.0`), and as written otherwise.
+
+```toml
+[[artifact]]
+name     = "com.google.guava:guava:jar:"
+version  = "33.4.0-jre"
+licenses = ["Apache-2.0"]
+```
+
+`licenses = []` means the POM declares none; a row with no `licenses` key (a path or git
+dependency, or a lock written before licences were recorded) records nothing, and policies do not
+judge it. The depend guard's `licenses = { forbid = [...] }` and `[deny.licenses]` read this field
+([Guards](guards.md), [Publish](publish.md#deny-policy)).
+
 ## How the lock is read
 
 The lock is TOML, and any TOML reader can read it. jk reads it through the row grammar its

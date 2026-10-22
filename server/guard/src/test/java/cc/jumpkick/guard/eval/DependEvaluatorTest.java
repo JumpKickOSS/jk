@@ -123,6 +123,34 @@ class DependEvaluatorTest {
         return LaneRun.evaluate(LaneRun.rulesFor(Lane.MODEL, load.rules(), ""), ctx);
     }
 
+    /**
+     * The licences the lock records from each POM: a row is refused only when every licence it
+     * offers is forbidden, a row with none recorded is not judged, and a lock that records none at
+     * all is not evaluated rather than clean.
+     */
+    @Test
+    void licenses_forbid_the_rows_whose_every_licence_matches(@TempDir Path root) throws Exception {
+        String rules = """
+                [guards.no-copyleft]
+                kind     = "depend"
+                licenses = { forbid = ["GPL-*", "AGPL-*"] }
+                why      = "w"
+                """;
+        workspace(
+                root,
+                artifact("com.acme:gpl-only:jar:", "1.0", Scope.MAIN).withLicenses(List.of("GPL-3.0-only")),
+                artifact("com.acme:dual:jar:", "1.0", Scope.MAIN).withLicenses(List.of("GPL-2.0-only", "MIT")),
+                artifact("com.acme:apache:jar:", "1.0", Scope.MAIN).withLicenses(List.of("Apache-2.0")),
+                artifact("com.acme:silent:jar:", "1.0", Scope.MAIN).withLicenses(List.of()),
+                artifact("com.acme:unrecorded:jar:", "1.0", Scope.MAIN));
+        assertThat(ev(evaluate(root, rules), "no-copyleft").observations())
+                .singleElement()
+                .satisfies(o -> assertThat(o.detail()).contains("com.acme:gpl-only 1.0 is licensed GPL-3.0-only"));
+
+        workspace(root, artifact("com.acme:gpl-only:jar:", "1.0", Scope.MAIN));
+        assertThat(ev(evaluate(root, rules), "no-copyleft").note()).contains("records no licences");
+    }
+
     private static Evaluation ev(Map<String, Evaluation> r, String id) {
         return Objects.requireNonNull(r.get(id), id);
     }

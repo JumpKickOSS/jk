@@ -15,6 +15,7 @@ import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.repo.SpdxLicenses;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -28,6 +29,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Fold the three resolved graphs plus the file dependencies into {@link Lockfile} rows. The same
@@ -259,17 +261,28 @@ final class LockfileAssembler {
         }
 
         return new Lockfile.Artifact(
-                packageName, // full package key (g:a:type:classifier)
-                mod.version(),
-                source,
-                checksum,
-                artifactFile,
-                new ArrayList<>(tags),
-                mod.deps(),
-                pinnedBy,
-                null,
-                null,
-                mod.excluded());
+                        packageName, // full package key (g:a:type:classifier)
+                        mod.version(),
+                        source,
+                        checksum,
+                        artifactFile,
+                        new ArrayList<>(tags),
+                        mod.deps(),
+                        pinnedBy,
+                        null,
+                        null,
+                        mod.excluded())
+                .withLicenses(licensesOf(coord));
+    }
+
+    /** The licences {@code coord}'s effective POM declares, as SPDX ids where they map; null when it cannot be read. */
+    private @Nullable List<String> licensesOf(Coordinate coord) {
+        try {
+            return SpdxLicenses.of(pomBuilder.build(coord).licenses());
+        } catch (Exception e) {
+            Log.debug("licensesOf: no POM / unparseable, licences not recorded", e);
+            return null;
+        }
     }
 
     /**

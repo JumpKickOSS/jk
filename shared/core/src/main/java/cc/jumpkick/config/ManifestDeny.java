@@ -24,11 +24,6 @@ final class ManifestDeny {
         List<String> sources = optionalStringList(deny.getTable("sources"), "deny");
         List<String> deniedLicenses = optionalStringList(deny.getTable("licenses"), "deny");
         List<String> allowedLicenses = optionalStringList(deny.getTable("licenses"), "allow");
-        // licenses/yanked were parsed but never enforced — reject so configs cannot lie.
-        if (!deniedLicenses.isEmpty() || !allowedLicenses.isEmpty()) {
-            throw new JkBuildParseException("[deny.licenses] is not enforced yet. Remove the block until lock/audit "
-                    + "enforcement ships — silent no-op is not allowed.");
-        }
         String yankedRaw = deny.getString("yanked");
         DenyPolicy.YankedPolicy yanked;
         if (yankedRaw != null && !yankedRaw.isBlank()) {
@@ -41,7 +36,7 @@ final class ManifestDeny {
             // Unenforced default when only [deny.sources] is present.
             yanked = DenyPolicy.YankedPolicy.ALLOW;
         }
-        return new DenyPolicy(sources, List.of(), List.of(), yanked);
+        return new DenyPolicy(sources, deniedLicenses, allowedLicenses, yanked);
     }
 
     private static List<String> optionalStringList(@Nullable TomlTable table, String key) {

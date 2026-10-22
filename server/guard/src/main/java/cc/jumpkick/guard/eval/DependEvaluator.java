@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.deny.PolicyChecker;
 import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.rules.Allow;
 import cc.jumpkick.guard.rules.Rule;
@@ -21,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -39,8 +41,8 @@ import org.tomlj.TomlTable;
  * <p>Arms: {@code ban} (declared or resolved coordinates that may not appear), {@code coordinate}
  * with {@code only-in} / {@code never-in} (scope placement), {@code require} (version floors over
  * the resolved lock), {@code convergence} (one version per artifact), {@code no-dynamic} (no floating
- * selector), {@code no-snapshot}. {@code licenses} needs POM metadata the lock does not carry yet
- * and reports {@code not-evaluated}, never clean.
+ * selector), {@code no-snapshot}, {@code licenses} ({@code forbid} globs over the licences the lock
+ * records from each artifact's POM).
  */
 final class DependEvaluator implements Evaluator {
 
@@ -94,9 +96,8 @@ final class DependEvaluator implements Evaluator {
         if (policy.coordinate() != null
                 && policy.onlyIn().isEmpty()
                 && policy.neverIn().isEmpty()) return Evaluation.failed("`coordinate` needs `only-in` or `never-in`");
-        if (t.contains("licenses")) {
-            return Evaluation.notEvaluated(
-                    "licenses: the lock carries no POM licence metadata yet, so nothing can be judged honestly");
+        if (t.contains("licenses") && policy.forbidLicenses().isEmpty()) {
+            return Evaluation.failed("licenses: needs `forbid = [SPDX globs]`, e.g. forbid = [\"GPL-*\", \"AGPL-*\"]");
         }
         if (policy.require() != null) {
             for (var e : policy.require().entrySet()) {
@@ -110,11 +111,16 @@ final class DependEvaluator implements Evaluator {
         scan.manifests(manifests);
         if (lock != null) {
             scan.lock(lock);
-        } else if (policy.require() != null || policy.convergence()) {
+            if (!policy.forbidLicenses().isEmpty() && !scan.licencesRecorded) {
+                return Evaluation.notEvaluated("licenses: this lock records no licences; run jk lock to record them");
+            }
+        } else if (policy.require() != null
+                || policy.convergence()
+                || !policy.forbidLicenses().isEmpty()) {
             return Evaluation.notEvaluated(
                     rule.scope().isEmpty()
                             ? "no lockfile; run jk lock first"
-                            : "require/convergence read the lock, which is workspace-wide; drop `scope` from this rule");
+                            : "require/convergence/licenses read the lock, which is workspace-wide; drop `scope` from this rule");
         }
         return scan.finish();
     }
@@ -129,7 +135,8 @@ final class DependEvaluator implements Evaluator {
             boolean convergence,
             boolean noDynamic,
             boolean noSnapshot,
-            Set<Scope> scopes) {
+            Set<Scope> scopes,
+            List<String> forbidLicenses) {
 
         static Policy read(TomlTable t) {
             TomlTable requireTable = t.getTable("require");
@@ -148,7 +155,10 @@ final class DependEvaluator implements Evaluator {
                     Boolean.TRUE.equals(t.getBoolean("convergence")),
                     Boolean.TRUE.equals(t.getBoolean("no-dynamic")),
                     Boolean.TRUE.equals(t.getBoolean("no-snapshot")),
-                    DependEvaluator.scopes(ForbidEvaluator.strings(t, "scopes")));
+                    DependEvaluator.scopes(ForbidEvaluator.strings(t, "scopes")),
+                    t.getTable("licenses") == null
+                            ? List.of()
+                            : ForbidEvaluator.strings(Objects.requireNonNull(t.getTable("licenses")), "forbid"));
         }
     }
 
@@ -226,6 +236,9 @@ final class DependEvaluator implements Evaluator {
             }
         }
 
+        /** Whether any row the rule read records its licences; a lock written before they were recorded has none. */
+        boolean licencesRecorded;
+
         void lock(Lockfile lock) {
             List<Lockfile.Artifact> rows = new ArrayList<>();
             for (Lockfile.Artifact a : lock.artifacts()) {
@@ -233,8 +246,34 @@ final class DependEvaluator implements Evaluator {
                 artifacts++;
                 rows.add(a);
                 resolved(a, ga(a.name()));
+                if (!p.forbidLicenses().isEmpty()) licences(a);
             }
             if (p.convergence()) convergence(rows);
+        }
+
+        /**
+         * A row is refused when every licence it offers matches a forbidden glob: a dual-licensed
+         * artifact with one acceptable licence passes, one with none recorded is not judged.
+         */
+        private void licences(Lockfile.Artifact a) {
+            List<String> licences = a.licenses();
+            if (licences == null) return;
+            licencesRecorded = true;
+            if (licences.isEmpty()) return;
+            for (String licence : licences) {
+                if (p.forbidLicenses().stream().noneMatch(g -> PolicyChecker.licenceMatches(g, licence))) return;
+            }
+            String ga = ga(a.name());
+            if (allowing(rule.allow(), "", ga) instanceof Allow allow) {
+                allowUsed.put(allow, true);
+                return;
+            }
+            out.add(Observation.site(
+                    "licence " + ga + "@" + a.version(),
+                    ManifestPaths.LOCK,
+                    0,
+                    ga + " " + a.version() + " is licensed " + String.join(" / ", licences)
+                            + ", which this rule forbids"));
         }
 
         /**

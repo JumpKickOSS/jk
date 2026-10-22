@@ -106,13 +106,25 @@ production runtime rows of `jk-lock.toml`, one per module, each with its SHA-256
 
 ```toml
 [deny.sources]
-deny = ["jcenter.bintray.com"]   # enforced at lock / jk deny (host match)
+deny = ["jcenter.bintray.com"]   # checked by jk deny (host match)
 ```
 
 Host matching is exact or a DNS-label suffix (`evil.com` matches `repo.evil.com`, not
 `notevil.com`).
 
-License and yanked policies are **not** enforced yet. Those keys are **rejected at parse**
+```toml
+[deny.licenses]
+deny  = ["GPL-*", "AGPL-*"]          # a row whose every licence matches is refused
+allow = ["Apache-2.0", "MIT", "BSD-*"] # or: a row needs one licence that matches
+```
+
+Licences are the SPDX ids the lock records from each artifact's POM
+([Lockfile](lockfile.md#what-a-row-says-about-its-licence)), matched by glob without case. A
+dual-licensed artifact passes `deny` when one of its licences is not denied; under `allow`, a POM
+that declares no licence fails. A row that records none (a path or git dependency) is not judged.
+`jk deny` checks the lock against the policy; run it in CI as a gate.
+
+The yanked policy is **not** enforced yet: `yanked` other than `"allow"` is **rejected at parse**
 until enforcement ships — silent no-ops are not allowed.
 
 ## Audit

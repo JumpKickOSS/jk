@@ -8,8 +8,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
-/** Applies a {@link DenyPolicy} to a {@link Lockfile} (currently source-URL host denylists). */
+/** Applies a {@link DenyPolicy} to a {@link Lockfile}: source-host denylists and the licences each row records. */
 public final class PolicyChecker {
 
     private final DenyPolicy policy;
@@ -35,8 +37,44 @@ public final class PolicyChecker {
                     break;
                 }
             }
+            String licence = licenceViolation(pkg.licenses());
+            if (licence != null) out.add(new Violation(pkg.name(), pkg.version(), licence));
         }
         return out;
+    }
+
+    /**
+     * Why {@code licences} breaks the policy, or null. With an allow list a row needs one allowed
+     * licence (a POM that declares none has none); a row is denied when every licence it offers is.
+     * A row that records no licences (no POM, or a lock written before they were recorded) is not
+     * judged.
+     */
+    private @Nullable String licenceViolation(@Nullable List<String> licences) {
+        if (licences == null) return null;
+        String offered = licences.isEmpty() ? "no licence" : String.join(" / ", licences);
+        if (!policy.allowedLicenses().isEmpty()
+                && licences.stream().noneMatch(l -> matchesAny(policy.allowedLicenses(), l))) {
+            return "licensed " + offered + ", none of which [deny.licenses] allow";
+        }
+        if (!policy.deniedLicenses().isEmpty()
+                && !licences.isEmpty()
+                && licences.stream().allMatch(l -> matchesAny(policy.deniedLicenses(), l))) {
+            return "licensed " + offered + ", which [deny.licenses] deny";
+        }
+        return null;
+    }
+
+    private static boolean matchesAny(List<String> globs, String licence) {
+        return globs.stream().anyMatch(g -> licenceMatches(g, licence));
+    }
+
+    /** {@code glob} ({@code *} for any run of characters) against a licence id, ignoring case. */
+    public static boolean licenceMatches(String glob, String licence) {
+        StringBuilder re = new StringBuilder();
+        for (char c : glob.toCharArray()) re.append(c == '*' ? ".*" : Pattern.quote(String.valueOf(c)));
+        return Pattern.compile(re.toString(), Pattern.CASE_INSENSITIVE)
+                .matcher(licence)
+                .matches();
     }
 
     private static String hostOf(String url) {

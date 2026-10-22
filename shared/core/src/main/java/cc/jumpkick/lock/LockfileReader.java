@@ -416,6 +416,12 @@ public final class LockfileReader {
         if (membersArray != null) {
             for (int i = 0; i < membersArray.size(); i++) members.add(membersArray.getString(i));
         }
+        List<String> licenses = null;
+        LockToml.Array licensesArray = table.getArray("licenses");
+        if (licensesArray != null) {
+            licenses = new ArrayList<>();
+            for (int i = 0; i < licensesArray.size(); i++) licenses.add(licensesArray.getString(i));
+        }
         return new Lockfile.Artifact(
                 name,
                 version,
@@ -428,7 +434,8 @@ public final class LockfileReader {
                 git,
                 sourcesChecksum,
                 excludedBy,
-                members);
+                members,
+                licenses);
     }
 
     /**

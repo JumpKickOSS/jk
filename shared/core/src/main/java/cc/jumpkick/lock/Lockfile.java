@@ -681,7 +681,14 @@ public record Lockfile(
              * row, by {@link ModuleEntry#path}; empty for the workspace's own row. See {@link
              * Lockfile#forMember}.
              */
-            List<String> members) {
+            List<String> members,
+            /**
+             * The licences the artifact's POM declares (its parent's when it declares none), as SPDX
+             * ids where the name or URL maps to one and as written otherwise; empty when the POM
+             * declares none, {@code null} when not recorded (a row with no POM, or a lock written
+             * before licences were recorded).
+             */
+            @Nullable List<String> licenses) {
 
         public Artifact {
             Objects.requireNonNull(name, "name");
@@ -698,6 +705,66 @@ public record Lockfile(
             members = members == null || members.isEmpty()
                     ? List.of()
                     : members.stream().sorted().distinct().toList();
+            licenses = licenses == null ? null : List.copyOf(licenses);
+        }
+
+        /** As the canonical constructor, with no licences recorded. */
+        public Artifact(
+                String name,
+                String version,
+                String source,
+                @Nullable String checksum,
+                @Nullable String path,
+                List<Scope> scopes,
+                List<String> deps,
+                @Nullable String pinnedBy,
+                @Nullable GitInfo git,
+                @Nullable String sourcesChecksum,
+                List<String> excludedBy,
+                List<String> members) {
+            this(
+                    name,
+                    version,
+                    source,
+                    checksum,
+                    path,
+                    scopes,
+                    deps,
+                    pinnedBy,
+                    git,
+                    sourcesChecksum,
+                    excludedBy,
+                    members,
+                    null);
+        }
+
+        /** This row with the fields a {@code with…} method changes; name, version, source, file, deps and exclusions kept. */
+        private Artifact copy(
+                List<Scope> scopes,
+                @Nullable String pinnedBy,
+                @Nullable GitInfo git,
+                @Nullable String sourcesChecksum,
+                List<String> members,
+                @Nullable List<String> licenses) {
+            return new Artifact(
+                    name,
+                    version,
+                    source,
+                    checksum,
+                    path,
+                    scopes,
+                    deps,
+                    pinnedBy,
+                    git,
+                    sourcesChecksum,
+                    excludedBy,
+                    members,
+                    licenses);
+        }
+
+        /** This row with the licences its POM declares; every other field kept. */
+        public Artifact withLicenses(@Nullable List<String> licenses) {
+            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses);
         }
 
         /** The workspace's own row: no member partition. */
@@ -757,87 +824,27 @@ public record Lockfile(
 
         /** This row with {@code git} as its provenance; every other field kept. */
         public Artifact withGit(GitInfo git) {
-            return new Artifact(
-                    name,
-                    version,
-                    source,
-                    checksum,
-                    path,
-                    scopes,
-                    deps,
-                    pinnedBy,
-                    git,
-                    sourcesChecksum,
-                    excludedBy,
-                    members);
+            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses);
         }
 
         /** This row with the {@code -sources.jar} digest; every other field kept. */
         public Artifact withSourcesChecksum(@Nullable String sourcesChecksum) {
-            return new Artifact(
-                    name,
-                    version,
-                    source,
-                    checksum,
-                    path,
-                    scopes,
-                    deps,
-                    pinnedBy,
-                    git,
-                    sourcesChecksum,
-                    excludedBy,
-                    members);
+            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses);
         }
 
         /** This row with {@code pinnedBy} as what decided its version; every other field kept. */
         public Artifact withPinnedBy(@Nullable String pinnedBy) {
-            return new Artifact(
-                    name,
-                    version,
-                    source,
-                    checksum,
-                    path,
-                    scopes,
-                    deps,
-                    pinnedBy,
-                    git,
-                    sourcesChecksum,
-                    excludedBy,
-                    members);
+            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses);
         }
 
         /** This row as the partition the listed members read; every other field kept. */
         public Artifact withMembers(List<String> members) {
-            return new Artifact(
-                    name,
-                    version,
-                    source,
-                    checksum,
-                    path,
-                    scopes,
-                    deps,
-                    pinnedBy,
-                    git,
-                    sourcesChecksum,
-                    excludedBy,
-                    members);
+            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses);
         }
 
         /** This row with {@code scopes}; every other field kept. */
         public Artifact withScopes(List<Scope> scopes) {
-            return new Artifact(
-                    name,
-                    version,
-                    source,
-                    checksum,
-                    path,
-                    scopes,
-                    deps,
-                    pinnedBy,
-                    git,
-                    sourcesChecksum,
-                    excludedBy,
-                    members);
+            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses);
         }
 
         /** True when this row is one member partition of its coordinate rather than the workspace's row. */

@@ -322,9 +322,7 @@ public final class EffectivePomBuilder {
         }
         List<Coordinate> bomCoordsOrdered = new ArrayList<>();
         for (Pom.Dep dep : child.managedDependencies()) {
-            if (isBomImport(dep)) {
-                bomCoordsOrdered.add(bomCoordinate(dep, props));
-            }
+            if (isBomImport(dep)) bomCoordsOrdered.add(bomCoordinate(dep, props));
         }
         Map<String, EffectivePom> bomsByGav = buildBomImportsParallel(bomCoordsOrdered, visiting, depth + 1);
         List<Pom.Dep> childImported = new ArrayList<>();
@@ -435,7 +433,8 @@ public final class EffectivePomBuilder {
                 child.relocation(),
                 hostClassified,
                 repositories(child, parent),
-                retainedInherited);
+                retainedInherited,
+                !child.licenses().isEmpty() || parent == null ? child.licenses() : parent.licenses());
     }
 
     /**
