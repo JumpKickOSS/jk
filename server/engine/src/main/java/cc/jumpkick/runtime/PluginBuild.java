@@ -299,8 +299,8 @@ public final class PluginBuild {
     }
 
     /**
-     * Provision {@code deps}: an SDK component at the lock's {@code [[sdk]]} revision, a closure, or
-     * a URL file or one Maven artifact fetched as the lock's {@code [[tool]]} row pins it — a tool
+     * Provision {@code deps}: an SDK component at the lock's {@code [[sdk]]} revision, or a closure,
+     * a URL file or one Maven artifact fetched as the lock's {@code [[tool]]} rows pin it — a tool
      * the lock has no row for is refused, and so are bytes other than the pinned ones.
      */
     private static Map<String, Path> fetchTools(
@@ -324,7 +324,7 @@ public final class PluginBuild {
                 } else {
                     if (repos == null) repos = RepoGroupBuilder.buildFor(project, null, cas);
                     if (dep.transitive()) {
-                        out.put(dep.artifact(), ToolClosures.materialize(dep, repos, cas));
+                        out.put(dep.artifact(), ToolClosures.materialize(dep, repos, cas, lock));
                         continue;
                     }
                     fetched = fetchPinned(

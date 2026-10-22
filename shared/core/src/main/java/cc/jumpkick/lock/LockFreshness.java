@@ -16,6 +16,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -71,8 +72,8 @@ public final class LockFreshness {
      *       pin: stale.
      *   <li>Digest clean but a module compiles with a Kotlin compiler plugin — declared or
      *       contributed — the lock pins no digest for: stale.
-     *   <li>Digest clean but an active plugin fetches a tool artifact or URL the lock has no {@code
-     *       [[tool]]} row for: stale.
+     *   <li>Digest clean but an active plugin fetches a tool artifact, URL or closure the lock has
+     *       no {@code [[tool]]} row for: stale.
      * </ul>
      *
      * <p>Both the project {@code jk.toml} and the lock must exist for a non-stale answer; missing
@@ -189,8 +190,8 @@ public final class LockFreshness {
     }
 
     /**
-     * True when an active plugin of a module fetches a tool artifact by coordinate, or a file at a
-     * URL, that {@code lock} has no {@code [[tool]]} row for — the module, version and type; a
+     * True when an active plugin of a module fetches a tool artifact by coordinate, a file at a URL
+     * or a runtime closure that {@code lock} has no {@code [[tool]]} row for — the module, version and type; a
      * floating version matches any row of its module. Which platforms a row covers is the build's
      * question, not freshness's.
      */
@@ -213,6 +214,11 @@ public final class LockFreshness {
             for (PluginContributions.LockedTool url :
                     PluginContributions.lockedUrls(module.getValue(), dir, view.platformPins())) {
                 if (url.host() && lock.urlSha256(url.id()) == null) return true;
+            }
+            for (PluginContributions.StepDep closure :
+                    PluginContributions.closureTools(module.getValue(), dir, view.platformPins())) {
+                String root = Objects.requireNonNull(closure.coordinateSpec());
+                if (lock.closureRow(root, closure.with(), closure.managedBySpec()) == null) return true;
             }
         }
         return false;

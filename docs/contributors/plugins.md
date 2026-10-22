@@ -186,7 +186,9 @@ for-step   = "lint-checkstyle"        # URL (a module path, or an unset key, is 
 ```
 
 An entry names exactly one of `coordinate`, `sdk-component` or `url`; `transitive`, `with` and
-`managed-by` belong to a coordinate. A `coordinate` that is not `transitive` is pinned in the
+`managed-by` belong to a coordinate. A `transitive` coordinate's closure is resolved by `jk lock`
+and pinned as a closure row naming every jar, each jar a `[[tool]]` row by sha256; the build
+fetches those jars and resolves nothing. A `coordinate` that is not `transitive` is pinned in the
 project's lock as a `[[tool]]` row by sha256, once per platform when it names `${host.os}` or
 `${host.os-arch}` ([Lockfile](../user/lockfile.md#plugin-tools)); the engine fetches only the
 pinned bytes. A `url` is a `[[tool]]` row too, the sha256 of the file `jk lock` downloaded (one

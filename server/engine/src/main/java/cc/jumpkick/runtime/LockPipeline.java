@@ -802,7 +802,8 @@ public final class LockPipeline {
 
     /**
      * Pin every plugin tool the root or a member fetches as one Maven artifact — the step, command
-     * and packager lanes — or as a file at a URL, by the sha256 of its bytes. A tool whose coordinate follows the host is
+     * and packager lanes — or as a file at a URL, by the sha256 of its bytes, and every tool it
+     * fetches as a runtime closure by a closure row naming each jar, each jar a row of its own. A tool whose coordinate follows the host is
      * pinned for each {@link Interpolation.Host#LOCKED} platform that publishes it, so a machine on
      * another OS verifies its own download against the lock; the running host's artifact must
      * exist. A plain {@code jk lock} keeps a floating tool's locked version and reuses the digests
@@ -816,6 +817,8 @@ public final class LockPipeline {
         Map<Coordinate, RepoGroup> reposFor = new LinkedHashMap<>();
         // url -> must be fetched (it is this host's)
         Map<String, Boolean> urls = new LinkedHashMap<>();
+        Set<ToolEntry> closures = new LinkedHashSet<>();
+        Map<Coordinate, RepoGroup> closureJars = new LinkedHashMap<>();
         for (Map.Entry<Path, JkBuild> module :
                 modules(LockPlans.lockMembers(lockDir, effective)).entrySet()) {
             Path dir = module.getKey();
@@ -834,8 +837,14 @@ public final class LockPipeline {
             for (PluginContributions.LockedTool url : PluginContributions.lockedUrls(build, dir, view.platformPins())) {
                 urls.merge(url.id(), url.host(), Boolean::logicalOr);
             }
+            for (PluginContributions.StepDep tool : PluginContributions.closureTools(build, dir, view.platformPins())) {
+                if (repos == null) repos = RepoGroupBuilder.buildFor(build, repoUrl, cas, BuildEnv.forModule(dir));
+                ToolEntry row = closureRow(tool, previous, repos, progress);
+                closures.add(row);
+                for (String jar : row.closure()) closureJars.putIfAbsent(Coordinate.parse(jar), repos);
+            }
         }
-        if (wanted.isEmpty() && urls.isEmpty()) return lock.withTools(List.of());
+        if (wanted.isEmpty() && urls.isEmpty() && closures.isEmpty()) return lock.withTools(List.of());
         progress.label("lock tools");
         // group:artifact:version!type -> classifier -> hex
         Map<String, Map<@Nullable String, String>> digests = new LinkedHashMap<>();
@@ -869,7 +878,33 @@ public final class LockPipeline {
             String hex = urlDigest(url.getKey(), url.getValue(), previous, cas);
             if (hex != null) rows.add(ToolEntry.atUrl(url.getKey(), hex));
         }
+        rows.addAll(closures);
+        for (Map.Entry<Coordinate, RepoGroup> jar : closureJars.entrySet()) {
+            Coordinate coord = jar.getKey();
+            if (rows.stream().anyMatch(row -> row.pins(coord))) continue;
+            rows.add(
+                    ToolEntry.single(coord, Objects.requireNonNull(toolDigest(coord, true, previous, jar.getValue()))));
+        }
         return lock.withTools(rows);
+    }
+
+    /**
+     * The closure row for {@code tool}: the previous lock's when a plain {@code jk lock} keeps one
+     * for the same roots, else the closure resolved from the tool's POMs.
+     */
+    private static ToolEntry closureRow(
+            PluginContributions.StepDep tool, @Nullable Lockfile previous, RepoGroup repos, Progress progress) {
+        String spec = Objects.requireNonNull(tool.coordinateSpec());
+        ToolEntry kept = previous == null ? null : previous.closureRow(spec, tool.with(), tool.managedBySpec());
+        if (kept != null) return kept;
+        progress.label("lock " + spec);
+        try {
+            ToolClosures.Resolved closure = ToolClosures.resolve(tool, repos);
+            return ToolEntry.closureOf(closure.root(), closure.with(), closure.managedBy(), closure.jars());
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            throw new IllegalStateException("tool " + spec + " — " + e.getMessage(), e);
+        }
     }
 
     /**

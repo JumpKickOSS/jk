@@ -275,6 +275,15 @@ public final class PluginContributions {
         return out;
     }
 
+    /** Every tool the active plugins fetch as a runtime closure ({@code transitive}): what closure rows pin. */
+    public static List<StepDep> closureTools(JkBuild build, Path moduleDir, Map<String, String> platformPins) {
+        List<StepDep> out = new ArrayList<>();
+        for (StepDep tool : toolLanes(build, moduleDir, platformPins)) {
+            if (tool.isClosure()) out.add(tool);
+        }
+        return out;
+    }
+
     /** The step lane, then the command lane. */
     private static List<StepDep> toolLanes(JkBuild build, Path moduleDir, Map<String, String> platformPins) {
         List<StepDep> tools = new ArrayList<>(stepDependencies(build, moduleDir, platformPins));
@@ -353,6 +362,16 @@ public final class PluginContributions {
          */
         public boolean isPinnedArtifact() {
             return coordinateSpec != null && !transitive && sdkComponent == null && url == null;
+        }
+
+        /** True for a tool fetched as the runtime closure of its coordinate (and {@code with}). */
+        public boolean isClosure() {
+            return coordinateSpec != null && transitive && sdkComponent == null && url == null;
+        }
+
+        /** {@code managedBy}, or null when it names no BOM. */
+        public @Nullable String managedBySpec() {
+            return managedBy == null || managedBy.isBlank() ? null : managedBy;
         }
 
         /** Every coordinate this tool takes on a locked platform or this host: what the lock pins. */

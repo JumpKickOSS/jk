@@ -422,9 +422,33 @@ other bytes than the lock pins (a rule set on a branch that moved) fails the bui
 digests until `jk lock -F` downloads and pins it again — a plain `jk lock` keeps the pin. A lock that has no row for a
 tool an active plugin fetches is stale, so the next build relocks first. A floating tool version
 (`^3.25`) is resolved once and kept by `jk lock`; `jk update` moves it. A plain `jk lock` reuses the
-digests a row already has instead of downloading every platform again. Tools a plugin fetches as a
-closure (`transitive`) and SDK components (their `[[sdk]]` rows) are provisioned outside these
-rows.
+digests a row already has instead of downloading every platform again. SDK components are pinned by their `[[sdk]]` rows instead.
+
+A tool a plugin fetches as its runtime closure (`transitive` — Checkstyle, PMD, the jOOQ code
+generator, bundletool) is resolved once, by `jk lock`, from the tool's POMs. Its closure row names
+the root as resolved, the other roots resolved `with` it and its BOM (`managed-by`), and every jar
+of the closure; each jar is a `[[tool]]` row of its own with its digest:
+
+```toml
+[[tool]]
+coordinate = "net.sourceforge.pmd:pmd-cli"
+version    = "7.20.0"
+with       = ["net.sourceforge.pmd:pmd-java:7.20.0"]
+closure = [
+  "net.sourceforge.pmd:pmd-cli:7.20.0",
+  "net.sourceforge.pmd:pmd-core:7.20.0",
+  …
+]
+
+[[tool]]
+coordinate = "net.sourceforge.pmd:pmd-core"
+version    = "7.20.0"
+checksum   = "sha256:…"
+```
+
+The build resolves nothing: it fetches exactly the jars the closure row names, each against its
+row, and a tool with no closure row fails naming it. A plain `jk lock` keeps a closure as pinned;
+`jk lock -F` and `jk update` resolve it again.
 
 A `[[plugin]]` row normally pins the plugin jar by `checksum`: a jar that is fetched later and
 disagrees with it is refused. A plugin the workspace builds itself — a module whose

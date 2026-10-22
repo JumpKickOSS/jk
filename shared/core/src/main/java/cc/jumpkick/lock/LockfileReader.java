@@ -507,7 +507,16 @@ public final class LockfileReader {
             String url = t.getString("url");
             if (url != null) {
                 tools.add(new ToolEntry(
-                        null, null, ToolEntry.FILE, null, requireRowString(t, "checksum"), Map.of(), url));
+                        null,
+                        null,
+                        ToolEntry.FILE,
+                        null,
+                        requireRowString(t, "checksum"),
+                        Map.of(),
+                        url,
+                        List.of(),
+                        null,
+                        List.of()));
                 continue;
             }
             String coord = requireRowString(t, "coordinate");
@@ -522,9 +531,27 @@ public final class LockfileReader {
                 }
             }
             tools.add(new ToolEntry(
-                    coord, ver, type == null ? "jar" : type, t.getString("classifier"), t.getString("checksum"), shas));
+                    coord,
+                    ver,
+                    type == null ? "jar" : type,
+                    t.getString("classifier"),
+                    t.getString("checksum"),
+                    shas,
+                    null,
+                    stringList(t, "with"),
+                    t.getString("managed-by"),
+                    stringList(t, "closure")));
         }
         return tools;
+    }
+
+    /** The string array under {@code key}, or empty. */
+    private static List<String> stringList(LockToml table, String key) {
+        List<String> out = new ArrayList<>();
+        LockToml.Array array = table.getArray(key);
+        if (array == null) return out;
+        for (int i = 0; i < array.size(); i++) out.add(array.getString(i));
+        return out;
     }
 
     private static String requireRowString(LockToml table, String key) {
