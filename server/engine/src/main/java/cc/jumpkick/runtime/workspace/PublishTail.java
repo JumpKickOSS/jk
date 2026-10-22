@@ -14,7 +14,10 @@ public final class PublishTail {
     private PublishTail() {}
 
     public static Tail of(PublishPlans.Request req) {
-        Path workerJar = PublishPlans.workerJar();
+        return of(req, PublishPlans.workerJar());
+    }
+
+    static Tail of(PublishPlans.Request req, Path workerJar) {
         return (plan, in) -> plan.stateKeys(
                         PublishPlans.PROJECT,
                         PublishPlans.JAR,

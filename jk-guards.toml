@@ -1328,3 +1328,25 @@ hit      = 'Files.createSymbolicLink(tmp.resolve("link"), real);'
 miss     = 'Symlinks.create(tmp.resolve("link"), real);'
 instead  = "cc.jumpkick.testing.Symlinks.create(link, target), which aborts the test on Windows"
 why      = "a test that creates a symlink is red for every Windows contributor without Developer Mode"
+
+# G115. Every build-like goal plans a module through ModulePipeline: the same Inputs, the same core,
+# the PACKAGE phase with its declared deliveries and test join, then the goal's Tail. A second
+# planner is how verbs drifted into skipping tests, deliveries or the build itself.
+[guards.one-module-planner]
+kind       = "forbid"
+signatures = [
+  "cc.jumpkick.runtime.BuildPlanner#coreBuilder(**)",
+  "cc.jumpkick.runtime.BuildPlanner#fullPlan(**)",
+  "cc.jumpkick.runtime.PlannerTails#appendDeclaredTails(**)",
+  "cc.jumpkick.runtime.PlannerTails#joinTests(**)",
+  "cc.jumpkick.runtime.BuildPlanner$Inputs#<init>(**)",
+]
+owner      = [
+  "cc.jumpkick.runtime.workspace.ModulePipeline",
+  "cc.jumpkick.runtime.BuildPlanner",
+  "cc.jumpkick.runtime.PlannerTails",
+  "cc.jumpkick.runtime.TaskForecaster",
+]
+source-set = "main"
+instead    = "plan through ModulePipeline; a goal's work past PACKAGE is a Tail that extend()s the plan (docs/contributors/lifecycle.md)"
+why        = "a second planner is how build verbs drifted apart in which phases they ran"

@@ -83,6 +83,9 @@ pin behavior (`JdkFloorTest`, `FirstBuildJdkTest`, …). Elsewhere prefer `java 
 
 - Do not turn `jk.toml` into a scripting language or a Gradle-style configuration graph.
 - Do not re-resolve in `jk build` when a valid `jk-lock.toml` exists.
+- Do not plan a build-like verb outside `ModulePipeline`, re-root a plan from a verb's tail, or
+  decide "skip tests" in a verb. Every build-like goal runs the same phases through PACKAGE and
+  differs only in its tail and test policy — [docs/contributors/lifecycle.md](docs/contributors/lifecycle.md).
 - Do not write per-module lockfiles — one `jk-lock.toml` at the workspace root (or standalone project root).
 - Product docs are part of the product: [docs/user/](docs/user/README.md) for people and agents *using* `jk`, [docs/contributors/](docs/contributors/README.md) for this codebase. Do not dump PRDs, benches, or decision essays into this repo — those belong in KanArtist (`projects/jk/docs/`).
 - Do not expand infinite ecosystem long tail (full KMP multiplatform, AGP parity, plugin marketplace, RBE) without an explicit ticket that says so.
