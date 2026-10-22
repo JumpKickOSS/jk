@@ -61,6 +61,22 @@ class TestConfigStepTest {
         assertThat(exec.labels()).contains("test_config.properties for com.example.app");
     }
 
+    /** Robolectric on the test closure brings the JDK flags it needs; without it the file is empty. */
+    @Test
+    void robolectric_on_the_test_closure_gets_its_jdk_flags(@TempDir Path tmp) throws Exception {
+        FakeBuildIo plain = step(tmp.resolve("plain"));
+        plain.step("android-res");
+        TestConfigStep.run(plain);
+        assertThat(plain.scratch().resolve(TestConfigStep.TEST_JVM_ARGS)).isEmptyFile();
+
+        FakeBuildIo robo = step(tmp.resolve("robo"));
+        robo.step("android-res");
+        robo.entry("robolectric-4.17.jar", "org.robolectric", "robolectric", "4.17");
+        TestConfigStep.run(robo);
+        assertThat(Files.readAllLines(robo.scratch().resolve(TestConfigStep.TEST_JVM_ARGS)))
+                .containsExactlyElementsOf(TestConfigStep.ROBOLECTRIC_JVM_ARGS);
+    }
+
     /** No {@code assets/} in the module means no assets key — Robolectric treats "" as a real dir. */
     @Test
     void a_module_without_assets_writes_no_assets_key(@TempDir Path tmp) throws Exception {
