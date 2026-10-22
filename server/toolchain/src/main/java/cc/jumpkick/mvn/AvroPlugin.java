@@ -37,7 +37,6 @@ final class AvroPlugin {
 
     private static final String DEFAULT_OUTPUT = "target/generated-sources/avro";
     private static final String DEFAULT_SRC = "src/main/avro";
-    private static final String DEFAULT_VERSION = "1.12.2";
     /** The Maven plugin's default string type — not the preset's. */
     private static final String MAVEN_STRING_TYPE = "CharSequence";
 
@@ -87,7 +86,7 @@ final class AvroPlugin {
         if (!src.equals(DEFAULT_SRC)) values.put("src", src);
         if (!stringType.equals("String")) values.put("string-type", stringType);
         String version = PluginFacts.usable(plugin.getVersion());
-        if (version != null && !version.equals(DEFAULT_VERSION)) values.put("version", version);
+        if (version != null) values.put("version", version);
         if (!uncovered.isEmpty()) {
             report.warning("`" + ARTIFACT + "` " + String.join(", ", uncovered) + " have no `[avro]` key; the preset"
                     + " generates from every schema, protocol and IDL file under `" + src + "` into the main compile.");
@@ -95,7 +94,7 @@ final class AvroPlugin {
         report.warning("`" + ARTIFACT + "` is `[avro]`: the classes are generated into the compile from the files"
                 + " under `" + src + "`, a schema naming a type another file defines in any order; the module's"
                 + " `org.apache.avro:avro` dependency stays and is expected at the compiler's version ("
-                + (version != null ? version : DEFAULT_VERSION) + ").");
+                + PluginFacts.versionOrDefault(version, "avro", "version") + ").");
         return new Mapped(new PluginConfig("avro", values), Map.of(output, ADD_SOURCE_ROW));
     }
 }

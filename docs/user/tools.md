@@ -6,13 +6,13 @@ work too.
 ```bash
 # Run once, without installing. `--` separates jk's own flags from the tool's, and
 # `--main` is required for a jar with no Main-Class in its manifest.
-jk tool run com.puppycrawl.tools:checkstyle:14.1.0 \
+jk tool run com.puppycrawl.tools:checkstyle:14.3.0 \
   --main com.puppycrawl.tools.checkstyle.Main -- -c checkstyle.xml src/main/java
 
 # Or install once; the launcher lands on PATH under the artifact's short name,
 # and the name then resolves in `jk tool run` / `jkx` too — reusing the recorded
 # coordinate, Main-Class and classpath, so --main is never repeated.
-jk tool install com.puppycrawl.tools:checkstyle:14.1.0 \
+jk tool install com.puppycrawl.tools:checkstyle:14.3.0 \
   --main com.puppycrawl.tools.checkstyle.Main
 checkstyle -c checkstyle.xml src/main/java
 jk tool run checkstyle -- -c checkstyle.xml src/main/java   # same thing

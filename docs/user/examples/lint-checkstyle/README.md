@@ -22,7 +22,7 @@ checkstyle = "checkstyle.xml"
 ```
 
 Checkstyle itself is not in `[dependencies]`: the lint plugin fetches
-`com.puppycrawl.tools:checkstyle` at its pinned release (`checkstyle-version`, `14.1.0` unless
+`com.puppycrawl.tools:checkstyle` at its pinned release (`checkstyle-version`, `14.3.0` unless
 you say otherwise) into the content-addressed store, hashes it into the step's key, and forks it
 on the build JDK. The rule set is a project file, so it is part of the key too.
 

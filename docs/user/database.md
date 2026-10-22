@@ -83,7 +83,7 @@ liquibase update    # or: liquibase status | rollback-count --count=1 | validate
 
 The recipe against a database a test owns — a Testcontainer's JDBC URL, an H2 file — is the same
 command with the URL on the command line: `jk tool run org.flywaydb:flyway-commandline:12.9.0
---main org.flywaydb.commandline.Main --with com.h2database:h2:2.5.250 -- -url=jdbc:h2:file:./target/it
+--main org.flywaydb.commandline.Main --with com.h2database:h2:2.5.252 -- -url=jdbc:h2:file:./target/it
 -locations=filesystem:src/main/resources/db/migration migrate`.
 The tool's closure is resolved once and cached; a second run costs the JVM start.
 

@@ -13,4 +13,4 @@ main = "com.acme.Main"
 excludes = "flyway_schema_history"
 
 [dependencies]
-jooq = { group = "org.jooq", version = "3.21.8" }
+jooq = { group = "org.jooq", version = "3.21.9" }

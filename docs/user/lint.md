@@ -28,10 +28,10 @@ detekt     = true                                               # detekt over th
 | `checkstyle-header` | A header file — module-relative, at an `https://` URL, or a `checkstyle-classpath` resource — handed to the rule set the way Maven's `<headerLocation>` is: as the `checkstyle.header.file` property a `Header` check reads | none |
 | `checkstyle-properties` | Properties the rule set reads as `${name}`, the way Maven's `<propertyExpansion>` hands them over: `{ "checkstyle.build.directory" = "target" }`; `checkstyle.suppressions.file` and `checkstyle.header.file` come from their own keys | `{}` |
 | `checkstyle-classpath` | Coordinates whose jars join Checkstyle's classpath with their closures — the jars a build ships its rule set, header, suppressions or check classes in, as a Maven plugin's `<dependencies>` do (`["org.springframework.cloud:spring-cloud-build-tools:5.0.3", "io.spring.javaformat:spring-javaformat-checkstyle:0.0.47"]`) | `[]` |
-| `checkstyle-version` | The Checkstyle release; a bare version is exact | `"14.1.0"` |
+| `checkstyle-version` | The Checkstyle release; a bare version is exact | `"14.3.0"` |
 | `pmd` | Enable PMD with these rulesets: a built-in `category/java/…` or `rulesets/java/…`, `rulesets/java/maven-pmd-plugin-default.xml` (Maven's default, which jk carries), or a module-relative ruleset file | off |
 | `pmd-exclude` | A module-relative file in `maven-pmd-plugin`'s `excludeFromFailureFile` shape — `package.Class=Rule,Rule` per line — whose findings are left out of the report | none |
-| `pmd-version` | The PMD release; `jk import` writes the one the POM's plugin runs — the `pmd-java` it pins, else the release its `maven-pmd-plugin` bundles, read from that plugin's POM — since a newer PMD reports what an older one let through | `"7.27.0"` |
+| `pmd-version` | The PMD release; `jk import` writes the one the POM's plugin runs — the `pmd-java` it pins, else the release its `maven-pmd-plugin` bundles, read from that plugin's POM — since a newer PMD reports what an older one let through | `"7.28.0"` |
 | `spotbugs` | Enable SpotBugs over the module's classes, against its compile classpath | `false` |
 | `spotbugs-exclude` | Module-relative SpotBugs filter files of findings to leave out (`["config/spotbugs-exclude.xml"]`); a finding any of them matches is left out | `[]` |
 | `spotbugs-effort` | `min`, `less`, `default`, `more`, `max` | `"default"` |
@@ -40,7 +40,7 @@ detekt     = true                                               # detekt over th
 | `spotbugs-omit-visitors` | Detectors SpotBugs leaves out, by class name (`["ConstructorThrow", "FindReturnRef"]`), as the Maven plugin's `<omitVisitors>` | `[]` |
 | `spotbugs-visitors` | The only detectors SpotBugs runs, by class name, as the Maven plugin's `<visitors>` | `[]` |
 | `spotbugs-plugins` | Coordinates of detector plugins loaded beside SpotBugs's own — find-sec-bugs, fb-contrib — as the Maven plugin's `<plugins>` (`["com.h3xstream.findsecbugs:findsecbugs-plugin:1.14.0"]`). Each jar is fetched as written, without its dependencies, and a `@SuppressFBWarnings` naming one of its patterns is then a suppression rather than a useless one | `[]` |
-| `spotbugs-version` | The SpotBugs release. SpotBugs reads the class files of the build JDK it runs on, so a release older than that JDK is refused before anything is fetched, with the floor named: `4.2.2` on JDK 17, `4.8.0` on JDK 21, `4.9.4` on JDK 25 | `"4.10.4"` |
+| `spotbugs-version` | The SpotBugs release. SpotBugs reads the class files of the build JDK it runs on, so a release older than that JDK is refused before anything is fetched, with the floor named: `4.2.2` on JDK 17, `4.8.0` on JDK 21, `4.9.4` on JDK 25 | `"4.10.5"` |
 | `detekt` | Enable detekt over the Kotlin sources | `false` |
 | `detekt-config` | A detekt configuration laid over the default rule set | none |
 | `detekt-version` | The detekt release | `"1.23.8"` |

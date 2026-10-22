@@ -607,7 +607,7 @@ class PomLintImportTest {
                 .containsEntry("spotbugs-threshold", "low")
                 .as("spotbugs:check fails on any bug at the confidence threshold")
                 .containsEntry("fail-on", "warning")
-                .doesNotContainKey("spotbugs-version");
+                .containsEntry("spotbugs-version", "4.10.4");
     }
 
     /**

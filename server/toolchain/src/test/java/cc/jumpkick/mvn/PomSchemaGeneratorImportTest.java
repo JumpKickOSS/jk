@@ -78,7 +78,7 @@ class PomSchemaGeneratorImportTest {
                 .containsEntry("setters", false)
                 .containsEntry("decimal-logical-type", true)
                 .doesNotContainKey("string-type")
-                .doesNotContainKey("version");
+                .containsEntry("version", "1.12.2");
         assertThat(result.jkBuild().build().extraSrc())
                 .as("the preset's output is its own contribution")
                 .isEmpty();
@@ -87,7 +87,11 @@ class PomSchemaGeneratorImportTest {
                 .anyMatch(m -> m.contains("`[avro]`") && m.contains("`org.apache.avro:avro`"))
                 .noneMatch(m -> m.contains("`<plugin>avro-maven-plugin</plugin>` was not imported"));
         String rendered = JkBuildRenderer.render(result.jkBuild());
-        assertThat(rendered).contains("[avro]").contains("setters = false");
+        assertThat(rendered)
+                .contains("[avro]")
+                .contains("setters = false")
+                .as("the release `[avro] version` defaults to renders as nothing")
+                .doesNotContain("version = \"1.12.2\"");
         assertThat(JkBuildParser.parse(rendered).pluginConfig("avro")).isPresent();
     }
 
@@ -359,7 +363,7 @@ class PomSchemaGeneratorImportTest {
                 .containsEntry("records", false)
                 .containsEntry("daos", true)
                 .containsEntry("package", "com.acme.jooq")
-                .doesNotContainKey("version")
+                .containsEntry("version", "3.21.8")
                 .doesNotContainKey("jdbc-url");
         assertThat(result.jkBuild().build().extraSrc()).isEmpty();
         assertThat(messages(result)).anyMatch(m -> m.contains("`[jooq]`") && m.contains("DDL scripts"));

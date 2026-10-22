@@ -18,8 +18,8 @@ curl -s -X POST localhost:8080/api/notes -H 'content-type: application/json' -d 
 curl -s localhost:8080/actuator/health
 ```
 
-Upgrade path: `jk update` re-locks `[spring-boot] version = "latest"` to a newer
-stable; starters stay versionless under the plugin BOM. Use `=4.1.0` to freeze.
+Upgrade path: `[spring-boot] version` is an exact pin; `jk update` moves it to the newest stable
+on the same major (`--major` crosses one). Starters stay versionless under the plugin BOM.
 
 ## Tiers, guards, image
 

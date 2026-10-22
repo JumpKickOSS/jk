@@ -541,7 +541,7 @@ class PomGeneratorImportTest {
                 .as("the preset's output is its own contribution")
                 .isEmpty();
         PluginConfig antlr = result.jkBuild().pluginConfig("antlr").orElseThrow();
-        assertThat(antlr.values()).as("every default stays unwritten").isEmpty();
+        assertThat(antlr.values()).containsOnlyKeys("version");
         assertThat(result.report().issues()).noneMatch(i -> i.severity() == ImportReport.Severity.ERROR);
         assertThat(messages(result))
                 .anyMatch(m -> m.startsWith("`build-helper-maven-plugin` adds `target/generated-sources/antlr4`, the"
@@ -549,7 +549,10 @@ class PomGeneratorImportTest {
                 .anyMatch(m -> m.contains("`[antlr]`") && m.contains("`org.antlr:antlr4-runtime`"))
                 .noneMatch(m -> m.contains("`<plugin>antlr4-maven-plugin</plugin>` was not imported"));
         String rendered = JkBuildRenderer.render(result.jkBuild());
-        assertThat(rendered).contains("[antlr]");
+        assertThat(rendered)
+                .contains("[antlr]")
+                .as("every default, the release included, renders as nothing")
+                .doesNotContain("version = \"4.13.2\"");
         assertThat(JkBuildParser.parse(rendered).pluginConfig("antlr")).isPresent();
     }
 

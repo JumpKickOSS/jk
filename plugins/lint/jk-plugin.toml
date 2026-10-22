@@ -28,10 +28,10 @@ checkstyle-suppressions = { type = "string", example = "config/checkstyle-suppre
 checkstyle-header = { type = "string", example = "config/checkstyle-header.txt", hint = "a header file — module-relative, at an http(s) URL, or a checkstyle-classpath resource — handed to the rule set as Maven's <headerLocation> is: the checkstyle.header.file property a Header check reads" }
 checkstyle-properties = { type = "string-map", example = "{ \"checkstyle.build.directory\" = \"target\" }", hint = "properties the rule set reads as ${name}, as Maven's <propertyExpansion> hands them over; checkstyle.suppressions.file and checkstyle.header.file come from their own keys" }
 checkstyle-classpath = { type = "string-list", example = "[\"org.springframework.cloud:spring-cloud-build-tools:5.0.3\"]", hint = "coordinates whose jars join Checkstyle's classpath with their closures — a rule set, header, suppressions or check classes a build ships in a jar, as a Maven plugin's <dependencies> do" }
-checkstyle-version = { type = "string", default = "14.1.0", hint = "the Checkstyle release; a bare version is exact" }
+checkstyle-version = { type = "string", default = "14.3.0", hint = "the Checkstyle release; a bare version is exact" }
 pmd            = { type = "string-list", default = [], example = "[\"category/java/bestpractices.xml\", \"config/pmd.xml\"]", hint = "enable PMD with these rulesets: a built-in category, rulesets/java/maven-pmd-plugin-default.xml (Maven's default, which jk carries) or a module-relative ruleset file" }
 pmd-exclude    = { type = "string", example = "pmd-exclude.properties", hint = "a module-relative file in maven-pmd-plugin's excludeFromFailureFile shape — package.Class=Rule,Rule per line — whose findings are left out of the report" }
-pmd-version    = { type = "string", default = "7.27.0", hint = "the PMD release; a bare version is exact" }
+pmd-version    = { type = "string", default = "7.28.0", hint = "the PMD release; a bare version is exact" }
 spotbugs       = { type = "bool", default = false, hint = "enable SpotBugs over the compiled classes" }
 spotbugs-exclude = { type = "string-list", default = [], example = "[\"config/spotbugs-exclude.xml\"]", hint = "module-relative SpotBugs filter files of findings to leave out; a finding any of them matches is left out" }
 spotbugs-effort = { type = "string", default = "default", hint = "the analysis effort: min, less, default, more or max" }
@@ -40,7 +40,7 @@ spotbugs-max-rank = { type = "int", example = "15", hint = "the scariest bug ran
 spotbugs-omit-visitors = { type = "string-list", default = [], example = "[\"ConstructorThrow\", \"FindReturnRef\"]", hint = "detectors SpotBugs leaves out, by class name, as the Maven plugin's <omitVisitors>" }
 spotbugs-visitors = { type = "string-list", default = [], example = "[\"FindNullDeref\"]", hint = "the only detectors SpotBugs runs, by class name, as the Maven plugin's <visitors>" }
 spotbugs-plugins = { type = "string-list", default = [], example = "[\"com.h3xstream.findsecbugs:findsecbugs-plugin:1.14.0\"]", hint = "coordinates of SpotBugs detector plugins (find-sec-bugs, fb-contrib) loaded beside SpotBugs's own, as the Maven plugin's <plugins>; each jar is fetched as written, without its dependencies" }
-spotbugs-version = { type = "string", default = "4.10.4", hint = "the SpotBugs release; a bare version is exact" }
+spotbugs-version = { type = "string", default = "4.10.5", hint = "the SpotBugs release; a bare version is exact" }
 detekt         = { type = "bool", default = false, hint = "enable detekt over the Kotlin sources" }
 detekt-config  = { type = "string", example = "config/detekt.yml", hint = "a module-relative detekt configuration laid over the default rule set" }
 detekt-version = { type = "string", default = "1.23.8", hint = "the detekt release; a bare version is exact" }
