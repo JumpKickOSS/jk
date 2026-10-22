@@ -21,10 +21,13 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The exact pins a manifest's tool tables carry, read the way the engine reads them: {@code
- * [dokka] version} pins {@link DokkaResolver#CLI}, {@code [build] ksp-version} pins {@link
- * KspResolver#KSP_AA_MODULE}, and every {@code [[contribute.step-dependency]]}
- * of an active plugin whose coordinate takes its version from the plugin's table — {@code
+ * The exact pins a manifest's framework and tool tables carry, read the way the engine reads them:
+ * {@code [dokka] version} pins {@link DokkaResolver#CLI}, {@code [build] ksp-version} pins {@link
+ * KspResolver#KSP_AA_MODULE}, every {@code [[contribute.platform-dependency]]} of an active plugin
+ * whose version comes from its table ({@code [spring-boot] version} → {@code
+ * spring-boot-dependencies}, {@code [micronaut] version} → {@code micronaut-platform}), and every
+ * {@code [[contribute.step-dependency]]} of an active plugin whose coordinate takes its version
+ * from the plugin's table — {@code
  * ${config.<key>}} in the version slot ({@code [protobuf] version} → {@code
  * com.google.protobuf:protoc}), a {@code ${entry.<key>}} coordinate on each {@code
  * [<table>.<name>]} entry ({@code [protobuf.<id>] plugin}, {@code [generate.<name>] tool} and
@@ -71,6 +74,10 @@ final class ToolPins {
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(null, build.plugins())) {
             PluginConfig config = build.pluginConfig(manifest.id()).orElse(null);
             if (config == null) continue;
+            for (PluginDescriptor.PlatformDependency pd :
+                    manifest.contributions().platformDependencies()) {
+                plain(manifest.table(), pd.coordinate(), config, build.project(), out);
+            }
             for (PluginDescriptor.StepDependency sd : manifest.contributions().stepDependencies()) {
                 String template = sd.coordinate();
                 if (template == null) continue;

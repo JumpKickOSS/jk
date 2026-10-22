@@ -654,6 +654,21 @@ class JkBuildEditorTest {
     }
 
     @Test
+    void set_version_rewrites_a_variant_values_dependency_table() {
+        String start = BASE + """
+
+                [variants.contentType.prod.dependencies]
+                commons-lang3 = "3.18.0"
+                """;
+        String out = JkBuildEditor.setDependencyVersion(
+                start, "variants.contentType.prod.dependencies", "commons-lang3", "3.21.0");
+        assertThat(out).contains("commons-lang3 = \"3.21.0\"");
+        assertThatThrownBy(() -> JkBuildEditor.setDependencyVersion(
+                        start, "variants.contentType.demo.dependencies", "commons-lang3", "3.21.0"))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void set_version_accepts_a_literal_string_value_in_another_scope() {
         String out = JkBuildEditor.setDependencyVersion(PINNED, Scope.TEST, "junit-jupiter", "5.12.0");
         assertThat(out).contains("junit-jupiter = { group = \"org.junit.jupiter\", version = \"5.12.0\" }");

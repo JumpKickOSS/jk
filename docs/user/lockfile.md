@@ -63,6 +63,17 @@ jk update -p floor     # relock with BOM pins as lower bounds — Platforms
 | `"^2.18"` / `"~2.18"` / range / `"latest"` | the lock takes the newest match inside that selector; the text stays | same, unless the selector itself excludes the new major |
 | `"g:a"` / `"managed"` (versionless) | untouched — the BOM decides | untouched |
 
+Every dependency table moves, a variant value's `[variants.<dimension>.<value>.dependencies]`
+included: the lock resolves every variant, so the update moves every variant's pins.
+
+A framework table's version is a pin on the platform it imports, and moves the same way:
+`[spring-boot] version` (spring-boot-dependencies), `[micronaut] version` (micronaut-platform) and
+any plugin whose platform BOM takes its version from its table. Naming the table, the artifact or
+the coordinate selects it (`jk update spring-boot`, `jk update micronaut-platform`), and naming
+any pin selects every pin of that coordinate in the workspace: a member's `[spring-boot] version`
+and the root's `spring-boot-dependencies` row under `[platform-dependencies]` land on the same
+release.
+
 The tool tables move under the same rule and flags: an exact `[dokka] version`, `[protobuf] version`
 (protoc), a `[protobuf.<id>] plugin`, and a `[generate.<name>] tool` or `unpack` coordinate are
 rewritten to the newest stable on their major; `jk update dokka`, `jk update grpc-java` or the tool's
@@ -104,6 +115,11 @@ Every row is a live repository read, so a workspace takes seconds: the terminal 
 Outdated wedge with a progress bar counting dependencies checked while the engine fetches, and
 the table takes the bar's place when the report lands. `-O jsonl`, a pipe and
 `--no-progress` paint nothing until the report.
+
+The report covers every variant: a pin under `[variants.<dimension>.<value>.dependencies]` gets a
+row under its scope whichever value a build selects, as the lock resolves them all — `jk
+outdated` takes no `--variant`. A framework table's version reads as its platform BOM's row
+(`spring-boot-dependencies` for `[spring-boot] version`).
 
 | Column | Meaning |
 |--------|---------|
