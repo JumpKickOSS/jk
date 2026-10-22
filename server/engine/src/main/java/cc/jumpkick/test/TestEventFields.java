@@ -2,6 +2,7 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 
 /**
  * The identity fields of one runner event, read the same way everywhere the aggregator looks at a
@@ -33,7 +34,9 @@ final class TestEventFields {
     static String progressLabel(String json) {
         String method = methodOf(json);
         if (!method.isEmpty()) return method;
-        String cls = classNameOf(json);
+        // A JUnit class, by its simple name. A Spock feature or Kotest test names no method and no
+        // [class:…]; its display is the label, not its spec class.
+        String cls = JUnitUniqueIds.classOf(identityKey(json));
         if (!cls.isEmpty()) {
             int dot = cls.lastIndexOf('.');
             return dot < 0 ? cls : cls.substring(dot + 1);

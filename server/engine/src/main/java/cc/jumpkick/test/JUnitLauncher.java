@@ -1148,12 +1148,28 @@ public final class JUnitLauncher {
     }
 
     /**
-     * Binary class name from a JUnit Platform unique id ({@code [class:…]} plus the
-     * {@code [nested-class:…]} join) — the shared {@link JUnitUniqueIds} walk, same as the runner's
-     * malformed-id fallback on the other side of the fork.
+     * The segments engines use for the class-like node when there is no {@code [class:…]}: Spock and
+     * Kotest name the spec, Cucumber the feature. In lookup order. Vintage's {@code [runner:…]} is
+     * read by the shared walk itself.
      */
-    public static String classFromUniqueId(String id) {
-        return id == null ? "" : JUnitUniqueIds.classOf(id);
+    private static final List<String> CLASS_LIKE_SEGMENTS = List.of("spec", "feature");
+
+    /**
+     * The test class a JUnit Platform unique id belongs to: {@code [class:…]} plus the
+     * {@code [nested-class:…]} join, else an engine's class-like segment ({@code [spec:…]},
+     * {@code [feature:…]}), else Vintage's runner (the shared {@link JUnitUniqueIds} walk); empty for
+     * an engine or suite root. The class-like segment wins over the Vintage walk, which would read a
+     * Kotest {@code [test:adds]} as a class named {@code adds}.
+     */
+    public static String classFromUniqueId(@Nullable String id) {
+        if (id == null) return "";
+        if (JUnitUniqueIds.segment(id, "class").isEmpty()) {
+            for (String segment : CLASS_LIKE_SEGMENTS) {
+                String value = JUnitUniqueIds.segment(id, segment);
+                if (!value.isEmpty()) return value;
+            }
+        }
+        return JUnitUniqueIds.classOf(id);
     }
 
     /** Engine id from {@code [engine:junit-jupiter]} — the shared {@link JUnitUniqueIds} walk. */
