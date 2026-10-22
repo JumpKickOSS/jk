@@ -352,6 +352,9 @@ class NewScaffolderTest {
         assertThat(body).contains("target/");
 
         assertThat(body).contains(".jk/selective-plan.json");
+        assertThat(body.lines().filter(line -> line.matches("\\* ?\\..*")))
+                .as("glob patterns, no stray space after the star")
+                .containsExactly("*.iml", "*.ipr", "*.iws", "*.code-workspace");
         Path agents = tempDir.resolve("AGENTS.md");
         assertThat(agents).exists();
         assertThat(Files.readString(agents)).contains("jk skill");

@@ -377,14 +377,14 @@ public final class NewScaffolder {
 
                 # IntelliJ IDEA
                 .idea/
-                * .iml
-                * .ipr
-                * .iws
+                *.iml
+                *.ipr
+                *.iws
                 out/
 
                 # VS Code
                 .vscode/
-                * .code-workspace
+                *.code-workspace
                 .history/
 
                 # Eclipse compiler (used by VS Code Java plugins)
