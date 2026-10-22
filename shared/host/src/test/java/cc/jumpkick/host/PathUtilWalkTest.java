@@ -189,4 +189,22 @@ class PathUtilWalkTest {
         PathUtil.forEachEntry(tmp.resolve("absent"), dir -> false, (p, a) -> seen.add(p));
         assertThat(seen).isEmpty();
     }
+
+    @Test
+    void a_directory_deleted_while_the_walk_runs_is_skipped(@TempDir Path tmp) throws IOException {
+        Files.createDirectories(tmp.resolve("a"));
+        Files.createDirectories(tmp.resolve("b"));
+        Files.writeString(tmp.resolve("a/one.txt"), "1");
+        Files.writeString(tmp.resolve("b/two.txt"), "2");
+        List<String> seen = new ArrayList<>();
+
+        // Whichever directory the walk reaches first deletes the other before it is opened.
+        PathUtil.forEachRegularFile(tmp, (file, attrs) -> {
+            seen.add(file.getFileName().toString());
+            Path other = tmp.resolve(file.startsWith(tmp.resolve("a")) ? "b" : "a");
+            PathUtil.deleteRecursively(other);
+        });
+
+        assertThat(seen).hasSize(1);
+    }
 }
