@@ -76,7 +76,7 @@ See [Run](run.md).
 |------|------|
 | `jk.toml` | What you declared |
 | `jk-lock.toml` | Exact versions + checksums — law for `jk build` |
-| `AGENTS.md` | Tells coding agents to run `jk skill` |
+| `AGENTS.md` | Tells coding agents to run `jk skill`; jk keeps [its section](agents.md#jks-section-of-agentsmd) current |
 | `target/` | Classes, jars, reports |
 | `target/jk-results.md` | High-level report of the last run (`jk results` prints it) |
 

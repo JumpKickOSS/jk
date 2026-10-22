@@ -4,11 +4,27 @@ How AI coding agents (and scripts) should talk to JumpKick. Humans at a TTY get 
 visual CLI; **agents should not scrape it.**
 
 **First:** run `jk skill` (or MCP `skill` / resource `jk://skill`). That is the
-system prompt for JumpKick — models have not been trained on this tool. Projects scaffolded
-by `jk new` include an `AGENTS.md` that says the same thing.
+system prompt for JumpKick — models have not been trained on this tool. A project's
+`AGENTS.md` says the same thing in [jk's section](#jks-section-of-agentsmd).
 
 Product stance and event names: [Machine output](machine-output.md). MCP tool reference:
 [MCP](mcp.md). The “fix my failing build” recipe: [Troubleshooting](troubleshooting.md).
+
+## jk's section of AGENTS.md
+
+jk owns one section of the project's `AGENTS.md`, between `<!-- BEGIN:jumpkick -->` and
+`<!-- END:jumpkick -->`. Everything outside the markers is the project's: its own rules, a
+generator's block, anything else. jk never edits it.
+
+| When | What happens |
+|------|--------------|
+| `jk new`, `jk init`, `jk import` | No `AGENTS.md`: written with a title and jk's section. One without the section: the section goes in below its title. |
+| `jk skill agents [dir]` | The same, on demand, at the workspace root (or `dir`). Prints what it did. |
+| Any build verb (`jk build`, `jk test`, …) | A section that differs from this jk's guide is rewritten, so upgrading jk updates what agents read. A file without the section is left alone. |
+
+Commit the file after a refresh as you would any generated change. Markers that do not pair up
+(a begin with no end, or either one twice) are refused by `jk skill agents` and skipped by the
+build; fix them by hand.
 
 ## Default recipe
 

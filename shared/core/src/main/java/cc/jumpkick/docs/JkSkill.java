@@ -38,45 +38,6 @@ public final class JkSkill {
 
     private static final String RESOURCE_DIR = "/cc/jumpkick/docs/skill/";
 
-    /**
-     * Seeded at the project root by {@code jk new} / {@code jk init} (standalone only). Not
-     * overwritten when a template already shipped one.
-     */
-    public static final String AGENTS_MD = """
-            # AGENTS.md
-
-            This project builds with **JumpKick** (`jk`), not Maven or Gradle. Run `jk skill` once per
-            session — or call the MCP tool `skill` / read `jk://skill` — before the first build.
-
-            ## Never
-
-            - Do not add `pom.xml`, `build.gradle`, or `build.gradle.kts`. Do not run `mvn` or `./gradlew`.
-            - Do not scrape the human terminal. With `-a` (`--agent`) or `JK_AGENT=1`, stdout is the verdict.
-              Otherwise it is drawn for people. MCP `run` returns that same verdict.
-            - Do not edit `jk-guards-baseline.toml`. A guard exemption is an `allow` entry with a reason,
-              and that is the user's call. `jk guard explain <id>` says what to do instead.
-
-            ## Files
-
-            - `jk.toml` — the manifest.
-            - `jk-lock.toml` — the lockfile, committed. `jk build` does not re-resolve while it is valid.
-            - `target/jk-results.md` — the human report. Agents read the verdict: MCP `run`, or `jk -a`.
-            - `node = 24` in a module's `jk.toml` pins its Node.js; jk provisions it and locks the exact
-              release. Use `jk node exec -- <cmd>` or `jk node run <script>`, never a host `node` or `npm`.
-
-            ## Loop
-
-            `jk test` (or `run(kind=test)`) → read the verdict → edit → `jk format` → `jk test`. Default
-            `jk test` is the unit suite. Do not pass `--all` as a habit.
-
-            ## MCP
-
-            The engine serves MCP on loopback. `jk engine status -O jsonl` includes `mcpUrl`. Pass
-            `dir` on the first call; that binds the connection. Tools: `run`, `diagnostics`, `deps`,
-            `why`, `skill`. `deps` edits `jk.toml` and relocks. Other tools: `tools/list` with
-            `extended` true.
-            """;
-
     private JkSkill() {}
 
     /** {@code SKILL.md}, including frontmatter. Always LF, always ends in a newline. */
@@ -105,38 +66,6 @@ public final class JkSkill {
             Files.writeString(dest.resolve(name + ".md"), body, StandardCharsets.UTF_8);
         }
         return dest;
-    }
-
-    /**
-     * Write {@code AGENTS.md} if the path is missing. Existing files (template or user) win.
-     *
-     * @return {@code true} when a file was written
-     */
-    public static boolean ensureAgentsGuide(Path dir) throws IOException {
-        Path file = dir.resolve("AGENTS.md");
-        if (Files.exists(file)) return false;
-        Files.writeString(file, AGENTS_MD, StandardCharsets.UTF_8);
-        return true;
-    }
-
-    /**
-     * Put jk's guide at the top of {@code dir}'s {@code AGENTS.md}: written when the file is missing,
-     * placed above a generator's own content otherwise, which stays below it (a framework's managed
-     * block, such as Next's, keeps its markers and is not re-added). A file that already starts with
-     * the guide is left alone.
-     *
-     * @return {@code true} when the file changed
-     */
-    public static boolean mergeAgentsGuide(Path dir) throws IOException {
-        Path file = dir.resolve("AGENTS.md");
-        if (!Files.exists(file)) return ensureAgentsGuide(dir);
-        String existing = Files.readString(file, StandardCharsets.UTF_8);
-        if (existing.startsWith(AGENTS_MD)) return false;
-        String rest = existing.startsWith("# AGENTS.md")
-                ? existing.substring("# AGENTS.md".length()).stripLeading()
-                : existing;
-        Files.writeString(file, AGENTS_MD + "\n" + rest, StandardCharsets.UTF_8);
-        return true;
     }
 
     private static String load(String name) {
