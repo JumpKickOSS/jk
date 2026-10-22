@@ -1,5 +1,7 @@
 version = 1
-generated-by = "jk 0.13.7"
+generated-by = "jk 0.15.3"
+generated-by-build = "9050a6eddf4c"
+generated-by-build-time = "2026-10-22T05:15:44Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
 manifests-sha256 = "728eb0c105566d0feb206a9052f2720a78ba552811ce0c6c1b47d16c22d73da1"
@@ -94,14 +96,6 @@ checksum = "sha256:3b1003e51b8ae56fdbd7c71073e81d1683b97e6c4dff5a9151164d59b769d
 scopes   = ["runtime"]
 
 [[artifact]]
-name     = "com.google.protobuf:protobuf-java:jar:"
-version  = "4.34.2"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:780e269712d59ae34b87b702ce26aede7982804299dd56a65aa84bda6c145268"
-pinned-by = "org.springframework.boot:spring-boot-starter-parent:4.1.0"
-scopes   = ["runtime"]
-
-[[artifact]]
 name     = "com.h2database:h2:jar:"
 version  = "2.4.240"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -126,8 +120,8 @@ version  = "9.7.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:0353648eaa1c91e0f4020c959abf756bc866ffd583df22ae6b6f6e0cbd43eb44"
 scopes   = ["runtime"]
-deps = [
-  "com.google.protobuf:protobuf-java:jar:@4.34.2",
+excluded-by = [
+  "com.google.protobuf:protobuf-java <- jk.toml:mysql-connector-j",
 ]
 
 [[artifact]]
@@ -407,6 +401,9 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:78cd7cd7c104b6b87142c1b0bd902e1ce005b0245c3cefa8a06759148947200b"
 pinned-by = "org.springframework.boot:spring-boot-starter-parent:4.1.0"
 scopes   = ["main", "test"]
+excluded-by = [
+  "org.apache.tomcat:tomcat-annotations-api <- org.springframework.boot:spring-boot-starter-tomcat-runtime@4.1.0, org.springframework.boot:spring-boot-tomcat@4.1.0",
+]
 
 [[artifact]]
 name     = "org.apache.tomcat.embed:tomcat-embed-el:jar:"
@@ -1871,6 +1868,9 @@ deps = [
   "org.attoparser:attoparser:jar:@2.0.7.RELEASE",
   "org.slf4j:slf4j-api:jar:@2.0.18",
   "org.unbescape:unbescape:jar:@1.1.6.RELEASE",
+]
+excluded-by = [
+  "ognl:ognl <- org.thymeleaf:thymeleaf-spring6@3.1.5.RELEASE",
 ]
 
 [[artifact]]

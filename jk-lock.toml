@@ -1,7 +1,7 @@
 version = 1
 generated-by = "jk 0.15.3"
-generated-by-build = "484adb335521"
-generated-by-build-time = "2026-10-22T03:18:40Z"
+generated-by-build = "9050a6eddf4c"
+generated-by-build-time = "2026-10-22T05:15:44Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
 manifests-sha256 = "7d3037b0bd98a94accb22d8c5540ba3d5010ed83ecc4ea0963cd81750c933209"
@@ -4099,6 +4099,42 @@ scopes   = ["test"]
 coordinate = "cc.jumpkick:jk-guards-junit"
 version    = "0.15.3"
 path       = "shared/guard-api"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.idea:ideaIC"
+version    = "262.10968.63"
+type       = "zip"
+checksum   = "sha256:4d25ba9308dffc84903e805833aa6a2652effc17e54b126189610c140c2f30b1"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:test-framework"
+version    = "262.10968.63"
+checksum   = "sha256:9fba2e627ca532d2d1b37930493e6012c02e24f85ab51baae5584f10027becc5"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:test-framework-common"
+version    = "262.10968.63"
+checksum   = "sha256:86678b858cddad792791f1f80d6308b07e342b9ee3cd584d298a545d100e5787"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:test-framework-core"
+version    = "262.10968.63"
+checksum   = "sha256:2680da5da14830adf79fece75a66881e5e3e62ae414cd70b2f84b8a81e73dbcc"
+
+[[tool]]
+coordinate = "junit:junit"
+version    = "4.13.2"
+checksum   = "sha256:8e495b634469d64fb8acfa3495a065cbacc8a0fff55ce1e31007be4c16dc57d3"
+
+[[tool]]
+coordinate = "org.hamcrest:hamcrest-core"
+version    = "1.3"
+checksum   = "sha256:66fdef91e9739348df7a096aa384a5685f4e875584cce89386a7a47251c4d8e9"
+
+[[tool]]
+coordinate = "org.opentest4j:opentest4j"
+version    = "1.3.0"
+checksum   = "sha256:48e2df636cab6563ced64dcdff8abb2355627cb236ef0bf37598682ddf742f1b"
 
 [[module]]
 path    = "."

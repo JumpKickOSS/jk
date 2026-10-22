@@ -1,7 +1,7 @@
 version = 1
-generated-by = "jk 0.15.1"
-generated-by-build = "95029c41956f"
-generated-by-build-time = "2026-10-10T19:11:09Z"
+generated-by = "jk 0.15.3"
+generated-by-build = "9050a6eddf4c"
+generated-by-build-time = "2026-10-22T05:15:44Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.10"
 manifests-sha256 = "168632de84ad90ad06bea0c5e1b3bb2afe4f34c635b680adb8e30b96b6e85fba"
@@ -848,11 +848,26 @@ deps = [
 
 [[plugin]]
 coordinate = "cc.jumpkick:jk-openapi"
-version    = "0.15.1"
+version    = "0.15.3"
 
 [[plugin]]
 coordinate = "cc.jumpkick:jk-spring-boot"
-version    = "0.15.1"
+version    = "0.15.3"
+
+[[tool]]
+coordinate = "org.openapitools:openapi-generator-cli"
+version    = "7.26.0"
+checksum   = "sha256:1760050094997b9cc790cc1350be095f15da8c08a996b184d3eadc4ccda5e35e"
+
+[[tool]]
+coordinate = "org.springframework.boot:spring-boot-jarmode-tools"
+version    = "4.1.1"
+checksum   = "sha256:062a9edf01809f4a2b48bfc2fe392fedd27448a3a57113bef510576673d4397f"
+
+[[tool]]
+coordinate = "org.springframework.boot:spring-boot-loader"
+version    = "4.1.1"
+checksum   = "sha256:44b15032ec77953fe1eaa7a895f2a7e0309ebe6556ea62abd289018a57031724"
 
 [[module]]
 path    = "."

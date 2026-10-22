@@ -1,5 +1,7 @@
 version = 1
-generated-by = "jk 0.13.6"
+generated-by = "jk 0.15.3"
+generated-by-build = "9050a6eddf4c"
+generated-by-build-time = "2026-10-22T05:15:44Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.10"
 manifests-sha256 = "d38cfc2cf13f907da17aa5bc4393ccc98547249d9373accb013420dcf813212a"
@@ -54,6 +56,10 @@ scopes   = ["processor"]
 deps = [
   "com.github.javaparser:javaparser-core:jar:@3.28.0",
   "org.checkerframework:checker-qual:jar:@4.2.1",
+]
+excluded-by = [
+  "com.google.guava:guava <- io.micronaut:micronaut-core-processor@5.1.15",
+  "org.javassist:javassist <- io.micronaut:micronaut-core-processor@5.1.15",
 ]
 
 [[artifact]]
@@ -418,6 +424,9 @@ deps = [
   "io.netty:netty-common:jar:@4.2.18.Final",
   "io.netty:netty-transport:jar:@4.2.18.Final",
 ]
+excluded-by = [
+  "org.jboss.marshalling:jboss-marshalling <- io.netty:netty-codec@4.2.18.Final",
+]
 
 [[artifact]]
 name     = "io.netty:netty-codec-protobuf:jar:"
@@ -431,6 +440,10 @@ deps = [
   "io.netty:netty-codec-base:jar:@4.2.18.Final",
   "io.netty:netty-common:jar:@4.2.18.Final",
   "io.netty:netty-transport:jar:@4.2.18.Final",
+]
+excluded-by = [
+  "com.google.protobuf.nano:protobuf-javanano <- io.netty:netty-codec@4.2.18.Final",
+  "com.google.protobuf:protobuf-java <- io.netty:netty-codec@4.2.18.Final",
 ]
 
 [[artifact]]
@@ -752,7 +765,50 @@ deps = [
 
 [[plugin]]
 coordinate = "cc.jumpkick:jk-micronaut"
-version    = "0.13.6"
+version    = "0.15.3"
+
+[[tool]]
+coordinate = "com.squareup:javapoet"
+version    = "1.13.0"
+checksum   = "sha256:4c7517e848a71b36d069d12bb3bf46a70fd4cda3105d822b0ed2e19c00b69291"
+
+[[tool]]
+coordinate = "info.picocli:picocli"
+version    = "4.7.7"
+checksum   = "sha256:f86e30fffd10d2b13b8caa8d4b237a7ee61f2ffccf5b1941de718b765d235bf8"
+
+[[tool]]
+coordinate = "io.micronaut.aot:micronaut-aot-api"
+version    = "3.1.0"
+checksum   = "sha256:560f75c3d547918a4fdc242618320eba579fa16a202fd9787fd51f5a4b7fc47e"
+
+[[tool]]
+coordinate = "io.micronaut.aot:micronaut-aot-cli"
+version    = "3.1.0"
+checksum   = "sha256:e9e29937968eb36d3c7bd7b255b7e57f79b5178bff3f9c7e5ac38a791b70f99c"
+
+[[tool]]
+coordinate = "io.micronaut.aot:micronaut-aot-cli"
+version    = "3.1.0"
+with       = ["io.micronaut.aot:micronaut-aot-api:3.1.0", "io.micronaut.aot:micronaut-aot-std-optimizers:3.1.0"]
+closure = [
+  "com.squareup:javapoet:1.13.0",
+  "info.picocli:picocli:4.7.7",
+  "io.micronaut.aot:micronaut-aot-api:3.1.0",
+  "io.micronaut.aot:micronaut-aot-cli:3.1.0",
+  "io.micronaut.aot:micronaut-aot-core:3.1.0",
+  "io.micronaut.aot:micronaut-aot-std-optimizers:3.1.0",
+]
+
+[[tool]]
+coordinate = "io.micronaut.aot:micronaut-aot-core"
+version    = "3.1.0"
+checksum   = "sha256:e000cdfda82659f6c1dbab447645757b8417434b7a2b24b97654ba35888961ec"
+
+[[tool]]
+coordinate = "io.micronaut.aot:micronaut-aot-std-optimizers"
+version    = "3.1.0"
+checksum   = "sha256:f87dd07b327b95518b2a20c03ee28c52eab73adfaef72df1f6a2eeeb5464408f"
 
 [[module]]
 path    = "."

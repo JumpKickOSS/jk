@@ -1,7 +1,7 @@
 version = 1
-generated-by = "jk 0.15.1"
-generated-by-build = "95029c41956f"
-generated-by-build-time = "2026-10-10T19:11:09Z"
+generated-by = "jk 0.15.3"
+generated-by-build = "9050a6eddf4c"
+generated-by-build-time = "2026-10-22T05:15:44Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.10"
 manifests-sha256 = "18eb2318c79e190eea5d50e17662bc6744871f9a63ede891576cbc9f9a4aa9fb"
@@ -120,7 +120,621 @@ scopes   = ["test"]
 
 [[plugin]]
 coordinate = "cc.jumpkick:jk-lint"
-version    = "0.15.1"
+version    = "0.15.3"
+
+[[tool]]
+coordinate = "com.github.oowekyala.ooxml:nice-xml-messages"
+version    = "3.1"
+checksum   = "sha256:0b4ceb5b8362d43c9c6c49b1bd57f1c5da54d3c5c7c305fa39c0a04462bb4799"
+
+[[tool]]
+coordinate = "com.github.spotbugs:spotbugs"
+version    = "4.10.5"
+checksum   = "sha256:8d0af71a88a5324fbe10909cc2ac4145a358c9af52fd6f796bdc0b0e42c7665f"
+
+[[tool]]
+coordinate = "com.github.spotbugs:spotbugs"
+version    = "4.10.5"
+closure = [
+  "com.github.spotbugs:spotbugs-annotations:4.10.5",
+  "com.github.spotbugs:spotbugs:4.10.5",
+  "com.github.stephenc.jcip:jcip-annotations:1.0-1",
+  "com.google.code.findbugs:jsr305:3.0.2",
+  "com.google.code.gson:gson:2.14.0",
+  "com.google.errorprone:error_prone_annotations:2.48.0",
+  "commons-io:commons-io:2.22.0",
+  "jaxen:jaxen:2.0.6",
+  "net.sf.saxon:Saxon-HE:12.10",
+  "org.apache.bcel:bcel:6.13.0",
+  "org.apache.commons:commons-lang3:3.21.0",
+  "org.apache.commons:commons-text:1.15.0",
+  "org.apache.logging.log4j:log4j-api:2.26.1",
+  "org.apache.logging.log4j:log4j-core:2.26.1",
+  "org.dom4j:dom4j:2.2.0",
+  "org.jspecify:jspecify:1.0.1",
+  "org.ow2.asm:asm-analysis:9.11",
+  "org.ow2.asm:asm-commons:9.11",
+  "org.ow2.asm:asm-tree:9.11",
+  "org.ow2.asm:asm-util:9.11",
+  "org.ow2.asm:asm:9.11",
+  "org.slf4j:slf4j-api:2.0.20",
+  "org.xmlresolver:xmlresolver:5.3.3",
+  "org.xmlresolver:xmlresolver:5.3.3:data",
+]
+
+[[tool]]
+coordinate = "com.github.spotbugs:spotbugs-annotations"
+version    = "4.10.5"
+checksum   = "sha256:2f28af17ad61a7daad0f3df070198c4a5807d3ffd98a5408f670cd19fc2dce84"
+
+[[tool]]
+coordinate = "com.github.stephenc.jcip:jcip-annotations"
+version    = "1.0-1"
+checksum   = "sha256:4fccff8382aafc589962c4edb262f6aa595e34f1e11e61057d1c6a96e8fc7323"
+
+[[tool]]
+coordinate = "com.google.code.findbugs:jsr305"
+version    = "3.0.2"
+checksum   = "sha256:766ad2a0783f2687962c8ad74ceecc38a28b9f72a2d085ee438b7813e928d0c7"
+
+[[tool]]
+coordinate = "com.google.code.gson:gson"
+version    = "2.14.0"
+checksum   = "sha256:2cbd119bf1961c28788310963dc80ba65f58cdeec1dd139c8bdb1240faa2c36f"
+
+[[tool]]
+coordinate = "com.google.errorprone:error_prone_annotations"
+version    = "2.48.0"
+checksum   = "sha256:b49c5c958316ed67a09c699dda9aa749caf434d51d863dea599ef36a49b9c855"
+
+[[tool]]
+coordinate = "com.google.errorprone:error_prone_annotations"
+version    = "2.50.0"
+checksum   = "sha256:4667724877f1d37a689202da191e23efa7657c62eef93ccdac406eccfe5cdd0a"
+
+[[tool]]
+coordinate = "com.google.guava:failureaccess"
+version    = "1.0.3"
+checksum   = "sha256:cbfc3906b19b8f55dd7cfd6dfe0aa4532e834250d7f080bd8d211a3e246b59cb"
+
+[[tool]]
+coordinate = "com.google.guava:guava"
+version    = "33.7.1-jre"
+checksum   = "sha256:796d8e28ac64e83a47c4c5935a8fecc4682650a04bbdead738ef0f5a3a0e6c46"
+
+[[tool]]
+coordinate = "com.google.guava:listenablefuture"
+version    = "9999.0-empty-to-avoid-conflict-with-guava"
+checksum   = "sha256:b372a037d4230aa57fbeffdef30fd6123f9c0c2db85d0aced00c91b974f33f99"
+
+[[tool]]
+coordinate = "com.google.j2objc:j2objc-annotations"
+version    = "3.1"
+checksum   = "sha256:84d3a150518485f8140ea99b8a985656749629f6433c92b80c75b36aba3b099b"
+
+[[tool]]
+coordinate = "com.puppycrawl.tools:checkstyle"
+version    = "14.3.0"
+checksum   = "sha256:131555de8f1621b3058249c782982f201adca22372cdecc96b8b1f5435d91796"
+
+[[tool]]
+coordinate = "com.puppycrawl.tools:checkstyle"
+version    = "14.3.0"
+closure = [
+  "com.google.code.findbugs:jsr305:3.0.2",
+  "com.google.errorprone:error_prone_annotations:2.50.0",
+  "com.google.guava:failureaccess:1.0.3",
+  "com.google.guava:guava:33.7.1-jre",
+  "com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava",
+  "com.google.j2objc:j2objc-annotations:3.1",
+  "com.puppycrawl.tools:checkstyle:14.3.0",
+  "commons-beanutils:commons-beanutils:1.11.0",
+  "commons-collections:commons-collections:3.2.2",
+  "commons-logging:commons-logging:1.4.0",
+  "info.picocli:picocli:4.7.7",
+  "net.sf.saxon:Saxon-HE:12.9",
+  "org.antlr:antlr4-runtime:4.13.2",
+  "org.javassist:javassist:3.28.0-GA",
+  "org.jspecify:jspecify:1.0.1",
+  "org.reflections:reflections:0.10.2",
+  "org.slf4j:slf4j-api:2.0.20",
+  "org.slf4j:slf4j-simple:2.0.20",
+  "org.xmlresolver:xmlresolver:5.3.3",
+  "org.xmlresolver:xmlresolver:5.3.3:data",
+]
+
+[[tool]]
+coordinate = "commons-beanutils:commons-beanutils"
+version    = "1.11.0"
+checksum   = "sha256:9e44ba68ec9a3f21286fa2a8bbb003b735c0f69101bb43144b79f4f8aaa74709"
+
+[[tool]]
+coordinate = "commons-collections:commons-collections"
+version    = "3.2.2"
+checksum   = "sha256:eeeae917917144a68a741d4c0dff66aa5c5c5fd85593ff217bced3fc8ca783b8"
+
+[[tool]]
+coordinate = "commons-io:commons-io"
+version    = "2.22.0"
+checksum   = "sha256:2b9a7b1f726fb86216dbd2c8321eabe0221dbd5b1be81c18e1cb53811b104758"
+
+[[tool]]
+coordinate = "commons-logging:commons-logging"
+version    = "1.4.0"
+checksum   = "sha256:d175dbd751dd782a63bde28c7a039520e971f25e84b79c19b8435edc3603e0dc"
+
+[[tool]]
+coordinate = "dev.drewhamilton.poko:poko-annotations-jvm"
+version    = "0.17.1"
+checksum   = "sha256:940e6d50445bc6b0ae26ad414ec7b953a3e4e802dc7756cc14d56958bc97cc31"
+
+[[tool]]
+coordinate = "info.picocli:picocli"
+version    = "4.7.7"
+checksum   = "sha256:f86e30fffd10d2b13b8caa8d4b237a7ee61f2ffccf5b1941de718b765d235bf8"
+
+[[tool]]
+coordinate = "io.github.davidburstrom.contester:contester-breakpoint"
+version    = "0.2.0"
+checksum   = "sha256:672cbebb5d45a72b35dd81fd6127e187451bb6fb7fba35315bbdf2f57cfce835"
+
+[[tool]]
+coordinate = "io.github.detekt.sarif4k:sarif4k-jvm"
+version    = "0.6.0"
+checksum   = "sha256:b3ac96dd97acba8318dbe26f6a432d6c6db91c46c780805e8928b8103e5763dc"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-api"
+version    = "1.23.8"
+checksum   = "sha256:dd5b84d420904d5c564aab115d36e6290a9d7daf6955923099015618f2b5c83f"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-cli"
+version    = "1.23.8"
+checksum   = "sha256:ead7ccd320bf304cece189438d6a384747c76545a0f880d9c91d5ca5d2d30a63"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-cli"
+version    = "1.23.8"
+closure = [
+  "dev.drewhamilton.poko:poko-annotations-jvm:0.17.1",
+  "io.github.davidburstrom.contester:contester-breakpoint:0.2.0",
+  "io.github.detekt.sarif4k:sarif4k-jvm:0.6.0",
+  "io.gitlab.arturbosch.detekt:detekt-api:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-cli:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-core:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-metrics:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-parser:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-psi-utils:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-report-html:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-report-md:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-report-sarif:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-report-txt:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-report-xml:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-rules-complexity:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-rules-coroutines:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-rules-documentation:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-rules-empty:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-rules-errorprone:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-rules-exceptions:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-rules-naming:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-rules-performance:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-rules-style:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-rules:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-tooling:1.23.8",
+  "io.gitlab.arturbosch.detekt:detekt-utils:1.23.8",
+  "org.jcommander:jcommander:1.85",
+  "org.jetbrains.intellij.deps:trove4j:1.0.20200330",
+  "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.0.21",
+  "org.jetbrains.kotlin:kotlin-daemon-embeddable:2.0.21",
+  "org.jetbrains.kotlin:kotlin-reflect:2.0.21",
+  "org.jetbrains.kotlin:kotlin-script-runtime:2.0.21",
+  "org.jetbrains.kotlin:kotlin-stdlib-common:2.0.21",
+  "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.0",
+  "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.0",
+  "org.jetbrains.kotlin:kotlin-stdlib:2.0.21",
+  "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.6.4",
+  "org.jetbrains.kotlinx:kotlinx-html-jvm:0.8.1",
+  "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.4.1",
+  "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.4.1",
+  "org.jetbrains:annotations:13.0",
+  "org.snakeyaml:snakeyaml-engine:2.7",
+]
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-core"
+version    = "1.23.8"
+checksum   = "sha256:1981dea8e4e2e8541af2d83e4f8d3581ce647cfe63175b9eb9ac2a07849d74c9"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-metrics"
+version    = "1.23.8"
+checksum   = "sha256:718e8f71f5872986e4f5cd4887a41e26aa0aeff42e99cf4a42582291b8738cc4"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-parser"
+version    = "1.23.8"
+checksum   = "sha256:5cdf45a0172d934d6e7401cd43838e7b954f7adb117eed8358fcae0b177e90e5"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-psi-utils"
+version    = "1.23.8"
+checksum   = "sha256:9505fa9d4f9a771d256a5d415b5d51ffd7a24e5019f6a60e5a69a12633dcf7ba"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-report-html"
+version    = "1.23.8"
+checksum   = "sha256:8068a15e07718e3bdbf501ede5f666812fb5f9fb1450db060449534c05e6722a"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-report-md"
+version    = "1.23.8"
+checksum   = "sha256:cc5b90b1476cef99e112162dbcd1db32b040284a768f3c975a49ec0b63980ca3"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-report-sarif"
+version    = "1.23.8"
+checksum   = "sha256:c9f9221fc57ed1fbd1374de5c4da6c069160f892a71f83b551d3a32c8cbad13d"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-report-txt"
+version    = "1.23.8"
+checksum   = "sha256:41e85ca3587abce9a03f8dcb2a67e05fcf59b7518fa016c9350ea73c79f9c54a"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-report-xml"
+version    = "1.23.8"
+checksum   = "sha256:d71abaa98890cae8a618839b1309c013dff39c6bd7d0de0b704e6193e027ef09"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-rules"
+version    = "1.23.8"
+checksum   = "sha256:a3ee516f3837fbc01d5c3b86f5dc7be7dba81345bfc57c4eb58af12f6923a560"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-rules-complexity"
+version    = "1.23.8"
+checksum   = "sha256:3a169746e38b93eebb8eb7e10dedb06657ca294bc81cf675a735f85b5f371e6e"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-rules-coroutines"
+version    = "1.23.8"
+checksum   = "sha256:afe8c973c17457f714f05795046115188c03f4506903bb25b84da846e2e56816"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-rules-documentation"
+version    = "1.23.8"
+checksum   = "sha256:d25367855d8ccd156f283e1cd6de0fd15b8f3e9530a970206f41d619fb4fbdcd"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-rules-empty"
+version    = "1.23.8"
+checksum   = "sha256:888641114789ac43292d44836221565da47a9228f7fb7dfe0c6b3f94e7f58afa"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-rules-errorprone"
+version    = "1.23.8"
+checksum   = "sha256:fee1ee765168a5896162ebe39b34fa421c0a5b769abc8f150f9e3596912a49c4"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-rules-exceptions"
+version    = "1.23.8"
+checksum   = "sha256:889ffc72aff0624132e0b10932332c71d24f5bab8f1c10c20bf5ac592ca2caf6"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-rules-naming"
+version    = "1.23.8"
+checksum   = "sha256:ed1992b1bdb0494567805b0a8145ce978f46e5ad743e2e83bf84bd5ec661baeb"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-rules-performance"
+version    = "1.23.8"
+checksum   = "sha256:dbf5e06e2fa18a6cf57ae2621e4274c163bb5bbb351a5db75f724f86f22d436b"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-rules-style"
+version    = "1.23.8"
+checksum   = "sha256:af2644c226d2ba0679ea86bca52ef90c8d9f64f446efa9d74cbd0e6311b038a8"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-tooling"
+version    = "1.23.8"
+checksum   = "sha256:7e93e9a23b478f70128893b06748673f912100b7ef03040d7d0331e26d30d092"
+
+[[tool]]
+coordinate = "io.gitlab.arturbosch.detekt:detekt-utils"
+version    = "1.23.8"
+checksum   = "sha256:f75fd7e924b9267d9ec661859ca913102de4a8f5895b09685ce10797dc26d056"
+
+[[tool]]
+coordinate = "jaxen:jaxen"
+version    = "2.0.6"
+checksum   = "sha256:3e2a755b283fd492fa4be204294c7abb7cd63ac94fb366baab9c7bb9afb00b6d"
+
+[[tool]]
+coordinate = "me.tongfei:progressbar"
+version    = "0.10.2"
+checksum   = "sha256:9979afcfc1967bacd98b3afc74499501028d294aa65fb3f9139cd79742111e81"
+
+[[tool]]
+coordinate = "net.sf.saxon:Saxon-HE"
+version    = "12.10"
+checksum   = "sha256:b571af282f25d7301059f788b9a149aab8b5cdc14ef3d212dc5425d3dcbb9a97"
+
+[[tool]]
+coordinate = "net.sf.saxon:Saxon-HE"
+version    = "12.9"
+checksum   = "sha256:8f3a9216a537367132293eacbba9df062eace8f8b16a184af59e2e4839d4cd41"
+
+[[tool]]
+coordinate = "net.sourceforge.pmd:pmd-cli"
+version    = "7.28.0"
+checksum   = "sha256:fbcbb4984aaac8214a1cfa4492e0d81764ed15bf964a35c47b25ee484562b50a"
+
+[[tool]]
+coordinate = "net.sourceforge.pmd:pmd-cli"
+version    = "7.28.0"
+with       = ["net.sourceforge.pmd:pmd-java:7.28.0"]
+closure = [
+  "com.github.oowekyala.ooxml:nice-xml-messages:3.1",
+  "com.google.code.gson:gson:2.14.0",
+  "com.google.errorprone:error_prone_annotations:2.48.0",
+  "info.picocli:picocli:4.7.7",
+  "me.tongfei:progressbar:0.10.2",
+  "net.sf.saxon:Saxon-HE:12.10",
+  "net.sourceforge.pmd:pmd-cli:7.28.0",
+  "net.sourceforge.pmd:pmd-core:7.28.0",
+  "net.sourceforge.pmd:pmd-designer:7.19.3",
+  "net.sourceforge.pmd:pmd-java:7.28.0",
+  "org.antlr:antlr4-runtime:4.13.2",
+  "org.apache.commons:commons-lang3:3.20.0",
+  "org.checkerframework:checker-qual:3.55.1",
+  "org.jline:jline-native:3.29.0",
+  "org.jline:jline-terminal:3.29.0",
+  "org.ow2.asm:asm:9.10.1",
+  "org.pcollections:pcollections:4.0.2",
+  "org.slf4j:jul-to-slf4j:1.7.36",
+  "org.slf4j:slf4j-api:1.7.36",
+  "org.slf4j:slf4j-simple:1.7.36",
+  "org.xmlresolver:xmlresolver:5.3.3",
+  "org.xmlresolver:xmlresolver:5.3.3:data",
+]
+
+[[tool]]
+coordinate = "net.sourceforge.pmd:pmd-core"
+version    = "7.28.0"
+checksum   = "sha256:6bfcd22b89b85589ade100545202e2eaf881e1ce664e5c7c0c21d06d9c1dc673"
+
+[[tool]]
+coordinate = "net.sourceforge.pmd:pmd-designer"
+version    = "7.19.3"
+checksum   = "sha256:4a0e0569413ab62f1c6feef6a6243dcbbeb9f095fd4a990b528d4acfb90641b4"
+
+[[tool]]
+coordinate = "net.sourceforge.pmd:pmd-java"
+version    = "7.28.0"
+checksum   = "sha256:a25a46e2b1ff7b3f6568a7bd429dd201f474482a4e023a636b45a6af667b2f51"
+
+[[tool]]
+coordinate = "org.antlr:antlr4-runtime"
+version    = "4.13.2"
+checksum   = "sha256:dd3e8a13a2d669bf84fb8d834de35ce4875f27157698d206241ec8488aadcaf7"
+
+[[tool]]
+coordinate = "org.apache.bcel:bcel"
+version    = "6.13.0"
+checksum   = "sha256:a37a65752e861c07d313ca47bef0eb75bf7643152c82ca54c4f42d036850b4fb"
+
+[[tool]]
+coordinate = "org.apache.commons:commons-lang3"
+version    = "3.20.0"
+checksum   = "sha256:69e5c9fa35da7a51a5fd2099dfe56a2d8d32cf233e2f6d770e796146440263f4"
+
+[[tool]]
+coordinate = "org.apache.commons:commons-lang3"
+version    = "3.21.0"
+checksum   = "sha256:a2af247ec4db6eb8947e18e23e0433e4871a7c5d0a40e1f92e46ede54ae1defe"
+
+[[tool]]
+coordinate = "org.apache.commons:commons-text"
+version    = "1.15.0"
+checksum   = "sha256:58d2da30f058512a1e7f914e39241deca4dff5c27a085b4ed2faa9e7208067f6"
+
+[[tool]]
+coordinate = "org.apache.logging.log4j:log4j-api"
+version    = "2.26.1"
+checksum   = "sha256:f1810a4704ccce019d02bba029dc02a4f2ac0c997f647b465e7d409c1927f822"
+
+[[tool]]
+coordinate = "org.apache.logging.log4j:log4j-core"
+version    = "2.26.1"
+checksum   = "sha256:2ec8c3bf5a6d7c89be8620116a2fc973f7dda1ad0261ad393c4d4726edfd3dcb"
+
+[[tool]]
+coordinate = "org.checkerframework:checker-qual"
+version    = "3.55.1"
+checksum   = "sha256:857658c8bdcbff794949a8d9922f88d63ee3751c203c7cd7d21ea97f9e745288"
+
+[[tool]]
+coordinate = "org.dom4j:dom4j"
+version    = "2.2.0"
+checksum   = "sha256:3fae79e081096e1410645eb3557c63b79ca266d510ab479889511109becd1690"
+
+[[tool]]
+coordinate = "org.javassist:javassist"
+version    = "3.28.0-GA"
+checksum   = "sha256:57d0a9e9286f82f4eaa851125186997f811befce0e2060ff0a15a77f5a9dd9a7"
+
+[[tool]]
+coordinate = "org.jcommander:jcommander"
+version    = "1.85"
+checksum   = "sha256:fa7552d2831a2b20778d86851d093edca68fbc0a77f792b6223110e4fae67a70"
+
+[[tool]]
+coordinate = "org.jetbrains.intellij.deps:trove4j"
+version    = "1.0.20200330"
+checksum   = "sha256:c5fd725bffab51846bf3c77db1383c60aaaebfe1b7fe2f00d23fe1b7df0a439d"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlin:kotlin-compiler-embeddable"
+version    = "2.0.21"
+checksum   = "sha256:9fa8cdd1de0dccffe154c997d423ec6b5f53cd6d9177e3a77a9b0de03fb1bc81"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlin:kotlin-daemon-embeddable"
+version    = "2.0.21"
+checksum   = "sha256:b1a0a73c5022f8dd05a638c6b76b2bd7361818a1f3860ff2644133b1dd2bdb03"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlin:kotlin-reflect"
+version    = "2.0.21"
+checksum   = "sha256:3ad2fcad0c09ddc0922debab4444d612144b7b465b75a8bb7587e20ddfafd799"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlin:kotlin-script-runtime"
+version    = "2.0.21"
+checksum   = "sha256:9c111f8d08ade455566272d561921adc2b2cb6b7a4ccee38d9829c5e3a1ca6a3"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlin:kotlin-stdlib"
+version    = "2.0.21"
+checksum   = "sha256:f31cc53f105a7e48c093683bbd5437561d1233920513774b470805641bedbc09"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlin:kotlin-stdlib-common"
+version    = "2.0.21"
+checksum   = "sha256:28f09115977ff98c991fcf28538b7874287ae43670ec5f9c60d17c2b8305624b"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlin:kotlin-stdlib-jdk7"
+version    = "1.8.0"
+checksum   = "sha256:4c889d1d9803f5f2eb6c1592a6b7e62369ac7660c9eee15aba16fec059163666"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
+version    = "1.8.0"
+checksum   = "sha256:05b62804441b0c9a1920b6b7d5cf7329a4e24b6258478e32b1f046ca01900946"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm"
+version    = "1.6.4"
+checksum   = "sha256:c24c8bb27bb320c4a93871501a7e5e0c61607638907b197aef675513d4c820be"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlinx:kotlinx-html-jvm"
+version    = "0.8.1"
+checksum   = "sha256:98bda1c78a5028a134ceb25b63f5c130c89349730d35fd47ef7490b6bf0b63b3"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm"
+version    = "1.4.1"
+checksum   = "sha256:eba7f1c854296e4ce1418fb01360f8f10c5683e7c45aa3472018417a067636f3"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm"
+version    = "1.4.1"
+checksum   = "sha256:af604c46737121d4225fdb60ef0e17766a3c94b7c1c9ef76b4e3a5c7733d557e"
+
+[[tool]]
+coordinate = "org.jetbrains:annotations"
+version    = "13.0"
+checksum   = "sha256:ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478"
+
+[[tool]]
+coordinate = "org.jline:jline-native"
+version    = "3.29.0"
+checksum   = "sha256:19cfcc9d3c78a1c6cfe4c6c9599f16a657e4bf8da43940fc4b875373236dc258"
+
+[[tool]]
+coordinate = "org.jline:jline-terminal"
+version    = "3.29.0"
+checksum   = "sha256:fd68a98b32b1132035c62102e5df0b0fdc358e7c87a9f876ce7071450b4d10da"
+
+[[tool]]
+coordinate = "org.jspecify:jspecify"
+version    = "1.0.1"
+checksum   = "sha256:070d75f261fe4c5b8202508366715f7f2d4660f88c8ef7e6d3575e48c9683b66"
+
+[[tool]]
+coordinate = "org.ow2.asm:asm"
+version    = "9.10.1"
+checksum   = "sha256:ed825d10ab1399c8c0cb669e688cf0c8c82629b4c8399b58352b68e92ca10fcb"
+
+[[tool]]
+coordinate = "org.ow2.asm:asm"
+version    = "9.11"
+checksum   = "sha256:5fe3b469b8646e5bc53a897840952d63b712d4923d2a7a26aebc585f1fec7676"
+
+[[tool]]
+coordinate = "org.ow2.asm:asm-analysis"
+version    = "9.11"
+checksum   = "sha256:a1421c20978ca0a330f241b17923a751a23fb1c9423fda1aba7591bb086b01d8"
+
+[[tool]]
+coordinate = "org.ow2.asm:asm-commons"
+version    = "9.11"
+checksum   = "sha256:fcff37e6a0227a9f5ee81a7c07f51249307fa15889b56a359ae6f773c164c22b"
+
+[[tool]]
+coordinate = "org.ow2.asm:asm-tree"
+version    = "9.11"
+checksum   = "sha256:da8ad24d0bf7efb0674a906f59a7d441692b641718371f3bce6762b191a169fd"
+
+[[tool]]
+coordinate = "org.ow2.asm:asm-util"
+version    = "9.11"
+checksum   = "sha256:d5a23a677f31b8a7d2419895906e1fcbd9ac995beffb20944c8610c1bc377609"
+
+[[tool]]
+coordinate = "org.pcollections:pcollections"
+version    = "4.0.2"
+checksum   = "sha256:2bbeef5797a241300c4f7513cd546239629ed7deda4fc0c31df90bb95f5f13ef"
+
+[[tool]]
+coordinate = "org.reflections:reflections"
+version    = "0.10.2"
+checksum   = "sha256:938a2d08fe54050d7610b944d8ddc3a09355710d9e6be0aac838dbc04e9a2825"
+
+[[tool]]
+coordinate = "org.slf4j:jul-to-slf4j"
+version    = "1.7.36"
+checksum   = "sha256:9e641fb142c5f0b0623d6222c09ea87523a41bf6bed48ac79940724010b989de"
+
+[[tool]]
+coordinate = "org.slf4j:slf4j-api"
+version    = "1.7.36"
+checksum   = "sha256:d3ef575e3e4979678dc01bf1dcce51021493b4d11fb7f1be8ad982877c16a1c0"
+
+[[tool]]
+coordinate = "org.slf4j:slf4j-api"
+version    = "2.0.20"
+checksum   = "sha256:7e1446499b359675d8aabe6af2de86b85e72ae8a2a932c0b40d0e5ba57097439"
+
+[[tool]]
+coordinate = "org.slf4j:slf4j-simple"
+version    = "1.7.36"
+checksum   = "sha256:2f39bed943d624dfa8f4102d0571283a10870b6aa36f197a8a506f147010c10f"
+
+[[tool]]
+coordinate = "org.slf4j:slf4j-simple"
+version    = "2.0.20"
+checksum   = "sha256:8e701404786a4f87219d39d4853c86dfe4e86ae99376a39749df6c08e75022e0"
+
+[[tool]]
+coordinate = "org.snakeyaml:snakeyaml-engine"
+version    = "2.7"
+checksum   = "sha256:4053f878c171692aab8782f53a3974f43e55e2b6ed12c3682b36a46968c5ded1"
+
+[[tool]]
+coordinate = "org.xmlresolver:xmlresolver"
+version    = "5.3.3"
+checksum   = "sha256:1fe4d5b92f708dcdb82dbce12919e0171e6b5ca62c6dca6220483625098feb5f"
+
+[[tool]]
+coordinate = "org.xmlresolver:xmlresolver"
+version    = "5.3.3"
+classifier = "data"
+checksum   = "sha256:b0c487ad2f3e558be8d829c916d2458d10aca6a5bafa7a4d0524b70845e48a5c"
 
 [[module]]
 path    = "."
