@@ -35,6 +35,16 @@ class LibraryArtifactsPredicateTest {
         assertThat(PackagingKeys.libraryArtifacts(parse(published), published)).isTrue();
     }
 
+    /** A plugin artifact that runs (an APK) is an application; its library variant (an AAR) is a library. */
+    @Test
+    void a_runnable_plugin_artifact_is_not_a_library() throws IOException {
+        Path app = module("droid", "[android]\nnamespace = \"com.example\"\ncompile-sdk = 36\nmin-sdk = 24\n");
+        assertThat(PackagingKeys.libraryArtifacts(parse(app), app)).isFalse();
+        Path aar = module(
+                "aar", "[android]\nnamespace = \"com.example\"\ncompile-sdk = 36\nmin-sdk = 24\nlibrary = true\n");
+        assertThat(PackagingKeys.libraryArtifacts(parse(aar), aar)).isTrue();
+    }
+
     @Test
     void a_kotlin_only_module_is_a_library_too() throws IOException {
         Path dir = Files.createDirectories(tmp.resolve("kt"));

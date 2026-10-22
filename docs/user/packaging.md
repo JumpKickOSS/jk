@@ -10,7 +10,7 @@ R8 minification is **opt-in**, never the default.
 |----------|--------|---------|
 | Thin jar `target/<name>-<version>.jar` | always | `jk build` |
 | Multi-release entries `META-INF/versions/<N>/` | `[multi-release]` | `jk build` |
-| Sources jar `*-sources.jar` | library (no `[application]`), or `sources = "always"` | `jk build` / `jk package` |
+| Sources jar `*-sources.jar` | library (no `[application]`, nothing runnable), or `sources = "always"` | `jk build` / `jk package` |
 | Javadoc jar `*-javadoc.jar` | library, unless `javadoc = false` | `jk build` / `jk package` |
 | Fat jar `*-all.jar` | `[application] assembly = true` | `jk assemble` / `jk build` |
 | Minified jar `*-min.jar` | `[application] minified = true` | `jk assemble` / `jk build` (also builds the fat jar) |
@@ -40,8 +40,9 @@ Frameworks: [Frameworks](frameworks.md). Native / OCI: [Native](native.md), [Ima
 
 ## Library artefacts: sources and javadoc jars
 
-A **library** is a module with main sources and no `[application]` table — the same
-rule the model uses everywhere else. `jk package` (and so `jk build`) writes
+A **library** is a module with main sources, no `[application]` table, and no plugin packaging
+that builds something to run (an Android APK, a Spring Boot, Quarkus or Grails jar); an Android
+library's AAR is a library. `jk package` (and so `jk build`) writes
 `<name>-<version>-sources.jar` and `<name>-<version>-javadoc.jar` beside its jar, which is
 what Maven Central requires of a release. Both are cached engine steps (`package-sources`,
 `package-javadoc`) that run beside the tests, and `jk explain` forecasts the javadoc step.
