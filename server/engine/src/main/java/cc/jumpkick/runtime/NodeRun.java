@@ -2,7 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.compat.ToolProgress;
-import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.layout.BuildLayout;
@@ -26,8 +26,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk run} and {@code jk dev} of a node build. {@code run}: the module's {@code start} command
- * under the locked Node.js, from the node directory, with the module's {@code [env]}, {@code PORT}
- * from {@code .env} and {@code NODE_ENV=production} laid over the caller's environment; a module
+ * under the locked Node.js, from the node directory, with the module's {@code [env]} laid over the
+ * caller's environment and {@code NODE_ENV=production} where neither it nor {@code .env} sets one; a module
  * with only a static output has nothing to start. {@code dev}: its {@code dev} script the same way,
  * without {@code NODE_ENV}, probed at its framework's dev port.
  */
@@ -43,18 +43,21 @@ public final class NodeRun {
 
     /**
      * A node build's dev server: its argv under the locked Node.js, the directory it runs in, what it
-     * gets over the caller's environment, and the port it answers on ({@code null} when unknown).
+     * gets over the caller's environment, its module's {@code .env} values beneath that, and the port
+     * it answers on ({@code null} when unknown).
      */
     public record Dev(
             List<String> argv,
             Path dir,
             Map<String, String> env,
+            Map<String, String> dotEnv,
             @Nullable Integer port,
             String display) {
 
         public Dev {
             argv = List.copyOf(argv);
             env = Map.copyOf(env);
+            dotEnv = Map.copyOf(dotEnv);
         }
 
         /** {@code http://localhost:<port>}, or empty without a port. */
@@ -79,8 +82,6 @@ public final class NodeRun {
         NodeHome home = home(dir);
         String path = path(home, nodeDir, callerPath);
         List<String> argv = NodeCommands.program(home, NodeCommands.split(node.start()), path);
-        Map<String, String> env = env(dir, project, home, path);
-        env.putIfAbsent("NODE_ENV", "production");
         return plan(
                 "run",
                 argv,
@@ -88,7 +89,8 @@ public final class NodeRun {
                 String.join(" ", NodeCommands.split(node.start())),
                 List.of(),
                 ExecPlan.Probe.NONE,
-                env);
+                env(dir, project, home, path),
+                Map.of("NODE_ENV", "production"));
     }
 
     /**
@@ -109,6 +111,7 @@ public final class NodeRun {
                 argv,
                 nodeDir,
                 env(moduleDir, project, home, path),
+                EnvLookup.dotEnv(moduleDir),
                 node.devPort(),
                 node.packageManager() + " run " + node.dev());
     }
@@ -126,7 +129,7 @@ public final class NodeRun {
         ExecPlan.Probe ready = dev.url().isEmpty()
                 ? ExecPlan.Probe.NONE
                 : new ExecPlan.Probe(dev.url(), "", DevReady.DEFAULT_TIMEOUT_MILLIS);
-        return plan("dev", dev.argv(), dev.dir(), dev.display(), sidecars, ready, dev.env());
+        return plan("dev", dev.argv(), dev.dir(), dev.display(), sidecars, ready, dev.env(), dev.dotEnv());
     }
 
     private static ExecPlan plan(
@@ -136,7 +139,8 @@ public final class NodeRun {
             String display,
             List<ExecPlan.Sidecar> sidecars,
             ExecPlan.Probe ready,
-            Map<String, String> env) {
+            Map<String, String> env,
+            Map<String, String> dotEnv) {
         return new ExecPlan(
                 null,
                 "",
@@ -163,6 +167,7 @@ public final class NodeRun {
                 sidecars,
                 ready,
                 env,
+                dotEnv,
                 Map.of());
     }
 
@@ -184,8 +189,6 @@ public final class NodeRun {
     static Map<String, String> env(Path dir, JkBuild project, NodeHome home, String path) {
         Map<String, String> env =
                 new LinkedHashMap<>(WorkerEnv.declared(project.build().env(), dir, BuildLayout.moduleTargetDir(dir)));
-        String port = BuildEnv.forModule(dir).apply("PORT");
-        if (port != null && !port.isBlank()) env.putIfAbsent("PORT", port);
         env.put("NODE_HOME", home.home().toString());
         env.put("PATH", path);
         return env;

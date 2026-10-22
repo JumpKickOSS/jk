@@ -205,6 +205,41 @@ class RunCommandTest {
     }
 
     @Test
+    void the_app_gets_the_module_dot_env_beneath_the_real_environment(@TempDir Path tempDir) throws Exception {
+        run(
+                "new",
+                "--group",
+                "com.example",
+                "--name",
+                "widget",
+                "--executable",
+                "--layout",
+                "traditional",
+                tempDir.toString());
+        Path src = tempDir.resolve("src/main/java/com/example/Main.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, """
+                package com.example;
+                public final class Main {
+                    public static void main(String[] args) {
+                        boolean fromFile = "jdbc:h2:file:./target/envdb".equals(System.getenv("JDBC_URL"));
+                        boolean shellWins = !"/from/dot/env".equals(System.getenv("HOME"));
+                        System.exit(fromFile && shellWins ? 7 : 1);
+                    }
+                }
+                """);
+        Files.writeString(tempDir.resolve(".env"), "JDBC_URL=jdbc:h2:file:./target/envdb\nHOME=/from/dot/env\n");
+
+        int exit = run(
+                "run",
+                "-C",
+                tempDir.toString(),
+                "--cache-dir",
+                TestCaches.dir("shared-cache").toString());
+        assertThat(exit).isEqualTo(7);
+    }
+
+    @Test
     void no_jk_toml_returns_usage_error(@TempDir Path tempDir) {
         int exit = run("run", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(64);

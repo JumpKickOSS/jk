@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.tool;
 
+import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -16,6 +17,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -27,6 +29,18 @@ import org.jspecify.annotations.Nullable;
 public final class ToolLauncher {
 
     private ToolLauncher() {}
+
+    /**
+     * The launcher's first step: the {@code .env} values of the directory it runs in, set where the
+     * caller's environment lacks them, as {@code jk env --export} prints them. Uses the {@code jk}
+     * beside the launcher, else the one on {@code PATH}; without either the tool starts unchanged.
+     */
+    static final String POSIX_DOT_ENV = "__jk=\"${0%/*}/jk\"; [ -x \"$__jk\" ] || __jk=\"$(command -v jk)\"\n"
+            + "if [ -n \"$__jk\" ]; then eval \"$(\"$__jk\" env --export 2>/dev/null)\"; fi; unset __jk\n";
+
+    /** {@link #POSIX_DOT_ENV} for {@code cmd.exe}; {@code setlocal} keeps the values out of the caller's shell. */
+    static final String WINDOWS_DOT_ENV =
+            "setlocal\r\n" + "for /f \"usebackq delims=\" %%L in (`jk env --export 2^>nul`) do %%L\r\n";
 
     /**
      * Materialise {@code env} as an installed tool. Writes the launcher script under {@code binDir}
@@ -93,12 +107,14 @@ public final class ToolLauncher {
         String cp = env.classpath().isEmpty() ? null : Classpaths.join(env.classpath());
         String scriptBody;
         if (Os.isWindows()) {
-            scriptBody = "@echo off\r\nREM " + JkOwnership.GENERATED_BY + " install -- do not edit.\r\n\""
+            scriptBody = "@echo off\r\nREM " + JkOwnership.GENERATED_BY + " install -- do not edit.\r\n"
+                    + WINDOWS_DOT_ENV + "\""
                     + kotlincBin + "\" -script \"" + script
                     + (cp != null ? "\" -classpath \"" + cp : "")
                     + "\" -- %*\r\n";
         } else {
-            scriptBody = "#!/usr/bin/env bash\n# " + JkOwnership.GENERATED_BY + " install — do not edit.\nexec "
+            scriptBody = "#!/usr/bin/env bash\n# " + JkOwnership.GENERATED_BY + " install — do not edit.\n"
+                    + POSIX_DOT_ENV + "exec "
                     + shellQuote(kotlincBin.toString()) + " -script " + shellQuote(script.toString())
                     + (cp != null ? " -classpath " + shellQuote(cp) : "")
                     + " -- \"$@\"\n";
@@ -114,16 +130,18 @@ public final class ToolLauncher {
     }
 
     /**
-     * Start the env's main class with inherited stdio (the {@code jk run} path). The caller waits,
-     * so a Ctrl-C in the CLI can stop this process before the CLI itself halts.
+     * Start the env's main class with inherited stdio (the {@code jk run} path), {@code dotEnv} set
+     * where this environment lacks a name. The caller waits, so a Ctrl-C in the CLI can stop this
+     * process before the CLI itself halts.
      */
-    public static Process startEphemeral(Path javaHome, ToolEnv env, List<String> jvmArgs, List<String> args)
+    public static Process startEphemeral(
+            Path javaHome, ToolEnv env, List<String> jvmArgs, List<String> args, Map<String, String> dotEnv)
             throws IOException {
         if (env.isNativeBinary()) {
             List<String> nativeCmd = new ArrayList<>();
             nativeCmd.add(env.classpath().getFirst().toAbsolutePath().toString());
             nativeCmd.addAll(args);
-            return new ProcessBuilder(nativeCmd).inheritIO().start();
+            return start(nativeCmd, dotEnv);
         }
         List<String> cmd = new ArrayList<>();
         cmd.add(JdkFingerprint.java(javaHome).toString());
@@ -132,7 +150,13 @@ public final class ToolLauncher {
         cmd.add(Classpaths.join(env.classpath()));
         cmd.add(mainClass(env.mainClass()));
         cmd.addAll(args);
-        return new ProcessBuilder(cmd).inheritIO().start();
+        return start(cmd, dotEnv);
+    }
+
+    private static Process start(List<String> command, Map<String, String> dotEnv) throws IOException {
+        ProcessBuilder pb = new ProcessBuilder(command).inheritIO();
+        EnvLookup.layerUnder(pb.environment(), dotEnv);
+        return pb.start();
     }
 
     private static String renderPosixLauncher(ToolEnv env, Path javaHome, List<String> jvmArgs) {
@@ -140,6 +164,7 @@ public final class ToolLauncher {
         sb.append("#!/usr/bin/env bash\n");
         sb.append("# ").append(JkOwnership.GENERATED_BY).append(" install — do not edit.\n");
         sb.append("# Re-run `jk install ").append(env.primary().toGav()).append("` to refresh.\n");
+        sb.append(POSIX_DOT_ENV);
         if (env.isNativeBinary()) {
             sb.append("exec ")
                     .append(shellQuote(
@@ -162,6 +187,7 @@ public final class ToolLauncher {
         StringBuilder sb = new StringBuilder();
         sb.append("@echo off\r\n");
         sb.append("REM ").append(JkOwnership.GENERATED_BY).append(" install -- do not edit.\r\n");
+        sb.append(WINDOWS_DOT_ENV);
         if (env.isNativeBinary()) {
             sb.append('\"').append(env.classpath().getFirst().toAbsolutePath()).append("\" %*\r\n");
             return sb.toString();

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -153,5 +154,21 @@ class EnvLookupTest {
         var env = EnvLookup.of(Map.of("A", "1"));
         assertThat(env.get("A")).isEqualTo("1");
         assertThat(env.isFromFile("A")).isTrue();
+    }
+
+    @Test
+    void dot_env_layers_the_module_file_over_the_workspace_file(@TempDir Path tmp) throws Exception {
+        Path module = workspace(tmp);
+        Files.writeString(tmp.resolve(".env"), "SHARED=root\nROOT_ONLY=1\n");
+        Files.writeString(module.resolve(".env"), "SHARED=module\n");
+        assertThat(EnvLookup.dotEnv(module)).containsEntry("SHARED", "module").containsEntry("ROOT_ONLY", "1");
+        assertThat(EnvLookup.dotEnv(tmp)).containsEntry("SHARED", "root");
+    }
+
+    @Test
+    void layer_under_fills_only_names_the_process_environment_lacks() {
+        Map<String, String> processEnv = new HashMap<>(Map.of("SHELL_SET", "shell"));
+        EnvLookup.layerUnder(processEnv, Map.of("SHELL_SET", "file", "FILE_ONLY", "file"));
+        assertThat(processEnv).containsEntry("SHELL_SET", "shell").containsEntry("FILE_ONLY", "file");
     }
 }

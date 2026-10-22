@@ -8,6 +8,7 @@ import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.watch.ProcessTrees;
+import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.JavaHomes;
@@ -176,7 +177,7 @@ final class ScriptRunner {
             command.add("--");
             command.addAll(args);
         }
-        Process p = CliOutput.handOffTerminal(new ProcessBuilder(command));
+        Process p = CliOutput.handOffTerminal(processFor(command));
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();
@@ -214,7 +215,7 @@ final class ScriptRunner {
             command.add(Objects.requireNonNull(prep.mainClass(), "script-prepare terminal carried no main class"));
         }
         command.addAll(args);
-        Process p = CliOutput.handOffTerminal(new ProcessBuilder(command));
+        Process p = CliOutput.handOffTerminal(processFor(command));
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();
@@ -275,10 +276,18 @@ final class ScriptRunner {
         command.add(Classpaths.join(full));
         command.add(mainClass);
         command.addAll(args);
-        Process p = CliOutput.handOffTerminal(new ProcessBuilder(command));
+        Process p = CliOutput.handOffTerminal(processFor(command));
         // Skip the gap only once the exec actually started — a failed start() still owns
         // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();
         return ProcessTrees.awaitExit(p);
+    }
+
+    /** {@code command} with the {@code .env} of the directory jk runs in beneath this environment. */
+    private ProcessBuilder processFor(List<String> command) {
+        ProcessBuilder pb = new ProcessBuilder(command);
+        EnvLookup.layerUnder(
+                pb.environment(), EnvLookup.dotEnv(global.workingDir().toAbsolutePath()));
+        return pb;
     }
 }

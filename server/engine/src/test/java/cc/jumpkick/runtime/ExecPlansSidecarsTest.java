@@ -49,6 +49,7 @@ class ExecPlansSidecarsTest {
                 [dev.sidecars]
                 web = { command = "npm run dev", cwd = "../web", env = { PORT = "5173" }, ready = "http://localhost:5173", front-door = true }
                 """);
+        Files.writeString(app.resolve(".env"), "FROM_DOTENV=module\nMODULE_ONLY=1\n");
         Files.createDirectories(app.resolve("target/classes/main"));
 
         ExecPlan dev = ExecPlans.execPlan(
@@ -59,13 +60,22 @@ class ExecPlansSidecarsTest {
         assertThat(docs.cwd())
                 .isEqualTo(root.resolve("docs").toAbsolutePath().normalize().toString());
         assertThat(docs.command()).containsExactly("mkdocs", "serve");
+        // A root entry gets the root's .env; the client sets it beneath the real environment
+        assertThat(docs.dotEnv()).containsEntry("FROM_DOTENV", "file").doesNotContainKey("MODULE_ONLY");
         ExecPlan.Sidecar web = dev.sidecars().get(1);
         assertThat(web.command()).containsExactly("npm", "run", "dev");
         assertThat(web.cwd())
                 .isEqualTo(root.resolve("web").toAbsolutePath().normalize().toString());
-        // .env supplies what the real environment lacks; the real value is never overridden
-        assertThat(web.env()).containsEntry("FROM_DOTENV", "file").containsEntry("PORT", "5173");
-        assertThat(web.env()).doesNotContainKey("SHADOWED");
+        assertThat(web.env()).containsExactly(Map.entry("PORT", "5173"));
+        assertThat(web.dotEnv())
+                .containsEntry("FROM_DOTENV", "module")
+                .containsEntry("MODULE_ONLY", "1")
+                .containsEntry("SHADOWED", "file");
+        // The app gets its module's .env, workspace root then module
+        assertThat(dev.appDotEnv())
+                .containsEntry("FROM_DOTENV", "module")
+                .containsEntry("MODULE_ONLY", "1")
+                .containsEntry("SHADOWED", "file");
         assertThat(web.probe().ready()).isEqualTo("http://localhost:5173");
         assertThat(web.frontDoor()).isTrue();
         assertThat(web.restart()).isEqualTo(Sidecar.Restart.NEVER);
@@ -73,5 +83,6 @@ class ExecPlansSidecarsTest {
         ExecPlan run =
                 ExecPlans.execPlan(app, root.resolve("cache"), "run", null, null, null, null, "", Map.of(), null);
         assertThat(run.sidecars()).isEmpty();
+        assertThat(run.appDotEnv()).containsEntry("FROM_DOTENV", "module").containsEntry("MODULE_ONLY", "1");
     }
 }
