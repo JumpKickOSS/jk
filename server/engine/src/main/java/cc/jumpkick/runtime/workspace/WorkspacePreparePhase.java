@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.JkThreads;
@@ -360,8 +361,10 @@ final class WorkspacePreparePhase {
         BuildPlanner.Inputs inputs = moduleInputs(dir, request, moduleDirs, testRun && !consumed, siblings);
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs, forceRebuild);
         // A test run packages a consumed module's jar for the sibling that compiles against it, and
-        // nothing a delivery adds; a module nothing consumes stops at its tests.
-        if (testRun && consumed) PlannerTails.joinTests(builder, inputs);
+        // nothing a delivery adds; a module nothing consumes stops at its tests. A node module's
+        // plan already joins its install, build, tests and resource jar, and has no jar step.
+        boolean nodeModule = NodeShape.kind(unit.manifest(), dir) == NodeShape.Kind.MODULE;
+        if (testRun && consumed && !nodeModule) PlannerTails.joinTests(builder, inputs);
         else if (!testRun) {
             PlannerTails.appendDeclaredTails(builder, inputs, GraalHomes.lookup(dir, spec.graalByDir()), true);
         }
