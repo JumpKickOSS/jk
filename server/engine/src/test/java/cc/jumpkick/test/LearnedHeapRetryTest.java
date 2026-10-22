@@ -215,6 +215,32 @@ class LearnedHeapRetryTest {
         awaitPeaks(dir.resolve("state"), 2);
     }
 
+    /**
+     * A heap error that escapes JUnit ends the test runner, which names it and exits 70: that fork
+     * ran out of its heap as surely as one that exits 3, so it climbs the ladder and the heap that
+     * passed is learned.
+     */
+    @Test
+    void a_runner_that_dies_of_an_escaped_heap_error_climbs_the_ladder(@TempDir Path dir) throws Exception {
+        Path home = fakeJdk(dir, "runner");
+        Path classes = Files.createDirectories(dir.resolve("classes"));
+        Path cache = Files.createDirectories(dir.resolve("cache"));
+        Path state = dir.resolve("state");
+        SessionContext.install(SessionContext.current().withWorkingDir(dir).withJvm(PluginTuning.NONE));
+        JUnitLauncher launcher =
+                new JUnitLauncher().withModuleLabel("g:app").withHeaps(new LearnedHeaps(state, 128L << 20));
+        TestSummary summary = launcher.run(home, classes, List.of(), cache, 1, Map.of(), TestProgressListener.noop());
+        assertThat(summary.failures()).isEmpty();
+        assertThat(summary.succeeded()).isEqualTo(1);
+        assertThat(HeapNotes.drain()).containsExactly("retried with 256 MiB heap after running out of 128 MiB");
+        assertThat(Files.readString(home.resolve("heaps"))).contains("-Xmx128m", "-Xmx256m");
+        assertThat(new LearnedHeaps(state)
+                        .good(new HeapScope.Key(
+                                dir, "g:app", HeapScope.TEST, Runtime.version().feature())))
+                .isEqualTo(256L << 20);
+        awaitPeaks(state, 2);
+    }
+
     @Test
     void a_heap_that_never_suffices_climbs_three_rungs_and_names_every_heap(@TempDir Path dir) throws Exception {
         Path home = fakeJdk(dir, "always");
@@ -326,7 +352,8 @@ class LearnedHeapRetryTest {
      * {@code always} does that at every heap. {@code big} dies as {@code die} does below 512 MiB.
      * {@code escaped} reports {@code warm()} passing and then {@code alloc()} failed with {@code
      * java.lang.OutOfMemoryError: Java heap space}, exiting 1 as a test JVM without exit-on-OOM
-     * does. A heap of 256 MiB or more passes, except {@code always} and {@code big}. {@code partial}
+     * does. {@code runner} reports {@code warm()} passing and then exits 70 naming the heap error,
+     * as the test runner does when a heap error escapes JUnit. A heap of 256 MiB or more passes, except {@code always} and {@code big}. {@code partial}
      * runs {@code demo.A}, {@code demo.B} and {@code demo.C}: at 128 MiB {@code A} passes and the
      * other two fail with escaped heap errors, at 256 MiB {@code B} fails an assertion and {@code
      * C} the heap again, and every larger heap dies as {@code die} does.
@@ -370,6 +397,11 @@ class LearnedHeapRetryTest {
                 if [ "$mode" = "escaped" ] && [ "$small" = 1 ]; then
                   printf '%s\\n' '##JKT:{"event":"finished","type":"TEST","status":"FAILED","uniqueId":"[engine:junit-jupiter]/[class:demo.Big]/[method:alloc()]","testClass":"demo.Big","testMethod":"alloc()","duration_ms":1,"throwable":{"class":"java.lang.OutOfMemoryError","message":"Java heap space","stack":""}}'
                   exit 1
+                fi
+                if [ "$mode" = "runner" ] && [ "$small" = 1 ]; then
+                  printf '%s\\n' '##JKT:{"event":"finished","type":"TEST","status":"SUCCESSFUL","uniqueId":"[engine:junit-jupiter]/[class:demo.Big]/[method:warm()]","testClass":"demo.Big","testMethod":"warm()","duration_ms":1}'
+                  echo "jk-test-runner: java.lang.OutOfMemoryError: Java heap space" >&2
+                  exit 70
                 fi
                 if [ "$mode" = "always" ] || [ "$small" = 1 ]; then
                   if [ "$mode" = "after" ] || [ "$mode" = "always" ]; then
