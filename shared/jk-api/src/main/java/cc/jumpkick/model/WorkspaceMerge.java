@@ -186,6 +186,40 @@ public final class WorkspaceMerge {
     }
 
     /**
+     * {@code module} with each {@code x.workspace = true} that names a root
+     * {@code [workspace.dependencies]} entry rewritten to that entry's coordinate. Sibling edges stay
+     * workspace placeholders, as the sibling closure reads them; a name both a sibling and a shared
+     * entry carry is the sibling, as {@link #resolveSiblingCoordinates} decides it.
+     */
+    public static JkBuild resolveSharedDependencies(JkBuild root, JkBuild module, Collection<JkBuild> allModules) {
+        Map<String, Workspace.WorkspaceDependency> wsDeps =
+                root.workspace() != null ? root.workspace().dependencies() : Map.of();
+        if (wsDeps.isEmpty()) return module;
+        Map<String, JkBuild> siblingByArtifact = siblingIndex(root, allModules);
+        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        boolean rewroteAny = false;
+        for (Scope scope : Scope.values()) {
+            List<Dependency> deps = module.dependencies().of(scope);
+            if (deps.isEmpty()) continue;
+            List<Dependency> out = new ArrayList<>(deps.size());
+            for (Dependency d : deps) {
+                Dependency resolved = d;
+                String name = d.isWorkspace() ? d.workspaceName() : null;
+                if (name != null
+                        && Dependency.workspaceCoordinate(d.module()) == null
+                        && !siblingByArtifact.containsKey(name)
+                        && wsDeps.containsKey(name)) {
+                    resolved = resolve(d, siblingByArtifact, wsDeps);
+                    rewroteAny = true;
+                }
+                out.add(resolved);
+            }
+            byScope.put(scope, out);
+        }
+        return rewroteAny ? module.withDependencies(new JkBuild.Dependencies(byScope)) : module;
+    }
+
+    /**
      * The one manifest a workspace lock resolves: the root's dependencies, then every member's, in
      * {@code [workspace] modules} order and each in declaration order, one row per package (the
      * first declaration wins). Its repositories are the root's followed by every member's, keyed by

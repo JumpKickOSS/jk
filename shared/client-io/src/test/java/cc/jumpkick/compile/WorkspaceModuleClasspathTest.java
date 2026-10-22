@@ -150,6 +150,35 @@ class WorkspaceModuleClasspathTest {
     }
 
     @Test
+    void a_siblings_shared_workspace_dependency_rides_to_its_consumer() throws Exception {
+        Path root = tmp.resolve("ws");
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.ex"
+                name = "ws"
+                version = "1.0"
+
+                [workspace]
+                modules = ["library", "application"]
+
+                [workspace.dependencies]
+                boot = "com.lib:boot:1.0"
+                """);
+        Files.writeString(library.resolve("jk.toml"), """
+                group = "com.ex"
+                name = "library"
+                version = "1.0"
+
+                [export-dependencies]
+                boot.workspace = true
+                """);
+
+        assertThat(classpath(library, ClasspathResolver.COMPILE_MAIN)).containsExactly(jar(boot), jar(core));
+        assertThat(classpath(application, ClasspathResolver.COMPILE_MAIN))
+                .as("the library's shared boot edge is inherited like a pinned one")
+                .contains(jar(boot), jar(core));
+    }
+
+    @Test
     void jk_tree_and_the_compile_classpath_name_the_same_artifacts() throws Exception {
         JkBuild build = JkBuildParser.parse(library.resolve("jk.toml"));
         String tree = DependencyTree.render(
