@@ -108,7 +108,9 @@ public final class AuditCommand implements CliCommand {
             return Exit.SOFTWARE;
         }
 
-        if (!result.success()) return Exit.FAILURE;
+        // A plan that failed with nothing found broke before it judged anything; one that failed on
+        // its findings is the gate, and the report below says what it found.
+        if (!result.success() && findings.isEmpty()) return Exit.FAILURE;
 
         AuditReport report = new AuditReport(findings);
         if (global.outputIsJson()) {

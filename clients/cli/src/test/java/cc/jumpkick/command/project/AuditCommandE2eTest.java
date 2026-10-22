@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -86,6 +87,20 @@ class AuditCommandE2eTest {
         assertThat(r.err()).contains("1 finding at or above HIGH");
     }
 
+    /** The verdict an agent or a CI log reads says what the exit status says, and names the finding. */
+    @Test
+    void the_agent_verdict_fails_and_names_the_blocking_finding(@TempDir Path dir) throws Exception {
+        project(dir, "");
+
+        Run r = audit(dir, "--agent");
+
+        assertThat(r.exit()).isEqualTo(Exit.FAILURE);
+        assertThat(r.out() + r.err())
+                .as("stdout:%n%s%nstderr:%n%s", r.out(), r.err())
+                .doesNotContain("OK audit")
+                .contains("GHSA-test-1");
+    }
+
     @Test
     void an_ignore_entry_naming_the_advisory_passes_the_gate_and_says_why(@TempDir Path dir) throws Exception {
         project(dir, """
@@ -148,6 +163,10 @@ class AuditCommandE2eTest {
     }
 
     private Run audit(Path dir) {
+        return audit(dir, "--output", "json");
+    }
+
+    private Run audit(Path dir, String... mode) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         ByteArrayOutputStream err = new ByteArrayOutputStream();
         PrintStream origOut = System.out;
@@ -156,18 +175,10 @@ class AuditCommandE2eTest {
         System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
         int exit;
         try {
-            exit = run(
-                    "audit",
-                    "-C",
-                    dir.toString(),
-                    "--severity",
-                    "HIGH",
-                    "--output",
-                    "json",
-                    "--osv-batch-url",
-                    base + "/querybatch",
-                    "--osv-vulns-url",
-                    base + "/vulns/");
+            List<String> args = new ArrayList<>(List.of("audit", "-C", dir.toString(), "--severity", "HIGH"));
+            args.addAll(List.of(mode));
+            args.addAll(List.of("--osv-batch-url", base + "/querybatch", "--osv-vulns-url", base + "/vulns/"));
+            exit = run(args.toArray(String[]::new));
         } finally {
             System.setOut(origOut);
             System.setErr(origErr);
