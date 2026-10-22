@@ -168,10 +168,11 @@ public final class LockPipeline {
             boolean sources,
             PlatformPolicy platform,
             /**
-             * Whether {@code [jdk]} / {@code [graal]} keep the suggestion already on disk. A
-             * suggestion records what built the lock, so re-locking on a different machine must
-             * not quietly rewrite it — only {@code jk update}, whose job is moving forward, does.
-             * Distinct from {@link #keepPins}, which is about reusing the resolved graph.
+             * Whether {@code [jdk]} / {@code [graal]} keep the suggestion already on disk across a
+             * change of major, and {@code [node]} keeps its suggestion at all. A suggestion records
+             * what built the lock, so re-locking on a different machine must not quietly rewrite
+             * it; without this, {@code jk update} still keeps a JDK suggestion on the major that
+             * resolved. Distinct from {@link #keepPins}, which is about reusing the resolved graph.
              */
             boolean keepToolchainSuggestion,
             /** Whether each exact pin reads as a floor the graph may raise (see {@link LockMode.PinFloors}). */
@@ -377,7 +378,8 @@ public final class LockPipeline {
         // which is what "the project asked for Graal" means.
         lock = Objects.requireNonNull(ToolchainLockStamp.apply(
                 lock,
-                policy.keepToolchainSuggestion() ? existing : null,
+                existing,
+                policy.keepToolchainSuggestion(),
                 javaHome,
                 jdkRegistry,
                 pathPrep.project().project().jdkSpec(),

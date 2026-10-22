@@ -13,7 +13,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
-import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
 import cc.jumpkick.model.WorkspaceMerge;
@@ -33,9 +33,11 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -43,12 +45,13 @@ import org.jspecify.annotations.Nullable;
 /**
  * The manifest phase of {@code jk update}: every exact pin a manifest declares moves to the newest
  * stable release on its Maven major ({@code --major} lifts that gate), in every dependency scope
- * table, in {@code [workspace.dependencies]}, in the tool tables ({@link ToolPins}: {@code [dokka]
- * version}, {@code [protobuf] version}, a {@code [protobuf.<id>] plugin}, a {@code [generate.<name>]
- * tool} or {@code unpack}) and in every workspace member. Ranges, {@code latest}, git, path and
- * platform-managed entries keep their text; the relock that follows floats them. Candidates come
- * from the project's declared repositories, revalidated past the metadata TTL like the relock
- * itself.
+ * table, in each variant value's dependency tables, in {@code [workspace.dependencies]}, in the
+ * framework and tool tables ({@link ToolPins}: {@code [spring-boot] version}, {@code [micronaut]
+ * version}, {@code [dokka] version}, {@code [protobuf] version}, a {@code [protobuf.<id>] plugin}, a
+ * {@code [generate.<name>] tool} or {@code unpack}) and in every workspace member. Ranges, {@code
+ * latest}, git, path and platform-managed entries keep their text; the relock that follows floats
+ * them. Candidates come from the project's declared repositories, revalidated past the metadata TTL
+ * like the relock itself.
  */
 public final class ManifestUpdates {
 
@@ -73,9 +76,22 @@ public final class ManifestUpdates {
             return deps.isEmpty() || deps.contains(handle) || deps.contains(module);
         }
 
-        /** As {@link #selects(String, String)}, also by the tool pin's table path ({@code protobuf.grpc-java}). */
+        /**
+         * As {@link #selects(String, String)}, also by the tool pin's table path ({@code
+         * protobuf.grpc-java}) or the artifact it pins ({@code micronaut-platform}).
+         */
         boolean selects(ToolPins.ToolPin pin) {
-            return selects(pin.handle(), pin.module()) || deps.contains(pin.table());
+            return selects(pin.handle(), pin.module())
+                    || deps.contains(pin.table())
+                    || deps.contains(pin.module().substring(pin.module().indexOf(':') + 1));
+        }
+
+        /** This selection widened by {@code modules}, so every pin of a selected coordinate moves with it. */
+        Selection withModules(Set<String> modules) {
+            if (deps.isEmpty() || modules.isEmpty()) return this;
+            List<String> wider = new ArrayList<>(deps);
+            wider.addAll(modules);
+            return new Selection(wider, major);
         }
     }
 
@@ -111,6 +127,30 @@ public final class ManifestUpdates {
         }
     }
 
+    /** One dependency table of a manifest: its TOML path as written and the entries it declares. */
+    private record DepTable(String path, List<Dependency> deps) {}
+
+    /**
+     * Every dependency table {@code build} declares: the scope tables, then each variant value's
+     * ({@code variants.<dimension>.<value>.dependencies}).
+     */
+    private static List<DepTable> depTables(JkBuild build) {
+        List<DepTable> out = new ArrayList<>();
+        build.dependencies().byScope().forEach((scope, deps) -> out.add(new DepTable(scope.tomlSection(), deps)));
+        for (Variants.Dimension dimension : build.variants().dimensions()) {
+            dimension.values().forEach((value, overlay) -> overlay.dependencies()
+                    .forEach((scope, deps) -> out.add(new DepTable(
+                            "variants." + dimension.name() + "." + value + "." + scope.tomlSection(), deps))));
+        }
+        return out;
+    }
+
+    /** Whether {@code dep} carries a version this phase may rewrite. */
+    private static boolean pinnable(Dependency dep) {
+        return !(dep.isPath() || dep.isWorkspace() || dep.isFile() || dep.isGit() || dep.isPlatformManaged())
+                && dep.version() instanceof VersionSelector.Exact;
+    }
+
     /** Where one exact pin of the manifest under {@code dir} moves, or {@code null} to leave it. */
     @FunctionalInterface
     private interface Move {
@@ -130,7 +170,7 @@ public final class ManifestUpdates {
                 selection,
                 (dir, repos, module, current) ->
                         newer(current, available(module, repos, versionsByModule), selection.major()),
-                true);
+                versionsByModule);
     }
 
     /**
@@ -147,7 +187,7 @@ public final class ManifestUpdates {
                     String held = held(lockDir, dir, probe, module);
                     return held != null && Versions.compare(held, current) > 0 ? held : null;
                 },
-                false);
+                null);
     }
 
     /**
@@ -170,8 +210,19 @@ public final class ManifestUpdates {
         return best;
     }
 
-    private static Plan plan(Path lockDir, @Nullable URI repoUrl, Selection selection, Move move, boolean toolPins)
+    /**
+     * @param toolVersions the version-list memo the tool pins read, shared with {@code move}'s so a
+     *     framework table and a dependency pin of one coordinate land on the same release; {@code
+     *     null} leaves tool pins alone
+     */
+    private static Plan plan(
+            Path lockDir,
+            @Nullable URI repoUrl,
+            Selection selection,
+            Move move,
+            @Nullable Map<String, List<String>> toolVersions)
             throws IOException {
+        boolean toolPins = toolVersions != null;
         JkBuild root = JkBuildParser.parse(ManifestPaths.manifestIn(lockDir));
         JkBuild effectiveRoot = LockPlans.applyWorkspaceContextIfModule(lockDir, root);
 
@@ -187,10 +238,14 @@ public final class ManifestUpdates {
             }
         }
         boolean workspace = declared.size() > 1;
+        Map<Path, String> texts = new LinkedHashMap<>();
+        for (Path dir : declared.keySet()) {
+            texts.put(dir, Files.readString(ManifestPaths.manifestIn(dir), StandardCharsets.UTF_8));
+        }
+        selection = selection.withModules(selectedModules(declared, texts, selection, toolPins));
 
         List<Rewrite> rewrites = new ArrayList<>();
         Map<Path, String> contents = new LinkedHashMap<>();
-        Map<String, List<String>> toolVersions = new HashMap<>();
         AtomicReference<@Nullable List<NodeRelease>> nodeReleases = new AtomicReference<>();
         Supplier<List<NodeRelease>> releases =
                 () -> nodeReleases.updateAndGet(r -> r != null ? r : NodeUpdates.releases(new NodeCatalog()));
@@ -201,31 +256,27 @@ public final class ManifestUpdates {
             String moduleLabel = workspace ? LockPlans.coordLabel(build, dir) : "";
             RepoGroup repos =
                     RepoGroupBuilder.buildFor(Objects.requireNonNull(effective.get(dir)), repoUrl, JkStores.storeCas());
-            String text = Files.readString(manifest, StandardCharsets.UTF_8);
+            String text = Objects.requireNonNull(texts.get(dir));
             String before = text;
 
-            for (Map.Entry<Scope, List<Dependency>> entry :
-                    build.dependencies().byScope().entrySet()) {
-                Scope table = entry.getKey();
-                for (Dependency dep : entry.getValue()) {
-                    if (dep.isPath() || dep.isWorkspace() || dep.isFile() || dep.isGit() || dep.isPlatformManaged()) {
-                        continue;
-                    }
-                    if (!(dep.version() instanceof VersionSelector.Exact exact)) continue;
-                    if (!selection.selects(dep.library(), dep.module())) continue;
-                    String to = move.to(dir, repos, dep.module(), exact.version());
+            for (DepTable table : depTables(build)) {
+                for (Dependency dep : table.deps()) {
+                    if (!pinnable(dep) || !selection.selects(dep.library(), dep.module())) continue;
+                    String current = ((VersionSelector.Exact) dep.version()).version();
+                    String to = move.to(dir, repos, dep.module(), current);
                     if (to == null) continue;
                     String rewritten;
                     try {
-                        rewritten = JkBuildEditor.setDependencyVersion(text, table, dep.library(), to);
+                        rewritten = JkBuildEditor.setDependencyVersion(text, table.path(), dep.library(), to);
                     } catch (IllegalStateException inherited) {
-                        // The version lives elsewhere (a `workspace = true` entry); its owner rewrites it.
-                        Log.debug("update: " + table.tomlSection() + "." + dep.library() + " not rewritten", inherited);
+                        // The entry is not written in this table (a `workspace = true` entry, a
+                        // plugin-injected platform, a variant overlay folded at parse time): its owner
+                        // rewrites it.
+                        Log.debug("update: " + table.path() + "." + dep.library() + " not rewritten", inherited);
                         continue;
                     }
                     text = rewritten;
-                    rewrites.add(new Rewrite(
-                            dir, moduleLabel, table.tomlSection(), dep.library(), dep.module(), exact.version(), to));
+                    rewrites.add(new Rewrite(dir, moduleLabel, table.path(), dep.library(), dep.module(), current, to));
                 }
             }
             for (Map.Entry<String, Workspace.WorkspaceDependency> e :
@@ -239,7 +290,9 @@ public final class ManifestUpdates {
                 rewrites.add(
                         new Rewrite(dir, moduleLabel, WORKSPACE_TABLE, e.getKey(), wd.module(), exact.version(), to));
             }
-            if (toolPins) text = moveToolPins(dir, moduleLabel, build, text, repos, selection, toolVersions, rewrites);
+            if (toolVersions != null) {
+                text = moveToolPins(dir, moduleLabel, build, text, repos, selection, toolVersions, rewrites);
+            }
             if (toolPins && selection.major() && selection.selects(NodeUpdates.HANDLE, NodeUpdates.HANDLE)) {
                 NodeUpdates.Move node = NodeUpdates.major(text, releases);
                 if (node != null) {
@@ -251,6 +304,34 @@ public final class ManifestUpdates {
             if (!text.equals(before)) contents.put(manifest, text);
         }
         return new Plan(rewrites, contents);
+    }
+
+    /**
+     * The coordinates a named selection reaches anywhere in the lock scope: a handle picks its
+     * module, so a member's {@code [spring-boot] version} and the root's {@code
+     * spring-boot-dependencies} pin move together whichever of the two was named. Empty when
+     * nothing was named, which already selects every pin.
+     */
+    private static Set<String> selectedModules(
+            Map<Path, JkBuild> declared, Map<Path, String> texts, Selection selection, boolean toolPins) {
+        Set<String> modules = new LinkedHashSet<>();
+        if (selection.deps().isEmpty()) return modules;
+        for (Map.Entry<Path, JkBuild> e : declared.entrySet()) {
+            JkBuild build = e.getValue();
+            for (DepTable table : depTables(build)) {
+                for (Dependency dep : table.deps()) {
+                    if (pinnable(dep) && selection.selects(dep.library(), dep.module())) modules.add(dep.module());
+                }
+            }
+            build.workspaceDependencies().forEach((handle, wd) -> {
+                if (selection.selects(handle, wd.module())) modules.add(wd.module());
+            });
+            if (!toolPins) continue;
+            for (ToolPins.ToolPin pin : ToolPins.of(build, Objects.requireNonNull(texts.get(e.getKey())))) {
+                if (selection.selects(pin)) modules.add(pin.module());
+            }
+        }
+        return modules;
     }
 
     /**

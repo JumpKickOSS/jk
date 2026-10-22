@@ -63,6 +63,17 @@ jk update -p floor     # relock with BOM pins as lower bounds — Platforms
 | `"^2.18"` / `"~2.18"` / range / `"latest"` | the lock takes the newest match inside that selector; the text stays | same, unless the selector itself excludes the new major |
 | `"g:a"` / `"managed"` (versionless) | untouched — the BOM decides | untouched |
 
+Every dependency table moves, a variant value's `[variants.<dimension>.<value>.dependencies]`
+included: the lock resolves every variant, so the update moves every variant's pins.
+
+A framework table's version is a pin on the platform it imports, and moves the same way:
+`[spring-boot] version` (spring-boot-dependencies), `[micronaut] version` (micronaut-platform) and
+any plugin whose platform BOM takes its version from its table. Naming the table, the artifact or
+the coordinate selects it (`jk update spring-boot`, `jk update micronaut-platform`), and naming
+any pin selects every pin of that coordinate in the workspace: a member's `[spring-boot] version`
+and the root's `spring-boot-dependencies` row under `[platform-dependencies]` land on the same
+release.
+
 The tool tables move under the same rule and flags: an exact `[dokka] version`, `[protobuf] version`
 (protoc), a `[protobuf.<id>] plugin`, and a `[generate.<name>] tool` or `unpack` coordinate are
 rewritten to the newest stable on their major; `jk update dokka`, `jk update grpc-java` or the tool's
@@ -75,8 +86,8 @@ names — its group and artifact filled from the table the way the step fills th
 The Maven major is the first numeric segment (`2.18.2` → 2.x, `33.4.8-jre` → 33.x). Pre-releases
 are never "stable", so an RC is taken only by an opt-in selector that admits it. The rewritten
 manifest keeps its spelling — a catalog one-liner stays a one-liner, a GAV string stays a GAV
-string — and the reviewable diff is `jk.toml` plus `jk-lock.toml`. `jk update` also revalidates
-metadata and refreshes the recorded toolchain ([below](#toolchain-pins)). MCP has the same verb
+string, a trailing comment keeps its column — and the reviewable diff is `jk.toml` plus `jk-lock.toml`. `jk update` also revalidates
+metadata and refreshes the recorded toolchain when its major moved ([below](#toolchain-pins)). MCP has the same verb
 with a preview: [`update`](mcp.md#tools).
 
 Each moved pin prints as it is written (`guava  31.0-jre → 31.1-jre`). Once the relock lands, every
@@ -104,6 +115,11 @@ Every row is a live repository read, so a workspace takes seconds: the terminal 
 Outdated wedge with a progress bar counting dependencies checked while the engine fetches, and
 the table takes the bar's place when the report lands. `-O jsonl`, a pipe and
 `--no-progress` paint nothing until the report.
+
+The report covers every variant: a pin under `[variants.<dimension>.<value>.dependencies]` gets a
+row under its scope whichever value a build selects, as the lock resolves them all — `jk
+outdated` takes no `--variant`. A framework table's version reads as its platform BOM's row
+(`spring-boot-dependencies` for `[spring-boot] version`).
 
 | Column | Meaning |
 |--------|---------|
@@ -165,8 +181,11 @@ required-version  = "25.0.4"      # exact: 25.0.3, 25.1.0 and 26.0.2 all fail
 `suggested-*` is a record of what created the lock. It binds nothing but the major: a build on a
 newer JDK is fine, an older one is not — and because it is a record, `jk lock` leaves it as it
 found it. A `jdk` in `jk.toml` outranks it: the project's, or a workspace member's own under the
-workspace lock, names the install that module builds with, at any major. Re-locking on a machine with a different vendor does not rewrite what built the lock;
-only `jk update`, whose job is moving forward, refreshes it. An exception: a previous suggestion
+workspace lock, names the install that module builds with, at any major. Re-locking on a machine
+with a different vendor or patch does not rewrite what built the lock, and neither does `jk
+update` while the JDK that resolved is on the suggestion's major: two machines on 25.0.2 and
+25.0.4 leave `suggested-version` as they found it. `jk update` refreshes it only when the major
+that resolved differs (a project moved from 25 to 26). An exception: a previous suggestion
 that names a vendor jk cannot install is dropped and rewritten from the toolchain that resolved.
 Copying `nosuchvendor-99` forward would make the next `jk build` try to install a catalog-missing
 spec after the agent already removed the pin.
