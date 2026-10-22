@@ -184,14 +184,18 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
   commit-authorship scan. No coverage, no benches.
 - **Nightly (`ci-nightly.yml`):** `jk test -p integration`, `-p slow`,
   `-p network`, `-p bench`, the coverage ratchet (`jk test --coverage`, `jk guard`),
-  the heap guard, the doc examples, the [jk-examples](https://github.com/JumpKickOSS/jk-examples)
-  `03-fullstack/` scenarios and the audit at `LOW` on Linux; the product smoke on macOS.
-- **Examples job:** every `docs/user/examples/*` sample and every jk-examples `03-fullstack/*` scenario is
-  locked, built (the scenarios from a clean checkout, each on the Node.js its lock pins) and run
-  under `jk dev` until its front doors answer (`scripts/example-dev-smoke.sh`, `--examples` for the
-  scenarios). Afterwards no committed `jk-lock.toml` may change beyond first-party plugin checksums
-  and no `package-lock.json` may change at all (`scripts/examples-lock-drift.sh . jk-examples`). The
-  same two scripts run locally against a sibling checkout:
+  the heap guard, the doc examples, the nightly [jk-examples](https://github.com/JumpKickOSS/jk-examples)
+  scenarios and the audit at `LOW` on Linux; the product smoke on macOS.
+- **Examples job:** every `docs/user/examples/*` sample is locked, built and tested. Every
+  jk-examples scenario whose `scenario.toml` says `cadence = "nightly"` (or `pr`) is relocked and
+  checked from a clean checkout with the commands its manifest lists
+  (`scripts/scenarios.py list --cadence nightly --have docker`, then `scripts/scenarios.py check`),
+  each node scenario on the Node.js its lock pins. Samples and scenarios marked `dev = true` then run
+  under `jk dev` until their front doors answer (`scripts/example-dev-smoke.sh`, `--examples` for
+  the scenarios, with each manifest's `dev-checks`). Afterwards no committed `jk-lock.toml` may
+  change beyond first-party plugin checksums and no `package-lock.json` may change at all
+  (`scripts/examples-lock-drift.sh . jk-examples`). The same scripts run locally against a sibling
+  checkout: `../jk-examples/scripts/scenarios.py check <scenario>`,
   `scripts/example-dev-smoke.sh --examples ../jk-examples` and
   `scripts/examples-lock-drift.sh . ../jk-examples`.
 - Local gate: `jk format`, `jk guard`, `jk build`, `jk test -p integration`;
