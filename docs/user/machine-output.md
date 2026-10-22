@@ -99,7 +99,8 @@ nothing and the command it was started with), the two conflicting JUnit coordina
 counted as a red test, so there is no `Tests:` line for it. MCP `diagnostics` returns it as one
 row (`code`, `message`, `detail`, `exceptionClass`). [Test](test.md#when-the-launcher-cannot-start).
 
-The headline outcome is the run's own verdict. `FAIL` with the failed step's exit (`1`, or `4` for
+The agent headline reads `<outcome> <kind> <name>`, and the kind is the command that ran:
+`OK guard app` for `jk guard`, in a standalone project as in a workspace. The headline outcome is the run's own verdict. `FAIL` with the failed step's exit (`1`, or `4` for
 red tests) is a build that stopped at a failure; `OK` with failed tests in the count is a run under
 `[test] failures = "report"`, and the verdict says `test failures reported, not failing` and lists
 them ([Test](test.md#failures-that-do-not-fail-the-run-test-failures)); `CANCELLED` with `exit 130` is a run a user or a
