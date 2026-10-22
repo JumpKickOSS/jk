@@ -121,11 +121,9 @@ class NativePlansTest {
                 List.of(),
                 List.of(new BuildPlanResult.Diagnostic("native-image", "native", "main class no.Such.Class not found")),
                 false);
-        org.assertj.core.api.Assertions.assertThat(NativePlans.failureExitCode(plan, usage))
-                .isEqualTo(Exit.USAGE);
+        assertThat(NativePlans.failureExitCode(plan, usage)).isEqualTo(Exit.USAGE);
         var plain = new BuildPlanResult("native", false, Duration.ZERO, List.of(), List.of(), List.of(), false);
-        org.assertj.core.api.Assertions.assertThat(NativePlans.failureExitCode(plan, plain))
-                .isEqualTo(1);
+        assertThat(NativePlans.failureExitCode(plan, plain)).isEqualTo(1);
     }
 
     @Test
@@ -139,8 +137,7 @@ class NativePlansTest {
                 List.of(),
                 List.of(new BuildPlanResult.Diagnostic("image-plan", "no-main", "no main class - pass --main")),
                 false);
-        org.assertj.core.api.Assertions.assertThat(NativePlans.failureExitCode(plan, noMain))
-                .isEqualTo(Exit.USAGE);
+        assertThat(NativePlans.failureExitCode(plan, noMain)).isEqualTo(Exit.USAGE);
     }
 
     @Test
@@ -155,7 +152,6 @@ class NativePlansTest {
                 List.of(new BuildPlanResult.Diagnostic(
                         "run-tests", TestClassMatch.NO_TESTS_MATCHED, "no test classes matched --class Nope")),
                 false);
-        org.assertj.core.api.Assertions.assertThat(NativePlans.failureExitCode(plan, noMatch))
-                .isEqualTo(Exit.USAGE);
+        assertThat(NativePlans.failureExitCode(plan, noMatch)).isEqualTo(Exit.USAGE);
     }
 }
