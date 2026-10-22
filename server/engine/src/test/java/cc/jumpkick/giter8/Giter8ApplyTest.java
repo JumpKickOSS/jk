@@ -243,6 +243,17 @@ class Giter8ApplyTest {
     }
 
     @Test
+    void a_dotted_pre_release_is_not_stable() {
+        var md = new MavenMetadata(
+                "io.quarkus.platform",
+                "quarkus-bom",
+                List.of("3.40.1", "4.0.0.CR1", "4.0.0.Beta1"),
+                "4.0.0.Beta1",
+                "4.0.0.Beta1");
+        assertThat(Giter8Maven.pick(md, true)).isEqualTo("3.40.1");
+    }
+
+    @Test
     void dual_layout_simple_vs_traditional(@TempDir Path tmp) throws Exception {
         Path template = g8(tmp, "name=demo\npackage=com.demo\n");
         Path g8 = template.resolve("src/main/g8");
