@@ -190,13 +190,17 @@ cache leaves CAS reuse intact.
 ## `jk env`
 
 Build-visible environment is layered (lowest → highest): workspace `.env`, module `.env`,
-then the real process environment. The **shell always wins** over files.
+then the real process environment. The **shell always wins** over files. The same layers reach
+what jk starts: the app and sidecars of `jk run` / `jk dev` (from the module's files),
+`jk tool run` and an installed tool's launcher (from the directory they run in — the workspace
+root's `.env`, then that directory's).
 
 ```bash
 jk env                 # .env keys + JK_* from the process
 jk env -v              # also show file values shadowed by the shell
-jk env -A           # every process env key (noisy)
+jk env -A              # every process env key (noisy)
 jk env -O jsonl
+eval "$(jk env --export)"   # set the .env values this shell lacks (cmd.exe: `set` lines)
 ```
 
 Values that came from a `.env` file are treated as secrets: shown as `***` and labeled

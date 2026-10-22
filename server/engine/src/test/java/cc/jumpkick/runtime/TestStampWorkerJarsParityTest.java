@@ -133,7 +133,7 @@ class TestStampWorkerJarsParityTest {
     }
 
     @Test
-    void cli_module_gets_engine_jar_prop_via_host_fallback_when_assembly_missing() throws Exception {
+    void cli_module_names_the_workspace_engine_assembly_even_before_it_is_built() throws Exception {
         Path cli = tmp.resolve("clients/cli");
         Files.createDirectories(cli);
         Files.writeString(cli.resolve("jk.toml"), """
@@ -145,7 +145,7 @@ class TestStampWorkerJarsParityTest {
                 [application]
                 main = "cc.jumpkick.cli.Jk"
                 """);
-        // Engine module exists but has no assembly jar on disk (jk test does not package it).
+        // The engine module has no assembly on disk yet: the test run packages it before the suite.
         Path engine = tmp.resolve("server/engine");
         Files.createDirectories(engine);
         Files.writeString(engine.resolve("jk.toml"), """
@@ -170,12 +170,7 @@ class TestStampWorkerJarsParityTest {
                 modules = ["clients/cli", "server/engine"]
                 """);
 
-        // Seed a monorepo-shaped host jar INSIDE @TempDir and confine discovery to it. Never
-        // write into the real checkout: a planted near-empty jar under target/dist/lib is a
-        // production discovery path — a dogfooded build would hand it to nested engine workers.
-        // The override also makes this deterministic on warm developer trees, where the
-        // process/EngineInstall probes would otherwise satisfy the assertion even if monorepo
-        // fallback broke.
+        // A host jar is on offer, and must not be taken: it is not the checkout's engine.
         String ver = JkVersion.VERSION;
         Path seed = tmp.resolve("target/dist/lib/jk-engine-" + ver + ".jar");
         Files.createDirectories(seed.getParent());
@@ -184,14 +179,9 @@ class TestStampWorkerJarsParityTest {
         try {
             JkBuild project = JkBuildParser.parse(cli.resolve("jk.toml"));
             Map<String, String> workers = PlannerSupport.testStampWorkerJars(cli, project);
-            // The monorepo product path must supply a jar so pure-jk nested isolation still
-            // gets -Djk.engine.jar without a workspace *-all.jar.
-            assertThat(workers)
-                    .as("jk.engine.jar must be set even when workspace assembly is absent")
-                    .containsKey("jk.engine.jar");
             assertThat(Path.of(workers.get("jk.engine.jar")))
-                    .as("fallback must resolve the seeded monorepo product jar, not an ambient host jar")
-                    .isEqualTo(seed.normalize());
+                    .as("the suite runs the workspace engine's assembly, never a host or installed engine")
+                    .isEqualTo(engine.resolve("target/jk-engine-0.0.1-all.jar").normalize());
         } finally {
             BuildPlanner.hostEngineSearchOverride = null;
         }

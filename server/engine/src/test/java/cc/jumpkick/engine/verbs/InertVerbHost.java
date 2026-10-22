@@ -13,9 +13,10 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * A {@link VerbHost} for tests that only decode: registry construction and a verb's constructor
- * need a host reference, and nothing on this one is ever called.
+ * need a host reference, and nothing on this one is ever called. A test that records what a verb
+ * sends overrides the few calls it watches.
  */
-final class InertVerbHost implements VerbHost {
+class InertVerbHost implements VerbHost {
     @Override
     public long eventRequestId() {
         return -1;

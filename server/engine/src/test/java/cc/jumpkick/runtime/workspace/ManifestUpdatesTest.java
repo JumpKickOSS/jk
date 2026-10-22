@@ -368,6 +368,108 @@ class ManifestUpdatesTest {
                 .containsExactly(tuple("shared-key.version", "1.0.0", "1.1.0"));
     }
 
+    /**
+     * A framework table's version is a pin on the platform it imports: a member's {@code
+     * [spring-boot] version} moves on its major like the root's {@code [platform-dependencies]} pin
+     * of the same BOM, and naming either one moves both.
+     */
+    @Test
+    void a_framework_version_moves_with_the_root_platform_pin(@TempDir Path ws) throws Exception {
+        Files.writeString(ws.resolve("jk.toml"), """
+                group = "com.example"
+                name = "shop"
+                version = "1.0.0"
+                java = 25
+
+                [workspace]
+                modules = ["web"]
+
+                [platform-dependencies]
+                boot = "org.springframework.boot:spring-boot-dependencies:4.1.0"
+                """);
+        Files.createDirectories(ws.resolve("web"));
+        Files.writeString(ws.resolve("web").resolve("jk.toml"), """
+                group = "com.example"
+                name = "web"
+                version = "1.0.0"
+
+                [spring-boot]
+                version = "4.1.0"  # the Boot jar
+                """);
+        MavenStub upstream = new MavenStub(http);
+        published(upstream, "org.springframework.boot", "spring-boot-dependencies", "4.1.0", "4.1.1", "5.0.0");
+
+        ManifestUpdates.Plan plan = ManifestUpdates.plan(ws, http.base(), ManifestUpdates.Selection.ALL);
+        assertThat(plan.rewrites())
+                .extracting(r -> r.dir().getFileName().toString(), r -> r.table(), r -> r.from(), r -> r.to())
+                .containsExactlyInAnyOrder(
+                        tuple(ws.getFileName().toString(), "platform-dependencies", "4.1.0", "4.1.1"),
+                        tuple("web", "spring-boot.version", "4.1.0", "4.1.1"));
+        assertThat(plan.contents().get(ws.resolve("web").resolve("jk.toml")))
+                .contains("version = \"4.1.1\"  # the Boot jar");
+
+        for (String named : List.of("spring-boot", "boot", "spring-boot-dependencies")) {
+            ManifestUpdates.Plan one =
+                    ManifestUpdates.plan(ws, http.base(), new ManifestUpdates.Selection(List.of(named), false));
+            assertThat(one.rewrites()).as(named).extracting(r -> r.to()).containsExactly("4.1.1", "4.1.1");
+        }
+        ManifestUpdates.Plan major =
+                ManifestUpdates.plan(ws, http.base(), new ManifestUpdates.Selection(List.of("spring-boot"), true));
+        assertThat(major.rewrites()).extracting(r -> r.to()).containsExactly("5.0.0", "5.0.0");
+    }
+
+    @Test
+    void the_micronaut_version_moves_by_its_platform_artifact(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "com.example"
+                name = "hello"
+                version = "1.0.0"
+                java = 25
+
+                [micronaut]
+                version = "5.0.0"
+                """);
+        MavenStub upstream = new MavenStub(http);
+        published(upstream, "io.micronaut.platform", "micronaut-platform", "5.0.0", "5.1.0");
+
+        ManifestUpdates.Plan plan = ManifestUpdates.plan(
+                project, http.base(), new ManifestUpdates.Selection(List.of("micronaut-platform"), false));
+        assertThat(plan.rewrites())
+                .extracting(r -> r.table(), r -> r.handle(), r -> r.to())
+                .containsExactly(tuple("micronaut.version", "micronaut", "5.1.0"));
+    }
+
+    /** A pin under {@code [variants.<dimension>.<value>.dependencies]} moves like a top-level one. */
+    @Test
+    void variant_dependency_pins_move(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "com.example"
+                name = "cli"
+                version = "1.0.0"
+                java = 25
+
+                [variants.contentType.demo]
+                extra-src = ["src-demo"]
+
+                [variants.contentType.prod]
+                extra-src = ["src-prod"]
+
+                [variants.contentType.prod.dependencies]
+                lang = "com.acme:lang:3.18.0"
+                """);
+        MavenStub upstream = new MavenStub(http);
+        versions(upstream, "lang", "3.18.0", "3.21.0", "4.0.0");
+
+        for (ManifestUpdates.Selection selection :
+                List.of(ManifestUpdates.Selection.ALL, new ManifestUpdates.Selection(List.of("lang"), false))) {
+            ManifestUpdates.Plan plan = ManifestUpdates.plan(project, http.base(), selection);
+            assertThat(plan.rewrites())
+                    .extracting(r -> r.table(), r -> r.handle(), r -> r.from(), r -> r.to())
+                    .containsExactly(tuple("variants.contentType.prod.dependencies", "lang", "3.18.0", "3.21.0"));
+            assertThat(plan.contents().get(project.resolve("jk.toml"))).contains("lang = \"com.acme:lang:3.21.0\"");
+        }
+    }
+
     // ---- fixture ---------------------------------------------------------------
 
     // ---- raising pins a highest-wins probe holds higher -----------------------------

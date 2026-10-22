@@ -9,6 +9,7 @@ import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.SecretRedactor;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -55,5 +56,18 @@ class EnvCommandTest {
         EnvLookup lookup = BuildEnv.lookupFor(tmp);
         assertThat(lookup.get("FOO")).isEqualTo("bar-from-file");
         assertThat(lookup.isFromFile("FOO")).isTrue();
+    }
+
+    @Test
+    void export_prints_the_file_values_the_shell_lacks_quoted_for_the_shell() {
+        var files = new LinkedHashMap<String, String>();
+        files.put("JDBC_URL", "jdbc:h2:file:./target/envdb");
+        files.put("QUOTED", "it's");
+        files.put("FROM_SHELL", "file");
+        Map<String, String> shell = Map.of("FROM_SHELL", "shell");
+        assertThat(EnvCommand.exportLines(files, shell::get, false))
+                .isEqualTo("export JDBC_URL='jdbc:h2:file:./target/envdb'\nexport QUOTED='it'\\''s'\n");
+        assertThat(EnvCommand.exportLines(files, shell::get, true))
+                .isEqualTo("set \"JDBC_URL=jdbc:h2:file:./target/envdb\"\nset \"QUOTED=it's\"\n");
     }
 }

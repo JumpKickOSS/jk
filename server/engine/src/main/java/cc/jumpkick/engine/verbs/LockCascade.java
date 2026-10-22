@@ -85,8 +85,7 @@ final class LockCascade {
             effective = scope.effective();
             coord = scope.coord();
         } catch (RuntimeException e) {
-            host.sendQuiet(writer, ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(Errors.text(e)), -1));
-            return JobOutcome.failed(Exit.CONFIG);
+            return fail(host, writer, Exit.CONFIG, Errors.text(e));
         }
 
         synchronized (LockGate.monitorFor(lockDir)) {
@@ -106,8 +105,7 @@ final class LockCascade {
                     if (!plan.isEmpty())
                         effective = LockPlans.lockScope(entryDir, selection).effective();
                 } catch (RuntimeException | IOException e) {
-                    host.sendQuiet(writer, ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(Errors.text(e)), -1));
-                    return JobOutcome.failed(Exit.CONFIG);
+                    return fail(host, writer, Exit.CONFIG, Errors.text(e));
                 }
             }
             Path dir = lockDir;
@@ -174,6 +172,18 @@ final class LockCascade {
         }
         host.sendQuiet(writer, ProtoEvents.lockFinish(true, 0, List.of(), -1));
         return JobOutcome.ok();
+    }
+
+    /**
+     * End the request on {@code error}, a failure no plan step carries: the {@code lock-finish}
+     * event names it for the client, and the run's journal records it, so {@code jk-results.md}
+     * and the agent report say why the lock failed.
+     */
+    static JobOutcome fail(VerbHost host, @Nullable BufferedWriter writer, int exit, String error) {
+        long rid = host.eventRequestId();
+        if (rid > 0) host.accRunErrors(rid, List.of(error));
+        host.sendQuiet(writer, ProtoEvents.lockFinish(false, exit, List.of(error), -1));
+        return JobOutcome.failed(exit);
     }
 
     /** One {@code update-change} event per package the relock added, removed or moved. */

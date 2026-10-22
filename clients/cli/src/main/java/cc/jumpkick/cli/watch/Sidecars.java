@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.watch;
 
+import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.Sidecar;
 import cc.jumpkick.wire.protocol.ExecPlan;
@@ -162,6 +163,7 @@ public final class Sidecars implements AutoCloseable {
     private Running launch(ExecPlan.Sidecar spec, int failures) throws IOException {
         ProcessBuilder pb =
                 new ProcessBuilder(spec.command()).directory(Path.of(spec.cwd()).toFile());
+        EnvLookup.layerUnder(pb.environment(), spec.dotEnv());
         pb.environment().putAll(spec.env());
         Process process;
         try {
