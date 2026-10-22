@@ -4,11 +4,11 @@ package cc.jumpkick.giter8;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.MavenMetadata;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -108,14 +108,8 @@ public final class Giter8Maven {
         return lookup.latest(m.group(1).strip(), m.group(2).strip(), stable);
     }
 
+    /** Not a release: the one definition of stable ({@link Versions#isStable}) — {@code 4.0.0.Beta1} included. */
     private static boolean unstable(String version) {
-        String v = version.toLowerCase(Locale.ROOT);
-        return v.contains("snapshot")
-                || v.contains("-rc")
-                || v.contains(".rc")
-                || v.contains("-alpha")
-                || v.contains("-beta")
-                || v.contains("milestone")
-                || v.matches(".*(^|[.-])m\\d+.*");
+        return !Versions.isStable(version);
     }
 }
