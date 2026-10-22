@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
@@ -685,6 +686,7 @@ class EffectivePomBuilderTest {
         EffectivePomBuilder builder2 = new EffectivePomBuilder(repo);
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
+            long start = System.nanoTime();
             Future<EffectivePom> fa = pool.submit(() -> builder1.build(Coordinate.of("org.example", "a", "1.0")));
             Future<EffectivePom> fb = pool.submit(() -> builder2.build(Coordinate.of("org.example", "b", "1.0")));
             for (Future<EffectivePom> f : List.of(fa, fb)) {
@@ -696,13 +698,21 @@ class EffectivePomBuilderTest {
             assertThat(bothWereFetching)
                     .as("the cross-join needs both walkers holding their own IN_FLIGHT entry")
                     .isTrue();
+            assertThat(TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - start))
+                    .as("both walks ended on cycle detection, not on the 30 s join-fallback bound")
+                    .isLessThan(10);
         } finally {
             beforeServe = null;
             pool.shutdownNow();
         }
     }
 
-    @Test
+    /**
+     * Repeated because which walker sees the cross-join first is a scheduling race, and each
+     * outcome must end on detection, not on the join-fallback bound: a run that takes anywhere
+     * near {@code JOIN_FALLBACK_MS} means a wait the waits-for graph could not see.
+     */
+    @RepeatedTest(12)
     void bom_import_join_cycle_fails_loudly_instead_of_stalling(@TempDir Path tempDir) throws Exception {
         // builder1 walks `a`, whose TWO bom imports (x, y) expand on pool workers via
         // futures builder1 then joins; builder2 walks `x` directly, and x's parent is `a`. The
@@ -775,6 +785,7 @@ class EffectivePomBuilderTest {
         EffectivePomBuilder builder2 = new EffectivePomBuilder(repo);
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
+            long start = System.nanoTime();
             Future<EffectivePom> fa = pool.submit(() -> builder1.build(Coordinate.of("org.example", "a", "1.0")));
             Future<EffectivePom> fx = pool.submit(() -> builder2.build(Coordinate.of("org.example", "x", "1.0")));
             for (Future<EffectivePom> f : List.of(fa, fx)) {
@@ -786,6 +797,9 @@ class EffectivePomBuilderTest {
             assertThat(bothWereFetching)
                     .as("the cross-join needs both walkers holding their own IN_FLIGHT entry")
                     .isTrue();
+            assertThat(TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - start))
+                    .as("both walks ended on cycle detection, not on the 30 s join-fallback bound")
+                    .isLessThan(10);
         } finally {
             beforeServe = null;
             pool.shutdownNow();

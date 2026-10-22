@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.host.Interned;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.resolve.ResolveProfile;
 import cc.jumpkick.run.JkThreads;
@@ -521,26 +522,50 @@ public final class EffectivePomBuilder {
             joinExpansions(unique, futures, out, self);
         } finally {
             // Quiesce before returning OR throwing: an expansion future this thread broke away
-            // from (deadlock detected, bound elapsed, sibling threw) keeps running on the pool
-            // and writes into the repo cache after the caller has moved on — test @TempDir
-            // cleanup raced exactly that. Workers on a real cycle fail fast via
-            // joinWouldDeadlock, so this drain is short; the bound is a backstop.
-            long drainDeadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(JOIN_FALLBACK_MS);
-            for (CompletableFuture<EffectivePom> f : futures.values()) {
-                if (f.isDone()) continue;
-                long leftMs = TimeUnit.NANOSECONDS.toMillis(drainDeadline - System.nanoTime());
-                if (leftMs <= 0) break;
+            // from (sibling threw, bound elapsed) keeps running on the pool and writes into the
+            // repo cache after the caller has moved on — test @TempDir cleanup raced exactly that.
+            // The drain waits the way the join does, in the waits-for graph: an expansion parked on
+            // a flight whose owner waits on this thread's own walk can only finish after this
+            // thread does, so waiting on it would end only at the bound.
+            long drainDeadline = Clock.SYSTEM.nanos() + TimeUnit.MILLISECONDS.toNanos(JOIN_FALLBACK_MS);
+            for (var e : futures.entrySet()) {
+                if (e.getValue().isDone()) continue;
+                String bomKey = flightKey(Objects.requireNonNull(unique.get(e.getKey())));
                 try {
-                    f.get(leftMs, TimeUnit.MILLISECONDS);
+                    awaitExpansion(bomKey, e.getValue(), self, drainDeadline);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     break;
-                } catch (ExecutionException | TimeoutException ignored) {
+                } catch (ExecutionException ignored) {
                     // outcome irrelevant — only quiescence matters here
                 }
             }
         }
         return out;
+    }
+
+    /**
+     * Wait for one BOM expansion while registered in the waits-for graph as waiting on its flight.
+     * Returns its result, or {@code null} when the wait loops back to {@code self} (a cycle the
+     * caller resolves by expanding in-line) or {@code deadline} passed.
+     */
+    private static @Nullable EffectivePom awaitExpansion(
+            String bomKey, CompletableFuture<EffectivePom> future, Thread self, long deadline)
+            throws ExecutionException, InterruptedException {
+        WAITING_ON.put(self, bomKey);
+        try {
+            while (true) {
+                try {
+                    return future.get(JOIN_POLL_MS, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException te) {
+                    Flight f = IN_FLIGHT.get(bomKey);
+                    if (f != null && f.owner() != self && joinWouldDeadlock(self, f)) return null;
+                    if (Clock.SYSTEM.nanos() - deadline > 0) return null;
+                }
+            }
+        } finally {
+            WAITING_ON.remove(self);
+        }
     }
 
     private void joinExpansions(
@@ -550,40 +575,25 @@ public final class EffectivePomBuilder {
             Thread self)
             throws IOException, InterruptedException {
         for (var e : futures.entrySet()) {
-            // Register the join in the waits-for graph: a worker whose own await chain
-            // reaches this thread could not see joins through these futures, so neither side
-            // detected the cycle — the worker parked for the full JOIN_FALLBACK_MS while this
-            // thread sat in an unbounded join(). With the edge recorded, the worker's
-            // joinWouldDeadlock fires immediately; and if WE detect the loop (or the bound
-            // elapses), the entry is simply left out and merge()'s serial-expand fallback builds
-            // the BOM in-line with this thread's visiting set — a real POM cycle then throws the
-            // loud cycle diagnostic.
+            // Registered in the waits-for graph: a worker whose own await chain reaches this thread
+            // sees the loop and detects it at once. If WE detect it (or the bound elapses), the entry
+            // is left out and merge()'s serial-expand fallback builds the BOM in-line with this
+            // thread's visiting set — a real POM cycle then throws the loud cycle diagnostic.
             String bomKey = flightKey(Objects.requireNonNull(unique.get(e.getKey())));
-            WAITING_ON.put(self, bomKey);
+            long deadline = Clock.SYSTEM.nanos() + TimeUnit.MILLISECONDS.toNanos(JOIN_FALLBACK_MS);
             try {
-                long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(JOIN_FALLBACK_MS);
-                while (true) {
-                    try {
-                        out.put(e.getKey(), e.getValue().get(JOIN_POLL_MS, TimeUnit.MILLISECONDS));
-                        break;
-                    } catch (TimeoutException te) {
-                        Flight f = IN_FLIGHT.get(bomKey);
-                        if (f != null && f.owner() != self && joinWouldDeadlock(self, f)) break;
-                        if (System.nanoTime() - deadline > 0) break;
-                    } catch (ExecutionException ex) {
-                        Throwable c = ex.getCause() != null ? ex.getCause() : ex;
-                        if (c instanceof IOException io) throw io;
-                        if (c instanceof InterruptedException ie) {
-                            Thread.currentThread().interrupt();
-                            throw ie;
-                        }
-                        if (c instanceof RuntimeException re) throw re;
-                        if (c instanceof Error err) throw err;
-                        throw new IOException(c);
-                    }
+                EffectivePom bom = awaitExpansion(bomKey, e.getValue(), self, deadline);
+                if (bom != null) out.put(e.getKey(), bom);
+            } catch (ExecutionException ex) {
+                Throwable c = ex.getCause() != null ? ex.getCause() : ex;
+                if (c instanceof IOException io) throw io;
+                if (c instanceof InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw ie;
                 }
-            } finally {
-                WAITING_ON.remove(self);
+                if (c instanceof RuntimeException re) throw re;
+                if (c instanceof Error err) throw err;
+                throw new IOException(c);
             }
         }
     }
