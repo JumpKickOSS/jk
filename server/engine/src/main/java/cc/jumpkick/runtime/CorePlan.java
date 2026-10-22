@@ -12,7 +12,6 @@ import cc.jumpkick.layout.Languages;
 import cc.jumpkick.layout.NodeProject;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.Variants;
 import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
@@ -112,7 +111,8 @@ final class CorePlan {
             // Variant overlays fold into plugin configs HERE, so describe keys, contribution
             // predicates, step/packager action keys, and plugin specs all see one flat effective
             // config (parameterized plans, not configured objects).
-            var applied = VariantApply.apply(jkBuild, in.dir(), Variants.Selection.parse(in.variant()), in.clientEnv());
+            var applied = VariantApply.apply(
+                    jkBuild, in.dir(), VariantApply.selection(in.variant(), in.session()), in.clientEnv());
             jkBuild = applied.build();
             variantSecrets = applied.secrets();
             parsedBuild = jkBuild;

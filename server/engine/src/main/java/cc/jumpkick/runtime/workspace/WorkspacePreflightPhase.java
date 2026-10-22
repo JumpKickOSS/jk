@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleOrder;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceCone;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.time.Clock;
@@ -11,7 +12,9 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.FirstPartyPins;
@@ -26,6 +29,7 @@ import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -114,6 +118,9 @@ public final class WorkspacePreflightPhase {
             }
             return completed(true, 0, List.of());
         }
+
+        List<String> selectionErrors = selectionErrors(units, request);
+        if (!selectionErrors.isEmpty()) return completed(false, Exit.CONFIG, selectionErrors);
 
         Set<Path> moduleDirs = new LinkedHashSet<>();
         for (BuildGraph.BuildUnit unit : units) moduleDirs.add(unit.dir());
@@ -319,6 +326,20 @@ public final class WorkspacePreflightPhase {
             terminals.add(dir);
         }
         return terminals;
+    }
+
+    /**
+     * Every module whose {@code [variants]} the request's selection cannot build, named, before any
+     * module's work starts: a module's own parse step would find it only once its upstream had built.
+     */
+    static List<String> selectionErrors(List<BuildGraph.BuildUnit> units, WorkspaceRequest request) {
+        Variants.Selection selection = VariantApply.selection(request.variant(), SessionContext.current());
+        List<String> errors = new ArrayList<>();
+        for (BuildGraph.BuildUnit unit : units) {
+            String error = VariantApply.selectionError(unit.manifest(), selection);
+            if (error != null) errors.add(unit.coord() + ": " + error);
+        }
+        return errors;
     }
 
     private static Completed completed(boolean success, int exitCode, List<String> errors) {

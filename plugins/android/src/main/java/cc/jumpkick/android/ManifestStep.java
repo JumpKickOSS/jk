@@ -2,6 +2,7 @@
 package cc.jumpkick.android;
 
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -12,13 +13,38 @@ import java.util.List;
 /**
  * {@code android-manifest} step: Google's manifest-merger → {@code merged/AndroidManifest.xml}
  * with namespace package and {@code <uses-sdk>} from min/compile SDK. Runs as a {@code transitive}
- * step-dependency classpath.
+ * step-dependency classpath. {@link TestConfigStep} merges the unit-test manifest with the same
+ * merger.
  */
 final class ManifestStep {
 
     private ManifestStep() {}
 
     static void run(TaskExec exec) throws Exception {
+        // Dependency (AAR) manifests join the merge in classpath order — app first (--main
+        // wins), exactly AGP's precedence. APP builds only: a library merges its OWN manifest
+        // (AGP semantics — the full closure merges once, at the consuming app; merging dep
+        // manifests into a library trips cross-library conflicts like androidx.startup's
+        // per-package InitializationProvider authorities).
+        boolean library = exec.config().bool("library", false);
+        List<Path> libManifests = library ? List.of() : aarManifests(exec.runtimeEntries());
+        merge(exec, libManifests, library, exec.outputDir("merged").resolve("AndroidManifest.xml"));
+    }
+
+    /** Every AAR manifest among {@code entries}, in classpath order. */
+    static List<Path> aarManifests(List<PackageIo.RuntimeEntry> entries) {
+        List<Path> out = new ArrayList<>();
+        for (AndroidDeps.Aar aar : AndroidDeps.aars(entries)) {
+            if (Files.isRegularFile(aar.manifest())) out.add(aar.manifest());
+        }
+        return out;
+    }
+
+    /**
+     * Merge the module's manifest with {@code libManifests} into {@code merged}: in the merger's
+     * LIBRARY mode when {@code libraryMode}, else as an application.
+     */
+    static void merge(TaskExec exec, List<Path> libManifests, boolean libraryMode, Path merged) throws Exception {
         Path manifest = AndroidDeps.androidFile(exec.moduleDir(), "AndroidManifest.xml");
         if (!Files.isRegularFile(manifest)) {
             // Optional since AGP 7 — a manifest-less library gets a synthesized minimal one
@@ -36,21 +62,8 @@ final class ManifestStep {
         String namespace = exec.config().string("namespace");
         long compileSdk = exec.config().intValue("compile-sdk", 0);
         long minSdk = exec.config().intValue("min-sdk", 0);
+        Files.createDirectories(merged.getParent());
 
-        Path merged = exec.outputDir("merged").resolve("AndroidManifest.xml");
-
-        // Dependency (AAR) manifests join the merge in classpath order — app first (--main
-        // wins), exactly AGP's precedence. APP builds only: a library merges its OWN manifest
-        // (AGP semantics — the full closure merges once, at the consuming app; merging dep
-        // manifests into a library trips cross-library conflicts like androidx.startup's
-        // per-package InitializationProvider authorities).
-        boolean library = exec.config().bool("library", false);
-        List<Path> libManifests = new ArrayList<>();
-        if (!library) {
-            for (AndroidDeps.Aar aar : AndroidDeps.aars(exec.runtimeEntries())) {
-                if (Files.isRegularFile(aar.manifest())) libManifests.add(aar.manifest());
-            }
-        }
         // The merger's --libs takes the platform path separator, same wire format as a -cp.
         String libs = Classpaths.join(libManifests);
 
@@ -61,14 +74,14 @@ final class ManifestStep {
                 .arg("--main")
                 .arg(manifest.toAbsolutePath().toString());
         if (libs.length() > 0) {
-            merger.arg("--libs").arg(libs.toString());
+            merger.arg("--libs").arg(libs);
         }
         // A LIBRARY merge runs in the merger's LIBRARY mode (AGP semantics): placeholders like
         // ${applicationId} stay literal — androidx.startup's per-package provider authorities
         // must all become the APP's id at the one real merge, not each library's namespace, or
         // the app merge sees N conflicting values. An app merge substitutes for real (the
         // merger derives the applicationId placeholder from PACKAGE).
-        if (library) {
+        if (libraryMode) {
             merger.arg("--merge-type").arg("LIBRARY");
         } else {
             // The app merge consumes tools: directives (tools:node="remove" etc.) — they must

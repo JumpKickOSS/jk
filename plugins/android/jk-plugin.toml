@@ -128,7 +128,7 @@ for-step   = ["android-dex", "android-r8"]
 artifact   = "manifest-merger"
 coordinate = "com.android.tools.build:manifest-merger:32.3.1"
 transitive = true
-for-step   = "android-manifest"
+for-step   = ["android-manifest", "android-test-config"]
 
 # The platform jar: aapt2 -I (framework resources), javac (via provided-classpath below,
 # which names it and is not scoped), d8 --lib. Provisioned from Google's repository2 feed

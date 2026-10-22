@@ -31,7 +31,6 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Scope;
-import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.VariantApply;
@@ -135,7 +134,7 @@ public final class PlannerSetup {
                         project = VariantApply.apply(
                                         applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session()),
                                         in.dir(),
-                                        Variants.Selection.parse(in.variant()),
+                                        VariantApply.selection(in.variant(), in.session()),
                                         in.clientEnv())
                                 .build();
                     } catch (RuntimeException e) {
