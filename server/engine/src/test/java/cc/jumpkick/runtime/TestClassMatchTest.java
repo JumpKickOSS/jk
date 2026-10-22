@@ -53,24 +53,22 @@ class TestClassMatchTest {
     void the_skip_label_and_the_failure_name_the_patterns() {
         assertThat(TestClassMatch.skipLabel(List.of("OrdersTest", "*IT"), null))
                 .isEqualTo("no classes matched --class OrdersTest, *IT — skipped");
-        TestSummary failure = TestClassMatch.asFailure("acme:orders", ORDERS, null, null);
-        assertThat(failure.failed()).isEqualTo(1);
-        assertThat(failure.failures()).singleElement().satisfies(f -> {
-            assertThat(f.module()).isEqualTo("acme:orders");
-            assertThat(f.message()).isEqualTo("no test classes matched --class OrdersTest");
-        });
+        assertThat(TestClassMatch.noMatchMessage(ORDERS, null, null, null))
+                .isEqualTo("no test classes matched --class OrdersTest");
+        assertThat(TestClassMatch.noMatchMessage(ORDERS, "integration", null, null))
+                .isEqualTo("no test in profile integration matches --class OrdersTest");
     }
 
     @Test
     void when_the_tag_filter_dropped_the_named_class_the_failure_is_the_runners_warning() {
         TestSelection excluded = TestSelection.of(List.of(), true, List.of(), List.of("bench"))
                 .withClasses(List.of("FormatThreadsBenchTest"));
-        assertThat(TestClassMatch.noMatchMessage(excluded, TAG_EXCLUDED, null)).isEqualTo(TAG_EXCLUDED);
-        assertThat(TestClassMatch.asFailure("acme:fmt", excluded, TAG_EXCLUDED, null)
-                        .failures())
-                .singleElement()
-                .satisfies(f -> assertThat(f.message()).isEqualTo(TAG_EXCLUDED));
-        assertThat(TestClassMatch.noMatchMessage(excluded, null, null))
+        assertThat(TestClassMatch.noMatchMessage(excluded, null, TAG_EXCLUDED, null))
+                .isEqualTo(TAG_EXCLUDED);
+        assertThat(TestClassMatch.noMatchMessage(excluded, "fast", TAG_EXCLUDED, null))
+                .as("under a profile the line names it first")
+                .isEqualTo("no test in profile fast matches --class FormatThreadsBenchTest: " + TAG_EXCLUDED);
+        assertThat(TestClassMatch.noMatchMessage(excluded, null, null, null))
                 .as("the runner dropped nothing: the patterns matched no class, and that is all it says")
                 .isEqualTo("no test classes matched --class FormatThreadsBenchTest");
     }
@@ -81,13 +79,10 @@ class TestClassMatchTest {
         String hint = "FooIT is in the integration suite (jk test -s integration -S FooIT)";
         assertThat(TestClassMatch.skipLabel(List.of("FooIT"), hint))
                 .isEqualTo("no classes matched --class FooIT — skipped; " + hint);
-        assertThat(TestClassMatch.noMatchMessage(fooIt, null, hint))
+        assertThat(TestClassMatch.noMatchMessage(fooIt, null, null, hint))
                 .isEqualTo("no test classes matched --class FooIT — " + hint);
-        assertThat(TestClassMatch.asFailure("acme:app", fooIt, TAG_EXCLUDED, hint)
-                        .failures())
-                .singleElement()
-                .satisfies(f -> assertThat(f.message())
-                        .isEqualTo("no test classes matched --class FooIT — " + hint + "; " + TAG_EXCLUDED));
+        assertThat(TestClassMatch.noMatchMessage(fooIt, null, TAG_EXCLUDED, hint))
+                .isEqualTo("no test classes matched --class FooIT — " + hint + "; " + TAG_EXCLUDED);
 
         Session session = Session.defaults().withTestSelection(fooIt);
         BuildPlan hinted = BuildPlan.builder("module")
@@ -145,22 +140,6 @@ class TestClassMatchTest {
     }
 
     @Test
-    void a_named_class_the_tag_filter_dropped_fails_beside_the_tests_that_ran() {
-        TestSummary ran = new TestSummary(2, 2, 0, 0, 1, List.of());
-        TestSummary failed = TestClassMatch.withTagExcluded(ran, "acme:fmt", ORDERS, TAG_EXCLUDED, null);
-        assertThat(failed.allPassed()).isFalse();
-        assertThat(failed.total()).isEqualTo(3);
-        assertThat(failed.succeeded()).isEqualTo(2);
-        assertThat(failed.failures()).singleElement().satisfies(f -> {
-            assertThat(f.module()).isEqualTo("acme:fmt");
-            assertThat(f.message()).isEqualTo(TAG_EXCLUDED);
-        });
-        assertThat(TestClassMatch.withTagExcluded(EMPTY, "acme:fmt", ORDERS, TAG_EXCLUDED, null))
-                .as("nothing else ran: the module's one failure")
-                .isEqualTo(TestClassMatch.asFailure("acme:fmt", ORDERS, TAG_EXCLUDED, null));
-    }
-
-    @Test
     void the_tag_excluded_warning_names_the_profiles_that_run_the_tag() {
         Profiles profiles = new Profiles(Map.of(
                 "integration",
@@ -173,17 +152,47 @@ class TestClassMatchTest {
         String integration = "--class named 1 class the tag filter excluded: a.OrdersIT [integration];"
                 + " pass --include-tags integration (or a -p profile that includes it) to run it";
 
-        assertThat(TestClassMatch.namingProfiles(integration, profiles, null))
+        assertThat(TestClassMatch.explainTagExcluded(integration, profiles, null, FAST))
                 .isEqualTo(integration + "; -p all or -p integration runs it");
-        assertThat(TestClassMatch.namingProfiles(integration, profiles, "all"))
+        assertThat(TestClassMatch.explainTagExcluded(integration, profiles, "all", FAST))
                 .as("the active profile is the one that dropped it")
                 .isEqualTo(integration + "; -p integration runs it");
-        assertThat(TestClassMatch.namingProfiles(TAG_EXCLUDED, profiles, null))
+        assertThat(TestClassMatch.explainTagExcluded(TAG_EXCLUDED, profiles, null, FAST))
                 .isEqualTo(TAG_EXCLUDED + "; -p all or -p bench runs it");
-        assertThat(TestClassMatch.namingProfiles(integration, Profiles.empty(), null))
+        assertThat(TestClassMatch.explainTagExcluded(integration, Profiles.empty(), null, FAST))
                 .isEqualTo(integration);
-        assertThat(TestClassMatch.namingProfiles(null, profiles, null)).isNull();
+        assertThat(TestClassMatch.explainTagExcluded(null, profiles, null, FAST))
+                .isNull();
     }
+
+    @Test
+    void a_class_a_profile_dropped_that_the_default_tier_runs_names_that_tier() {
+        String untagged = "--class named 1 class the tag filter excluded: a.WarmWorkersTest (untagged);"
+                + " --include-tags integration admits only classes carrying that tag — drop it, or --no-profile,"
+                + " to run it";
+        String explained = TestClassMatch.explainTagExcluded(untagged, Profiles.empty(), "integration", FAST);
+        assertThat(explained)
+                .isEqualTo("the tag filter excluded a.WarmWorkersTest (untagged); it runs in the default tier"
+                        + " (drop -p integration)");
+        TestSelection warm = TestSelection.of(List.of(), true, List.of("integration"), List.of())
+                .withClasses(List.of("a.WarmWorkersTest"));
+        assertThat(TestClassMatch.noMatchMessage(warm, "integration", explained, null))
+                .isEqualTo("no test in profile integration matches --class a.WarmWorkersTest: the tag filter"
+                        + " excluded a.WarmWorkersTest (untagged); it runs in the default tier (drop -p integration)");
+
+        String slow = "--class named 1 class the tag filter excluded: a.BigIT [slow]; pass --include-tags slow"
+                + " (or a -p profile that includes it) to run it";
+        assertThat(TestClassMatch.explainTagExcluded(slow, Profiles.empty(), "integration", FAST))
+                .as("the default tier excludes slow too: the runner's advice stands")
+                .isEqualTo(slow);
+        assertThat(TestClassMatch.explainTagExcluded(untagged, Profiles.empty(), null, FAST))
+                .as("no profile is active: the tags came from the command line")
+                .isEqualTo(untagged);
+    }
+
+    /** A default tier that leaves the heavy tags to profiles. */
+    private static final TestClassMatch.Tier FAST =
+            new TestClassMatch.Tier(List.of(), List.of("integration", "slow", "bench"));
 
     private static final String TAG_EXCLUDED = "--class named 1 class the tag filter excluded:"
             + " a.FormatThreadsBenchTest [bench]; pass --include-tags bench (or a -p profile that includes it)"
