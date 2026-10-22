@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -127,10 +128,7 @@ public final class ProjectImport {
                     Files.writeString(e.getKey(), e.getValue(), StandardCharsets.UTF_8);
                     wrote.add(e.getKey());
                 }
-                importReport = raised(
-                        importReport,
-                        raise,
-                        Objects.requireNonNull(out.toAbsolutePath().getParent()));
+                importReport = raisedAt(importReport, raise, out, modules.isEmpty());
             }
 
             Path reportTarget = report;
@@ -202,6 +200,27 @@ public final class ProjectImport {
         List<String> raise(Path lockDir) throws Exception;
 
         PinRaise NONE = lockDir -> List.of();
+    }
+
+    /**
+     * The pin check over the written root manifest. The check reads a directory's {@code jk.toml};
+     * a single project written under another name ({@code jk import -t other.toml}) is checked as a
+     * {@code jk.toml} in a scratch directory and written back, so it matches what an import in place
+     * writes.
+     */
+    private static ImportReport raisedAt(ImportReport report, PinRaise raise, Path out, boolean single)
+            throws IOException {
+        Path dir = Objects.requireNonNull(out.toAbsolutePath().getParent());
+        if (!single || out.getFileName().toString().equals(ManifestPaths.MANIFEST)) return raised(report, raise, dir);
+        Path scratch = Files.createTempDirectory("jk-import-");
+        try {
+            Path manifest = Files.copy(out, scratch.resolve(ManifestPaths.MANIFEST));
+            ImportReport checked = raised(report, raise, scratch);
+            Files.copy(manifest, out, StandardCopyOption.REPLACE_EXISTING);
+            return checked;
+        } finally {
+            PathUtil.deleteRecursively(scratch);
+        }
     }
 
     /** {@code report} with one warning per raised pin, or one naming why the pins were not checked. */
