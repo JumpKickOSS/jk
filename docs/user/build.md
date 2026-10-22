@@ -199,7 +199,26 @@ A planted dereference then fails the build with NullAway's diagnostic in `target
 Widget.java:7: error: [NullAway] dereferenced expression 'label' is @Nullable
 ```
 
-Kotlin compiler plugins are `[[kotlin-plugins]]`, a separate table.
+Kotlin compiler plugins are `[[kotlin-plugins]]`, a separate table
+([below](#kotlin-compiler-plugins)).
+
+## Kotlin compiler plugins
+
+A Kotlin module loads a compiler plugin into kotlinc with one `[[kotlin-plugins]]` entry each:
+
+```toml
+[[kotlin-plugins]]
+coordinate = "org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable"
+options    = []                # the plugin's options, each "key=value"
+# id       = "…"               # defaults to the artifact
+```
+
+`coordinate` is `group:artifact[:version]`; without a version the plugin takes the Kotlin compiler
+version the lock resolved, the only version that loads into that compiler. `jk lock` pins each
+plugin jar by digest as a [`[[plugin]]` row](lockfile.md#what-else-the-lock-pins), at that version,
+and the compile fetches exactly those bytes: a jar a repository or the store serves with another
+digest is refused. A lock with no row for a declared plugin is stale, so the next build relocks
+first ([Lockfile](lockfile.md#commands)).
 
 ## Debug info
 
