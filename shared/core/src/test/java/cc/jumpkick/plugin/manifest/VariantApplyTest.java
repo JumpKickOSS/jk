@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Scope;
@@ -95,6 +96,37 @@ class VariantApplyTest {
         var bare = VariantApply.apply(build, dir, Variants.Selection.parse("*=paid"), Map.of());
         assertThat(bare.build().pluginConfig("android").orElseThrow().string("variant.tier"))
                 .isEqualTo("paid");
+    }
+
+    @Test
+    void a_guard_run_takes_the_first_value_of_an_unselected_dimension(@TempDir Path dir) throws Exception {
+        JkBuild build = parse(dir, """
+                [variants.tier.paid.android]
+                application-id-suffix = ".paid"
+                [variants.tier.free.android]
+                application-id-suffix = ".free"
+                """);
+        Variants.Selection none = Variants.Selection.parse("");
+        assertThat(VariantApply.selectionError(build, none)).contains("--variant tier=<value>");
+        Variants.Selection guard = VariantApply.selection("", Session.defaults().withLanesOnly(true));
+        assertThat(VariantApply.selectionError(build, guard)).isNull();
+        assertThat(VariantApply.apply(build, dir, guard, Map.of())
+                        .build()
+                        .pluginConfig("android")
+                        .orElseThrow()
+                        .string("variant.tier"))
+                .as("declaration order, not alphabetical")
+                .isEqualTo("paid");
+        Variants.Selection chosen =
+                VariantApply.selection("tier=free", Session.defaults().withLanesOnly(true));
+        assertThat(VariantApply.apply(build, dir, chosen, Map.of())
+                        .build()
+                        .pluginConfig("android")
+                        .orElseThrow()
+                        .string("variant.tier"))
+                .isEqualTo("free");
+        assertThat(VariantApply.selectionError(build, Variants.Selection.parse("tier=gold")))
+                .contains("no value `gold`");
     }
 
     @Test
