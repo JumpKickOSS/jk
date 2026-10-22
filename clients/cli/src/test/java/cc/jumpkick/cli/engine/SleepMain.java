@@ -37,13 +37,14 @@ public final class SleepMain {
     public static void awaitIdle(Process jvm) throws InterruptedException {
         Duration last = cpu(jvm);
         int quiet = 0;
-        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
         while (quiet < 2 && System.nanoTime() < deadline) {
             Thread.sleep(100);
             Duration now = cpu(jvm);
             quiet = now.minus(last).compareTo(Duration.ofMillis(5)) < 0 ? quiet + 1 : 0;
             last = now;
         }
+        if (quiet < 2) throw new AssertionError("pid " + jvm.pid() + " never went quiet within 60s");
     }
 
     private static Duration cpu(Process jvm) {

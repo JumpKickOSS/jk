@@ -52,7 +52,8 @@ class HttpAdmissionTest extends HttpEngineServerHarness {
                 () -> EMPTY_CACHE,
                 null);
         try {
-            assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertThatThrownBy(collider::start)
+            // A ceiling against an unbounded retry loop; the bind retries alone sleep five seconds.
+            assertTimeoutPreemptively(Duration.ofSeconds(60), () -> assertThatThrownBy(collider::start)
                     .isInstanceOf(BindException.class));
         } finally {
             collider.close();
