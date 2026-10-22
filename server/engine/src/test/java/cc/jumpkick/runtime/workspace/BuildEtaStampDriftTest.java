@@ -5,9 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.wire.runtime.ExplainPlan;
-import cc.jumpkick.wire.runtime.TaskForecast;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;

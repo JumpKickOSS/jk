@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceCone;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.LockPaths;
@@ -15,13 +17,17 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.manifest.VariantApply;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.FirstPartyPins;
 import cc.jumpkick.runtime.PlannerSupport;
 import cc.jumpkick.runtime.PreflightMemo;
-import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.runtime.base.SiblingArtifacts;
+import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -40,6 +46,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /** Parses, locks, resolves, selects, syncs, forecasts, and restores before planning begins. */
 @NullMarked
@@ -130,7 +137,7 @@ public final class WorkspacePreflightPhase {
         Set<Path> jarConsumed = jarConsumed(graph);
 
         long forecastStart = Perf.start();
-        Forecast forecast = forecast(request, listener, graph, units, moduleDirs);
+        Forecast forecast = forecast(request, listener, graph, units, moduleDirs, jarConsumed);
         Perf.end(
                 "ws-forecast(hint="
                         + (request.dirtyHint() != null)
@@ -149,7 +156,7 @@ public final class WorkspacePreflightPhase {
                 immutableOrderedSet(moduleDirs),
                 immutableOrderedSet(jarConsumed),
                 launchedAssemblies(graph),
-                scheduled(units, withAlwaysRunTails(forecast.dirty(), units, request), forecast.restoreNeeded()),
+                scheduled(units, forecast.dirty(), forecast.restoreNeeded()),
                 forecast.preflight()));
     }
 
@@ -201,7 +208,8 @@ public final class WorkspacePreflightPhase {
             WorkspaceBuildListener listener,
             BuildGraph.Result graph,
             List<BuildGraph.BuildUnit> units,
-            Set<Path> moduleDirs) {
+            Set<Path> moduleDirs,
+            Set<Path> jarConsumed) {
         Set<Path> dirty;
         Set<Path> restoreNeeded = Set.of();
         Optional<BuildForecasting.Preflight> preflight = Optional.empty();
@@ -216,19 +224,17 @@ public final class WorkspacePreflightPhase {
             listener.onPreflight("checking", 1, 1, dirty.size() + " module(s)");
         } else {
             listener.onPreflight("checking", 0, 0, "Checking cache…");
-            BuildForecasting.Preflight computed = BuildForecasting.forecastWithFingerprints(
-                    graph,
-                    request.cache(),
-                    request.skipTests(),
-                    request.entryDir(),
-                    request.target(),
-                    terminalTargetDirs(units, request),
-                    true,
-                    request.profile(),
-                    request.spec() == null ? null : request.spec().m2Dir());
-            preflight = Optional.of(computed);
-            dirty = computed.dirty();
-            restoreNeeded = computed.restoreNeeded();
+            WorkspaceTarget core = coreTarget(request.target());
+            if (core == null) {
+                dirty = Set.of();
+            } else {
+                BuildForecasting.Preflight computed = BuildForecasting.forecastWithFingerprints(
+                        graph, request.cache(), request.skipTests(), request.entryDir(), core, true, request.profile());
+                preflight = Optional.of(computed);
+                dirty = computed.dirty();
+                restoreNeeded = computed.restoreNeeded();
+            }
+            dirty = withRunningTails(dirty, units, request, moduleDirs, jarConsumed, launchedAssemblies(graph));
             String message;
             if (dirty.isEmpty() && restoreNeeded.isEmpty()) message = "All modules up to date";
             else if (dirty.isEmpty()) message = restoreNeeded.size() + " module(s) restore";
@@ -306,39 +312,52 @@ public final class WorkspacePreflightPhase {
         return graph.restrict(cone);
     }
 
-    /** {@code dirty} plus the modules whose tail runs however clean they are. */
-    static Set<Path> withAlwaysRunTails(Set<Path> dirty, List<BuildGraph.BuildUnit> units, WorkspaceRequest request) {
-        if (!request.target().alwaysRunsTail()) return dirty;
-        LinkedHashSet<Path> all = new LinkedHashSet<>(dirty);
-        all.addAll(terminalTargetDirs(units, request));
-        return all;
+    /**
+     * The goal-agnostic lifecycle a goal's forecast prices: through COMPILE, TEST or PACKAGE. Null
+     * for RESHELVE, which is all tail. Every goal past PACKAGE prices the same lifecycle as {@code
+     * jk build}, so they agree on which modules are dirty; their tails are priced on their own.
+     */
+    static @Nullable WorkspaceTarget coreTarget(WorkspaceTarget target) {
+        return switch (target) {
+            case COMPILE, TEST -> target;
+            case RESHELVE -> null;
+            default -> WorkspaceTarget.PACKAGE;
+        };
     }
 
-    /** Module dirs eligible for target-specific terminal work during forecast and prepare. */
-    public static Set<Path> terminalTargetDirs(List<BuildGraph.BuildUnit> units, WorkspaceRequest request) {
+    /**
+     * {@code dirty} plus every module a step of its goal's tail runs in: an install whose bytes are
+     * not shelved, a native image whose record misses, a publish or an image push, which always
+     * run. Priced from the module's own plan, so a tail step the plan does not hold costs nothing.
+     */
+    static Set<Path> withRunningTails(
+            Set<Path> dirty,
+            List<BuildGraph.BuildUnit> units,
+            WorkspaceRequest request,
+            Set<Path> moduleDirs,
+            Set<Path> jarConsumed,
+            Set<Path> launchedAssemblies) {
         WorkspaceTarget target = request.target();
-        WorkspaceSpec spec = request.spec() == null ? WorkspaceSpec.DEFAULT : request.spec();
-        if (target == WorkspaceTarget.INSTALL || target == WorkspaceTarget.RESHELVE) {
-            Set<Path> all = new LinkedHashSet<>();
-            for (BuildGraph.BuildUnit unit : units) {
-                if (!CompileSupport.coordinatorOnly(unit.manifest(), unit.dir())) all.add(unit.dir());
-            }
-            return all;
-        }
-        if (target != WorkspaceTarget.NATIVE && target != WorkspaceTarget.IMAGE && !target.alwaysRunsTail()) {
-            return Set.of();
-        }
-        Set<Path> terminals = new LinkedHashSet<>();
+        if (target == coreTarget(target)) return dirty;
+        ActionCache actionCache =
+                new ActionCache(JkStores.cacheCas(request.cache()), CacheTree.ACTIONS.under(request.cache()));
+        Path m2Dir = request.spec() == null ? null : request.spec().m2Dir();
+        LinkedHashSet<Path> all = new LinkedHashSet<>(dirty);
         for (BuildGraph.BuildUnit unit : units) {
-            Path dir = unit.dir();
-            boolean selected = !spec.hasSelection()
-                    || spec.selectedModules().stream()
-                            .anyMatch(path -> BuildGraph.canonicalPath(path).equals(BuildGraph.canonicalPath(dir)));
-            if (!selected) continue;
-            if (target == WorkspaceTarget.NATIVE && GraalHomes.lookup(dir, spec.graalByDir()) == null) continue;
-            terminals.add(dir);
+            if (all.contains(unit.dir())) continue;
+            ModulePipeline.Planned planned = ModulePipeline.planned(
+                    unit, request, moduleDirs, false, jarConsumed, launchedAssemblies, SiblingArtifacts.NONE);
+            for (Task step : planned.plan().steps()) {
+                if (!planned.tailSteps().contains(step.name())) continue;
+                TaskForecast.Task priced =
+                        TaskForecaster.priceTailStep(step, unit, request.cache(), actionCache, m2Dir);
+                if (priced != null && !priced.cached()) {
+                    all.add(unit.dir());
+                    break;
+                }
+            }
         }
-        return terminals;
+        return all;
     }
 
     /**

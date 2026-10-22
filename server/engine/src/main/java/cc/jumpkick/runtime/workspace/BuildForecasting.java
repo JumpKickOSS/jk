@@ -6,17 +6,14 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.BuildGraph;
-import cc.jumpkick.runtime.InstallPlans;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.wire.runtime.ExplainPlan;
-import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -75,7 +72,7 @@ public final class BuildForecasting {
      */
     public static Set<Path> forecastDirtyDirsReadOnly(
             BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
-        return forecastWithFingerprints(graph, cache, skipTests, entryDir, WorkspaceTarget.PACKAGE, Set.of(), false)
+        return forecastWithFingerprints(graph, cache, skipTests, entryDir, WorkspaceTarget.PACKAGE, false, null)
                 .dirty();
     }
 
@@ -126,18 +123,20 @@ public final class BuildForecasting {
      */
     static Preflight forecastWithFingerprints(
             BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable Path entryDir) {
-        return forecastWithFingerprints(graph, cache, skipTests, entryDir, WorkspaceTarget.PACKAGE, Set.of());
+        return forecastWithFingerprints(graph, cache, skipTests, entryDir, WorkspaceTarget.PACKAGE);
     }
 
     static Preflight forecastWithFingerprints(
             BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable Path entryDir, WorkspaceTarget target) {
-        return forecastWithFingerprints(graph, cache, skipTests, entryDir, target, Set.of());
+        return forecastWithFingerprints(graph, cache, skipTests, entryDir, target, true, null);
     }
 
     /**
-     * As above with {@code terminalDirs}: the resolved terminal module set for NATIVE/IMAGE
-     * targets (see {@code TaskForecaster.of}) so the forecast schedules the same terminal steps
-     * plan assembly will build.
+     * The lifecycle's verdict through {@code target}'s phase (COMPILE, TEST or PACKAGE): a goal's
+     * tail is priced apart from it, so every goal that packages agrees with {@code jk build} on
+     * which modules are dirty. {@code persistMemo=false} consults the dirty memo but never stores
+     * one (read-only estimates). The profile's javac args key every compile step, so the walk
+     * forecasts against them and the memo is stored and consulted under the profile's name.
      */
     static Preflight forecastWithFingerprints(
             BuildGraph.Result graph,
@@ -145,70 +144,13 @@ public final class BuildForecasting {
             boolean skipTests,
             @Nullable Path entryDir,
             WorkspaceTarget target,
-            Set<Path> terminalDirs) {
-        return forecastWithFingerprints(graph, cache, skipTests, entryDir, target, terminalDirs, true, null);
-    }
-
-    /** {@code persistMemo=false}: consult but never store — read-only estimates. */
-    static Preflight forecastWithFingerprints(
-            BuildGraph.Result graph,
-            Path cache,
-            boolean skipTests,
-            @Nullable Path entryDir,
-            WorkspaceTarget target,
-            Set<Path> terminalDirs,
-            boolean persistMemo) {
-        return forecastWithFingerprints(graph, cache, skipTests, entryDir, target, terminalDirs, persistMemo, null);
-    }
-
-    /**
-     * As above under the request's {@code --profile}. The profile's javac args key every compile
-     * step, so the walk forecasts against them and the dirty memo is stored and consulted under
-     * the profile's name: a default build's clean memo says nothing about a profile build.
-     */
-    static Preflight forecastWithFingerprints(
-            BuildGraph.Result graph,
-            Path cache,
-            boolean skipTests,
-            @Nullable Path entryDir,
-            WorkspaceTarget target,
-            Set<Path> terminalDirs,
             boolean persistMemo,
             @Nullable String profile) {
-        return forecastWithFingerprints(
-                graph, cache, skipTests, entryDir, target, terminalDirs, persistMemo, profile, null);
-    }
-
-    /**
-     * As above with the install request's {@code --m2-dir}, which the cache-install forecast reads
-     * so that it and the step it predicts judge "already installed" against the same local repo.
-     */
-    static Preflight forecastWithFingerprints(
-            BuildGraph.Result graph,
-            Path cache,
-            boolean skipTests,
-            @Nullable Path entryDir,
-            WorkspaceTarget target,
-            Set<Path> terminalDirs,
-            boolean persistMemo,
-            @Nullable String profile,
-            @Nullable Path m2Dir) {
         WorkspaceTarget t = target == null ? WorkspaceTarget.PACKAGE : target;
-        // The memo answers exactly one question: are this module's *inputs* unchanged. That is the
-        // whole of what PACKAGE and TEST need, and it is also the expensive half of an INSTALL —
-        // an install's own question, "does the shelf already hold these bytes", is one probe per
-        // terminal module and is asked in withPendingInstalls below. NATIVE/IMAGE/COMPILE/RESHELVE
-        // still take the full target-aware walk: each has a terminal output whose presence no
-        // input fingerprint can speak for, and a hit here would skip a missing binary or a
-        // never-skippable image push. The suite/tag selection needs no gate: the memo carries it
-        // as a header, so a widened run misses on its own key instead of costing every workspace
-        // with `[test] exclude-tags` the whole walk.
-        boolean memoReadable =
-                t == WorkspaceTarget.PACKAGE || t == WorkspaceTarget.TEST || t == WorkspaceTarget.INSTALL;
-        // Only a run whose dirty set *is* the input-dirty set may write the memo. An install's set
-        // also carries modules whose inputs are clean and whose bytes are merely not shelved yet;
-        // storing those as input-dirty would have the next `jk build` recompile them.
-        boolean memoWritable = t == WorkspaceTarget.PACKAGE || t == WorkspaceTarget.TEST;
+        // The memo answers one question: are this module's *inputs* unchanged. That is the whole of
+        // what PACKAGE and TEST need; COMPILE's dirty set is narrower than the one a memo stores.
+        boolean memoReadable = t == WorkspaceTarget.PACKAGE || t == WorkspaceTarget.TEST;
+        boolean memoWritable = memoReadable;
         Set<Path> all = new HashSet<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) all.add(u.dir());
         // --force / --redo: every module runs — skip the expensive per-step forecast walk for dirty
@@ -243,30 +185,8 @@ public final class BuildForecasting {
                 // Non-empty dirty still needs a forecast for ETA step lists; caller walks once.
                 Set<Path> memoDirty = new HashSet<>(memo.get().dirty());
                 withStaleOutputs(graph, entryDir, memo.get().fingerprints(), memoDirty);
-                Set<Path> inputDirty = Set.copyOf(memoDirty);
-                if (t == WorkspaceTarget.INSTALL) {
-                    withPendingInstalls(graph, terminalDirs, cache, m2Dir, memoDirty);
-                }
-                List<TaskForecast.Module> shelf = List.of();
-                if (t == WorkspaceTarget.INSTALL
-                        && inputDirty.isEmpty()
-                        && memo.get().restoreNeeded().isEmpty()) {
-                    shelf = new ArrayList<>();
-                    for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
-                        if (!memoDirty.contains(unit.dir())) continue;
-                        shelf.add(new TaskForecast.Module(
-                                unit.dir(),
-                                unit.coord(),
-                                List.of(new TaskForecast.Task(
-                                        TaskNames.CACHE_INSTALL, TaskForecast.Status.RUN, "shelve", null)),
-                                0,
-                                0,
-                                true,
-                                false));
-                    }
-                }
                 return new Preflight(
-                        memoDirty, memo.get().restoreNeeded(), memo.get().fingerprints(), shelf);
+                        memoDirty, memo.get().restoreNeeded(), memo.get().fingerprints(), List.of());
             }
             PreflightMemo.Snapshot snapshot = PreflightMemo.snapshotFingerprints(graph, skipTests);
             fps = snapshot.fingerprints();
@@ -277,16 +197,7 @@ public final class BuildForecasting {
         try {
             Cas cas = JkStores.storeCas(); // artifact CAS for classpath fingerprints
             ActionCache ac = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
-            List<TaskForecast.Module> modules = TaskForecaster.of(
-                    graph,
-                    cas,
-                    ac,
-                    cache,
-                    skipTests,
-                    t,
-                    terminalDirs == null ? Set.of() : terminalDirs,
-                    profile,
-                    m2Dir);
+            List<TaskForecast.Module> modules = TaskForecaster.of(graph, cas, ac, cache, skipTests, t, profile);
             Set<Path> dirty = new HashSet<>();
             Set<Path> restoreNeeded = new HashSet<>();
             for (TaskForecast.Module m : modules) {
@@ -328,32 +239,6 @@ public final class BuildForecasting {
         } catch (RuntimeException e) {
             Log.warn("jk: forecast failed — the build will not treat every module as dirty", e);
             throw e;
-        }
-    }
-
-    /**
-     * Add every terminal module the shelf does not already hold at the tree's bytes.
-     *
-     * <p>Whether an install has happened is not an input, so it is the one question a memo hit
-     * leaves open for {@code jk install}. This asks it the way the forecast walk's cache-install
-     * arm does — one {@link InstallPlans#alreadyInstalled} probe per terminal module — which is
-     * milliseconds against the seconds the walk it replaces costs.
-     */
-    private static void withPendingInstalls(
-            BuildGraph.Result graph,
-            @Nullable Set<Path> terminalDirs,
-            Path cache,
-            @Nullable Path m2Dir,
-            Set<Path> dirty) {
-        if (terminalDirs == null || terminalDirs.isEmpty()) return;
-        for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
-            Path dir = unit.dir();
-            if (!terminalDirs.contains(dir)) continue;
-            if (dirty.contains(dir) || dirty.contains(dir.toAbsolutePath().normalize())) continue;
-            JkBuild project = unit.manifest();
-            if (!InstallPlans.alreadyInstalled(project, BuildLayout.of(dir, project), cache, m2Dir)) {
-                dirty.add(dir);
-            }
         }
     }
 
@@ -494,14 +379,7 @@ public final class BuildForecasting {
         // scheduled 7 and never touched them. Both statements were true; only one is the plan for
         // the command the user is about to run.
         Preflight pf = forecastWithFingerprints(
-                graph,
-                cache,
-                skipTests,
-                entryDir,
-                WorkspaceTarget.PACKAGE,
-                Set.of(),
-                /* persistMemo= */ false,
-                profile);
+                graph, cache, skipTests, entryDir, WorkspaceTarget.PACKAGE, /* persistMemo= */ false, profile);
         Set<Path> scheduled = new HashSet<>(pf.dirty());
         scheduled.addAll(pf.restoreNeeded());
         if (scheduled.isEmpty()) return fullyCachedExplainPlan(graph);
@@ -539,7 +417,7 @@ public final class BuildForecasting {
         Cas cas = JkStores.storeCas(); // artifact CAS for classpath fingerprints
         ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
         return TaskForecaster.of(
-                graph, cas, actionCache, cache, skipTests, WorkspaceTarget.PACKAGE, Set.of(), profile, null, scheduled);
+                graph, cas, actionCache, cache, skipTests, WorkspaceTarget.PACKAGE, profile, scheduled);
     }
 
     /** Attach the preflight's own reasons to the modules it scheduled. */

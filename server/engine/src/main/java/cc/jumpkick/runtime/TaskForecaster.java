@@ -13,6 +13,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
@@ -22,6 +23,9 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.run.StepForecast;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.FilteredResources;
@@ -31,7 +35,6 @@ import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.task.SourceApiIndex;
-import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -75,6 +78,7 @@ public final class TaskForecaster {
         return of(graph, cas, actionCache, cache, skipTests, WorkspaceTarget.PACKAGE);
     }
 
+    /** As above through {@code target}'s phase: COMPILE, TEST or PACKAGE. A goal's tail is priced apart. */
     public static List<TaskForecast.Module> of(
             BuildGraph.Result graph,
             Cas cas,
@@ -82,25 +86,7 @@ public final class TaskForecaster {
             Path cache,
             boolean skipTests,
             WorkspaceTarget target) {
-        return of(graph, cas, actionCache, cache, skipTests, target, Set.of());
-    }
-
-    /**
-     * As {@link #of(BuildGraph.Result, Cas, ActionCache, Path, boolean, WorkspaceTarget)} with the
-     * resolved terminal module set: the dirs that will receive the target's terminal step
-     * (native-image / write-image), mirroring {@code WorkspacePreparePhase.assemblePlan} eligibility.
-     * The forecast must consume the same set the plan assembly uses — re-deriving eligibility
-     * here (e.g. from {@code [native]} tables) skips fallback modules and prices unselected ones.
-     */
-    public static List<TaskForecast.Module> of(
-            BuildGraph.Result graph,
-            Cas cas,
-            ActionCache actionCache,
-            Path cache,
-            boolean skipTests,
-            WorkspaceTarget target,
-            Set<Path> terminalDirs) {
-        return of(graph, cas, actionCache, cache, skipTests, target, terminalDirs, null);
+        return of(graph, cas, actionCache, cache, skipTests, target, null);
     }
 
     /**
@@ -115,27 +101,8 @@ public final class TaskForecaster {
             Path cache,
             boolean skipTests,
             WorkspaceTarget target,
-            Set<Path> terminalDirs,
             @Nullable String profile) {
-        return of(graph, cas, actionCache, cache, skipTests, target, terminalDirs, profile, null);
-    }
-
-    /**
-     * As above with the install request's {@code --m2-dir}: the cache-install step judges "already
-     * installed" against the Maven local repo it writes to, so the forecast reads the same root or
-     * {@code jk explain} reports the install done, or pending, against the machine's {@code ~/.m2}.
-     */
-    public static List<TaskForecast.Module> of(
-            BuildGraph.Result graph,
-            Cas cas,
-            ActionCache actionCache,
-            Path cache,
-            boolean skipTests,
-            WorkspaceTarget target,
-            Set<Path> terminalDirs,
-            @Nullable String profile,
-            @Nullable Path m2Dir) {
-        return of(graph, cas, actionCache, cache, skipTests, target, terminalDirs, profile, m2Dir, null);
+        return of(graph, cas, actionCache, cache, skipTests, target, profile, null);
     }
 
     /**
@@ -151,9 +118,7 @@ public final class TaskForecaster {
             Path cache,
             boolean skipTests,
             WorkspaceTarget target,
-            Set<Path> terminalDirs,
             @Nullable String profile,
-            @Nullable Path m2Dir,
             @Nullable Set<Path> only) {
         // One resolver for the whole walk: every module resolves its classpath against the same
         // lock and store, so its per-artifact resolve memo is only useful if it outlives a module.
@@ -171,18 +136,7 @@ public final class TaskForecaster {
             // directory entry is a whole tree walk. It writes nothing, so one reading each is the
             // same answer — see ClasspathFingerprint.withEntryMemo, which only a reader may bind.
             return ClasspathFingerprint.withEntryMemo(() -> forecastModules(
-                    graph,
-                    cas,
-                    resolver,
-                    actionCache,
-                    cache,
-                    skipTests,
-                    target,
-                    terminalDirs,
-                    worker,
-                    profile,
-                    m2Dir,
-                    only));
+                    graph, cas, resolver, actionCache, cache, skipTests, target, worker, profile, only));
         } catch (RuntimeException | Error direct) {
             throw direct;
         } catch (Exception impossible) {
@@ -199,10 +153,8 @@ public final class TaskForecaster {
             Path cache,
             boolean skipTests,
             WorkspaceTarget target,
-            Set<Path> terminalDirs,
             @Nullable Path workerJar,
             @Nullable String profile,
-            @Nullable Path m2Dir,
             @Nullable Set<Path> only) {
         // --force/--rerun bypasses jk's build caches, so every step runs — the forecast must say
         // so too (otherwise the plan tree renders "Fully Cached" while the ETA, which honors force,
@@ -263,10 +215,8 @@ public final class TaskForecaster {
                     restored,
                     hints,
                     target,
-                    terminalDirs,
                     workerJar,
-                    profile,
-                    m2Dir);
+                    profile);
             Perf.end("forecast " + u.coord(), t0);
             forecast.put(u.dir(), m);
             // Seed main-output dirtiness for *compile* consumers only when this module's
@@ -613,13 +563,42 @@ public final class TaskForecaster {
     }
 
     /**
-     * The {@code write-image} step of a {@code jk image} terminal module, or {@code null}. A push,
-     * docker load or tarball write is a side effect, never a cacheable output, so an up-to-date
-     * module still runs its image tail; without the step it is never scheduled and nothing is written.
+     * One step a goal's tail appended to {@code unit}'s plan, priced the way its declaration says:
+     * an always-run step runs, a priced one asks the caches its live step keys on. Null for a step
+     * that rides with its module. A step that declares nothing, or declares a price no arm here
+     * knows, fails: an unpriced tail step would leave its module unscheduled on a clean tree.
      */
-    static TaskForecast.@Nullable Task writeImageStep(WorkspaceTarget target, Set<Path> terminalDirs, Path dir) {
-        if (target != WorkspaceTarget.IMAGE || !terminalDirs.contains(dir)) return null;
-        return new TaskForecast.Task(TaskNames.WRITE_IMAGE, TaskForecast.Status.RUN, "image side-effect", null);
+    public static TaskForecast.@Nullable Task priceTailStep(
+            Task step, BuildGraph.BuildUnit unit, Path cache, ActionCache actionCache, @Nullable Path m2Dir) {
+        StepForecast how = step.forecast();
+        if (how == null) {
+            throw new IllegalStateException("tail step `" + step.name() + "` declares no forecast");
+        }
+        return switch (how) {
+            case StepForecast.Rides r -> null;
+            case StepForecast.Always a -> new TaskForecast.Task(step.name(), TaskForecast.Status.RUN, a.why(), null);
+            case StepForecast.Priced p -> {
+                JkBuild project = unit.manifest();
+                BuildLayout layout = BuildLayout.of(unit.dir(), project);
+                yield switch (step.name()) {
+                    case TaskNames.CACHE_INSTALL ->
+                        ForecastPackagingTails.cacheInstall(project, layout, cache, m2Dir, false);
+                    case TaskNames.NATIVE_IMAGE ->
+                        ForecastPackagingTails.nativeImage(
+                                project,
+                                unit.dir(),
+                                layout,
+                                LockPaths.lockFile(unit.dir()),
+                                actionCache,
+                                cache,
+                                new RestoredOutputs(actionCache),
+                                false);
+                    default ->
+                        throw new IllegalStateException(
+                                "tail step `" + step.name() + "` is priced, but no arm prices it");
+                };
+            }
+        };
     }
 
     private static TaskForecast.Module forecastModule(
@@ -634,27 +613,11 @@ public final class TaskForecaster {
             RestoredOutputs restored,
             Map<Path, ModuleHint> hints,
             WorkspaceTarget target,
-            Set<Path> terminalDirs,
             @Nullable Path workerJar,
-            @Nullable String profile,
-            @Nullable Path m2Dir) {
+            @Nullable String profile) {
         TaskForecast.Module node =
                 PlannerNode.forecastModule(u, LockPaths.lockFile(u.dir()), actionCache, cache, skipTests);
-        if (node != null) {
-            TaskForecast.Task image = writeImageStep(target, terminalDirs, u.dir());
-            if (image == null) return node;
-            List<TaskForecast.Task> steps = new ArrayList<>(node.steps());
-            steps.add(image);
-            return new TaskForecast.Module(
-                    node.dir(),
-                    node.coord(),
-                    steps,
-                    node.sourceCount(),
-                    node.testCount(),
-                    node.producesJar(),
-                    node.producesImage(),
-                    node.reason());
-        }
+        if (node != null) return node;
         return new ModuleForecast(
                         u,
                         dep,
@@ -667,10 +630,8 @@ public final class TaskForecaster {
                         restored,
                         hints,
                         target,
-                        terminalDirs,
                         workerJar,
-                        profile,
-                        m2Dir)
+                        profile)
                 .run();
     }
 

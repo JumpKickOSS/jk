@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.task.ActionCache;
-import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -54,8 +54,8 @@ class TaskForecasterOnlyTest {
                 .orElseThrow()
                 .dir();
 
-        List<TaskForecast.Module> plan = TaskForecaster.of(
-                graph, cas, actionCache, cache, true, WorkspaceTarget.PACKAGE, Set.of(), null, null, Set.of(a));
+        List<TaskForecast.Module> plan =
+                TaskForecaster.of(graph, cas, actionCache, cache, true, WorkspaceTarget.PACKAGE, null, Set.of(a));
 
         Map<String, Boolean> dirty = plan.stream()
                 .collect(Collectors.toMap(m -> m.dir().getFileName().toString(), TaskForecast.Module::dirty));

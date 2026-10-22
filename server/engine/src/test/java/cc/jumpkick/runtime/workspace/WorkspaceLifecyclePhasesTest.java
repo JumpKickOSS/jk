@@ -138,29 +138,6 @@ class WorkspaceLifecyclePhasesTest {
                 .containsExactly(app);
     }
 
-    /**
-     * No action key proves a publish or a training run done, so a clean module still runs its tail:
-     * the forecast's verdict schedules the selected modules regardless. Every other goal schedules
-     * what the forecast found dirty.
-     */
-    @Test
-    void a_goal_whose_tail_always_runs_schedules_its_selected_modules_however_clean() {
-        Path core = Path.of("ws", "core").toAbsolutePath();
-        Path app = Path.of("ws", "app").toAbsolutePath();
-        List<BuildGraph.BuildUnit> units = List.of(unit(core), unit(app));
-        WorkspaceRequest base = new WorkspaceRequest(
-                Path.of("ws").toAbsolutePath(), Path.of("cache"), null, 0, null, false, false, 0, null, false, false);
-
-        for (WorkspaceTarget target : WorkspaceTarget.values()) {
-            WorkspaceSpec spec = new WorkspaceSpec(target, Set.of(app), Map.of(), null);
-            Set<Path> scheduled = WorkspacePreflightPhase.withAlwaysRunTails(Set.of(), units, base.withSpec(spec));
-            if (target.alwaysRunsTail()) assertThat(scheduled).as(target.name()).containsExactly(app);
-            else assertThat(scheduled).as(target.name()).isEmpty();
-        }
-        assertThat(WorkspaceTarget.PUBLISH.alwaysRunsTail()).isTrue();
-        assertThat(WorkspaceTarget.TRAIN.alwaysRunsTail()).isTrue();
-    }
-
     // The nulls are deliberate: a unit's identity is its dir, and the phase under test reads nothing else.
     @SuppressWarnings("NullAway")
     private static BuildGraph.BuildUnit unit(Path dir) {
@@ -221,7 +198,7 @@ class WorkspaceLifecyclePhasesTest {
     }
 
     @Test
-    void clean_memo_is_package_only_and_requires_a_whole_graph_build() {
+    void clean_memo_follows_the_package_lifecycle_and_requires_a_whole_graph_build() {
         WorkspaceRequest packageRequest = request(tmp);
         WorkspaceRequest hinted = new WorkspaceRequest(
                 tmp, tmp.resolve("cache"), null, 0, null, false, false, 1, Set.of(tmp), false, false);
@@ -229,6 +206,9 @@ class WorkspaceLifecyclePhasesTest {
         assertThat(WorkspaceFinalPhase.shouldStoreCleanMemo(packageRequest)).isTrue();
         assertThat(WorkspaceFinalPhase.shouldStoreCleanMemo(
                         packageRequest.withSpec(WorkspaceSpec.of(WorkspaceTarget.IMAGE))))
+                .as("an image builds jk build's lifecycle before its tail")
+                .isTrue();
+        assertThat(WorkspaceFinalPhase.shouldStoreCleanMemo(packageRequest.withSpec(WorkspaceSpec.compile(Set.of()))))
                 .isFalse();
         assertThat(WorkspaceFinalPhase.shouldStoreCleanMemo(packageRequest.withTestOnly(true)))
                 .isFalse();

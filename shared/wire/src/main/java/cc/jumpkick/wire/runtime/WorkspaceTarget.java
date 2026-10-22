@@ -23,9 +23,9 @@ public enum WorkspaceTarget {
     /** {@code jk image}: then {@code image-plan} and {@code write-image} for the selected module. */
     IMAGE(Phase.PACKAGE, Tests.UNLESS_SKIPPED),
     /** {@code jk publish}: then the upload of the selected modules' artifacts. */
-    PUBLISH(Phase.PACKAGE, Tests.UNLESS_SKIPPED, true),
-    /** {@code jk train}: then the training run of the selected module, which judges its own surface. */
-    TRAIN(Phase.PACKAGE, Tests.NOT_RUN, true),
+    PUBLISH(Phase.PACKAGE, Tests.UNLESS_SKIPPED),
+    /** {@code jk train}: then the training run of the selected module. */
+    TRAIN(Phase.PACKAGE, Tests.NOT_RUN),
     /** {@code jk run}, {@code jk dev}: the app launches client-side from what PACKAGE left. */
     RUN(Phase.PACKAGE, Tests.NOT_RUN),
     /**
@@ -54,16 +54,10 @@ public enum WorkspaceTarget {
 
     private final @Nullable Phase through;
     private final Tests tests;
-    private final boolean alwaysRunsTail;
 
     WorkspaceTarget(@Nullable Phase through, Tests tests) {
-        this(through, tests, false);
-    }
-
-    WorkspaceTarget(@Nullable Phase through, Tests tests, boolean alwaysRunsTail) {
         this.through = through;
         this.tests = tests;
-        this.alwaysRunsTail = alwaysRunsTail;
     }
 
     /** The last phase this goal runs; null only for {@link #RESHELVE}. */
@@ -73,14 +67,6 @@ public enum WorkspaceTarget {
 
     public Tests tests() {
         return tests;
-    }
-
-    /**
-     * True when no action key proves the tail done, so every selected module runs it on every
-     * invocation however clean its build is. Every other tail is forecast like any step.
-     */
-    public boolean alwaysRunsTail() {
-        return alwaysRunsTail;
     }
 
     /** True when the goal runs PACKAGE and so may append a tail. */

@@ -21,6 +21,7 @@ import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
@@ -106,6 +107,7 @@ public final class PublishPlans {
     public static Task checkStep(Path projectDir, Request req) {
         Path jkBuildPath = ManifestPaths.manifestIn(projectDir);
         return Task.builder(TaskNames.PUBLISH_CHECK)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildStage.PUBLISH)
                 .requires(TaskNames.PARSE_BUILD)
                 .ticks(1)
@@ -153,6 +155,7 @@ public final class PublishPlans {
     /** The upload of the artifact {@link #checkStep} chose; it runs after the build left it. */
     public static Task publishStep(Path projectDir, Request req) {
         return Task.builder(TaskNames.PUBLISH)
+                .forecast(StepForecast.always("an upload is a side effect"))
                 .stage(BuildStage.PUBLISH)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PUBLISH_CHECK)

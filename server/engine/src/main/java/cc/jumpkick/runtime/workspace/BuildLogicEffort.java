@@ -2,13 +2,13 @@
 package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.BuildLogicToml;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildLogicScripts;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.StepWalls;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
 import cc.jumpkick.runtime.base.BuildMetrics;
-import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;

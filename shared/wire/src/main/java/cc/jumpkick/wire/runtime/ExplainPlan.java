@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.runtime;
 
+import cc.jumpkick.run.TaskForecast;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;

@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.Task;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.InstallPlans;
@@ -16,6 +17,7 @@ import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Path;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.UnaryOperator;
@@ -61,10 +63,34 @@ public final class ModulePipeline {
             Set<Path> jarConsumed,
             Set<Path> launchedAssemblies,
             SiblingArtifacts.Gate siblings) {
+        return planned(unit, request, moduleDirs, forceRebuild, jarConsumed, launchedAssemblies, siblings)
+                .plan();
+    }
+
+    /**
+     * A module's plan and the names of the steps its goal's tail appended: everything else is the
+     * goal-agnostic lifecycle through the goal's phase. RESHELVE's plan is all tail.
+     */
+    record Planned(BuildPlan plan, Set<String> tailSteps) {}
+
+    /** {@link #plan} with the tail's step names beside it, for the forecast. */
+    static Planned planned(
+            BuildGraph.BuildUnit unit,
+            WorkspaceRequest request,
+            Set<Path> moduleDirs,
+            boolean forceRebuild,
+            Set<Path> jarConsumed,
+            Set<Path> launchedAssemblies,
+            SiblingArtifacts.Gate siblings) {
         Path dir = unit.dir();
         WorkspaceTarget target = request.target();
         WorkspaceSpec spec = request.spec() == null ? WorkspaceSpec.DEFAULT : request.spec();
-        if (target == WorkspaceTarget.RESHELVE) return reshelve(unit, request.cache(), spec);
+        if (target == WorkspaceTarget.RESHELVE) {
+            BuildPlan reshelve = reshelve(unit, request.cache(), spec);
+            Set<String> all = new LinkedHashSet<>();
+            for (Task t : reshelve.steps()) all.add(t.name());
+            return new Planned(reshelve, all);
+        }
         boolean nodeModule = NodeShape.kind(unit.manifest(), dir) == NodeShape.Kind.MODULE;
         boolean consumed = jarConsumed.contains(BuildGraph.canonicalPath(dir));
         // A test run packages the jar a sibling compiles against: its suite reads it.
@@ -76,13 +102,16 @@ public final class ModulePipeline {
             if (packagesForTests) {
                 PlannerTails.joinTests(plan, in, launchedAssemblies.contains(BuildGraph.canonicalPath(dir)));
             }
-            return plan.build();
+            return new Planned(plan.build(), Set.of());
         }
         Tail tail = selected(spec, dir) ? tail(target, spec, unit, request.cache()) : Tail.NONE;
         PlannerTails.appendDeclaredTails(
                 plan, in, GraalHomes.lookup(dir, spec.graalByDir()), !tail.buildsNativeImage());
+        Set<String> lifecycle = plan.stepNames();
         tail.append(plan, in);
-        return plan.build();
+        Set<String> tailSteps = new LinkedHashSet<>(plan.stepNames());
+        tailSteps.removeAll(lifecycle);
+        return new Planned(plan.build(), Set.copyOf(tailSteps));
     }
 
     /** The tail of a module the request selects, from the arguments the client sent. */

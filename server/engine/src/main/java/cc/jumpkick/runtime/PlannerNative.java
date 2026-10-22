@@ -27,6 +27,7 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
@@ -83,6 +84,7 @@ public final class PlannerNative {
         final boolean persist = true;
         List<String> extra = extraArgs == null ? List.of() : extraArgs;
         return Task.builder(TaskNames.NATIVE_IMAGE)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.NATIVE)
                 .label("Native")
                 .kind(TaskKind.IO)

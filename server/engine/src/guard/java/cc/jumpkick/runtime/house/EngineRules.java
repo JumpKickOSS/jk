@@ -70,13 +70,10 @@ final class EngineRules {
                     },
             "PlannerPlugin.java|actionKey",
                     new Object[] {"plugin-<step>", false, "plugin steps are not forecast (no step, no key)"},
-            "ImageWrite.java|imgKey",
-                    new Object[] {
-                        "write-image", true, "the image tail is an unconditional side-effect step — always RUN"
-                    },
+            "ImageWrite.java|imgKey", new Object[] {"write-image", true, "the image tail declares itself always run"},
             "BuildLogicSupport.java|key", new Object[] {"build-logic", false, "build-logic compile is not forecast"});
 
-    private static final List<String> STEP_INDIRECTIONS = List.of("String name", "name");
+    private static final List<String> STEP_INDIRECTIONS = List.of("String name", "name", "step.name()");
 
     private static final Map<String, List<String>> REQUEST_SHARED = Map.of(
             "PlannerCompile.java|public static CompileRequest mainCompileRequest(",
@@ -361,6 +358,19 @@ final class EngineRules {
                     fault(v, src.path("TaskForecaster.java"), arg, "TaskNames has no constant " + arg);
                 else steps.add(resolved);
             }
+        }
+        // A step whose factory declares it always run or priced is one the forecast emits under its
+        // own name, from the plan, wherever the plan holds it.
+        Matcher declaredStep = Pattern.compile(
+                        "Task\\.builder\\(TaskNames\\.([A-Z][A-Z_0-9]*)\\)\\s*\\.forecast\\(StepForecast\\.(?:always\\(|PRICED)")
+                .matcher(String.join(
+                        "\n",
+                        src.all.stream()
+                                .map(rel -> text.blanked(rel, Blank.COMMENTS))
+                                .toList()));
+        while (declaredStep.find()) {
+            String resolved = taskNames.get(declaredStep.group(1));
+            if (resolved != null) steps.add(resolved);
         }
         for (var e : UNPAIRED.entrySet()) {
             String taskName = (String) e.getValue()[0];

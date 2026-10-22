@@ -24,6 +24,7 @@ import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.CompileToolchain;
@@ -35,7 +36,6 @@ import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.task.TestStamp;
-import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -72,7 +72,6 @@ final class ModuleForecast {
 
     private final Map<Path, TaskForecaster.ModuleHint> hints;
     private final WorkspaceTarget target;
-    private final Set<Path> terminalDirs;
     private final @Nullable Path workerJar;
 
     private boolean compileDepDirty;
@@ -119,7 +118,6 @@ final class ModuleForecast {
     private List<TaskForecast.Task> steps = new ArrayList<>();
     private List<Path> testCompileCp = List.of();
     private final @Nullable String profileName;
-    private final @Nullable Path m2Dir;
     private int testCount;
     private boolean testDepDirty;
     private boolean testDirty;
@@ -139,10 +137,8 @@ final class ModuleForecast {
             RestoredOutputs restored,
             Map<Path, TaskForecaster.ModuleHint> hints,
             WorkspaceTarget target,
-            Set<Path> terminalDirs,
             @Nullable Path workerJar,
-            @Nullable String profileName,
-            @Nullable Path m2Dir) {
+            @Nullable String profileName) {
         this.u = u;
         this.dep = dep;
         this.force = force;
@@ -154,10 +150,8 @@ final class ModuleForecast {
         this.restored = restored;
         this.hints = hints;
         this.target = target;
-        this.terminalDirs = terminalDirs;
         this.workerJar = workerJar;
         this.profileName = profileName;
-        this.m2Dir = m2Dir;
         this.project = ForecastSteps.planned(u.manifest(), u.dir());
         this.dir = u.dir();
         this.lockFile = LockPaths.lockFile(dir);
@@ -198,7 +192,6 @@ final class ModuleForecast {
         testDepDirty = dep.testDepDirty();
         depHint = TaskForecaster.depHint(dep.compileDeps(), hints);
         steps = new ArrayList<>();
-        if (target == WorkspaceTarget.RESHELVE) return reshelveOnly();
         if (!Files.isRegularFile(lockFile)) {
             steps.add(new TaskForecast.Task(
                     TaskNames.COMPILE_MAIN, TaskForecast.Status.RUN, "not locked yet (run `jk build`)", null));
@@ -238,8 +231,6 @@ final class ModuleForecast {
                 packageTails(prepared);
                 nativeImage(prepared);
             }
-            writeImage(prepared);
-            cacheInstall(prepared);
             emit(prepared);
             restore(prepared);
             orderAfter(prepared);
@@ -976,49 +967,20 @@ final class ModuleForecast {
     }
 
     /**
-     * {@code native-image}, when {@code [native] enabled = "always"} or this module is a terminal of
-     * {@code jk native}. Membership in the resolved terminal set, not {@code project.nativeImage()}:
-     * a table-less unique-main module is a native terminal too.
+     * {@code native-image}, when {@code [native] enabled = "always"} declares it part of PACKAGE.
+     * {@code jk native}'s own native step is its tail's, priced apart.
      */
     private void nativeImage(Prepared prepared) {
         boolean noSources = prepared.mainSrc().isEmpty()
                 && prepared.ktSrc().isEmpty()
                 && prepared.gvSrc().isEmpty();
-        boolean onNativeCmd = target == WorkspaceTarget.NATIVE && terminalDirs.contains(dir);
-        if (noSources || !(project.nativeMode() == JkBuild.NativeMode.ALWAYS || onNativeCmd)) return;
+        if (noSources || project.nativeMode() != JkBuild.NativeMode.ALWAYS) return;
         boolean jarDirty = steps.stream().anyMatch(s -> TaskNames.PACKAGE_JAR.equals(s.name()) && !s.cached());
         BuildLayout layout = prepared.layout();
         TaskForecast.Task step = ForecastPackagingTails.nativeImage(
                 project, dir, layout, lockFile, actionCache, cache, restored, jarDirty || compileDirty);
         nativeBinaryToRestore = step.cached() && !ForecastPackagingTails.nativeBinaryPresent(layout);
         steps.add(step);
-    }
-
-    private void writeImage(Prepared prepared) throws Exception {
-        TaskForecast.Task image = TaskForecaster.writeImageStep(target, terminalDirs, dir);
-        if (image != null) steps.add(image);
-    }
-
-    private void cacheInstall(Prepared prepared) throws Exception {
-        // ---- cache-install — jk install terminal ----
-        if (target == WorkspaceTarget.INSTALL && terminalDirs.contains(dir)) {
-            boolean jarDirty = steps.stream().anyMatch(s -> TaskNames.PACKAGE_JAR.equals(s.name()) && !s.cached());
-            steps.add(
-                    ForecastPackagingTails.cacheInstall(project, BuildLayout.of(dir, project), cache, m2Dir, jarDirty));
-        }
-    }
-
-    /**
-     * Install handoff: only {@code cache-install}, always RUN so packager memos are stamped under
-     * the live engine even when shelf bytes already match.
-     */
-    private TaskForecast.Module reshelveOnly() {
-        if (!terminalDirs.contains(dir)) {
-            return new TaskForecast.Module(u.dir(), u.coord(), List.of(), 0, 0, false, false);
-        }
-        steps.add(new TaskForecast.Task(
-                TaskNames.CACHE_INSTALL, TaskForecast.Status.RUN, "re-shelve under live engine", null));
-        return new TaskForecast.Module(u.dir(), u.coord(), steps, 0, 0, true, false);
     }
 
     private void emit(Prepared prepared) throws Exception {
@@ -1040,11 +1002,6 @@ final class ModuleForecast {
         }
     }
 
-    /** Steps that act on a module's outputs after they exist: shelving the jar, writing the image. */
-    private static boolean isTerminalSideEffect(String step) {
-        return TaskNames.CACHE_INSTALL.equals(step) || TaskNames.WRITE_IMAGE.equals(step);
-    }
-
     private void restore(Prepared prepared) throws Exception {
         boolean compact = prepared.compact();
         BuildLayout layout = prepared.layout();
@@ -1058,7 +1015,7 @@ final class ModuleForecast {
         // and image terminals are side-effects on those outputs, not producers of them, so their
         // RUN must not hide a missing jar: without the restore an install would be judged
         // shelf-only and try to shelve a jar that is not on disk.
-        if (steps.stream().allMatch(s -> s.cached() || isTerminalSideEffect(s.name()))) {
+        if (steps.stream().allMatch(TaskForecast.Task::cached)) {
             boolean outputsAbsent = false;
             // A non-empty tree that lacks an output its compile record owns is a missing output
             // too: the key hits and every class file present is current, yet the jar packaged

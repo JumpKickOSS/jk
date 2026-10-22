@@ -8,6 +8,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildPlanner;
@@ -41,6 +42,7 @@ public final class TrainPlans {
             @Nullable String profileFilter,
             boolean force) {
         return Task.builder(TaskNames.TRAIN)
+                .forecast(StepForecast.always("a training run judges its own surface"))
                 .stage(BuildStage.TRAIN)
                 .requires(TaskNames.PACKAGE_JAR)
                 .ticks(1)

@@ -13,10 +13,9 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
-import cc.jumpkick.wire.runtime.TaskForecast;
-import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -108,21 +107,11 @@ class BuildCleanRestoreTest {
                         .contains("restore-outputs");
             }
 
-            // An install of the wiped module is never shelf-only: the cache-install terminal is a
-            // side-effect on the jar, so when every producing step is cached the restore gate
-            // still fires, and a jar that is not on disk is never shelved from a thin plan.
-            List<TaskForecast.Module> install =
-                    TaskForecaster.of(graph, cas, actionCache, cache, true, WorkspaceTarget.INSTALL, Set.of(project));
-            TaskForecast.Module installed = install.get(0);
+            // An install prices the same lifecycle with tests skipped: the wiped module is never
+            // shelved from a thin plan, because its restore schedules it before any tail runs.
+            TaskForecast.Module installed =
+                    TaskForecaster.of(graph, cas, actionCache, cache, true).get(0);
             assertThat(installed.dirty()).isTrue();
-            if (installed.steps().stream()
-                    .filter(s ->
-                            !s.name().equals("restore-outputs") && !s.name().equals("cache-install"))
-                    .allMatch(TaskForecast.Task::cached)) {
-                assertThat(installed.steps())
-                        .extracting(TaskForecast.Task::name)
-                        .contains("restore-outputs");
-            }
 
             // The scheduled build restores the outputs from cache.
             BuildPlanResult second = BuildPlanner.coreBuilder(inputs(project, cache, nested, false))

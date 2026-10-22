@@ -29,6 +29,7 @@ import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
@@ -126,6 +127,7 @@ public final class ImagePlans {
             @Nullable String tarballArg,
             @Nullable String dockerExecutableArg) {
         return Task.builder(TaskNames.IMAGE_PLAN)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildStage.IMAGE)
                 .requires(TaskNames.PACKAGE_JAR)
                 .ticks(1)
@@ -162,6 +164,7 @@ public final class ImagePlans {
     /** Dockerfile mode shells out to docker/podman; Jib mode restores from the cache or forks the worker. */
     private static Task writeImageStep(Path projectDir, Path cache, @Nullable String mainClass) {
         return Task.builder(TaskNames.WRITE_IMAGE)
+                .forecast(StepForecast.always("an image push, load or tarball write is a side effect"))
                 .stage(BuildStage.IMAGE)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.IMAGE_PLAN)

@@ -13,6 +13,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -947,6 +948,13 @@ public final class BuildPlan {
          */
         public @Nullable String currentTerminal() {
             return terminal;
+        }
+
+        /** The names of the steps added so far, before any terminal prune. */
+        public Set<String> stepNames() {
+            Set<String> names = new LinkedHashSet<>();
+            for (Task t : steps) names.add(t.name());
+            return names;
         }
 
         public BuildPlan build() {

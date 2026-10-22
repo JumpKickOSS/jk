@@ -40,6 +40,7 @@ import cc.jumpkick.resolver.LockGraph;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
@@ -121,6 +122,7 @@ public final class InstallPlans {
         if (proj.nativeMode() == JkBuild.NativeMode.ALWAYS) requires.add(TaskNames.NATIVE_IMAGE);
         builder.stateKeys(PRIMARY, SHELVED)
                 .extend(Task.builder(TaskNames.CACHE_INSTALL)
+                        .forecast(StepForecast.PRICED)
                         .stage(BuildStage.PUBLISH)
                         .requires(requires.toArray(new String[0]))
                         .ticks(1)
@@ -136,6 +138,7 @@ public final class InstallPlans {
     public static BuildPlan reshelveBuildPlan(Path projectDir, Path cache, Path m2Dir) {
         Path jkBuildPath = ManifestPaths.manifestIn(projectDir);
         Task parseBuild = Task.builder(TaskNames.PARSE_BUILD)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildStage.RESOLVE)
                 .ticks(1)
                 .execute(ctx -> {
@@ -163,6 +166,7 @@ public final class InstallPlans {
                 })
                 .build();
         Task cacheInstall = Task.builder(TaskNames.CACHE_INSTALL)
+                .forecast(StepForecast.always("re-shelve under the live engine"))
                 .stage(BuildStage.PUBLISH)
                 .requires(TaskNames.PARSE_BUILD)
                 .ticks(1)
