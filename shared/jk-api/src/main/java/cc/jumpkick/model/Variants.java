@@ -33,16 +33,23 @@ public record Variants(List<Dimension> dimensions) {
     /**
      * One value per dimension. Wire form: {@code ""} / {@code "release"} /
      * {@code "release|contentType=demo"} (bare token = build type; {@code dim=value} for customs).
-     * Unknown dimensions are ignored per module.
+     * Unknown dimensions are ignored per module. {@code firstUnselected} gives a dimension with
+     * neither a selection nor a default its first declared value instead of failing; a guard run
+     * sets it.
      */
-    public record Selection(@Nullable String buildType, Map<String, String> values) {
+    public record Selection(@Nullable String buildType, Map<String, String> values, boolean firstUnselected) {
 
-        public static final Selection DEFAULTS = new Selection(null, Map.of());
+        public static final Selection DEFAULTS = new Selection(null, Map.of(), false);
 
         public Selection {
             values = values == null || values.isEmpty()
                     ? Map.of()
                     : Collections.unmodifiableMap(new LinkedHashMap<>(values));
+        }
+
+        /** This selection with {@link #firstUnselected()} set to {@code on}. */
+        public Selection withFirstUnselected(boolean on) {
+            return new Selection(buildType, values, on);
         }
 
         public static Selection parse(@Nullable String raw) {
@@ -55,7 +62,7 @@ public record Variants(List<Dimension> dimensions) {
                 if (eq > 0) values.put(part.substring(0, eq), part.substring(eq + 1));
                 else buildType = part;
             }
-            return new Selection(buildType, values);
+            return new Selection(buildType, values, false);
         }
 
         public String encode() {

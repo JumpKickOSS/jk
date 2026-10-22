@@ -154,6 +154,12 @@ Start from the `android/compose` template (`jk new my-app -t android/compose`) â
 Compose app with a JVM unit test and the `jk run` deploy path; see
 [Templates](templates.md).
 
+JVM unit tests run under Robolectric when it is on the test classpath: `android-test-config`
+writes its `test_config.properties`, naming the linked resources and a unit-test manifest. That
+manifest is the module's own merged as an application with every AAR on the test runtime closure,
+test-scope ones included, so `androidx.compose.ui:ui-test-manifest` as a `[test-dependencies]`
+entry is enough for a `ComposeTestRule` to launch its `ComponentActivity`.
+
 ## IntelliJ Platform plugins
 
 `[intellij]` builds a plugin for IntelliJ IDEA and the IDEs on its platform: the module compiles

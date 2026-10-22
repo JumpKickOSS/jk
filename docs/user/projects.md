@@ -158,6 +158,10 @@ These are **deliberately separate**:
 | **Profiles** | *How* you compile and test (`javac` flags, test-JVM args, tag filters). `--profile` / auto `ci` |
 | **Variants** | *Which product* you build (sources, deps, plugin config). `--variant` / `--release` |
 
+A dimension with no `default` must be selected (`--variant contentType=demo`) on every verb that
+builds, and a workspace checks the selection against every module before it starts. `jk guard` is
+the exception: it takes the first declared value ([Guards](guards.md#kinds)).
+
 ```toml
 [profiles.strict]
 javac = ["-Werror"]                 # appended to the compiler argv

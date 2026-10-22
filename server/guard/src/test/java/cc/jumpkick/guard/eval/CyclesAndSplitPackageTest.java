@@ -154,4 +154,46 @@ class CyclesAndSplitPackageTest {
                 .evaluate(rule(root, "split-package", "[[guards.r.allow]]\nin = \"p.c\"\nreason = \"gone\"\n"), ws);
         assertThat(stale.outcome()).isEqualTo(Outcome.STALE_ALLOW);
     }
+
+    @Test
+    void a_package_a_processor_generates_in_every_module_is_not_split(@TempDir Path dir) throws Exception {
+        Path root = Files.createDirectories(dir.resolve("ws"));
+        Files.writeString(
+                root.resolve("jk.toml"),
+                "group = \"t\"\nname = \"ws\"\nversion = \"0.0.1\"\n\n[workspace]\nmodules = [\"a\", \"b\"]\n");
+        // each module compiles its own hilt_aggregated_deps class, generated into KSP's and javac's trees
+        String[][] gen = {{"a", "ksp/java"}, {"b", "generated-sources/annotations"}};
+        for (String[] m : gen) {
+            Path module = Files.createDirectories(root.resolve(m[0]));
+            Files.writeString(
+                    module.resolve("jk.toml"), "group = \"t\"\nname = \"" + m[0] + "\"\nversion = \"0.0.1\"\n");
+            Path target = BuildLayout.moduleTargetDir(module);
+            Files.createDirectories(target.resolve(m[1]).resolve("hilt_aggregated_deps"));
+            Files.createDirectories(module.resolve("src/main/java/p/" + m[0]));
+            Path idx = FactsIndexing.indexPath(target, "main");
+            Files.createDirectories(idx.getParent());
+            FactsFormat.write(
+                    idx,
+                    index(
+                            cls("hilt_aggregated_deps/_p_" + m[0] + "_Module"),
+                            cls("p/" + m[0] + "/A"),
+                            cls("p/x/X" + m[0])));
+        }
+        // a hand-written p.x in b keeps that split real
+        Files.createDirectories(root.resolve("b/src/main/java/p/x"));
+        Files.createDirectories(BuildLayout.moduleTargetDir(root.resolve("a")).resolve("ksp/java/p/x"));
+        List<Path> modules = List.of(root.resolve("a"), root.resolve("b"));
+        Rule split = rule(root, "split-package", "");
+        Supplier<FactsIndex> merged = EvalContext.lazy(() -> WorkspaceFacts.merged(root, modules));
+        EvalContext ws = new EvalContext(Lane.WORKSPACE, root, "", null, modules, merged, () -> null, List::of);
+        Evaluation e = Evaluators.forKind(split.kind()).evaluate(split, ws);
+        assertThat(e.observations())
+                .as(
+                        "generated in both modules is no split; generated in one beside hand-written in the other is one owner")
+                .isEmpty();
+
+        Files.createDirectories(root.resolve("a/src/main/java/p/x"));
+        Evaluation handWritten = Evaluators.forKind(split.kind()).evaluate(split, ws);
+        assertThat(handWritten.observations()).extracting(Observation::key).containsExactly("p.x | a + b");
+    }
 }
