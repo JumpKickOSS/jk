@@ -94,6 +94,33 @@ class NodePackagingE2eTest {
     }
 
     @Test
+    void jk_test_runs_a_workspace_whose_jvm_module_consumes_a_node_module(@TempDir Path ws) throws Exception {
+        workspace(ws, "web", "app");
+        nodeModule(ws.resolve("web"), "web", "");
+        write(
+                ws.resolve("web/package.json"),
+                "{\"name\":\"web\",\"version\":\"1.0.0\",\"scripts\":"
+                        + "{\"build\":\"node build.js\",\"test\":\"node test.js\"}}");
+        write(ws.resolve("web/test.js"), "require('fs').writeFileSync('tested.txt', 'yes');\n");
+        write(ws.resolve("app/jk.toml"), """
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+                java = 25
+
+                [dependencies]
+                web = { workspace = true }
+                """);
+        write(ws.resolve("app/src/main/java/app/Main.java"), "package app; public class Main {}\n");
+        lock(ws);
+
+        int[] exit = {-1};
+        Capture.Streams out = Capture.both(() -> exit[0] = run("test", "-C", ws.toString(), "--cache-dir", cache(ws)));
+        assertThat(exit[0]).as("a test run plans the node module once: %s", out).isZero();
+        assertThat(ws.resolve("web/tested.txt")).as("and runs its tests").isRegularFile();
+    }
+
+    @Test
     void classpath_root_moves_the_output_and_nothing_is_packaged_without_one(@TempDir Path ws) throws Exception {
         workspace(ws, "web", "site");
         nodeModule(ws.resolve("web"), "web", "classpath-root = \"public\"\n");
