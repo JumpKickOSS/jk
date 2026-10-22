@@ -97,6 +97,28 @@ class PlannerLangKotlinConfigTest {
         assertThat(config.plugins().getFirst().options()).containsExactly("preset=demo");
         assertThat(config.args()).contains("-Xopener-flag");
 
+        // The contributed plugin is pinned like a declared one: jk lock writes its row, and the
+        // compile refuses it while the lock has none.
+        assertThat(PlannerLang.contributedKotlinPlugins(project, module, lock))
+                .extracting(c -> c.module() + ":" + c.version())
+                .containsExactly("com.example:opener-compiler-plugin:2.4.10");
+        assertThatThrownBy(config.plugins().getFirst()::requiredSha256)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("com.example:opener-compiler-plugin:2.4.10")
+                .hasMessageContaining("run `jk lock`");
+        Lockfile pinned = lock.withPlugins(List.of(
+                lock.plugins().getFirst(),
+                new Lockfile.PluginEntry("com.example:opener-compiler-plugin", "2.4.10", "sha256:" + "cd".repeat(32))));
+        assertThat(PlannerLang.kotlinConfig(project, pinned, module, 25, javaHome, null)
+                        .plugins()
+                        .getFirst()
+                        .requiredSha256())
+                .isEqualTo("cd".repeat(32));
+        // A module that compiles no Kotlin takes none of them.
+        JkBuild javaOnly =
+                JkBuildParser.parse(Files.readString(module.resolve("jk.toml")).replace("kotlin  = \"2.4.10\"\n", ""));
+        assertThat(PlannerLang.contributedKotlinPlugins(javaOnly, module, lock)).isEmpty();
+
         // The compiler's incremental working dir lives under the cache; no lock or descriptor is
         // there to pin the plugin, so a lookup keyed by it sees a module without contributions.
         Path cacheDir = Files.createDirectories(tmp.resolve("cache/actions/incremental-kotlin/compile-kotlin@abc"));
@@ -170,7 +192,7 @@ class PlannerLangKotlinConfigTest {
     /**
      * A declared {@code [[kotlin-plugins]]} jar is fetched as the lock's {@code [[plugin]]} row pins
      * it — the version the compiler resolved, the row's digest — and a lock with no row for it is
-     * stale, refused before any fetch. A contributed plugin follows the compiler unpinned.
+     * stale, refused before any fetch.
      */
     @Test
     void a_declared_kotlin_plugin_compiles_with_the_jar_its_lock_row_pins(@TempDir Path tmp) throws Exception {
