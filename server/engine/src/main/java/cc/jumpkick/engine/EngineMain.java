@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
+import cc.jumpkick.engine.plugin.ExecutionSpeed;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.Forks;
@@ -81,6 +82,7 @@ public final class EngineMain {
         TerminalSignals.install();
         // Before any worker is forked: the score and, where the cgroup allows it, the workers group.
         WorkerContainment.install();
+        ExecutionSpeed.self();
         Forks.install(JobWorkers::start);
         try {
             JkDirs.current().secureRoots();
