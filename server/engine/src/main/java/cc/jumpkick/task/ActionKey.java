@@ -109,9 +109,44 @@ public final class ActionKey {
     /** As {@link #javacClasspathTokens(CompileRequest)} with the compile classpath read through {@code cp}. */
     public static List<String> javacClasspathTokens(CompileRequest request, EntryToken cp) throws IOException {
         List<String> lines = new ArrayList<>();
-        appendCpTokens(lines, "cp:", request.classpath(), cp);
+        appendCpTokens(lines, "cp:", request.classpath(), javacEntryToken(request, cp));
         appendCpTokens(lines, "pp:", request.processorPath(), ClasspathFingerprint::entry);
         return lines;
+    }
+
+    /**
+     * How a javac compile's classpath entries are spelled: their ABI, with their {@code META-INF}
+     * resources beside it when processors run, or their whole content when javac finds the
+     * processors on the classpath itself, whose bodies are then the compile's behaviour.
+     */
+    private static EntryToken javacEntryToken(CompileRequest request, EntryToken cp) {
+        boolean asked = processingAsked(request.extraOptions());
+        if (asked && request.processorPath().isEmpty()) return ClasspathFingerprint::entry;
+        if (asked || !request.processorPath().isEmpty()) return withResources(cp);
+        return cp;
+    }
+
+    /** How a groovyc compile's classpath entries are spelled: see {@link #groovycClasspathTokens}. */
+    private static EntryToken groovycEntryToken(EntryToken cp) {
+        return entry -> ClasspathAbi.hasGlobalTransform(entry)
+                ? ClasspathFingerprint.entry(entry)
+                : withResources(cp).of(entry);
+    }
+
+    /** Whether the options turn annotation processing on without naming a processor path. */
+    private static boolean processingAsked(List<String> options) {
+        for (String o : options) {
+            if (o.equals("-proc:full") || o.equals("-proc:only") || o.equals("-processor")) return true;
+        }
+        return false;
+    }
+
+    /**
+     * {@code cp} with each entry's {@code META-INF} resources beside its ABI ({@link
+     * ClasspathAbi#resources}): what a processor or groovyc reads of a dependency besides its API.
+     */
+    private static EntryToken withResources(EntryToken cp) {
+        return entry -> cp.of(entry) + "+" + ClasspathAbi.resources(entry);
     }
 
     /**
@@ -334,7 +369,9 @@ public final class ActionKey {
     /** As {@link #groovycClasspathTokens(GroovycRequest)} with the compile classpath read through {@code cp}. */
     public static List<String> groovycClasspathTokens(GroovycRequest request, EntryToken cp) throws IOException {
         List<String> lines = new ArrayList<>();
-        appendCpTokens(lines, "cp:", request.classpath(), cp);
+        // groovyc loads extension modules and global AST transforms off the compile classpath's
+        // META-INF; a transform's body is the compile's behaviour, so its jar keys by content.
+        appendCpTokens(lines, "cp:", request.classpath(), groovycEntryToken(cp));
         appendCpTokens(lines, "worker:", request.workerClasspath(), ClasspathFingerprint::entry);
         appendCpTokens(lines, "pp:", request.processorPath(), ClasspathFingerprint::entry);
         return lines;
@@ -378,7 +415,7 @@ public final class ActionKey {
     public static Map<String, String> snapshotInputs(CompileRequest request) throws IOException {
         Map<String, String> result = new LinkedHashMap<>();
         snapshotSources(result, request.sources());
-        snapshotEntries(result, "cp:", request.classpath(), ClasspathAbi::token);
+        snapshotEntries(result, "cp:", request.classpath(), javacEntryToken(request, ClasspathAbi::token));
         snapshotEntries(result, "pp:", request.processorPath(), ClasspathFingerprint::entry);
         result.put("release", Integer.toString(request.release()));
         result.put("options", optionsToken(request.extraOptions()));
@@ -392,7 +429,7 @@ public final class ActionKey {
     public static Map<String, String> snapshotInputs(GroovycRequest request) throws IOException {
         Map<String, String> result = new LinkedHashMap<>();
         snapshotSources(result, GroovycInputs.compileSet(request));
-        snapshotEntries(result, "cp:", request.classpath(), ClasspathAbi::token);
+        snapshotEntries(result, "cp:", request.classpath(), groovycEntryToken(ClasspathAbi::token));
         snapshotEntries(result, "worker:", request.workerClasspath(), ClasspathFingerprint::entry);
         snapshotEntries(result, "pp:", request.processorPath(), ClasspathFingerprint::entry);
         result.put("jvmTarget", Integer.toString(request.jvmTarget()));
