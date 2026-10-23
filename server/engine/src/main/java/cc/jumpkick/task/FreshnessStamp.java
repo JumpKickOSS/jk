@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
@@ -180,8 +182,35 @@ public final class FreshnessStamp {
      */
     static boolean isContentAddressed(Path p) {
         if (p == null) return false;
-        String s = p.toString().replace('\\', '/');
-        return s.contains("/sha256/") || s.startsWith("sha256/");
+        // The content identity identityKey gives an archive: the relative path sha256/<hex>.
+        if (!p.isAbsolute()
+                && p.getNameCount() == 2
+                && "sha256".equals(p.getName(0).toString())) return true;
+        Path abs = p.toAbsolutePath().normalize();
+        // Under one of jk's own blob pools, not merely under a directory that happens to be
+        // called sha256: a checkout there would skip the mtime check its classpath needs.
+        for (Path pool : casRoots()) {
+            if (abs.startsWith(pool)) return true;
+        }
+        return false;
+    }
+
+    private static List<Path> casRoots() {
+        List<Path> roots = new ArrayList<>();
+        try {
+            roots.add(JkStores.storeCas().root().toAbsolutePath().normalize());
+        } catch (RuntimeException noStore) {
+            // No store resolves: nothing is under it.
+        }
+        try {
+            roots.add(JkStores.cacheCas(SessionContext.current().cacheDir())
+                    .root()
+                    .toAbsolutePath()
+                    .normalize());
+        } catch (RuntimeException noCache) {
+            // No session cache: nothing is under it.
+        }
+        return roots;
     }
 
     /**

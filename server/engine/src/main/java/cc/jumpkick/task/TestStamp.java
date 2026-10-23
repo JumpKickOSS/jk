@@ -112,8 +112,9 @@ public final class TestStamp {
         if (failed == null) return true;
         try {
             return Long.parseLong(failed) == 0;
-        } catch (NumberFormatException e) {
-            return true;
+        } catch (NumberFormatException torn) {
+            // A count that will not read vouches for nothing: run the suite.
+            return false;
         }
     }
 
@@ -175,7 +176,7 @@ public final class TestStamp {
             List<Path> sortedSources = new ArrayList<>(testSources);
             sortedSources.sort(Comparator.comparing(Path::toString));
             for (Path src : sortedSources) {
-                if (!Files.isRegularFile(src)) continue; // generated / deleted
+                if (!Files.isRegularFile(src)) continue; // generated later, or deleted: absent either way
                 feed(md, "src:" + PortablePath.of(src) + ":" + FileHashMemo.contentHash(src));
             }
 

@@ -339,23 +339,23 @@ class ActionKeyTest {
     }
 
     /**
-     * A home with no release file keys its install directory, not the {@code Contents/Home} every
-     * macOS bundle ends in, so two such JDKs on one machine do not collapse onto one token.
+     * A JDK without a release file is keyed by what it compiles against — its runtime image — so two
+     * homes with the same image key alike wherever they sit, and an image that changes moves the key.
      */
     @Test
-    void release_less_jdk_homes_key_their_install_directory(@TempDir Path tempDir) throws IOException {
+    void release_less_jdk_homes_key_their_runtime_image(@TempDir Path tempDir) throws IOException {
         Path jdk21 = Files.createDirectories(tempDir.resolve("JavaVirtualMachines/temurin-21.jdk/Contents/Home"));
         Path jdk25 = Files.createDirectories(tempDir.resolve("JavaVirtualMachines/temurin-25.jdk/Contents/Home"));
+        Path modules21 = Files.createDirectories(jdk21.resolve("lib")).resolve("modules");
+        Path modules25 = Files.createDirectories(jdk25.resolve("lib")).resolve("modules");
+        Files.writeString(modules21, "image 21");
+        Files.writeString(modules25, "image 25");
         assertThat(ActionKey.jdkToken(jdk21)).isNotEqualTo(ActionKey.jdkToken(jdk25));
-        assertThat(ActionKey.jdkToken(jdk21))
-                .isEqualTo(ActionKey.jdkToken(jdk21))
-                .doesNotContain(tempDir.toString());
+        assertThat(ActionKey.jdkToken(jdk21)).doesNotContain(tempDir.toString());
 
-        Path modules = Files.createDirectories(jdk21.resolve("lib")).resolve("modules");
-        Files.writeString(modules, "image");
-        String small = ActionKey.jdkToken(jdk21);
-        Files.writeString(modules, "a larger image");
-        assertThat(ActionKey.jdkToken(jdk21)).as("the runtime image counts").isNotEqualTo(small);
+        String before = ActionKey.jdkToken(jdk21);
+        Files.writeString(modules21, "image 2X");
+        assertThat(ActionKey.jdkToken(jdk21)).as("same size, other content").isNotEqualTo(before);
     }
 
     /** A project with a lock: every checkout of it carries the same {@code project-id}. */
