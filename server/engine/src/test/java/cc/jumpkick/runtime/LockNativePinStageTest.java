@@ -19,6 +19,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.base.ReachabilityMetadata;
 import cc.jumpkick.runtime.workspace.OutdatedPlans;
 import cc.jumpkick.runtime.workspace.SyncPlans;
+import cc.jumpkick.testing.FakeJdk;
 import cc.jumpkick.wire.protocol.OutdatedReport;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -165,6 +166,8 @@ class LockNativePinStageTest {
         lock(project, repo, tmp);
         Path extracted = ReachabilityMetadata.repositoryRoot(JkStores.store(), "1.0.0");
         PathUtil.deleteRecursively(extracted);
+        // The sync resolves java = 25 first; a JDK of its own keeps the host's inventory out of it.
+        FakeJdk.create(tmp.resolve("jdks").resolve("temurin-25.0.4"), "25.0.4");
 
         BuildPlanResult result = run(SyncPlans.syncBuildPlan(
                 project,
