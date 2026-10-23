@@ -48,11 +48,12 @@ checksum) is a `network` test. Maven Central stays reachable for now: `jk new` l
 newest stable version of what it scaffolds there, and about twenty integration tests start with
 `jk new`.
 
-**The fast tier is walled off from Maven Central.** The launcher hands every JVM of a launch that
-includes no tag and excludes at least one `JK_HTTP_DENY_HOSTS=repo.maven.apache.org,<mirror>`;
-`Http` refuses a request to a listed host before it leaves the process, redirects and the Central
-failover included, with a `DeniedHostException` that names the host. A unit test that needs Central
-is an integration test — tag it. Fixture locks in the fast tier resolve their injected JUnit
+**The fast tier is walled off from the network.** The launcher hands every JVM of a launch that
+includes no tag and excludes at least one `JK_HTTP_DENY_HOSTS=*`: `Http` refuses a request to any
+host but this one (loopback names and addresses) before it leaves the process, redirects and the
+Central failover included, with a `DeniedHostException` that names the host. Loopback stubs
+(`LoopbackHttp`, `MockMavenServer`) still answer. A unit test that needs a real repository or
+release site is a `network` test — tag it. Fixture locks in the fast tier resolve their injected JUnit
 Platform from the sandbox store the engine seeds (`TestStoreSeed`), never from the network.
 
 **Every tag is run by exactly one tier.** G23 verifies the executable partition, and G52 verifies

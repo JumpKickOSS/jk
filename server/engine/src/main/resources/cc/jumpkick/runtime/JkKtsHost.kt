@@ -39,6 +39,7 @@ import java.util.concurrent.Future
 import java.util.concurrent.LinkedBlockingQueue
 import kotlin.concurrent.thread
 import kotlin.script.experimental.annotations.KotlinScript
+import kotlin.script.experimental.api.CompiledScript
 import kotlin.script.experimental.api.KotlinType
 import kotlin.script.experimental.api.ResultValue
 import kotlin.script.experimental.api.ResultWithDiagnostics
@@ -53,14 +54,13 @@ import kotlin.script.experimental.dependencies.DependsOn
 import kotlin.script.experimental.dependencies.Repository
 import kotlin.script.experimental.host.ScriptingHostConfiguration
 import kotlin.script.experimental.host.toScriptSource
+import kotlin.script.experimental.jvm.CompiledJvmScriptsCache
 import kotlin.script.experimental.jvm.baseClassLoader
 import kotlin.script.experimental.jvm.compilationCache
 import kotlin.script.experimental.jvm.defaultJvmScriptingHostConfiguration
 import kotlin.script.experimental.jvm.dependenciesFromCurrentContext
 import kotlin.script.experimental.jvm.jvm
 import kotlin.script.experimental.jvmhost.BasicJvmScriptingHost
-import kotlin.script.experimental.api.CompiledScript
-import kotlin.script.experimental.jvm.CompiledJvmScriptsCache
 import kotlin.script.experimental.jvmhost.CompiledScriptJarsCache
 import kotlin.script.experimental.jvmhost.loadScriptFromJar
 import org.jetbrains.kotlin.mainKts.CompilerOptions
@@ -127,10 +127,10 @@ private data class Done(val reply: String) : Event
 private object Eof : Event
 
 /**
- * Kotlin's jar cache, with a hit loaded from a copy outside the cache directory. The class loader of a
- * loaded script holds its jar open for the life of this host, and Windows cannot delete an open file,
- * so loading the cache's own jar would leave `cache/kts/` undeletable while the host is resident. A
- * jar's name is its content hash, so a copy that exists is the same bytes.
+ * Kotlin's jar cache, with a hit loaded from a copy outside the cache directory. The class loader of a loaded script
+ * holds its jar open for the life of this host, and Windows cannot delete an open file, so loading the cache's own jar
+ * would leave `cache/kts/` undeletable while the host is resident. A jar's name is its content hash, so a copy that
+ * exists is the same bytes.
  */
 private class LoadedFromCopyCache(
     private val loadDir: File,
@@ -138,7 +138,10 @@ private class LoadedFromCopyCache(
 ) : CompiledJvmScriptsCache {
     private val jars = CompiledScriptJarsCache(jarFor)
 
-    override fun get(script: SourceCode, scriptCompilationConfiguration: ScriptCompilationConfiguration): CompiledScript? {
+    override fun get(
+        script: SourceCode,
+        scriptCompilationConfiguration: ScriptCompilationConfiguration,
+    ): CompiledScript? {
         val jar = jarFor(script, scriptCompilationConfiguration)
         if (!jar.isFile) return null
         loadDir.mkdirs()

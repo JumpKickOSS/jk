@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The default test tier cannot reach Maven Central or start an engine: its JVMs get {@link
- * Http#DENY_HOSTS_ENV} naming Central and its mirror and {@link EnginePaths#NO_SPAWN_ENV}, a tagged
+ * Http#DENY_HOSTS_ENV} refusing every remote host and {@link EnginePaths#NO_SPAWN_ENV}, a tagged
  * tier gets neither, and a module's own value stands.
  */
 class TestLaunchFastTierWallsTest {
@@ -23,13 +23,12 @@ class TestLaunchFastTierWallsTest {
     }
 
     @Test
-    void the_default_tier_walls_off_central_and_its_mirror() {
+    void the_default_tier_walls_off_every_remote_host() {
         WorkerEnv env =
                 TestLaunch.withFastTierWalls(WorkerEnv.strict(), tier(List.of(), List.of("integration", "slow")));
 
         assertThat(env.extras())
-                .containsEntry(
-                        Http.DENY_HOSTS_ENV, "repo.maven.apache.org,maven-central.storage-download.googleapis.com")
+                .containsEntry(Http.DENY_HOSTS_ENV, Http.ANY_REMOTE_HOST)
                 .containsEntry(EnginePaths.NO_SPAWN_ENV, "1");
     }
 
