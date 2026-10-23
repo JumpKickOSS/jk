@@ -66,6 +66,13 @@ public final class MemoryProbe {
         return m;
     }
 
+    /** Test seam: the memory {@link #probe} answers, or {@code null} to measure the host again. */
+    public static void forTests(@Nullable Memory memory) {
+        synchronized (MemoryProbe.class) {
+            cached = memory;
+        }
+    }
+
     /**
      * Live host memory (uncached) for status / SSE vitals. Prefer {@link #probe()} when sizing
      * worker heaps so the plan stays stable for one build.

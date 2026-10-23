@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.engine.plugin.MemoryProbe;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.SettledHostCalibration;
 import cc.jumpkick.test.TestWorkers;
@@ -31,10 +32,16 @@ class ExplainBuildEtaParityTest {
         // explain does not price the suite as one JVM. The claim that the two defaults ARE both 0
         // is not testable from :engine; BuildExplainPlanOptionsParityTest in :cli parses one argv
         // against both commands and compares the plan inputs they derive.
-        int auto = TestWorkers.resolve(0, 24, 8);
-        int forcedOne = TestWorkers.resolve(1, 24, 8);
-        assertThat(auto).isGreaterThan(forcedOne);
-        assertThat(forcedOne).isEqualTo(1);
+        // On a host with room: the heap clamp would otherwise answer how loaded this machine is.
+        MemoryProbe.forTests(new MemoryProbe.Memory(32L << 30, 16L << 30));
+        try {
+            int auto = TestWorkers.resolve(0, 24, 8);
+            int forcedOne = TestWorkers.resolve(1, 24, 8);
+            assertThat(auto).isGreaterThan(forcedOne);
+            assertThat(forcedOne).isEqualTo(1);
+        } finally {
+            MemoryProbe.forTests(null);
+        }
     }
 
     @Test
