@@ -542,11 +542,9 @@ final class WorkspaceRunView {
         return result.modules().isEmpty() ? "composite" : "test";
     }
 
-    /** The failure wedge for a run that ended on run-level errors: the verdict itself when modules ran. */
+    /** The failure wedge for a run that ended on run-level errors: the first of them, whatever it was. */
     static String errorsTail(WorkspaceResult result) {
-        return result.modules().isEmpty()
-                ? "dependency resolution failed"
-                : result.errors().get(0);
+        return result.errors().get(0);
     }
 
     /** First failing module's coordinate, or {@code fallback} when the engine named none. */

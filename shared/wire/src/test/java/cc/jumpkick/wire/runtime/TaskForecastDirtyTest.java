@@ -53,7 +53,7 @@ class TaskForecastDirtyTest {
                 List.of(
                         new TaskForecast.Task("compile-java", TaskForecast.Status.CACHED, "hit", "abcd"),
                         new TaskForecast.Task(
-                                "copy-test-resources", TaskForecast.Status.RUN, "test resources changed", null),
+                                "compile-test", TaskForecast.Status.RUN, TaskForecast.TEST_RESOURCES_CHANGED, null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.CACHED, "hit", "efgh")),
                 10,
                 5,

@@ -474,8 +474,7 @@ public final class BuildEta {
         if (m == null || m.steps() == null) return false;
         for (TaskForecast.Task s : m.steps()) {
             if (s.cached()) continue;
-            if (TaskNames.COPY_RESOURCES.equals(s.name()) || TaskNames.COPY_TEST_RESOURCES.equals(s.name()))
-                return true;
+            if (TaskNames.COPY_RESOURCES.equals(s.name()) || isTestResourceDrift(s)) return true;
             String t = s.text() == null ? "" : s.text();
             if (TaskNames.PACKAGE_JAR.equals(s.name()) && t.contains("resources changed")) return true;
         }
@@ -490,9 +489,14 @@ public final class BuildEta {
         if (m == null || m.steps() == null) return false;
         for (TaskForecast.Task s : m.steps()) {
             if (s.cached()) continue;
-            if (TaskNames.COPY_TEST_RESOURCES.equals(s.name())) return true;
+            if (isTestResourceDrift(s)) return true;
         }
         return false;
+    }
+
+    /** compile-test runs only to copy its suites' drifted resources: nothing recompiles. */
+    static boolean isTestResourceDrift(TaskForecast.Task s) {
+        return TaskNames.COMPILE_TEST.equals(s.name()) && TaskForecast.TEST_RESOURCES_CHANGED.equals(s.text());
     }
 
     /** Native / assembly / OCI tails — signal to keep full run-tests (cli-shaped test-dep). */

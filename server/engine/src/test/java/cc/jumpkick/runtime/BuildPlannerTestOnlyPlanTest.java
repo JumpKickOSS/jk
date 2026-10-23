@@ -124,6 +124,36 @@ class BuildPlannerTestOnlyPlanTest {
     }
 
     /**
+     * Code generation is part of compiling: {@code jk compile} runs the generators its compiles
+     * read (a jOOQ or OpenAPI preset), as Maven's {@code generate-sources} precedes {@code compile};
+     * a compile plan without them fails validation, since compile-java requires them.
+     */
+    @Test
+    void compile_only_plan_runs_the_source_generators_the_compile_reads() throws Exception {
+        Path dir = pluginProject();
+        JkBuild build = VariantApply.apply(
+                        JkBuildParser.reparse(dir.resolve("jk.toml")), dir, Variants.Selection.parse(""), Map.of())
+                .build();
+        seedDescribeCache(
+                dir,
+                build,
+                List.of(
+                        "{\"t\":\"task\",\"name\":\"generate-api\",\"stage\":\"generate\",\"inputs\":[\"config\"],"
+                                + "\"outputs\":[\"g\"],\"contributesSources\":[\"g\"]}",
+                        "{\"t\":\"task\",\"name\":\"generate-fixtures\",\"stage\":\"generate\",\"inputs\":[\"config\"],"
+                                + "\"outputs\":[\"f\"],\"contributesTestSources\":[\"f\"]}",
+                        "{\"t\":\"task\",\"name\":\"dex\",\"inputs\":[\"classes\"],\"outputs\":[\"dex\"]}"));
+
+        Set<String> names = BuildPlanner.coreBuilder(inputs(dir, false, true)).build().steps().stream()
+                .map(s -> s.name())
+                .collect(Collectors.toSet());
+        assertThat(names)
+                .as("the main compile's generator runs; test-source and packaging-time work stays out")
+                .contains("plugin-generate-api", TaskNames.COMPILE_JAVA, BuildPlanner.COMPILE_JOIN)
+                .doesNotContain("plugin-dex", TaskNames.PACKAGE_JAR, TaskNames.RUN_TESTS);
+    }
+
+    /**
      * A classes transform (bytecode enhancement) makes the module's classes what they are, so the
      * compile plan `jk dev` recompiles with runs it; other packaging-time steps stay out.
      */

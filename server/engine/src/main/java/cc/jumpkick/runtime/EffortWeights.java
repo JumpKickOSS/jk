@@ -501,7 +501,6 @@ public final class EffortWeights {
                     TaskNames.ENSURE_JDK,
                     TaskNames.ENSURE_NODE,
                     TaskNames.COPY_RESOURCES,
-                    TaskNames.COPY_TEST_RESOURCES,
                     TaskNames.BUILD_INFO,
                     TaskNames.WRITE_STAMP,
                     TaskNames.WRITE_STAMP_KOTLIN,

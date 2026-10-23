@@ -7,6 +7,12 @@ Every command that builds a project — `jk compile`, `test`, `build`, `install`
 preflight (lock, graph)  →  sync  →  plan  →  compile  →  test  →  package  →  (the goal's tail)
 ```
 
+Code generation is part of COMPILE: a plugin's source generators (a jOOQ or OpenAPI preset, a
+`[generate]` step) run before the compiles that read their output, so `jk compile` generates exactly
+as `jk build` does. Every core plan holds every plugin step, and the terminal keeps the ones its
+steps require — the generators the compiles read, what feeds the test JVM, and, when the goal
+packages, what feeds the artifact. A step that requires one the plan does not hold fails the plan.
+
 The steps up to a goal's last phase are the **same steps, built by the same code**, for every
 goal. Only two things may differ between goals: the **tail** that runs after PACKAGE, and whether
 the goal runs **tests**. Never run one command to prepare another: `jk install` is `jk build` plus

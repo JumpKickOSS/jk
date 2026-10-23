@@ -56,7 +56,6 @@ public final class TaskNames {
     public static final String BUILD_INFO = "build-info";
 
     /** Forecast-only: test-resource drift. Never discounts {@link #RUN_TESTS}. */
-    public static final String COPY_TEST_RESOURCES = "copy-test-resources";
 
     /** Forecast-only: a sibling ordered-after this module is rebuilding. */
     public static final String ORDER_CHECK = "order-check";
