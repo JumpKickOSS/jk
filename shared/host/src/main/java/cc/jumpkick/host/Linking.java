@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -37,10 +38,22 @@ public final class Linking {
 
     /**
      * Materialise {@code target} as a hard link to {@code source}, or copy the bytes if linking isn't
-     * supported on this filesystem pair. Replaces any existing entry at {@code target}.
+     * supported on this filesystem pair. Replaces any existing entry at {@code target}, except a link
+     * to {@code source} itself: that is already the file, and replacing it would move its change time
+     * and so every stat-based identity of it.
      */
     public static void linkOrCopy(Path source, Path target) throws IOException {
+        if (alreadyLinked(source, target)) return;
         linkOrCopy(source, target, () -> {});
+    }
+
+    /** Whether {@code target} is {@code source} under another name. */
+    static boolean alreadyLinked(Path source, Path target) {
+        try {
+            return Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) && Files.isSameFile(source, target);
+        } catch (IOException | SecurityException unknown) {
+            return false;
+        }
     }
 
     /**
