@@ -109,6 +109,7 @@ public final class WireEventSink implements EventSink {
                         e.millis(),
                         e.didWork(),
                         e.cancelled(),
+                        e.stopped(),
                         e.image(),
                         e.shelved(),
                         e.published());

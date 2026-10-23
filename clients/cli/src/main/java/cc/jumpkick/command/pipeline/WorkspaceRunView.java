@@ -286,7 +286,7 @@ final class WorkspaceRunView {
 
             @Override
             public void onModuleFinish(ModuleOutcome o) {
-                event(JsonlShape.moduleFinish(o.dir().toString(), o.coord(), o.success(), o.millis()));
+                event(JsonlShape.moduleFinish(o.dir().toString(), o.coord(), o.success(), o.stopped(), o.millis()));
                 observer.accept(o);
                 String completion = completionLineFor(o);
                 if (view.animating()) {
@@ -376,7 +376,7 @@ final class WorkspaceRunView {
 
             @Override
             public void onModuleFinish(ModuleOutcome o) {
-                event(JsonlShape.moduleFinish(o.dir().toString(), o.coord(), o.success(), o.millis()));
+                event(JsonlShape.moduleFinish(o.dir().toString(), o.coord(), o.success(), o.stopped(), o.millis()));
                 if (toStdout) return;
                 List<String> painted = paint(o.dir());
                 String completion = completionLineFor(o);
@@ -434,11 +434,7 @@ final class WorkspaceRunView {
                 settleErrors.add(d);
             }
             ConsoleSpec.appendErrors(failAbove, settleErrors);
-            // --continue: the wedge names a count, so the roll-call has to name the modules.
-            List<String> failed = failedCoords(result);
-            if (failed.size() > 1) {
-                for (String coord : failed) failAbove.add(ConsoleSpec.errorLine("failed", coord));
-            }
+            failAbove.addAll(rollCall(result));
             String failTail = tails.failure().of(result);
             view.finishBuildPlanFailure(failTail, failAbove);
             if (session != null) session.wedge(failTail);
@@ -488,11 +484,7 @@ final class WorkspaceRunView {
         if (!result.success()) {
             String failTail = tails.failure().of(result);
             if (!toStdout) {
-                // --continue: the wedge names a count, so the roll-call has to name the modules.
-                List<String> failed = failedCoords(result);
-                if (failed.size() > 1) {
-                    for (String coord : failed) CliOutput.err(ConsoleSpec.errorLine("failed", coord));
-                }
+                for (String line : rollCall(result)) CliOutput.err(line);
                 CommandWedge.printFail(chrome.planName(), failTail);
             }
             if (session != null) session.wedge(failTail);
@@ -565,24 +557,50 @@ final class WorkspaceRunView {
     static List<String> failedCoords(WorkspaceResult result) {
         if (result.modules() == null) return List.of();
         return result.modules().stream()
-                .filter(m -> !m.success())
+                .filter(m -> !m.success() && !m.stopped())
                 .map(ModuleOutcome::coord)
                 .toList();
     }
 
-    /** The failure wedge's subject: one coordinate, or {@code "N modules"} when several failed. */
+    /** Modules another module's failure stopped before they could be judged, in finish order. */
+    static List<String> stoppedCoords(WorkspaceResult result) {
+        if (result.modules() == null) return List.of();
+        return result.modules().stream()
+                .filter(ModuleOutcome::stopped)
+                .map(ModuleOutcome::coord)
+                .toList();
+    }
+
+    /**
+     * The failure wedge's subject: one coordinate, or {@code "N modules"} when several failed,
+     * followed by {@code "; N stopped"} when the failure stopped modules still in flight.
+     */
     static String failedSubject(WorkspaceResult result, String fallback) {
         List<String> failed = failedCoords(result);
-        if (failed.isEmpty()) return fallback;
-        if (failed.size() == 1) return failed.get(0);
-        return failed.size() + " modules";
+        int stopped = stoppedCoords(result).size();
+        String subject = failed.isEmpty() ? fallback : failed.size() == 1 ? failed.get(0) : failed.size() + " modules";
+        return stopped == 0 ? subject : subject + "; " + stopped + " stopped";
+    }
+
+    /**
+     * The lines above a failure wedge that name modules: every failed one when several failed
+     * ({@code --continue}), then every stopped one, apart from the failures.
+     */
+    static List<String> rollCall(WorkspaceResult result) {
+        List<String> lines = new ArrayList<>();
+        List<String> failed = failedCoords(result);
+        if (failed.size() > 1) {
+            for (String coord : failed) lines.add(ConsoleSpec.errorLine("failed", coord));
+        }
+        for (String coord : stoppedCoords(result)) lines.add(BuildTails.stoppedLine(coord));
+        return lines;
     }
 
     /** The module's {@code [k of N]} completion row; null for a standalone project, which has one module. */
     private @Nullable String completionLineFor(ModuleOutcome o) {
         if (chrome.standalone()) return null;
         int index = completed.incrementAndGet();
-        return BuildTails.completionLine(o.success(), index, Math.max(planned(), index), o.coord(), o.millis());
+        return BuildTails.completionLine(o, index, Math.max(planned(), index));
     }
 
     private List<String> paint(Path moduleDir) {

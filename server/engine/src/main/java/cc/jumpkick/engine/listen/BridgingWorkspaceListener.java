@@ -179,6 +179,7 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
                 o.millis(),
                 o.didWork(),
                 o.cancelled(),
+                o.stopped(),
                 o.image(),
                 o.shelved(),
                 o.published()));

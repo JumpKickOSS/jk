@@ -109,6 +109,7 @@ public sealed interface EngineEvent {
             long millis,
             boolean didWork,
             boolean cancelled,
+            boolean stopped,
             ModuleOutcome.@Nullable Image image,
             ModuleOutcome.@Nullable Shelved shelved,
             ModuleOutcome.@Nullable Published published)

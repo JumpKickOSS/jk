@@ -174,7 +174,8 @@ export JK_OUTPUT=jsonl     # the same for every command
 different kind of job, so a parser written against one works against all of them:
 
 - exactly one **`workspace-start`**,
-- a **`module-start`** / **`module-finish`** pair for every module entered,
+- a **`module-start`** / **`module-finish`** pair for every module entered (a module the
+  failure stopped finishes with `"success":false,"stopped":true`),
 - exactly one terminal **`workspace-finish`** — on *every* outcome, including failure,
   cancellation and a wire error. A stream that ends without it means jk died, not that the build
   is still running.
@@ -340,7 +341,7 @@ differs; field **names** match.
 | Test class | `class-finish` — one per test class as it finishes, in one test JVM or many: `module`, `testClass`, `tests`, `failed`, `skipped`, `millis`, `tier` (`fast`, a profile name, `all`), and `slow` — the class's methods of 1s or more, longest first, at most five, each `{method, millis}`; absent when none. A run stopped part way still has a row for every class that finished |
 | Slowest tests | `slowest-tests` — once, as a `jk test` run settles, before `workspace-finish` (`buildplan-finish` for a lone project), only when something took 1s or more: `classes` and `methods`, the top five of each, longest first; each row `module`, `testClass`, (`method`), `tier`, `millis`. Ranked from the run's `class-finish` lines, so a suite served from cache has no row — [Test](test.md#the-slowest-tests-test-fast-method-budget) |
 | Plan / ETA | `plan`, `eta` (web; CLI via explain) |
-| Module | `module-start` / `module-finish` (paired) |
+| Module | `module-start` / `module-finish` (paired) — finish carries `coord`, `success` and `duration_ms`, and `"stopped":true` on a module another module's failure stopped before it could be judged (fail-fast): `success` is `false` but nothing of its own failed, so count it apart from the failures. Absent or `false` otherwise |
 | Workspace end | `workspace-finish` (exactly one, on every outcome) |
 | Dev session | `sidecar-started` / `sidecar-output` / `sidecar-ready` / `sidecar-exited`, `app-started` / `app-output` / `app-exited`, `dev-ready` — [`jk dev`](#jk-dev) |
 | Guard violation | `guard` — one per violation row of the last `jk guard` run, after the build's events: `code`, `kind`, `baseline` (`new`/`baselined`), `file`, `line`, `at` (fingerprint), `message`, `instead`, `why`, `source` |

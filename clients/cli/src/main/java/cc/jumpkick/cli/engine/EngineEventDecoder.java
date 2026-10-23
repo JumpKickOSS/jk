@@ -503,18 +503,7 @@ final class EngineEventDecoder {
     }
 
     private static ModuleOutcome readOutcome(String dir, String line) {
-        ModuleFinishEvent e = ModuleFinishEvent.decode(line);
-        return new ModuleOutcome(
-                e.coord(),
-                Path.of(dir),
-                e.success(),
-                e.exitCode(),
-                e.millis(),
-                e.didWork(),
-                e.cancelled(),
-                e.image(),
-                e.shelved(),
-                e.published());
+        return ModuleFinishEvent.decode(line).outcome(Path.of(dir));
     }
 
     /**

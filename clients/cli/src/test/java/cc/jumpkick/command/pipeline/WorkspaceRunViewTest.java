@@ -311,4 +311,28 @@ class WorkspaceRunViewTest {
         var clean = new WorkspaceResult(true, 0, List.of(), List.of());
         assertThat(WorkspaceRunView.failedSubject(clean, "build")).isEqualTo("build");
     }
+
+    @Test
+    void modules_a_failure_stopped_are_counted_and_listed_apart_from_the_failure() {
+        var run = new WorkspaceResult(
+                false,
+                1,
+                List.of(
+                        new ModuleOutcome("g:auditor", Path.of("/ws/auditor"), false, 1, 1, true),
+                        new ModuleOutcome("g:engine", Path.of("/ws/engine"), false, 1, 1, true, false)
+                                .withStopped(true),
+                        new ModuleOutcome("g:cli", Path.of("/ws/cli"), false, 1, 1, true, false).withStopped(true),
+                        new ModuleOutcome("g:ok", Path.of("/ws/ok"), true, 0, 1, true)),
+                List.of());
+
+        assertThat(WorkspaceRunView.failedCoords(run)).containsExactly("g:auditor");
+        assertThat(WorkspaceRunView.stoppedCoords(run)).containsExactly("g:engine", "g:cli");
+        assertThat(WorkspaceRunView.failedSubject(run, "tests")).isEqualTo("g:auditor; 2 stopped");
+        List<String> rollCall =
+                WorkspaceRunView.rollCall(run).stream().map(TestAnsi::strip).toList();
+        assertThat(rollCall).hasSize(2);
+        assertThat(rollCall.get(0)).contains("stopped").contains("g:engine");
+        assertThat(rollCall.get(1)).contains("stopped").contains("g:cli");
+        assertThat(String.join("\n", rollCall)).doesNotContain("g:auditor").doesNotContain("rror");
+    }
 }

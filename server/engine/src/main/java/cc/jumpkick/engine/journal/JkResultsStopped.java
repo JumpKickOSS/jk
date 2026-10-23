@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import cc.jumpkick.wire.runtime.ModuleOutcome;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import org.jspecify.annotations.NullMarked;
 
@@ -52,14 +55,13 @@ final class JkResultsStopped {
      * could be judged. Its recorded steps are the evidence — one the failure cancelled, or steps
      * that all ran green before the workspace stopped admitting the next — and the failure it was
      * stopped for is somewhere else in the run. A module with no step, or the only module with
-     * anything failed, keeps its own outcome.
+     * anything failed, keeps its own outcome. The live module-finish decides with the same
+     * {@link ModuleOutcome#stoppedByFailure} rule.
      */
     static boolean stoppedModule(BuildRecord r, BuildRecord.Module m) {
-        if (r.cancelled() || m.success() || m.steps().isEmpty()) return false;
-        for (BuildRecord.Task t : m.steps()) {
-            if (failedStep(t)) return false;
-        }
-        return failedElsewhere(r, m);
+        List<String> statuses = new ArrayList<>(m.steps().size());
+        for (BuildRecord.Task t : m.steps()) statuses.add(t.status());
+        return ModuleOutcome.stoppedByFailure(m.success(), r.cancelled(), statuses, failedElsewhere(r, m));
     }
 
     private static boolean failedStep(BuildRecord.Task t) {

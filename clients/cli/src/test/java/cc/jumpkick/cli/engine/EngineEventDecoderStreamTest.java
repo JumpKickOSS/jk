@@ -3,6 +3,7 @@ package cc.jumpkick.cli.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
@@ -319,6 +320,32 @@ class EngineEventDecoderStreamTest {
 
         assertThat(result.modules()).hasSize(1);
         assertThat(result.modules().getFirst().shelved()).isEqualTo(shelved);
+    }
+
+    /** A module fail-fast stopped reaches the client as stopped, apart from the one that failed. */
+    @Test
+    void a_module_finish_carries_that_the_module_was_stopped() throws Exception {
+        WorkspaceResult result = EngineEventDecoder.streamWorkspaceEvents(
+                stream(
+                        ProtoLifecycle.jobStart(54, "test", "/w", 2),
+                        ProtoEvents.planModule("/w/a", "g:a:1", "a", 10, false),
+                        ProtoEvents.planModule("/w/b", "g:b:1", "b", 10, false),
+                        ProtoEvents.planDone(2),
+                        ProtoEvents.moduleStart("/w/a"),
+                        ProtoEvents.moduleStart("/w/b"),
+                        ProtoEvents.planFinish("/w/a", false),
+                        ProtoEvents.moduleFinish("/w/a", "g:a:1", false, 1, 5),
+                        ProtoEvents.planFinish("/w/b", false),
+                        ProtoEvents.moduleFinish("/w/b", "g:b:1", false, 1, 5, true, false, true, null, null, null),
+                        ProtoEvents.workspaceFinish(false, 1, List.of(), false),
+                        ProtoLifecycle.jobFinish(54)),
+                new Recorder(),
+                Path.of("/cache"),
+                null);
+
+        assertThat(result.modules())
+                .extracting(ModuleOutcome::coord, ModuleOutcome::stopped)
+                .containsExactly(tuple("g:a:1", false), tuple("g:b:1", true));
     }
 
     /**

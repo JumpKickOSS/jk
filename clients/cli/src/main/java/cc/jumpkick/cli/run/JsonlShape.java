@@ -339,9 +339,9 @@ public final class JsonlShape {
         return Jsonl.append(envelope, body.substring(1, body.length() - 1));
     }
 
-    /** A workspace module finished (success or failure). */
-    public static String moduleFinish(String dir, String coord, boolean success, long durationMs) {
-        return new ModuleFinishLine(nowMillis(), dir, coord, success, durationMs).encode();
+    /** A workspace module finished: succeeded, failed, or stopped by another module's failure. */
+    public static String moduleFinish(String dir, String coord, boolean success, boolean stopped, long durationMs) {
+        return new ModuleFinishLine(nowMillis(), dir, coord, success, stopped, durationMs).encode();
     }
 
     static long nowMillis() {

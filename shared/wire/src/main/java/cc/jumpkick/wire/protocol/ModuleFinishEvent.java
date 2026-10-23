@@ -3,10 +3,12 @@ package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
+import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A module's terminal. {@code didWork} and {@code cancelled} are additive; the image fields ride
+ * A module's terminal. {@code didWork} and {@code cancelled} are additive; {@code stopped} rides
+ * only when true, on a module another module's failure stopped ({@code success} is then false); the image fields ride
  * only for an image module (each only when set) and are followed by {@code hasImage} so a reader can
  * tell "image module with nothing to say" from "not an image module" (see {@link EngineProtocol#MODULE_FINISH}).
  * The shelf fields ({@code shelfCoord}, {@code shelfJarSha256}, {@code shelfPomSha256}) ride only
@@ -21,6 +23,7 @@ public record ModuleFinishEvent(
         long millis,
         boolean didWork,
         boolean cancelled,
+        boolean stopped,
         ModuleOutcome.@Nullable Image image,
         ModuleOutcome.@Nullable Shelved shelved,
         ModuleOutcome.@Nullable Published published) {
@@ -32,7 +35,8 @@ public record ModuleFinishEvent(
                 .number("exitCode", exitCode)
                 .number("millis", millis)
                 .bool("didWork", didWork)
-                .bool("cancelled", cancelled);
+                .bool("cancelled", cancelled)
+                .optionalTrue("stopped", stopped);
         if (image != null) {
             json.optionalString("imageRef", image.ref())
                     .optionalString("imageTarball", image.tarball())
@@ -63,6 +67,12 @@ public record ModuleFinishEvent(
                             + "}");
         }
         return json.finish();
+    }
+
+    /** The outcome this event reports for the module at {@code dir}. */
+    public ModuleOutcome outcome(Path moduleDir) {
+        return new ModuleOutcome(
+                coord, moduleDir, success, exitCode, millis, didWork, cancelled, stopped, image, shelved, published);
     }
 
     public static ModuleFinishEvent decode(String json) {
@@ -101,6 +111,7 @@ public record ModuleFinishEvent(
                 Jsonl.longValue(json, "millis", 0),
                 Jsonl.bool(json, "didWork", false),
                 Jsonl.bool(json, "cancelled", false),
+                Jsonl.bool(json, "stopped", false),
                 image,
                 shelved,
                 published);

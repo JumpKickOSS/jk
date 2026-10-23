@@ -218,7 +218,7 @@ class JsonlShapeFrozenBytesTest {
                 .isEqualTo(ENV + "workspace-finish\",\"success\":false,\"duration_ms\":99,\"modules\":5}");
         assertThat(new ModuleStartLine(TS, "a/b", "g:a").encode())
                 .isEqualTo(ENV + "module-start\",\"dir\":\"a/b\",\"coord\":\"g:a\"}");
-        assertThat(new ModuleFinishLine(TS, "a/b", "g:a", true, 77).encode())
+        assertThat(new ModuleFinishLine(TS, "a/b", "g:a", true, false, 77).encode())
                 .isEqualTo(
                         ENV + "module-finish\",\"dir\":\"a/b\",\"coord\":\"g:a\",\"success\":true,\"duration_ms\":77}");
     }

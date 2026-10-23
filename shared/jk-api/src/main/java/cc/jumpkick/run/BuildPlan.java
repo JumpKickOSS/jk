@@ -101,6 +101,9 @@ public final class BuildPlan {
     /** True only for host {@link #requestCancel} (vs internal cancel after a step failure). */
     private final AtomicBoolean userRequestedCancel = new AtomicBoolean(false);
 
+    /** Set by {@link #stop}: a failure elsewhere asked this plan to stop. */
+    private final AtomicBoolean stopRequested = new AtomicBoolean(false);
+
     /** The handles of the async steps in flight, so {@link #stop} can cancel them from outside the run loop. */
     private final Set<CompletableFuture<TaskStatus>> outstanding = ConcurrentHashMap.newKeySet();
 
@@ -167,7 +170,13 @@ public final class BuildPlan {
      * so the record shows what the failure stopped rather than an interrupt nobody made.
      */
     public void stop() {
+        stopRequested.set(true);
         cancelSiblings(outstanding);
+    }
+
+    /** Whether {@link #stop} was called: a failure elsewhere asked this plan to stop. */
+    public boolean stopped() {
+        return stopRequested.get();
     }
 
     public BuildPlanView snapshot() {
