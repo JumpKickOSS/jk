@@ -89,6 +89,13 @@ public final class JavaSourceApi {
      */
     static final long PARSE_BATCH_BYTES = 1L << 20;
 
+    /**
+     * The largest file parsed at all. javac's trees run to several times the source, and the engine
+     * parses inside its capped heap, so a file above this is keyed on its content, as a file javac
+     * cannot parse is: a generated monolith costs its dependents ABI avoidance, never the engine.
+     */
+    static final long MAX_PARSE_FILE_BYTES = 4L << 20;
+
     private JavaSourceApi() {}
 
     /** The {@link View#DECLARATIONS} token of one file; see {@link #digests}. */
@@ -129,7 +136,7 @@ public final class JavaSourceApi {
             }
         }
         if (!pending.isEmpty()) {
-            Map<Path, String> parsed = parse(pending, view, PARSE_BATCH_BYTES);
+            Map<Path, String> parsed = parse(pending, view, PARSE_BATCH_BYTES, MAX_PARSE_FILE_BYTES);
             for (Path abs : pending) {
                 String content = Objects.requireNonNull(contentByPath.get(abs), "content hash");
                 @Nullable String shape = parsed.get(abs);
@@ -156,14 +163,20 @@ public final class JavaSourceApi {
     /**
      * The rendered declaration shape per file, for every file javac parsed without an error, one
      * javac task per {@link #batches batch} of at most {@code batchBytes} of source. A file with a
-     * syntax error is left out; so is every file when the runtime has no javac.
+     * syntax error is left out; so is one over {@code maxFileBytes}, and every file when the
+     * runtime has no javac.
      */
-    static Map<Path, String> parse(List<Path> files, View view, long batchBytes) {
+    static Map<Path, String> parse(List<Path> files, View view, long batchBytes, long maxFileBytes) {
         Map<Path, String> out = new LinkedHashMap<>();
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         if (javac == null) return out;
         try {
-            for (List<Path> batch : batches(files, batchBytes)) out.putAll(parseBatch(javac, batch, view));
+            List<Path> parseable = new ArrayList<>(files.size());
+            for (Path file : files) {
+                if (Files.size(file) <= maxFileBytes) parseable.add(file);
+                else Log.debug("parse: " + file + " is over " + maxFileBytes + " bytes; keyed on its content");
+            }
+            for (List<Path> batch : batches(parseable, batchBytes)) out.putAll(parseBatch(javac, batch, view));
         } catch (IOException | RuntimeException e) {
             // A parse that fails wholesale keys every pending file on content.
             Log.debug("parse: javac could not read the declarations", e);
