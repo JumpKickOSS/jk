@@ -8,10 +8,10 @@ What a release may change in the formats projects depend on: [Compatibility](com
 
 | Line | Meaning |
 |------|---------|
-| **`0.20.0`** | Current product version (no `-SNAPSHOT` on `main`) |
-| Tag **`v0.20.0`** | Next public release cut from that line |
-| Prior | **`0.15.2`** — previous release; **`0.10.1`** first public |
-| Later | Semver-ish: `0.20.1`, `0.21.0`, … |
+| **`0.30.0`** | Current product version (no `-SNAPSHOT` on `main`) |
+| Tag **`v0.30.0`** | Next public release cut from that line |
+| Prior | **`0.20.0`** — previous release; **`0.10.1`** first public |
+| Later | Semver-ish: `0.30.1`, `0.31.0`, … |
 
 Bump `JkVersion.VERSION`, the workspace `jk.toml` `version` and the installers' pointer floor
 (`RELEASE_FLOOR` in `install.sh`, `$ReleaseFloor` in `install.ps1`, mirrored under
@@ -25,6 +25,29 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 <version>` puts the entry at the top of the GitHub Release notes, ahead of the commit list since the
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
+
+### 0.30.0
+
+- **Skipped work is proven done.** A suite is keyed on everything it reads, not only what it
+  declares; stat-based skips key on size, mtime, change time and file id; outputs are verified by
+  digest; a compile running annotation processors or groovyc keys what they read of the classpath;
+  the classpath ABI covers package-private members. `jk build --verify-cache` holds every record to
+  a fresh run. A clean-build oracle (`bench/oracle`) holds every incremental build to one from
+  nothing on macOS, Windows and Linux.
+- **The fast tier is walled off from the network:** a test that reaches any remote host fails.
+- **`jk graph` is never older than the tree** it answers for, indexes named constants, and records
+  a constant read through its type as a reference.
+- **One module pipeline:** every build-like goal runs the same phases through PACKAGE, the SYNC
+  phase included, and journals as a build; the forecast prices exactly the planned steps.
+- **A module fail-fast stopped finishes as stopped**, not failed, in the console, machine output
+  and the dashboard.
+- **The lock records each artifact's licences;** guards and `jk deny` judge them.
+- **Windows:** the fast tier and the oracle hold — copies are stamped, a worker's `PATH` replaces
+  `Path`, build-logic keys spell paths with forward slashes, and the kts host loads cached scripts
+  from a copy.
+- **Frameworks:** Quarkus fast-jars ship without the native-sources runner; Grails builds under
+  `target`; Robolectric gets its JDK flags from the android plugin; `jk dev` runs transformed
+  classes; Spock, Kotest and Cucumber tests are filed under their spec class.
 
 ### 0.20.0
 
