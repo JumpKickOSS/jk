@@ -120,7 +120,8 @@ class JUnitPinParityTest {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                 String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
-                boolean output = OutputDirs.isBuildOutputDir(dir) || name.equals("target") || name.equals(".git");
+                boolean output =
+                        OutputDirs.isBuildOutputDir(dir) || name.equals("target") || RepoRoot.otherCheckout(dir, REPO);
                 return output ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
             }
 
