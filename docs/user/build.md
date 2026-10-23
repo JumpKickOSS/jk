@@ -317,7 +317,8 @@ vars = ["SSH_AUTH_SOCK", { TZ = "UTC" }]   # forward a name, or set a value
 `vars` has the `[test] env` shape: a bare name forwards the caller's value when it is set, a
 table sets values outright (`${VAR}`, `${module}` and `${target}` expand; an unset `${VAR}` is
 an error). `vars` reaches every worker of the module; `[test] env` layers on top for test JVMs
-only and, unlike `vars`, is part of the run-tests key — [Test](test.md).
+only. The values of both are part of the run-tests key, so a forwarded variable that changes
+between two builds runs the suite again — [Test](test.md).
 
 ```toml
 [env]

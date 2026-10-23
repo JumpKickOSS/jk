@@ -650,7 +650,9 @@ public final class PlannerTest {
         Map<String, String> profileEnv = TestLaunch.profileEnv(projectUnderTest, in.profileName());
         WorkerEnv testEnv = TestLaunch.withFastTierWalls(
                 TestLaunch.testEnvironment(ctx, in, projectUnderTest).with(profileEnv), effectiveSel);
-        List<String> testJvmArgs = TestLaunch.testJvmArgs(ctx, in, projectUnderTest, pluginDecls);
+        TestTier tier = TestTier.of(effectiveSel, in.profileName(), fastMethodBudget(projectUnderTest, in.dir()));
+        List<String> testJvmArgs =
+                PlannerSupport.suiteJvmArgs(TestLaunch.testJvmArgs(ctx, in, projectUnderTest, pluginDecls), tier);
         String stampKey = testStampKey(
                 ctx, in, projectUnderTest, effectiveSel, affected, workerJars, testJvmArgs, testSrcs, testRtCp);
         // --force forces a real test run, matching the compile/package
@@ -682,7 +684,6 @@ public final class PlannerTest {
                 PlannerTest::awaitTestGate);
         TestSummary result;
         TagExcludedCapture tagExcluded;
-        TestTier tier = TestTier.of(effectiveSel, in.profileName(), fastMethodBudget(projectUnderTest, in.dir()));
         try {
             // Module pin ([test] workers / [build] test-workers) wins over CLI for
             // hermetic opt-out. Auto hands the launcher the share; it applies the
@@ -695,7 +696,6 @@ public final class PlannerTest {
             // The module path is read off the runtime classpath, which the stamp already keys.
             List<String> forkJvmArgs = new ArrayList<>(testJvmArgs);
             forkJvmArgs.addAll(JvmModulePath.args(projectUnderTest, in.dir(), runtimeCp));
-            forkJvmArgs.addAll(tier.timeoutArgs());
             JUnitLauncher launcher = TestLaunch.launcher(
                             in, projectUnderTest, effectiveSel, forkJvmArgs, affected, jacoco, coverageExec)
                     .withSuites(suites)

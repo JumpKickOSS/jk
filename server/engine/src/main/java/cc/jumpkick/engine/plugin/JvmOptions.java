@@ -182,6 +182,15 @@ public final class JvmOptions {
     }
 
     /**
+     * The user's own flags every suite JVM gets from the request's tuning: {@code --jvm-arg}, {@code
+     * JK_JVM_ARGS} and {@code [jvm] args}. {@link #suiteFlags} appends exactly these, so the run-tests
+     * stamp keys them; the heap jk plans per host is not keyed.
+     */
+    public static List<String> suiteUserArgs() {
+        return List.copyOf(tuning().extraArgs());
+    }
+
+    /**
      * Flags for the JVMs that run a module's test suite, placed before {@code testJvmArgs} (the
      * plugins' arguments, {@code [test] jvm-args} and system properties, the profile's {@code
      * jvm-args}). jk plans the heap and leaves everything else the JVM chooses for itself: no

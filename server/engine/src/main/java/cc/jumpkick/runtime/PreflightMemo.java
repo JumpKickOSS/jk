@@ -27,6 +27,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
@@ -251,7 +252,7 @@ public final class PreflightMemo {
                 if (row == null) return miss("no-row", "module", rel);
                 // The same salt the stored rows carry: a guarded workspace's rows never matched a
                 // bare recomputation, so its memo missed on every build.
-                Fingerprint now = fingerprintModule(dir, skipTests, guardSaltFor(dir, saltByRoot));
+                Fingerprint now = fingerprintModule(dir, u.manifest(), skipTests, guardSaltFor(dir, saltByRoot));
                 if (!(now instanceof Known known)) {
                     return miss("unreadable-input", "module", rel, "cause", now);
                 }
@@ -311,7 +312,7 @@ public final class PreflightMemo {
         Map<Path, String> saltByRoot = new LinkedHashMap<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) {
             Path dir = u.dir().toAbsolutePath().normalize();
-            switch (fingerprintModule(dir, skipTests, guardSaltFor(dir, saltByRoot))) {
+            switch (fingerprintModule(dir, u.manifest(), skipTests, guardSaltFor(dir, saltByRoot))) {
                 case Known k -> fps.put(dir, k.hex());
                 case Uncertain u2 -> uncertain.put(dir, u2);
             }
@@ -823,10 +824,24 @@ public final class PreflightMemo {
      * plugin-contributed roots.
      */
     static Fingerprint fingerprintModule(Path moduleDir, boolean skipTests) {
-        return fingerprintModule(moduleDir, skipTests, "");
+        try {
+            Path manifest = ManifestPaths.manifestIn(moduleDir);
+            JkBuild project = Files.isRegularFile(manifest) ? JkBuildParser.parse(manifest) : null;
+            return fingerprintModule(moduleDir, project, skipTests, "");
+        } catch (Exception e) {
+            return uncertain(moduleDir, e);
+        }
     }
 
-    static Fingerprint fingerprintModule(Path moduleDir, boolean skipTests, String guardSalt) {
+    /**
+     * Every input the module's steps read, as one digest: its manifest, lock and source trees by
+     * content, and, when tests run, every input of its run-tests stamp that is not a file of the
+     * tree ({@link PlannerSupport#testStampExtras}: environment values, tool identities, the
+     * request's JVM flags, worker jars). A memo that vouched for files alone would leave a module
+     * whose suite sees a new environment unscheduled, and its stamp never consulted.
+     */
+    static Fingerprint fingerprintModule(
+            Path moduleDir, @Nullable JkBuild project, boolean skipTests, String guardSalt) {
         try {
             InputTrees.coverModule(moduleDir);
             MessageDigest md = Hashing.newSha256();
@@ -877,6 +892,7 @@ public final class PreflightMemo {
                 }
             }
             feedNodeBuild(md, moduleDir);
+            if (!skipTests && project != null) feedTestInputs(md, moduleDir, project);
             return new Known(Hashing.hex(md.digest()));
         } catch (Exception e) {
             return uncertain(moduleDir, e);
@@ -903,6 +919,27 @@ public final class PreflightMemo {
             feed(md, "env:" + e.getKey() + "=" + Hashing.sha256Hex(e.getValue()));
         }
         feed(md, "skip-node=" + SessionContext.current().skipNode());
+    }
+
+    /**
+     * The run-tests stamp's extras, from the function the stamp itself calls. A worker jar a
+     * workspace sibling builds enters by path: its bytes are that sibling's row, and its content
+     * before this build would never match the jar the build leaves.
+     */
+    private static void feedTestInputs(MessageDigest md, Path moduleDir, JkBuild project) throws IOException {
+        Path root = WorkspaceScan.findRoot(moduleDir)
+                .orElse(moduleDir)
+                .toAbsolutePath()
+                .normalize();
+        ClasspathFingerprint.EntryIdentity identity = jar -> {
+            Path abs = jar.toAbsolutePath().normalize();
+            return abs.startsWith(root)
+                    ? "sibling:" + root.relativize(abs).toString().replace('\\', '/')
+                    : ClasspathFingerprint.ON_DISK.of(jar);
+        };
+        for (String token : PlannerSupport.testStampExtras(moduleDir, project, null, identity)) {
+            feed(md, "test:" + token);
+        }
     }
 
     /**
