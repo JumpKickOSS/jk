@@ -13,6 +13,7 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
@@ -141,7 +142,7 @@ class ClassesTreeRestoreE2eTest {
         assertThat(graph.hasErrors()).isFalse();
         ActionCache actionCache =
                 new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
-        return TaskForecaster.of(graph, JkStores.cacheCas(cache), actionCache, cache, true).stream()
+        return ForecastWalk.of(graph, JkStores.cacheCas(cache), actionCache, cache, true).stream()
                 .filter(m -> m.dir().getFileName().toString().equals(module))
                 .findFirst()
                 .orElseThrow();

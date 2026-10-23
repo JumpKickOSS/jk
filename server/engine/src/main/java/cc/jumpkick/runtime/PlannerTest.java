@@ -85,7 +85,7 @@ public final class PlannerTest {
         if (hasFixtures) requires.add(TaskNames.COMPILE_TEST_FIXTURES);
         requires.addAll(testSourceGenSteps(pluginDecls));
         return Task.builder(TaskNames.COMPILE_TEST)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> PlannerTestForecast.compileTest(ForecastScope.of(s))))
                 .stage(BuildStage.TEST)
                 .label("Test Compile")
                 .kind(TaskKind.CPU)
@@ -564,7 +564,7 @@ public final class PlannerTest {
             }
         }
         return Task.builder(TaskNames.RUN_TESTS)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> PlannerTestForecast.runTests(ForecastScope.of(s))))
                 .stage(BuildStage.TEST)
                 .label("Testing")
                 .kind(TaskKind.IO)

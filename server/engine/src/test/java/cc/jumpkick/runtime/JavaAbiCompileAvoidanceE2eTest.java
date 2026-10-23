@@ -15,6 +15,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.FreshnessStamp;
@@ -144,7 +145,7 @@ class JavaAbiCompileAvoidanceE2eTest {
 
         // 1. Body-only edit: lib compiles and re-packages; app does not compile.
         Files.writeString(libSource, LIB_BODY_EDIT);
-        TaskForecast.Task beforeBody = forecast(ws, cache, "app", TaskNames.COMPILE_MAIN);
+        TaskForecast.Task beforeBody = forecast(ws, cache, "app", TaskNames.COMPILE_JAVA);
         assertThat(beforeBody.text())
                 .as("before any compile, explain reads lib's edit as body-only: " + beforeBody)
                 .contains("likely up to date")
@@ -155,14 +156,14 @@ class JavaAbiCompileAvoidanceE2eTest {
                 .as("the jar is keyed on full bytes, so a body-only change re-packages")
                 .anyMatch(l -> l.startsWith("package "));
         assertNotCompiled(bodyEdit, "after lib's body-only edit");
-        assertThat(forecast(ws, cache, "app", TaskNames.COMPILE_MAIN).cached())
+        assertThat(forecast(ws, cache, "app", TaskNames.COMPILE_JAVA).cached())
                 .as("jk explain agrees: app's compile is cached after a body-only upstream edit")
                 .isTrue();
 
         // The same key as the first build's: with the stamp gone, the compile is an action-cache
         // hit on it, and the forecast prices it against that record.
         Files.delete(app.classesDir().resolve(BuildStamps.JAVA));
-        TaskForecast.Task predicted = forecast(ws, cache, "app", TaskNames.COMPILE_MAIN);
+        TaskForecast.Task predicted = forecast(ws, cache, "app", TaskNames.COMPILE_JAVA);
         assertThat(predicted.cached()).isTrue();
         assertThat(predicted.key()).isEqualTo(initialKey.substring(0, 8));
         Steps forced = build(ws, cache, "app forced after the body-only edit", Set.of(ws.resolve("app")));
@@ -180,7 +181,7 @@ class JavaAbiCompileAvoidanceE2eTest {
         // 3. New public method app never calls: the ABI moved, so the key misses and the compile
         // runs; what Zinc recompiles is its business.
         Files.writeString(libSource, LIB_NEW_METHOD);
-        TaskForecast.Task beforeApi = forecast(ws, cache, "app", TaskNames.COMPILE_MAIN);
+        TaskForecast.Task beforeApi = forecast(ws, cache, "app", TaskNames.COMPILE_JAVA);
         assertThat(beforeApi.text())
                 .as("before any compile, explain reads lib's edit as an API change: " + beforeApi)
                 .contains("likely recompile")
@@ -215,7 +216,7 @@ class JavaAbiCompileAvoidanceE2eTest {
         assertThat(graph.hasErrors()).isFalse();
         ActionCache actionCache =
                 new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
-        List<TaskForecast.Module> plan = TaskForecaster.of(graph, JkStores.cacheCas(cache), actionCache, cache, true);
+        List<TaskForecast.Module> plan = ForecastWalk.of(graph, JkStores.cacheCas(cache), actionCache, cache, true);
         TaskForecast.Module m = plan.stream()
                 .filter(x -> x.dir().getFileName().toString().equals(module))
                 .findFirst()

@@ -530,8 +530,7 @@ public final class BuildEta {
 
     static boolean isCompileStepName(String name) {
         if (name == null) return false;
-        return name.startsWith(TaskNames.COMPILE_MAIN)
-                || name.startsWith(TaskNames.COMPILE_JAVA)
+        return name.startsWith(TaskNames.COMPILE_JAVA)
                 || name.startsWith(TaskNames.COMPILE_KOTLIN)
                 || name.startsWith(TaskNames.COMPILE_GROOVY)
                 || name.startsWith(TaskNames.COMPILE_TEST);

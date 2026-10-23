@@ -8,13 +8,16 @@ import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
@@ -56,7 +59,7 @@ public final class PlannerResources {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.COPY_RESOURCES)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> forecastCopy(ForecastScope.of(s))))
                 .stage(BuildLogicAnchor.AFTER_RESOURCES.stage())
                 .label("Resources")
                 .kind(TaskKind.CPU)
@@ -445,5 +448,30 @@ public final class PlannerResources {
      */
     static String[] beforePackageRequires(boolean buildInfo) {
         return new String[] {buildInfo ? TaskNames.BUILD_INFO : TaskNames.COPY_RESOURCES};
+    }
+
+    // ---- forecast ---------------------------------------------------------------------------
+
+    /**
+     * copy-resources' price: runs when the main resources (or the {@code [build-info]} files) drifted
+     * from the classes tree. Detected once, before package-jar keys on the post-copy tree; a compile
+     * that runs makes drift moot.
+     */
+    static TaskForecast.@Nullable Task forecastCopy(ForecastScope s) throws Exception {
+        ForecastScope.Prepared p = s.prepared();
+        Path classes = p.layout().classesDir();
+        if (s.compileDirty || !Files.isDirectory(classes)) return null;
+        s.mainResourceDrift = TaskForecaster.mainResourcesOutOfSync(s.dir, s.project, p.compact(), classes);
+        BuildBlock.BuildInfo buildInfo = s.project.build().buildInfo();
+        if (buildInfo != null) {
+            // A rewritten git.properties changes the classes tree package-jar keys on, so the
+            // jar is forecast as the resource drift it is.
+            s.buildInfoDrift = PlannerBuildInfo.outOfSync(s.dir, s.project, buildInfo, classes, Clock.SYSTEM);
+            s.mainResourceDrift |= s.buildInfoDrift;
+        }
+        s.knownResourceDrift = s.mainResourceDrift;
+        return s.mainResourceDrift
+                ? new TaskForecast.Task(TaskNames.COPY_RESOURCES, TaskForecast.Status.RUN, "resources changed", null)
+                : null;
     }
 }

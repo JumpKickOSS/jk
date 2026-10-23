@@ -102,65 +102,6 @@ public final class PlannerGuardSuite {
         return cp;
     }
 
-    /**
-     * Forecast the two non-suite source sets, fixtures then guard, in one call: returns whether the
-     * fixtures step is dirty (so {@code compile-test} cascades); the guard step cascades to nothing.
-     */
-    static boolean addSuiteForecasts(
-            List<TaskForecast.Task> steps,
-            boolean skipTests,
-            boolean compileDirty,
-            JkBuild project,
-            Path dir,
-            boolean compact,
-            BuildLayout layout,
-            List<Path> processorCp,
-            int release,
-            List<String> javacArgs,
-            Path javaHome,
-            Path cache,
-            ActionCache actionCache,
-            @Nullable Path workerJar,
-            List<Path> testCompileCp,
-            Cas cas,
-            RestoredOutputs restored)
-            throws IOException {
-        boolean fixturesDirty = PlannerFixtures.addForecast(
-                steps,
-                skipTests,
-                compileDirty,
-                project,
-                dir,
-                layout,
-                processorCp,
-                release,
-                javacArgs,
-                javaHome,
-                cache,
-                actionCache,
-                workerJar,
-                testCompileCp,
-                restored);
-        addForecast(
-                steps,
-                compileDirty,
-                project,
-                dir,
-                compact,
-                layout,
-                processorCp,
-                release,
-                javacArgs,
-                javaHome,
-                cache,
-                actionCache,
-                workerJar,
-                testCompileCp,
-                cas,
-                restored);
-        return fixturesDirty;
-    }
-
     /** Forecast {@code compile-guard} into {@code steps}; {@code false} when the module has no suite. */
     static boolean addForecast(
             List<TaskForecast.Task> steps,
@@ -232,7 +173,7 @@ public final class PlannerGuardSuite {
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
         return Task.builder(TaskNames.COMPILE_GUARD)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> forecast(ForecastScope.of(s))))
                 // COMPILE, not TEST: the module lane (a compile-stage step) requires it.
                 .stage(BuildStage.COMPILE)
                 .label("Guard Suite")
@@ -325,5 +266,30 @@ public final class PlannerGuardSuite {
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /** compile-guard's price, for a module whose suite the build compiles. */
+    static TaskForecast.@Nullable Task forecast(ForecastScope s) throws Exception {
+        s.projectOwnOutputs();
+        ForecastScope.Prepared p = s.prepared();
+        List<TaskForecast.Task> out = new ArrayList<>();
+        addForecast(
+                out,
+                s.compileDirty,
+                s.project,
+                s.dir,
+                p.compact(),
+                p.layout(),
+                p.processorCp(),
+                p.release(),
+                p.javacArgs(),
+                p.javaHome(),
+                s.cache,
+                s.actionCache,
+                s.workerJar,
+                s.testCompileCp(),
+                s.cas,
+                s.restored);
+        return out.isEmpty() ? null : out.getFirst();
     }
 }

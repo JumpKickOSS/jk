@@ -366,7 +366,7 @@ public final class PlannerCompile {
         AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         return Task.builder(TaskNames.COMPILE_JAVA)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> PlannerCompileForecast.java(ForecastScope.of(s))))
                 .stage(BuildStage.COMPILE)
                 .label("Compiling")
                 .kind(TaskKind.CPU)
@@ -743,7 +743,7 @@ public final class PlannerCompile {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.COMPILE_KOTLIN)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> PlannerCompileForecast.kotlin(ForecastScope.of(s))))
                 .stage(BuildStage.COMPILE)
                 .label("Kotlin")
                 .kind(TaskKind.CPU)
@@ -897,7 +897,7 @@ public final class PlannerCompile {
         boolean kotlinModule = cx.kotlinModule();
         boolean mixedWithJava = cx.mixedWithJava();
         return Task.builder(TaskNames.COMPILE_GROOVY)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> PlannerCompileForecast.groovy(ForecastScope.of(s))))
                 .stage(BuildStage.COMPILE)
                 .label("Groovy")
                 .kind(TaskKind.CPU)

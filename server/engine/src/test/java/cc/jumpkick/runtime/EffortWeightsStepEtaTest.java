@@ -76,13 +76,7 @@ class EffortWeightsStepEtaTest {
         BuildMetrics metrics = BuildMetrics.load(metricsFile);
 
         var engCost = EffortWeights.costFromRunningSteps(
-                Path.of(eng),
-                Set.of(),
-                List.of("compile-main", "run-tests"), // forecast name maps to compile-java
-                metrics,
-                null,
-                List.of(),
-                Map.of());
+                Path.of(eng), Set.of(), List.of("compile-java", "run-tests"), metrics, null, List.of(), Map.of());
         var cliCost = EffortWeights.costFromRunningSteps(
                 Path.of(cli), Set.of(Path.of(eng)), List.of("run-tests"), metrics, null, List.of(), Map.of());
 
@@ -194,9 +188,9 @@ class EffortWeightsStepEtaTest {
     }
 
     @Test
-    void metrics_step_name_maps_compile_main() {
-        assertThat(EffortWeights.metricsStepName("compile-main")).isEqualTo("compile-java");
-        assertThat(EffortWeights.metricsStepName("run-tests")).isEqualTo("run-tests");
+    void metrics_step_name_is_the_plans() {
+        assertThat(EffortWeights.metricsStepName("compile-java")).isEqualTo("compile-java");
+        assertThat(EffortWeights.metricsStepName(" ")).isEmpty();
     }
 
     @Test

@@ -8,7 +8,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.runtime.ModuleForecast.Prepared;
+import cc.jumpkick.runtime.ForecastScope.Prepared;
 import cc.jumpkick.runtime.base.DokkaResolver;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
@@ -20,7 +20,7 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The {@link ModuleForecast} arms for the packaging tails beside {@code package-jar}: the fat jar,
+ * The forecasts of the packaging tails beside {@code package-jar}: the fat jar,
  * the javadoc jar, the native image and the install, each keyed by the same {@link PackagingKeys} body its live step calls and
  * read against the action cache. {@code null} when the module plans no such tail.
  */

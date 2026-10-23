@@ -48,7 +48,7 @@ class BuildEtaStampDriftTest {
                 Path.of("/host"),
                 "g:host",
                 List.of(
-                        task("compile-main", TaskForecast.Status.CACHED, ""),
+                        task("compile-java", TaskForecast.Status.CACHED, ""),
                         task("compile-test", TaskForecast.Status.CACHED, ""),
                         task("run-tests", TaskForecast.Status.RUN, "run tests · ~147 tests"),
                         task("package-jar", TaskForecast.Status.CACHED, "")),
@@ -76,7 +76,7 @@ class BuildEtaStampDriftTest {
                 Path.of("/host"),
                 "g:host",
                 List.of(
-                        task("compile-main", TaskForecast.Status.CACHED, ""),
+                        task("compile-java", TaskForecast.Status.CACHED, ""),
                         task("compile-test", TaskForecast.Status.CACHED, ""),
                         task(
                                 "run-tests",
@@ -104,7 +104,7 @@ class BuildEtaStampDriftTest {
                 Path.of("/host"),
                 "g:host",
                 List.of(
-                        task("compile-main", TaskForecast.Status.CACHED, ""),
+                        task("compile-java", TaskForecast.Status.CACHED, ""),
                         task("compile-test", TaskForecast.Status.PARTIAL, "compile · 3 sources changed"),
                         task("run-tests", TaskForecast.Status.RUN, "run tests · ~147 tests"),
                         task("package-jar", TaskForecast.Status.CACHED, "")),

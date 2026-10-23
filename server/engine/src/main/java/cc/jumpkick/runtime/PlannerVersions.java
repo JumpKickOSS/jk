@@ -217,7 +217,7 @@ public final class PlannerVersions {
             boolean compileDirty,
             JkBuild project,
             Path dir,
-            ModuleForecast.Prepared prepared,
+            ForecastScope.Prepared prepared,
             List<Path> mainCp,
             ForecastEnv env)
             throws IOException {
@@ -289,7 +289,7 @@ public final class PlannerVersions {
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
         return Task.builder(TaskNames.COMPILE_VERSIONS)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> forecast(ForecastScope.of(s))))
                 .stage(BuildStage.COMPILE)
                 .label("Compiling releases")
                 .kind(TaskKind.CPU)
@@ -389,5 +389,19 @@ public final class PlannerVersions {
             return true;
         });
         for (Path p : stale) PathUtil.deleteRecursively(p);
+    }
+
+    /** compile-versions' price: dirty with the main compile, else each release's predicted compile. */
+    static TaskForecast.@Nullable Task forecast(ForecastScope s) throws Exception {
+        List<TaskForecast.Task> out = new ArrayList<>();
+        s.compileDirty |= addForecast(
+                out,
+                s.compileDirty,
+                s.project,
+                s.dir,
+                s.prepared(),
+                s.mainCp,
+                new ForecastEnv(s.cache, s.actionCache, s.workerJar, s.restored, s.resolver));
+        return out.isEmpty() ? null : out.getFirst();
     }
 }

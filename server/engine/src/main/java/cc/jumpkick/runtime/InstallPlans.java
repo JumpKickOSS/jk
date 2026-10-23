@@ -122,7 +122,12 @@ public final class InstallPlans {
         if (proj.nativeMode() == JkBuild.NativeMode.ALWAYS) requires.add(TaskNames.NATIVE_IMAGE);
         builder.stateKeys(PRIMARY, SHELVED)
                 .extend(Task.builder(TaskNames.CACHE_INSTALL)
-                        .forecast(StepForecast.PRICED)
+                        .forecast(StepForecast.priced(s -> ForecastPackagingTails.cacheInstall(
+                                proj,
+                                BuildLayout.of(ForecastScope.of(s).dir, proj),
+                                cache,
+                                m2Dir,
+                                ForecastScope.of(s).runs(TaskNames.PACKAGE_JAR))))
                         .stage(BuildStage.PUBLISH)
                         .requires(requires.toArray(new String[0]))
                         .ticks(1)

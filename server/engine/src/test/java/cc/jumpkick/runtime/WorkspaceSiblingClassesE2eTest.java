@@ -15,6 +15,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
@@ -175,8 +176,8 @@ class WorkspaceSiblingClassesE2eTest {
         wipeTargets(ws);
 
         List<TaskForecast.Module> plan = forecast(ws, cache);
-        TaskForecast.Task libCompile = step(plan, "lib", TaskNames.COMPILE_MAIN);
-        TaskForecast.Task appCompile = step(plan, "app", TaskNames.COMPILE_MAIN);
+        TaskForecast.Task libCompile = step(plan, "lib", TaskNames.COMPILE_JAVA);
+        TaskForecast.Task appCompile = step(plan, "app", TaskNames.COMPILE_JAVA);
         assertThat(libCompile.cached())
                 .as("lib's compile restores: " + libCompile)
                 .isTrue();
@@ -219,14 +220,14 @@ class WorkspaceSiblingClassesE2eTest {
         assertThat(step(plan, "lib", TaskNames.COMPILE_KOTLIN).cached())
                 .as("lib's Kotlin compile restores: " + step(plan, "lib", TaskNames.COMPILE_KOTLIN))
                 .isTrue();
-        assertThat(step(plan, "lib", TaskNames.COMPILE_MAIN).cached())
-                .as("lib's javac keys on kotlinc's restored tree: " + step(plan, "lib", TaskNames.COMPILE_MAIN))
+        assertThat(step(plan, "lib", TaskNames.COMPILE_JAVA).cached())
+                .as("lib's javac keys on kotlinc's restored tree: " + step(plan, "lib", TaskNames.COMPILE_JAVA))
                 .isTrue();
         assertThat(step(plan, "lib", TaskNames.PACKAGE_JAR).cached())
                 .as("lib's jar is keyed on the merged tree that comes back")
                 .isTrue();
-        assertThat(step(plan, "app", TaskNames.COMPILE_MAIN).cached())
-                .as("app keys on lib's merged tree, not on its absence: " + step(plan, "app", TaskNames.COMPILE_MAIN))
+        assertThat(step(plan, "app", TaskNames.COMPILE_JAVA).cached())
+                .as("app keys on lib's merged tree, not on its absence: " + step(plan, "app", TaskNames.COMPILE_JAVA))
                 .isTrue();
 
         Probe restored = new Probe(false);
@@ -260,7 +261,7 @@ class WorkspaceSiblingClassesE2eTest {
         wipeTargets(ws);
 
         List<TaskForecast.Module> plan = forecast(ws, cache);
-        assertThat(step(plan, "lib", TaskNames.COMPILE_MAIN).cached()).isTrue();
+        assertThat(step(plan, "lib", TaskNames.COMPILE_JAVA).cached()).isTrue();
         assertThat(step(plan, "app", TaskNames.COMPILE_KOTLIN).cached())
                 .as("app's kotlinc keys on lib's restored tree, not on its absence: "
                         + step(plan, "app", TaskNames.COMPILE_KOTLIN))
@@ -283,7 +284,7 @@ class WorkspaceSiblingClassesE2eTest {
         assertThat(graph.hasErrors()).isFalse();
         ActionCache actionCache =
                 new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
-        return TaskForecaster.of(graph, JkStores.cacheCas(cache), actionCache, cache, true);
+        return ForecastWalk.of(graph, JkStores.cacheCas(cache), actionCache, cache, true);
     }
 
     private static TaskForecast.Module module(List<TaskForecast.Module> plan, String module) {

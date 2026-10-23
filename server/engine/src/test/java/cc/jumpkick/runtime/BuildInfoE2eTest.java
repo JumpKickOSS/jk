@@ -14,6 +14,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
@@ -104,7 +105,7 @@ class BuildInfoE2eTest {
         assertThat(graph.hasErrors()).isFalse();
         ActionCache actionCache =
                 new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
-        List<TaskForecast.Module> plan = TaskForecaster.of(graph, JkStores.cacheCas(cache), actionCache, cache, true);
+        List<TaskForecast.Module> plan = ForecastWalk.of(graph, JkStores.cacheCas(cache), actionCache, cache, true);
         return plan.stream()
                 .filter(x -> x.dir().getFileName().toString().equals(module))
                 .flatMap(m -> m.steps().stream())

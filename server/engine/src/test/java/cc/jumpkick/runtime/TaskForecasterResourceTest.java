@@ -103,7 +103,7 @@ class TaskForecasterResourceTest {
                 Path.of("/core"),
                 "g:core",
                 List.of(
-                        new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", "abc"),
+                        new TaskForecast.Task("compile-java", TaskForecast.Status.CACHED, "", "abc"),
                         new TaskForecast.Task("package-jar", TaskForecast.Status.CACHED, "", "def"),
                         new TaskForecast.Task("copy-resources", TaskForecast.Status.RUN, "resources changed", null)),
                 1,
@@ -118,7 +118,7 @@ class TaskForecasterResourceTest {
                 Path.of("/core"),
                 "g:core",
                 List.of(
-                        new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", "abc"),
+                        new TaskForecast.Task("compile-java", TaskForecast.Status.CACHED, "", "abc"),
                         new TaskForecast.Task(
                                 "package-jar", TaskForecast.Status.RUN, "repackage · resources changed", null),
                         new TaskForecast.Task("copy-resources", TaskForecast.Status.RUN, "resources changed", null)),

@@ -59,6 +59,7 @@ import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.GuardSuiteLibrary;
@@ -237,7 +238,7 @@ final class PlannerGuards {
     static Task workspaceStep(BuildPlanner.Ctx cx, BuildStage stage, String... requires) {
         GuardsPlan g = cx.guards();
         return Task.builder(TaskNames.GUARD_WORKSPACE)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> forecastRootLane(ForecastScope.of(s), TaskNames.GUARD_WORKSPACE)))
                 .stage(stage)
                 .label("Guards (workspace)")
                 .kind(TaskKind.CPU)
@@ -290,7 +291,7 @@ final class PlannerGuards {
     static Task moduleStep(BuildPlanner.Ctx cx, BuildStage stage, boolean indexTests, String... requires) {
         GuardsPlan g = cx.guards();
         return Task.builder(TaskNames.GUARD)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> forecastModuleLane(ForecastScope.of(s))))
                 .stage(stage)
                 .label("Guards")
                 .kind(TaskKind.CPU)
@@ -420,7 +421,7 @@ final class PlannerGuards {
     static Task modelStep(BuildPlanner.Ctx cx) {
         GuardsPlan g = cx.guards();
         return Task.builder(TaskNames.GUARD_MODEL)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> forecastRootLane(ForecastScope.of(s), TaskNames.GUARD_MODEL)))
                 .stage(BuildStage.RESOLVE)
                 .label("Guards (model)")
                 .kind(TaskKind.CPU)
@@ -453,7 +454,7 @@ final class PlannerGuards {
     static Task fixturesStep(BuildPlanner.Ctx cx, String... requires) {
         GuardsPlan g = cx.guards();
         return Task.builder(TaskNames.GUARD_FIXTURES)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> forecastRootLane(ForecastScope.of(s), TaskNames.GUARD_FIXTURES)))
                 .stage(BuildStage.TEST)
                 .label("Guards (fixtures)")
                 .kind(TaskKind.CPU)
@@ -529,7 +530,7 @@ final class PlannerGuards {
     static Task outputStep(LaneEnv env, String... requires) {
         GuardsPlan g = env.guards();
         return Task.builder(TaskNames.GUARD_OUTPUT)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> forecastRootLane(ForecastScope.of(s), TaskNames.GUARD_OUTPUT)))
                 .stage(BuildStage.NATIVE)
                 .label("Guards (output)")
                 .kind(TaskKind.IO)
@@ -561,7 +562,7 @@ final class PlannerGuards {
     static Task treeStep(BuildPlanner.Ctx cx, String... requires) {
         GuardsPlan g = cx.guards();
         return Task.builder(TaskNames.GUARD_TREE)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> forecastRootLane(ForecastScope.of(s), TaskNames.GUARD_TREE)))
                 .stage(BuildStage.TEST)
                 .label("Guards (tree)")
                 .kind(TaskKind.CPU)
@@ -1066,5 +1067,29 @@ final class PlannerGuards {
 
     private static Supplier<FactsIndex> noFacts() {
         return () -> FactsIndex.EMPTY;
+    }
+
+    // ---- forecast ---------------------------------------------------------------------------
+
+    /** The module lane's price: its verdict under the lane's key, stale whenever the compile runs. */
+    static TaskForecast.@Nullable Task forecastModuleLane(ForecastScope s) throws Exception {
+        return GuardKeys.forecastModuleLane(
+                        s.dir, s.prepared().layout(), s.actionCache, s.force || s.compileDirty, s.skipTests)
+                .orElse(null);
+    }
+
+    /** A root lane's price at the invocation root: its verdict under the lane's key. */
+    static TaskForecast.@Nullable Task forecastRootLane(ForecastScope s, String lane) {
+        if (!PlannerResources.invocationRoot(s.dir) || lanesSkipped(s.skipTests, guardRequested())) return null;
+        Optional<TaskForecast.Task> verdict =
+                switch (lane) {
+                    case TaskNames.GUARD_MODEL -> GuardKeys.forecastModelLane(s.dir, s.project, s.actionCache);
+                    case TaskNames.GUARD_WORKSPACE -> GuardKeys.forecastWorkspaceLane(s.dir, s.actionCache);
+                    case TaskNames.GUARD_TREE -> GuardKeys.forecastTreeLane(s.dir, s.actionCache);
+                    case TaskNames.GUARD_FIXTURES -> GuardKeys.forecastFixtures(s.dir, s.actionCache, s.cas);
+                    case TaskNames.GUARD_OUTPUT -> GuardKeys.forecastOutputLane(s.dir, s.actionCache);
+                    default -> throw new IllegalArgumentException("not a root lane: " + lane);
+                };
+        return verdict.orElse(null);
     }
 }

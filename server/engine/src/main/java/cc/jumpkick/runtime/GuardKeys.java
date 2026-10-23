@@ -240,19 +240,6 @@ final class GuardKeys {
         }
     }
 
-    /** The root lanes' forecast, in plan order: model, workspace, tree (gate), fixtures (gate). */
-    static List<TaskForecast.Task> forecastRootLanes(
-            Path root, JkBuild project, ActionCache actionCache, Cas cas, boolean skipTests) {
-        if (PlannerGuards.lanesSkipped(skipTests, PlannerGuards.guardRequested())) return List.of();
-        List<TaskForecast.Task> out = new ArrayList<>();
-        forecastModelLane(root, project, actionCache).ifPresent(out::add);
-        forecastWorkspaceLane(root, actionCache).ifPresent(out::add);
-        forecastTreeLane(root, actionCache).ifPresent(out::add);
-        forecastFixtures(root, actionCache, cas).ifPresent(out::add);
-        forecastOutputLane(root, actionCache).ifPresent(out::add);
-        return out;
-    }
-
     /** {@code guard-tree}, gate only: the text scan's verdict, keyed on the tree's inputs, rules and baseline. */
     static Optional<TaskForecast.Task> forecastTreeLane(Path root, ActionCache actionCache) {
         PlannerGuards.GuardsPlan g = PlannerGuards.detectAt(root);

@@ -27,6 +27,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
@@ -235,7 +236,7 @@ public final class PlannerTails {
     /** As {@link #assemblyStep(Path, Path)}; {@code persist=false} keeps verify-scratch keys out of the cache. */
     public static Task assemblyStep(Path cache, Path lockFile, boolean persist) {
         return Task.builder(TaskNames.PACKAGE_ASSEMBLY)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> forecastAssembly(ForecastScope.of(s))))
                 .stage(BuildStage.PACKAGE)
                 .label("Assembly")
                 .kind(TaskKind.CPU)
@@ -398,7 +399,7 @@ public final class PlannerTails {
     /** As {@link #javadocStep(Path)}; {@code persist=false} keeps verify-scratch keys out of the cache. */
     public static Task javadocStep(Path cache, boolean persist) {
         return Task.builder(TaskNames.PACKAGE_JAVADOC)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> forecastJavadoc(ForecastScope.of(s))))
                 .stage(BuildStage.PACKAGE)
                 .label("Javadoc")
                 .kind(TaskKind.CPU)
@@ -407,5 +408,30 @@ public final class PlannerTails {
                 .ticks(1)
                 .execute(ctx -> PlannerJavadoc.run(ctx, cache, JkStores.storeCas(), persist))
                 .build();
+    }
+
+    // ---- forecast ---------------------------------------------------------------------------
+
+    /** package-assembly's price, under the key {@link PackagingKeys#assembly} derives for the live step. */
+    static TaskForecast.@Nullable Task forecastAssembly(ForecastScope s) throws Exception {
+        s.projectOwnOutputs();
+        return ForecastPackagingTails.assembly(
+                s.project,
+                s.dir,
+                s.prepared(),
+                s.lockFile,
+                s.actionCache,
+                s.cache,
+                s.compileMainKey,
+                s.restored,
+                s.knownResourceDrift,
+                s.compileDirty);
+    }
+
+    /** package-javadoc's price, under the key {@link PackagingKeys#javadoc} derives for the live step. */
+    static TaskForecast.@Nullable Task forecastJavadoc(ForecastScope s) throws Exception {
+        s.projectOwnOutputs();
+        return ForecastPackagingTails.javadoc(
+                s.project, s.dir, s.prepared(), s.mainCp, s.restored.abiToken(), s.actionCache, s.cas, s.compileDirty);
     }
 }

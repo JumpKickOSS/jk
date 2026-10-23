@@ -14,6 +14,7 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskForecast;
+import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
@@ -127,7 +128,7 @@ class RebuildRunTestsMarkerTest {
                 BuildGraph.Result graph = BuildGraph.resolve(project, parsed);
                 Cas cas = JkStores.storeCas();
                 ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
-                List<TaskForecast.Module> plan = TaskForecaster.of(graph, cas, actionCache, cache, false);
+                List<TaskForecast.Module> plan = ForecastWalk.of(graph, cas, actionCache, cache, false);
                 assertThat(plan).hasSize(1);
                 assertThat(plan.get(0).steps())
                         .as("run-tests marker stored under --redo → forecast sees CACHED")

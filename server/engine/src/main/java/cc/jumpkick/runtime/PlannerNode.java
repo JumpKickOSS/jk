@@ -10,13 +10,10 @@ import static cc.jumpkick.runtime.BuildPlanner.NODE_OUT;
 import static cc.jumpkick.runtime.BuildPlanner.TEST_RESULT;
 
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.NodeProject;
-import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.NodeTable;
 import cc.jumpkick.model.TestFailureMode;
@@ -42,7 +39,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -197,7 +193,7 @@ final class PlannerNode {
      */
     static Task packageStep(Unit unit, String after) {
         return Task.builder(TaskNames.NODE_PACKAGE)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> forecastPackage(ForecastScope.of(s))))
                 .stage(BuildStage.PACKAGE)
                 .label("Packaging")
                 .kind(TaskKind.CPU)
@@ -260,7 +256,7 @@ final class PlannerNode {
     /** The one step of a skipped node build: the output on disk, if any, is what the build has. */
     static Task skippedStep(Unit unit) {
         return Task.builder(TaskNames.NODE_BUILD)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> ForecastScope.of(s).nodeVerdict(TaskNames.NODE_BUILD)))
                 .stage(BuildStage.COMPILE)
                 .label("Node build")
                 .kind(TaskKind.SYNC)
@@ -284,7 +280,7 @@ final class PlannerNode {
 
     static Task installStep(Unit unit) {
         return Task.builder(TaskNames.NODE_INSTALL)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> ForecastScope.of(s).nodeVerdict(TaskNames.NODE_INSTALL)))
                 .stage(BuildStage.RESOLVE)
                 .label("Install")
                 .kind(TaskKind.IO)
@@ -349,7 +345,7 @@ final class PlannerNode {
 
     static Task buildStep(Unit unit, String requires) {
         return Task.builder(TaskNames.NODE_BUILD)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> ForecastScope.of(s).nodeVerdict(TaskNames.NODE_BUILD)))
                 .stage(BuildStage.COMPILE)
                 .label("Node build")
                 .kind(TaskKind.CPU)
@@ -419,7 +415,7 @@ final class PlannerNode {
 
     static Task testStep(Unit unit, String requires) {
         return Task.builder(TaskNames.NODE_TEST)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> ForecastScope.of(s).nodeVerdict(TaskNames.NODE_TEST)))
                 .stage(BuildStage.TEST)
                 .label("Node tests")
                 .kind(TaskKind.CPU)
@@ -569,33 +565,11 @@ final class PlannerNode {
         return steps;
     }
 
-    /** {@code jk explain}'s module row for {@code unit} when it is a dedicated node module, else {@code null}. */
-    static TaskForecast.@Nullable Module forecastModule(
-            BuildGraph.BuildUnit unit, Path lockFile, ActionCache cache, Path cacheRoot, boolean skipTests) {
-        JkBuild project = unit.manifest();
-        Path dir = unit.dir();
-        if (NodeShape.kind(project, dir) != NodeShape.Kind.MODULE) return null;
-        List<TaskForecast.Task> steps = new ArrayList<>();
-        if (!Files.isRegularFile(lockFile)) {
-            steps.add(new TaskForecast.Task(
-                    TaskNames.NODE_INSTALL, TaskForecast.Status.RUN, "not locked yet (run `jk build`)", null));
-            return new TaskForecast.Module(dir, unit.coord(), steps, 0, 0, false, false);
-        }
-        try {
-            Path nodeDir = Objects.requireNonNull(NodeShape.nodeDir(project, dir), "node directory");
-            boolean skipNode = SessionContext.current().skipNode();
-            steps.addAll(forecast(project, dir, nodeDir, LockfileReader.read(lockFile), cache, skipTests, skipNode));
-            boolean buildRuns = steps.stream()
-                    .anyMatch(t -> TaskNames.NODE_BUILD.equals(t.name()) && t.status() == TaskForecast.Status.RUN);
-            steps.add(forecastPackage(project, dir, nodeDir, cacheRoot, buildRuns));
-        } catch (Exception e) {
-            steps.add(new TaskForecast.Task(
-                    TaskNames.NODE_BUILD,
-                    TaskForecast.Status.RUN,
-                    "could not predict (" + e.getClass().getSimpleName() + ")",
-                    null));
-        }
-        return new TaskForecast.Module(dir, unit.coord(), steps, 0, 0, false, false);
+    /** node-package's price in a dedicated node module: after a build that runs, else by its own key. */
+    static TaskForecast.@Nullable Task forecastPackage(ForecastScope s) throws IOException {
+        Path nodeDir = s.nodeDir();
+        if (nodeDir == null) return null;
+        return forecastPackage(s.project, s.dir, nodeDir, s.cache, s.runs(TaskNames.NODE_BUILD));
     }
 
     /**

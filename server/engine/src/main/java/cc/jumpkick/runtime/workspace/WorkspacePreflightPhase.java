@@ -8,6 +8,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceCone;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -341,7 +342,6 @@ public final class WorkspacePreflightPhase {
         if (target == coreTarget(target)) return dirty;
         ActionCache actionCache =
                 new ActionCache(JkStores.cacheCas(request.cache()), CacheTree.ACTIONS.under(request.cache()));
-        Path m2Dir = request.spec() == null ? null : request.spec().m2Dir();
         LinkedHashSet<Path> all = new LinkedHashSet<>(dirty);
         for (BuildGraph.BuildUnit unit : units) {
             if (all.contains(unit.dir())) continue;
@@ -349,8 +349,17 @@ public final class WorkspacePreflightPhase {
                     unit, request, moduleDirs, false, jarConsumed, launchedAssemblies, SiblingArtifacts.NONE);
             for (Task step : planned.plan().steps()) {
                 if (!planned.tailSteps().contains(step.name())) continue;
-                TaskForecast.Task priced =
-                        TaskForecaster.priceTailStep(step, unit, request.cache(), actionCache, m2Dir);
+                TaskForecast.Task priced;
+                try {
+                    priced = TaskForecaster.priceTailStep(step, unit, request.cache(), actionCache);
+                } catch (IllegalStateException undeclared) {
+                    throw undeclared;
+                } catch (Exception e) {
+                    // A tail step that cannot be priced runs: the pessimistic answer, never a skip.
+                    Log.debug("tail forecast " + unit.coord() + " " + step.name(), e);
+                    all.add(unit.dir());
+                    break;
+                }
                 if (priced != null && !priced.cached()) {
                     all.add(unit.dir());
                     break;

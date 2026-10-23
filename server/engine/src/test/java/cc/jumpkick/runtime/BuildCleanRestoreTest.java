@@ -14,6 +14,7 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskForecast;
+import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
@@ -93,7 +94,7 @@ class BuildCleanRestoreTest {
             BuildGraph.Result graph = BuildGraph.resolve(project, parsed);
             Cas cas = JkStores.storeCas();
             ActionCache actionCache = new ActionCache(cas, cache.resolve("actions"));
-            List<TaskForecast.Module> plan = TaskForecaster.of(graph, cas, actionCache, cache, false);
+            List<TaskForecast.Module> plan = ForecastWalk.of(graph, cas, actionCache, cache, false);
             assertThat(plan).hasSize(1);
             assertThat(plan.get(0).dirty())
                     .as("wiped no-test module must schedule so the build restores target/")
@@ -110,7 +111,7 @@ class BuildCleanRestoreTest {
             // An install prices the same lifecycle with tests skipped: the wiped module is never
             // shelved from a thin plan, because its restore schedules it before any tail runs.
             TaskForecast.Module installed =
-                    TaskForecaster.of(graph, cas, actionCache, cache, true).get(0);
+                    ForecastWalk.of(graph, cas, actionCache, cache, true).get(0);
             assertThat(installed.dirty()).isTrue();
 
             // The scheduled build restores the outputs from cache.
@@ -188,7 +189,7 @@ class BuildCleanRestoreTest {
             BuildGraph.Result graph = BuildGraph.resolve(project, parsed);
             Cas cas = JkStores.storeCas();
             ActionCache actionCache = new ActionCache(cas, cache.resolve("actions"));
-            List<TaskForecast.Module> plan = TaskForecaster.of(graph, cas, actionCache, cache, true);
+            List<TaskForecast.Module> plan = ForecastWalk.of(graph, cas, actionCache, cache, true);
             assertThat(plan).hasSize(1);
             assertThat(plan.get(0).dirty()).isTrue();
 
