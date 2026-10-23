@@ -2,13 +2,18 @@
 package cc.jumpkick.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.StatIdentity;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -73,5 +78,26 @@ class StatIdentityTest {
 
         assertThat(StatIdentity.decode(id.encode())).isEqualTo(id);
         assertThat(StatIdentity.decode("not an identity")).isNull();
+    }
+
+    @Test
+    void on_windows_the_by_name_identity_is_the_handle_identity(@TempDir Path tmp) throws Exception {
+        assumeTrue(Os.isWindows(), "the by-name call is Windows'");
+        WindowsFileIds ids = new WindowsFileIds();
+        Path file = Files.writeString(tmp.resolve("a.txt"), "one");
+        Path link = Files.createLink(tmp.resolve("b.txt"), file);
+        for (Path p : List.of(file, link, tmp)) {
+            StatIdentity byName = ids.stat(p);
+            assumeTrue(byName != null, "this Windows predates GetFileInformationByName");
+            BasicFileAttributes attrs = Files.readAttributes(p, BasicFileAttributes.class);
+            StatIdentity.WindowsIds handle = Objects.requireNonNull(ids.read(p, false), "handle path");
+            assertThat(byName)
+                    .as(p.getFileName().toString())
+                    .isEqualTo(new StatIdentity(
+                            p.equals(tmp) ? byName.size() : attrs.size(),
+                            attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS),
+                            handle.changeTimeNanos(),
+                            handle.fileKey()));
+        }
     }
 }

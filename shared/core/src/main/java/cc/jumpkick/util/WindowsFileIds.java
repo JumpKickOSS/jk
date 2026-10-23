@@ -32,12 +32,43 @@ public final class WindowsFileIds implements StatIdentity.WindowsReader {
     private static final int FILE_BASIC_INFO = 0;
     private static final int FILE_ID_INFO = 18;
 
+    /** {@code FileStatBasicByNameInfo}: {@code FILE_STAT_BASIC_INFORMATION}, 104 bytes. */
+    private static final int FILE_STAT_BASIC_BY_NAME = 3;
+
     /** 100 ns ticks between 1601-01-01 and 1970-01-01. */
     private static final long EPOCH_TICKS = 116_444_736_000_000_000L;
 
     private static final @Nullable Native NATIVE = Native.load();
 
     public WindowsFileIds() {}
+
+    /**
+     * One {@code GetFileInformationByName} (Windows 11 24H2 and later): size, write and change
+     * times, volume serial and 128-bit file id together, the same values the handle path below
+     * reads, without opening the file. Null where the call is missing or fails, and for a reparse
+     * point, whose link-following the handle path decides.
+     */
+    @Override
+    public @Nullable StatIdentity stat(Path file) {
+        Native n = NATIVE;
+        if (n == null || n.byName == null) return null;
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment name = arena.allocateFrom(file.toAbsolutePath().toString(), StandardCharsets.UTF_16LE);
+            MemorySegment info = arena.allocate(104, 8);
+            if ((int) n.byName.invokeExact(name, FILE_STAT_BASIC_BY_NAME, info, (int) info.byteSize()) == 0)
+                return null;
+            if (info.get(ValueLayout.JAVA_INT, 60) != 0) return null;
+            long size = info.get(ValueLayout.JAVA_LONG, 48);
+            long mtime = (info.get(ValueLayout.JAVA_LONG, 24) - EPOCH_TICKS) * 100L;
+            long ctime = (info.get(ValueLayout.JAVA_LONG, 32) - EPOCH_TICKS) * 100L;
+            String key = Long.toHexString(info.get(ValueLayout.JAVA_LONG, 80)) + ":"
+                    + Long.toHexString(info.get(ValueLayout.JAVA_LONG, 96))
+                    + Long.toHexString(info.get(ValueLayout.JAVA_LONG, 88));
+            return new StatIdentity(size, mtime, ctime, key);
+        } catch (Throwable unavailable) {
+            return null;
+        }
+    }
 
     /** The ids of {@code file}, or {@code null} when the platform calls are unavailable or fail. */
     @Override
@@ -90,7 +121,11 @@ public final class WindowsFileIds implements StatIdentity.WindowsReader {
      * into the process's output.
      */
     private record Native(
-            MethodHandle createFile, MethodHandle getInfo, MethodHandle getByHandle, MethodHandle closeHandle) {
+            MethodHandle createFile,
+            MethodHandle getInfo,
+            MethodHandle getByHandle,
+            MethodHandle closeHandle,
+            @Nullable MethodHandle byName) {
         static @Nullable Native load() {
             if (!Os.isWindows() || !WindowsFileIds.class.getModule().isNativeAccessEnabled()) return null;
             try {
@@ -121,7 +156,18 @@ public final class WindowsFileIds implements StatIdentity.WindowsReader {
                 MethodHandle close = linker.downcallHandle(
                         k32.find("CloseHandle").orElseThrow(),
                         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-                return new Native(create, info, byHandle, close);
+                // Windows 11 24H2 and later; older builds keep the handle path for every file.
+                MethodHandle byName = k32.find("GetFileInformationByName")
+                        .map(sym -> linker.downcallHandle(
+                                sym,
+                                FunctionDescriptor.of(
+                                        ValueLayout.JAVA_INT,
+                                        ValueLayout.ADDRESS,
+                                        ValueLayout.JAVA_INT,
+                                        ValueLayout.ADDRESS,
+                                        ValueLayout.JAVA_INT)))
+                        .orElse(null);
+                return new Native(create, info, byHandle, close, byName);
             } catch (Throwable unavailable) {
                 return null;
             }
