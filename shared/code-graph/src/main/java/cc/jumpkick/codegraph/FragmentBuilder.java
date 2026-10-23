@@ -115,6 +115,11 @@ public final class FragmentBuilder {
         mentions.add(new Mention(source, kind, text, line, relation));
     }
 
+    /** As above, with the edge narrowed by {@code context} ({@code constant}, {@code field}, …). */
+    public void mention(String source, Mention.Kind kind, String text, int line, String relation, String context) {
+        mentions.add(new Mention(source, kind, text, line, relation, context));
+    }
+
     /** A {@code NOTE:}/{@code WHY:}-style comment as a rationale node pointing at {@code target}. */
     public void rationale(String text, int line, String target) {
         String id = GraphIds.make(GraphIds.base(relPath), "rationale", String.valueOf(line));
