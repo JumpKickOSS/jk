@@ -1495,7 +1495,7 @@ final class ParityRules {
         if (!exists(text, SHELLCHECK))
             throw new IllegalStateException(SHELLCHECK + " is missing; the lint has no owner");
         // Git Bash plus Docker is a false red (exit 125); POSIX CI lints the scripts.
-        if (Os.isWindows()) throw new Skipped("shellcheck: skipped on Windows");
+        if (Os.isWindows()) throw Skipped.onThisPlatform("shellcheck: skipped on Windows");
         GuardRuntime runtime = GuardRuntime.current();
         if (runtime == null) throw new IllegalStateException("no guard runtime: jk did not configure this JVM");
         // The script owns the target list and the runner choice; this guard runs it where the text

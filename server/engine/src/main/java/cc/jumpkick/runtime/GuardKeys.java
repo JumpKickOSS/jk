@@ -15,6 +15,7 @@ import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.schema.Lane;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
@@ -60,6 +61,8 @@ final class GuardKeys {
 
     static void addRuleTokens(List<String> tokens, LoadResult load) {
         for (var e : load.rules().sourceDigests().entrySet()) tokens.add("rules:" + e.getKey() + ":" + e.getValue());
+        // A guard that does not apply on one operating system leaves that platform its own verdict.
+        tokens.add("os:" + Os.name());
     }
 
     /**

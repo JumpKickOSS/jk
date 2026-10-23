@@ -117,8 +117,11 @@ public final class GuardExtension
         if (ctx.getRequiredTestMethod().getAnnotation(Guard.class) == null) throw t;
         Report.Collector c = collector(ctx);
         if (t instanceof OwnerMissing) c.ownerMissing(t.getMessage() == null ? "owner missing" : t.getMessage());
-        else if (t instanceof Skipped) c.skipped(t.getMessage() == null ? "skipped" : t.getMessage());
-        else c.threw(t);
+        else if (t instanceof Skipped s) {
+            String reason = s.getMessage() == null ? "skipped" : s.getMessage();
+            if (s.platform()) c.notHere(reason);
+            else c.skipped(reason);
+        } else c.threw(t);
     }
 
     @Override

@@ -104,6 +104,12 @@ public final class Report {
             outcome = "skipped";
             error = reason;
         }
+
+        /** The guard does not apply on this operating system; {@code reason} is the notice. */
+        public void notHere(String reason) {
+            outcome = "not-here";
+            error = reason;
+        }
     }
 
     /** One guard's line. */

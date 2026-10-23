@@ -267,7 +267,7 @@ public final class GuardFixtures {
                         "the guard suite did not run over " + s.file().getFileName() + ": " + answer.problem());
             // The guard could not run here (its tool is not installed): the case is the notice the
             // lane reports, not a silence of the guard's.
-            if (eval.outcome() == Outcome.SKIPPED)
+            if (eval.outcome() == Outcome.SKIPPED || eval.outcome() == Outcome.NOT_HERE)
                 return new FixtureCheck.Verdict(
                         c.id(), FixtureCheck.Verdict.SKIPPED, s.file().getFileName() + ": " + eval.note());
             int sites = eval.observations().size();

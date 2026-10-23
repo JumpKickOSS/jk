@@ -282,7 +282,9 @@ real path from the workspace root through the source root that holds it — and 
 workspace-scoped guard's site is spelled under the member that owns the class. A guard that shells
 out to a tool this machine does not have throws `Skipped` with the reason: the engine reports it
 `skipped` — a notice, not red — and stores no verdict for the lane, so the guard is judged as soon
-as the tool is installed.
+as the tool is installed. A guard that does not apply on this operating system at all throws
+`Skipped.onThisPlatform(reason)`: the same notice, reported `not-here`, and the lane's verdict is
+kept for this platform, since no install would change it.
 
 The suite runs in a forked JVM, and each guard appends its line to the module's report
 (`<module>/target/guard/report.jsonl`) as it finishes. The lane judges the run from that report —
