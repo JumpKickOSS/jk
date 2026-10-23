@@ -253,10 +253,10 @@ class MemoryAdmissionTest {
         Await.until(HANG, () -> gate.queued() == 1);
         assertThat(build).isNotDone();
 
-        // format and guard are judged by the ledger (60 + 100 + 30 + 30 of 224) and the host, and do
+        // format and lock are judged by the ledger (60 + 100 + 30 + 30 of 224) and the host, and do
         // not wait behind the build.
         assertThat(gate.admit(3, "format", "/tool", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
-        assertThat(gate.admit(4, "guard", "/tool", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        assertThat(gate.admit(4, "lock", "/tool", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         assertThat(gate.admittedCount()).isEqualTo(3);
         assertThat(gate.queued()).as("the build still waits its turn").isEqualTo(1);
         assertThat(build).isNotDone();

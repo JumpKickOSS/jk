@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.runtime;
 
+import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -67,6 +68,20 @@ public enum WorkspaceTarget {
 
     public Tests tests() {
         return tests;
+    }
+
+    /**
+     * The engine job kind a run of this goal is journaled under: {@code jk history}'s kind, the
+     * build number it takes and its exclusive admission. A goal that only builds, or builds and
+     * then acts client-side ({@code jk run}), is a {@code build}; install's re-shelve pass is
+     * part of the install.
+     */
+    public String jobKind() {
+        return switch (this) {
+            case PACKAGE, RUN -> "build";
+            case RESHELVE -> "install";
+            default -> name().toLowerCase(Locale.ROOT);
+        };
     }
 
     /** True when the goal runs PACKAGE and so may append a tail. */
