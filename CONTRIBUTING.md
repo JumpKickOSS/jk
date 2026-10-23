@@ -35,6 +35,25 @@ needs no Node of their own, and neither does CI: every job runs its JS on the No
 [`.nvmrc`](.nvmrc) names the same major for editors, and for the release job's deploy step, which
 installs no jk.
 
+### Container runtime (Testcontainers)
+
+The jk-examples scenarios that start databases, and `bench/wall/spring-petclinic`, run
+Testcontainers against your container runtime. jk configures none of it: it passes `DOCKER_HOST`
+and the `TESTCONTAINERS_*` variables from your shell to the test JVMs
+([Build](docs/user/build.md)), and it never writes `~/.testcontainers.properties`.
+
+- **Docker:** nothing to set up.
+- **Podman:** expose a Docker-compatible socket — Docker Compatibility in Podman Desktop, or
+  `sudo podman-mac-helper install` on macOS with the machine running (`podman machine start`); on
+  Linux, point `DOCKER_HOST` at the socket `podman info --format '{{.Host.RemoteSocket.Path}}'`
+  prints, prefixed `unix://` — and turn off Ryuk, the
+  privileged cleanup container rootless Podman cannot run reliably: add `ryuk.disabled=true` to
+  `~/.testcontainers.properties`, or `export TESTCONTAINERS_RYUK_DISABLED=true`.
+
+Turn Ryuk off only for Podman. Under Docker it is what removes the containers a killed or crashed
+test run leaves behind, and with it off they pile up. `~/.testcontainers.properties` is yours and
+may hold other settings: add the line to it rather than replacing it.
+
 ## Build-family commands
 
 `jk build`, `jk test`, `jk native`, and workspace `jk image` share **one** engine
