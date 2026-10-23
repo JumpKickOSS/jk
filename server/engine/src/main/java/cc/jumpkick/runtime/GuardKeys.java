@@ -148,7 +148,10 @@ final class GuardKeys {
             throws IOException {
         List<String> tokens = new ArrayList<>();
         tokens.add("guard-suite:" + suiteDigest);
-        if (GuardSuites.anyWorkspace(declared)) tokens.addAll(workspaceTokens(root, workspaceModules));
+        if (GuardSuites.anyWorkspace(declared)) {
+            tokens.addAll(workspaceTokens(root, workspaceModules));
+            tokens.addAll(workspaceTestTokens(root, workspaceModules));
+        }
         if (GuardSuites.anyReadsText(declared)) tokens.addAll(BuildLogicSupport.workspaceInputTokens(root));
         return tokens;
     }
@@ -167,6 +170,24 @@ final class GuardKeys {
                     ? FactsIndexing.freshDigest(classes, idx).orElse("stale")
                     : "absent";
             tokens.add("facts:" + WorkspaceModel.rel(root, m) + ":" + digest);
+        }
+        return tokens;
+    }
+
+    /**
+     * Every module's test index digest, which a workspace guard suite reads beside the main ones:
+     * {@code test-facts:<module>:<digest>}, or {@code absent} for a module with no test classes.
+     */
+    static List<String> workspaceTestTokens(Path root, List<Path> modules) throws IOException {
+        List<String> tokens = new ArrayList<>();
+        for (Path m : modules) {
+            Path buildDir = BuildLayout.moduleTargetDir(m);
+            Path classes = buildDir.resolve("test-classes");
+            Path idx = FactsIndexing.indexPath(buildDir, "test");
+            String digest = Files.isDirectory(classes)
+                    ? FactsIndexing.freshDigest(classes, idx).orElse("stale")
+                    : "absent";
+            tokens.add("test-facts:" + WorkspaceModel.rel(root, m) + ":" + digest);
         }
         return tokens;
     }

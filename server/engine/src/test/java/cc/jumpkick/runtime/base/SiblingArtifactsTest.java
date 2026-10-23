@@ -107,10 +107,11 @@ class SiblingArtifactsTest {
     }
 
     @Test
-    void a_module_with_no_prerequisites_has_nothing_to_wait_for() {
+    void a_module_with_no_prerequisites_has_nothing_to_wait_for() throws Exception {
         SiblingArtifacts siblings = new SiblingArtifacts(EDGES, List.of(CORE, LIB, APP));
 
-        assertThat(siblings.gateFor(CORE)).isSameAs(SiblingArtifacts.NONE);
+        // Nothing has published: a wait on any prerequisite would never return.
+        siblings.gateFor(CORE).awaitArtifacts(() -> false);
         assertThat(SiblingArtifacts.none().gateFor(APP)).isSameAs(SiblingArtifacts.NONE);
     }
 
@@ -127,5 +128,40 @@ class SiblingArtifactsTest {
         assertThat(SiblingArtifacts.NONE.failedStep("ex:lib"))
                 .as("outside a schedule nothing failed")
                 .isEmpty();
+    }
+
+    @Test
+    void a_workspace_guard_on_core_waits_for_the_modules_downstream_of_it_to_index() throws Exception {
+        SiblingArtifacts siblings = new SiblingArtifacts(EDGES, List.of(CORE, LIB, APP));
+        AtomicBoolean released = new AtomicBoolean();
+        CompletableFuture<Void> waiting = CompletableFuture.runAsync(() -> {
+            try {
+                siblings.gateFor(CORE).awaitIndexed(List.of(LIB, APP), () -> false);
+                released.set(true);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+
+        siblings.published(LIB);
+        siblings.published(APP);
+        siblings.indexed(LIB);
+        Thread.sleep(50);
+        assertThat(released)
+                .as("app published its jar but has not indexed its classes")
+                .isFalse();
+
+        siblings.completed(APP);
+        waiting.get(10, TimeUnit.SECONDS);
+        assertThat(released)
+                .as("completion stands in for a module that never indexed")
+                .isTrue();
+    }
+
+    @Test
+    void a_module_this_build_does_not_schedule_is_indexed_from_the_start() throws Exception {
+        SiblingArtifacts siblings = new SiblingArtifacts(EDGES, List.of(CORE));
+
+        siblings.gateFor(CORE).awaitIndexed(List.of(LIB, APP), () -> false);
     }
 }
