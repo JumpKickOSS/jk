@@ -28,8 +28,8 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
-import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -123,13 +123,11 @@ public final class PlannerPackage {
                         Lockfile sbomLock = ctx.get(LOCKFILE).orElse(null);
                         if (sbomLock != null) sbom = applicationSbom(project, sbomLock);
                     }
+                    List<Path> guarded = new ArrayList<>(List.of(classes));
+                    guarded.addAll(contributed);
+                    InputGuard guard = InputGuard.of(guarded);
                     PackagingKeys.Keyed keyed = PackagingKeys.packageJar(
-                            jarPath,
-                            in.dir(),
-                            project,
-                            ClasspathFingerprint.entry(classes),
-                            contributionsToken(contributed),
-                            sbom);
+                            jarPath, in.dir(), project, guard.token(classes), contributionsToken(contributed), sbom);
                     String pkgKey = keyed.key();
                     if (restorePackaged(in.cache(), pkgKey, jarPath.getParent())) {
                         writeSidecarPom(project, layout, jarPath);
@@ -155,6 +153,8 @@ public final class PlannerPackage {
                     // client's tail says "built" for it, not "up to date".
                     ctx.put(BUILD_OUTCOME, "built");
                     storePackaged(
+                            ctx,
+                            guard,
                             in.cache(),
                             keyed.taskId(),
                             pkgKey,

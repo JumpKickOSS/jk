@@ -30,6 +30,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.TestStamp;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -218,6 +219,7 @@ final class PlannerNode {
                     }
                     BuildLayout layout = BuildLayout.of(unit.moduleDir(), project);
                     Path jar = layout.mainJar();
+                    InputGuard guard = InputGuard.of(List.of(out));
                     NodeKeys.Keyed keyed = NodeKeys.pkg(unit.nodeDir(), out, root, project.manifest());
                     Path cacheRoot = unit.in().cache();
                     String where = root.isEmpty() ? "the jar root" : root + "/";
@@ -232,6 +234,8 @@ final class PlannerNode {
                     NodePackaging.packageJar(
                             out, root, layout.targetDir().resolve("node-jar"), jar, project.manifest());
                     PlannerSupport.storePackaged(
+                            ctx,
+                            guard,
                             cacheRoot,
                             keyed.taskId(),
                             keyed.key(),

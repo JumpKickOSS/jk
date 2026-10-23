@@ -22,6 +22,7 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.InputGuard;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -77,8 +78,13 @@ final class PlannerWar {
                             .map(JkBuild.Application::main)
                             .filter(main -> !main.isBlank())
                             .ifPresent(main -> manifest.put(Attributes.Name.MAIN_CLASS.toString(), main));
+                    List<Path> guarded = new ArrayList<>(List.of(classes, webapp));
+                    guarded.addAll(contributed);
+                    guarded.addAll(libs);
+                    guarded.addAll(webContent.keySet());
+                    InputGuard guard = InputGuard.of(guarded);
                     List<String> tokens = List.of(
-                            "classes:" + ClasspathFingerprint.entry(classes),
+                            "classes:" + guard.token(classes),
                             "contrib:" + contributionsToken(contributed),
                             "libs:" + ClasspathFingerprint.of(libs),
                             "webapp:" + (Files.isDirectory(webapp) ? ClasspathFingerprint.entry(webapp) : ""),
@@ -114,7 +120,7 @@ final class PlannerWar {
                     ctx.put(BUILD_OUTCOME, "built");
                     List<Path> outputs = new ArrayList<>(files(exploded));
                     outputs.add(warFile);
-                    storePackaged(cache, task, key, tokens, base, outputs, persist);
+                    storePackaged(ctx, guard, cache, task, key, tokens, base, outputs, persist);
                     ctx.progress(1);
                 })
                 .build();

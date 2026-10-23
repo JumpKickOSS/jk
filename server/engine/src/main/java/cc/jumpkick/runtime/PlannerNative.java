@@ -38,6 +38,7 @@ import cc.jumpkick.runtime.base.ReachabilityMetadata;
 import cc.jumpkick.surface.TrainLayout;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.tool.GraalHomeLookup;
 import cc.jumpkick.tool.NativeImageDriver;
 import java.io.IOException;
@@ -134,6 +135,7 @@ public final class PlannerNative {
         ReachabilityArgs reach =
                 withReachabilityMetadata(ctx, dir, project, layout, lockFile, javaHome, frameworkSources, allArgs);
         allArgs = reach.args();
+        InputGuard guard = InputGuard.of(classpath);
         ImageKey key = imageKey(
                 javaHome,
                 classpath,
@@ -175,7 +177,8 @@ public final class PlannerNative {
             if (!Files.isRegularFile(out)) {
                 throw new IOException("native-image reported success but produced no binary at " + out);
             }
-            storePackaged(cache, key.task(), key.key(), key.tokens(), out.getParent(), List.of(out), persist);
+            storePackaged(
+                    ctx, guard, cache, key.task(), key.key(), key.tokens(), out.getParent(), List.of(out), persist);
         }
     }
 

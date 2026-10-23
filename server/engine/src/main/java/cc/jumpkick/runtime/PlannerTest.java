@@ -40,6 +40,7 @@ import cc.jumpkick.runtime.base.TestFailureSource;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.LangCompile;
 import cc.jumpkick.task.MirroredOutputs;
 import cc.jumpkick.task.TestStamp;
@@ -653,6 +654,12 @@ public final class PlannerTest {
         TestTier tier = TestTier.of(effectiveSel, in.profileName(), fastMethodBudget(projectUnderTest, in.dir()));
         List<String> testJvmArgs =
                 PlannerSupport.suiteJvmArgs(TestLaunch.testJvmArgs(ctx, in, projectUnderTest, pluginDecls), tier);
+        // What the suite reads as it runs: discovery lists the test classes, and the classpath and
+        // resources are read through. Taken before the key, held against them after the run.
+        List<Path> suiteInputs = new ArrayList<>(List.of(testClasses, ctx.require(MAIN_CLASSES)));
+        suiteInputs.addAll(ctx.get(TEST_RESOURCE_DIRS).orElse(List.of()));
+        suiteInputs.addAll(testRtCp);
+        InputGuard suiteGuard = InputGuard.of(suiteInputs);
         String stampKey = testStampKey(
                 ctx, in, projectUnderTest, effectiveSel, affected, workerJars, testJvmArgs, testSrcs, testRtCp);
         // --force forces a real test run, matching the compile/package
@@ -713,6 +720,13 @@ public final class PlannerTest {
         }
         if (jacoco != null && coverageExec != null) {
             TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
+        }
+        List<Path> moved = stampKey == null ? List.of() : suiteGuard.moved();
+        if (!moved.isEmpty()) {
+            // The suite may have run against either version; its outcome stands for this build
+            // and no marker vouches for the key.
+            ctx.warn("inputs-moved", InputGuard.describe(TaskNames.RUN_TESTS, moved));
+            stampKey = null;
         }
         settle(
                 ctx,

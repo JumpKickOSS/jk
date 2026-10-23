@@ -33,6 +33,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.InputGuard;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -266,12 +267,16 @@ public final class PlannerTails {
                     // the forecast calls, so a worker module can forecast up-to-date. The jar is
                     // written with exactly the attributes it is keyed on.
                     Map<String, String> assemblyAttrs = PackagingKeys.assemblyAttributes(layout.moduleRoot(), project);
+                    List<Path> guarded = new ArrayList<>(List.of(classes));
+                    guarded.addAll(contributed);
+                    guarded.addAll(depJars);
+                    InputGuard guard = InputGuard.of(guarded);
                     PackagingKeys.Keyed keyed = PackagingKeys.assembly(
                             assemblyJar,
                             layout.moduleRoot(),
                             project,
                             assemblyAttrs,
-                            ClasspathFingerprint.entry(classes),
+                            guard.token(classes),
                             contributionsToken(contributed),
                             ClasspathFingerprint.of(depJars));
                     String shTask = keyed.taskId();
@@ -301,6 +306,8 @@ public final class PlannerTails {
                                     PackagingKeys.relocate(project),
                                     0L));
                     storePackaged(
+                            ctx,
+                            guard,
                             cache,
                             shTask,
                             shKey,
@@ -360,18 +367,12 @@ public final class PlannerTails {
                     List<Path> sourceRoots = compact
                             ? List.of(moduleRoot.resolve("src"))
                             : List.of(moduleRoot.resolve("src/main/java"), moduleRoot.resolve("src/main/kotlin"));
-                    // Cache key: hash of all source roots' content.
-                    String srcHash = String.join(
-                            ";",
-                            sourceRoots.stream()
-                                    .map(r -> {
-                                        try {
-                                            return ClasspathFingerprint.entry(r);
-                                        } catch (Exception e) {
-                                            return "";
-                                        }
-                                    })
-                                    .toList());
+                    // Cache key: hash of all source roots' content. A root that will not read fails
+                    // the step rather than keying as empty.
+                    InputGuard guard = InputGuard.of(sourceRoots);
+                    List<String> rootTokens = new ArrayList<>();
+                    for (Path r : sourceRoots) rootTokens.add(guard.token(r));
+                    String srcHash = String.join(";", rootTokens);
                     List<String> tokens = List.of("sources:" + srcHash);
                     String task = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_SOURCES, sourcesJar);
                     String key = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens);
@@ -385,7 +386,8 @@ public final class PlannerTails {
                     byte[] bytes = SourcesJar.build(sourceRoots);
                     Files.createDirectories(sourcesJar.getParent());
                     Files.write(sourcesJar, bytes);
-                    storePackaged(cache, task, key, tokens, sourcesJar.getParent(), List.of(sourcesJar), persist);
+                    storePackaged(
+                            ctx, guard, cache, task, key, tokens, sourcesJar.getParent(), List.of(sourcesJar), persist);
                     ctx.progress(1);
                 })
                 .build();
