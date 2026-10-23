@@ -89,10 +89,11 @@ public final class Oracle {
         for (Edit e : edits()) {
             if (!only.isEmpty() && !only.contains(e.name())) continue;
             if (e.posixOnly() && WINDOWS) {
-                System.out.printf("%-22s skip (posix only)%n", e.name());
+                System.out.printf("%-26s skip (posix only)%n", e.name());
                 continue;
             }
             String verdict;
+            long started = System.nanoTime();
             try {
                 verdict = check(work, ws, incCache, e);
             } catch (Exception ex) {
@@ -106,7 +107,7 @@ public final class Oracle {
                 ok = false;
             }
             if (!ok) failed++;
-            System.out.printf("%-22s %s%n", e.name(), verdict);
+            System.out.printf("%-26s %5.1fs  %s%n", e.name(), (System.nanoTime() - started) / 1e9, verdict);
             // The next edit starts from what the build just made of this one; a broken edit is
             // undone so the classes after it test what they name.
             if (!ok) {
@@ -380,12 +381,12 @@ public final class Oracle {
         build.join();
     }
 
-    /** Put {@code mark} in front of the first {@code return}'s value, whatever earlier classes made of it. */
+    /** Put {@code mark} in front of the value {@code hello} returns, whatever earlier classes made of it. */
     private static void prefixReturn(Path f, String mark) throws IOException {
         String s = Files.readString(f);
-        int at = s.indexOf("return ");
-        if (at < 0) throw new IOException(f.getFileName() + " has no return");
-        at += "return ".length();
+        Matcher m = Pattern.compile("return [^;]*PREFIX").matcher(s);
+        if (!m.find()) throw new IOException(f.getFileName() + " has no return of PREFIX");
+        int at = m.start() + "return ".length();
         Files.writeString(f, s.substring(0, at) + "\"" + mark + "\" + " + s.substring(at));
     }
 
@@ -396,6 +397,8 @@ public final class Oracle {
     // ------------------------------------------------------------------ the fixture
 
     private static void fixture(Path ws) throws IOException {
+        // Outputs stay out of git, as in a real project: a branch switch moves sources only.
+        write(ws, ".gitignore", "target/\n.jk/\n");
         write(ws, "jk.toml", """
                 group   = "com.example"
                 name    = "oracle"
