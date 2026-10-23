@@ -97,8 +97,12 @@ public final class PathUtil {
      * {@code walk(…).filter(Files::isRegularFile)} — which named, fixed in seven hot walkers,
      * and which had regrown to 72 sites — stops being the obvious spelling.
      *
-     * <p>Symlinks are not followed. {@code walkFileTree}'s default is no-follow, so a link arrives as a
-     * non-regular file and is skipped, for the reason G37 gives about deletes.
+     * <p>A link to a regular file is visited at the link's path with its target's attributes: a
+     * compiler handed that path reads the target, so a key, a stamp and a fingerprint must too. A
+     * link to a directory is not entered — following one walks whatever tree it names, cycles and
+     * dependency link farms included — and is reported to {@link FileVisit#directoryLink} instead,
+     * so a reader of input roots can say so rather than leave the tree out in silence. A dangling
+     * link is skipped.
      */
     public static void forEachRegularFile(Path root, FileVisit visit) throws IOException {
         forEachRegularFile(root, dir -> false, visit);
@@ -131,7 +135,18 @@ public final class PathUtil {
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                 share.visited();
-                if (attrs.isRegularFile()) visit.accept(file, attrs);
+                if (attrs.isRegularFile()) {
+                    visit.accept(file, attrs);
+                } else if (attrs.isSymbolicLink()) {
+                    BasicFileAttributes target;
+                    try {
+                        target = Files.readAttributes(file, BasicFileAttributes.class);
+                    } catch (IOException dangling) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                    if (target.isRegularFile()) visit.accept(file, target);
+                    else if (target.isDirectory()) visit.directoryLink(file);
+                }
                 return FileVisitResult.CONTINUE;
             }
 
@@ -213,6 +228,9 @@ public final class PathUtil {
     @FunctionalInterface
     public interface FileVisit {
         void accept(Path file, BasicFileAttributes attrs) throws IOException;
+
+        /** A link to a directory the walk did not enter; ignored unless the reader asks. */
+        default void directoryLink(Path link) throws IOException {}
     }
 
     /**

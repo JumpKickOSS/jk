@@ -36,6 +36,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -105,8 +106,23 @@ public final class PreflightMemo {
         }
     }
 
+    /** A link to a directory in an input root: jk does not enter it, so it vouches for nothing there. */
+    static final class DirectoryLink extends RuntimeException {
+        final Path link;
+
+        DirectoryLink(Path link) {
+            super(DIRECTORY_LINK);
+            this.link = link;
+        }
+    }
+
+    /** Why a link to a directory in a source or resource root is refused, as a clause. */
+    public static final String DIRECTORY_LINK =
+            "a link to a directory, which jk does not follow: name its target as a source or resource root";
+
     private static Uncertain uncertain(Path fallback, Exception e) {
         if (e instanceof UnreadableInput u) return new Uncertain(u.input, describe(u.getCause()));
+        if (e instanceof DirectoryLink d) return new Uncertain(d.link, DIRECTORY_LINK);
         return new Uncertain(fallback, describe(e));
     }
 
@@ -866,12 +882,22 @@ public final class PreflightMemo {
                     // A file that vanished mid-walk is skipped by the helper; a directory that
                     // cannot be opened surfaces as an uncertain fingerprint, which is the honest
                     // answer — a fingerprint over a tree with a hole in it would look stable.
-                    PathUtil.forEachRegularFile(r, (file, attrs) -> {
-                        Path abs = file.toAbsolutePath().normalize();
-                        feedFingerprint(md, moduleDir, abs, StatIdentity.of(abs, attrs), mtimeMode);
+                    PathUtil.forEachRegularFile(r, new PathUtil.FileVisit() {
+                        @Override
+                        public void accept(Path file, BasicFileAttributes attrs) throws IOException {
+                            Path abs = file.toAbsolutePath().normalize();
+                            feedFingerprint(md, moduleDir, abs, StatIdentity.of(abs, attrs), mtimeMode);
+                        }
+
+                        @Override
+                        public void directoryLink(Path link) {
+                            throw new DirectoryLink(link);
+                        }
                     });
                     continue;
                 }
+                if (!snap.directoryLinks().isEmpty())
+                    throw new DirectoryLink(snap.directoryLinks().getFirst());
                 for (var ref : snap.files()) {
                     feedFingerprint(md, moduleDir, ref.path(), ref.identity(), mtimeMode);
                 }
