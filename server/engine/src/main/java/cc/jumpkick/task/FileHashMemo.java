@@ -269,7 +269,7 @@ public final class FileHashMemo {
     }
 
     /** Sixty-four lowercase hex digits; anything else on a line is a torn or foreign record. */
-    static boolean isSha256(String token) {
+    public static boolean isSha256(String token) {
         if (token.length() != 64) return false;
         for (int i = 0; i < 64; i++) {
             char c = token.charAt(i);

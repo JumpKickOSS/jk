@@ -8,6 +8,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
@@ -75,6 +76,7 @@ class BuildForecastingTargetMemoTest {
         Files.write(layout.mainJar(), new byte[] {1, 2, 3});
         var fps = PreflightMemo.snapshotFingerprints(graph, false);
         PreflightMemo.storeDirty(tmp, graph, false, Set.of(), fps.fingerprints());
+        ModuleInputProvenance.record(tmp, graph, fps.fingerprints());
 
         var clean = BuildForecasting.forecastWithFingerprints(
                 graph, tmp.resolve("cache"), false, tmp, WorkspaceTarget.PACKAGE, false, null);

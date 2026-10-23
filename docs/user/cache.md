@@ -31,6 +31,13 @@ no record behind. A restore is a hit only when it lays down every output the rec
 checked against its digest; a blob that is missing or wrong, or an output the disk refuses, makes
 it a miss — what it had written is removed and the step runs for real.
 
+`target/` is jk's. A successful build records, beside the module's outputs, the inputs they
+came from and the digest of every class file and jar it left there. The next build checks them
+(one stat per untouched file) and puts right a class replaced, a class added that no compile
+produced, or a jar from another build, from the action cache, before anything is packaged or
+tested. An IDE that compiles on its own should write somewhere else (IntelliJ's own `out/`
+directory, not `target/classes`), or the next `jk build` takes its classes out again.
+
 One rule decides where a byte lives. **Content** (an action key and its outputs, a dependency's
 ABI, a fetched jar) is shared by every checkout and every project: it is a function of its
 inputs, so a second checkout of the same commit hits the first's records. **Checkout** state

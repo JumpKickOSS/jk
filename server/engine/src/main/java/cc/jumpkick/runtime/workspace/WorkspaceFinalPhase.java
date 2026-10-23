@@ -6,6 +6,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.Calibration;
+import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.TestClassMatch;
 import cc.jumpkick.runtime.base.ScheduleBias;
