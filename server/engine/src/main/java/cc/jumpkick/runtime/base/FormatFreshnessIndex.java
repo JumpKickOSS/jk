@@ -2,12 +2,12 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,7 +15,7 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Path → (mtime, size) index so {@code jk format} can skip the formatter JVM when nothing on disk
+ * Path → {@link StatIdentity} index so {@code jk format} can skip the formatter JVM when nothing on disk
  * has changed. Content-addressed worker stamps remain a second line of defense for files we do
  * send; this index is the cheap first filter (stat only, no reads).
  *
@@ -25,7 +25,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class FormatFreshnessIndex {
 
-    static final String VERSION = "format-freshness-v1";
+    static final String VERSION = "format-freshness-v2";
 
     private final @Nullable Path file;
     private final Path projectDir;
@@ -54,11 +54,13 @@ public final class FormatFreshnessIndex {
         Map<String, Entry> entries = new LinkedHashMap<>();
         if (Files.isRegularFile(file)) {
             try {
-                for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-                    if (line.isBlank() || line.startsWith("#")) continue;
-                    String[] parts = line.split("\t", 3);
-                    if (parts.length != 3) continue;
-                    entries.put(parts[2], new Entry(Long.parseLong(parts[0]), Long.parseLong(parts[1])));
+                List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+                if (!lines.isEmpty() && lines.getFirst().equals("#" + VERSION)) {
+                    for (String line : lines.subList(1, lines.size())) {
+                        String[] parts = line.split("\t", 2);
+                        StatIdentity identity = parts.length == 2 ? StatIdentity.decode(parts[0]) : null;
+                        if (identity != null) entries.put(parts[1], new Entry(identity));
+                    }
                 }
             } catch (Exception ignored) {
                 entries.clear();
@@ -70,7 +72,7 @@ public final class FormatFreshnessIndex {
     public record Split(
             List<Path> dirtyJava, List<Path> dirtyKotlin, List<Path> dirtyGroovy, List<Path> dirtyScala, int clean) {}
 
-    /** Partition sources into dirty (mtime/size mismatch or unknown) vs already-clean. */
+    /** Partition sources into dirty (identity mismatch or unknown) vs already-clean. */
     public Split partition(List<Path> javaFiles, List<Path> kotlinFiles) {
         return partition(javaFiles, kotlinFiles, List.of(), List.of(), false);
     }
@@ -119,7 +121,7 @@ public final class FormatFreshnessIndex {
         Entry seen = entries.get(key);
         if (seen == null) return false;
         Entry now = stat(file);
-        if (now == null || now.mtimeNanos != seen.mtimeNanos || now.size != seen.size) return false;
+        if (!seen.equals(now)) return false;
         keep.put(key, seen);
         return true;
     }
@@ -128,10 +130,10 @@ public final class FormatFreshnessIndex {
         Entry seen = entries.get(rel(file));
         if (seen == null) return false;
         Entry now = stat(file);
-        return now != null && now.mtimeNanos == seen.mtimeNanos && now.size == seen.size;
+        return seen.equals(now);
     }
 
-    /** Remember the file's current mtime/size as clean for this config. */
+    /** Remember the file's current identity as clean for this config. */
     public void record(Path file) {
         Entry now = stat(file);
         if (now != null) entries.put(rel(file), now);
@@ -142,9 +144,7 @@ public final class FormatFreshnessIndex {
         StringBuilder sb = new StringBuilder();
         sb.append('#').append(VERSION).append('\n');
         for (var e : entries.entrySet()) {
-            sb.append(e.getValue().mtimeNanos)
-                    .append('\t')
-                    .append(e.getValue().size)
+            sb.append(e.getValue().identity().encode())
                     .append('\t')
                     .append(e.getKey())
                     .append('\n');
@@ -167,14 +167,11 @@ public final class FormatFreshnessIndex {
 
     private static @Nullable Entry stat(Path file) {
         try {
-            BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
-            var instant = attrs.lastModifiedTime().toInstant();
-            long nanos = instant.getEpochSecond() * 1_000_000_000L + instant.getNano();
-            return new Entry(nanos, attrs.size());
+            return new Entry(StatIdentity.of(file));
         } catch (IOException e) {
             return null;
         }
     }
 
-    private record Entry(long mtimeNanos, long size) {}
+    private record Entry(StatIdentity identity) {}
 }

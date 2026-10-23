@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.StatIdentity;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -66,6 +67,57 @@ class FileHashMemoTest {
      * answering. A file-backed entry could not pass this, which is why it cost more on NTFS than
      * the hash it replaced.
      */
+    /**
+     * {@code touch -r}, {@code cp -p}, {@code rsync -a}: different bytes behind the size and mtime
+     * the memo recorded. The change time moves, so the memo reads the file again.
+     */
+    @Test
+    void a_same_size_rewrite_that_restores_the_mtime_is_read_again(@TempDir Path dir) throws Exception {
+        Path f = Files.writeString(dir.resolve("Greet.java"), "hello");
+        settle(f);
+        FileTime mtime = Files.getLastModifiedTime(f);
+        withCache(dir.resolve("cache"), () -> {
+            try {
+                String before = FileHashMemo.contentHash(f);
+                Thread.sleep(20);
+                Files.writeString(f, "HELLO");
+                Files.setLastModifiedTime(f, mtime);
+
+                assertThat(FileHashMemo.contentHash(f))
+                        .isEqualTo(Hashing.sha256Hex(f))
+                        .isNotEqualTo(before);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    /**
+     * A caller hashing against an identity it read before the file changed gets the bytes there now,
+     * but those bytes are never filed under the stale identity: a later caller holding that identity
+     * would be handed them for a file it never saw.
+     */
+    @Test
+    void a_hash_is_not_recorded_under_an_identity_the_file_no_longer_has(@TempDir Path dir) throws Exception {
+        Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
+        settle(f);
+        StatIdentity stale = StatIdentity.of(f);
+        Thread.sleep(20);
+        Files.writeString(f, "class Src { int edited; }");
+        settle(f);
+        withCache(dir.resolve("cache"), () -> {
+            try {
+                FileHashMemo.contentHash(f, stale);
+                FileHashMemo.contentHash(f, stale);
+                assertThat(FileHashMemo.contentReads())
+                        .as("nothing was recorded under the stale identity")
+                        .isEqualTo(2);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
     @Test
     void a_hit_touches_no_filesystem_beyond_the_caller_stat(@TempDir Path dir) throws Exception {
         Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
@@ -322,7 +374,7 @@ class FileHashMemoTest {
         Map<String, FileHashMemo.Entry> entries = new HashMap<>();
         long[] ticks = {5, Long.MIN_VALUE, 5, 0, Long.MAX_VALUE, -1, 5, 3};
         for (int i = 0; i < ticks.length; i++) {
-            FileHashMemo.Entry e = new FileHashMemo.Entry(1, 1, -1, "t" + i);
+            FileHashMemo.Entry e = new FileHashMemo.Entry(new StatIdentity(1, 1, 0, ""), false, "t" + i);
             e.used = ticks[i];
             entries.put("k" + i, e);
         }
@@ -342,7 +394,7 @@ class FileHashMemoTest {
         Map<String, FileHashMemo.Entry> entries = new ConcurrentHashMap<>();
         List<FileHashMemo.Entry> all = new ArrayList<>();
         for (int i = 0; i < 20_000; i++) {
-            FileHashMemo.Entry e = new FileHashMemo.Entry(1, 1, -1, "t");
+            FileHashMemo.Entry e = new FileHashMemo.Entry(new StatIdentity(1, 1, 0, ""), false, "t");
             entries.put("k" + i, e);
             all.add(e);
         }

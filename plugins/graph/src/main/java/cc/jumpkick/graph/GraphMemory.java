@@ -3,16 +3,15 @@ package cc.jumpkick.graph;
 
 import cc.jumpkick.codegraph.CodeGraph;
 import cc.jumpkick.codegraph.GraphSnapshot;
+import cc.jumpkick.host.StatIdentity;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
  * What a served graph worker keeps between runs: one workspace's stat index, fragment store and
- * graph, each with the size and modification time of the file it was read from or written to. A
+ * graph, each with the stat identity of the file it was read from or written to. A
  * piece is reused only while its file still has that stamp, so a graph another process wrote is
  * read again. A run for another workspace drops everything first.
  */
@@ -20,12 +19,11 @@ final class GraphMemory {
 
     private GraphMemory() {}
 
-    /** A file's size and modification time; {@code null} when the file is missing. */
-    record Stamp(long size, long mtimeMillis) {
+    /** A file's {@link StatIdentity}; {@code null} when the file is missing. */
+    record Stamp(StatIdentity identity) {
         static @Nullable Stamp of(Path file) {
             try {
-                BasicFileAttributes a = Files.readAttributes(file, BasicFileAttributes.class);
-                return new Stamp(a.size(), a.lastModifiedTime().toMillis());
+                return new Stamp(StatIdentity.of(file));
             } catch (IOException missing) {
                 return null;
             }

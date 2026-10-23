@@ -15,6 +15,7 @@ import cc.jumpkick.codegraph.extract.Extractors;
 import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
@@ -115,19 +116,23 @@ public final class GraphBuild {
         }
         progress.planned(sources.size(), stale.size());
         Map<String, byte[]> changed = new ConcurrentHashMap<>();
+        // A file that moved while it was read is extracted from the bytes read, but its hash is
+        // not filed under the stat taken before the read: the next refresh reads it again.
+        Set<String> moved = ConcurrentHashMap.newKeySet();
         stale.parallelStream().forEach(s -> {
             try {
                 byte[] bytes = Files.readAllBytes(s.path());
                 String sha = Hashing.sha256Hex(bytes);
                 shas.put(s.rel(), sha);
                 if (!sha.equals(stats.sha(s.rel()))) changed.put(s.rel(), bytes);
+                if (!s.identity().equals(StatIdentity.of(s.path()))) moved.add(s.rel());
             } catch (IOException unreadable) {
                 Log.debug("graph: cannot read " + s.rel(), unreadable);
             }
         });
         for (GraphSources.Source s : sources) {
             String sha = shas.get(s.rel());
-            if (sha != null) stats.put(s, sha);
+            if (sha != null && !moved.contains(s.rel())) stats.put(s, sha);
         }
         String classDigest = classDigest(indexes, modules);
         String commit = GitHead.read(base);

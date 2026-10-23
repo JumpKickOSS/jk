@@ -3,11 +3,11 @@ package cc.jumpkick.m2;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.model.RepositorySpec;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -326,7 +326,7 @@ public final class MavenSettings {
     }
 
     /** The stamp of a file that is not there, so an absent file is a state and not a cache miss. */
-    private static final StampedMemo.FileStamp ABSENT = new StampedMemo.FileStamp(-1, FileTime.fromMillis(0));
+    private static final StampedMemo.FileStamp ABSENT = new StampedMemo.FileStamp(new StatIdentity(-1, 0, 0, ""));
 
     private static final StampedMemo<String, List<StampedMemo.FileStamp>, MavenSettings> CURRENT = StampedMemo.create();
 

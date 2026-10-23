@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
@@ -14,8 +15,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -74,22 +73,19 @@ public final class WorkspaceLoader {
 
     /**
      * What one module list is a function of: the root directory, the root manifest as it stands
-     * (size and mtime — a request's inputs are fixed at launch, so a stamp is enough), and the two
+     * (its stat identity — a request's inputs are fixed at launch, so a stamp is enough), and the two
      * parts of the parsed root the load reads, its project and its module entries. Two callers in one
      * request handing in different root objects for the same manifest share a list only when those
      * agree. {@code null} when the root manifest cannot be stat'ed — a root parsed from text in a
      * test, say — in which case the list is built for the caller and not remembered.
      */
-    private record MemoKey(Path root, long size, FileTime mtime, Project project, List<String> modules) {
+    private record MemoKey(Path root, StatIdentity manifest, Project project, List<String> modules) {
         static @Nullable MemoKey of(Path workspaceRoot, JkBuild root) {
             Path dir = workspaceRoot.toAbsolutePath().normalize();
             try {
-                BasicFileAttributes attrs =
-                        Files.readAttributes(ManifestPaths.manifestIn(dir), BasicFileAttributes.class);
                 return new MemoKey(
                         dir,
-                        attrs.size(),
-                        attrs.lastModifiedTime(),
+                        StatIdentity.of(ManifestPaths.manifestIn(dir)),
                         root.project(),
                         List.copyOf(root.workspaceModules()));
             } catch (IOException | RuntimeException unstattable) {

@@ -717,7 +717,7 @@ population = { examined = 4 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 16, sites = 1277 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1342, sites = 90304 }
+"server/engine" = { classes = 1343, sites = 90704 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 59, sites = 3494 }
 "server/resolver" = { classes = 123, sites = 7334 }
@@ -1152,14 +1152,6 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 [[clock-owner.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.task.CasSweep#sweep(Lcc/jumpkick/cache/Cas;Ljava/util/Set;Z)Lcc/jumpkick/task/CasSweep$Report; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.task.FileHashMemo#contentHash(Ljava/nio/file/Path;JJJ)Ljava/lang/String; -> java.lang.System#currentTimeMillis()J"
-reason = "pure move: the session-aggregate fold and the file-hash memo gained per-window and stat-identity entry points; the same wall-clock reads moved into fold(), sessionMemo() and contentHash(Path,long,long,long), same count"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.task.FileHashMemo$Store#get(Ljava/lang/String;JJJ)Lcc/jumpkick/task/FileHashMemo$Entry; -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"
@@ -2146,6 +2138,10 @@ population = { files = 29 }
 
 [stage-docs]
 population = { examined = 10 }
+
+[steps-declare-forecast]
+[steps-declare-forecast.populations]
+"server/engine" = { examined = 59 }
 
 [swallowed-broad-catch]
 population = { files = 2240 }

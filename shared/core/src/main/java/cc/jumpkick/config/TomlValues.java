@@ -29,7 +29,7 @@ public final class TomlValues {
         Path key = file.toAbsolutePath().normalize();
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(key);
         if (stamp == null) return Optional.empty(); // absent or unreadable
-        if (System.currentTimeMillis() - stamp.modified().toMillis() < SETTLE_MS) return read(key);
+        if (System.currentTimeMillis() - stamp.touchedMillis() < SETTLE_MS) return read(key);
         Optional<TomlParseResult> hit = PARSED.get(key, stamp, () -> read(key));
         return hit == null ? Optional.empty() : hit;
     }

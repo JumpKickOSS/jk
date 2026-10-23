@@ -57,22 +57,20 @@ class StampedMemoTest {
     }
 
     @Test
-    void a_file_stamp_moves_with_size_or_mtime(@TempDir Path dir) throws Exception {
+    void a_file_stamp_moves_with_any_rewrite_even_one_that_restores_size_and_mtime(@TempDir Path dir) throws Exception {
         Path f = dir.resolve("x.toml");
         Files.writeString(f, "aaa");
+        FileTime mtime = Files.getLastModifiedTime(f);
         StampedMemo.FileStamp first = Objects.requireNonNull(StampedMemo.FileStamp.of(f), "stamp of an existing file");
+        assertThat(StampedMemo.FileStamp.of(f)).isEqualTo(first);
+        Thread.sleep(20);
 
         Files.writeString(f, "bbb");
-        Files.setLastModifiedTime(f, first.modified());
-        assertThat(StampedMemo.FileStamp.of(f)).isEqualTo(first); // same size, same mtime
+        Files.setLastModifiedTime(f, mtime);
+        assertThat(StampedMemo.FileStamp.of(f)).isNotNull().isNotEqualTo(first); // same size, same mtime
 
         Files.writeString(f, "bbbb");
-        Files.setLastModifiedTime(f, first.modified());
         assertThat(StampedMemo.FileStamp.of(f)).isNotNull().isNotEqualTo(first); // size moved
-
-        Files.writeString(f, "aaa");
-        Files.setLastModifiedTime(f, FileTime.fromMillis(first.modified().toMillis() + 5_000));
-        assertThat(StampedMemo.FileStamp.of(f)).isNotNull().isNotEqualTo(first); // mtime moved
 
         assertThat(StampedMemo.FileStamp.of(dir.resolve("nope"))).isNull();
         assertThat(StampedMemo.FileStamp.of(null)).isNull();
@@ -162,11 +160,13 @@ class StampedMemoTest {
         FileTime pinned = Files.getLastModifiedTime(file);
         assertThat(memo.read().of(file)).isEqualTo("AAA");
 
-        // 2. same size, same mtime, different bytes — the memo's declared stamp decides.
+        // 2. same size, same mtime, different bytes (cp -p, touch -r): every memo reads again,
+        // a stat stamp because the change time moved, a body stamp because the bytes did.
+        Thread.sleep(20);
         Files.writeString(file, memo.body().of("BBB"));
         Files.setLastModifiedTime(file, pinned);
         assertThat(Files.size(file)).isEqualTo(memo.body().of("AAA").length());
-        assertThat(memo.read().of(file)).isEqualTo(memo.stamp() == Stamp.FILE ? "AAA" : "BBB");
+        assertThat(memo.read().of(file)).isEqualTo("BBB");
 
         // 3. mtime moved — every memo revalidates, whatever its stamp.
         Files.writeString(file, memo.body().of("CCC"));

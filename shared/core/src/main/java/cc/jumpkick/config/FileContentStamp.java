@@ -14,9 +14,9 @@ import org.jspecify.annotations.Nullable;
  * <p>A content hash is the only stamp that survives a same-length edit, but reading every byte on
  * every call is what a memo exists to avoid — the guard rule files and the lock are consulted once
  * per lane per module, and the lock alone is hundreds of kilobytes. So the bytes are read when the
- * file's {@code (size, mtime)} has moved, and within {@link #SETTLE_MS} of its mtime, where stat
- * identity cannot be trusted: a rewrite inside one filesystem tick, or one that restores the
- * previous mtime, leaves the same stamp over different bytes. Outside that window a call costs one
+ * file's {@link cc.jumpkick.host.StatIdentity} has moved, and within {@link #SETTLE_MS} of its last
+ * touch, where stat identity cannot be trusted: a rewrite inside one tick of a coarse file system
+ * leaves the same stamp over different bytes. Outside that window a call costs one
  * stat. Same rule as {@code FileHashMemo}, for readers below the engine.
  */
 public final class FileContentStamp {
@@ -40,11 +40,14 @@ public final class FileContentStamp {
     public static @Nullable String of(Path file) {
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(file);
         if (stamp == null || !Files.isRegularFile(file)) return null;
-        if (Clock.SYSTEM.millis() - stamp.modified().toMillis() < SETTLE_MS) {
+        if (Clock.SYSTEM.millis() - stamp.touchedMillis() < SETTLE_MS) {
             // Unsettled: hash the bytes and do not record a stamp this write could still share.
             return read(file);
         }
-        return HASHES.get(file, stamp, () -> read(file));
+        String hash = HASHES.get(file, stamp, () -> read(file));
+        // Bytes that changed under the read are not left filed under the stat taken before it.
+        if (!stamp.equals(StampedMemo.FileStamp.of(file))) HASHES.forget(file);
+        return hash;
     }
 
     private static @Nullable String read(Path file) {

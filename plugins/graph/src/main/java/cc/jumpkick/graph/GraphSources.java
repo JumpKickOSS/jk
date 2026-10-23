@@ -4,6 +4,7 @@ package cc.jumpkick.graph;
 import cc.jumpkick.codegraph.extract.Extractors;
 import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.layout.WalkSkip;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -40,7 +41,11 @@ public final class GraphSources {
             Set.of("package-lock.json", "yarn.lock", "pnpm-lock.yaml", ManifestNames.LOCK, "npm-shrinkwrap.json");
 
     /** One source file: repo-relative path with {@code /} separators, size and modification time. */
-    public record Source(String rel, Path path, long size, long mtimeMillis) {}
+    public record Source(String rel, Path path, StatIdentity identity) {
+        public long size() {
+            return identity.size();
+        }
+    }
 
     public static List<Source> walk(Path root) throws IOException {
         Path base = root.toAbsolutePath().normalize();
@@ -48,7 +53,7 @@ public final class GraphSources {
         PathUtil.forEachRegularFile(base, dir -> skipDir(base, dir), (file, attrs) -> {
             String rel = base.relativize(file).toString().replace('\\', '/');
             if (attrs.size() > MAX_BYTES || skipFile(rel) || Extractors.forPath(rel) == null) return;
-            out.add(new Source(rel, file, attrs.size(), attrs.lastModifiedTime().toMillis()));
+            out.add(new Source(rel, file, StatIdentity.of(file, attrs)));
         });
         out.sort(Comparator.comparing(Source::rel));
         return out;

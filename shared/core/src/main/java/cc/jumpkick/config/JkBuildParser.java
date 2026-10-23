@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.config.StampedMemo.FileStamp;
+import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
@@ -35,7 +36,6 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -73,7 +73,7 @@ public final class JkBuildParser {
      * grow without bound. Stores the <em>local</em> manifest only; workspace inheritance is applied
      * by {@link #parse(Path)} on top so it always sees a fresh root.
      *
-     * <p>The stamp is {@code (size, mtime)} of the manifest and of its catalog files, except inside
+     * <p>The stamp is the {@link StatIdentity} of the manifest and of its catalog files, except inside
      * the settle window, so a hit does not re-read the file. {@code parse} fans out over every
      * sibling; without that, a read-only {@code jk status} would re-read the same handful of
      * manifests thousands of times.
@@ -92,7 +92,7 @@ public final class JkBuildParser {
             StampedMemo.bounded(MANIFEST_MEMO_ENTRIES);
 
     /**
-     * Staleness stamp for a manifest: {@code (size, mtime)} of {@code jk.toml}, plus its bytes while
+     * Staleness stamp for a manifest: the {@link StatIdentity} of {@code jk.toml}, plus its bytes while
      * its mtime is too fresh to trust, plus the stamp of every catalog file its short names resolve
      * through.
      *
@@ -118,7 +118,7 @@ public final class JkBuildParser {
      *     with its own {@code (size, mtime)} or {@code null} when absent
      */
     private record ManifestStamp(
-            long size, FileTime modified, @Nullable String body, Map<Path, @Nullable FileStamp> catalog) {
+            StatIdentity identity, @Nullable String body, Map<Path, @Nullable FileStamp> catalog) {
 
         /** Distrust {@code (size, mtime)} for a file modified within this window. */
         private static final long SETTLE_MS = 2_000;
@@ -130,13 +130,10 @@ public final class JkBuildParser {
             } catch (NoSuchFileException e) {
                 throw new JkBuildParseException("jk.toml not found: " + file);
             }
-            long mtime = attrs.lastModifiedTime().toMillis();
-            boolean settled = System.currentTimeMillis() - mtime >= SETTLE_MS;
+            StatIdentity identity = StatIdentity.of(file, attrs);
+            boolean settled = System.currentTimeMillis() - identity.lastTouchedMillis() >= SETTLE_MS;
             return new ManifestStamp(
-                    attrs.size(),
-                    attrs.lastModifiedTime(),
-                    settled ? null : read.read(file),
-                    LibraryCatalog.stamp(moduleDirOf(file)));
+                    identity, settled ? null : read.read(file), LibraryCatalog.stamp(moduleDirOf(file)));
         }
     }
 
