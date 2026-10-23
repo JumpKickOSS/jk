@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.host;
 
+import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -16,6 +17,7 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.DosFileAttributeView;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -424,7 +426,10 @@ public final class PathUtil {
                     // The skip above compares against the source's mtime, so the copy has to carry
                     // it: a copy stamped with the time of copying never matches again, and every
                     // later copyTree of the same tree rewrites every file.
-                    if (!always) Files.setLastModifiedTime(target, attrs.lastModifiedTime());
+                    // Windows' CopyFileEx carries the source's mtime on its own, so a copy that
+                    // must read as new is stamped explicitly.
+                    Files.setLastModifiedTime(
+                            target, always ? FileTime.fromMillis(Clock.SYSTEM.millis()) : attrs.lastModifiedTime());
                 }
                 copied[0]++;
                 return FileVisitResult.CONTINUE;
