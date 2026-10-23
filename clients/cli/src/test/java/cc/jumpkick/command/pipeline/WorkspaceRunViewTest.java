@@ -298,7 +298,9 @@ class WorkspaceRunViewTest {
         assertThat(WorkspaceRunView.errorsTail(verdict)).isEqualTo(why);
         var graph = new WorkspaceResult(false, 2, List.of(), List.of("cycle: a -> b -> a"));
         assertThat(WorkspaceRunView.errorStep(graph)).isEqualTo("composite");
-        assertThat(WorkspaceRunView.errorsTail(graph)).isEqualTo("dependency resolution failed");
+        assertThat(WorkspaceRunView.errorsTail(graph))
+                .as("an error before any module ran says what it was")
+                .isEqualTo("cycle: a -> b -> a");
     }
 
     @Test

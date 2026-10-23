@@ -145,7 +145,7 @@ class BuildServiceEtaTest {
                 "g:core",
                 List.of(
                         new TaskForecast.Task(
-                                "copy-test-resources", TaskForecast.Status.RUN, "test resources changed", null),
+                                "compile-test", TaskForecast.Status.RUN, TaskForecast.TEST_RESOURCES_CHANGED, null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~792 tests", null)),
                 100,
                 792,

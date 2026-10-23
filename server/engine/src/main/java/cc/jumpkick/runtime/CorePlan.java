@@ -23,15 +23,10 @@ import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import cc.jumpkick.runtime.base.SourceRefs;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -529,14 +524,13 @@ final class CorePlan {
         }
         if (PlannerVersions.declared(parsedBuild)) leaves.add(TaskNames.COMPILE_VERSIONS);
         leaves.add(TaskNames.COPY_RESOURCES);
-        // A classes transform (bytecode enhancement) makes the module's classes what they are, so
-        // a recompile runs it too: `jk dev` launches from its output.
+        // Every plugin step joins the plan, and the terminal keeps the ones the compile requires:
+        // the source generators the compiles read. A classes transform (bytecode enhancement)
+        // makes the module's classes what they are, so a recompile runs it too: `jk dev` launches
+        // from its output.
+        for (Task p : s.pluginSteps()) b.addTask(p);
         TaskDecl transform = PlannerPlugin.transformStep(pluginDecls);
-        if (transform != null && pluginDecls != null) {
-            String name = "plugin-" + transform.name();
-            addPluginClosure(b, s.pluginSteps(), Set.of(name));
-            leaves.add(name);
-        }
+        if (transform != null) leaves.add("plugin-" + transform.name());
         b.addTask(Task.builder(BuildPlanner.COMPILE_JOIN)
                 .forecast(StepForecast.RIDES)
                 .stage(transform == null ? BuildStage.COMPILE : BuildStage.PACKAGE)
@@ -566,18 +560,14 @@ final class CorePlan {
             b.addTask(s.compileGuard());
             b.alsoKeep(TaskNames.COMPILE_GUARD);
         }
-        // `jk test` stops at run-tests — it never packages a jar. Plugin steps run only
-        // when packaging does: they exist to feed the packaged/native artifact. The exception
-        // is plugin tasks the test plan's own steps require — what feeds the forked test JVM
-        // (mirroring runTestsStep's requires) and the source generators the compiles read —
-        // plus any plugin tasks those transitively require; without them the plan fails
-        // validation before anything runs.
+        // Every plugin step joins the plan, and the terminal keeps the ones its steps require: the
+        // source generators the compiles read, what feeds the forked test JVM, and — when it
+        // packages — what feeds the packaged artifact. `jk test` stops at run-tests and never
+        // packages a jar, so the packaging plugin steps fall away with package-jar.
+        for (Task p : s.pluginSteps()) b.addTask(p);
         if (!in.testOnly()) {
-            for (Task p : s.pluginSteps()) b.addTask(p);
             b.addTask(PlannerResources.buildLogicBeforePackageStep(cx, s.buildInfo() != null));
             b.addTask(s.packageJar());
-        } else if (pluginDecls != null) {
-            addTestClasspathPlugins(b, s.pluginSteps(), pluginDecls);
         }
         // write-stamp is the Java-compile freshness companion; only when Java ran.
         if (useJava) {
@@ -590,39 +580,6 @@ final class CorePlan {
         // write-stamp-groovy is the Groovy-compile freshness companion.
         if (useGroovy) {
             b.addTask(s.writeStampGroovy());
-        }
-    }
-
-    /**
-     * The plugin tasks a test-only plan still needs: what feeds the forked test JVM, the source
-     * generators compile-java and compile-test read, and what those require.
-     */
-    private static void addTestClasspathPlugins(BuildPlan.Builder b, List<Task> pluginSteps, PluginDeclarations decls) {
-        Set<String> roots = new LinkedHashSet<>();
-        for (TaskDecl step : decls.steps()) {
-            if (step.testOnly() || step.feedsTests() || step.sourceGenerating()) {
-                roots.add("plugin-" + step.name());
-            }
-        }
-        addPluginClosure(b, pluginSteps, roots);
-    }
-
-    /** The plugin tasks named in {@code roots} and every plugin task they transitively require. */
-    private static void addPluginClosure(BuildPlan.Builder b, List<Task> pluginSteps, Set<String> roots) {
-        Map<String, Task> pluginByName = new LinkedHashMap<>();
-        for (Task p : pluginSteps) pluginByName.put(p.name(), p);
-        ArrayDeque<String> want = new ArrayDeque<>(roots);
-        Set<String> closure = new HashSet<>();
-        while (!want.isEmpty()) {
-            String name = want.poll();
-            Task p = pluginByName.get(name);
-            if (p == null || !closure.add(name)) continue;
-            for (String r : p.requires()) {
-                if (pluginByName.containsKey(r)) want.add(r);
-            }
-        }
-        for (Map.Entry<String, Task> e : pluginByName.entrySet()) {
-            if (closure.contains(e.getKey())) b.addTask(e.getValue());
         }
     }
 

@@ -39,7 +39,6 @@ class BuildStageTest {
     @Test
     void of_task_name_classifies_the_forecast_only_steps() {
         assertThat(BuildStage.ofTaskName("compile-main")).isEqualTo(BuildStage.COMPILE);
-        assertThat(BuildStage.ofTaskName("copy-test-resources")).isEqualTo(BuildStage.TEST);
         assertThat(BuildStage.ofTaskName("restore-outputs")).isEqualTo(BuildStage.OTHER);
         assertThat(BuildStage.ofTaskName("order-check")).isEqualTo(BuildStage.OTHER);
     }

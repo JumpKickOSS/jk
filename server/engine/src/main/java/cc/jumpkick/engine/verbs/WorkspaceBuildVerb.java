@@ -366,6 +366,8 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             String msg = EventRedaction.redactText(dir, Errors.text(e));
             host.sendQuiet(writer, host.requestFailedLine(dir, e));
             host.publishRequestError(rid, dir, msg);
+            // The run's record names why, so `jk history` and the agent report do too.
+            if (rid > 0) host.accRunErrors(rid, List.of(msg));
             return JobOutcome.failed(Exit.FAILURE);
         }
     }
