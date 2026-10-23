@@ -2,8 +2,11 @@
 package cc.jumpkick.testing;
 
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,17 +27,27 @@ public final class SourceText {
 
     private SourceText() {}
 
-    /** Every {@code *.java} file under {@code root}, sorted. An absent directory contributes none. */
+    /**
+     * Every {@code *.java} file under {@code root}, sorted, outside any {@linkplain
+     * RepoRoot#otherCheckout other checkout} nested in it. An absent directory contributes none.
+     */
     public static List<Path> javaUnder(Path root) throws IOException {
         if (!Files.isDirectory(root)) return List.of();
-        try (var walk = Files.walk(root)) {
-            List<Path> out =
-                    new ArrayList<>(walk.filter(p -> p.getFileName().toString().endsWith(".java"))
-                            .filter(Files::isRegularFile)
-                            .toList());
-            out.sort(Path::compareTo);
-            return List.copyOf(out);
-        }
+        List<Path> out = new ArrayList<>();
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                return RepoRoot.otherCheckout(dir, root) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                if (attrs.isRegularFile() && file.getFileName().toString().endsWith(".java")) out.add(file);
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        out.sort(Path::compareTo);
+        return List.copyOf(out);
     }
 
     /** {@code path} relative to {@code root}, with forward slashes on every platform. */

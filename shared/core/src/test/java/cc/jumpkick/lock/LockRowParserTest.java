@@ -182,11 +182,12 @@ class LockRowParserTest {
     @Test
     void every_lock_in_the_checkout_and_the_corpus_reads_identically_through_both_grammars() throws IOException {
         List<Path> locks = new ArrayList<>();
+        Path repo = RepoRoot.find(LockRowParserTest.class);
         PathUtil.forEachRegularFile(
-                RepoRoot.find(LockRowParserTest.class),
+                repo,
                 dir -> {
                     String name = dir.getFileName().toString();
-                    return name.equals(".git") || name.equals("target") || name.equals("node_modules");
+                    return name.equals("target") || name.equals("node_modules") || RepoRoot.otherCheckout(dir, repo);
                 },
                 (file, attrs) -> {
                     if (file.getFileName().toString().equals("jk-lock.toml")) locks.add(file);

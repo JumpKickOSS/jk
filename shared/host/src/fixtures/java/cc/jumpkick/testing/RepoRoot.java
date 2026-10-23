@@ -72,6 +72,17 @@ public final class RepoRoot {
     }
 
     /**
+     * Whether a scan of the checkout under {@code root} stays out of {@code dir}: {@code .git}, and any
+     * other checkout nested inside this one — a git worktree, an agent's sandbox — which has a
+     * {@code .git} of its own. Its files are another tree's, not this checkout's sources.
+     */
+    public static boolean otherCheckout(Path dir, Path root) {
+        Path name = dir.getFileName();
+        if (name != null && name.toString().equals(".git")) return true;
+        return !dir.equals(root) && Files.exists(dir.resolve(".git"));
+    }
+
+    /**
      * A checkout directory named from the root, asserted present. As {@link #file}, for the
      * tripwires that scan a source tree rather than read one file.
      *
