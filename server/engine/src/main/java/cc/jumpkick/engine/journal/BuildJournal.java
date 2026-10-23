@@ -804,18 +804,38 @@ public final class BuildJournal {
     }
 
     /**
-     * First {@code "name": "<value>"} occurrence, lexically; null when absent or not a string. The
-     * value is returned as written (escapes intact) — callers compare short enum-like words.
+     * First {@code "name": "<value>"} occurrence, lexically, unescaped; null when absent or not a
+     * string.
      */
     static @Nullable String scanString(String json, String name) {
         int start = scanValueStart(json, name);
         if (start < 0 || start >= json.length() || json.charAt(start) != '"') return null;
-        int end = start + 1;
-        while (end < json.length()) {
-            char c = json.charAt(end);
-            if (c == '\\') end += 2;
-            else if (c == '"') return json.substring(start + 1, end);
-            else end++;
+        StringBuilder value = new StringBuilder();
+        int at = start + 1;
+        while (at < json.length()) {
+            char c = json.charAt(at);
+            if (c == '"') return value.toString();
+            if (c != '\\' || at + 1 >= json.length()) {
+                value.append(c);
+                at++;
+                continue;
+            }
+            char e = json.charAt(at + 1);
+            if (e == 'u' && at + 6 <= json.length()) {
+                value.append((char) Integer.parseInt(json.substring(at + 2, at + 6), 16));
+                at += 6;
+                continue;
+            }
+            value.append(
+                    switch (e) {
+                        case 'n' -> '\n';
+                        case 't' -> '\t';
+                        case 'r' -> '\r';
+                        case 'b' -> '\b';
+                        case 'f' -> '\f';
+                        default -> e;
+                    });
+            at += 2;
         }
         return null;
     }
