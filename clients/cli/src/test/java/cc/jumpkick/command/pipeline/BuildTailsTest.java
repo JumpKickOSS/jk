@@ -65,4 +65,15 @@ class BuildTailsTest {
         assertThat(t).contains("[2 of 3]");
         assertThat(t).contains("— failed");
     }
+
+    @Test
+    void a_module_another_failure_stopped_says_stopped_not_failed() {
+        var stopped = new ModuleOutcome("g:a", Path.of("/a"), false, 1, 5, true, false).withStopped(true);
+        String t = TestAnsi.strip(BuildTails.completionLine(stopped, 2, 3));
+        assertThat(t).contains("[2 of 3]").contains("g:a").contains("— stopped");
+        assertThat(t).doesNotContain("failed");
+        assertThat(TestAnsi.strip(BuildTails.stoppedLine("g:a")))
+                .contains("stopped")
+                .contains("g:a");
+    }
 }

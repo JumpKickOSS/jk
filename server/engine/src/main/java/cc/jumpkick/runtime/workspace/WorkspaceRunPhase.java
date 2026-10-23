@@ -165,6 +165,17 @@ final class WorkspaceRunPhase {
         return Optional.empty();
     }
 
+    /**
+     * Whether fail-fast stopped this module rather than it failing: its plan was stopped for a
+     * sibling's failure and none of its own steps failed. The journal applies the same rule.
+     */
+    static boolean stoppedByFailure(BuildPlan plan, BuildPlanResult result, boolean cancelled) {
+        List<String> statuses = new ArrayList<>(result.steps().size());
+        for (BuildPlanResult.StepReport step : result.steps())
+            statuses.add(step.status().name());
+        return ModuleOutcome.stoppedByFailure(result.success() && !cancelled, cancelled, statuses, plan.stopped());
+    }
+
     /** Return a failing outcome only when fail-fast policy should stop admission. */
     static @Nullable ModuleOutcome stoppingFailure(boolean keepGoing, ModuleOutcome outcome) {
         return !outcome.success() && !keepGoing ? outcome : null;
@@ -211,7 +222,14 @@ final class WorkspaceRunPhase {
             int exit = result.success() && !cancelled ? 0 : NativePlans.failureExitCode(module.plan(), result);
             boolean didWork = !result.success() || cancelled || BuildService.moduleDidWork(result);
             ModuleOutcome outcome = new ModuleOutcome(
-                    module.coord(), module.dir(), result.success() && !cancelled, exit, millis, didWork, cancelled);
+                            module.coord(),
+                            module.dir(),
+                            result.success() && !cancelled,
+                            exit,
+                            millis,
+                            didWork,
+                            cancelled)
+                    .withStopped(stoppedByFailure(module.plan(), result, cancelled));
             ModuleOutcome.Image image = ImagePlans.outcomeOf(module.plan());
             if (image != null) outcome = outcome.withImage(image);
             ModuleOutcome.Shelved shelved = InstallPlans.shelvedOf(module.plan());

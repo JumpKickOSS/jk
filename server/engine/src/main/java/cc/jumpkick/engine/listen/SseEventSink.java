@@ -34,7 +34,14 @@ public final class SseEventSink implements EventSink {
             case EngineEvent.ModuleStart e -> sse.publishModuleStart(requestId, e.dir(), e.coord());
             case EngineEvent.ModuleFinish e ->
                 sse.publishModuleFinish(
-                        requestId, e.dir(), e.coord(), e.success(), e.millis(), e.didWork(), e.cancelled());
+                        requestId,
+                        e.dir(),
+                        e.coord(),
+                        e.success(),
+                        e.millis(),
+                        e.didWork(),
+                        e.cancelled(),
+                        e.stopped());
             case EngineEvent.Eta e -> sse.publishEta(requestId, e.remainingMs());
             case EngineEvent.Plan e -> sse.publishPlan(requestId, e.totalWeight());
             case EngineEvent.PlanFinish e -> sse.publishBuildPlanFinish(requestId, e.dir(), e.success());

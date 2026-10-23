@@ -219,7 +219,7 @@ class JsonlShapeTest {
         assertThat(start).contains("\"type\":\"module-start\"");
         assertThat(start).contains("\"dir\":\"/w/core\"");
         assertThat(start).contains("\"coord\":\"com.example:core\"");
-        String finish = JsonlShape.moduleFinish("/w/core", "com.example:core", true, 42);
+        String finish = JsonlShape.moduleFinish("/w/core", "com.example:core", true, false, 42);
         assertThat(finish).contains("\"type\":\"module-finish\"");
         assertThat(finish).contains("\"success\":true");
         assertThat(finish).contains("\"duration_ms\":42");

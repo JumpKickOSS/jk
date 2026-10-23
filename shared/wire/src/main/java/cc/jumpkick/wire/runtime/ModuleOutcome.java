@@ -2,7 +2,9 @@
 package cc.jumpkick.wire.runtime;
 
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -16,6 +18,9 @@ import org.jspecify.annotations.Nullable;
  * @param cancelled session/user cancel (Ctrl-C, {@code jk cancel}, deadline) ended this module —
  * not a compile/test failure. The shorter overloads leave this {@code false}.
  *
+ * @param stopped another module's failure stopped this one before it could be judged (see
+ * {@link #stoppedByFailure}); {@code success} is then {@code false}.
+ *
  * @param shelved what an install pass published to the shelf for this module; {@code null} when
  * the plan carried no {@code cache-install} step, or never reached it.
  */
@@ -27,6 +32,7 @@ public record ModuleOutcome(
         long millis,
         boolean didWork,
         boolean cancelled,
+        boolean stopped,
         @Nullable Image image,
         @Nullable Shelved shelved,
         @Nullable Published published) {
@@ -74,27 +80,58 @@ public record ModuleOutcome(
 
     public ModuleOutcome(
             String coord, Path dir, boolean success, int exitCode, long millis, boolean didWork, boolean cancelled) {
-        this(coord, dir, success, exitCode, millis, didWork, cancelled, null, null, null);
+        this(coord, dir, success, exitCode, millis, didWork, cancelled, false, null, null, null);
     }
 
     /** Assume work was done when the caller does not know (fail-open for "built"). */
     public ModuleOutcome(String coord, Path dir, boolean success, int exitCode, long millis) {
-        this(coord, dir, success, exitCode, millis, true, false, null, null, null);
+        this(coord, dir, success, exitCode, millis, true, false, false, null, null, null);
     }
 
     public ModuleOutcome(String coord, Path dir, boolean success, int exitCode, long millis, boolean didWork) {
-        this(coord, dir, success, exitCode, millis, didWork, false, null, null, null);
+        this(coord, dir, success, exitCode, millis, didWork, false, false, null, null, null);
+    }
+
+    public ModuleOutcome withStopped(boolean stop) {
+        return new ModuleOutcome(
+                coord, dir, success, exitCode, millis, didWork, cancelled, stop, image, shelved, published);
+    }
+
+    /**
+     * Whether a module was stopped by a failure elsewhere rather than failed: it did not succeed,
+     * the run was not cancelled, it recorded steps and none of them failed ({@code CANCELLED} is not
+     * a failure), and something else in the run failed. The live module-finish and the results
+     * journal both decide with this rule.
+     *
+     * @param stepStatuses the module's step terminals by name ({@code FAIL}, {@code CANCELLED}, …)
+     */
+    public static boolean stoppedByFailure(
+            boolean success, boolean runCancelled, Collection<String> stepStatuses, boolean failedElsewhere) {
+        if (success || runCancelled || stepStatuses.isEmpty() || !failedElsewhere) return false;
+        for (String status : stepStatuses) {
+            if (failedStatus(status)) return false;
+        }
+        return true;
+    }
+
+    private static boolean failedStatus(@Nullable String status) {
+        if (status == null) return false;
+        String u = status.trim().toUpperCase(Locale.ROOT);
+        return "FAIL".equals(u) || "FAILED".equals(u);
     }
 
     public ModuleOutcome withImage(Image img) {
-        return new ModuleOutcome(coord, dir, success, exitCode, millis, didWork, cancelled, img, shelved, published);
+        return new ModuleOutcome(
+                coord, dir, success, exitCode, millis, didWork, cancelled, stopped, img, shelved, published);
     }
 
     public ModuleOutcome withShelved(Shelved shelf) {
-        return new ModuleOutcome(coord, dir, success, exitCode, millis, didWork, cancelled, image, shelf, published);
+        return new ModuleOutcome(
+                coord, dir, success, exitCode, millis, didWork, cancelled, stopped, image, shelf, published);
     }
 
     public ModuleOutcome withPublished(Published pub) {
-        return new ModuleOutcome(coord, dir, success, exitCode, millis, didWork, cancelled, image, shelved, pub);
+        return new ModuleOutcome(
+                coord, dir, success, exitCode, millis, didWork, cancelled, stopped, image, shelved, pub);
     }
 }

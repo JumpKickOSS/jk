@@ -39,11 +39,21 @@ final class BuildTails {
      * green check, bright-black brackets around a plain {@code NN of MM} count, the
      * {@code group:artifact} in green with strikethrough (done, web success color), and the
      * bright-black italic {@code took …} suffix. A failed unit keeps the red cross and
-     * {@code — failed}.
+     * {@code — failed}; a unit another module's failure stopped reads {@code — stopped}, muted.
      */
+    static String completionLine(ModuleOutcome o, int index, int total) {
+        return completionLine(o.success(), o.stopped(), index, total, o.coord(), o.millis());
+    }
+
     static String completionLine(boolean ok, int index, int total, String coord, long millis) {
+        return completionLine(ok, false, index, total, coord, millis);
+    }
+
+    private static String completionLine(boolean ok, boolean stopped, int index, int total, String coord, long millis) {
         var th = Theme.active();
-        String mark = Theme.colorize(ok ? Glyphs.CHECK : Glyphs.CROSS, ok ? th.success() : th.error());
+        String mark = stopped
+                ? Theme.colorize(Glyphs.CANCELLED, th.midGray())
+                : Theme.colorize(ok ? Glyphs.CHECK : Glyphs.CROSS, ok ? th.success() : th.error());
         StringBuilder sb = new StringBuilder();
         sb.append(mark)
                 .append(' ')
@@ -54,10 +64,17 @@ final class BuildTails {
             sb.append(Theme.colorize(coord, th.success().crossedOut()))
                     .append(' ')
                     .append(ConsoleSpec.took(Duration.ofMillis(millis)));
+        } else if (stopped) {
+            sb.append(JkManager.coloredModule(coord)).append(' ').append(Theme.colorize("— stopped", th.midGray()));
         } else {
             sb.append(JkManager.coloredModule(coord)).append(' ').append(Theme.colorize("— failed", th.error()));
         }
         return sb.toString();
+    }
+
+    /** A roll-call line for a module another module's failure stopped: not a failure of its own. */
+    static String stoppedLine(String coord) {
+        return Theme.colorize("stopped by the failure:", Theme.active().midGray()) + " " + Coord.module(coord);
     }
 
     /** Dim italic {@code "took Xms"} from a wall-clock start captured with {@link System#nanoTime}. */

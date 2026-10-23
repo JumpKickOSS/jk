@@ -22,7 +22,14 @@ public interface SseEvents {
     void publishModuleStart(long requestId, String dir, @Nullable String coord);
 
     void publishModuleFinish(
-            long requestId, String dir, String coord, boolean success, long millis, boolean didWork, boolean cancelled);
+            long requestId,
+            String dir,
+            String coord,
+            boolean success,
+            long millis,
+            boolean didWork,
+            boolean cancelled,
+            boolean stopped);
 
     void publishEta(long requestId, long millis);
 
