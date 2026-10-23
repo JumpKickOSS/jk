@@ -34,7 +34,7 @@ import org.jspecify.annotations.Nullable;
  * by trusting what it declares.
  *
  * <p>Every JVM that runs a suite records, through JFR, each file it reads ({@code jdk.FileRead}),
- * each process it starts ({@code jdk.ProcessStart}) and its socket traffic. After the run, a file
+ * each program it starts ({@code jdk.ProcessStart}) and its socket traffic. After the run, a file
  * outside everything the stamp already keys — the classes, the classpath, the resources, the JDK, the
  * module's own outputs and the run's sandbox — is a <em>discovered input</em>: it is kept in the
  * module's target dir and keys the suite from then on, by content, together with the listing of
@@ -132,8 +132,10 @@ public final class SuiteReads {
                             if (p != null && !p.isBlank()) resolve(cwd, p, written);
                         }
                         case "jdk.ProcessStart" -> {
+                            // The program, not its arguments: a pid or a temp path in them would
+                            // make every run's command new.
                             String c = e.getString("command");
-                            if (c != null && !c.isBlank()) commands.add(c);
+                            if (c != null && !c.isBlank()) commands.add(executable(c));
                         }
                         case "jdk.SocketRead", "jdk.SocketWrite" -> network |= !local(e.getString("address"));
                         default -> {}
@@ -197,6 +199,9 @@ public final class SuiteReads {
             // A file is the same input under either spelling (macOS's /var is /private/var).
             if (real(f).filter(r -> under(r, roots)).isPresent()) continue;
             if (workspace != null && madeDuringRun(f, workspace, startedMillis, made)) continue;
+            // Gone once the run ended: made and removed by it, or consumed by it; either way
+            // nothing to key, and a run that needs it back finds it missing on its own.
+            if (!Files.exists(f)) continue;
             out.add(f);
         }
         return out;
