@@ -440,7 +440,7 @@ public final class BuildLogicSupport {
             if (Files.isRegularFile(root)) {
                 Path abs = root.toAbsolutePath().normalize();
                 var attrs = Files.readAttributes(abs, BasicFileAttributes.class);
-                tokens.add("in:" + from.relativize(abs) + ":" + FileHashMemo.contentHash(abs, attrs));
+                tokens.add("in:" + slashed(from.relativize(abs)) + ":" + FileHashMemo.contentHash(abs, attrs));
                 continue;
             }
             hashTree(projectDir, root, "in", tokens);
@@ -477,7 +477,7 @@ public final class BuildLogicSupport {
         List<String> tokens = new ArrayList<>();
         PathUtil.forEachRegularFile(root, WalkSkip::workspaceKey, (file, attrs) -> {
             Path abs = file.toAbsolutePath().normalize();
-            tokens.add("ws:" + root.relativize(abs) + ":" + FileHashMemo.contentHash(abs, attrs));
+            tokens.add("ws:" + slashed(root.relativize(abs)) + ":" + FileHashMemo.contentHash(abs, attrs));
         });
         Collections.sort(tokens);
         return tokens;
@@ -497,7 +497,7 @@ public final class BuildLogicSupport {
         Path from = base.toAbsolutePath().normalize();
         PathUtil.forEachRegularFile(root, (file, attrs) -> {
             Path abs = file.toAbsolutePath().normalize();
-            out.add(prefix + ":" + from.relativize(abs) + ":" + FileHashMemo.contentHash(abs, attrs));
+            out.add(prefix + ":" + slashed(from.relativize(abs)) + ":" + FileHashMemo.contentHash(abs, attrs));
         });
     }
 
@@ -545,5 +545,10 @@ public final class BuildLogicSupport {
                 if (!p.equals(dir)) Files.deleteIfExists(p);
             }
         }
+    }
+
+    /** A relative path as key material: forward slashes on every OS, so a key is the same everywhere. */
+    private static String slashed(Path relative) {
+        return relative.toString().replace('\\', '/');
     }
 }

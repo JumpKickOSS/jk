@@ -84,11 +84,15 @@ public final class WindowsFileIds implements StatIdentity.WindowsReader {
         }
     }
 
-    /** The bound kernel32 entry points; absent off Windows or where native access is refused. */
+    /**
+     * The bound kernel32 entry points; absent off Windows, or in a JVM started without {@code
+     * --enable-native-access}, where binding them would print the JDK's restricted-method warning
+     * into the process's output.
+     */
     private record Native(
             MethodHandle createFile, MethodHandle getInfo, MethodHandle getByHandle, MethodHandle closeHandle) {
         static @Nullable Native load() {
-            if (!Os.isWindows()) return null;
+            if (!Os.isWindows() || !WindowsFileIds.class.getModule().isNativeAccessEnabled()) return null;
             try {
                 Linker linker = Linker.nativeLinker();
                 SymbolLookup k32 = SymbolLookup.libraryLookup("kernel32", Arena.global());
