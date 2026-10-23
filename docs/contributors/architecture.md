@@ -472,7 +472,8 @@ and exclusions stay GA-scoped.
 1. Expand a verb (`build`, `test`, …) into a DAG of steps with typed inputs/outputs.
 2. Hash inputs into an action key. A **compile** key (javac, groovyc, kotlinc) sees its compile
    classpath through ABI tokens: the JVM ABI of each entry for javac and groovyc (signatures,
-   supertypes, inlined constants, API annotations — `ClasspathAbi`), the Build Tools API
+   supertypes, inlined constants, API annotations of every non-private member, since a class of
+   the same package sees package-private ones — `ClasspathAbi`), the Build Tools API
    classpath-snapshot digest for kotlinc (`KotlinClasspathAbi`, which also covers inline bodies
    and `const val`). Sources enter by content, a mixed module's Java sources enter the kotlinc key
    by declaration digest (`JavaSourceApi`), and options, the JDK and the compiler closure ride

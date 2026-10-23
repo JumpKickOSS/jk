@@ -58,8 +58,9 @@ pool sized for the host OS; `JK_DELETE_JOBS=N` narrows or widens it (`1` is a se
 network or virtual disk that wants something else.
 
 **Compile avoidance.** A compile step is keyed on what the compiler can see of its classpath —
-each dependency's ABI (signatures, supertypes, inlined constants, annotations; for Kotlin also
-inline function bodies and `const val`s), never its method bodies. An implementation-only change
+each dependency's ABI (signatures, supertypes, inlined constants, annotations of every
+non-private member, because a class in the same package, a test included, can see package-private
+ones; for Kotlin also inline function bodies and `const val`s), never its method bodies. An implementation-only change
 in a dependency recompiles and re-packages that dependency and re-runs the tests that load it,
 but leaves every consumer's compile cached: no compiler forks. A change to a public signature, an
 inlined constant or an inline function recompiles the consumers, and `jk explain -v` names

@@ -101,6 +101,29 @@ class ClasspathAbiTest {
         });
     }
 
+    /**
+     * javac inlines a package-private constant into, and links a package-private method from, any
+     * class of the same package: a same-package test compile or sibling module sees both.
+     */
+    @Test
+    void package_private_constant_and_method_signature_change_the_token(@TempDir Path dir) throws Exception {
+        Path c1 = jar(dir.resolve("c1.jar"), "C.class", classWithConst(Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, 1));
+        Path c2 = jar(dir.resolve("c2.jar"), "C.class", classWithConst(Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, 2));
+        Path m1 = jar(dir.resolve("m1.jar"), "C.class", classWithMethod(0, "()I"));
+        Path m2 = jar(dir.resolve("m2.jar"), "C.class", classWithMethod(0, "()J"));
+        Path p1 = jar(dir.resolve("p1.jar"), "C.class", classWithMethod(Opcodes.ACC_PRIVATE, "()I"));
+        Path p2 = jar(dir.resolve("p2.jar"), "C.class", classWithMethod(Opcodes.ACC_PRIVATE, "()J"));
+        withCache(dir.resolve("cache"), () -> {
+            try {
+                assertThat(ClasspathAbi.token(c1)).isNotEqualTo(ClasspathAbi.token(c2));
+                assertThat(ClasspathAbi.token(m1)).isNotEqualTo(ClasspathAbi.token(m2));
+                assertThat(ClasspathAbi.token(p1)).isEqualTo(ClasspathAbi.token(p2));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
     @Test
     void missing_is_distinct_from_abi(@TempDir Path dir) throws Exception {
         Path jar = jar(dir.resolve("c.jar"), "C.class", classWithReturn(1));
@@ -290,6 +313,24 @@ class ClasspathAbiTest {
         cw.visit(Opcodes.V25, Opcodes.ACC_PUBLIC, "C", null, "java/lang/Object", null);
         FieldVisitor fv = cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "X", "I", null, v);
         fv.visitEnd();
+        cw.visitEnd();
+        return cw.toByteArray();
+    }
+
+    private static byte[] classWithConst(int access, int v) {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V25, 0, "C", null, "java/lang/Object", null);
+        FieldVisitor fv = cw.visitField(access, "MAX", "I", null, v);
+        fv.visitEnd();
+        cw.visitEnd();
+        return cw.toByteArray();
+    }
+
+    private static byte[] classWithMethod(int access, String descriptor) {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V25, 0, "C", null, "java/lang/Object", null);
+        MethodVisitor mv = cw.visitMethod(access | Opcodes.ACC_STATIC, "max", descriptor, null, null);
+        mv.visitEnd();
         cw.visitEnd();
         return cw.toByteArray();
     }
