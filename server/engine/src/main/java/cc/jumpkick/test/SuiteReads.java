@@ -61,6 +61,11 @@ public final class SuiteReads {
                 <setting name="stackTrace">false</setting>
                 <setting name="threshold">0 ms</setting>
               </event>
+              <event name="jdk.FileWrite">
+                <setting name="enabled">true</setting>
+                <setting name="stackTrace">false</setting>
+                <setting name="threshold">0 ms</setting>
+              </event>
               <event name="jdk.ProcessStart">
                 <setting name="enabled">true</setting>
                 <setting name="stackTrace">false</setting>
@@ -87,14 +92,20 @@ public final class SuiteReads {
         return "-XX:StartFlightRecording=settings=" + settings + ",filename=" + dir + ",dumponexit=true";
     }
 
-    /** What one run observed: files read, commands started, whether it reached past this host. */
-    public record Observed(Set<Path> files, Set<String> commands, boolean network) {}
+    /**
+     * What one run observed: files read and not written by the run itself, commands started,
+     * whether it reached past this host, and whether every recording read back ({@code complete}
+     * false vouches for nothing this run).
+     */
+    public record Observed(Set<Path> files, Set<String> commands, boolean network, boolean complete) {}
 
     /** Every recording under {@code dir}, relative paths resolved against {@code cwd}. */
     public static Observed collect(Path dir, Path cwd) {
         Set<Path> files = new TreeSet<>();
+        Set<Path> written = new TreeSet<>();
         Set<String> commands = new TreeSet<>();
         boolean network = false;
+        boolean complete = true;
         List<Path> recordings = new ArrayList<>();
         try {
             PathUtil.forEachChild(dir, (child, attrs) -> {
@@ -102,7 +113,7 @@ public final class SuiteReads {
                 return true;
             });
         } catch (IOException none) {
-            return new Observed(files, commands, false);
+            return new Observed(files, commands, false, false);
         }
         for (Path jfr : recordings) {
             try (RecordingFile in = new RecordingFile(jfr)) {
@@ -113,22 +124,27 @@ public final class SuiteReads {
                             String p = e.getString("path");
                             if (p != null && !p.isBlank()) resolve(cwd, p, files);
                         }
+                        case "jdk.FileWrite" -> {
+                            String p = e.getString("path");
+                            if (p != null && !p.isBlank()) resolve(cwd, p, written);
+                        }
                         case "jdk.ProcessStart" -> {
                             String c = e.getString("command");
                             if (c != null && !c.isBlank()) commands.add(c);
                         }
-                        case "jdk.SocketRead", "jdk.SocketWrite" -> network |= !loopback(e.getString("address"));
+                        case "jdk.SocketRead", "jdk.SocketWrite" -> network |= !local(e.getString("address"));
                         default -> {}
                     }
                 }
             } catch (IOException | RuntimeException unreadable) {
-                // A recording a JVM did not finish (killed, out of memory) vouches for nothing:
-                // treat the run as one that reached past the host, so no marker is stored.
+                // A recording a JVM did not finish (killed, out of memory) vouches for nothing.
                 Log.debug("suite reads: recording unreadable at " + jfr, unreadable);
-                network = true;
+                complete = false;
             }
         }
-        return new Observed(files, commands, network);
+        // A file the run wrote is its own output: reading it back depends on nothing outside.
+        files.removeAll(written);
+        return new Observed(files, commands, network, complete);
     }
 
     private static void resolve(Path cwd, String raw, Set<Path> into) {
@@ -139,8 +155,9 @@ public final class SuiteReads {
         }
     }
 
-    private static boolean loopback(@Nullable String address) {
-        if (address == null || address.isBlank()) return true;
+    /** Whether a socket stayed on this host: loopback, or a Unix-domain socket (its address is a path). */
+    private static boolean local(@Nullable String address) {
+        if (address == null || address.isBlank() || address.startsWith("[")) return true;
         try {
             return InetAddress.getByName(address).isLoopbackAddress();
         } catch (IOException | RuntimeException unknown) {
@@ -175,6 +192,26 @@ public final class SuiteReads {
         } catch (IOException | RuntimeException absent) {
             return Optional.empty();
         }
+    }
+
+    /** The commands of {@code observed} whose program lies outside {@code keyed}: one the run made itself is its own. */
+    public static Set<String> undeclaredCommands(Observed observed, Collection<Path> keyed) {
+        List<Path> roots = new ArrayList<>();
+        for (Path k : keyed) {
+            roots.add(k.toAbsolutePath().normalize());
+            real(k).ifPresent(roots::add);
+        }
+        Set<String> out = new TreeSet<>();
+        for (String c : observed.commands()) {
+            try {
+                Path program = Path.of(executable(c));
+                if (program.isAbsolute() && under(program.normalize(), roots)) continue;
+            } catch (InvalidPathException notAPath) {
+                // A bare name: keyed by what the PATH resolves it to.
+            }
+            out.add(c);
+        }
+        return out;
     }
 
     private static boolean under(Path f, List<Path> roots) {

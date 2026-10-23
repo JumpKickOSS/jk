@@ -723,7 +723,8 @@ public final class PlannerTest {
                 in.dir(),
                 ctx.require(LAYOUT),
                 effectiveSel,
-                keyedRoots(ctx, in, testSrcs, runtimeCp, workerJars),
+                keyedRoots(ctx, in, testEnv, testSrcs, runtimeCp, workerJars),
+                projectUnderTest.build().testNetworkAllowed(),
                 unlessMoved(ctx, suiteGuard, stampKey));
         settle(
                 ctx,
@@ -755,12 +756,18 @@ public final class PlannerTest {
     private static List<Path> keyedRoots(
             TaskContext ctx,
             BuildPlanner.Inputs in,
+            WorkerEnv testEnv,
             List<Path> testSrcs,
             List<Path> runtimeCp,
             Map<String, String> workerJars)
             throws IOException {
         List<Path> roots =
                 new ArrayList<>(List.of(ctx.require(TEST_CLASSES), ctx.require(MAIN_CLASSES), in.lockFile()));
+        // The temp roots the suite was handed: what it makes there is its own.
+        for (String name : List.of("TMPDIR", "TMP", "TEMP")) {
+            String tmp = testEnv.extras().get(name);
+            if (tmp != null && !tmp.isBlank()) roots.add(Path.of(tmp));
+        }
         roots.addAll(ctx.get(TEST_RESOURCE_DIRS).orElse(List.of()));
         roots.addAll(runtimeCp);
         roots.addAll(testSrcs);

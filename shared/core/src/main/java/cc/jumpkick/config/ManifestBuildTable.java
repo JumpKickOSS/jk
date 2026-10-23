@@ -60,6 +60,7 @@ final class ManifestBuildTable {
         final Map<String, ClassSuite> testClassSuites = new LinkedHashMap<>();
         boolean testAssertions = true;
         boolean testCoverage = false;
+        boolean testNetworkAllowed = false;
         TestFailureMode testFailures = TestFailureMode.FAIL;
         long testFastMethodBudgetMs;
         final List<String> testTools = new ArrayList<>();
@@ -249,6 +250,13 @@ final class ManifestBuildTable {
                 throw new JkBuildParseException("[test].assertions must be true or false");
             }
             s.testAssertions = assertions;
+        }
+        // [test] network — "allowed" keeps a suite that reaches past the host replayable.
+        if (test.contains("network")) {
+            if (!"allowed".equals(test.get("network"))) {
+                throw new JkBuildParseException("[test].network must be \"allowed\" (or left out)");
+            }
+            s.testNetworkAllowed = true;
         }
         // [test] coverage — every test JVM of this module runs under the JaCoCo agent and the
         // module leaves its coverage report, as `jk test -T` does for the whole run.

@@ -46,6 +46,7 @@ final class BuildFields {
     Map<String, ClassSuite> testClassSuites;
     boolean testAssertions;
     boolean testCoverage;
+    boolean testNetworkAllowed;
     TestFailureMode testFailures;
     long testFastMethodBudgetMs;
     PlatformPolicy platformPolicy;
@@ -94,6 +95,7 @@ final class BuildFields {
         testClassSuites = b.testClassSuites();
         testAssertions = b.testAssertions();
         testCoverage = b.testCoverage();
+        testNetworkAllowed = b.testNetworkAllowed();
         testFailures = b.testFailures();
         testFastMethodBudgetMs = b.testFastMethodBudgetMs();
         platformPolicy = b.platformPolicy();
@@ -136,6 +138,7 @@ final class BuildFields {
                 testClassSuites,
                 testAssertions,
                 testCoverage,
+                testNetworkAllowed,
                 testFailures,
                 testFastMethodBudgetMs,
                 platformPolicy,

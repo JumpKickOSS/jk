@@ -91,6 +91,12 @@ public record BuildBlock(
          * {@code --coverage} on the command line. Default {@code false}.
          */
         boolean testCoverage,
+        /**
+         * {@code [test] network = "allowed"}: a suite that reaches past this host keeps its green
+         * marker, its author vouching that what it reaches does not change its outcome. Default
+         * {@code false}: such a suite runs on every build.
+         */
+        boolean testNetworkAllowed,
         /** {@code [test] failures}: whether a test failure fails the run. Default {@link TestFailureMode#FAIL}. */
         TestFailureMode testFailures,
         /**
@@ -200,6 +206,7 @@ public record BuildBlock(
             List.of(),
             Map.of(),
             true,
+            false,
             false,
             TestFailureMode.FAIL,
             0,

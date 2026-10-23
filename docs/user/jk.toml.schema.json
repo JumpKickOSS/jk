@@ -310,6 +310,11 @@
           "type": ["string", "integer"],
           "description": "A fast-tier (untagged) test method that takes longer than this is a warning naming the method and its time; the run still passes. A duration (\"1s\", \"500ms\", \"2m\") or seconds. Set at the workspace root it holds every member; a member's own value wins. Absent: no budget."
         },
+        "network": {
+          "type": "string",
+          "enum": ["allowed"],
+          "description": "A suite that reaches past this host runs on every build unless this says \"allowed\": its author vouching that what it reaches does not change its outcome, so its green marker is kept."
+        },
         "failures": { "type": "string", "enum": ["fail", "report"], "description": "Whether a failing test fails the run. \"report\" keeps every failure in jk-results.md and the JUnit XML and lets the run succeed (Maven's maven.test.failure.ignore); a compile error, a crashed test JVM or a timeout still fails. Default \"fail\". --test-failures and JK_TEST_FAILURES override it."},
         "exclude-classes": {
           "type": "array",
