@@ -112,7 +112,9 @@ class GroovyCompileTest {
                 .isNotEqualTo(before);
 
         assertThat(ActionKey.groovycClasspathTokens(req(src, out, worker, dep)))
-                .containsExactly("cp:" + ClasspathAbi.token(dep), "worker:" + ClasspathFingerprint.entry(worker));
+                .containsExactly(
+                        "cp:" + ClasspathAbi.token(dep) + "+" + ClasspathAbi.resources(dep),
+                        "worker:" + ClasspathFingerprint.entry(worker));
     }
 
     private static GroovycRequest req(Path src, Path out, Path worker, Path dep) {
