@@ -37,7 +37,8 @@ public record StatIdentity(long size, long mtimeNanos, long ctimeNanos, String f
 
     /** The identity of {@code file}, following a symbolic link as {@link Files#readAttributes} does. */
     public static StatIdentity of(Path file) throws IOException {
-        return of(file, Files.readAttributes(file, BasicFileAttributes.class));
+        StatIdentity whole = Os.isWindows() ? windowsByName(file) : null;
+        return whole != null ? whole : of(file, Files.readAttributes(file, BasicFileAttributes.class));
     }
 
     /**
@@ -50,6 +51,8 @@ public record StatIdentity(long size, long mtimeNanos, long ctimeNanos, String f
         long size = attrs.size();
         long mtime = nanos(attrs.lastModifiedTime());
         if (Os.isWindows()) {
+            StatIdentity whole = attrs.isSymbolicLink() ? null : windowsByName(file);
+            if (whole != null) return whole;
             WindowsReader reader = Windows.READER;
             WindowsIds ids = reader == null ? null : reader.read(file, attrs.isSymbolicLink());
             return ids == null
@@ -122,6 +125,22 @@ public record StatIdentity(long size, long mtimeNanos, long ctimeNanos, String f
     public interface WindowsReader {
         @Nullable
         WindowsIds read(Path file, boolean noFollow);
+
+        /**
+         * The whole identity of {@code file} from one call by name, with no handle opened, or null
+         * when this Windows has no such call, the call fails, or the file is a reparse point: the
+         * caller then takes the path above, which reports an absent file and follows links as
+         * {@link Files#readAttributes} does.
+         */
+        default @Nullable StatIdentity stat(Path file) {
+            return null;
+        }
+    }
+
+    /** {@link WindowsReader#stat}, or null without a reader. */
+    private static @Nullable StatIdentity windowsByName(Path file) {
+        WindowsReader reader = Windows.READER;
+        return reader == null ? null : reader.stat(file);
     }
 
     private static final class Windows {
