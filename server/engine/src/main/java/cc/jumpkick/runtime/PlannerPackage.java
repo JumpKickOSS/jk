@@ -129,6 +129,7 @@ public final class PlannerPackage {
                     PackagingKeys.Keyed keyed = PackagingKeys.packageJar(
                             jarPath, in.dir(), project, guard.token(classes), contributionsToken(contributed), sbom);
                     String pkgKey = keyed.key();
+                    long t0 = Perf.start();
                     if (restorePackaged(in.cache(), pkgKey, jarPath.getParent())) {
                         writeSidecarPom(project, layout, jarPath);
                         ctx.label(jarPath.getFileName() + " up-to-date");
@@ -137,7 +138,9 @@ public final class PlannerPackage {
                         return;
                     }
                     ctx.label("package " + jarPath.getFileName());
+                    long t1 = Perf.start();
                     classes = stageClassesWithContributions(ctx, classes, contributed, layout);
+                    long t2 = Perf.start();
                     JarPackager.JarRequest jarRequest = JarPackager.JarRequest.of(classes, jarPath);
                     if (mainClass != null && !mainClass.isBlank()) jarRequest = jarRequest.withMainClass(mainClass);
                     Map<String, String> jarAttrs = new LinkedHashMap<>(project.manifest());
@@ -149,6 +152,7 @@ public final class PlannerPackage {
                     }
                     if (!jarAttrs.isEmpty()) jarRequest = jarRequest.withAttributes(jarAttrs);
                     new JarPackager().packageJar(jarRequest);
+                    long t3 = Perf.start();
                     // A jar written anew is a build, whatever the compile step found cached: the
                     // client's tail says "built" for it, not "up to date".
                     ctx.put(BUILD_OUTCOME, "built");
@@ -163,6 +167,20 @@ public final class PlannerPackage {
                             List.of(jarPath),
                             !in.ephemeralActions());
                     writeSidecarPom(project, layout, jarPath);
+                    if (Perf.enabled()) {
+                        long ms = 1_000_000;
+                        Perf.end(
+                                "package-jar " + in.dir().getFileName(),
+                                t0,
+                                "restoreCheck",
+                                (t1 - t0) / ms,
+                                "stage",
+                                (t2 - t1) / ms,
+                                "jar",
+                                (t3 - t2) / ms,
+                                "store",
+                                (Perf.start() - t3) / ms);
+                    }
                     ctx.progress(1);
                 })
                 .build();
