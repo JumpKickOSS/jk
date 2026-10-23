@@ -92,9 +92,10 @@ the estimates say the heap cannot hold: the engine cannot grow past its cap howe
 host has free, and admitting past it is how a heap full of concurrent jobs ends in the
 out-of-memory exit below.
 
-- A **brief job** — any kind other than `build`, `test`, `compile`, `native` and `image`:
-  `format`, `guard`, `lock`, `explain`, `import`, `tree`, `update`, … — is judged that way from
-  the start and does not wait its turn behind queued long jobs. `jk format -c` runs beside
+- A **brief job** — any kind that is not a build (`build`, `test`, `compile`, `install`,
+  `native`, `image`, `publish`, `train`, `guard`, `mvn`): `format`, `lock`, `explain`, `import`,
+  `tree`, `update`, … — is judged that way from the start and does not wait its turn behind
+  queued long jobs. `jk format -c` runs beside
   a running `jk test`.
 - The **head of the queue**, whatever its kind, is judged that way after **five minutes** of
   waiting, so a long job's committed heap alone never holds it back longer than that.

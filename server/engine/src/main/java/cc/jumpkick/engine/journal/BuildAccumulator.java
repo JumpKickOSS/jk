@@ -234,8 +234,12 @@ public final class BuildAccumulator {
         return Boolean.TRUE.equals(success);
     }
 
-    /** The kinds a run of which can be a no-op: builds of the tree, not runs of another tool or a push. */
-    static final Set<String> NOOP_KINDS = Set.of("build", "test", "compile", "native");
+    /**
+     * The kinds a run of which can be a no-op: builds of the tree (a guard run included) and an
+     * install that found the shelf current — not runs of another tool, nor a goal whose tail is a side effect every time
+     * (an image push, a publish, a training run).
+     */
+    static final Set<String> NOOP_KINDS = Set.of("build", "test", "compile", "native", "install", "guard");
 
     /** What every step that restores its outputs from the action cache puts in its label. */
     static final String CACHE_HIT = "cache hit";

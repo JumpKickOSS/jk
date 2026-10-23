@@ -10,6 +10,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobRequest;
@@ -258,20 +259,14 @@ public final class WorkspaceBuildVerb implements HostedVerb {
     public JobRequest toJobRequest(String requestLine) {
         BuildRequest body = BuildRequest.decode(requestLine);
         boolean guard = Jsonl.bool(requestLine, "guard", false);
-        return new JobRequest(JobKind.workspace(guard ? "guard" : kind(target(body))), threadPrefix(), this::run);
+        return new JobRequest(
+                JobKind.workspace(guard ? BuildHistoryKinds.GUARD : target(body).jobKind()), threadPrefix(), this::run);
     }
 
     private static WorkspaceTarget target(BuildRequest body) {
         String named = body.workspaceTarget();
         if (named != null) return WorkspaceTarget.valueOf(named.toUpperCase(Locale.ROOT));
         return body.testOnly() ? WorkspaceTarget.TEST : WorkspaceTarget.PACKAGE;
-    }
-
-    private static String kind(WorkspaceTarget target) {
-        return switch (target) {
-            case PACKAGE, RUN, RESHELVE -> "build";
-            default -> target.name().toLowerCase(Locale.ROOT);
-        };
     }
 
     /** True for a goal whose tail applies to the modules the request selects, not to every module. */

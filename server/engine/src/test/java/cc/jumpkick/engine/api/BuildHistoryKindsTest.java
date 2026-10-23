@@ -3,17 +3,22 @@ package cc.jumpkick.engine.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import org.junit.jupiter.api.Test;
 
 class BuildHistoryKindsTest {
 
+    /** Every build-like goal journals as a build: a history row, a build number, exclusive admission. */
     @Test
-    void build_like_product_verbs() {
-        assertThat(BuildHistoryKinds.isBuildLike("build")).isTrue();
-        assertThat(BuildHistoryKinds.isBuildLike("test")).isTrue();
-        assertThat(BuildHistoryKinds.isBuildLike("compile")).isTrue();
-        assertThat(BuildHistoryKinds.isBuildLike("native")).isTrue();
-        assertThat(BuildHistoryKinds.isBuildLike("image")).isTrue();
+    void every_goal_and_the_guard_run_are_builds() {
+        for (WorkspaceTarget target : WorkspaceTarget.values()) {
+            assertThat(BuildHistoryKinds.isBuildLike(target.jobKind()))
+                    .as(target.name())
+                    .isTrue();
+        }
+        assertThat(BuildHistoryKinds.isBuildLike(BuildHistoryKinds.GUARD)).isTrue();
+        assertThat(BuildHistoryKinds.ALL)
+                .contains("build", "test", "compile", "install", "native", "image", "publish", "train", "guard");
     }
 
     @Test
@@ -30,10 +35,8 @@ class BuildHistoryKindsTest {
             "sync",
             "format",
             "audit",
-            "publish",
             "import",
             "provision",
-            "install",
             "git-fetch",
             "script",
             "tool",
