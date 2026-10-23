@@ -155,24 +155,19 @@ final class MemoInputs {
         return PlannerSupport.testStampExtras(moduleDir, project, null, identity);
     }
 
-    /** {@link #testInputs(Path, JkBuild)} without {@code reads}, which the fingerprint keys apart. */
+    /**
+     * {@link #testInputs(Path, JkBuild)} without what the module's suites were found to read, which
+     * goes to {@code reads} for the fingerprint to key apart: one reading of them serves both.
+     */
     static List<String> testInputs(Path moduleDir, JkBuild project, List<String> reads) throws IOException {
-        List<String> out = new ArrayList<>(testInputs(moduleDir, project));
-        for (String token : reads) out.remove(token);
-        return out;
+        List<String> rest = new ArrayList<>();
+        for (String token : testInputs(moduleDir, project)) (SuiteReads.isReadsToken(token) ? reads : rest).add(token);
+        return rest;
     }
 
     /** {@code reads} as the memo keys them ({@link SuiteReads#memoDigest}). */
     static String readsDigest(Path moduleDir, List<String> reads) {
         return SuiteReads.memoDigest(reads, WorkspaceScan.findRoot(moduleDir).orElse(moduleDir));
-    }
-
-    /** The tokens of what the module's suites were found to read, under the run's selection. */
-    static List<String> readsTokens(Path moduleDir) {
-        Path root = WorkspaceScan.findRoot(moduleDir).orElse(moduleDir);
-        TestSelection selection =
-                PlannerSupport.effectiveSelection(SessionContext.current().testSelection(), moduleDir);
-        return SuiteReads.tokens(moduleDir, selection, root);
     }
 
     /** Why a link to a directory in a source or resource root is refused, as a clause. */

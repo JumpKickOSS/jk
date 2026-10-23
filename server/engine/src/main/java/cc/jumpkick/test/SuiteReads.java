@@ -372,9 +372,10 @@ public final class SuiteReads {
         for (Path f : d.files()) {
             String content;
             try {
-                content = Files.isRegularFile(f) ? FileHashMemo.contentHash(f) : "absent";
-            } catch (IOException unreadable) {
-                content = "unreadable";
+                // One stat for the file that is there, which is nearly every one.
+                content = FileHashMemo.contentHash(f);
+            } catch (IOException notHashed) {
+                content = Files.isRegularFile(f) ? "unreadable" : "absent";
             }
             out.add("read:" + spell(root, f) + "=" + content);
             Path parent = f.getParent();
@@ -384,6 +385,14 @@ public final class SuiteReads {
         for (String c : d.commands()) out.add("proc:" + executable(c) + "=" + programIdentity(executable(c)));
         if (d.network()) out.add("network");
         return out;
+    }
+
+    /** Whether {@code token} is one {@link #tokens} makes: a read file, a listing, a program or the network. */
+    public static boolean isReadsToken(String token) {
+        return token.startsWith("read:")
+                || token.startsWith("list:")
+                || token.startsWith("proc:")
+                || token.equals("network");
     }
 
     /** {@link #tokens} as {@link #memoDigest}. */
