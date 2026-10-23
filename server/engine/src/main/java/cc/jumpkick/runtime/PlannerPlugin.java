@@ -40,6 +40,7 @@ import cc.jumpkick.runtime.base.SdkComponents;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.InputGuard;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -710,6 +711,7 @@ public final class PlannerPlugin {
         // so nothing can reach the plugin without reaching its key — and `jk explain` prices this
         // step by calling the same body, so it can no longer forecast the plain jar's key for a
         // module the plain packager never touches.
+        InputGuard guard = InputGuard.of(List.of(classes));
         PackagingKeys.PackagerKey packaging = PackagingKeys.pluginPackager(new PackagingKeys.Packager(
                 project,
                 in.dir(),
@@ -819,6 +821,8 @@ public final class PlannerPlugin {
             }
         }
         storePackaged(
+                ctx,
+                guard,
                 in.cache(),
                 pkgTask,
                 pkgKey,

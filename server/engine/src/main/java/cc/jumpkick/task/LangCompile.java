@@ -98,6 +98,9 @@ public final class LangCompile {
             WorkerEnv env,
             KotlinClasspathAbi.Snapshotter snapshotter)
             throws IOException {
+        // kotlinc lists the Java source roots itself: a file added, removed or renamed there while
+        // it runs is one the key never named.
+        InputGuard javaRoots = InputGuard.of(request.javaSourceRoots());
         String key = ActionKey.forKotlinc(taskId, request, jkVersion, snapshotter);
 
         Path workingDir = request.workingDir();
@@ -136,7 +139,11 @@ public final class LangCompile {
                 actionCache,
                 // Recorded for why-rebuilt: the tokens are memoized by the key above, so a lookup each.
                 () -> ActionKey.kotlincInputs(request, snapshotter),
-                snapshot -> movedKotlinInputs(request, snapshot),
+                snapshot -> {
+                    List<Path> moved = movedKotlinInputs(request, snapshot);
+                    moved.addAll(javaRoots.moved());
+                    return moved;
+                },
                 workingDir,
                 () -> WorkerCompileDriver.compile(request, env));
     }

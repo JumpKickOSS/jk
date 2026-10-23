@@ -53,6 +53,7 @@ import cc.jumpkick.runtime.base.TestEnv;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.MirroredOutputs;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolIdentity;
@@ -360,6 +361,8 @@ public final class PlannerSupport {
      * plus CAS copies on every verify run.
      */
     static void storePackaged(
+            TaskContext ctx,
+            InputGuard guard,
             Path cacheRoot,
             String taskId,
             String key,
@@ -369,6 +372,24 @@ public final class PlannerSupport {
             boolean persist)
             throws IOException {
         if (!persist) return;
+        // An input that moved while the artifact was written may be in it, and is not what the
+        // key names: the artifact stands for this build, but no record vouches for it.
+        List<Path> moved = guard.moved();
+        if (!moved.isEmpty()) {
+            ctx.warn("inputs-moved", InputGuard.describe(taskId.split("@", 2)[0], moved));
+            return;
+        }
+        storeRecord(cacheRoot, taskId, key, tokens, baseDir, artifacts);
+    }
+
+    private static void storeRecord(
+            Path cacheRoot,
+            String taskId,
+            String key,
+            List<String> tokens,
+            @Nullable Path baseDir,
+            List<Path> artifacts)
+            throws IOException {
         packagingActionCache(cacheRoot)
                 .storeArtifacts(taskId, key, Map.of("inputs", String.join(";", tokens)), baseDir, artifacts);
     }
@@ -388,7 +409,7 @@ public final class PlannerSupport {
             List<Path> artifacts,
             boolean persist)
             throws IOException {
-        storePackaged(cacheRoot, taskId, key, tokens, baseDir, artifacts, persist);
+        if (persist) storeRecord(cacheRoot, taskId, key, tokens, baseDir, artifacts);
     }
 
     static Map<String, String> workerJarProps(Path moduleDir, List<String> modules) throws IOException {

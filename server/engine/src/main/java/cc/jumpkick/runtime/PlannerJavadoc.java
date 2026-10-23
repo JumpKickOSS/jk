@@ -26,6 +26,7 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.runtime.base.DokkaResolver;
 import cc.jumpkick.task.ClasspathAbi;
+import cc.jumpkick.task.InputGuard;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -102,6 +103,9 @@ final class PlannerJavadoc {
         // Kotlin sources make it a Dokka run; the release documents with is part of the key.
         RepoGroup repos = kotlinSources.isEmpty() ? null : RepoGroupBuilder.buildFor(project, null, cas);
         String dokkaVersion = repos == null ? null : DokkaResolver.version(project, repos);
+        List<Path> guarded = new ArrayList<>(sources);
+        guarded.addAll(kotlinSources);
+        InputGuard guard = InputGuard.of(guarded);
         PackagingKeys.Keyed keyed = PackagingKeys.javadoc(
                 javadocJar,
                 layout.moduleRoot(),
@@ -134,7 +138,16 @@ final class PlannerJavadoc {
             ctx.label("javadoc " + javadocJar.getFileName());
             document(ctx, mode, layout, sources, classpath, javaHome, options, javadocJar);
         }
-        storePackaged(cache, keyed.taskId(), keyed.key(), keyed.tokens(), artifactDir, List.of(javadocJar), persist);
+        storePackaged(
+                ctx,
+                guard,
+                cache,
+                keyed.taskId(),
+                keyed.key(),
+                keyed.tokens(),
+                artifactDir,
+                List.of(javadocJar),
+                persist);
         ctx.progress(1);
     }
 

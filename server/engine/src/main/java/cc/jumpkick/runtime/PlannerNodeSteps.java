@@ -20,6 +20,7 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.InputGuard;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,7 +28,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -125,17 +129,7 @@ final class PlannerNodeSteps {
         NodeTable.Command command = step.command();
         PlannerNode.requireScript(unit, command);
         String fetched = command.kind() == NodeTable.Command.Kind.NPX ? fetched(unit, step) : null;
-        NodeKeys.Keyed keyed = NodeKeys.step(
-                unit.nodeDir(),
-                unit.moduleDir(),
-                unit.node(),
-                step,
-                outputs(unit),
-                NodeEnv.keyed(unit.project(), unit.node(), unit.moduleDir(), false),
-                ctx.require(NODE_INSTALLED),
-                PlannerNodeSetup.token(ctx.require(LOCKFILE)),
-                fetched,
-                unit.project().node().inputs());
+        NodeKeys.Keyed keyed = key(ctx, unit, step, fetched);
         ActionCache cache = unit.actionCache();
         Optional<ActionCache.ActionRecord> hit = unit.rebuild() ? Optional.empty() : cache.lookup(keyed.key());
         if (hit.isPresent() && (step.outputs().isEmpty() || cache.restoreFiles(hit.get(), unit.nodeDir()))) {
@@ -175,9 +169,42 @@ final class PlannerNodeSteps {
                         + " — fix the step or its outputs");
             }
         }
+        // The tree the key hashed, hashed again: a source the tool read that moved while it ran
+        // is not what the key names, so the outputs stand for this build and are not recorded.
+        Map<String, String> after = key(ctx, unit, step, fetched).inputs();
+        List<Path> moved = new ArrayList<>();
+        for (String name : union(keyed.inputs().keySet(), after.keySet())) {
+            if (!Objects.equals(keyed.inputs().get(name), after.get(name))) moved.add(Path.of(name));
+        }
+        if (!moved.isEmpty()) {
+            ctx.warn("inputs-moved", InputGuard.describe(step.name(), moved));
+            ctx.progress(1);
+            return;
+        }
         if (files.isEmpty()) cache.storeWithOutputs(keyed.taskId(), keyed.key(), keyed.inputs(), Map.of());
         else cache.storeArtifacts(keyed.taskId(), keyed.key(), keyed.inputs(), unit.nodeDir(), files);
         ctx.progress(1);
+    }
+
+    private static NodeKeys.Keyed key(
+            TaskContext ctx, PlannerNode.Unit unit, NodeTable.Step step, @Nullable String fetched) throws IOException {
+        return NodeKeys.step(
+                unit.nodeDir(),
+                unit.moduleDir(),
+                unit.node(),
+                step,
+                outputs(unit),
+                NodeEnv.keyed(unit.project(), unit.node(), unit.moduleDir(), false),
+                ctx.require(NODE_INSTALLED),
+                PlannerNodeSetup.token(ctx.require(LOCKFILE)),
+                fetched,
+                unit.project().node().inputs());
+    }
+
+    private static Set<String> union(Set<String> a, Set<String> b) {
+        Set<String> all = new TreeSet<>(a);
+        all.addAll(b);
+        return all;
     }
 
     /**
