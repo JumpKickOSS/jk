@@ -539,6 +539,7 @@ class WrapperTemplateTest {
      * installs, the rest wait on it and then run what it installed.
      */
     @Test
+    @Tag("integration") // the wrapper's lock loop polls once a second
     void windows_wrappers_started_together_download_once(@TempDir Path tmp) throws Exception {
         if (!Os.isWindows()) return;
         KeyPair key = Keys.RELEASE;
@@ -567,6 +568,7 @@ class WrapperTemplateTest {
 
     /** A lock left by a wrapper that died mid-download is broken, not waited on forever. */
     @Test
+    @Tag("integration") // the wrapper's lock loop polls once a second
     void windows_wrapper_breaks_a_lock_whose_owner_is_gone(@TempDir Path tmp) throws Exception {
         if (!Os.isWindows()) return;
         KeyPair key = Keys.RELEASE;
