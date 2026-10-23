@@ -153,11 +153,15 @@ public final class BuildForecasting {
         boolean memoWritable = memoReadable;
         Set<Path> all = new HashSet<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) all.add(u.dir());
-        // --force / --redo: every module runs — skip the expensive per-step forecast walk for dirty
-        // detection; ETA still builds a plan via {@link #explainFromGraph} when needed.
+        // --force / --redo: every module runs, so the per-step walk is skipped; ETA still builds a
+        // plan via {@link #explainFromGraph}. The tree is fingerprinted before the build all the
+        // same: those are the only inputs the clean memo written after it may vouch for.
         if (SessionContext.current().config().rebuildOr(false)
                 || SessionContext.current().config().forceOr(false)) {
-            return new Preflight(all, Map.of(), List.of());
+            Map<Path, String> before = entryDir != null && memoWritable
+                    ? PreflightMemo.snapshotFingerprints(graph, skipTests).fingerprints()
+                    : Map.of();
+            return new Preflight(all, before, List.of());
         }
         Map<Path, String> fps;
         Map<Path, PreflightMemo.Uncertain> uncertain = Map.of();

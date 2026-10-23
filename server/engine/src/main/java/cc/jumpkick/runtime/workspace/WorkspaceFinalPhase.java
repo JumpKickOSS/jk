@@ -115,8 +115,8 @@ final class WorkspaceFinalPhase {
      * <p>Those are the only inputs this build is known to have consumed. A source saved while the
      * build ran is not among them, so the next preflight misses the memo and schedules the module;
      * fingerprinting the tree now instead would record that edit as built and ship a jar without
-     * it until some other change to the same module. A preflight that captured nothing — a forced
-     * rebuild skips the walk — falls back to a snapshot, the same one the restore path takes.
+     * it until some other change to the same module. A preflight that captured nothing certifies
+     * nothing.
      */
     static void certifyClean(
             Path entryDir,
@@ -124,10 +124,8 @@ final class WorkspaceFinalPhase {
             boolean skipTests,
             @Nullable String profile,
             Optional<BuildForecasting.Preflight> forecast) {
-        Map<Path, String> fingerprints = forecast.map(BuildForecasting.Preflight::fingerprints)
-                .filter(captured -> !captured.isEmpty())
-                .orElseGet(() ->
-                        PreflightMemo.snapshotFingerprints(graph, skipTests).fingerprints());
+        Map<Path, String> fingerprints =
+                forecast.map(BuildForecasting.Preflight::fingerprints).orElse(Map.of());
         if (fingerprints.isEmpty()) return;
         PreflightMemo.storeDirty(entryDir, graph, skipTests, profile, Set.of(), fingerprints);
         // One set of fingerprints, two records: the memo says these inputs are clean, and this
