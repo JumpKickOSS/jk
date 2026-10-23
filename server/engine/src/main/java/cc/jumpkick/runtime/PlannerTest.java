@@ -687,12 +687,7 @@ public final class PlannerTest {
                 PlannerTest::awaitTestGate);
         TestSummary result;
         TagExcludedCapture tagExcluded;
-        SuiteDiscovery.Run reads = SuiteDiscovery.start(
-                ctx.require(LAYOUT),
-                in.dir(),
-                effectiveSel,
-                keyedRoots(ctx, in, testEnv, testSrcs, runtimeCp, workerJars),
-                projectUnderTest.build().testNetworkAllowed());
+        SuiteDiscovery.Run reads = recordReads(ctx, in, projectUnderTest, effectiveSel, testEnv, runtimeCp);
         try {
             // Module pin ([test] workers / [build] test-workers) wins over CLI for
             // hermetic opt-out. Auto hands the launcher the share; it applies the
@@ -749,6 +744,26 @@ public final class PlannerTest {
         suiteInputs.addAll(ctx.get(TEST_RESOURCE_DIRS).orElse(List.of()));
         suiteInputs.addAll(testRtCp);
         return InputGuard.of(suiteInputs);
+    }
+
+    /** Start recording what the suite reads, held to what its stamp already keys. */
+    private static SuiteDiscovery.Run recordReads(
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            JkBuild project,
+            TestSelection selection,
+            WorkerEnv testEnv,
+            List<Path> runtimeCp)
+            throws IOException {
+        List<Path> keyed = keyedRoots(
+                ctx,
+                in,
+                testEnv,
+                ctx.get(TEST_SOURCES).orElse(List.of()),
+                runtimeCp,
+                testStampWorkerJars(in.dir(), project));
+        return SuiteDiscovery.start(
+                ctx.require(LAYOUT), in.dir(), selection, keyed, project.build().testNetworkAllowed());
     }
 
     /** Everything the run-tests stamp already hashes, as roots: what a suite reads there is no discovery. */
