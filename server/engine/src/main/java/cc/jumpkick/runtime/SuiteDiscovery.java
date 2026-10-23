@@ -25,39 +25,50 @@ final class SuiteDiscovery {
 
     private SuiteDiscovery() {}
 
-    /** One run's recording: the flag every suite JVM starts with, and when the run began. */
-    record Recording(String flag, long startedMillis) {}
-
-    /** Ready the module's recording for a run that starts now. */
-    static Recording start(BuildLayout layout) throws IOException {
-        long now = Clock.SYSTEM.millis();
-        return new Recording(SuiteReads.prepare(SuiteReads.recordingDir(layout.moduleTargetDir())), now);
-    }
-
     /**
-     * {@code stampKey} when the run read, started and reached nothing beyond the inputs its key was
-     * taken from; null otherwise, after keeping what it found so the next key covers it. {@code
-     * keyed} are the roots the stamp already hashes; the module's outputs and sandbox are added here.
+     * One run's recording: the flag every suite JVM starts with, when the run began, and what the
+     * stamp already keys for it.
      */
-    static @Nullable String settle(
-            TaskContext ctx,
+    record Run(
+            String flag,
+            long startedMillis,
             Path moduleDir,
             BuildLayout layout,
             TestSelection selection,
-            Recording recording,
             Collection<Path> keyed,
-            boolean networkAllowed,
-            @Nullable String stampKey) {
+            boolean networkAllowed) {
+
+        /** As {@link SuiteDiscovery#settle}, for this run. */
+        @Nullable
+        String settle(TaskContext ctx, @Nullable String stampKey) {
+            return SuiteDiscovery.settle(ctx, this, stampKey);
+        }
+    }
+
+    /** Ready the module's recording for a run that starts now. */
+    static Run start(
+            BuildLayout layout, Path moduleDir, TestSelection selection, Collection<Path> keyed, boolean networkAllowed)
+            throws IOException {
+        long now = Clock.SYSTEM.millis();
+        String flag = SuiteReads.prepare(SuiteReads.recordingDir(layout.moduleTargetDir()));
+        return new Run(flag, now, moduleDir, layout, selection, List.copyOf(keyed), networkAllowed);
+    }
+
+    static @Nullable String settle(TaskContext ctx, Run run, @Nullable String stampKey) {
+        Path moduleDir = run.moduleDir();
+        BuildLayout layout = run.layout();
+        TestSelection selection = run.selection();
+        boolean networkAllowed = run.networkAllowed();
         Path target = layout.moduleTargetDir();
         SuiteReads.Observed seen = SuiteReads.collect(SuiteReads.recordingDir(target), moduleDir);
         if (!seen.complete()) return null;
-        List<Path> roots = new ArrayList<>(keyed);
+        List<Path> roots = new ArrayList<>(run.keyed());
         roots.add(target);
         // Every module's test sandbox, this one's and those of the projects its tests make.
         roots.add(TestHomes.root());
         Path workspace = WorkspaceScan.findRoot(moduleDir).orElse(moduleDir);
-        Set<Path> read = SuiteReads.undeclared(seen, roots, workspace, recording.startedMillis());
-        Set<String> started = SuiteReads.undeclaredCommands(seen, roots, workspace, recording.startedMillis());
+        Set<Path> read = SuiteReads.undeclared(seen, roots, workspace, run.startedMillis());
+        Set<String> started = SuiteReads.undeclaredCommands(seen, roots, workspace, run.startedMillis());
         boolean reached = seen.network() && !networkAllowed;
         SuiteReads.Discovered before = SuiteReads.load(moduleDir, selection);
         if (before.covers(read, started, reached)) {
