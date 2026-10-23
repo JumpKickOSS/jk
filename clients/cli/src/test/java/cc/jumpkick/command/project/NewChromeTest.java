@@ -13,12 +13,16 @@ import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
 
 /**
  * What {@code jk new} says. The wizard path routes the same line through the controlling terminal
  * instead of {@link CliOutput}, so these assertions pin the composed line rather than the routing —
  * the routing is what {@link NewChrome} exists to keep in one place.
  */
+@ResourceLock(Resources.SYSTEM_OUT)
+@ResourceLock(Resources.SYSTEM_ERR)
 class NewChromeTest {
 
     @BeforeEach
