@@ -13,6 +13,7 @@ import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.node.NodeResolution;
 import cc.jumpkick.node.PackageManagerSpec;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
@@ -30,6 +31,7 @@ public final class PlannerNodeSetup {
     /** Publishes {@link BuildPlanner#NODE_HOME} from the lock's {@code [node]} pin. */
     static Task ensureNodeStep() {
         return Task.builder(TaskNames.ENSURE_NODE)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildStage.RESOLVE)
                 .label("Node.js")
                 .kind(TaskKind.IO)

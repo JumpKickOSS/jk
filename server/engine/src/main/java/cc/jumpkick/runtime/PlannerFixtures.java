@@ -25,6 +25,7 @@ import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskKind;
@@ -190,6 +191,7 @@ public final class PlannerFixtures {
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
         return Task.builder(TaskNames.COMPILE_TEST_FIXTURES)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.TEST)
                 .label("Test Fixtures")
                 .kind(TaskKind.CPU)

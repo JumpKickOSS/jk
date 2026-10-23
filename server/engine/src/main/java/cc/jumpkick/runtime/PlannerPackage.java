@@ -20,6 +20,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
@@ -69,6 +70,7 @@ public final class PlannerPackage {
         boolean javaStamp =
                 mixedWithJava || TaskNames.COMPILE_JAVA.equals(mainCompile) || (!kotlinModule && !groovyModule);
         return Task.builder(TaskNames.PACKAGE_JAR)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.PACKAGE)
                 .label("Packaging")
                 .kind(TaskKind.CPU)
@@ -224,6 +226,7 @@ public final class PlannerPackage {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.WRITE_STAMP)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildStage.COMPILE)
                 .requires(TaskNames.COMPILE_JAVA)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
@@ -273,6 +276,7 @@ public final class PlannerPackage {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.WRITE_STAMP_KOTLIN)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildStage.COMPILE)
                 .requires(TaskNames.COMPILE_KOTLIN)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
@@ -311,6 +315,7 @@ public final class PlannerPackage {
         Supplier<EffortWeights.Plan> plan = cx.plan();
         boolean mixedGroovy = cx.mixedGroovy();
         return Task.builder(TaskNames.WRITE_STAMP_GROOVY)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildStage.COMPILE)
                 .requires(TaskNames.COMPILE_GROOVY)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
@@ -363,6 +368,7 @@ public final class PlannerPackage {
         if (mixed) requires.add(TaskNames.COMPILE_KOTLIN);
         if (mixedGroovy) requires.add(TaskNames.COMPILE_GROOVY);
         return Task.builder(TaskNames.ASSEMBLE_CLASSES)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildStage.COMPILE)
                 .label("Assembling")
                 .kind(TaskKind.CPU)

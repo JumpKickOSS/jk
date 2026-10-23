@@ -197,7 +197,13 @@ public final class BuildForecasting {
         try {
             Cas cas = JkStores.storeCas(); // artifact CAS for classpath fingerprints
             ActionCache ac = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
-            List<TaskForecast.Module> modules = TaskForecaster.of(graph, cas, ac, cache, skipTests, t, profile);
+            List<TaskForecast.Module> modules = PlanForecast.shape(
+                    TaskForecaster.of(graph, cas, ac, cache, skipTests, t, profile),
+                    graph,
+                    cache,
+                    skipTests,
+                    t,
+                    profile);
             Set<Path> dirty = new HashSet<>();
             Set<Path> restoreNeeded = new HashSet<>();
             for (TaskForecast.Module m : modules) {
@@ -416,8 +422,14 @@ public final class BuildForecasting {
             BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable String profile, Set<Path> scheduled) {
         Cas cas = JkStores.storeCas(); // artifact CAS for classpath fingerprints
         ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
-        return TaskForecaster.of(
-                graph, cas, actionCache, cache, skipTests, WorkspaceTarget.PACKAGE, profile, scheduled);
+        return PlanForecast.shape(
+                TaskForecaster.of(
+                        graph, cas, actionCache, cache, skipTests, WorkspaceTarget.PACKAGE, profile, scheduled),
+                graph,
+                cache,
+                skipTests,
+                WorkspaceTarget.PACKAGE,
+                profile);
     }
 
     /** Attach the preflight's own reasons to the modules it scheduled. */

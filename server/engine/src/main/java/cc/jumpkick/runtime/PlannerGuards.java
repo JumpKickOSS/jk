@@ -56,6 +56,7 @@ import cc.jumpkick.model.GuardsConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
@@ -236,6 +237,7 @@ final class PlannerGuards {
     static Task workspaceStep(BuildPlanner.Ctx cx, BuildStage stage, String... requires) {
         GuardsPlan g = cx.guards();
         return Task.builder(TaskNames.GUARD_WORKSPACE)
+                .forecast(StepForecast.PRICED)
                 .stage(stage)
                 .label("Guards (workspace)")
                 .kind(TaskKind.CPU)
@@ -288,6 +290,7 @@ final class PlannerGuards {
     static Task moduleStep(BuildPlanner.Ctx cx, BuildStage stage, boolean indexTests, String... requires) {
         GuardsPlan g = cx.guards();
         return Task.builder(TaskNames.GUARD)
+                .forecast(StepForecast.PRICED)
                 .stage(stage)
                 .label("Guards")
                 .kind(TaskKind.CPU)
@@ -417,6 +420,7 @@ final class PlannerGuards {
     static Task modelStep(BuildPlanner.Ctx cx) {
         GuardsPlan g = cx.guards();
         return Task.builder(TaskNames.GUARD_MODEL)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.RESOLVE)
                 .label("Guards (model)")
                 .kind(TaskKind.CPU)
@@ -449,6 +453,7 @@ final class PlannerGuards {
     static Task fixturesStep(BuildPlanner.Ctx cx, String... requires) {
         GuardsPlan g = cx.guards();
         return Task.builder(TaskNames.GUARD_FIXTURES)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.TEST)
                 .label("Guards (fixtures)")
                 .kind(TaskKind.CPU)
@@ -524,6 +529,7 @@ final class PlannerGuards {
     static Task outputStep(LaneEnv env, String... requires) {
         GuardsPlan g = env.guards();
         return Task.builder(TaskNames.GUARD_OUTPUT)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.NATIVE)
                 .label("Guards (output)")
                 .kind(TaskKind.IO)
@@ -555,6 +561,7 @@ final class PlannerGuards {
     static Task treeStep(BuildPlanner.Ctx cx, String... requires) {
         GuardsPlan g = cx.guards();
         return Task.builder(TaskNames.GUARD_TREE)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.TEST)
                 .label("Guards (tree)")
                 .kind(TaskKind.CPU)

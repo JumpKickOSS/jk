@@ -242,6 +242,7 @@ public final class InstallPlans {
             boolean refresh,
             boolean requireJkToml) {
         Task fetch = Task.builder(TaskNames.FETCH_GIT)
+                .forecast(StepForecast.RIDES)
                 .kind(TaskKind.IO)
                 .ticks(1)
                 .execute(ctx -> {

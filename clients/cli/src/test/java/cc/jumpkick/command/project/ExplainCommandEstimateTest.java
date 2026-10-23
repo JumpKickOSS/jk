@@ -182,8 +182,7 @@ class ExplainCommandEstimateTest {
                 Path.of("/tmp/m"),
                 "com.example:app",
                 List.of(
-                        new TaskForecast.Task("write-stamp", TaskForecast.Status.RUN, "", null),
-                        new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", "abcd1234"),
+                        new TaskForecast.Task("compile-java", TaskForecast.Status.CACHED, "", "abcd1234"),
                         new TaskForecast.Task(
                                 "compile-test", TaskForecast.Status.RUN, "compile · 0 sources changed", null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~28 tests", null),
@@ -194,7 +193,7 @@ class ExplainCommandEstimateTest {
                 false);
 
         String chain = TestAnsi.strip(ExplainCommand.renderStageChain(module, Theme.active(), false));
-        // Bookkeeping write-stamp is omitted; cached compile, dirty test/package with counts.
+        // Cached compile, dirty test/package with counts.
         assertThat(chain).isEqualTo("+ Compile > [ ] Test ~28 tests > [ ] Package");
     }
 

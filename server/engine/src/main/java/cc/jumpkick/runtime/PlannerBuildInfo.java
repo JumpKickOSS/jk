@@ -11,6 +11,7 @@ import cc.jumpkick.host.DeterministicProperties;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
@@ -66,6 +67,7 @@ final class PlannerBuildInfo {
     static Task step(BuildPlanner.Ctx cx) {
         BuildPlanner.Inputs in = cx.in();
         return Task.builder(TaskNames.BUILD_INFO)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildLogicAnchor.AFTER_RESOURCES.stage())
                 .label("Build info")
                 .kind(TaskKind.IO)

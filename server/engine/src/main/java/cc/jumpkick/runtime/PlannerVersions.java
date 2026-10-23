@@ -26,6 +26,7 @@ import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.ReleaseSources;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskForecast;
@@ -288,6 +289,7 @@ public final class PlannerVersions {
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
         return Task.builder(TaskNames.COMPILE_VERSIONS)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.COMPILE)
                 .label("Compiling releases")
                 .kind(TaskKind.CPU)

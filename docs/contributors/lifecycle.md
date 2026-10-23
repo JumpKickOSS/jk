@@ -48,19 +48,26 @@ goal's policy and `--skip-tests` decide it, in `BuildRun.skipTests()` and `Modul
 
 ## Forecasting
 
+Every step of a module's plan declares how it is forecast, on its `Task.Builder` chain
+(`forecast(StepForecast…)`): `PRICED` asks the caches its live step keys on, `always(why)` runs on
+every invocation (an upload, an image push, a training run), `RIDES` never schedules its module
+alone (parsing, stamps, joins, hooks). The `steps-declare-forecast` guard refuses a step that
+declares nothing.
+
 The preflight decides which modules a run schedules in two parts:
 
-- **The lifecycle.** Every goal that packages forecasts `jk build`'s lifecycle, through PACKAGE
+- **The lifecycle.** Every goal that packages forecasts `jk build`'s lifecycle through PACKAGE
   (COMPILE and TEST through their own phase): the same walk, and the same dirty memo, which any
   complete run through PACKAGE certifies clean. So an install, a native image or a publish agrees
-  with `jk build` on which modules are dirty.
+  with `jk build` on which modules are dirty. `PlanForecast` reports the walk in the plan's terms:
+  a verdict for a step the module's plan does not hold is dropped, one for a step it holds as
+  `RIDES` is a declaration bug (`PlanForecastTest` refuses it), and the plan's names stand.
 - **The tail.** `WorkspacePreflightPhase.withRunningTails` builds each module's plan with
   `ModulePipeline.planned`, which reports the steps the goal's tail appended, and prices each by
-  its `StepForecast`: `always(why)` runs on every invocation (an upload, an image push, a training
-  run), `PRICED` asks the caches its live step keys on (`cache-install`, `native-image`), `RIDES`
-  never schedules its module alone. A module is scheduled when its lifecycle is dirty or a tail step
-  runs. An undeclared tail step fails the preflight, and `LifecycleParityTest` requires every tail
-  step of every goal to declare one.
+  its declaration. A module is scheduled when its lifecycle is dirty or a tail step runs.
+
+Cache keys have one owner each, called by the live step and the forecast alike (`PackagingKeys`,
+`GuardKeys`, the shared compile requests); `forecast-key-parity` refuses a key built anywhere else.
 
 ## One orchestrator
 
@@ -76,7 +83,6 @@ engine verb and no per-goal request type.
 - `jk sync` runs the SYNC phase's plan through its own `sync-request`, without the graph or the
   workspace preflight. Its `parse-lock` writes a missing or stale lock (the IDE's first import
   relies on that); a build's reads the lock its preflight freshened.
-- The lifecycle's forecast (`ModuleForecast`, behind `jk explain` and the up-to-date shortcut)
-  derives its own step list beside the plan it forecasts. Its cache keys are not its own: every
-  keyed step it prices goes through the key owner its live step calls (`PackagingKeys`,
-  `GuardKeys`, the shared compile requests), which `forecast-key-parity` enforces.
+- The lifecycle's walk (`ModuleForecast`) prices a module by step name and then is shaped to the
+  plan, rather than asking each planned step for its price; its `restore-outputs` and
+  `order-check` are module verdicts that stand beside the steps.

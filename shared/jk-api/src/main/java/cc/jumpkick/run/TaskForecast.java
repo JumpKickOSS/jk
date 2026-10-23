@@ -125,12 +125,12 @@ public final class TaskForecast {
          * ({@code parse-build}, {@code resolve-deps}, {@code write-stamp}, …) is not dirty.
          */
         public boolean dirty() {
-            return reason != null || steps.stream().anyMatch(p -> !p.cached() && isMaterialWork(p.name()));
+            return reason != null || steps.stream().anyMatch(p -> !p.cached());
         }
 
         /**
          * True when the build schedules this module only to bring its outputs back from the
-         * caches: every step is a hit and the one non-cached material step is the restore gate.
+         * caches: every step is a hit and the one non-cached verdict is the restore gate.
          * Nothing compiles, packages or runs — the work is a copy out of the CAS, priced in
          * seconds where a rebuild of the same module is priced in its full wall.
          */
@@ -138,7 +138,7 @@ public final class TaskForecast {
             if (reason != null) return false;
             boolean sawRestore = false;
             for (Task s : steps) {
-                if (s.cached() || isBookkeepingStep(s.name())) continue;
+                if (s.cached()) continue;
                 if (TaskNames.RESTORE_OUTPUTS.equals(s.name())) {
                     sawRestore = true;
                     continue;
@@ -146,40 +146,6 @@ public final class TaskForecast {
                 return false;
             }
             return sawRestore;
-        }
-
-        /**
-         * Steps whose cache miss means real wall work for ETA / dirty-set (not stamp-check
-         * bookkeeping). Anything not on the bookkeeping denylist is material (plugin source-gen,
-         * native-image, run-tests, compile-*, package-*, …).
-         */
-        public static boolean isMaterialWork(@Nullable String stepName) {
-            if (stepName == null || stepName.isBlank()) return false;
-            return !isBookkeepingStep(stepName);
-        }
-
-        /**
-         * Always-run / stamp-check steps that must not alone mark a module dirty.
-         * {@code copy-resources} / {@code copy-test-resources} are not bookkeeping: they emit only
-         * on real resource drift, which must schedule the module.
-         */
-        public static boolean isBookkeepingStep(@Nullable String stepName) {
-            if (stepName == null) return true;
-            return switch (stepName) {
-                case TaskNames.PARSE_BUILD,
-                        TaskNames.ENSURE_JDK,
-                        TaskNames.ENSURE_NODE,
-                        TaskNames.RESOLVE_DEPS,
-                        TaskNames.WRITE_STAMP,
-                        TaskNames.WRITE_STAMP_KOTLIN,
-                        TaskNames.WRITE_STAMP_GROOVY,
-                        TaskNames.BUILD_LOGIC_BEFORE_COMPILE,
-                        TaskNames.BUILD_LOGIC_AFTER_COMPILE,
-                        TaskNames.BUILD_LOGIC_BEFORE_PACKAGE,
-                        TaskNames.BUILD_LOGIC_AFTER_BUILD,
-                        TaskNames.BUILD_LOGIC_GUARD -> true;
-                default -> false;
-            };
         }
     }
 }

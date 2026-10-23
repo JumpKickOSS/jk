@@ -25,6 +25,7 @@ import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
@@ -162,6 +163,7 @@ public final class PlannerTails {
             return;
         }
         b.addTask(Task.builder(DELIVER_JOIN)
+                .forecast(StepForecast.RIDES)
                 .stage(stage)
                 .requires(joined.toArray(String[]::new))
                 .weight(0)
@@ -186,6 +188,7 @@ public final class PlannerTails {
      */
     static Task minifiedStep(BuildPlanner.Inputs in, @Nullable Path graalHome) {
         return Task.builder(TaskNames.PACKAGE_MINIFIED)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildStage.PACKAGE)
                 .label("Minify")
                 .kind(TaskKind.CPU)
@@ -232,6 +235,7 @@ public final class PlannerTails {
     /** As {@link #assemblyStep(Path, Path)}; {@code persist=false} keeps verify-scratch keys out of the cache. */
     public static Task assemblyStep(Path cache, Path lockFile, boolean persist) {
         return Task.builder(TaskNames.PACKAGE_ASSEMBLY)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.PACKAGE)
                 .label("Assembly")
                 .kind(TaskKind.CPU)
@@ -338,6 +342,7 @@ public final class PlannerTails {
     /** As {@link #sourcesStep(Path)}; {@code persist=false} keeps verify-scratch keys out of the cache. */
     public static Task sourcesStep(Path cache, boolean persist) {
         return Task.builder(TaskNames.PACKAGE_SOURCES)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildStage.PACKAGE)
                 .label("Sources")
                 .kind(TaskKind.CPU)
@@ -393,6 +398,7 @@ public final class PlannerTails {
     /** As {@link #javadocStep(Path)}; {@code persist=false} keeps verify-scratch keys out of the cache. */
     public static Task javadocStep(Path cache, boolean persist) {
         return Task.builder(TaskNames.PACKAGE_JAVADOC)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.PACKAGE)
                 .label("Javadoc")
                 .kind(TaskKind.CPU)
