@@ -26,6 +26,7 @@ import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
@@ -84,6 +85,7 @@ public final class PlannerTest {
         if (hasFixtures) requires.add(TaskNames.COMPILE_TEST_FIXTURES);
         requires.addAll(testSourceGenSteps(pluginDecls));
         return Task.builder(TaskNames.COMPILE_TEST)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.TEST)
                 .label("Test Compile")
                 .kind(TaskKind.CPU)
@@ -562,6 +564,7 @@ public final class PlannerTest {
             }
         }
         return Task.builder(TaskNames.RUN_TESTS)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.TEST)
                 .label("Testing")
                 .kind(TaskKind.IO)

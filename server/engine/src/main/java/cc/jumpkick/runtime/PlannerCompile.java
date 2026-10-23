@@ -35,6 +35,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
@@ -365,6 +366,7 @@ public final class PlannerCompile {
         AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         return Task.builder(TaskNames.COMPILE_JAVA)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.COMPILE)
                 .label("Compiling")
                 .kind(TaskKind.CPU)
@@ -741,6 +743,7 @@ public final class PlannerCompile {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.COMPILE_KOTLIN)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.COMPILE)
                 .label("Kotlin")
                 .kind(TaskKind.CPU)
@@ -894,6 +897,7 @@ public final class PlannerCompile {
         boolean kotlinModule = cx.kotlinModule();
         boolean mixedWithJava = cx.mixedWithJava();
         return Task.builder(TaskNames.COMPILE_GROOVY)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.COMPILE)
                 .label("Groovy")
                 .kind(TaskKind.CPU)

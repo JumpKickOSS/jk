@@ -26,6 +26,7 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskKind;
@@ -231,6 +232,7 @@ public final class PlannerGuardSuite {
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
         return Task.builder(TaskNames.COMPILE_GUARD)
+                .forecast(StepForecast.PRICED)
                 // COMPILE, not TEST: the module lane (a compile-stage step) requires it.
                 .stage(BuildStage.COMPILE)
                 .label("Guard Suite")

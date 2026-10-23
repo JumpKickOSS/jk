@@ -30,6 +30,7 @@ import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskForecast;
@@ -444,6 +445,7 @@ public final class PlannerPlugin {
         boolean beforeCompile = beforeCompile(step);
         List<String> requires = pluginRequires(step, transform);
         return Task.builder("plugin-" + step.name())
+                .forecast(StepForecast.PRICED)
                 .label(step.name())
                 .kind(TaskKind.CPU)
                 .stage(pluginStage(step))

@@ -24,6 +24,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
@@ -237,6 +238,7 @@ public final class PlannerKsp {
                 TaskNames.BUILD_LOGIC_BEFORE_COMPILE));
         requires.addAll(sourceGenStepSteps(pluginDecls));
         return Task.builder(TaskNames.KSP)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildStage.COMPILE)
                 .label("KSP")
                 .kind(TaskKind.CPU)

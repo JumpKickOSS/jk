@@ -187,8 +187,6 @@ public final class BuildEta {
         if (!m.dirty()) return false;
         for (TaskForecast.Task s : m.steps()) {
             if (s.cached()) continue;
-            if (TaskForecast.Module.isBookkeepingStep(s.name())) continue;
-            if (!TaskForecast.Module.isMaterialWork(s.name())) continue;
             if (TaskNames.RESTORE_OUTPUTS.equals(s.name())) continue;
             return true;
         }
@@ -301,7 +299,6 @@ public final class BuildEta {
             boolean otherMaterialWork = m.steps().stream()
                     .anyMatch(s -> (distrust || !s.cached())
                             && !TaskNames.RUN_TESTS.equals(s.name())
-                            && !TaskForecast.Module.isBookkeepingStep(s.name())
                             && !isCascadeForcedStep(s));
             boolean redRerun = m.steps().stream().anyMatch(BuildEta::isRedRerun);
             boolean keepFullTests = localCompile || hasHeavyPackagingTail(m) || otherMaterialWork || redRerun;
@@ -309,9 +306,6 @@ public final class BuildEta {
             int cascadeRecheck = 0;
             for (TaskForecast.Task s : m.steps()) {
                 if (!distrust && s.cached()) continue;
-                // Price material work only — bookkeeping steps (parse-build, stamps, …) are not
-                // cache hits but must not inflate ETA toward a full monorepo wall.
-                if (!distrust && TaskForecast.Module.isBookkeepingStep(s.name())) continue;
                 if (!distrust
                         && shouldDiscountCascadeStep(
                                 s, localCompile, resourceDrift, keepFullTests, testResourceDrift)) {

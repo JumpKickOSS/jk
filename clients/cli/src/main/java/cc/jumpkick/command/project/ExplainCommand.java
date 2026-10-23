@@ -430,14 +430,13 @@ public final class ExplainCommand implements CliCommand {
     private static final int CACHED_NAMES_PER_LINE = 4;
 
     /**
-     * Roll material tasks up into a stage chain: {@code ✓ Compile › □ Test ~28 tests › □
-     * Package}. Stages follow {@link BuildStage} pipeline order; bookkeeping-only steps are
-     * omitted so stamp/resolve noise never appears.
+     * Roll the forecast's steps up into a stage chain: {@code ✓ Compile › □ Test ~28 tests › □
+     * Package}. Stages follow {@link BuildStage} pipeline order. The forecast reports only the steps
+     * that are priced or always run, so stamp and resolve plumbing never appears.
      */
     static String renderStageChain(TaskForecast.Module m, Theme t, boolean ansi) {
         Map<BuildStage, List<TaskForecast.Task>> byStage = new LinkedHashMap<>();
         for (TaskForecast.Task step : m.steps()) {
-            if (!TaskForecast.Module.isMaterialWork(step.name())) continue;
             BuildStage stage = BuildStage.ofTaskName(step.name());
             byStage.computeIfAbsent(stage, _ -> new ArrayList<>()).add(step);
         }
@@ -514,11 +513,9 @@ public final class ExplainCommand implements CliCommand {
         return total;
     }
 
-    /** True when the module plan includes a material native stage task. */
+    /** True when the module's forecast has a native stage step. */
     static boolean producesNative(TaskForecast.Module m) {
-        return m.steps().stream()
-                .anyMatch(s -> TaskForecast.Module.isMaterialWork(s.name())
-                        && BuildStage.ofTaskName(s.name()) == BuildStage.NATIVE);
+        return m.steps().stream().anyMatch(s -> BuildStage.ofTaskName(s.name()) == BuildStage.NATIVE);
     }
 
     /**

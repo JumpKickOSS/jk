@@ -16,6 +16,7 @@ import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
@@ -44,6 +45,7 @@ final class PlannerWar {
 
     static Task warStep(Path cache, Path lockFile, boolean persist) {
         return Task.builder(TaskNames.PACKAGE_WAR)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildStage.PACKAGE)
                 .label("War")
                 .kind(TaskKind.CPU)

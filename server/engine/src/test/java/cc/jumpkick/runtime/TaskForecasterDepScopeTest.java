@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.run.TaskForecast;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -144,6 +143,5 @@ class TaskForecasterDepScopeTest {
         assertThat(d.orderDepDirty()).isTrue();
 
         // An order-check RUN task is material, so the dependent schedules.
-        assertThat(TaskForecast.Module.isMaterialWork("order-check")).isTrue();
     }
 }

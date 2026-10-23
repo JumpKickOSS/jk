@@ -24,6 +24,7 @@ import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.node.PackageManager;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskForecast;
@@ -162,6 +163,7 @@ final class PlannerNode {
      */
     static Task stageStep(Unit unit, String after) {
         return Task.builder(TaskNames.NODE_STAGE)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildStage.PACKAGE)
                 .label("Node output")
                 .kind(TaskKind.IO)
@@ -195,6 +197,7 @@ final class PlannerNode {
      */
     static Task packageStep(Unit unit, String after) {
         return Task.builder(TaskNames.NODE_PACKAGE)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.PACKAGE)
                 .label("Packaging")
                 .kind(TaskKind.CPU)
@@ -257,6 +260,7 @@ final class PlannerNode {
     /** The one step of a skipped node build: the output on disk, if any, is what the build has. */
     static Task skippedStep(Unit unit) {
         return Task.builder(TaskNames.NODE_BUILD)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.COMPILE)
                 .label("Node build")
                 .kind(TaskKind.SYNC)
@@ -280,6 +284,7 @@ final class PlannerNode {
 
     static Task installStep(Unit unit) {
         return Task.builder(TaskNames.NODE_INSTALL)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.RESOLVE)
                 .label("Install")
                 .kind(TaskKind.IO)
@@ -344,6 +349,7 @@ final class PlannerNode {
 
     static Task buildStep(Unit unit, String requires) {
         return Task.builder(TaskNames.NODE_BUILD)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.COMPILE)
                 .label("Node build")
                 .kind(TaskKind.CPU)
@@ -413,6 +419,7 @@ final class PlannerNode {
 
     static Task testStep(Unit unit, String requires) {
         return Task.builder(TaskNames.NODE_TEST)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildStage.TEST)
                 .label("Node tests")
                 .kind(TaskKind.CPU)

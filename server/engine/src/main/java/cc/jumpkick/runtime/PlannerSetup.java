@@ -36,6 +36,7 @@ import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
@@ -106,6 +107,7 @@ public final class PlannerSetup {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.PARSE_BUILD)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildStage.RESOLVE)
                 .label("Parsing")
                 .weight(() -> plan.get().fullyCached() ? W_CACHED_TOUCH : W_PARSE)
@@ -259,6 +261,7 @@ public final class PlannerSetup {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.RESOLVE_DEPS)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildStage.RESOLVE)
                 .label("Classpath")
                 .kind(TaskKind.IO)
@@ -476,6 +479,7 @@ public final class PlannerSetup {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.ENSURE_JDK)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildStage.RESOLVE)
                 .label("JDK")
                 .kind(TaskKind.IO)

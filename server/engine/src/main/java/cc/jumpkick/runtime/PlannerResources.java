@@ -12,6 +12,7 @@ import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
@@ -55,6 +56,7 @@ public final class PlannerResources {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.COPY_RESOURCES)
+                .forecast(StepForecast.PRICED)
                 .stage(BuildLogicAnchor.AFTER_RESOURCES.stage())
                 .label("Resources")
                 .kind(TaskKind.CPU)
@@ -197,6 +199,7 @@ public final class PlannerResources {
         Supplier<EffortWeights.Plan> plan = cx.plan();
         BuildLogicInputTokens buildLogicInputTokens = cx.buildLogicInputTokens();
         return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_COMPILE)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildLogicAnchor.BEFORE_COMPILE.stage())
                 .label("Build logic (before compile)")
                 .kind(TaskKind.CPU)
@@ -236,6 +239,7 @@ public final class PlannerResources {
         String mainCompile = cx.mainCompile();
         BuildLogicInputTokens buildLogicInputTokens = cx.buildLogicInputTokens();
         return Task.builder(TaskNames.BUILD_LOGIC_AFTER_COMPILE)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildLogicAnchor.AFTER_COMPILE.stage())
                 .label("Build logic (after compile)")
                 .kind(TaskKind.CPU)
@@ -274,6 +278,7 @@ public final class PlannerResources {
         Supplier<EffortWeights.Plan> plan = cx.plan();
         BuildLogicInputTokens buildLogicInputTokens = cx.buildLogicInputTokens();
         return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildLogicAnchor.BEFORE_PACKAGE.stage())
                 .label("Build logic (before package)")
                 .kind(TaskKind.CPU)
@@ -320,6 +325,7 @@ public final class PlannerResources {
         Supplier<EffortWeights.Plan> plan = cx.plan();
         BuildLogicInputTokens buildLogicInputTokens = cx.buildLogicInputTokens();
         return Task.builder(TaskNames.BUILD_LOGIC_AFTER_BUILD)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildLogicAnchor.AFTER_BUILD.stage())
                 .label("Build logic (after build)")
                 .kind(TaskKind.CPU)
@@ -360,6 +366,7 @@ public final class PlannerResources {
         Supplier<EffortWeights.Plan> plan = cx.plan();
         BuildLogicInputTokens buildLogicInputTokens = cx.buildLogicInputTokens();
         return Task.builder(TaskNames.BUILD_LOGIC_GUARD)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildLogicAnchor.GUARD.stage())
                 .label("Build logic (guard)")
                 .kind(TaskKind.CPU)

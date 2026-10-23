@@ -15,6 +15,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
@@ -399,6 +400,7 @@ final class CorePlan {
         if (guardTerminal != null) leaves.add(guardTerminal);
         if (leaves.size() == 1) return b.terminal(leaves.get(0));
         b.addTask(Task.builder(BuildPlanner.DELIVER_JOIN)
+                .forecast(StepForecast.RIDES)
                 .stage(BuildStage.NATIVE)
                 .requires(leaves.toArray(String[]::new))
                 .weight(0)
@@ -536,6 +538,7 @@ final class CorePlan {
             leaves.add(name);
         }
         b.addTask(Task.builder(BuildPlanner.COMPILE_JOIN)
+                .forecast(StepForecast.RIDES)
                 .stage(transform == null ? BuildStage.COMPILE : BuildStage.PACKAGE)
                 .requires(leaves.toArray(String[]::new))
                 .weight(0)

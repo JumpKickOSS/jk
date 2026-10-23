@@ -292,6 +292,52 @@ final class EngineRules {
         v.population(src.all.size());
     }
 
+    /** Plans no module build runs: the forecast never sees their steps. */
+    private static final List<String> NOT_MODULE_PLANS = List.of(
+            "AuditPlans.java",
+            "CachePlans.java",
+            "CompatPlans.java",
+            "FormatPlans.java",
+            "LockPlans.java",
+            "ScriptPlans.java",
+            "SyncPlans.java",
+            "ToolPlans.java");
+
+    @Guard(
+            id = "steps-declare-forecast",
+            why =
+                    "a step that does not say how it is forecast is a step jk explain and the scheduler never see: a clean tree skips it, or a stale one never stops rebuilding",
+            instead = "declare .forecast(StepForecast.PRICED / RIDES / always(why)) on the step's Task.builder chain")
+    void stepsDeclareForecast(Text text, Violations v) {
+        int sites = 0;
+        for (String rel : text.files(ENGINE_MAIN)) {
+            if (NOT_MODULE_PLANS.contains(rel.substring(rel.lastIndexOf('/') + 1))) continue;
+            String code = text.blanked(rel, Blank.COMMENTS);
+            int at = code.indexOf("Task.builder(");
+            while (at >= 0) {
+                sites++;
+                int next = code.indexOf("Task.builder(", at + 1);
+                int end = code.indexOf(".build()", at);
+                String chain = code.substring(at, end < 0 ? code.length() : end);
+                if (!chain.contains(".forecast(")) {
+                    int line = (int) code.substring(0, at)
+                                    .chars()
+                                    .filter(c -> c == '\n')
+                                    .count()
+                            + 1;
+                    v.add(
+                            new TextSite(rel, line, "Task.builder"),
+                            "this step declares no StepForecast, so the forecast cannot say whether it runs");
+                }
+                at = next;
+            }
+        }
+        if (sites < 50)
+            throw new IllegalStateException(
+                    "module plan steps found: " + sites + " — 68 when measured; the walk moved");
+        v.population(sites);
+    }
+
     @Guard(
             id = "spike-cache-temp-dir",
             why =

@@ -14,6 +14,7 @@ import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.node.PackageManagerResolver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
@@ -108,6 +109,7 @@ final class PlannerNodeSteps {
 
     private static Task task(PlannerNode.Unit unit, NodeTable.Step step, BuildStage stage, String requires) {
         return Task.builder(NodeKeys.stepTask(step))
+                .forecast(StepForecast.PRICED)
                 .stage(stage)
                 .label(step.name())
                 .kind(TaskKind.CPU)

@@ -269,7 +269,7 @@ public final class WorkspacePreflightPhase {
         return Collections.unmodifiableSet(toBuild);
     }
 
-    private static Set<Path> jarConsumed(BuildGraph.Result graph) {
+    static Set<Path> jarConsumed(BuildGraph.Result graph) {
         Set<Path> consumed = new LinkedHashSet<>();
         for (Set<Path> prereqs : graph.edges().values()) {
             for (Path prereq : prereqs) consumed.add(BuildGraph.canonicalPath(prereq));
