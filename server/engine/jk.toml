@@ -104,9 +104,6 @@ exclude-tags = ["integration", "slow", "bench", "network"]
 # tier. Four keeps the JVM's default collector. The engine's own file-attribute access rides
 # along, so engine code reads a walked file's change time here as it does in the engine.
 jvm-args = ["-XX:ActiveProcessorCount=4", "--add-opens=java.base/sun.nio.fs=ALL-UNNAMED"]
-# Some tests in this tier reach the internet without the network tag. Until each is tagged
-# `network`, their outcome is vouched for here, so the tier keeps its green marker.
-network = "allowed"
 env = [
   # In-process engines under test share this module's sandbox JK_HOME store, and the resident
   # engine queues a cache GC on startup when idle — which races any fixture staging prune-eligible

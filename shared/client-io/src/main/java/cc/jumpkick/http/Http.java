@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -117,9 +118,10 @@ public final class Http {
 
     /**
      * A comma-separated list of hosts this process must not reach; a request to one fails at once
-     * with {@link DeniedHostException}, redirects and the Central failover included. The test
-     * launcher sets it to {@link #centralHosts()} for a module's default test tier, so a unit test
-     * that reaches Maven Central fails naming the host instead of spending the machine's quota.
+     * with {@link DeniedHostException}, redirects and the Central failover included. {@value
+     * #ANY_REMOTE_HOST} stands for every host but this one (loopback names and addresses). The test
+     * launcher sets it to that for a module's default test tier, so a unit test that reaches past the
+     * machine fails naming the host instead of depending on the network.
      */
     public static final String DENY_HOSTS_ENV = "JK_HTTP_DENY_HOSTS";
 
@@ -343,10 +345,29 @@ public final class Http {
                 authorization);
     }
 
-    /** Maven Central and its failover mirror, as a {@link #DENY_HOSTS_ENV} value. */
-    public static String centralHosts() {
-        return CentralMirror.CENTRAL_HOST + ","
-                + URI.create(CentralMirror.MIRROR_BASE).getHost();
+    /** The {@link #DENY_HOSTS_ENV} entry for every host but this one. */
+    public static final String ANY_REMOTE_HOST = "*";
+
+    /** Whether the request for {@code uri} goes to a proxy on this machine, which answers it. */
+    private boolean viaLoopbackProxy(URI uri) {
+        for (Proxy p : client.proxy().map(selector -> selector.select(uri)).orElse(List.of())) {
+            if (p.type() != Proxy.Type.DIRECT
+                    && p.address() instanceof InetSocketAddress at
+                    && loopback(at.getHostString())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Whether {@code host} names this machine by spelling alone: no lookup is made to decide. */
+    static boolean loopback(String host) {
+        String h = host.toLowerCase(Locale.ROOT);
+        return h.equals("localhost")
+                || h.endsWith(".localhost")
+                || h.matches("127\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}")
+                || h.equals("::1")
+                || h.equals("[::1]");
     }
 
     /** The hosts a {@link #DENY_HOSTS_ENV} value names: split on commas, trimmed, lower-cased, blanks dropped. */
@@ -866,7 +887,9 @@ public final class Http {
     /** Refuse a request to a host on the deny list; the failure names the host and the list. */
     private void checkDenied(URI uri) throws DeniedHostException {
         String host = uri.getHost();
-        if (host != null && deniedHosts.contains(host.toLowerCase(Locale.ROOT))) {
+        if (host == null) return;
+        boolean anyRemote = deniedHosts.contains(ANY_REMOTE_HOST) && !loopback(host) && !viaLoopbackProxy(uri);
+        if (anyRemote || deniedHosts.contains(host.toLowerCase(Locale.ROOT))) {
             throw new DeniedHostException(uri, host);
         }
     }

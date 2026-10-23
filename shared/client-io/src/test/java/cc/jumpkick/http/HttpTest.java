@@ -424,8 +424,26 @@ class HttpTest {
                 .containsExactlyInAnyOrder("repo.maven.apache.org", "mirror.example");
         assertThat(Http.deniedHosts(null)).isEmpty();
         assertThat(Http.deniedHosts("  ")).isEmpty();
-        assertThat(Http.centralHosts())
-                .isEqualTo("repo.maven.apache.org,maven-central.storage-download.googleapis.com");
+    }
+
+    @Test
+    void any_remote_host_spares_this_machine_and_refuses_everything_else() throws Exception {
+        server.createContext("/local", exchange -> {
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        HttpClient client =
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
+        Http http = new Http(client, new Duration[] {Duration.ofMillis(1)}, Http.deniedHosts(Http.ANY_REMOTE_HOST));
+
+        http.get(base.resolve("/local"));
+        assertThatThrownBy(() -> http.get(URI.create("https://repo.example.invalid/x")))
+                .isInstanceOf(DeniedHostException.class)
+                .hasMessageContaining("repo.example.invalid");
+        assertThat(Http.loopback("LOCALHOST")).isTrue();
+        assertThat(Http.loopback("127.0.0.2")).isTrue();
+        assertThat(Http.loopback("[::1]")).isTrue();
+        assertThat(Http.loopback("127.example.com")).isFalse();
     }
 
     private static Http http() {
