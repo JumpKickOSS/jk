@@ -368,6 +368,7 @@ public final class SuiteReads {
         Path root = workspaceRoot.toAbsolutePath().normalize();
         List<String> out = new ArrayList<>();
         Set<Path> dirs = new TreeSet<>();
+        Map<Path, Boolean> outputs = new HashMap<>();
         for (Path f : d.files()) {
             String content;
             try {
@@ -377,7 +378,7 @@ public final class SuiteReads {
             }
             out.add("read:" + spell(root, f) + "=" + content);
             Path parent = f.getParent();
-            if (parent != null && keysListing(parent, root)) dirs.add(parent);
+            if (parent != null && parent.startsWith(root) && !inBuildOutput(parent, root, outputs)) dirs.add(parent);
         }
         for (Path dir : dirs) out.add("list:" + spell(root, dir) + "=" + listing(dir));
         for (String c : d.commands()) out.add("proc:" + executable(c) + "=" + programIdentity(executable(c)));
@@ -398,10 +399,11 @@ public final class SuiteReads {
     public static String memoDigest(List<String> tokens, Path workspaceRoot) {
         Path root = workspaceRoot.toAbsolutePath().normalize();
         List<String> kept = new ArrayList<>();
+        Map<Path, Boolean> outputs = new HashMap<>();
         for (String t : tokens) {
             int eq = t.lastIndexOf('=');
             boolean pathToken = (t.startsWith("read:") || t.startsWith("list:")) && eq > 5;
-            if (pathToken && inBuildOutput(root.resolve(t.substring(5, eq)), root)) continue;
+            if (pathToken && inBuildOutput(root.resolve(t.substring(5, eq)).normalize(), root, outputs)) continue;
             kept.add(t);
         }
         return kept.isEmpty() ? "none" : Hashing.sha256Hex(String.join("\n", kept));
@@ -436,22 +438,27 @@ public final class SuiteReads {
     public static boolean keysListing(Path dir, Path workspaceRoot) {
         Path d = dir.toAbsolutePath().normalize();
         Path root = workspaceRoot.toAbsolutePath().normalize();
-        return d.startsWith(root) && !inBuildOutput(d, root);
+        return d.startsWith(root) && !inBuildOutput(d, root, new HashMap<>());
     }
 
-    /** Whether {@code path} lies in a workspace module's build output. */
-    private static boolean inBuildOutput(Path path, Path root) {
-        for (Path p = path.toAbsolutePath().normalize(); p != null && p.startsWith(root); p = p.getParent()) {
-            Path name = p.getFileName();
-            Path parent = p.getParent();
-            if (name != null
-                    && parent != null
-                    && name.toString().equals(BuildLayout.TARGET)
-                    && Files.isRegularFile(ManifestPaths.manifestIn(parent))) {
-                return true;
-            }
-        }
-        return false;
+    /**
+     * Whether {@code path} (absolute, normalized) lies in a workspace module's build output. {@code
+     * memo} holds the answer for each directory already judged, so a tree of reads asks each
+     * directory once.
+     */
+    private static boolean inBuildOutput(Path path, Path root, Map<Path, Boolean> memo) {
+        if (!path.startsWith(root)) return false;
+        Boolean known = memo.get(path);
+        if (known != null) return known;
+        Path name = path.getFileName();
+        Path parent = path.getParent();
+        boolean output = name != null
+                && parent != null
+                && name.toString().equals(BuildLayout.TARGET)
+                && Files.isRegularFile(ManifestPaths.manifestIn(parent));
+        if (!output && parent != null) output = inBuildOutput(parent, root, memo);
+        memo.put(path, output);
+        return output;
     }
 
     /**
