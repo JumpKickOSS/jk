@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -9,6 +10,8 @@ import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -26,8 +29,15 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
      */
     private final boolean aggregateRider;
 
-    JsonlEmittingListener(boolean aggregateRider) {
+    /** The workspace member these events belong to, as {@code group:name}; null for a lone plan. */
+    private final @Nullable String module;
+
+    /** Each step's latest label: what a finished step says it did, "up to date" or "cache hit …" included. */
+    private final Map<String, String> labels = new ConcurrentHashMap<>();
+
+    JsonlEmittingListener(boolean aggregateRider, @Nullable String module) {
         this.aggregateRider = aggregateRider;
+        this.module = module;
     }
 
     /** Sink for one rider-decorated JSONL line. */
@@ -58,6 +68,7 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
 
     @Override
     public void label(String step, String label) {
+        labels.put(step, label);
         line(JsonlShape.label(step, label), EngineProtocol.LABEL);
     }
 
@@ -93,7 +104,10 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
 
     @Override
     public void stepFinish(String step, @Nullable String group, TaskStatus s, Duration d, Duration waited) {
-        line(JsonlShape.stepFinish(step, wire(group), s, d, waited), EngineProtocol.TASK_FINISH);
+        String finish = JsonlShape.stepFinish(step, wire(group), s, d, waited);
+        String said = labels.remove(step);
+        if (said != null) finish = Jsonl.append(finish, "\"label\":" + Jsonl.quote(said));
+        line(finish, EngineProtocol.TASK_FINISH);
     }
 
     @Override
@@ -102,7 +116,8 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
     }
 
     private void line(String raw, String type) {
-        emit(JsonlShape.withProgress(raw), !JsonlShape.HOT_TYPES.contains(type));
+        String tagged = module == null ? raw : Jsonl.append(raw, "\"module\":" + Jsonl.quote(module));
+        emit(JsonlShape.withProgress(tagged), !JsonlShape.HOT_TYPES.contains(type));
     }
 
     private static String wire(@Nullable String group) {

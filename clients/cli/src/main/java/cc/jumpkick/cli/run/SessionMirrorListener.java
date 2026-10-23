@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.run.BuildPlanListener;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Mirrors plan events into the active {@link CliSessionTranscript} as {@link JsonlShape} lines
@@ -15,7 +16,12 @@ public final class SessionMirrorListener extends JsonlEmittingListener {
     private final CliSessionTranscript session;
 
     public SessionMirrorListener(CliSessionTranscript session) {
-        super(false);
+        this(session, null);
+    }
+
+    /** As above for one workspace member: every line names {@code module} ({@code group:name}). */
+    public SessionMirrorListener(CliSessionTranscript session, @Nullable String module) {
+        super(false, module);
         this.session = session;
     }
 

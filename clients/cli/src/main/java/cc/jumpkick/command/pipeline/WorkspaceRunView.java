@@ -281,7 +281,7 @@ final class WorkspaceRunView {
                 var lis = new AggregateModuleListener(agg, m.coord(), m.plan().steps());
                 if (chrome.buffered()) lis.bufferOutputInto(buffer(m.dir()));
                 event(JsonlShape.moduleStart(m.dir().toString(), m.coord()));
-                return withMirror(counting(lis));
+                return withMirror(counting(lis), m.coord());
             }
 
             @Override
@@ -349,27 +349,29 @@ final class WorkspaceRunView {
                 if (toStdout) {
                     // Live step/progress events for agents (same shape as the single-module stream).
                     // Workspace member: no aggregate-rider writes (the engine snapshot owns it).
-                    return counting(new JsonlListener(System.out, false));
+                    return counting(new JsonlListener(System.out, false, m.coord()));
                 }
                 List<String> buf = buffer(m.dir());
-                return withMirror(counting(new BuildPlanListener() {
-                    @Override
-                    public synchronized void output(String step, String line) {
-                        buf.add(line);
-                    }
+                return withMirror(
+                        counting(new BuildPlanListener() {
+                            @Override
+                            public synchronized void output(String step, String line) {
+                                buf.add(line);
+                            }
 
-                    @Override
-                    public synchronized void warn(String step, String code, String message) {
-                        buf.add("  " + Glyphs.BANG + " " + step + ": " + message);
-                    }
+                            @Override
+                            public synchronized void warn(String step, String code, String message) {
+                                buf.add("  " + Glyphs.BANG + " " + step + ": " + message);
+                            }
 
-                    @Override
-                    public synchronized void error(String step, String code, @Nullable String message) {
-                        // test-failure renders as the styled output block, not an error line.
-                        if ("test-failure".equals(code)) return;
-                        buf.add("  " + Glyphs.CROSS + " " + step + ": " + message);
-                    }
-                }));
+                            @Override
+                            public synchronized void error(String step, String code, @Nullable String message) {
+                                // test-failure renders as the styled output block, not an error line.
+                                if ("test-failure".equals(code)) return;
+                                buf.add("  " + Glyphs.CROSS + " " + step + ": " + message);
+                            }
+                        }),
+                        m.coord());
             }
 
             @Override
@@ -597,8 +599,9 @@ final class WorkspaceRunView {
         return buffers.computeIfAbsent(moduleDir, d -> Collections.synchronizedList(new ArrayList<>()));
     }
 
-    private BuildPlanListener withMirror(BuildPlanListener lis) {
-        return session == null ? lis : CompositeBuildPlanListener.of(lis, new SessionMirrorListener(session));
+    /** {@code lis} with this module's lines mirrored into {@code details.jsonl}, each naming {@code module}. */
+    private BuildPlanListener withMirror(BuildPlanListener lis, String module) {
+        return session == null ? lis : CompositeBuildPlanListener.of(lis, new SessionMirrorListener(session, module));
     }
 
     /**
