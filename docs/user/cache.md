@@ -52,6 +52,22 @@ cleaned with `jk cache clean` and wiped by `jk cache nuke`. A nuke removes the r
 directory too: `jk cache nuke` and `jk self nuke -c` are `rm -rf $JK_CACHE_DIR`,
 not an emptied skeleton. The next build recreates what it needs.
 
+## Verifying the cache (`--verify-cache`)
+
+`jk build --verify-cache` (or `JK_VERIFY_CACHE=1`) checks the cache instead of trusting it. Every
+step runs for real, as under `--redo`, and two claims are held to what it produces:
+
+- **Each record.** A step's fresh outputs must be the ones the record under its key already holds.
+  A difference fails that step, naming the file and both digests: the record is poisoned, or the
+  step is not reproducible.
+- **The preflight.** Every module a plain build would have skipped must come out of the fresh run
+  with the outputs it already had. A difference fails the build, naming the module and the file:
+  the plain build would have shipped a stale artifact.
+
+`--verify-sample N` checks N of the skippable modules, chosen at random, and leaves the rest as a
+plain build would, so a nightly run can bound its cost. A verifying build leaves the cache as a
+`--redo` does: it writes nothing it did not just produce.
+
 ## Hygiene
 
 ```bash

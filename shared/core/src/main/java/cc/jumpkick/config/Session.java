@@ -33,6 +33,7 @@ import org.jspecify.annotations.Nullable;
  * @param coverage the suite JVMs run under the JaCoCo agent and the test step writes a report
  * @param testFailures the run's failure mode over each module's, or {@code null}
  * @param skipNode {@code --skip-node} / {@code JK_SKIP_NODE}: no node step runs
+ * @param verifyCache {@code --verify-cache}: steps run for real and are held against the cache
  * @param io per-run byte accounting (network + local cache); shared by every copy of this session
  */
 public record Session(
@@ -99,6 +100,17 @@ public record Session(
         @With @Nullable TestFailureMode testFailures,
         /** {@code --skip-node} / {@code JK_SKIP_NODE}: no module's node steps run, as if each said {@code [node] skip}. */
         @With boolean skipNode,
+        /**
+         * {@code --verify-cache} / {@code JK_VERIFY_CACHE}: every step runs for real, its outputs are
+         * held against the record already filed under its key, and a step the forecast would have
+         * skipped must key exactly as the forecast said.
+         */
+        @With boolean verifyCache,
+        /**
+         * {@code --verify-sample N}: a verifying build checks this many of the modules the preflight
+         * would have skipped, chosen at random, and leaves the rest; {@code 0} checks every one.
+         */
+        @With int verifySample,
         /** {@code -p}: the build profile the run selected; null for auto. */
         @With @Nullable String profile,
         /** {@code --continue}: finish the graph and report every failure, not just the first. */
@@ -149,6 +161,8 @@ public record Session(
                 coverage,
                 testFailures,
                 skipNode,
+                verifyCache,
+                verifySample,
                 profile,
                 keepGoing,
                 lanesOnly,
@@ -267,6 +281,8 @@ public record Session(
                 false,
                 null,
                 false,
+                false,
+                0,
                 null,
                 false,
                 false,
@@ -298,6 +314,8 @@ public record Session(
                 coverage,
                 testFailures,
                 skipNode,
+                verifyCache,
+                verifySample,
                 profile,
                 keepGoing,
                 lanesOnly,
@@ -329,6 +347,8 @@ public record Session(
                 coverage,
                 testFailures,
                 skipNode,
+                verifyCache,
+                verifySample,
                 profile,
                 keepGoing,
                 lanesOnly,
@@ -365,6 +385,8 @@ public record Session(
                 coverage,
                 testFailures,
                 skipNode,
+                verifyCache,
+                verifySample,
                 profile,
                 keepGoing,
                 lanesOnly,

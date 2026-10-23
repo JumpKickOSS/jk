@@ -115,6 +115,20 @@ public final class ModuleInputProvenance {
     }
 
     /**
+     * The output files the record vouches for, absolute path to digest, when it names {@code
+     * fingerprint} as their inputs; empty otherwise.
+     */
+    public static Map<Path, String> recordedOutputs(
+            Path workspaceRoot, Path moduleDir, JkBuild build, @Nullable String fingerprint) {
+        Path target = norm(BuildLayout.of(workspaceRoot, moduleDir, build).moduleTargetDir());
+        Record record = read(target);
+        if (record == null || fingerprint == null || !record.inputs().equals(fingerprint)) return Map.of();
+        Map<Path, String> out = new LinkedHashMap<>();
+        record.digests().forEach((rel, sha) -> out.put(target.resolve(rel), sha));
+        return out;
+    }
+
+    /**
      * The digests a record gives the files of {@code tree} when it was taken under {@code key}, keyed
      * by path relative to the tree; empty when there is no record, or none for that key. A step that
      * rewrites a compile's classes in place (an enhancer) leaves files the compile record does not

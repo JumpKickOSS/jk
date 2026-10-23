@@ -33,7 +33,9 @@ public final class ProtoSession {
     public static Session sessionOf(String request, Session.CancelToken cancel) {
         JkConfig config = JkConfig.empty()
                 .withOffline(Jsonl.bool(request, "offline", false))
-                .withRebuild(Jsonl.bool(request, "rebuild", false))
+                // A verifying build runs every step for real, as a redo does.
+                .withRebuild(
+                        Jsonl.bool(request, "rebuild", false) || Jsonl.bool(request, ProtoJobs.VERIFY_CACHE, false))
                 .withVerbose(Jsonl.bool(request, "verbose", false))
                 .withForce(Jsonl.bool(request, "force", false));
         Session session = Session.defaults()
@@ -50,6 +52,8 @@ public final class ProtoSession {
                 .withTestFailures(TestFailureMode.parse(Jsonl.str(request, ProtoJobs.TEST_FAILURES))
                         .orElse(null))
                 .withSkipNode(Jsonl.bool(request, ProtoJobs.SKIP_NODE, false))
+                .withVerifyCache(Jsonl.bool(request, ProtoJobs.VERIFY_CACHE, false))
+                .withVerifySample(Jsonl.intValue(request, ProtoJobs.VERIFY_SAMPLE, 0))
                 .withProfile(Jsonl.str(request, "profile"))
                 .withKeepGoing(Jsonl.bool(request, "keepGoing", false))
                 .withLanesOnly(Jsonl.bool(request, "lanesOnly", false))
@@ -238,6 +242,12 @@ public final class ProtoSession {
             f.string(ProtoJobs.TEST_FAILURES, session.testFailures().wireName());
         }
         if (!Jsonl.has(request, ProtoJobs.SKIP_NODE)) f.optionalTrue(ProtoJobs.SKIP_NODE, session.skipNode());
+        if (!Jsonl.has(request, ProtoJobs.VERIFY_CACHE)) {
+            f.optionalTrue(ProtoJobs.VERIFY_CACHE, session.verifyCache());
+        }
+        if (!Jsonl.has(request, ProtoJobs.VERIFY_SAMPLE) && session.verifySample() > 0) {
+            f.number(ProtoJobs.VERIFY_SAMPLE, session.verifySample());
+        }
         if (!Jsonl.has(request, ProtoJobs.COVERAGE)) f.optionalTrue(ProtoJobs.COVERAGE, session.coverage());
         if (!Jsonl.has(request, "lanesOnly")) f.optionalTrue("lanesOnly", session.lanesOnly());
         String body = f.body();
