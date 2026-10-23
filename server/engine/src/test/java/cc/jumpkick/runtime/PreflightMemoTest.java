@@ -25,6 +25,7 @@ import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.TestStamp;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -48,6 +49,38 @@ class PreflightMemoTest {
     void tidy() {
         SessionContext.reset();
         BuildIdentity.overrideBuildIdForTests(null);
+    }
+
+    /** A source that is a link is the target's bytes: an edit behind the link moves the fingerprint. */
+    @Test
+    void an_edit_behind_a_linked_source_moves_the_fingerprint(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        Path outside = Files.writeString(tmp.resolve("Shared.java"), "class Shared {}");
+        try {
+            Files.createSymbolicLink(tmp.resolve("src/main/java/Shared.java"), outside);
+        } catch (IOException | UnsupportedOperationException notPermitted) {
+            org.junit.jupiter.api.Assumptions.abort("symbolic links cannot be made here");
+        }
+        PreflightMemo.Fingerprint before = PreflightMemo.fingerprintModule(tmp, false);
+        Files.writeString(outside, "class Shared { int x; }");
+        assertThat(PreflightMemo.fingerprintModule(tmp, false)).isNotEqualTo(before);
+    }
+
+    /** A link to a directory in a source root is not entered, so it vouches for nothing. */
+    @Test
+    void a_directory_link_in_a_source_root_is_uncertain(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        Path outside = Files.createDirectories(tmp.resolve("shared"));
+        Files.writeString(outside.resolve("A.java"), "class A {}");
+        try {
+            Files.createSymbolicLink(tmp.resolve("src/main/java/shared"), outside);
+        } catch (IOException | UnsupportedOperationException notPermitted) {
+            org.junit.jupiter.api.Assumptions.abort("symbolic links cannot be made here");
+        }
+        assertThat(PreflightMemo.fingerprintModule(tmp, false))
+                .isInstanceOfSatisfying(
+                        PreflightMemo.Uncertain.class,
+                        u -> assertThat(u.reason()).contains("shared").contains("does not follow"));
     }
 
     @Test

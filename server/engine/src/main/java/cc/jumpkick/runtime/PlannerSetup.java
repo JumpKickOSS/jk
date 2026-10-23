@@ -22,6 +22,7 @@ import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.Languages;
+import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -196,6 +197,7 @@ public final class PlannerSetup {
                     // Reuse source lists that the tick suppliers may have already walked.
                     // If the ticks haven't fired yet (unusual ordering), populate and cache now.
                     InputTrees.coverModule(in.dir());
+                    refuseDirectoryLinks(ctx, in.dir(), in.skipTests());
                     List<Path> javaMainSrcs = javaMainSrcRef.get();
                     if (javaMainSrcs == null) {
                         javaMainSrcs = CompileSupport.collectJavaSources(javaMainSrcDir);
@@ -542,5 +544,21 @@ public final class PlannerSetup {
         List<FirstPartyPins.Repin> moved = FirstPartyPins.follow(in.dir(), declared);
         if (!moved.isEmpty()) ctx.output(FirstPartyPins.describe(moved));
         return LockfileReader.read(in.lockFile());
+    }
+
+    /**
+     * A link to a directory in a source, resource or test root fails the step, naming it: the walk
+     * does not enter one, so the tree behind it would otherwise be left out of the compile, its
+     * key and the jar without a word.
+     */
+    static void refuseDirectoryLinks(TaskContext ctx, Path moduleDir, boolean skipTests) throws IOException {
+        for (Path root : ModuleLayoutPlugins.fingerprintRoots(moduleDir, skipTests)) {
+            if (!Files.isDirectory(root)) continue;
+            List<Path> links = InputTrees.of(root).directoryLinks();
+            if (links.isEmpty()) continue;
+            String rel = moduleDir.relativize(links.getFirst()).toString().replace('\\', '/');
+            ctx.error("directory-link", rel + " is " + PreflightMemo.DIRECTORY_LINK);
+            throw new IllegalStateException(rel + " is " + PreflightMemo.DIRECTORY_LINK);
+        }
     }
 }

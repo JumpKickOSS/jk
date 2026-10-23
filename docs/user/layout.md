@@ -48,6 +48,11 @@ Other names (`contract`, `mutation`, …) are discovered the same way. Do not pu
 Playwright or compose stacks in `src/test`. Cost (`slow`, `network`) is a JUnit
 tag, not a fourth canonical directory. [Test](test.md) · [Why](why.md#test-rungs-the-execute-moat).
 
+A symbolic link to a file in any of these trees is read through: the target's bytes are compiled,
+keyed and packaged, and an edit to the target rebuilds the module. A link to a directory is not
+followed; a build that meets one fails, naming it. Point `[build] extra-src` or `[resources]
+dirs` at the target instead.
+
 ## Build output
 
 Every module writes to its own **`target/`**, in Maven's layout, so a tool, a CI glob or a test

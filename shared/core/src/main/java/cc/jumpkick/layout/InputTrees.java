@@ -238,6 +238,11 @@ public final class InputTrees {
 
         List<FileRef> files();
 
+        /** Links to directories under the root, which the walk did not enter; empty when unknown. */
+        default List<Path> directoryLinks() {
+            return List.of();
+        }
+
         List<Path> withExtension(String ext);
 
         /** Files whose name ends with any of {@code exts}, in walk order — one pass, always. */
@@ -263,14 +268,19 @@ public final class InputTrees {
         }
     }
 
-    public record Listing(Path root, String skipId, List<FileRef> files) implements Snapshot {
+    public record Listing(Path root, String skipId, List<FileRef> files, List<Path> directoryLinks)
+            implements Snapshot {
         Listing prefix(Path subRoot) {
             Path abs = subRoot.toAbsolutePath().normalize();
             List<FileRef> sub = new ArrayList<>();
             for (FileRef f : files) {
                 if (f.path.startsWith(abs)) sub.add(f);
             }
-            return new Listing(abs, skipId, List.copyOf(sub));
+            List<Path> links = new ArrayList<>();
+            for (Path l : directoryLinks) {
+                if (l.toAbsolutePath().normalize().startsWith(abs)) links.add(l);
+            }
+            return new Listing(abs, skipId, List.copyOf(sub), List.copyOf(links));
         }
 
         @Override
@@ -529,17 +539,26 @@ public final class InputTrees {
             return live(root, skipId);
         }
         List<FileRef> files = new ArrayList<>();
+        List<Path> links = new ArrayList<>();
         long[] used = {0};
         table.walks.incrementAndGet();
         try {
             IOException fail = loadFailureForTest;
             if (fail != null) throw fail;
-            PathUtil.forEachRegularFile(root, skipPred(skipId), (file, attrs) -> {
-                FileRef ref = FileRef.from(file, attrs);
-                long add = ref.estimateBytes();
-                if (used[0] + add > room) throw new WalkLimitExceeded();
-                files.add(ref);
-                used[0] += add;
+            PathUtil.forEachRegularFile(root, skipPred(skipId), new PathUtil.FileVisit() {
+                @Override
+                public void accept(Path file, BasicFileAttributes attrs) throws IOException {
+                    FileRef ref = FileRef.from(file, attrs);
+                    long add = ref.estimateBytes();
+                    if (used[0] + add > room) throw new WalkLimitExceeded();
+                    files.add(ref);
+                    used[0] += add;
+                }
+
+                @Override
+                public void directoryLink(Path link) {
+                    links.add(link.toAbsolutePath().normalize());
+                }
             });
         } catch (WalkLimitExceeded limit) {
             files.clear();
@@ -558,7 +577,7 @@ public final class InputTrees {
         }
         table.bytes += used[0];
         table.nodes += files.size();
-        return new Listing(root, skipId, List.copyOf(files));
+        return new Listing(root, skipId, List.copyOf(files), List.copyOf(links));
     }
 
     /**
