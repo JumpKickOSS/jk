@@ -817,6 +817,27 @@ run and removed by `jk clean`. Declare `TMPDIR` in `[test] env` to put it elsewh
 
 Failure lines include **module** (and **worker** when `W > 1`).
 
+## What a suite read: discovered inputs
+
+A suite is replayed from its green marker only while everything it can see is unchanged. Most of
+that is keyed up front: its sources, classes, resources, runtime classpath, JDK, JVM flags, the
+values of its `[test] env` and `[env] vars`, the locale and terminal variables it inherits (`LANG`,
+`LANGUAGE`, `LC_*`, `TERM`), with `[env] inherit` the whole environment, and jk's test runner.
+
+The rest is found by watching the suite run. Every JVM that runs tests records, through Java
+Flight Recorder, each file it reads, each process it starts and its socket traffic. A file outside
+everything above — `../shared/fixture.json`, a file under `$HOME`, `jk.toml` read as data — is a
+**discovered input**: it is kept under the module's `target/.jk/` and keys the suite from then on,
+by content, together with the listing of the directory it sits in, so a file added beside it is
+seen too. A started program keys the suite by its executable. The run that discovers an input
+keeps its outcome but stores no marker, and the build says what it found; the next run is keyed on
+it and is replayed from then on while it holds. A suite that talks to anything but this host
+(loopback is fine) stores no marker and runs on every build.
+
+What this does not see: a directory listed where nothing was then read, the clock, and, under a
+suite JDK older than 22, file channel reads. `jk clean` forgets the discovered inputs with the rest
+of `target/`.
+
 ## JUnit in-process parallel vs `-w`
 
 JUnit Platform `junit.jupiter.execution.parallel.enabled` is **separate** from jk `-w`

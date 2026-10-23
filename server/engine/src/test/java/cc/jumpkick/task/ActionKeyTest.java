@@ -10,6 +10,7 @@ import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
@@ -592,7 +593,7 @@ class ActionKeyTest {
                 .build();
 
         StringBuilder worker = new StringBuilder();
-        for (String token : JavacWorker.tokens())
+        for (String token : WorkerClosure.tokens(PluginJar.JAVA_COMPILER))
             worker.append("worker:").append(token).append('\n');
         assertThat(ActionKey.forJavac("compile-main", request, "0.1.0"))
                 .isEqualTo(Hashing.sha256Hex(
@@ -603,7 +604,7 @@ class ActionKeyTest {
     /** The worker that drives javac is part of what it compiled with: its bytes key the compile. */
     @Test
     void the_javac_key_carries_the_java_compiler_worker(@TempDir Path tempDir) throws IOException {
-        assertThat(JavacWorker.tokens())
+        assertThat(WorkerClosure.tokens(PluginJar.JAVA_COMPILER))
                 .as("the worker's launch classpath, by content")
                 .isNotEmpty();
         CompileRequest request = CompileRequest.builder()

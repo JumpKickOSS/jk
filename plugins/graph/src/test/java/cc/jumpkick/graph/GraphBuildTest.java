@@ -3,6 +3,8 @@ package cc.jumpkick.graph;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.codegraph.CodeGraph;
 import cc.jumpkick.codegraph.Decl;
@@ -256,10 +258,9 @@ class GraphBuildTest {
         assertThat(edge(first.graph(), "readme_shop", "orderservice_orderservice", "references"))
                 .isTrue();
         Path readme = root.resolve("README.md");
-        org.junit.jupiter.api.Assumptions.assumeTrue(
-                readme.toFile().setReadable(false), "permissions can be dropped here");
+        assumeTrue(readme.toFile().setReadable(false), "permissions can be dropped here");
         try {
-            org.junit.jupiter.api.Assumptions.assumeFalse(Files.isReadable(readme), "this user reads everything");
+            assumeFalse(Files.isReadable(readme), "this user reads everything");
             GraphBuild.Result second = refresh(root, false);
             assertThat(edge(second.graph(), "readme_shop", "orderservice_orderservice", "references"))
                     .isFalse();

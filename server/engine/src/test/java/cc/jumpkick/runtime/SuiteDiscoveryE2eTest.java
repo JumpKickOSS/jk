@@ -1,0 +1,139 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.runtime;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.resolver.ResolveObserver;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.runtime.workspace.WorkspaceExecute;
+import cc.jumpkick.testing.TestCaches;
+import cc.jumpkick.wire.runtime.ModulePlan;
+import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/**
+ * A suite that reads a file nothing declares: the run that finds it stores no marker, the next is
+ * keyed on it and stores one, the one after replays, and an edit to the file runs the suite again.
+ */
+@Tag("integration")
+class SuiteDiscoveryE2eTest {
+
+    @Test
+    void a_file_a_suite_reads_keys_it_once_found(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("suite-discovery-cache");
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path data = Files.createDirectories(ws.resolve("data")).resolve("fixture.txt");
+        Files.writeString(data, "one");
+        Path m = Files.createDirectories(ws.resolve("m"));
+        Files.writeString(m.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "m"
+                version = "1.0.0"
+                java    = 25
+
+                [test-dependencies]
+                junit-jupiter = "6.1.3"
+
+                [repositories]
+                central = "https://repo.maven.apache.org/maven2/"
+                """);
+        Path test = Files.createDirectories(m.resolve("src/test/java/demo")).resolve("ReadsTest.java");
+        Files.writeString(test, """
+                package demo;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+
+                import java.nio.file.Files;
+                import java.nio.file.Path;
+                import org.junit.jupiter.api.Test;
+
+                class ReadsTest {
+                    @Test
+                    void reads() throws Exception {
+                        assertEquals("one", Files.readString(Path.of("../data/fixture.txt")));
+                    }
+                }
+                """);
+        Files.createDirectories(m.resolve("src/main/java/demo"));
+        Files.writeString(m.resolve("src/main/java/demo/M.java"), "package demo; public class M {}\n");
+        JkBuild build = JkBuildParser.parse(m.resolve("jk.toml"));
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(m, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        assertThat(lock.run().success()).as("lock").isTrue();
+
+        Steps first = build(m, cache);
+        assertThat(first.status(TaskNames.RUN_TESTS)).isEqualTo(TaskStatus.SUCCESS);
+        assertThat(first.warnings).anyMatch(w -> w.contains("fixture.txt"));
+
+        Steps second = build(m, cache);
+        assertThat(second.status(TaskNames.RUN_TESTS))
+                .as("keyed on what it read, it runs once more")
+                .isEqualTo(TaskStatus.SUCCESS);
+        assertThat(second.warnings).noneMatch(w -> w.contains("fixture.txt"));
+
+        Steps third = build(m, cache);
+        assertThat(third.status(TaskNames.RUN_TESTS))
+                .as("nothing it reads moved: the module is not scheduled, or its suite replays")
+                .isIn(null, TaskStatus.SKIPPED);
+
+        Files.writeString(data, "two");
+        Steps fourth = build(m, cache);
+        assertThat(fourth.status(TaskNames.RUN_TESTS))
+                .as("the file it reads changed")
+                .isEqualTo(TaskStatus.FAIL);
+    }
+
+    private static Steps build(Path dir, Path cache) {
+        Steps steps = new Steps();
+        WorkspaceResult ignored = WorkspaceExecute.buildWorkspace(
+                new WorkspaceRequest(dir, cache, null, 0, null, false, false, 2, null, false, false), steps);
+        return steps;
+    }
+
+    /** The run-tests step's status and the warnings the build raised. */
+    private static final class Steps implements WorkspaceBuildListener {
+        final List<String> warnings = new ArrayList<>();
+        private @Nullable TaskStatus runTests;
+
+        @Override
+        public BuildPlanListener onModuleStart(ModulePlan module) {
+            return new BuildPlanListener() {
+                @Override
+                public void warn(String step, String code, String message) {
+                    synchronized (Steps.this) {
+                        warnings.add(message);
+                    }
+                }
+
+                @Override
+                public void stepFinish(
+                        String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
+                    if (step.equals(TaskNames.RUN_TESTS)) {
+                        synchronized (Steps.this) {
+                            runTests = status;
+                        }
+                    }
+                }
+            };
+        }
+
+        synchronized @Nullable TaskStatus status(String step) {
+            return runTests;
+        }
+    }
+}

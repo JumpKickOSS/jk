@@ -6,7 +6,6 @@ import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.CacheTree;
@@ -381,7 +380,7 @@ public final class PreflightMemo {
                 Log.debug("storeDirty: not stored, the resolved JDK could not be read");
                 return;
             }
-            sb.append("selection=").append(selectionHeader()).append('\n');
+            sb.append("selection=").append(MemoInputs.selectionHeader()).append('\n');
             sb.append("jdkRelease=").append(jdk).append('\n');
             Set<Path> dirtyNorm = new LinkedHashSet<>();
             for (Path d : dirty) dirtyNorm.add(d.toAbsolutePath().normalize());
@@ -953,20 +952,6 @@ public final class PreflightMemo {
         }
     }
 
-    /**
-     * The run's suite/tag selection as a memo header. A stored clean claim covers the tests the
-     * selection that wrote it would have run, so a widened run ({@code --all}, {@code --suite},
-     * tag flags) reads a different header and misses. Keying on the selection is what lets a
-     * workspace that declares {@code [test] exclude-tags} hit at all: its selection is never
-     * {@link TestSelection#DEFAULT}, and refusing the memo whenever it differed from that zero
-     * value made every build of such a workspace pay the whole forecast walk.
-     */
-    static String selectionHeader() {
-        TestSelection selection = SessionContext.current().testSelection();
-        if (selection.equals(TestSelection.DEFAULT)) return "default";
-        return Hashing.sha256Hex(selection.toString()).substring(0, 16);
-    }
-
     static String fingerprintMode() {
         return useMtimeMode() ? "mtime" : "content";
     }
@@ -1100,7 +1085,7 @@ public final class PreflightMemo {
             miss("profile", "want", wantProfile, "got", gotProfile);
             return true;
         }
-        String wantSelection = selectionHeader();
+        String wantSelection = MemoInputs.selectionHeader();
         String gotSelection = memo.got("selection");
         if (!wantSelection.equals(gotSelection)) {
             miss("selection", "want", wantSelection, "got", gotSelection);

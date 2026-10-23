@@ -14,6 +14,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.HeapNotes;
+import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
@@ -44,6 +45,7 @@ import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.LangCompile;
 import cc.jumpkick.task.MirroredOutputs;
 import cc.jumpkick.task.TestStamp;
+import cc.jumpkick.task.WorkerClosure;
 import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.SuiteClassFilter;
@@ -701,7 +703,8 @@ public final class PlannerTest {
                             in, projectUnderTest, effectiveSel, forkJvmArgs, affected, jacoco, coverageExec)
                     .withSuites(suites)
                     .withIntegrationResults(ctx.require(LAYOUT).integrationResultsDir())
-                    .withAutoShare(auto);
+                    .withAutoShare(auto)
+                    .withReadRecording(SuiteDiscovery.recordFlag(ctx.require(LAYOUT)));
             try {
                 result = TestLaunch.launch(ctx, in, launcher, runtimeCp, testWorkers, workerJars, testEnv, tagExcluded);
             } catch (TestLauncherFailure e) {
@@ -715,7 +718,13 @@ public final class PlannerTest {
         if (jacoco != null && coverageExec != null) {
             TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
         }
-        stampKey = unlessMoved(ctx, suiteGuard, stampKey);
+        stampKey = SuiteDiscovery.settle(
+                ctx,
+                in.dir(),
+                ctx.require(LAYOUT),
+                effectiveSel,
+                keyedRoots(ctx, in, testSrcs, runtimeCp, workerJars),
+                unlessMoved(ctx, suiteGuard, stampKey));
         settle(
                 ctx,
                 in,
@@ -740,6 +749,25 @@ public final class PlannerTest {
         suiteInputs.addAll(ctx.get(TEST_RESOURCE_DIRS).orElse(List.of()));
         suiteInputs.addAll(testRtCp);
         return InputGuard.of(suiteInputs);
+    }
+
+    /** Everything the run-tests stamp already hashes, as roots: what a suite reads there is no discovery. */
+    private static List<Path> keyedRoots(
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            List<Path> testSrcs,
+            List<Path> runtimeCp,
+            Map<String, String> workerJars)
+            throws IOException {
+        List<Path> roots =
+                new ArrayList<>(List.of(ctx.require(TEST_CLASSES), ctx.require(MAIN_CLASSES), in.lockFile()));
+        roots.addAll(ctx.get(TEST_RESOURCE_DIRS).orElse(List.of()));
+        roots.addAll(runtimeCp);
+        roots.addAll(testSrcs);
+        ctx.get(JAVA_HOME).ifPresent(roots::add);
+        for (String jar : workerJars.values()) roots.add(Path.of(jar));
+        roots.addAll(WorkerClosure.paths(PluginJar.TEST_RUNNER));
+        return roots;
     }
 
     /**
@@ -835,7 +863,7 @@ public final class PlannerTest {
                         in.dir(),
                         ClasspathFingerprint.ON_DISK),
                 compileTestKeys(ctx)));
-        extras.addAll(PlannerSupport.profileEnvExtras(projectUnderTest, in.profileName()));
+        extras.addAll(SuiteEnvKeys.profileEnv(projectUnderTest, in.profileName()));
         if (affected != null && !affected.stampToken().isBlank()) {
             extras.add("affected:" + affected.stampToken());
         }
