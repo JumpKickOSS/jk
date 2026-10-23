@@ -63,6 +63,16 @@ final class StatIndex {
         return now - source.identity().lastTouchedMillis() < RACY_MILLIS ? null : s.sha();
     }
 
+    /** A copy a refresh mutates and publishes only once the graph it vouches for is written. */
+    StatIndex copy() {
+        return new StatIndex(new HashMap<>(stats));
+    }
+
+    /** Forget {@code rel}: a file that would not read is not vouched for. */
+    void remove(String rel) {
+        stats.remove(rel);
+    }
+
     @Nullable
     String sha(String rel) {
         Stat s = stats.get(rel);

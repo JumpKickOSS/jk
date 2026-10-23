@@ -823,6 +823,18 @@ public final class PreflightMemo {
      * {@code [build] extra-src}, {@code [test] extra-src}, {@code [test] fixtures},
      * plugin-contributed roots.
      */
+    /**
+     * The module's files alone — manifest, lock, every source, resource and test root, the guard
+     * salt — with nothing the request carries: what the classes in its target dir were compiled
+     * from. Null when an input will not read.
+     */
+    public static @Nullable String sourceFingerprint(Path moduleDir) {
+        Path dir = moduleDir.toAbsolutePath().normalize();
+        return fingerprintModule(dir, null, false, guardSaltFor(dir, new LinkedHashMap<>())) instanceof Known k
+                ? k.hex()
+                : null;
+    }
+
     static Fingerprint fingerprintModule(Path moduleDir, boolean skipTests) {
         try {
             Path manifest = ManifestPaths.manifestIn(moduleDir);
