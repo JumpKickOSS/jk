@@ -67,6 +67,11 @@ public record Evaluation(
         return new Evaluation(Outcome.NOT_EVALUATED, Map.of(), List.of(), note);
     }
 
+    /** A guard test that does not apply on this operating system, with its notice. */
+    public static Evaluation notHere(String note) {
+        return new Evaluation(Outcome.NOT_HERE, Map.of(), List.of(), note, false);
+    }
+
     /** A guard test that did not run here, with the notice it left; no population, no bite evidence. */
     public static Evaluation skipped(String note) {
         return new Evaluation(Outcome.SKIPPED, Map.of(), List.of(), note, false);

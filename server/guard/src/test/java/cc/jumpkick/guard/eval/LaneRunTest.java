@@ -142,6 +142,24 @@ class LaneRunTest {
     }
 
     @Test
+    void a_rule_that_does_not_apply_on_this_platform_leaves_the_lane_a_verdict(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve(GuardsPresence.RULES_FILE), RULES);
+        Rule rule = GuardRules.load(dir, GuardsConfig.ABSENT)
+                .rules()
+                .rule("one-owner")
+                .orElseThrow();
+        RuleReport notHere =
+                new RuleReport(rule, Outcome.NOT_HERE, Evaluation.notHere("shellcheck: skipped on Windows"), null, "");
+        LaneRun.Result result = new LaneRun.Result(Lane.TREE, List.of(notHere), Baseline.EMPTY, 0);
+
+        assertThat(result.red()).isFalse();
+        assertThat(result.skippedReports()).as("still printed as a notice").containsExactly(notHere);
+        assertThat(result.complete())
+                .as("no install on this platform changes it: this platform's verdict is cached")
+                .isTrue();
+    }
+
+    @Test
     void an_unlanded_kind_is_unsupported_and_red_never_clean(@TempDir Path dir) throws IOException {
         LoadResult r = load(dir);
         Evaluators.register(Kind.FORBID, (rule, ctx) -> Evaluation.unsupported("kind forbid has no evaluator yet"));

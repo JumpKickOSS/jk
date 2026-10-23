@@ -44,13 +44,19 @@ public final class LaneRun {
         /** Guard tests that did not run on this machine; each carries the notice to print. */
         public List<RuleReport> skippedReports() {
             List<RuleReport> out = new ArrayList<>();
-            for (RuleReport r : reports) if (r.outcome() == Outcome.SKIPPED) out.add(r);
+            for (RuleReport r : reports) {
+                if (r.outcome() == Outcome.SKIPPED || r.outcome() == Outcome.NOT_HERE) out.add(r);
+            }
             return out;
         }
 
-        /** Whether every rule ran: a lane with a skipped rule has no verdict worth caching. */
+        /**
+         * Whether the lane reached a verdict: a guard skipped for want of a tool is judged again next
+         * build, one that does not apply on this platform is part of this platform's verdict.
+         */
         public boolean complete() {
-            return skippedReports().isEmpty();
+            for (RuleReport r : reports) if (r.outcome() == Outcome.SKIPPED) return false;
+            return true;
         }
 
         public int freshCount() {

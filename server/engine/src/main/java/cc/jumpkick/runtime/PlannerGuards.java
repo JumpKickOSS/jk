@@ -725,6 +725,7 @@ final class PlannerGuards {
                 ctx.cached();
                 return;
             }
+            Log.debug("guard lane: " + taskId + " verdict found, its evidence did not restore");
         }
         if (noClasses) {
             ctx.label("no classes · nothing to examine");
