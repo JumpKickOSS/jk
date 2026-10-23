@@ -36,6 +36,13 @@ public record TaskDecl(
         return transformsClasses != null && !transformsClasses.isBlank();
     }
 
+    /** True when this task changes the main classes or resources every consumer of them loads. */
+    public boolean shapesMainOutput() {
+        return transforms()
+                || (contributesClasses != null && !contributesClasses.isEmpty())
+                || (contributesResources != null && !contributesResources.isEmpty());
+    }
+
     /** True when this task feeds a compiler source set, main or test. */
     public boolean sourceGenerating() {
         return (contributesSources != null && !contributesSources.isEmpty()) || testSourceGenerating();

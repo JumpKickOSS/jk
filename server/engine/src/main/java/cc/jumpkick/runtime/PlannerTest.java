@@ -551,21 +551,31 @@ public final class PlannerTest {
         }
     }
 
-    static Task runTestsStep(
-            BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls, List<String> extraRequires) {
-        BuildPlanner.Inputs in = cx.in();
-        Supplier<EffortWeights.Plan> plan = cx.plan();
+    /**
+     * What the suite waits for: its compiled tests, the resources, and every plugin step that
+     * shapes what the forked JVM loads (its own classpath and arguments, or the main classes and
+     * resources, which a transform such as bytecode enhancement replaces).
+     */
+    static List<String> runTestsRequires(@Nullable PluginDeclarations pluginDecls, List<String> extraRequires) {
         List<String> testRequires = new ArrayList<>();
         testRequires.add(TaskNames.COMPILE_TEST);
         testRequires.add(TaskNames.COPY_RESOURCES);
         testRequires.addAll(extraRequires);
         if (pluginDecls != null) {
             for (TaskDecl step : pluginDecls.steps()) {
-                if (step.testOnly() || step.feedsTests()) {
+                if (step.testOnly() || step.feedsTests() || step.shapesMainOutput()) {
                     testRequires.add("plugin-" + step.name());
                 }
             }
         }
+        return testRequires;
+    }
+
+    static Task runTestsStep(
+            BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls, List<String> extraRequires) {
+        BuildPlanner.Inputs in = cx.in();
+        Supplier<EffortWeights.Plan> plan = cx.plan();
+        List<String> testRequires = runTestsRequires(pluginDecls, extraRequires);
         return Task.builder(TaskNames.RUN_TESTS)
                 .forecast(StepForecast.priced(s -> PlannerTestForecast.runTests(ForecastScope.of(s))))
                 .stage(BuildStage.TEST)
