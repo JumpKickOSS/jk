@@ -7,6 +7,7 @@ import cc.jumpkick.compile.GroovycInputs;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincInputs;
 import cc.jumpkick.compile.KotlincRequest;
+import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.BuildIdentity;
@@ -178,7 +179,7 @@ public final class ActionKey {
         // The worker that drives javac, by content: jk's wrapper decides the options javac sees
         // and what is kept of its output, so a different worker is a different compiler. Its jar
         // carries no version of its own under a release build, so its bytes are the identity.
-        for (String token : JavacWorker.tokens())
+        for (String token : WorkerClosure.tokens(PluginJar.JAVA_COMPILER))
             sb.append("worker:").append(token).append('\n');
         if (request.mixedScala()) {
             sb.append("scala:").append(request.scalaVersion()).append('\n');

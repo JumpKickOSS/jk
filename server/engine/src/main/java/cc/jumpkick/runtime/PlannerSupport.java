@@ -76,7 +76,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -772,17 +771,8 @@ public final class PlannerSupport {
                 tier.suiteJvmArgs(testJvmArgs(project, profileName)),
                 dir,
                 identity));
-        extras.addAll(profileEnvExtras(project, profileName));
+        extras.addAll(SuiteEnvKeys.profileEnv(project, profileName));
         return extras;
-    }
-
-    /** The active profile's {@code env} as stamp extras, sorted: a profile's environment retests the suite. */
-    static List<String> profileEnvExtras(JkBuild project, @Nullable String profileName) {
-        Profile profile = CompileSupport.resolveProfile(project.profiles(), profileName);
-        if (profile == null || profile.env().isEmpty()) return List.of();
-        List<String> out = new ArrayList<>();
-        new TreeMap<>(profile.env()).forEach((k, v) -> out.add("profile-env:" + k + "=" + v));
-        return out;
     }
 
     /**
@@ -951,7 +941,10 @@ public final class PlannerSupport {
             Path moduleDir,
             ClasspathFingerprint.EntryIdentity identity) {
         EnvLookup lookup = BuildEnv.lookupFor(Objects.requireNonNull(moduleDir, "moduleDir"));
-        return testStampExtras(workerJars, selection, build, jvmArgs, SecretRedactor.from(lookup), lookup, identity);
+        List<String> extras = new ArrayList<>(
+                testStampExtras(workerJars, selection, build, jvmArgs, SecretRedactor.from(lookup), lookup, identity));
+        extras.addAll(SuiteEnvKeys.tokens(build, moduleDir, selection == null ? TestSelection.DEFAULT : selection));
+        return extras;
     }
 
     /**

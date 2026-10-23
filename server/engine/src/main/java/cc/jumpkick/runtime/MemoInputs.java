@@ -3,6 +3,8 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.RequestScope;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.rules.GuardRules;
 import cc.jumpkick.guard.rules.GuardsPresence;
@@ -164,5 +166,19 @@ final class MemoInputs {
             super(DIRECTORY_LINK);
             this.link = link;
         }
+    }
+
+    /**
+     * The run's suite/tag selection as a memo header. A stored clean claim covers the tests the
+     * selection that wrote it would have run, so a widened run ({@code --all}, {@code --suite},
+     * tag flags) reads a different header and misses. Keying on the selection is what lets a
+     * workspace that declares {@code [test] exclude-tags} hit at all: its selection is never
+     * {@link TestSelection#DEFAULT}, and refusing the memo whenever it differed from that zero
+     * value made every build of such a workspace pay the whole forecast walk.
+     */
+    static String selectionHeader() {
+        TestSelection selection = SessionContext.current().testSelection();
+        if (selection.equals(TestSelection.DEFAULT)) return "default";
+        return Hashing.sha256Hex(selection.toString()).substring(0, 16);
     }
 }
