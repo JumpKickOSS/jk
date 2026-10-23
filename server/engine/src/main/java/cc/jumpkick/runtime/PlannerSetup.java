@@ -26,6 +26,7 @@ import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginDeclaration;
@@ -51,7 +52,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -427,6 +430,29 @@ public final class PlannerSetup {
                     WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.TEST_SCOPES);
             requireSiblingsBuilt(ctx, testSiblings, "test sibling not built — ", in.siblings());
         }
+    }
+
+    /**
+     * {@code workerJars}, once every workspace module whose jar is among them has published it: a
+     * suite runs against the workers this build makes, whatever order the schedule took.
+     */
+    static Map<String, String> awaitWorkerSiblings(
+            TaskContext ctx, BuildPlanner.Inputs in, Map<String, String> workerJars) throws InterruptedException {
+        Path self = in.dir().toAbsolutePath().normalize();
+        Set<Path> producers = new LinkedHashSet<>();
+        for (String jar : workerJars.values()) {
+            for (Path p = Path.of(jar).toAbsolutePath().normalize(); p != null; p = p.getParent()) {
+                Path parent = p.getParent();
+                if (parent != null
+                        && BuildLayout.TARGET.equals(String.valueOf(p.getFileName()))
+                        && Files.isRegularFile(ManifestPaths.manifestIn(parent))) {
+                    if (!parent.equals(self)) producers.add(parent);
+                    break;
+                }
+            }
+        }
+        in.siblings().awaitPublished(producers, ctx::cancelled);
+        return workerJars;
     }
 
     /**

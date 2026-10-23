@@ -162,6 +162,11 @@ final class MemoInputs {
         return out;
     }
 
+    /** {@code reads} as the memo keys them ({@link SuiteReads#memoDigest}). */
+    static String readsDigest(Path moduleDir, List<String> reads) {
+        return SuiteReads.memoDigest(reads, WorkspaceScan.findRoot(moduleDir).orElse(moduleDir));
+    }
+
     /** The tokens of what the module's suites were found to read, under the run's selection. */
     static List<String> readsTokens(Path moduleDir) {
         Path root = WorkspaceScan.findRoot(moduleDir).orElse(moduleDir);

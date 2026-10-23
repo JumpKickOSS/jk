@@ -54,8 +54,22 @@ public final class Oracle {
     private static final boolean WINDOWS =
             System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
 
+    /**
+     * One edit class. {@code settled}: the edit itself leaves nothing to do, so the incremental build
+     * after it must run nothing either.
+     */
     private record Edit(
-            String name, Applier apply, Applier undo, List<String> flags, Map<String, String> env, boolean posixOnly) {}
+            String name,
+            Applier apply,
+            Applier undo,
+            List<String> flags,
+            Map<String, String> env,
+            boolean posixOnly,
+            boolean settled) {
+        Edit(String name, Applier apply, Applier undo, List<String> flags, Map<String, String> env, boolean posixOnly) {
+            this(name, apply, undo, flags, env, posixOnly, false);
+        }
+    }
 
     @FunctionalInterface
     private interface Applier {
@@ -126,6 +140,10 @@ public final class Oracle {
         List<String> build = new ArrayList<>(List.of("build", "-O", "jsonl"));
         build.addAll(e.flags());
         Run inc = jk(ws, incCache, build, e.env());
+        if (e.settled()) {
+            List<String> ran = ran(inc.out());
+            if (!ran.isEmpty()) return "the build after it ran " + ran;
+        }
         if (inc.exit() == 0) {
             // A build that succeeded left nothing to do: the next one runs no step. (One that
             // failed must run its failed suite again, so it is held to the clean build alone.)
@@ -349,6 +367,27 @@ public final class Oracle {
                 ws -> {},
                 List.of(),
                 Map.of(),
+                true));
+        e.add(new Edit(
+                "clean",
+                ws -> {
+                    must(jk(ws, ws.resolveSibling("cache-inc"), List.of("clean"), Map.of()), "jk clean");
+                    must(jk(ws, ws.resolveSibling("cache-inc"), List.of("build"), Map.of()), "build after clean");
+                    // The clean took the graph with it; a build keeps a graph current, never starts one.
+                    must(jk(ws, ws.resolveSibling("cache-inc"), List.of("graph"), Map.of()), "graph after clean");
+                },
+                ws -> {},
+                List.of(),
+                Map.of(),
+                false,
+                true));
+        e.add(new Edit(
+                "redo",
+                ws -> must(jk(ws, ws.resolveSibling("cache-inc"), List.of("build", "-r"), Map.of()), "jk build -r"),
+                ws -> {},
+                List.of(),
+                Map.of(),
+                false,
                 true));
         e.add(edit("edit-during-force", ws -> race(ws, List.of("build", "--force"), greet, "return \"<\" + PREFIX +")));
         e.add(edit("edit-during-build", ws -> race(ws, List.of("build"), greet, "return \">\" + PREFIX +")));

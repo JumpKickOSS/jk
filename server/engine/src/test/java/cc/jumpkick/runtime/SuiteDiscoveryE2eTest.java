@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
@@ -28,7 +29,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A suite that reads a file nothing declares: the run that finds it stores its marker under a key
- * that folds the file in, the next build replays it, and an edit to the file runs the suite again.
+ * that folds the file in, the next build replays it, so does a build after a clean, and an edit to
+ * the file runs the suite again.
  */
 @Tag("integration")
 class SuiteDiscoveryE2eTest {
@@ -85,6 +87,12 @@ class SuiteDiscoveryE2eTest {
         Steps second = build(m, cache);
         assertThat(second.status(TaskNames.RUN_TESTS))
                 .as("nothing it reads moved: the module is not scheduled, or its suite replays")
+                .isIn(null, TaskStatus.SKIPPED);
+
+        PathUtil.deleteRecursively(m.resolve("target"));
+        Steps afterClean = build(m, cache);
+        assertThat(afterClean.status(TaskNames.RUN_TESTS))
+                .as("a clean keeps what the suite was found to read: the same key, replayed")
                 .isIn(null, TaskStatus.SKIPPED);
 
         Files.writeString(data, "two");

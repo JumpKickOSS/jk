@@ -66,6 +66,16 @@ public final class SiblingArtifacts {
          * finished, or as soon as {@code cancelled} answers true.
          */
         default void awaitIndexed(Collection<Path> dirs, BooleanSupplier cancelled) throws InterruptedException {}
+
+        /** This module's facts indexes describe the classes this build compiled. */
+        default void indexed() {}
+
+        /**
+         * Returns once every module of {@code dirs} this build schedules has published its artifacts
+         * or finished, or as soon as {@code cancelled} answers true: for a jar a step runs that is
+         * no prerequisite of its module.
+         */
+        default void awaitPublished(Collection<Path> dirs, BooleanSupplier cancelled) throws InterruptedException {}
     }
 
     /** The gate of a plan outside a workspace schedule: nothing to wait for. */
@@ -135,7 +145,7 @@ public final class SiblingArtifacts {
         indexed(dir);
     }
 
-    /** {@code dir}'s facts index describes the classes this build compiled: its guard step is done. */
+    /** {@code dir}'s facts indexes describe the classes this build compiled. */
     public void indexed(Path dir) {
         CompletableFuture<Void> f = indexed.get(dir);
         if (f != null) f.complete(null);
@@ -168,6 +178,16 @@ public final class SiblingArtifacts {
             @Override
             public void awaitIndexed(Collection<Path> dirs, BooleanSupplier cancelled) throws InterruptedException {
                 await(indexed, dirs, cancelled);
+            }
+
+            @Override
+            public void indexed() {
+                SiblingArtifacts.this.indexed(dir);
+            }
+
+            @Override
+            public void awaitPublished(Collection<Path> dirs, BooleanSupplier cancelled) throws InterruptedException {
+                await(published, dirs, cancelled);
             }
         };
     }
