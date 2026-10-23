@@ -320,8 +320,8 @@ export function foldEvent(cards, event) {
           ? row.didWork
             ? 'success'
             : 'checked'
-          : d.cancelled
-            ? 'cancelled'
+          : d.cancelled || d.stopped
+            ? 'cancelled' // stopped: another module's failure ended it before it could fail or pass
             : 'failed';
         row.millis = d.millis ?? row.millis;
         if (d.coord) row.coord = d.coord;

@@ -208,3 +208,20 @@ test('phaseChainOf keeps an unphased step as its own node, keyed by name', () =>
   assert.equal(chain[0].key, 'lock'); // last-resort: keyed by the step name so it is never dropped
   assert.equal(chain[0].label, 'Lock');
 });
+
+test('a module another failure stopped reads as cancelled, not failed, and the run is not user-cancelled', () => {
+  const cards = [];
+  foldEvent(cards, start(1, '/w'));
+  foldEvent(cards, { type: 'module-start', data: { jid: 1, dir: '/w/a' }, at: 100 });
+  foldEvent(cards, { type: 'module-finish', data: { jid: 1, dir: '/w/a', success: false, millis: 5 }, at: 200 });
+  foldEvent(cards, { type: 'module-start', data: { jid: 1, dir: '/w/b' }, at: 110 });
+  foldEvent(cards, {
+    type: 'module-finish',
+    data: { jid: 1, dir: '/w/b', success: false, stopped: true, millis: 9 },
+    at: 210,
+  });
+  const states = Object.fromEntries(orderedModules(cards[0].modules).map((m) => [m.dir, m.state]));
+  assert.equal(states['/w/a'], 'failed');
+  assert.equal(states['/w/b'], 'cancelled');
+  assert.notEqual(cards[0].cancelled, true);
+});
