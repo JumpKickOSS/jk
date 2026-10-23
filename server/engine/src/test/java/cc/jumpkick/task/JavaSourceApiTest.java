@@ -185,9 +185,24 @@ class JavaSourceApiTest {
         Path b = Files.writeString(dir.resolve("B.java"), "package p; public class B { public int x; }");
         Path c = Files.writeString(dir.resolve("C.java"), BASE);
         Map<Path, String> together =
-                JavaSourceApi.parse(List.of(a, b, c), JavaSourceApi.View.DECLARATIONS, Long.MAX_VALUE);
-        Map<Path, String> apart = JavaSourceApi.parse(List.of(a, b, c), JavaSourceApi.View.DECLARATIONS, 1);
+                JavaSourceApi.parse(List.of(a, b, c), JavaSourceApi.View.DECLARATIONS, Long.MAX_VALUE, Long.MAX_VALUE);
+        Map<Path, String> apart =
+                JavaSourceApi.parse(List.of(a, b, c), JavaSourceApi.View.DECLARATIONS, 1, Long.MAX_VALUE);
         assertThat(apart).containsOnlyKeys(a, b, c).isEqualTo(together);
+    }
+
+    /**
+     * A file over the parse ceiling is never handed to javac, which would build its trees inside
+     * the engine's capped heap: it is left out, and its digest falls back to its content.
+     */
+    @Test
+    void a_file_over_the_parse_ceiling_is_keyed_on_its_content(@TempDir Path dir) throws IOException {
+        Path small = Files.writeString(dir.resolve("A.java"), "package p; public class A {}");
+        Path big = Files.writeString(dir.resolve("B.java"), "package p; public class B { public int x; }");
+        Map<Path, String> parsed = JavaSourceApi.parse(
+                List.of(small, big), JavaSourceApi.View.DECLARATIONS, Long.MAX_VALUE, Files.size(small));
+        assertThat(parsed).containsOnlyKeys(small);
+        assertThat(JavaSourceApi.MAX_PARSE_FILE_BYTES).isGreaterThan(JavaSourceApi.PARSE_BATCH_BYTES);
     }
 
     private static String digest(Path dir, String source) throws IOException {
