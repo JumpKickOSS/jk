@@ -97,17 +97,16 @@ final class PlannerNode {
 
     /**
      * Add the node steps for {@code unit} to {@code b} and return the leaves the plan's terminal
-     * must keep: the build (unless the plan only tests), the resource jar (when it packages) and the
-     * tests (unless they are skipped or the plan only compiles). A skipped node build plans one step
-     * that says so.
+     * must keep: the build (unless the plan only tests), the resource jar and the tests (unless they
+     * are skipped or the plan only compiles). A skipped node build plans one step that says so.
      */
     static List<String> plan(BuildPlan.Builder b, Unit unit) {
         Planned planned = steps(b, unit);
         List<String> leaves = new ArrayList<>(planned.leaves());
-        if (!unit.in().testOnly() && !unit.in().compileOnly()) {
-            b.addTask(packageStep(unit, planned.last()));
-            leaves.add(TaskNames.NODE_PACKAGE);
-        }
+        // The resource jar is what a JVM sibling compiles, tests and runs against, so every goal
+        // packages it; a module nothing depends on packages nothing.
+        b.addTask(packageStep(unit, planned.last()));
+        leaves.add(TaskNames.NODE_PACKAGE);
         return leaves;
     }
 

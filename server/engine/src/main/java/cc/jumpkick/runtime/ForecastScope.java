@@ -481,6 +481,13 @@ public final class ForecastScope implements StepForecast.Scope {
                 TaskForecast.Task v = verdicts.get(step);
                 if (v != null) steps.add(v);
             }
+            // Its outputs are what a JVM sibling compiles and runs against: when every step is cached
+            // and they are gone (a jk clean), the module restores them, or the sibling is admitted
+            // against outputs nothing produces. The same judgment the preflight memo makes.
+            if (allCached() && ModuleOutputs.nodeOutputsMissing(dir, project, actionCache)) {
+                steps.add(new TaskForecast.Task(
+                        TaskNames.RESTORE_OUTPUTS, TaskForecast.Status.RUN, "restore from cache", null));
+            }
             return new TaskForecast.Module(u.dir(), u.coord(), steps, 0, 0, false, false);
         }
         projectOwnOutputs();
