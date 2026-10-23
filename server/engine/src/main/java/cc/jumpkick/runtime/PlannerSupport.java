@@ -18,6 +18,7 @@ import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.host.CacheTree;
@@ -740,11 +741,13 @@ public final class PlannerSupport {
         // live run (PlannerTest feeds in.session().testSelection()), or a widened build
         // (`jk build -A`) forecasts "tests cached" off the unit-tier marker and the whole
         // workspace short-circuits to "up to date" without running the widened tier.
+        TestSelection selection = effectiveSelection(SessionContext.current().testSelection(), dir);
+        TestTier tier = TestTier.of(selection, profileName, PlannerTest.fastMethodBudget(project, dir));
         List<String> extras = new ArrayList<>(NodeTestStamp.testStampExtras(
                 testStampWorkerJars(dir, project),
-                effectiveSelection(SessionContext.current().testSelection(), dir),
+                selection,
                 project,
-                testJvmArgs(project, profileName),
+                suiteJvmArgs(testJvmArgs(project, profileName), tier),
                 dir,
                 identity));
         extras.addAll(profileEnvExtras(project, profileName));
@@ -773,6 +776,19 @@ public final class PlannerSupport {
         if (declared.isEmpty()) return profile.jvmArgs();
         List<String> all = new ArrayList<>(declared);
         all.addAll(profile.jvmArgs());
+        return List.copyOf(all);
+    }
+
+    /**
+     * The flags a suite fork is launched with beyond jk's heap and the module path: {@code
+     * testJvmArgs}, then the tier's per-method timeout. The run-tests stamp keys this list and the
+     * fork launches it, so neither can carry a flag the other lacks.
+     */
+    static List<String> suiteJvmArgs(List<String> testJvmArgs, TestTier tier) {
+        List<String> timeouts = tier.timeoutArgs();
+        if (timeouts.isEmpty()) return testJvmArgs;
+        List<String> all = new ArrayList<>(testJvmArgs);
+        all.addAll(timeouts);
         return List.copyOf(all);
     }
 
@@ -949,8 +965,11 @@ public final class PlannerSupport {
         build.testClassSuites()
                 .forEach((suite, spec) -> extras.add("suite-classes:" + suite + "=" + String.join(",", spec.classes())
                         + (spec.excludeClasses().isEmpty() ? "" : "!" + String.join(",", spec.excludeClasses()))));
-        // The test JVM's flags change what the suite sees (-D properties, heap), so they retest.
+        // The test JVM's flags change what the suite sees (-D properties, heap), so they retest:
+        // the module's, then the request's own, which the suite fork appends from the same source.
         if (!jvmArgs.isEmpty()) extras.add("jvm-args:" + String.join(" ", jvmArgs));
+        List<String> userArgs = JvmOptions.suiteUserArgs();
+        if (!userArgs.isEmpty()) extras.add("jvm-user-args:" + String.join(" ", userArgs));
         // [test] env changes what the suite sees, so it must retest. Resolved by the same owner the
         // fork uses, in its cache-key mode: ${target}/${module} stay tokens so the key is portable,
         // a .env-sourced value is hashed, and an unset ${VAR} fails here exactly as it fails at

@@ -160,11 +160,12 @@ class PreflightMemoTest {
         writeProject(tmp);
         BuildGraph.Result graph =
                 BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
-        Map<Path, String> fps = PreflightMemo.snapshotFingerprints(graph, false).fingerprints();
         TestSelection fastTier = TestSelection.of(List.of(), false, List.of(), List.of("slow"), true);
         TestSelection widened = TestSelection.of(List.of(), false, List.of("slow"), List.of(), true);
 
         SessionContext.runWhere(Session.defaults().withTestSelection(fastTier), () -> {
+            Map<Path, String> fps =
+                    PreflightMemo.snapshotFingerprints(graph, false).fingerprints();
             PreflightMemo.storeDirty(tmp, graph, false, null, Set.of(), fps);
             assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false, null))
                     .as("the selection that wrote the memo reads it back")

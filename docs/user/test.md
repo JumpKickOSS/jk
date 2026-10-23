@@ -274,7 +274,8 @@ every method. A JUnit Jupiter method still running at **four times** the budget 
 thread is interrupted and the method fails as timed out, so a hung test cannot hold the fast tier
 (a method's own `@Timeout` wins). A run with `-p <profile>` is not held to either, and there is no
 budget unless one is set. At the workspace root it holds every member; a
-member's own `fast-method-budget` wins over the root's.
+member's own `fast-method-budget` wins over the root's. The budget is a run-tests input: changing
+it runs the fast tier again.
 
 ## What a test printed
 
@@ -718,7 +719,9 @@ the flags it started with, after the worker budget and the GC log have been appl
 `test JVM flags: …` line per distinct set (pull workers that differ only in their temp
 directories share one line); the line is in `details.jsonl` with the step's other output. `[jvm] args` is the other knob and
 reaches every worker JVM the module forks, compilers included; a value only the tests read belongs
-here. `jk import` writes Surefire's `<argLine>` (minus the `${argLine}` placeholder and the JaCoCo
+here. `[jvm] args`, `--jvm-arg` and `JK_JVM_ARGS` are run-tests inputs too: a suite that passed
+without `--jvm-arg=-Dprobe=2` runs again with it, on `jk build` as on `jk test`. The heap jk picks
+for the host is not. `jk import` writes Surefire's `<argLine>` (minus the `${argLine}` placeholder and the JaCoCo
 agent) and its system properties into these keys.
 
 A framework plugin can add arguments of its own: a TEST-window plugin step declares an output
