@@ -28,6 +28,9 @@ import org.jspecify.annotations.NullMarked;
  * finished. The wait covers the transitive closure over the module graph, because the classpath is
  * transitive too: a module two edges away is on the runtime classpath as surely as a direct one.
  *
+ * <p>A module's guard suite that judges the whole workspace reads every module's facts index, so it
+ * waits here too, for each module it judges to have indexed its classes this build.
+ *
  * <p>A sibling this build does not schedule has its outputs on disk already and is ready from the
  * start. One that fails publishes on completion, and the waiting step then names the missing jar
  * itself and the step the sibling failed at, which is the accurate failure. A cancelled session
@@ -57,6 +60,12 @@ public final class SiblingArtifacts {
         default Optional<String> failedStep(String coord) {
             return Optional.empty();
         }
+
+        /**
+         * Returns once every module of {@code dirs} this build schedules has indexed its classes or
+         * finished, or as soon as {@code cancelled} answers true.
+         */
+        default void awaitIndexed(Collection<Path> dirs, BooleanSupplier cancelled) throws InterruptedException {}
     }
 
     /** The gate of a plan outside a workspace schedule: nothing to wait for. */
@@ -64,6 +73,7 @@ public final class SiblingArtifacts {
 
     private final Map<Path, Set<Path>> prereqs;
     private final Map<Path, CompletableFuture<Void>> published = new ConcurrentHashMap<>();
+    private final Map<Path, CompletableFuture<Void>> indexed = new ConcurrentHashMap<>();
     private final Map<String, String> failedSteps = new ConcurrentHashMap<>();
 
     /**
@@ -72,7 +82,10 @@ public final class SiblingArtifacts {
      */
     public SiblingArtifacts(Map<Path, Set<Path>> edges, Collection<Path> scheduled) {
         this.prereqs = transitive(edges);
-        for (Path dir : scheduled) published.put(dir, new CompletableFuture<>());
+        for (Path dir : scheduled) {
+            published.put(dir, new CompletableFuture<>());
+            indexed.put(dir, new CompletableFuture<>());
+        }
     }
 
     /** No schedule at all — every gate is {@link #NONE}. */
@@ -119,6 +132,13 @@ public final class SiblingArtifacts {
      */
     public void completed(Path dir) {
         published(dir);
+        indexed(dir);
+    }
+
+    /** {@code dir}'s facts index describes the classes this build compiled: its guard step is done. */
+    public void indexed(Path dir) {
+        CompletableFuture<Void> f = indexed.get(dir);
+        if (f != null) f.complete(null);
     }
 
     /**
@@ -133,31 +153,42 @@ public final class SiblingArtifacts {
     /** The gate for the module at {@code dir}. */
     public Gate gateFor(Path dir) {
         Set<Path> waitOn = prereqs.getOrDefault(dir, Set.of());
-        if (waitOn.isEmpty()) return NONE;
+        if (waitOn.isEmpty() && indexed.isEmpty()) return NONE;
         return new Gate() {
             @Override
             public void awaitArtifacts(BooleanSupplier cancelled) throws InterruptedException {
-                for (Path prereq : waitOn) {
-                    CompletableFuture<Void> f = published.get(prereq);
-                    if (f == null) continue; // not scheduled this build: its outputs are on disk
-                    while (!f.isDone()) {
-                        if (cancelled.getAsBoolean()) return;
-                        try {
-                            f.get(POLL_MS, TimeUnit.MILLISECONDS);
-                        } catch (TimeoutException stillPackaging) {
-                            // re-check the cancel, then keep waiting
-                        } catch (ExecutionException never) {
-                            // the future only ever completes normally
-                            return;
-                        }
-                    }
-                }
+                await(published, waitOn, cancelled);
             }
 
             @Override
             public Optional<String> failedStep(String coord) {
                 return Optional.ofNullable(failedSteps.get(coord));
             }
+
+            @Override
+            public void awaitIndexed(Collection<Path> dirs, BooleanSupplier cancelled) throws InterruptedException {
+                await(indexed, dirs, cancelled);
+            }
         };
+    }
+
+    private static void await(
+            Map<Path, CompletableFuture<Void>> signals, Collection<Path> dirs, BooleanSupplier cancelled)
+            throws InterruptedException {
+        for (Path dir : dirs) {
+            CompletableFuture<Void> f = signals.get(dir);
+            if (f == null) continue; // not scheduled this build: its outputs are on disk
+            while (!f.isDone()) {
+                if (cancelled.getAsBoolean()) return;
+                try {
+                    f.get(POLL_MS, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException stillRunning) {
+                    // re-check the cancel, then keep waiting
+                } catch (ExecutionException never) {
+                    // the future only ever completes normally
+                    return;
+                }
+            }
+        }
     }
 }

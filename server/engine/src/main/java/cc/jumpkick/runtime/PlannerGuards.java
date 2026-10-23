@@ -337,6 +337,9 @@ final class PlannerGuards {
                         List<Path> workspaceModules =
                                 workspaceModuleDirs(g.root(), ctx.get(PROJECT).orElse(null));
                         boolean workspace = GuardSuites.anyWorkspace(declared);
+                        // A workspace guard judges every module's index: each must describe what this
+                        // build compiled before the key is taken or the suite reads it.
+                        if (workspace) awaitIndexed(ctx, cx.in(), g.root(), workspaceModules);
                         tokens.addAll(GuardKeys.suiteTokens(suite.bodyDigest(), declared, g.root(), workspaceModules));
                         List<String> loadErrors = GuardSuites.loadErrors(declared, rules(g).rules());
                         if (!loadErrors.isEmpty()) {
@@ -1034,6 +1037,24 @@ final class PlannerGuards {
     }
 
     // ---- helpers -------------------------------------------------------------------------------
+
+    /**
+     * Wait until every other module of {@code modules} has indexed its classes this build. A module
+     * with a guard suite of its own is left out — two such suites would wait on each other — and so
+     * is the root, which builds after every member.
+     */
+    private static void awaitIndexed(TaskContext ctx, BuildPlanner.Inputs in, Path root, List<Path> modules)
+            throws InterruptedException {
+        Path self = in.dir().toAbsolutePath().normalize();
+        Path top = root.toAbsolutePath().normalize();
+        List<Path> judged = new ArrayList<>();
+        for (Path m : modules) {
+            Path dir = m.toAbsolutePath().normalize();
+            if (dir.equals(self) || dir.equals(top) || PlannerGuardSuite.declared(dir, compact(dir))) continue;
+            judged.add(m);
+        }
+        in.siblings().awaitIndexed(judged, ctx::cancelled);
+    }
 
     /**
      * The workspace's module directories from inside a member's step, where {@code PROJECT} is the

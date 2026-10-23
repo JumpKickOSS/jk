@@ -182,10 +182,12 @@ final class WorkspaceRunPhase {
     }
 
     /**
-     * Run one module and emit its module start/finish lifecycle. Two signals leave the plan: the
+     * Run one module and emit its module start/finish lifecycle. Three signals leave the plan: the
      * classes publish admits dependents to the schedule (they compile against this module's
-     * classes tree), and the artifact publish releases the dependents' package and test steps
-     * (they read its jar). Completion fires both, so a module that failed early wedges nothing.
+     * classes tree), the artifact publish releases the dependents' package and test steps (they
+     * read its jar), and the index signal releases a guard suite that judges the workspace (it reads
+     * this module's facts index). Completion fires all of them, so a module that failed early
+     * wedges nothing.
      */
     private static ModuleOutcome runModule(
             ModulePlan module,
@@ -199,6 +201,7 @@ final class WorkspaceRunPhase {
         if (moduleListener != null) module.plan().addListener(moduleListener);
         watchClassesSteps(module.plan(), relocates, warmup.publish());
         watchArtifactSteps(module.plan(), testClassesConsumed, () -> siblings.published(module.dir()));
+        watchIndexStep(module.plan(), () -> siblings.indexed(module.dir()));
         long started = clock.nanos();
         try {
             return runPlan(module, listener, siblings, clock, started);
@@ -348,6 +351,16 @@ final class WorkspaceRunPhase {
     /** Publish artifacts once every cross-module artifact step is terminal-successful. */
     static void watchArtifactSteps(BuildPlan plan, boolean testClassesConsumed, Runnable artifactsReady) {
         watchSteps(plan, artifactWaitSet(plan, testClassesConsumed), artifactsReady);
+    }
+
+    /** Signal {@code indexed} once the module lane, which indexes the module's classes, is done. */
+    static void watchIndexStep(BuildPlan plan, Runnable indexed) {
+        for (Task step : plan.steps()) {
+            if (step.name().equals(TaskNames.GUARD)) {
+                watchSteps(plan, Set.of(TaskNames.GUARD), indexed);
+                return;
+            }
+        }
     }
 
     /** Run {@code publish} once every step of {@code steps} is terminal-successful; never for an empty set. */
