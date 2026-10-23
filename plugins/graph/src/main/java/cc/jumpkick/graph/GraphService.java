@@ -147,6 +147,11 @@ public final class GraphService {
     public static Answer run(Workspace w, Request r, GraphBuild.Progress progress) throws IOException {
         if (!OPS.contains(r.op())) throw new IllegalArgumentException("unknown graph operation '" + r.op() + "'");
         GraphBuild.Result build = r.noRefresh() ? stored(w.out()) : null;
+        if (r.noRefresh() && build == null) {
+            // -n answers from what was written; with nothing written there is nothing to answer
+            // from, and building one here would store a graph with no compiled facts in it.
+            throw new IllegalArgumentException("no graph has been built here yet: run jk graph without -n first");
+        }
         if (build == null) {
             build = GraphBuild.refresh(w.root(), w.out(), w.indexes(), w.modules(), w.scripts(), r.rebuild(), progress);
         }

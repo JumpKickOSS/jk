@@ -34,6 +34,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
+import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.base.PluginLaunch;
 import cc.jumpkick.wire.protocol.GraphAck;
 import cc.jumpkick.wire.protocol.GraphProgress;
@@ -96,17 +97,55 @@ public final class GraphRunner {
             } catch (IOException | RuntimeException refused) {
                 return GraphAck.error(String.valueOf(refused.getMessage()));
             }
-            List<String> indexes = req.noRefresh() ? List.of() : classIndexes(root);
+            ClassIndexes indexes = req.noRefresh() ? ClassIndexes.NONE : classIndexes(root);
             List<String> modules = req.noRefresh() ? List.of() : moduleRows(root);
             GraphScripts.Tools scripts = req.noRefresh() ? null : GraphScripts.of(root);
-            Path spec = spec(root, req, indexes, modules, prefixes, scripts);
+            Path spec = spec(root, req, indexes.rows(), modules, prefixes, scripts);
             try {
-                return forkWithHeap(root, spec, progress);
+                return withNote(forkWithHeap(root, spec, progress), indexes.leftOut());
             } finally {
                 Files.deleteIfExists(spec);
             }
         } finally {
             lock.unlock();
+        }
+    }
+
+    /**
+     * Refresh the workspace's graph when it has one, after a build that succeeded: the graph an
+     * agent reads next is the tree the build just compiled, not the one before it. A workspace
+     * with no graph gets none. Best-effort: a refresh that fails is logged, and the next graph
+     * operation refreshes anyway.
+     */
+    public static void refreshExisting(Path dir) {
+        Path root = rootOf(dir);
+        if (!Files.isRegularFile(outputDir(root).resolve("graph.json"))) return;
+        GraphRequest build = new GraphRequest(
+                root.toString(),
+                "build",
+                List.of(),
+                null,
+                0,
+                0,
+                List.of(),
+                false,
+                false,
+                0,
+                0,
+                null,
+                false,
+                false,
+                null,
+                null,
+                null,
+                List.of());
+        try {
+            GraphAck ack = run(build, progress -> {});
+            if (!ack.ok()) Log.warn("jk: the code graph was not refreshed after the build: " + ack.error());
+        } catch (IOException | RuntimeException failed) {
+            Log.warn("jk: the code graph was not refreshed after the build", failed);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -283,28 +322,77 @@ public final class GraphRunner {
     }
 
     /**
-     * {@code index \t modulePrefix \t digest \t classes} for every module's main and test classes,
-     * each index brought up to date first. A module that has not compiled has none.
+     * The facts-index rows the graph reads ({@code index \t modulePrefix \t digest \t classes},
+     * one per module's main and test classes) and the modules whose classes it does not read, each
+     * with why.
      */
-    static List<String> classIndexes(Path root) {
+    record ClassIndexes(List<String> rows, List<String> leftOut) {
+        static final ClassIndexes NONE = new ClassIndexes(List.of(), List.of());
+    }
+
+    /**
+     * The class facts of every module whose classes were compiled from its sources as they stand
+     * ({@link ModuleInputProvenance#classesCurrent}), each index brought up to date first and the
+     * module checked again after, so a build writing the classes meanwhile leaves the module out
+     * rather than half in. A module left out contributes what its sources say, and the answer
+     * names it: a call, an override or a line number read off classes older than the source would
+     * be a false answer.
+     */
+    static ClassIndexes classIndexes(Path root) {
         List<String> out = new ArrayList<>();
+        List<String> leftOut = new ArrayList<>();
         for (Map.Entry<Path, JkBuild> module : modules(root).entrySet()) {
             BuildLayout layout = BuildLayout.of(root, module.getKey(), module.getValue());
             String rel = root.relativize(module.getKey()).toString().replace('\\', '/');
             String prefix = rel.isEmpty() ? "" : rel + "/";
-            for (String set : List.of("main", "test")) {
-                Path classes = set.equals("main") ? layout.classesDir() : layout.testClassesDir();
-                if (!Files.isDirectory(classes)) continue;
-                try {
+            String name = rel.isEmpty() ? String.valueOf(module.getKey().getFileName()) : rel;
+            boolean compiled = Files.isDirectory(layout.classesDir()) || Files.isDirectory(layout.testClassesDir());
+            if (!compiled) continue;
+            if (!ModuleInputProvenance.classesCurrent(root, module.getKey(), module.getValue())) {
+                leftOut.add(name);
+                continue;
+            }
+            List<String> rows = new ArrayList<>();
+            try {
+                for (String set : List.of("main", "test")) {
+                    Path classes = set.equals("main") ? layout.classesDir() : layout.testClassesDir();
+                    if (!Files.isDirectory(classes)) continue;
                     FactsIndexing.Ensured e =
                             FactsIndexing.ensure(classes, FactsIndexing.indexPath(layout.buildDir(), set));
-                    out.add(e.index() + "\t" + prefix + "\t" + e.bodyDigest() + "\t" + e.classes());
-                } catch (IOException | RuntimeException unreadable) {
-                    Log.debug("graph: no facts index for " + classes, unreadable);
+                    rows.add(e.index() + "\t" + prefix + "\t" + e.bodyDigest() + "\t" + e.classes());
                 }
+            } catch (IOException | RuntimeException unreadable) {
+                leftOut.add(name);
+                continue;
             }
+            if (!ModuleInputProvenance.classesCurrent(root, module.getKey(), module.getValue())) {
+                leftOut.add(name);
+                continue;
+            }
+            out.addAll(rows);
         }
-        return out;
+        return new ClassIndexes(out, leftOut);
+    }
+
+    /** {@code ack} with the modules whose compiled facts were left out named in its note. */
+    static GraphAck withNote(GraphAck ack, List<String> leftOut) {
+        if (!ack.ok() || leftOut.isEmpty()) return ack;
+        String line = "compiled facts left out for " + String.join(", ", leftOut)
+                + " (classes older than the sources, or being built): calls, overrides and lines there come from"
+                + " the sources alone; jk build brings them back";
+        String note = ack.note() == null ? line : ack.note() + "\n" + line;
+        return new GraphAck(
+                null,
+                ack.text(),
+                ack.nodes(),
+                ack.edges(),
+                ack.communities(),
+                ack.files(),
+                ack.extracted(),
+                ack.classes(),
+                ack.millis(),
+                ack.dir(),
+                note);
     }
 
     /**

@@ -41,10 +41,19 @@ first sentence of its doc comment. `read`, `find` and the search use them.
 
 ## How it stays current
 
-Every `jk graph` command refreshes the graph before answering. Files are compared by size and
-modification time, then by content hash; only changed files are read again, and each module's class
-index is updated one class file at a time. An unchanged tree answers from the graph already in
-memory, or from a stored snapshot. `-r` extracts every file again.
+Every `jk graph` command refreshes the graph before answering, and a build that succeeds refreshes
+an existing `target/graph/` before it reports done, so the graph an agent reads is the tree as it
+stands. Files are compared by their stat identity (size, modification and change time, file id),
+then by content hash; only changed files are read again, and a file that will not read contributes
+nothing, its earlier facts included. A refresh that fails leaves the previous graph and its state
+as they were.
+
+A module's compiled facts (calls, overrides, exact lines) are read only while its classes are the
+ones its sources compile to, as the module's last successful build recorded. A module edited since,
+or being built while the graph refreshes, contributes what its sources declare, and the answer says
+which modules those are; `jk build` brings their compiled facts back. An unchanged tree answers from
+the graph already in memory, or from a stored snapshot. `-r` extracts every file again. `-n`
+answers from the last graph written without refreshing, and is an error when none has been.
 
 The graph is built in its own worker process, so its memory is never the engine's. The worker
 stays up between commands with the graph in memory and exits after 30 idle minutes

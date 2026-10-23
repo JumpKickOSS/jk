@@ -2,6 +2,7 @@
 package cc.jumpkick.graph;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.codegraph.CodeGraph;
 import cc.jumpkick.codegraph.Decl;
@@ -223,6 +224,48 @@ class GraphBuildTest {
         assertThat(GraphService.run(workspace(root, true), stats, GraphBuild.Progress.NONE)
                         .note())
                 .contains("was not jk's");
+    }
+
+    /** -n answers from what was written; with nothing written it says so rather than build one. */
+    @Test
+    void noRefreshWithNoStoredGraphIsAnError(@TempDir Path dir) throws IOException {
+        GraphMemory.clear();
+        Path root = workspace(dir);
+        GraphService.Request stored = new GraphService.Request(
+                "stats", List.of(), "bfs", 3, 2000, List.of(), false, false, 8, 10, null, false, true);
+        assertThatThrownBy(() -> GraphService.run(workspace(root, false), stored, GraphBuild.Progress.NONE))
+                .hasMessageContaining("no graph has been built");
+        assertThat(root.resolve("target/graph/graph.json")).doesNotExist();
+    }
+
+    /** A Java class's facts belong to the file in its package directory, never a same-named one elsewhere. */
+    @Test
+    void aJavaClassNeverTakesASameNamedFileInAnotherPackage() {
+        Map<String, List<String>> byName = Map.of("Util.java", List.of("src/main/java/com/other/Util.java"));
+        assertThat(GraphBuild.find(byName, "", "com/acme", "Util.java")).isNull();
+        Map<String, List<String>> kotlin = Map.of("Util.kt", List.of("src/main/kotlin/Util.kt"));
+        assertThat(GraphBuild.find(kotlin, "", "com/acme", "Util.kt")).isEqualTo("src/main/kotlin/Util.kt");
+    }
+
+    /** A file that will not read contributes nothing, and the fragment it had goes with it. */
+    @Test
+    void anUnreadableFileDropsItsEarlierFragment(@TempDir Path dir) throws Exception {
+        GraphMemory.clear();
+        Path root = workspace(dir);
+        GraphBuild.Result first = refresh(root, false);
+        assertThat(edge(first.graph(), "readme_shop", "orderservice_orderservice", "references"))
+                .isTrue();
+        Path readme = root.resolve("README.md");
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                readme.toFile().setReadable(false), "permissions can be dropped here");
+        try {
+            org.junit.jupiter.api.Assumptions.assumeFalse(Files.isReadable(readme), "this user reads everything");
+            GraphBuild.Result second = refresh(root, false);
+            assertThat(edge(second.graph(), "readme_shop", "orderservice_orderservice", "references"))
+                    .isFalse();
+        } finally {
+            readme.toFile().setReadable(true);
+        }
     }
 
     @Test

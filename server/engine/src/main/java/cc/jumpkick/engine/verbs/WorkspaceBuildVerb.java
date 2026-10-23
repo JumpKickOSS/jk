@@ -11,6 +11,7 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.engine.api.BuildHistoryKinds;
+import cc.jumpkick.engine.graph.GraphRunner;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobRequest;
@@ -348,6 +349,9 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             if (rid > 0) host.putProgressRoot(rid, entryDirStr);
             WorkspaceBuildListener listener = host.workspaceListener(writer, entryDirStr);
             WorkspaceResult result = SessionContext.where(session, () -> BuildService.buildWorkspace(req, listener));
+            // The graph is a build product: one that exists is brought up to the tree the build
+            // just compiled before the build is reported done.
+            if (result.success() && !cancelToken.cancelled()) GraphRunner.refreshExisting(Path.of(entryDirStr));
             return WorkspaceTerminal.finish(host, writer, entryDirStr, result, cancelToken.cancelled());
         } catch (ShadowManifests.NotBuiltHere refused) {
             // A shadowed directory Maven would not build here: a configuration refusal, not a crash.

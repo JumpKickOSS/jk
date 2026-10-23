@@ -58,7 +58,11 @@ public final class ModuleInputProvenance {
      * What one record says: the inputs, each tree's stamped compile keys, and each output's digest,
      * paths relative to the target dir with {@code /} separators.
      */
-    record Record(String inputs, Map<String, Set<String>> keysByTree, Map<String, String> digests) {}
+    record Record(
+            String inputs,
+            @Nullable String sources,
+            Map<String, Set<String>> keysByTree,
+            Map<String, String> digests) {}
 
     /** The trees and jars a record covers, relative to the module's target dir. */
     private static List<Path> trees(BuildLayout layout) {
@@ -115,6 +119,40 @@ public final class ModuleInputProvenance {
     }
 
     /**
+     * Whether the classes in this module's target dir were compiled from its sources as they stand:
+     * the record names the module's current {@linkplain PreflightMemo#sourceFingerprint source
+     * fingerprint}, and every class-tree file it vouches for is still there with its digest, with
+     * no class it does not name. False with no record. The graph reads class facts only from a
+     * module this answers true for.
+     */
+    public static boolean classesCurrent(Path workspaceRoot, Path moduleDir, JkBuild build) {
+        BuildLayout layout = BuildLayout.of(workspaceRoot, moduleDir, build);
+        Path target = norm(layout.moduleTargetDir());
+        Record record = read(target);
+        if (record == null || record.sources() == null) return false;
+        if (!record.sources().equals(PreflightMemo.sourceFingerprint(moduleDir))) return false;
+        try {
+            for (Path tree : trees(layout)) {
+                if (!tree.startsWith(target) || !Files.isDirectory(tree)) continue;
+                boolean[] foreign = {false};
+                PathUtil.forEachRegularFile(tree, (file, attrs) -> {
+                    if (BuildStamps.isStampFile(file.getFileName().toString())) return;
+                    String want = record.digests().get(rel(target, file));
+                    if (want == null
+                            || !want.equals(FileHashMemo.contentHash(
+                                    file.toAbsolutePath().normalize(), attrs))) {
+                        foreign[0] = true;
+                    }
+                });
+                if (foreign[0]) return false;
+            }
+            return true;
+        } catch (IOException | RuntimeException unreadable) {
+            return false;
+        }
+    }
+
+    /**
      * The output files the record vouches for, absolute path to digest, when it names {@code
      * fingerprint} as their inputs; empty otherwise.
      */
@@ -161,6 +199,8 @@ public final class ModuleInputProvenance {
                 BuildLayout layout = BuildLayout.of(workspaceRoot, dir, unit.manifest());
                 Path target = norm(layout.moduleTargetDir());
                 StringBuilder sb = new StringBuilder("inputs ").append(fp).append('\n');
+                String sources = PreflightMemo.sourceFingerprint(dir);
+                if (sources != null) sb.append("sources ").append(sources).append('\n');
                 Map<String, String> digests = new TreeMap<>();
                 for (Path tree : trees(layout)) {
                     if (!tree.startsWith(target) || !Files.isDirectory(tree)) continue;
@@ -204,11 +244,14 @@ public final class ModuleInputProvenance {
         try {
             if (!Files.isRegularFile(file)) return null;
             String inputs = null;
+            String sources = null;
             Map<String, Set<String>> keys = new LinkedHashMap<>();
             Map<String, String> digests = new LinkedHashMap<>();
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (line.startsWith("inputs ")) {
                     inputs = line.substring("inputs ".length()).strip();
+                } else if (line.startsWith("sources ")) {
+                    sources = line.substring("sources ".length()).strip();
                 } else if (line.startsWith("key ")) {
                     String[] p = line.substring("key ".length()).split(" ", 2);
                     if (p.length != 2) return null;
@@ -221,7 +264,7 @@ public final class ModuleInputProvenance {
                     return null;
                 }
             }
-            return inputs == null || inputs.isEmpty() ? null : new Record(inputs, keys, digests);
+            return inputs == null || inputs.isEmpty() ? null : new Record(inputs, sources, keys, digests);
         } catch (IOException | RuntimeException unreadable) {
             return null;
         }

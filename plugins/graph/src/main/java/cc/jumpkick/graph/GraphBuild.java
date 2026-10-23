@@ -105,7 +105,9 @@ public final class GraphBuild {
         long start = clock.nanos();
         Path base = root.toAbsolutePath().normalize();
         List<GraphSources.Source> sources = GraphSources.walk(base);
-        StatIndex stats = rebuild ? StatIndex.empty() : GraphMemory.stats(out);
+        // A copy: the stats in memory change only once the graph they describe is written, so a
+        // refresh that fails part-way never lets the next one serve the graph from before it.
+        StatIndex stats = rebuild ? StatIndex.empty() : GraphMemory.stats(out).copy();
         long now = clock.millis();
         Map<String, String> shas = new ConcurrentHashMap<>();
         List<GraphSources.Source> stale = new ArrayList<>();
@@ -119,6 +121,8 @@ public final class GraphBuild {
         // A file that moved while it was read is extracted from the bytes read, but its hash is
         // not filed under the stat taken before the read: the next refresh reads it again.
         Set<String> moved = ConcurrentHashMap.newKeySet();
+        // A file that would not read contributes nothing, and its earlier fragment goes with it.
+        Set<String> unreadable = ConcurrentHashMap.newKeySet();
         stale.parallelStream().forEach(s -> {
             try {
                 byte[] bytes = Files.readAllBytes(s.path());
@@ -126,10 +130,12 @@ public final class GraphBuild {
                 shas.put(s.rel(), sha);
                 if (!sha.equals(stats.sha(s.rel()))) changed.put(s.rel(), bytes);
                 if (!s.identity().equals(StatIdentity.of(s.path()))) moved.add(s.rel());
-            } catch (IOException unreadable) {
-                Log.debug("graph: cannot read " + s.rel(), unreadable);
+            } catch (IOException failed) {
+                unreadable.add(s.rel());
+                Log.debug("graph: cannot read " + s.rel(), failed);
             }
         });
+        unreadable.forEach(stats::remove);
         for (GraphSources.Source s : sources) {
             String sha = shas.get(s.rel());
             if (sha != null && !moved.contains(s.rel())) stats.put(s, sha);
@@ -138,7 +144,7 @@ public final class GraphBuild {
         String commit = GitHead.read(base);
         String extractors = Extractors.VERSION + (scripts.active() ? "+oxc" : "");
         GraphSnapshot.Key key = new GraphSnapshot.Key(extractors, sources.size(), classDigest, commit);
-        boolean sameFiles = changed.isEmpty() && stats.size() == sources.size();
+        boolean sameFiles = changed.isEmpty() && unreadable.isEmpty() && stats.size() == sources.size();
         if (!rebuild && sameFiles) {
             CodeGraph stored = snapshot(out, key);
             if (stored != null) {
@@ -312,7 +318,11 @@ public final class GraphBuild {
         return Hashing.sha256Hex(String.join("\n", parts));
     }
 
-    /** The source a class came from: under the module, in its package directory if one matches. */
+    /**
+     * The source a class came from: under the module, in its package directory. A Java source must
+     * sit there; a Kotlin or Groovy one may sit anywhere, so the lone source of that name under the
+     * module answers for it — never a Java file of another package, whose facts it would take on.
+     */
     static @Nullable String find(Map<String, List<String>> byName, String prefix, String pkg, String file) {
         List<String> candidates = byName.getOrDefault(file, List.of()).stream()
                 .filter(r -> r.startsWith(prefix))
@@ -321,6 +331,7 @@ public final class GraphBuild {
         for (String c : candidates) {
             if (("/" + c).endsWith(suffix)) return c;
         }
+        if (file.endsWith(".java")) return null;
         return candidates.size() == 1 ? candidates.getFirst() : null;
     }
 }

@@ -3,7 +3,11 @@ package cc.jumpkick.engine.graph;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.plugin.WarmWorkers;
+import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.ModuleInputProvenance;
+import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.wire.protocol.GraphAck;
 import cc.jumpkick.wire.protocol.GraphProgress;
 import cc.jumpkick.wire.protocol.GraphRequest;
@@ -67,6 +71,11 @@ class GraphRunnerTest {
                         pkg.resolve("PriceCalculator.java").toString(),
                         pkg.resolve("OrderService.java").toString());
         assertThat(exit).isZero();
+        // What a successful build leaves beside its classes: the record the graph reads them by.
+        BuildGraph.Result graph =
+                BuildGraph.resolve(dir, JkBuildParser.parse(Files.readString(dir.resolve("jk.toml"))));
+        ModuleInputProvenance.record(
+                dir, graph, PreflightMemo.snapshotFingerprints(graph, false).fingerprints());
         return dir;
     }
 
