@@ -109,7 +109,7 @@ final class PlannerNodeSteps {
 
     private static Task task(PlannerNode.Unit unit, NodeTable.Step step, BuildStage stage, String requires) {
         return Task.builder(NodeKeys.stepTask(step))
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> ForecastScope.of(s).nodeVerdict(NodeKeys.stepTask(step))))
                 .stage(stage)
                 .label(step.name())
                 .kind(TaskKind.CPU)

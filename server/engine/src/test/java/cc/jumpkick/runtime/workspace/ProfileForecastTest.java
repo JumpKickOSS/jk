@@ -21,7 +21,6 @@ import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.runtime.PlannerTails;
-import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
@@ -143,13 +142,13 @@ class ProfileForecastTest {
     private static List<TaskForecast.Module> forecast(BuildGraph.Result graph, Path cache, @Nullable String profile) {
         Cas cas = JkStores.storeCas();
         ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
-        return TaskForecaster.of(graph, cas, actionCache, cache, false, WorkspaceTarget.PACKAGE, profile);
+        return ForecastWalk.of(graph, cas, actionCache, cache, false, WorkspaceTarget.PACKAGE, profile, null);
     }
 
     private static TaskForecast.Task compileMain(List<TaskForecast.Module> modules) {
         assertThat(modules).hasSize(1);
         return modules.getFirst().steps().stream()
-                .filter(step -> step.name().equals(TaskNames.COMPILE_MAIN))
+                .filter(step -> step.name().equals(TaskNames.COMPILE_JAVA))
                 .findFirst()
                 .orElseThrow();
     }

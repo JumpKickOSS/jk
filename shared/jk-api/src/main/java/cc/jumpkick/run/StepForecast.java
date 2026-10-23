@@ -2,11 +2,12 @@
 package cc.jumpkick.run;
 
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * How the forecast answers "will this step run?" without running it. Every step a module's build
- * plan holds declares one, and a module is scheduled exactly when one of its steps says it runs.
- * See {@code docs/contributors/lifecycle.md}.
+ * plan holds declares one, built by the same factory as the step's body, and a module is scheduled
+ * exactly when one of its steps says it runs. See {@code docs/contributors/lifecycle.md}.
  */
 public sealed interface StepForecast {
 
@@ -16,8 +17,10 @@ public sealed interface StepForecast {
      */
     StepForecast RIDES = new Rides();
 
-    /** Priced against the caches the step keys on: cached, or why it runs. */
-    StepForecast PRICED = new Priced();
+    /** Priced by {@code predictor} against the caches the step keys on: cached, or why it runs. */
+    static StepForecast priced(Predictor predictor) {
+        return new Priced(predictor);
+    }
 
     /** No action key can prove it done, so it runs on every invocation and schedules its module. */
     static StepForecast always(String why) {
@@ -26,11 +29,28 @@ public sealed interface StepForecast {
 
     record Rides() implements StepForecast {}
 
-    record Priced() implements StepForecast {}
+    record Priced(Predictor predictor) implements StepForecast {
+        public Priced {
+            Objects.requireNonNull(predictor, "predictor");
+        }
+    }
 
     record Always(String why) implements StepForecast {
         public Always {
             Objects.requireNonNull(why, "why");
         }
     }
+
+    /** A step's price, read off the caches; the forecast names the verdict after the step. */
+    @FunctionalInterface
+    interface Predictor {
+        /** The verdict, or null when the step has nothing to do this build (no sources, not configured). */
+        TaskForecast.@Nullable Task predict(Scope scope) throws Exception;
+    }
+
+    /**
+     * The module's forecast as far as the walk has priced it: what each predictor reads of the
+     * steps it requires, and the workspace state it keys siblings by. The engine supplies it.
+     */
+    interface Scope {}
 }

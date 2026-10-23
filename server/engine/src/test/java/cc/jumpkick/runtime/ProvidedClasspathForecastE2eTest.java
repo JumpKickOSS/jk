@@ -11,6 +11,7 @@ import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
@@ -88,7 +89,7 @@ class ProvidedClasspathForecastE2eTest {
         ClassesTreeRestoreE2eTest.build(ws, cache, "initial");
 
         TaskForecast.Task compile = forecast(ws, cache).steps().stream()
-                .filter(s -> TaskNames.COMPILE_MAIN.equals(s.name()))
+                .filter(s -> TaskNames.COMPILE_JAVA.equals(s.name()))
                 .findFirst()
                 .orElseThrow();
         assertThat(compile.cached())
@@ -101,7 +102,7 @@ class ProvidedClasspathForecastE2eTest {
         assertThat(graph.hasErrors()).isFalse();
         ActionCache actionCache =
                 new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
-        return TaskForecaster.of(graph, JkStores.cacheCas(cache), actionCache, cache, true).stream()
+        return ForecastWalk.of(graph, JkStores.cacheCas(cache), actionCache, cache, true).stream()
                 .filter(m -> m.dir().getFileName().toString().equals("lib"))
                 .findFirst()
                 .orElseThrow();

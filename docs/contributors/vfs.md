@@ -248,10 +248,9 @@ problem), not an engine refuse-to-discover.
 
 ## Call order (the I/O win)
 
-`coverModule` is the first VFS touch in `TaskForecaster` (before
-`collectJavaSources`), `PreflightMemo.fingerprintModule`, and `PlannerSetup`.
-Today forecast collects at `TaskForecaster` ~394 and resolves languages at ~406;
-that order exact-shadows `src/main/java` and forces a second walk of `src/`.
+`coverModule` is the first VFS touch in the forecast's `ForecastScope.prepared` (before
+`collectJavaSources`), `PreflightMemo.fingerprintModule`, and `PlannerSetup`. Collecting sources
+first would exact-shadow `src/main/java` and force a second walk of `src/`.
 
 Traditional covering root: `src/`. Compact: `src/`, `test/`, named suite dirs
 **without** going through `TestSuites.discover`. Discover prefix-filters those

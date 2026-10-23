@@ -70,12 +70,7 @@ final class TaskCatalog {
             def(TaskNames.NODE_PACKAGE, "Package a node module's build output as a resource jar", null),
             def(TaskNames.NODE_STAGE, "Stage a JVM module's own node output for its jar or war", null),
             def(TaskNames.BUILD_LOGIC_BEFORE_COMPILE, "Project build-logic (BEFORE_COMPILE)", null),
-            def(
-                    TaskNames.COMPILE_JAVA,
-                    "Compile main Java sources",
-                    BuildLayout::classesDir,
-                    TaskNames.COMPILE_MAIN,
-                    "compile"),
+            def(TaskNames.COMPILE_JAVA, "Compile main Java sources", BuildLayout::classesDir, "compile"),
             def(TaskNames.COMPILE_KOTLIN, "Compile main Kotlin sources", BuildLayout::kotlinClassesDir),
             def(TaskNames.COMPILE_GROOVY, "Compile main Groovy sources", BuildLayout::groovyClassesDir),
             def(TaskNames.ASSEMBLE_CLASSES, "Merge language outputs into target/classes", BuildLayout::classesDir),

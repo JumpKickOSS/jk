@@ -32,6 +32,9 @@ public final class TaskForecast {
     /** Detail of a step that runs only if this module's own compile does: its dirtiness is a dependency's. */
     public static final String ONLY_IF_COMPILE_RUNS = "only if the compile runs";
 
+    /** compile-test's text when only its suites' resources drifted: it copies them, nothing recompiles. */
+    public static final String TEST_RESOURCES_CHANGED = "test resources changed";
+
     /** Per-step verdict. CACHED = restored from cache; the rest do real work. */
     public enum Status {
         CACHED,

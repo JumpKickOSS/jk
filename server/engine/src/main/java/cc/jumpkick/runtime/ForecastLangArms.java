@@ -30,7 +30,7 @@ import org.jspecify.annotations.Nullable;
  * The stamp-language arms of one module's forecast: compile-kotlin and compile-groovy priced the
  * way the build decides them — the freshness stamp first, then the action key of the request the
  * build itself constructs — with the module's dirtiness and its dependencies' hint carried over
- * from {@link ModuleForecast}, which owns the step list and the verdicts these arms feed.
+ * from the module's {@link ForecastScope}.
  */
 final class ForecastLangArms {
     private final JkBuild project;
@@ -83,7 +83,7 @@ final class ForecastLangArms {
     /** The kotlinc config and compile classpath the build derives for this module. */
     record KotlinArm(PlannerLang.KotlinConfig config, List<Path> classpath, boolean mixedWithJava) {}
 
-    KotlinArm kotlinArm(ModuleForecast.Prepared prepared) throws Exception {
+    KotlinArm kotlinArm(ForecastScope.Prepared prepared) throws Exception {
         var langs = CompileSupport.resolveLanguages(project.project(), dir);
         List<Path> javaRoots = PlannerKsp.kotlinJavaSourceRoots(
                 langs.java(), prepared.compact(), dir, prepared.layout(), prepared.pkgDecls());
@@ -102,7 +102,7 @@ final class ForecastLangArms {
      * misses, which is the pessimistic answer; a toolchain that cannot be resolved without a
      * fetch forecasts a full compile for the same reason.
      */
-    LangStep kotlinStep(ModuleForecast.Prepared prepared, KotlinArm arm) {
+    LangStep kotlinStep(ForecastScope.Prepared prepared, KotlinArm arm) {
         BuildLayout layout = prepared.layout();
         List<Path> ktSrc = prepared.ktSrc();
         String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_KOTLIN, layout.classesDir());
@@ -158,7 +158,7 @@ final class ForecastLangArms {
      * not yet memoized keys on content here, which can only make the forecast say "not fresh"
      * where the build, after one snapshot, would say fresh.
      */
-    boolean kotlinStampFresh(ModuleForecast.Prepared prepared, KotlinArm arm) throws Exception {
+    boolean kotlinStampFresh(ForecastScope.Prepared prepared, KotlinArm arm) throws Exception {
         List<Path> freshInputs = new ArrayList<>(prepared.ktSrc());
         if (arm.mixedWithJava()) freshInputs.addAll(prepared.mainSrc());
         return FreshnessStamp.isFresh(
@@ -179,7 +179,7 @@ final class ForecastLangArms {
      * known, as the build answers it. A toolchain that cannot be resolved read-only forecasts a
      * full compile: the pessimistic answer, never a false hit.
      */
-    LangStep groovyStep(ModuleForecast.Prepared prepared) throws Exception {
+    LangStep groovyStep(ForecastScope.Prepared prepared) throws Exception {
         BuildLayout layout = prepared.layout();
         List<Path> gvSrc = prepared.gvSrc();
         boolean mixed = prepared.mixedGroovy();

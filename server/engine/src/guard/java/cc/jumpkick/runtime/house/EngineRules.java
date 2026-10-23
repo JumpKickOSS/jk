@@ -33,7 +33,7 @@ final class EngineRules {
                     List.of(
                             "package-jar",
                             "PlannerPackage.java|PackagingKeys.packageJar(",
-                            "ModuleForecast.java|PackagingKeys.packageJar("),
+                            "PlannerPackage.java|PackagingKeys.packageJar(jar, s.dir"),
             "PackagingKeys.java|asmKey",
                     List.of(
                             "package-assembly",
@@ -43,7 +43,7 @@ final class EngineRules {
                     List.of(
                             "plugin packager",
                             "PlannerPlugin.java|PackagingKeys.pluginPackager(",
-                            "ModuleForecast.java|PackagingKeys.pluginPackagerStep("),
+                            "PlannerPackage.java|PackagingKeys.pluginPackagerStep("),
             "PackagingKeys.java|jdKey",
                     List.of(
                             "package-javadoc",
@@ -53,10 +53,10 @@ final class EngineRules {
                     List.of(
                             "guard",
                             "PlannerGuards.java|GuardKeys.laneKey(",
-                            "ModuleForecast.java|GuardKeys.forecastModuleLane(",
-                            "GuardKeys.java|forecastWorkspaceLane(root, actionCache)",
-                            "GuardKeys.java|forecastTreeLane(root, actionCache)",
-                            "GuardKeys.java|forecastOutputLane(root, actionCache)"));
+                            "PlannerGuards.java|GuardKeys.forecastModuleLane(",
+                            "PlannerGuards.java|GuardKeys.forecastWorkspaceLane(s.dir, s.actionCache)",
+                            "PlannerGuards.java|GuardKeys.forecastTreeLane(s.dir, s.actionCache)",
+                            "PlannerGuards.java|GuardKeys.forecastOutputLane(s.dir, s.actionCache)"));
 
     /** Sites with no forecast twin: task name, whether the forecast emits a step for it, and why. */
     private static final Map<String, Object[]> UNPAIRED = Map.of(
@@ -70,23 +70,25 @@ final class EngineRules {
                         "forecast replays PackagingKeys.nativeActionCached from the last record, not the live token bag"
                     },
             "PlannerPlugin.java|actionKey",
-                    new Object[] {"plugin-<step>", false, "plugin steps are not forecast (no step, no key)"},
+                    new Object[] {
+                        "plugin-<step>",
+                        false,
+                        "a plugin step is priced by whether its module compiles, never by its key"
+                    },
             "ImageWrite.java|imgKey", new Object[] {"write-image", true, "the image tail declares itself always run"},
             "BuildLogicSupport.java|key", new Object[] {"build-logic", false, "build-logic compile is not forecast"});
-
-    private static final List<String> STEP_INDIRECTIONS = List.of("String name", "name", "step.name()");
 
     private static final Map<String, List<String>> REQUEST_SHARED = Map.of(
             "PlannerCompile.java|public static CompileRequest mainCompileRequest(",
             List.of(
                     "compile-main",
                     "PlannerCompile.java|mainCompileRequest(new MainCompile(",
-                    "ModuleForecast.java|PlannerCompile.mainCompileRequest("),
+                    "PlannerCompileForecast.java|PlannerCompile.mainCompileRequest("),
             "PlannerCompile.java|public static CompileRequest testCompileRequest(",
             List.of(
                     "compile-test",
                     "TestSupport.java|PlannerCompile.testCompileRequest(compile)",
-                    "ModuleForecast.java|PlannerCompile.testCompileRequest("),
+                    "PlannerTestForecast.java|PlannerCompile.testCompileRequest("),
             "PlannerFixtures.java|public static CompileRequest fixturesCompileRequest(",
             List.of(
                     "compile-test-fixtures",
@@ -201,45 +203,15 @@ final class EngineRules {
             for (String reach : spec.subList(1, spec.size()))
                 assertReaches(src, v, reach, spec.get(0) + " (" + e.getKey() + ")", "key");
         }
-        // unpaired keys are honest about whether the forecast steps them
-        // The module forecast emits its steps from ModuleForecast and its packaging-tail arms; the
-        // shared step factory stays in TaskForecaster, so all three are scanned.
-        String forecaster = src.read("TaskForecaster.java") + "\n" + src.read("ModuleForecast.java") + "\n"
-                + src.read("ForecastPackagingTails.java");
-        TreeSet<String> stepArgs = new TreeSet<>();
-        for (Pattern p : List.of(
-                Pattern.compile("new TaskForecast\\.Task\\(\\s*([^,]+),"),
-                Pattern.compile("\\bcompileStep\\(\\s*([^,]+),"))) {
-            Matcher m = p.matcher(forecaster);
-            while (m.find()) stepArgs.add(m.group(1).strip().replaceAll("\\s+", " "));
-        }
-        for (String a : stepArgs) {
-            if (!a.startsWith("\"") && !a.startsWith("TaskNames.") && !STEP_INDIRECTIONS.contains(a)) {
-                fault(
-                        v,
-                        src.path("TaskForecaster.java"),
-                        "step " + a,
-                        "TaskForecaster names a step through something this scan cannot resolve: " + a);
-            }
-        }
+        // unpaired keys are honest about whether the forecast steps them: a step the forecast emits
+        // is one whose factory declares it priced or always run; the walk names its verdict after it.
         Map<String, String> taskNames = new HashMap<>();
         Matcher c = Pattern.compile("String\\s+([A-Z][A-Z_0-9]*)\\s*=\\s*\"([^\"]+)\"")
                 .matcher(text.blanked("shared/jk-api/src/main/java/cc/jumpkick/run/TaskNames.java", Blank.NONE));
         while (c.find()) taskNames.put(c.group(1), c.group(2));
         TreeSet<String> steps = new TreeSet<>();
-        for (String arg : stepArgs) {
-            if (arg.startsWith("\"")) steps.add(arg.replace("\"", ""));
-            else if (arg.startsWith("TaskNames.")) {
-                String resolved = taskNames.get(arg.substring("TaskNames.".length()));
-                if (resolved == null)
-                    fault(v, src.path("TaskForecaster.java"), arg, "TaskNames has no constant " + arg);
-                else steps.add(resolved);
-            }
-        }
-        // A step whose factory declares it always run or priced is one the forecast emits under its
-        // own name, from the plan, wherever the plan holds it.
         Matcher declaredStep = Pattern.compile(
-                        "Task\\.builder\\(TaskNames\\.([A-Z][A-Z_0-9]*)\\)\\s*\\.forecast\\(StepForecast\\.(?:always\\(|PRICED)")
+                        "Task\\.builder\\(TaskNames\\.([A-Z][A-Z_0-9]*)\\)\\s*\\.forecast\\(StepForecast\\.(?:always|priced)\\(")
                 .matcher(String.join(
                         "\n",
                         src.all.stream()

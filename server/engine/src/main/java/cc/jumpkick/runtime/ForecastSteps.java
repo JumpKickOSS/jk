@@ -299,7 +299,7 @@ final class ForecastSteps {
             boolean compileDepDirty,
             DepHint depHint,
             Path dir,
-            ModuleForecast.Prepared prepared,
+            ForecastScope.Prepared prepared,
             JavaCompile.Prediction pred) {
         if (force) return SourceApiIndex.Hint.UNKNOWN;
         if (pred.outcome() == JavaCompile.Outcome.CACHE_HIT) {

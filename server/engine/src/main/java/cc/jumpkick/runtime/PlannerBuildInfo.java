@@ -13,6 +13,7 @@ import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
@@ -67,7 +68,9 @@ final class PlannerBuildInfo {
     static Task step(BuildPlanner.Ctx cx) {
         BuildPlanner.Inputs in = cx.in();
         return Task.builder(TaskNames.BUILD_INFO)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> ForecastScope.of(s).buildInfoDrift
+                        ? new TaskForecast.Task(TaskNames.BUILD_INFO, TaskForecast.Status.RUN, "checkout moved", null)
+                        : null))
                 .stage(BuildLogicAnchor.AFTER_RESOURCES.stage())
                 .label("Build info")
                 .kind(TaskKind.IO)

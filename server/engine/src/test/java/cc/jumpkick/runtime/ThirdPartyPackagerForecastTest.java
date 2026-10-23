@@ -22,6 +22,7 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
+import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.tool.TrustedPlugins;
 import java.nio.file.Files;
@@ -192,7 +193,7 @@ class ThirdPartyPackagerForecastTest {
         ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
 
         // Cold: no packaging record, so the step names the packager as the work that will run.
-        TaskForecast.Task cold = packageStep(TaskForecaster.of(graph, cas, actionCache, cache, true));
+        TaskForecast.Task cold = packageStep(ForecastWalk.of(graph, cas, actionCache, cache, true));
         assertThat(cold.cached()).isFalse();
         assertThat(cold.text()).isEqualTo("repackage · " + PACKAGER);
 
@@ -231,7 +232,7 @@ class ThirdPartyPackagerForecastTest {
                 true);
 
         // Warm: the forecast reproduces that key and prices the step against it.
-        TaskForecast.Task warm = packageStep(TaskForecaster.of(graph, cas, actionCache, cache, true));
+        TaskForecast.Task warm = packageStep(ForecastWalk.of(graph, cas, actionCache, cache, true));
         assertThat(warm.cached()).isTrue();
         assertThat(warm.key()).isEqualTo(ForecastSteps.key8(keyed.key()));
     }

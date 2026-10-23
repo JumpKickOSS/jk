@@ -13,7 +13,6 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
-import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
@@ -22,6 +21,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
+import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
@@ -41,11 +41,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -64,52 +66,19 @@ public final class TaskForecaster {
 
     private TaskForecaster() {}
 
-    /** Forecast every module in {@code graph}, in topological (dependency) order. */
-    public static List<TaskForecast.Module> of(BuildGraph.Result graph, Cas cas, ActionCache actionCache, Path cache) {
-        return of(graph, cas, actionCache, cache, false);
+    /** A module's plan for the forecast's goal, as the one planner builds it; the workspace layer supplies it. */
+    @FunctionalInterface
+    public interface Planner {
+        BuildPlan plan(BuildGraph.BuildUnit unit) throws Exception;
     }
 
     /**
-     * Like {@link #of(BuildGraph.Result, Cas, ActionCache, Path)} but omits test steps when
-     * {@code skipTests} so a never-tested workspace is not forecast perpetually dirty.
-     */
-    public static List<TaskForecast.Module> of(
-            BuildGraph.Result graph, Cas cas, ActionCache actionCache, Path cache, boolean skipTests) {
-        return of(graph, cas, actionCache, cache, skipTests, WorkspaceTarget.PACKAGE);
-    }
-
-    /** As above through {@code target}'s phase: COMPILE, TEST or PACKAGE. A goal's tail is priced apart. */
-    public static List<TaskForecast.Module> of(
-            BuildGraph.Result graph,
-            Cas cas,
-            ActionCache actionCache,
-            Path cache,
-            boolean skipTests,
-            WorkspaceTarget target) {
-        return of(graph, cas, actionCache, cache, skipTests, target, null);
-    }
-
-    /**
-     * As above with the request's {@code --profile}: the build compiles with that profile's javac
-     * args appended, so the forecast must key its compile steps the same way or a profile build
-     * after a default build forecasts every compile as cached and schedules nothing.
-     */
-    public static List<TaskForecast.Module> of(
-            BuildGraph.Result graph,
-            Cas cas,
-            ActionCache actionCache,
-            Path cache,
-            boolean skipTests,
-            WorkspaceTarget target,
-            @Nullable String profile) {
-        return of(graph, cas, actionCache, cache, skipTests, target, profile, null);
-    }
-
-    /**
-     * As above, walking only the modules in {@code only} and reporting every other one with no
-     * work. For a caller that already knows the rest are clean and their outputs present — a
-     * preflight memo hit, whose dirty set is build logic or a stale row and never moves a
-     * consumer's inputs — so pricing the few that run need not walk the workspace. Null walks all.
+     * Forecast every module in {@code graph}, in topological (dependency) order, by pricing each
+     * step of the plan {@code planner} builds for it. {@code only} walks just those modules and
+     * reports every other one with no work: for a caller that already knows the rest are clean and
+     * their outputs present — a preflight memo hit, whose dirty set is build logic or a stale row
+     * and never moves a consumer's inputs. Null walks all. {@code profile} keys the compile steps
+     * with that profile's javac args, as the build does.
      */
     public static List<TaskForecast.Module> of(
             BuildGraph.Result graph,
@@ -119,7 +88,8 @@ public final class TaskForecaster {
             boolean skipTests,
             WorkspaceTarget target,
             @Nullable String profile,
-            @Nullable Set<Path> only) {
+            @Nullable Set<Path> only,
+            Planner planner) {
         // One resolver for the whole walk: every module resolves its classpath against the same
         // lock and store, so its per-artifact resolve memo is only useful if it outlives a module.
         ClasspathResolver resolver = new ClasspathResolver(cas);
@@ -136,7 +106,7 @@ public final class TaskForecaster {
             // directory entry is a whole tree walk. It writes nothing, so one reading each is the
             // same answer — see ClasspathFingerprint.withEntryMemo, which only a reader may bind.
             return ClasspathFingerprint.withEntryMemo(() -> forecastModules(
-                    graph, cas, resolver, actionCache, cache, skipTests, target, worker, profile, only));
+                    graph, cas, resolver, actionCache, cache, skipTests, target, worker, profile, only, planner));
         } catch (RuntimeException | Error direct) {
             throw direct;
         } catch (Exception impossible) {
@@ -155,7 +125,8 @@ public final class TaskForecaster {
             WorkspaceTarget target,
             @Nullable Path workerJar,
             @Nullable String profile,
-            @Nullable Set<Path> only) {
+            @Nullable Set<Path> only,
+            Planner planner) {
         // --force/--rerun bypasses jk's build caches, so every step runs — the forecast must say
         // so too (otherwise the plan tree renders "Fully Cached" while the ETA, which honors force,
         // predicts a full rebuild — a self-contradiction).
@@ -216,7 +187,8 @@ public final class TaskForecaster {
                     hints,
                     target,
                     workerJar,
-                    profile);
+                    profile,
+                    planner);
             Perf.end("forecast " + u.coord(), t0);
             forecast.put(u.dir(), m);
             // Seed main-output dirtiness for *compile* consumers only when this module's
@@ -358,8 +330,7 @@ public final class TaskForecaster {
         if (m == null || m.steps() == null) return false;
         return m.steps().stream()
                 .anyMatch(p -> !p.cached()
-                        && (p.name().startsWith(TaskNames.COMPILE_MAIN)
-                                || p.name().startsWith(TaskNames.COMPILE_JAVA)
+                        && (p.name().startsWith(TaskNames.COMPILE_JAVA)
                                 || p.name().startsWith(TaskNames.COMPILE_KOTLIN)
                                 || p.name().startsWith(TaskNames.COMPILE_GROOVY)
                                 || TaskNames.PACKAGE_JAR.equals(p.name())
@@ -563,40 +534,21 @@ public final class TaskForecaster {
     }
 
     /**
-     * One step a goal's tail appended to {@code unit}'s plan, priced the way its declaration says:
-     * an always-run step runs, a priced one asks the caches its live step keys on. Null for a step
-     * that rides with its module. A step that declares nothing, or declares a price no arm here
-     * knows, fails: an unpriced tail step would leave its module unscheduled on a clean tree.
+     * One step a goal's tail appended to {@code unit}'s plan, priced the way it declares: an
+     * always-run step runs, a priced one asks its predictor, alone, as no walk precedes it. Null for
+     * a step that rides with its module. A step that declares nothing fails: an unpriced tail step
+     * would leave its module unscheduled on a clean tree.
      */
     public static TaskForecast.@Nullable Task priceTailStep(
-            Task step, BuildGraph.BuildUnit unit, Path cache, ActionCache actionCache, @Nullable Path m2Dir) {
-        StepForecast how = step.forecast();
-        if (how == null) {
-            throw new IllegalStateException("tail step `" + step.name() + "` declares no forecast");
-        }
-        return switch (how) {
+            Task step, BuildGraph.BuildUnit unit, Path cache, ActionCache actionCache) throws Exception {
+        return switch (step.forecast()) {
+            case null -> throw new IllegalStateException("tail step `" + step.name() + "` declares no forecast");
             case StepForecast.Rides r -> null;
             case StepForecast.Always a -> new TaskForecast.Task(step.name(), TaskForecast.Status.RUN, a.why(), null);
             case StepForecast.Priced p -> {
-                JkBuild project = unit.manifest();
-                BuildLayout layout = BuildLayout.of(unit.dir(), project);
-                yield switch (step.name()) {
-                    case TaskNames.CACHE_INSTALL ->
-                        ForecastPackagingTails.cacheInstall(project, layout, cache, m2Dir, false);
-                    case TaskNames.NATIVE_IMAGE ->
-                        ForecastPackagingTails.nativeImage(
-                                project,
-                                unit.dir(),
-                                layout,
-                                LockPaths.lockFile(unit.dir()),
-                                actionCache,
-                                cache,
-                                new RestoredOutputs(actionCache),
-                                false);
-                    default ->
-                        throw new IllegalStateException(
-                                "tail step `" + step.name() + "` is priced, but no arm prices it");
-                };
+                ForecastScope s = ForecastScope.alone(unit, cache, actionCache);
+                s.price(step.name(), p.predictor());
+                yield s.verdict(step.name());
             }
         };
     }
@@ -614,25 +566,94 @@ public final class TaskForecaster {
             Map<Path, ModuleHint> hints,
             WorkspaceTarget target,
             @Nullable Path workerJar,
-            @Nullable String profile) {
-        TaskForecast.Module node =
-                PlannerNode.forecastModule(u, LockPaths.lockFile(u.dir()), actionCache, cache, skipTests);
-        if (node != null) return node;
-        return new ModuleForecast(
-                        u,
-                        dep,
-                        force,
-                        skipTests,
-                        cas,
-                        resolver,
-                        actionCache,
-                        cache,
-                        restored,
-                        hints,
-                        target,
-                        workerJar,
-                        profile)
-                .run();
+            @Nullable String profile,
+            Planner planner) {
+        ForecastScope s = new ForecastScope(
+                u,
+                dep,
+                force,
+                skipTests,
+                cas,
+                resolver,
+                actionCache,
+                cache,
+                restored,
+                hints,
+                target,
+                workerJar,
+                profile);
+        try {
+            List<Task> steps = forecastOrder(planner.plan(u).steps());
+            String unlocked = s.unlocked();
+            // The build locks before it plans, against nothing cached for the new lock: every step
+            // the plan prices runs, for that reason.
+            if (unlocked != null) return s.unlocked(steps, unlocked);
+            for (Task step : steps) {
+                switch (step.forecast()) {
+                    case StepForecast.Priced p -> s.price(step.name(), p.predictor());
+                    case StepForecast.Always a -> s.always(step.name(), a.why());
+                    case null, default -> {
+                        /* rides with its module */
+                    }
+                }
+            }
+            return s.finish();
+        } catch (CancellationException cancelled) {
+            throw cancelled;
+        } catch (Exception e) {
+            // Degrade gracefully — never crash explain over one unparseable module.
+            Log.debug("forecast " + u.coord() + ": could not predict", e);
+            return s.failed("could not predict (" + e.getClass().getSimpleName() + ")");
+        }
+    }
+
+    /**
+     * The plan's steps in the order the forecast prices them: every step after the steps it
+     * requires, and among the steps ready at once the main compiles first, then the resource and
+     * fixture steps, so a predictor reads the compile dirtiness and resource drift it keys on.
+     */
+    static List<Task> forecastOrder(List<Task> steps) {
+        Map<String, Task> byName = new LinkedHashMap<>();
+        for (Task t : steps) byName.put(t.name(), t);
+        Map<String, Integer> index = new HashMap<>();
+        for (int i = 0; i < steps.size(); i++) index.put(steps.get(i).name(), i);
+        Map<String, Integer> waiting = new HashMap<>();
+        Map<String, List<String>> dependents = new HashMap<>();
+        for (Task t : steps) {
+            int n = 0;
+            for (String r : t.requires()) {
+                if (!byName.containsKey(r)) continue;
+                n++;
+                dependents.computeIfAbsent(r, k -> new ArrayList<>()).add(t.name());
+            }
+            waiting.put(t.name(), n);
+        }
+        PriorityQueue<String> ready = new PriorityQueue<>(
+                Comparator.comparingInt((String n) -> forecastRank(n)).thenComparingInt(index::get));
+        for (var e : waiting.entrySet()) if (e.getValue() == 0) ready.add(e.getKey());
+        List<Task> out = new ArrayList<>(steps.size());
+        while (!ready.isEmpty()) {
+            String n = ready.poll();
+            out.add(byName.get(n));
+            for (String d : dependents.getOrDefault(n, List.of())) {
+                if (waiting.merge(d, -1, Integer::sum) == 0) ready.add(d);
+            }
+        }
+        // A cycle the plan builder should have refused still prices every step, in plan order.
+        for (Task t : steps) if (!out.contains(t)) out.add(t);
+        return out;
+    }
+
+    private static int forecastRank(String step) {
+        return switch (step) {
+            case TaskNames.COMPILE_KOTLIN,
+                    TaskNames.COMPILE_JAVA,
+                    TaskNames.COMPILE_GROOVY,
+                    TaskNames.ASSEMBLE_CLASSES,
+                    TaskNames.COMPILE_VERSIONS -> 0;
+            case TaskNames.COPY_RESOURCES, TaskNames.BUILD_INFO, TaskNames.COMPILE_TEST_FIXTURES -> 1;
+            default -> 2;
+        };
     }
 
     /**

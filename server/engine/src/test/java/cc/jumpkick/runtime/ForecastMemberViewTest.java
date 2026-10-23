@@ -16,6 +16,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.task.ActionCache;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -68,7 +69,7 @@ class ForecastMemberViewTest {
         BuildGraph.Result graph = BuildGraph.resolve(root, project);
         assertThat(graph.hasErrors()).isFalse();
         ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
-        List<TaskForecast.Module> modules = TaskForecaster.of(graph, new Cas(store), actionCache, cache, true);
+        List<TaskForecast.Module> modules = ForecastWalk.of(graph, new Cas(store), actionCache, cache, true);
 
         assertThat(compileMain(modules, other).text())
                 .as("the member the partition does not name reads the workspace's row")
@@ -87,7 +88,7 @@ class ForecastMemberViewTest {
                         .normalize()
                         .equals(dir.toAbsolutePath().normalize()))
                 .flatMap(m -> m.steps().stream())
-                .filter(s -> s.name().equals(TaskNames.COMPILE_MAIN))
+                .filter(s -> s.name().equals(TaskNames.COMPILE_JAVA))
                 .findFirst()
                 .orElseThrow();
     }

@@ -30,6 +30,7 @@ import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.Perf;
@@ -84,7 +85,7 @@ public final class PlannerNative {
         final boolean persist = true;
         List<String> extra = extraArgs == null ? List.of() : extraArgs;
         return Task.builder(TaskNames.NATIVE_IMAGE)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> forecast(ForecastScope.of(s))))
                 .stage(BuildStage.NATIVE)
                 .label("Native")
                 .kind(TaskKind.IO)
@@ -843,5 +844,27 @@ public final class PlannerNative {
 
     static List<Path> groovySources(TaskContext ctx) {
         return ctx.get(GROOVY_SOURCES).orElse(List.of());
+    }
+
+    /**
+     * native-image's price: runs when the jar or the compile it packages does — a binary is never
+     * cached under a rebuilt jar — else cached when the producer-keyed record the live step
+     * restores from still hits. A cached binary absent on disk makes the module restore it.
+     */
+    static TaskForecast.@Nullable Task forecast(ForecastScope s) throws Exception {
+        ForecastScope.Prepared p = s.prepared();
+        if (p.noSources()) return null;
+        BuildLayout layout = p.layout();
+        TaskForecast.Task step = ForecastPackagingTails.nativeImage(
+                s.project,
+                s.dir,
+                layout,
+                s.lockFile,
+                s.actionCache,
+                s.cache,
+                s.restored,
+                s.runs(TaskNames.PACKAGE_JAR) || s.compileDirty);
+        s.nativeBinaryToRestore = step.cached() && !ForecastPackagingTails.nativeBinaryPresent(layout);
+        return step;
     }
 }

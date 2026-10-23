@@ -209,16 +209,9 @@ public final class EffortWeights {
         };
     }
 
-    /**
-     * Forecast/plan step names → {@link BuildMetrics} / plan step names. Explain uses
-     * {@code compile-main}; the live plan and metrics store {@code compile-java}.
-     */
+    /** A step's name as {@link BuildMetrics} stores it: the plan's, which the forecast reports too; blank for none. */
     public static String metricsStepName(String step) {
-        if (step == null || step.isBlank()) return "";
-        return switch (step) {
-            case TaskNames.COMPILE_MAIN -> TaskNames.COMPILE_JAVA;
-            default -> step;
-        };
+        return step == null || step.isBlank() ? "" : step;
     }
 
     /** A whole-step historical average (ms) as a flat bar weight. */

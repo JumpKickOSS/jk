@@ -49,6 +49,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 
@@ -429,6 +430,23 @@ public final class PlannerPlugin {
      * The forecast of a step it expects cached. A forecast connects to nothing, so a step whose key
      * carries a {@link KeyProbe} says it is measured only when it runs.
      */
+    /**
+     * A plugin task's price. Its action key hashes the classes tree, the tool jars and the
+     * plugin's own jar, which the forecast does not reproduce: it runs when the module compiles or
+     * on a forced rebuild, else it is cached. A task ahead of the compile is priced once the
+     * compile is.
+     */
+    static TaskForecast.@Nullable Task forecastStep(ForecastScope s, TaskDecl step) throws Exception {
+        Callable<TaskForecast.@Nullable Task> price = () -> s.force || s.compileDirty
+                ? new TaskForecast.Task(
+                        "plugin-" + step.name(),
+                        TaskForecast.Status.RUN,
+                        step.name() + " · " + (beforeCompile(step) ? "before compile" : "after compile"),
+                        null)
+                : cachedForecast(step);
+        return beforeCompile(step) ? s.defer(price) : price.call();
+    }
+
     static TaskForecast.Task cachedForecast(TaskDecl step) {
         String note = step.keyProbe() != null ? step.name() + " · its live input is probed when the step runs" : "";
         return new TaskForecast.Task("plugin-" + step.name(), TaskForecast.Status.CACHED, note, null);
@@ -445,7 +463,7 @@ public final class PlannerPlugin {
         boolean beforeCompile = beforeCompile(step);
         List<String> requires = pluginRequires(step, transform);
         return Task.builder("plugin-" + step.name())
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(sc -> forecastStep(ForecastScope.of(sc), step)))
                 .label(step.name())
                 .kind(TaskKind.CPU)
                 .stage(pluginStage(step))

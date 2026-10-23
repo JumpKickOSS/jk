@@ -8,6 +8,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -51,7 +52,7 @@ class TaskForecasterCancelTest {
         Session.CancelToken token = Session.CancelToken.live();
         token.cancel();
         Session cancelled = Session.defaults().withCancel(token).withCacheDir(cache);
-        assertThatThrownBy(() -> SessionContext.where(cancelled, () -> TaskForecaster.of(graph, cas, ac, cache)))
+        assertThatThrownBy(() -> SessionContext.where(cancelled, () -> ForecastWalk.of(graph, cas, ac, cache)))
                 .isInstanceOf(CancellationException.class)
                 .hasMessageContaining("forecast cancelled after 0 of 2 modules");
     }

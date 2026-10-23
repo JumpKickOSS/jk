@@ -103,7 +103,7 @@ class BuildServiceEtaTest {
                 "g:lib",
                 List.of(
                         new TaskForecast.Task(
-                                "compile-main", TaskForecast.Status.RUN, "recompile · dependency changed", null),
+                                "compile-java", TaskForecast.Status.RUN, "recompile · dependency changed", null),
                         new TaskForecast.Task(
                                 "compile-test", TaskForecast.Status.RUN, "recompile · main changed", null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~100 tests", null),
@@ -122,7 +122,7 @@ class BuildServiceEtaTest {
                 Path.of("/core"),
                 "g:core",
                 List.of(
-                        new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", "k"),
+                        new TaskForecast.Task("compile-java", TaskForecast.Status.CACHED, "", "k"),
                         new TaskForecast.Task(
                                 "compile-test", TaskForecast.Status.PARTIAL, "compile · 0 sources changed", null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~792 tests", null),
@@ -167,7 +167,7 @@ class BuildServiceEtaTest {
                 "g:engine",
                 List.of(
                         new TaskForecast.Task(
-                                "compile-main", TaskForecast.Status.PARTIAL, "compile · 3 sources changed", null),
+                                "compile-java", TaskForecast.Status.PARTIAL, "compile · 3 sources changed", null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~1000 tests", null)),
                 100,
                 1000,
@@ -182,7 +182,7 @@ class BuildServiceEtaTest {
                 "g:engine",
                 List.of(
                         new TaskForecast.Task(
-                                "compile-main", TaskForecast.Status.PARTIAL, "compile · 10 sources changed", null),
+                                "compile-java", TaskForecast.Status.PARTIAL, "compile · 10 sources changed", null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~1000 tests", null)),
                 100,
                 1000,
@@ -195,7 +195,7 @@ class BuildServiceEtaTest {
                 "g:cli",
                 List.of(
                         new TaskForecast.Task(
-                                "compile-main", TaskForecast.Status.RUN, "recompile · dependency changed", null),
+                                "compile-java", TaskForecast.Status.RUN, "recompile · dependency changed", null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~1000 tests", null),
                         new TaskForecast.Task(
                                 "native-image", TaskForecast.Status.RUN, "rebuild · compile changed", null)),
@@ -217,7 +217,7 @@ class BuildServiceEtaTest {
                 core,
                 "g:core",
                 List.of(
-                        new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", "k"),
+                        new TaskForecast.Task("compile-java", TaskForecast.Status.CACHED, "", "k"),
                         new TaskForecast.Task(
                                 "compile-test", TaskForecast.Status.PARTIAL, "compile · 0 sources changed", null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~792 tests", null),
@@ -234,7 +234,7 @@ class BuildServiceEtaTest {
                 "g:a",
                 List.of(
                         new TaskForecast.Task(
-                                "compile-main", TaskForecast.Status.RUN, "recompile · dependency changed", null),
+                                "compile-java", TaskForecast.Status.RUN, "recompile · dependency changed", null),
                         new TaskForecast.Task(
                                 "compile-test", TaskForecast.Status.RUN, "recompile · main changed", null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~188 tests", null),
@@ -249,7 +249,7 @@ class BuildServiceEtaTest {
                 "g:eng",
                 List.of(
                         new TaskForecast.Task(
-                                "compile-main", TaskForecast.Status.PARTIAL, "compile · 1 source changed", null),
+                                "compile-java", TaskForecast.Status.PARTIAL, "compile · 1 source changed", null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~1000 tests", null),
                         new TaskForecast.Task(
                                 "package-jar", TaskForecast.Status.RUN, "repackage · compile changed", null),
@@ -264,7 +264,7 @@ class BuildServiceEtaTest {
                 "g:cli",
                 List.of(
                         new TaskForecast.Task(
-                                "compile-main", TaskForecast.Status.RUN, "recompile · dependency changed", null),
+                                "compile-java", TaskForecast.Status.RUN, "recompile · dependency changed", null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~1098 tests", null),
                         new TaskForecast.Task(
                                 "package-jar", TaskForecast.Status.RUN, "repackage · compile changed", null),
@@ -320,7 +320,7 @@ class BuildServiceEtaTest {
                 "g:core",
                 List.of(
                         new TaskForecast.Task(
-                                "compile-main", TaskForecast.Status.PARTIAL, "compile · 1 source changed", null),
+                                "compile-java", TaskForecast.Status.PARTIAL, "compile · 1 source changed", null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~200 tests", null)),
                 10,
                 200,
@@ -333,7 +333,7 @@ class BuildServiceEtaTest {
                     app,
                     "g:app",
                     List.of(
-                            new TaskForecast.Task("compile-main", TaskForecast.Status.RUN, compileText, null),
+                            new TaskForecast.Task("compile-java", TaskForecast.Status.RUN, compileText, null),
                             new TaskForecast.Task(
                                     "compile-test",
                                     TaskForecast.Status.RUN,

@@ -7,6 +7,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.run.TaskForecast;
+import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,7 +40,7 @@ class TaskForecasterExtraRootTest {
         Cas cas = new Cas(cache);
         ActionCache actionCache = new ActionCache(cas, cache.resolve("actions"));
 
-        List<TaskForecast.Module> plan = TaskForecaster.of(graph, cas, actionCache, cache);
+        List<TaskForecast.Module> plan = ForecastWalk.of(graph, cas, actionCache, cache);
         TaskForecast.Module a =
                 plan.stream().filter(m -> m.dir().endsWith("a")).findFirst().orElseThrow();
         TaskForecast.Task gv = a.steps().stream()
@@ -74,12 +75,12 @@ class TaskForecasterExtraRootTest {
 
         // A stored build stamped every source the compile actually read — both roots.
         GroovyForecastStamps.writeBuildStamp(tmp, mod, List.of(foo, bar), cas);
-        TaskForecast.Task warm = groovyStep(TaskForecaster.of(graph, cas, actionCache, cache));
+        TaskForecast.Task warm = groovyStep(ForecastWalk.of(graph, cas, actionCache, cache));
         assertThat(warm.cached()).isTrue();
 
         // An edit under the extra root: a subset stamp check (src/ only) would still say CACHED.
         Files.setLastModifiedTime(bar, FileTime.fromMillis(System.currentTimeMillis() + 3_600_000));
-        TaskForecast.Task touched = groovyStep(TaskForecaster.of(graph, cas, actionCache, cache));
+        TaskForecast.Task touched = groovyStep(ForecastWalk.of(graph, cas, actionCache, cache));
         assertThat(touched.cached())
                 .as("an extra-root source newer than the stamp is not cached")
                 .isFalse();

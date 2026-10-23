@@ -7,6 +7,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.run.TaskForecast;
+import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -62,7 +63,7 @@ class TaskForecasterGroovyTest {
         Cas cas = new Cas(cache);
         ActionCache actionCache = new ActionCache(cas, cache.resolve("actions"));
 
-        List<TaskForecast.Module> plan = TaskForecaster.of(graph, cas, actionCache, cache);
+        List<TaskForecast.Module> plan = ForecastWalk.of(graph, cas, actionCache, cache);
         // TempDir paths may be symlink-normalized by the graph — match by basename.
         TaskForecast.Module a =
                 plan.stream().filter(m -> m.dir().endsWith("a")).findFirst().orElseThrow();
@@ -74,7 +75,7 @@ class TaskForecasterGroovyTest {
 
         // Stamp the merged classes dir the way write-stamp-groovy does — CACHED.
         GroovyForecastStamps.writeBuildStamp(tmp, mod, List.of(foo), cas);
-        List<TaskForecast.Module> warm = TaskForecaster.of(graph, cas, actionCache, cache);
+        List<TaskForecast.Module> warm = ForecastWalk.of(graph, cas, actionCache, cache);
         TaskForecast.Task warmGv =
                 warm.stream().filter(m -> m.dir().endsWith("a")).findFirst().orElseThrow().steps().stream()
                         .filter(s -> s.name().equals("compile-groovy"))
@@ -86,7 +87,7 @@ class TaskForecasterGroovyTest {
         // a source at or past stampMillis reads as changed, which is what an unpinned source can
         // land on when the forecast and the stamp share a filesystem tick.
         Files.setLastModifiedTime(foo, FileTime.fromMillis(System.currentTimeMillis() + 3_600_000));
-        List<TaskForecast.Module> touched = TaskForecaster.of(graph, cas, actionCache, cache);
+        List<TaskForecast.Module> touched = ForecastWalk.of(graph, cas, actionCache, cache);
         TaskForecast.Task touchedGv =
                 touched.stream().filter(m -> m.dir().endsWith("a")).findFirst().orElseThrow().steps().stream()
                         .filter(s -> s.name().equals("compile-groovy"))

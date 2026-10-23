@@ -191,7 +191,7 @@ public final class PlannerFixtures {
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
         return Task.builder(TaskNames.COMPILE_TEST_FIXTURES)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> forecast(ForecastScope.of(s))))
                 .stage(BuildStage.TEST)
                 .label("Test Fixtures")
                 .kind(TaskKind.CPU)
@@ -282,5 +282,29 @@ public final class PlannerFixtures {
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /** compile-test-fixtures' price; fixtures that recompile make the suites that read them run. */
+    static TaskForecast.@Nullable Task forecast(ForecastScope s) throws Exception {
+        s.projectOwnOutputs();
+        ForecastScope.Prepared p = s.prepared();
+        List<TaskForecast.Task> out = new ArrayList<>();
+        s.testDirty |= addForecast(
+                out,
+                s.skipTests,
+                s.compileDirty,
+                s.project,
+                s.dir,
+                p.layout(),
+                p.processorCp(),
+                p.release(),
+                p.javacArgs(),
+                p.javaHome(),
+                s.cache,
+                s.actionCache,
+                s.workerJar,
+                s.testCompileCp(),
+                s.restored);
+        return out.isEmpty() ? null : out.getFirst();
     }
 }

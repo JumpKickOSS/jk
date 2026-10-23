@@ -15,6 +15,7 @@ import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.JarPackager;
 import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
@@ -22,8 +23,10 @@ import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FreshnessStamp;
@@ -70,7 +73,7 @@ public final class PlannerPackage {
         boolean javaStamp =
                 mixedWithJava || TaskNames.COMPILE_JAVA.equals(mainCompile) || (!kotlinModule && !groovyModule);
         return Task.builder(TaskNames.PACKAGE_JAR)
-                .forecast(StepForecast.PRICED)
+                .forecast(StepForecast.priced(s -> forecastJar(ForecastScope.of(s))))
                 .stage(BuildStage.PACKAGE)
                 .label("Packaging")
                 .kind(TaskKind.CPU)
@@ -409,5 +412,96 @@ public final class PlannerPackage {
 
     static boolean settledOutcome(String outcome) {
         return outcome.equals("up-to-date") || outcome.equals("no-sources");
+    }
+
+    // ---- forecast ---------------------------------------------------------------------------
+
+    /**
+     * package-jar's price, under the key {@link PackagingKeys#packageJar} derives for the live step.
+     * After {@code jk clean} the classes tree is gone: its token is projected from the compile
+     * record and the resource roots (the same merge the live build produces), so a wiped module
+     * still hits the packaging cache. A plugin that owns packaging is priced by its packager's key.
+     */
+    static TaskForecast.@Nullable Task forecastJar(ForecastScope s) throws Exception {
+        s.projectOwnOutputs();
+        ForecastScope.Prepared prepared = s.prepared();
+        BuildLayout layout = prepared.layout();
+        boolean noSources = prepared.noSources();
+        if (noSources && (Files.isRegularFile(layout.mainJar()) || s.project.isWorkspaceRoot())) {
+            // A source-less member packages an empty jar (its copied resources) that sibling
+            // classpaths demand; with the jar in place there is nothing to forecast. A source-less
+            // workspace root runs its scripts and packages nothing.
+            return null;
+        }
+        if (s.compileDirty) {
+            // Dependency-only dirtiness: the jar is re-packaged only if the compile really runs.
+            return new TaskForecast.Task(
+                    TaskNames.PACKAGE_JAR,
+                    TaskForecast.Status.RUN,
+                    s.depOnlyDirty ? "repackage · " + TaskForecast.ONLY_IF_COMPILE_RUNS : "repackage · compile changed",
+                    null);
+        }
+        ActivePlugins.@Nullable Declared plugin = prepared.plugin();
+        if (PackagingKeys.ownsPackaging(plugin)) {
+            // Packaging owned by a plugin (spring-boot, grails, quarkus, minified, android): the
+            // build runs the packager under its own token bag, so the key comes from the same body
+            // the build calls; anything that stops us reproducing it forecasts RUN, never a hit.
+            return PackagingKeys.pluginPackagerStep(
+                    s.project, s.dir, layout, s.cache, s.lockFile, s.cas, prepared.javaHome(), plugin, s.actionCache);
+        }
+        Path jar = layout.mainJar();
+        long tp = Perf.start();
+        byte[] sbom = null;
+        if (s.project.isApplication()) {
+            try {
+                sbom = PlannerPlugin.applicationSbom(s.project, prepared.lock());
+            } catch (Exception e) {
+                // best-effort: a missing SBOM keys an empty sbom: token, like a null one
+                Log.debug("forecastJar: best-effort", e);
+            }
+        }
+        // classesTokenForPackage projects post-copy content when resources drifted, so package
+        // CACHED/RUN matches the live step after copy-resources. A wiped tree takes the walk's own
+        // projection, which merges every compiler's record.
+        String classesTok = s.restored.projectedIdentity(layout.classesDir());
+        if (classesTok == null) {
+            classesTok = PackagingKeys.classesTokenForPackage(
+                    s.dir,
+                    prepared.compact(),
+                    layout,
+                    s.project,
+                    s.actionCache,
+                    s.compileMainKey,
+                    s.knownResourceDrift);
+        }
+        // A worker's vendored sibling class dirs are the declared set the build lists, each read
+        // as the tree the build restores.
+        String contribTok = PlannerSupport.contributionsToken(
+                PackagingKeys.packagedContributions(prepared.pkgDecls(), layout, s.dir, s.project),
+                s.restored.identity());
+        String pkgKey = PackagingKeys.packageJar(jar, s.dir, s.project, classesTok, contribTok, sbom)
+                .key();
+        Perf.end("  package-fingerprint", tp);
+        boolean hit = ForecastSteps.present(s.actionCache, pkgKey);
+        if (hit && !Files.isRegularFile(jar)) {
+            // Publish the wiped jar's content sha from this key's record so downstream assembly,
+            // native and test-stamp forecasts fingerprint the bytes the live restore produces.
+            s.actionCache.lookup(pkgKey).ifPresent(rec -> rec.outputs().entrySet().stream()
+                    .filter(e -> e.getKey().endsWith(jar.getFileName().toString()))
+                    .map(Map.Entry::getValue)
+                    .findFirst()
+                    .or(() -> rec.outputs().values().stream().findFirst())
+                    .ifPresent(sha -> s.restored.pinJar(jar, sha)));
+        }
+        if (hit)
+            return new TaskForecast.Task(
+                    TaskNames.PACKAGE_JAR, TaskForecast.Status.CACHED, "", ForecastSteps.key8(pkgKey));
+        // A source-less module's jar (its copied resources) is one sibling classpaths demand:
+        // forecasting nothing would leave it unscheduled while its consumers fail on it, so a
+        // missing jar with no record is scheduled until it exists.
+        String miss = noSources
+                ? "package · module has no sources"
+                : s.mainResourceDrift ? "repackage · resources changed" : "repackage";
+        return new TaskForecast.Task(TaskNames.PACKAGE_JAR, TaskForecast.Status.RUN, miss, null);
     }
 }
