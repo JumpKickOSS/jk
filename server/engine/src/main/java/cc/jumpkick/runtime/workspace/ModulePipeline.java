@@ -7,10 +7,10 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.InstallPlans;
+import cc.jumpkick.runtime.ModuleJar;
 import cc.jumpkick.runtime.PlannerTails;
 import cc.jumpkick.runtime.Tail;
 import cc.jumpkick.runtime.TaskForecaster;
-import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
@@ -155,9 +155,9 @@ public final class ModulePipeline {
         return plan.build();
     }
 
-    /** Install's second pass: shelve the jars already on disk. A coordinator has none. */
+    /** Install's second pass: shelve the jars already on disk. A module without a jar has none. */
     private static BuildPlan reshelve(BuildGraph.BuildUnit unit, Path cache, WorkspaceSpec spec) {
-        if (CompileSupport.coordinatorOnly(unit.manifest(), unit.dir())) {
+        if (ModuleJar.packagingStep(unit.manifest(), unit.dir()) == null) {
             return BuildPlan.builder("reshelve-skip").build();
         }
         return InstallPlans.reshelveBuildPlan(unit.dir(), cache, m2Dir(spec));

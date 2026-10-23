@@ -4,8 +4,8 @@ package cc.jumpkick.runtime.workspace;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.runtime.ModuleJar;
 import cc.jumpkick.runtime.Tail;
-import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.PublishPlans;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.TailArgs;
@@ -26,7 +26,7 @@ public final class PublishTail {
     public static Tail of(TailArgs.Publish args) {
         PublishPlans.Request req = request(args);
         return (plan, in) -> {
-            if (CompileSupport.coordinatorOnly(manifest(in.buildFile()), in.dir())) return;
+            if (ModuleJar.packagingStep(manifest(in.buildFile()), in.dir()) == null) return;
             plan.stateKeys(
                             PublishPlans.PROJECT,
                             PublishPlans.JAR,

@@ -45,7 +45,6 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -83,7 +82,8 @@ public final class InstallPlans {
     /** {@code jk install}'s tail: {@link #appendCacheInstall} after the build; a module with no jar has nothing to shelve. */
     public static Tail tail(JkBuild proj, Path cache, Path m2Dir) {
         return (plan, in) -> {
-            if (!CompileSupport.coordinatorOnly(proj, in.dir())) appendCacheInstall(plan, proj, cache, m2Dir);
+            String packaging = ModuleJar.packagingStep(proj, in.dir());
+            if (packaging != null) appendCacheInstall(plan, proj, cache, m2Dir, packaging);
         };
     }
 
@@ -117,8 +117,9 @@ public final class InstallPlans {
      * displaces stay in it. Fat and minified jars are not written to the local repo — only the thin
      * jar is.
      */
-    public static void appendCacheInstall(BuildPlan.Builder builder, JkBuild proj, Path cache, Path m2Dir) {
-        List<String> requires = new ArrayList<>(List.of(TaskNames.PACKAGE_JAR));
+    public static void appendCacheInstall(
+            BuildPlan.Builder builder, JkBuild proj, Path cache, Path m2Dir, String packaging) {
+        List<String> requires = new ArrayList<>(List.of(packaging));
         if (proj.nativeMode() == JkBuild.NativeMode.ALWAYS) requires.add(TaskNames.NATIVE_IMAGE);
         builder.stateKeys(PRIMARY, SHELVED)
                 .extend(Task.builder(TaskNames.CACHE_INSTALL)
@@ -127,7 +128,7 @@ public final class InstallPlans {
                                 BuildLayout.of(ForecastScope.of(s).dir, proj),
                                 cache,
                                 m2Dir,
-                                ForecastScope.of(s).runs(TaskNames.PACKAGE_JAR))))
+                                ForecastScope.of(s).runs(packaging))))
                         .stage(BuildStage.PUBLISH)
                         .requires(requires.toArray(new String[0]))
                         .ticks(1)
