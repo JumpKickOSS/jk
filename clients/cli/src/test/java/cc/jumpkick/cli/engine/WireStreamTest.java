@@ -12,6 +12,7 @@ import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.StringReader;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -141,5 +142,20 @@ class WireStreamTest {
 
         assertThatThrownBy(() -> WireStream.pumpJob(reader, null, (type, line) -> null))
                 .isInstanceOf(JobCancelledException.class);
+    }
+
+    /** jk install re-shelves under the engine it built; its verdict stays the pass that did the work. */
+    @Test
+    void a_job_handed_back_is_reported_over_the_one_that_followed_it() {
+        try {
+            WireStream.reportJob(new WireStream.LastJob(Path.of("runs", "1229"), null));
+            WireStream.LastJob built = WireStream.lastJob();
+            WireStream.reportJob(new WireStream.LastJob(null, "OK install jk · up to date"));
+            WireStream.reportJob(built);
+            assertThat(WireStream.lastRunDir()).contains(Path.of("runs", "1229"));
+            assertThat(WireStream.lastJobNoop()).isEmpty();
+        } finally {
+            WireStream.reportJob(new WireStream.LastJob(null, null));
+        }
     }
 }

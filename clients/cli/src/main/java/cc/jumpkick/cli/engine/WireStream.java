@@ -76,6 +76,20 @@ public final class WireStream {
         return Optional.ofNullable(lastRunDir);
     }
 
+    /** The job this invocation's verdict reads: its run directory, or its verdict when it was a no-op. */
+    public record LastJob(@Nullable Path runDir, @Nullable String noop) {}
+
+    /** This invocation's last engine job, to hand back to {@link #reportJob} later. */
+    public static LastJob lastJob() {
+        return new LastJob(lastRunDir, lastJobNoop);
+    }
+
+    /** Make {@code job} the one this invocation reports, over any job that followed it. */
+    public static void reportJob(LastJob job) {
+        lastRunDir = job.runDir();
+        lastJobNoop = job.noop();
+    }
+
     /**
      * Decodes one wire line. Returning non-{@code null} is the terminal: that value becomes the
      * stream's result and the pump stops. Returning {@code null} asks for the next line, which is
