@@ -63,6 +63,7 @@ import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.GuardSuiteLibrary;
+import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.util.AtomicWrites;
@@ -311,9 +312,9 @@ final class PlannerGuards {
                     FactsIndexing.Ensured test = testClasses != null && Files.isDirectory(testClasses)
                             ? FactsIndexing.ensure(testClasses, FactsIndexing.indexPath(buildDir, "test"))
                             : null;
-                    List<String> tokens = new ArrayList<>();
-                    tokens.add("module:" + module);
-                    tokens.add("facts:" + main.bodyDigest());
+                    // Before this lane waits on anyone: a workspace suite elsewhere may be waiting on it.
+                    cx.in().siblings().indexed();
+                    List<String> tokens = new ArrayList<>(List.of("module:" + module, "facts:" + main.bodyDigest()));
                     if (test != null) tokens.add("test-facts:" + test.bodyDigest());
                     // Without compiled tests the lane runs fewer rules; its verdict is not the build's.
                     if (!indexTests) tokens.add(GuardKeys.TESTS_NOT_COMPILED);
@@ -708,6 +709,7 @@ final class PlannerGuards {
         GuardKeys.addRuleTokens(tokens, load);
         String baselineSha = GuardKeys.baselineSha(g.root());
         String key = GuardKeys.laneKey(taskId, tokens, baselineSha);
+        if (Perf.enabled()) Perf.note("guard-lane " + taskId, "key", key, "X", tokens);
         ActionCache cache = env.actionCache();
         boolean useCache = !env.in().session().config().forceOr(false)
                 && !env.in().session().config().rebuildOr(false);
@@ -1039,9 +1041,9 @@ final class PlannerGuards {
     // ---- helpers -------------------------------------------------------------------------------
 
     /**
-     * Wait until every other module of {@code modules} has indexed its classes this build. A module
-     * with a guard suite of its own is left out — two such suites would wait on each other — and so
-     * is the root, which builds after every member.
+     * Wait until every other module of {@code modules} has indexed its classes this build. Each lane
+     * says so before it waits on anyone, so two workspace suites never wait on each other; the root,
+     * which builds after every member, is left out.
      */
     private static void awaitIndexed(TaskContext ctx, BuildPlanner.Inputs in, Path root, List<Path> modules)
             throws InterruptedException {
@@ -1050,7 +1052,7 @@ final class PlannerGuards {
         List<Path> judged = new ArrayList<>();
         for (Path m : modules) {
             Path dir = m.toAbsolutePath().normalize();
-            if (dir.equals(self) || dir.equals(top) || PlannerGuardSuite.declared(dir, compact(dir))) continue;
+            if (dir.equals(self) || dir.equals(top)) continue;
             judged.add(m);
         }
         in.siblings().awaitIndexed(judged, ctx::cancelled);

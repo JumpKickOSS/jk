@@ -250,4 +250,27 @@ class GuardFixturesTest {
                 "[guards.a]\nkind = \"text\"\npattern = \"x\"\ninstead = \"y\"\nwhy = \"w\"\n");
         assertThat(GuardFixtures.run(root, new Cas(store)).text()).startsWith("no fixtures");
     }
+
+    @Test
+    void a_suite_guards_fixture_keys_the_digest_before_anything_is_compiled(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), "group = \"g\"\nname = \"ws\"\nversion = \"1.0.0\"\njava = 25\n");
+        Path suite = Files.createDirectories(root.resolve("src/guard/java/g")).resolve("Rules.java");
+        Files.writeString(suite, """
+                package g;
+                class Rules {
+                    @Guard(id = "no-exit")
+                    @Fixture("fixtures/no-exit")
+                    void noExit() {}
+                }
+                """);
+        Path bad = Files.createDirectories(root.resolve("fixtures/no-exit/bad")).resolve("Bad.java");
+        Files.writeString(bad, "class Bad {}");
+        String before = GuardFixtures.digest(root);
+
+        Files.writeString(bad, "class Bad { void f() { System.exit(1); } }");
+
+        assertThat(GuardFixtures.digest(root))
+                .as("no target dir anywhere: the suite's fixture is read from its source")
+                .isNotEqualTo(before);
+    }
 }

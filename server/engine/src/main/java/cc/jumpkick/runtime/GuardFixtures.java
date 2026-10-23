@@ -160,21 +160,27 @@ public final class GuardFixtures {
 
     /**
      * One digest of every fixture file the workspace's rules and guard suites name, by path and
-     * content: what a proof reads besides the rules. Over nothing when the rules do not load; the
-     * rules file then carries the change.
+     * content: what a proof reads besides the rules. Read from sources alone, so a tree digests the
+     * same before its first build as after it. A rules file that does not load leaves its rules'
+     * fixtures out; the file itself then carries the change.
      */
     static String digest(Path root) throws IOException {
         LoadResult load = load(root);
-        StringBuilder all = new StringBuilder();
+        Set<Path> dirs = new TreeSet<>(GuardSuites.fixturesInSource(root));
         if (load.errors().isEmpty()) {
-            for (FixtureCheck.Case c :
-                    FixtureCheck.cases(root, load.rules(), GuardSuites.declaredAcrossWorkspace(root))) {
-                for (Path f : filesOf(c)) {
-                    all.append(root.relativize(f))
-                            .append(':')
-                            .append(FileHashMemo.contentHash(f))
-                            .append('\n');
-                }
+            for (FixtureCheck.Case c : FixtureCheck.cases(root, load.rules(), Map.of())) dirs.add(c.dir());
+        }
+        StringBuilder all = new StringBuilder();
+        for (Path dir : dirs) {
+            if (!Files.isDirectory(dir)) continue;
+            List<Path> files = new ArrayList<>();
+            PathUtil.forEachRegularFile(dir, (f, attrs) -> files.add(f));
+            files.sort(null);
+            for (Path f : files) {
+                all.append(root.relativize(f))
+                        .append(':')
+                        .append(FileHashMemo.contentHash(f))
+                        .append('\n');
             }
         }
         return "fixtures=" + Hashing.sha256Hex(all.toString());

@@ -178,6 +178,31 @@ public final class GuardSuites {
         return out;
     }
 
+    /** A suite guard's {@code @Fixture("<root-relative dir>")}, as written in its source. */
+    private static final Pattern FIXTURE_ATTR = Pattern.compile("@Fixture\\s*\\(\\s*(?:value\\s*=\\s*)?\"([^\"]+)\"");
+
+    /**
+     * Every fixture directory a guard suite names with {@code @Fixture}, from source: what a proof of
+     * a suite guard reads, known without its compiled index.
+     */
+    public static Set<Path> fixturesInSource(Path root) throws IOException {
+        Set<Path> dirs = new TreeSet<>();
+        Set<Path> modules = new LinkedHashSet<>();
+        modules.add(root);
+        modules.addAll(WorkspaceModules.of(root));
+        for (Path m : modules) {
+            if (!Files.isDirectory(m)) continue;
+            for (boolean compact : List.of(false, true)) {
+                for (Path src : TestSuites.guardSources(m, compact)) {
+                    Matcher fixture = FIXTURE_ATTR.matcher(Files.readString(src));
+                    while (fixture.find())
+                        dirs.add(root.resolve(fixture.group(1)).normalize());
+                }
+            }
+        }
+        return dirs;
+    }
+
     /**
      * Every {@code @Guard} id under {@code src/guard} (and the compact {@code guard/src} twin), from
      * source. The model lane runs before compile-guard, so the compiled index is not the declaration.
