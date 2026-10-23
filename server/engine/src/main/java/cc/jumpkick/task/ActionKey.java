@@ -507,20 +507,17 @@ public final class ActionKey {
     }
 
     /**
-     * A release-less home by the two segments naming its install directory — above the {@code
-     * Contents/Home} every macOS bundle ends in, which would otherwise spell every JDK alike — and
-     * the size of its {@code lib/modules} image, the one cheap fact that moves with its content.
+     * A release-less home by the content of its {@code lib/modules} image, which holds every
+     * platform class the JDK compiles against (through the hash memo, so it is read once per
+     * identity). A home with no image either is keyed by its whole tree: nothing cheaper names its
+     * content.
      */
     private static String installDirToken(Path home) throws IOException {
-        Path install = home;
-        if (home.endsWith(Path.of("Contents", "Home"))) {
-            Path contents = home.getParent();
-            Path bundle = contents == null ? null : contents.getParent();
-            if (bundle != null) install = bundle;
-        }
         Path modules = home.resolve("lib").resolve("modules");
-        String image = Files.isRegularFile(modules) ? ":modules=" + Files.size(modules) : "";
-        return "home:" + PortablePath.of(install) + image;
+        if (Files.isRegularFile(modules))
+            return "modules:"
+                    + FileHashMemo.contentHash(modules.toAbsolutePath().normalize());
+        return "home:" + ClasspathFingerprint.entry(home);
     }
 
     /**

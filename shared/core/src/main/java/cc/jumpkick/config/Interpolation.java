@@ -99,12 +99,18 @@ public final class Interpolation {
         List<String> offenders = new ArrayList<>();
         walk(root, List.of(), offenders);
         if (offenders.isEmpty()) return;
+        // A [test] env written as one table is a shape error first: the reference would be
+        // honoured in the array it should have been.
+        if (root.get(List.of("test", "env")) instanceof TomlTable) {
+            throw new JkBuildParseException("[test] env must be an array — a bare name to forward the caller's value,"
+                    + " or a table to set one: env = [\"CI\", { TZ = \"UTC\" }]");
+        }
         throw new JkBuildParseException("environment references are not allowed here: "
                 + String.join("; ", offenders)
                 + ". ${VAR} is honoured only in repository credentials, repository object-store keys, a"
                 + " [generate.<name>] entry's args,"
-                + " and [test] env — anything that feeds a compile or package cache key must stay a"
-                + " literal, or the same commit would build differently on different machines.");
+                + " and a value set in [test] env — anything that feeds a compile or package cache key must stay"
+                + " a literal, or the same commit would build differently on different machines.");
     }
 
     private static void walk(TomlTable table, List<String> prefix, List<String> offenders) {
