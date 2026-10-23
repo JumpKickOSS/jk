@@ -347,12 +347,12 @@ public final class Oracle {
             git(ws, "add", "-A");
             git(ws, "commit", "-qm", "before switch");
             git(ws, "checkout", "-qb", "other");
-            replace(ws.resolve(greet), "return PREFIX +", "return \"!\" + PREFIX +");
+            prefixReturn(ws.resolve(greet), "!");
             git(ws, "commit", "-qam", "other");
             git(ws, "checkout", "-q", "-");
         }));
         e.add(edit("stash-pop", ws -> {
-            replace(ws.resolve(greet), "return PREFIX +", "return \"[\" + PREFIX +");
+            prefixReturn(ws.resolve(greet), "[");
             git(ws, "stash", "-q");
             git(ws, "stash", "pop", "-q");
         }));
@@ -378,6 +378,15 @@ public final class Oracle {
         String s = Files.readString(ws.resolve(file));
         Files.writeString(ws.resolve(file), s.replaceFirst("return [^;]*PREFIX \\+", Matcher.quoteReplacement(to)));
         build.join();
+    }
+
+    /** Put {@code mark} in front of the first {@code return}'s value, whatever earlier classes made of it. */
+    private static void prefixReturn(Path f, String mark) throws IOException {
+        String s = Files.readString(f);
+        int at = s.indexOf("return ");
+        if (at < 0) throw new IOException(f.getFileName() + " has no return");
+        at += "return ".length();
+        Files.writeString(f, s.substring(0, at) + "\"" + mark + "\" + " + s.substring(at));
     }
 
     private static Edit edit(String name, Applier apply) {
