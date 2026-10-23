@@ -45,6 +45,32 @@ class ExtractorsTest {
                         && e.relation().equals(relation));
     }
 
+    /** javac copies a constant into its user and leaves no trace; the source says where it came from. */
+    @Test
+    void aConstantReadThroughItsTypeReferencesIt() {
+        String greet = "src/main/java/com/example/lib/Greet.java";
+        String app = "src/main/java/com/example/app/App.java";
+        CodeGraph g = Linker.link(
+                List.of(
+                        Objects.requireNonNull(Extractors.forPath(greet))
+                                .extract(
+                                        greet,
+                                        "package com.example.lib;\n\npublic final class Greet {\n"
+                                                + "    public static final String PREFIX = \"hi \";\n}\n"),
+                        Objects.requireNonNull(Extractors.forPath(app))
+                                .extract(
+                                        app,
+                                        "package com.example.app;\n\nimport com.example.lib.Greet;\n\n"
+                                                + "public final class App {\n    static int n() {\n        return Greet.PREFIX.length();\n    }\n}\n")));
+        assertThat(edge(
+                        g,
+                        "src_main_java_com_example_app_app_app",
+                        "src_main_java_com_example_lib_greet_greet_prefix",
+                        "references"))
+                .as("edges: " + g.edges())
+                .isTrue();
+    }
+
     @Test
     void sourceScanGivesGraphifysIdsAndLines() throws IOException {
         CodeGraph g = shop();

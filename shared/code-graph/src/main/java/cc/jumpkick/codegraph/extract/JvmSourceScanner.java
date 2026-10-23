@@ -101,6 +101,7 @@ final class JvmSourceScanner {
             constructors(b, text, code, lines, depth, close, open);
         }
         if (java || kotlin) constants(b, text, code, lines, depth, open, java ? JAVA_CONSTANT : KOTLIN_CONSTANT);
+        constantReferences(b, code, lines, open, packageName, imported);
         if (relPath.endsWith(".gradle") || relPath.endsWith(".gradle.kts")) coordinates(b, text, lines);
         for (SourceMask.Comment c : mask.comments) {
             String body = SourceMask.body(c);
@@ -359,6 +360,40 @@ final class JvmSourceScanner {
                     : b.node(GraphIds.member(owner.id, name), "." + name, "code", line, Map.of());
             b.declare(id, line, facts);
             b.edge(owner == null ? b.fileId() : owner.id, id, Relations.CONTAINS, Confidence.EXTRACTED, line);
+        }
+    }
+
+    /** {@code Type.NAME} with an upper-case name: a constant read through its type, not a call. */
+    private static final Pattern CONSTANT_REF =
+            Pattern.compile("(?<![\\w$.])((?:[a-z_][\\w$]*\\.)*[A-Z][\\w$]*)\\.([A-Z][A-Z0-9_]*)\\b(?!\\s*\\()");
+
+    /**
+     * A constant used through its type ({@code Greet.PREFIX}) references it from the enclosing type.
+     * The compiled facts cannot say so: javac copies a compile-time constant into the class that
+     * uses it and leaves no trace of where it came from, so the source is the only witness.
+     */
+    private static void constantReferences(
+            FragmentBuilder b,
+            String code,
+            Lines lines,
+            List<Open> open,
+            String packageName,
+            Map<String, String> imported) {
+        Matcher m = CONSTANT_REF.matcher(code);
+        while (m.find()) {
+            String type = m.group(1);
+            String simple = type.substring(type.lastIndexOf('.') + 1);
+            String qualified = type.contains(".")
+                    ? type
+                    : imported.getOrDefault(simple, packageName.isEmpty() ? simple : packageName + "." + simple);
+            Open owner = enclosing(open, m.start());
+            b.mention(
+                    owner == null ? b.fileId() : owner.id,
+                    Mention.Kind.MEMBER,
+                    qualified + "#" + m.group(2),
+                    lines.at(m.start()),
+                    Relations.REFERENCES,
+                    "constant");
         }
     }
 
