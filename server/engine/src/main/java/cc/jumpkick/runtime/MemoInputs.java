@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.RequestScope;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.rules.GuardRules;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.Hashing;
@@ -13,6 +14,7 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.ClasspathFingerprint;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -129,5 +131,38 @@ final class MemoInputs {
             }
         }
         return false;
+    }
+
+    /**
+     * The run-tests stamp's extras as memo tokens, from the function the stamp itself calls. A
+     * worker jar a workspace sibling builds enters by path: its bytes are that sibling's row, and
+     * its content before this build would never match the jar the build leaves.
+     */
+    static List<String> testInputs(Path moduleDir, JkBuild project) throws IOException {
+        Path root = WorkspaceScan.findRoot(moduleDir)
+                .orElse(moduleDir)
+                .toAbsolutePath()
+                .normalize();
+        ClasspathFingerprint.EntryIdentity identity = jar -> {
+            Path abs = jar.toAbsolutePath().normalize();
+            return abs.startsWith(root)
+                    ? "sibling:" + root.relativize(abs).toString().replace('\\', '/')
+                    : ClasspathFingerprint.ON_DISK.of(jar);
+        };
+        return PlannerSupport.testStampExtras(moduleDir, project, null, identity);
+    }
+
+    /** Why a link to a directory in a source or resource root is refused, as a clause. */
+    static final String DIRECTORY_LINK =
+            "a link to a directory, which jk does not follow: name its target as a source or resource root";
+
+    /** A link to a directory in an input root: jk does not enter it, so it vouches for nothing there. */
+    static final class DirectoryLink extends RuntimeException {
+        final Path link;
+
+        DirectoryLink(Path link) {
+            super(DIRECTORY_LINK);
+            this.link = link;
+        }
     }
 }

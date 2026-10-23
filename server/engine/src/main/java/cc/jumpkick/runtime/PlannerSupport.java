@@ -769,7 +769,7 @@ public final class PlannerSupport {
                 testStampWorkerJars(dir, project),
                 selection,
                 project,
-                suiteJvmArgs(testJvmArgs(project, profileName), tier),
+                tier.suiteJvmArgs(testJvmArgs(project, profileName)),
                 dir,
                 identity));
         extras.addAll(profileEnvExtras(project, profileName));
@@ -798,19 +798,6 @@ public final class PlannerSupport {
         if (declared.isEmpty()) return profile.jvmArgs();
         List<String> all = new ArrayList<>(declared);
         all.addAll(profile.jvmArgs());
-        return List.copyOf(all);
-    }
-
-    /**
-     * The flags a suite fork is launched with beyond jk's heap and the module path: {@code
-     * testJvmArgs}, then the tier's per-method timeout. The run-tests stamp keys this list and the
-     * fork launches it, so neither can carry a flag the other lacks.
-     */
-    static List<String> suiteJvmArgs(List<String> testJvmArgs, TestTier tier) {
-        List<String> timeouts = tier.timeoutArgs();
-        if (timeouts.isEmpty()) return testJvmArgs;
-        List<String> all = new ArrayList<>(testJvmArgs);
-        all.addAll(timeouts);
         return List.copyOf(all);
     }
 

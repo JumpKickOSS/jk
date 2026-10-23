@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.run.SlowestTests;
+import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
@@ -50,6 +51,19 @@ record TestTier(String name, long budgetMs) {
     List<String> timeoutArgs() {
         if (budgetMs <= 0) return List.of();
         return List.of("-Djunit.jupiter.execution.timeout.testable.method.default=" + stopMs() + " ms");
+    }
+
+    /**
+     * The flags a suite fork is launched with beyond jk's heap and the module path: {@code
+     * testJvmArgs}, then this tier's per-method timeout. The run-tests stamp keys this list and the
+     * fork launches it, so neither can carry a flag the other lacks.
+     */
+    List<String> suiteJvmArgs(List<String> testJvmArgs) {
+        List<String> timeouts = timeoutArgs();
+        if (timeouts.isEmpty()) return testJvmArgs;
+        List<String> all = new ArrayList<>(testJvmArgs);
+        all.addAll(timeouts);
+        return List.copyOf(all);
     }
 
     /** When a fast-tier method is stopped, in milliseconds; 0 without a budget. */

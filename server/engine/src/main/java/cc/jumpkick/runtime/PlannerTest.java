@@ -652,14 +652,8 @@ public final class PlannerTest {
         WorkerEnv testEnv = TestLaunch.withFastTierWalls(
                 TestLaunch.testEnvironment(ctx, in, projectUnderTest).with(profileEnv), effectiveSel);
         TestTier tier = TestTier.of(effectiveSel, in.profileName(), fastMethodBudget(projectUnderTest, in.dir()));
-        List<String> testJvmArgs =
-                PlannerSupport.suiteJvmArgs(TestLaunch.testJvmArgs(ctx, in, projectUnderTest, pluginDecls), tier);
-        // What the suite reads as it runs: discovery lists the test classes, and the classpath and
-        // resources are read through. Taken before the key, held against them after the run.
-        List<Path> suiteInputs = new ArrayList<>(List.of(testClasses, ctx.require(MAIN_CLASSES)));
-        suiteInputs.addAll(ctx.get(TEST_RESOURCE_DIRS).orElse(List.of()));
-        suiteInputs.addAll(testRtCp);
-        InputGuard suiteGuard = InputGuard.of(suiteInputs);
+        List<String> testJvmArgs = tier.suiteJvmArgs(TestLaunch.testJvmArgs(ctx, in, projectUnderTest, pluginDecls));
+        InputGuard suiteGuard = suiteGuard(ctx, testClasses, testRtCp);
         String stampKey = testStampKey(
                 ctx, in, projectUnderTest, effectiveSel, affected, workerJars, testJvmArgs, testSrcs, testRtCp);
         // --force forces a real test run, matching the compile/package
@@ -721,13 +715,7 @@ public final class PlannerTest {
         if (jacoco != null && coverageExec != null) {
             TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
         }
-        List<Path> moved = stampKey == null ? List.of() : suiteGuard.moved();
-        if (!moved.isEmpty()) {
-            // The suite may have run against either version; its outcome stands for this build
-            // and no marker vouches for the key.
-            ctx.warn("inputs-moved", InputGuard.describe(TaskNames.RUN_TESTS, moved));
-            stampKey = null;
-        }
+        stampKey = unlessMoved(ctx, suiteGuard, stampKey);
         settle(
                 ctx,
                 in,
@@ -741,6 +729,30 @@ public final class PlannerTest {
                 stampKey,
                 !testSrcs.isEmpty(),
                 snippets);
+    }
+
+    /**
+     * What the suite reads as it runs: discovery lists the test classes, and the classpath and
+     * resources are read through. Taken before the stamp key, held against them after the run.
+     */
+    private static InputGuard suiteGuard(TaskContext ctx, Path testClasses, List<Path> testRtCp) throws IOException {
+        List<Path> suiteInputs = new ArrayList<>(List.of(testClasses, ctx.require(MAIN_CLASSES)));
+        suiteInputs.addAll(ctx.get(TEST_RESOURCE_DIRS).orElse(List.of()));
+        suiteInputs.addAll(testRtCp);
+        return InputGuard.of(suiteInputs);
+    }
+
+    /**
+     * {@code stampKey}, or null when an input the suite read moved while it ran: the outcome stands
+     * for this build and no marker vouches for the key.
+     */
+    private static @Nullable String unlessMoved(TaskContext ctx, InputGuard guard, @Nullable String stampKey)
+            throws IOException {
+        if (stampKey == null) return null;
+        List<Path> moved = guard.moved();
+        if (moved.isEmpty()) return stampKey;
+        ctx.warn("inputs-moved", InputGuard.describe(TaskNames.RUN_TESTS, moved));
+        return null;
     }
 
     /**
