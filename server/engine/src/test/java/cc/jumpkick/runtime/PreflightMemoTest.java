@@ -24,8 +24,8 @@ import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.TestStamp;
+import cc.jumpkick.testing.Symlinks;
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -56,11 +56,7 @@ class PreflightMemoTest {
     void an_edit_behind_a_linked_source_moves_the_fingerprint(@TempDir Path tmp) throws Exception {
         writeProject(tmp);
         Path outside = Files.writeString(tmp.resolve("Shared.java"), "class Shared {}");
-        try {
-            Files.createSymbolicLink(tmp.resolve("src/main/java/Shared.java"), outside);
-        } catch (IOException | UnsupportedOperationException notPermitted) {
-            org.junit.jupiter.api.Assumptions.abort("symbolic links cannot be made here");
-        }
+        Symlinks.create(tmp.resolve("src/main/java/Shared.java"), outside);
         PreflightMemo.Fingerprint before = PreflightMemo.fingerprintModule(tmp, false);
         Files.writeString(outside, "class Shared { int x; }");
         assertThat(PreflightMemo.fingerprintModule(tmp, false)).isNotEqualTo(before);
@@ -72,11 +68,7 @@ class PreflightMemoTest {
         writeProject(tmp);
         Path outside = Files.createDirectories(tmp.resolve("shared"));
         Files.writeString(outside.resolve("A.java"), "class A {}");
-        try {
-            Files.createSymbolicLink(tmp.resolve("src/main/java/shared"), outside);
-        } catch (IOException | UnsupportedOperationException notPermitted) {
-            org.junit.jupiter.api.Assumptions.abort("symbolic links cannot be made here");
-        }
+        Symlinks.create(tmp.resolve("src/main/java/shared"), outside);
         assertThat(PreflightMemo.fingerprintModule(tmp, false))
                 .isInstanceOfSatisfying(
                         PreflightMemo.Uncertain.class,

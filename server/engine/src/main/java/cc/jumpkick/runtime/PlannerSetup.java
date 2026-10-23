@@ -196,8 +196,7 @@ public final class PlannerSetup {
                     ctx.put(JAVAC_ARGS, effectiveJavacArgs(project, in.dir(), lock, in.profileName()));
                     // Reuse source lists that the tick suppliers may have already walked.
                     // If the ticks haven't fired yet (unusual ordering), populate and cache now.
-                    InputTrees.coverModule(in.dir());
-                    refuseDirectoryLinks(ctx, in.dir(), in.skipTests());
+                    coverModule(ctx, in.dir(), in.skipTests());
                     List<Path> javaMainSrcs = javaMainSrcRef.get();
                     if (javaMainSrcs == null) {
                         javaMainSrcs = CompileSupport.collectJavaSources(javaMainSrcDir);
@@ -547,18 +546,20 @@ public final class PlannerSetup {
     }
 
     /**
-     * A link to a directory in a source, resource or test root fails the step, naming it: the walk
+     * Snapshot the module's input trees for this job; a link to a directory in a source, resource
+     * or test root fails the step, naming it: the walk
      * does not enter one, so the tree behind it would otherwise be left out of the compile, its
      * key and the jar without a word.
      */
-    static void refuseDirectoryLinks(TaskContext ctx, Path moduleDir, boolean skipTests) throws IOException {
+    static void coverModule(TaskContext ctx, Path moduleDir, boolean skipTests) throws IOException {
+        InputTrees.coverModule(moduleDir);
         for (Path root : ModuleLayoutPlugins.fingerprintRoots(moduleDir, skipTests)) {
             if (!Files.isDirectory(root)) continue;
             List<Path> links = InputTrees.of(root).directoryLinks();
             if (links.isEmpty()) continue;
             String rel = moduleDir.relativize(links.getFirst()).toString().replace('\\', '/');
-            ctx.error("directory-link", rel + " is " + PreflightMemo.DIRECTORY_LINK);
-            throw new IllegalStateException(rel + " is " + PreflightMemo.DIRECTORY_LINK);
+            ctx.error("directory-link", rel + " is " + MemoInputs.DIRECTORY_LINK);
+            throw new IllegalStateException(rel + " is " + MemoInputs.DIRECTORY_LINK);
         }
     }
 }

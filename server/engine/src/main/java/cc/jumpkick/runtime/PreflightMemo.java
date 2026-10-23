@@ -28,7 +28,6 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
-import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
@@ -106,23 +105,9 @@ public final class PreflightMemo {
         }
     }
 
-    /** A link to a directory in an input root: jk does not enter it, so it vouches for nothing there. */
-    static final class DirectoryLink extends RuntimeException {
-        final Path link;
-
-        DirectoryLink(Path link) {
-            super(DIRECTORY_LINK);
-            this.link = link;
-        }
-    }
-
-    /** Why a link to a directory in a source or resource root is refused, as a clause. */
-    public static final String DIRECTORY_LINK =
-            "a link to a directory, which jk does not follow: name its target as a source or resource root";
-
     private static Uncertain uncertain(Path fallback, Exception e) {
         if (e instanceof UnreadableInput u) return new Uncertain(u.input, describe(u.getCause()));
-        if (e instanceof DirectoryLink d) return new Uncertain(d.link, DIRECTORY_LINK);
+        if (e instanceof MemoInputs.DirectoryLink d) return new Uncertain(d.link, MemoInputs.DIRECTORY_LINK);
         return new Uncertain(fallback, describe(e));
     }
 
@@ -891,19 +876,21 @@ public final class PreflightMemo {
 
                         @Override
                         public void directoryLink(Path link) {
-                            throw new DirectoryLink(link);
+                            throw new MemoInputs.DirectoryLink(link);
                         }
                     });
                     continue;
                 }
                 if (!snap.directoryLinks().isEmpty())
-                    throw new DirectoryLink(snap.directoryLinks().getFirst());
+                    throw new MemoInputs.DirectoryLink(snap.directoryLinks().getFirst());
                 for (var ref : snap.files()) {
                     feedFingerprint(md, moduleDir, ref.path(), ref.identity(), mtimeMode);
                 }
             }
             feedNodeBuild(md, moduleDir);
-            if (!skipTests && project != null) feedTestInputs(md, moduleDir, project);
+            if (!skipTests && project != null) {
+                for (String token : MemoInputs.testInputs(moduleDir, project)) feed(md, "test:" + token);
+            }
             return new Known(Hashing.hex(md.digest()));
         } catch (Exception e) {
             return uncertain(moduleDir, e);
@@ -930,27 +917,6 @@ public final class PreflightMemo {
             feed(md, "env:" + e.getKey() + "=" + Hashing.sha256Hex(e.getValue()));
         }
         feed(md, "skip-node=" + SessionContext.current().skipNode());
-    }
-
-    /**
-     * The run-tests stamp's extras, from the function the stamp itself calls. A worker jar a
-     * workspace sibling builds enters by path: its bytes are that sibling's row, and its content
-     * before this build would never match the jar the build leaves.
-     */
-    private static void feedTestInputs(MessageDigest md, Path moduleDir, JkBuild project) throws IOException {
-        Path root = WorkspaceScan.findRoot(moduleDir)
-                .orElse(moduleDir)
-                .toAbsolutePath()
-                .normalize();
-        ClasspathFingerprint.EntryIdentity identity = jar -> {
-            Path abs = jar.toAbsolutePath().normalize();
-            return abs.startsWith(root)
-                    ? "sibling:" + root.relativize(abs).toString().replace('\\', '/')
-                    : ClasspathFingerprint.ON_DISK.of(jar);
-        };
-        for (String token : PlannerSupport.testStampExtras(moduleDir, project, null, identity)) {
-            feed(md, "test:" + token);
-        }
     }
 
     /**
