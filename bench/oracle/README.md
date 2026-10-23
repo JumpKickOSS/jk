@@ -23,7 +23,8 @@ One line per class; the exit status is non-zero when any failed. The classes cov
 package move), resources, `touch -r` and older copies, CRLF, a passing test that starts reading a
 file nothing declares, a test input nothing declares,
 `--jvm-arg`, `[test] env`, javac args, `java =`, Kotlin `const`, Groovy, a symlinked source (POSIX
-only), edits landing during a plain and a `--force` build, a branch switch and a stash.
+only), `jk clean` then a build, `jk build -r` (the build after either must run nothing), edits
+landing during a plain and a `--force` build, a branch switch and a stash.
 
 Run it on every platform jk supports, one heavy run per machine: macOS, Windows, and WSL on its own
 disk and under `/mnt/c`.

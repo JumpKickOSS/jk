@@ -3,13 +3,16 @@ package cc.jumpkick.test;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.ToolIdentity;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
@@ -36,8 +39,8 @@ import org.jspecify.annotations.Nullable;
  * <p>Every JVM that runs a suite records, through JFR, each file it reads ({@code jdk.FileRead}),
  * each program it starts ({@code jdk.ProcessStart}) and its socket traffic. After the run, a file
  * outside everything the stamp already keys — the classes, the classpath, the resources, the JDK, the
- * module's own outputs and the run's sandbox — is a <em>discovered input</em>: it is kept in the
- * module's target dir and keys the suite from then on, by content, together with the listing of
+ * module's own outputs and the run's sandbox — is a <em>discovered input</em>: it is kept in jk's
+ * cache for the project, where a clean leaves it, and keys the suite from then on, by content, together with the listing of
  * the directory it sits in (so a file added beside it is seen, though JFR records no directory
  * listing), and a process by the identity of its executable. A run that found new inputs stores its
  * green marker under the key that folds them in, when they held still while it ran; from then on
@@ -297,10 +300,24 @@ public final class SuiteReads {
         }
     }
 
-    /** Where a module keeps what its suites under {@code selection} were found to read. */
+    /**
+     * Where a module keeps what its suites under {@code selection} were found to read: in jk's cache
+     * for the project, not under {@code target}, so a clean build is keyed as the build before it was.
+     */
     static Path discoveredFile(Path moduleDir, TestSelection selection) {
         String tier = Hashing.sha256Hex(selection.identityToken()).substring(0, 12);
-        return BuildLayout.moduleTargetDir(moduleDir).resolve(".jk").resolve("test-inputs-" + tier);
+        Path dir = moduleDir.toAbsolutePath().normalize();
+        try {
+            if (Files.exists(dir)) dir = dir.toRealPath();
+        } catch (IOException keepNormalized) {
+            // the normalized path names it
+        }
+        String module = Hashing.sha256Hex(dir.toString()).substring(0, 16);
+        return CacheTree.PROJECTS
+                .under(JkDirs.cache())
+                .resolve(module)
+                .resolve("suite-reads")
+                .resolve("test-inputs-" + tier);
     }
 
     /** What the module's suites under {@code selection} were found to read; none before a run found any. */
@@ -360,7 +377,7 @@ public final class SuiteReads {
             }
             out.add("read:" + spell(root, f) + "=" + content);
             Path parent = f.getParent();
-            if (parent != null) dirs.add(parent);
+            if (parent != null && keysListing(parent, root)) dirs.add(parent);
         }
         for (Path dir : dirs) out.add("list:" + spell(root, dir) + "=" + listing(dir));
         for (String c : d.commands()) out.add("proc:" + executable(c) + "=" + programIdentity(executable(c)));
@@ -368,14 +385,26 @@ public final class SuiteReads {
         return out;
     }
 
-    /** {@link #tokens} as one digest; {@code none} when the suites were found to read nothing. */
+    /** {@link #tokens} as {@link #memoDigest}. */
     public static String digest(Path moduleDir, TestSelection selection, Path workspaceRoot) {
-        return digest(tokens(moduleDir, selection, workspaceRoot));
+        return memoDigest(tokens(moduleDir, selection, workspaceRoot), workspaceRoot);
     }
 
-    /** {@code tokens} as one digest; {@code none} for no tokens. */
-    public static String digest(List<String> tokens) {
-        return tokens.isEmpty() ? "none" : Hashing.sha256Hex(String.join("\n", tokens));
+    /**
+     * {@code tokens} as one digest for the preflight memo, leaving out what lies in a module's build
+     * output: the producing module's own inputs vouch for it, and the memo is taken before the build,
+     * when a clean tree has none. {@code none} for no tokens.
+     */
+    public static String memoDigest(List<String> tokens, Path workspaceRoot) {
+        Path root = workspaceRoot.toAbsolutePath().normalize();
+        List<String> kept = new ArrayList<>();
+        for (String t : tokens) {
+            int eq = t.lastIndexOf('=');
+            boolean pathToken = (t.startsWith("read:") || t.startsWith("list:")) && eq > 5;
+            if (pathToken && inBuildOutput(root.resolve(t.substring(5, eq)), root)) continue;
+            kept.add(t);
+        }
+        return kept.isEmpty() ? "none" : Hashing.sha256Hex(String.join("\n", kept));
     }
 
     private static String spell(Path root, Path p) {
@@ -386,11 +415,67 @@ public final class SuiteReads {
         if (!Files.isDirectory(dir)) return "absent";
         Set<String> names = new TreeSet<>();
         try {
-            PathUtil.forEachChild(dir, (child, attrs) -> names.add(String.valueOf(child.getFileName())));
+            String output = outputEntry(dir);
+            PathUtil.forEachChild(dir, (child, attrs) -> {
+                String name = String.valueOf(child.getFileName());
+                if (!name.equals(output)) names.add(name);
+                return true;
+            });
         } catch (IOException unreadable) {
             return "unreadable";
         }
         return Hashing.sha256Hex(String.join("\n", names));
+    }
+
+    /**
+     * Whether a suite that reads a file in {@code dir} is keyed on the directory's listing too: only
+     * in the workspace's own tree, outside every module's build output. A build output's listing
+     * moves as the build writes it, and a directory outside the workspace (the home directory, a
+     * store) as any other process writes there; there a read file is keyed by its content alone.
+     */
+    public static boolean keysListing(Path dir, Path workspaceRoot) {
+        Path d = dir.toAbsolutePath().normalize();
+        Path root = workspaceRoot.toAbsolutePath().normalize();
+        return d.startsWith(root) && !inBuildOutput(d, root);
+    }
+
+    /** Whether {@code path} lies in a workspace module's build output. */
+    private static boolean inBuildOutput(Path path, Path root) {
+        for (Path p = path.toAbsolutePath().normalize(); p != null && p.startsWith(root); p = p.getParent()) {
+            Path name = p.getFileName();
+            Path parent = p.getParent();
+            if (name != null
+                    && parent != null
+                    && name.toString().equals(BuildLayout.TARGET)
+                    && Files.isRegularFile(ManifestPaths.manifestIn(parent))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The first entry of {@code dir}'s keyed listing that came into being at or after {@code
+     * millis}, or null when none did. An entry made and removed since is gone, and the listing is
+     * as it was.
+     */
+    public static @Nullable Path bornSince(Path dir, long millis) throws IOException {
+        String output = outputEntry(dir);
+        Path[] born = new Path[1];
+        PathUtil.forEachChild(dir, (child, attrs) -> {
+            if (String.valueOf(child.getFileName()).equals(output)) return true;
+            if (attrs.creationTime().toMillis() >= millis) born[0] = child;
+            return born[0] == null;
+        });
+        return born[0];
+    }
+
+    /**
+     * The entry a module directory's listing leaves out: its build output, which the build itself
+     * makes and removes; empty for any other directory.
+     */
+    private static String outputEntry(Path dir) {
+        return Files.isRegularFile(ManifestPaths.manifestIn(dir)) ? BuildLayout.TARGET : "";
     }
 
     /**

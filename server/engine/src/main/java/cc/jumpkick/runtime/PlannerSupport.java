@@ -425,10 +425,12 @@ public final class PlannerSupport {
             // pack called quarkus beside the jk-quarkus worker) must not answer for it.
             Path jar = jarByModule.get(wj.get().artifactId());
             if (jar == null) jar = jarByModule.get(module);
-            if (jar != null && Files.exists(jar)) {
+            if (jar != null) {
+                // A sibling: the jar this build makes, before or after it is written, so a key taken
+                // either side of the build names the same worker.
                 props.put(wj.get().jarProperty(), jar.toAbsolutePath().toString());
             } else {
-                // Not a built sibling — self-host by reusing the running jk's plugin
+                // Not a sibling — self-host by reusing the running jk's plugin
                 // jar (located via its sha resource + CAS, or a -D override).
                 Path located = wj.get().locateStored(JkStores.storeCas());
                 if (located != null) props.put(wj.get().jarProperty(), located.toString());
@@ -575,7 +577,8 @@ public final class PlannerSupport {
             if (jar == null && w.artifactId().startsWith("jk-")) {
                 jar = siblings.get(w.artifactId().substring(3));
             }
-            if (jar != null && Files.isRegularFile(jar)) {
+            if (jar != null) {
+                // A sibling's jar whether or not it is written yet: run-tests waits for it to be.
                 props.put(w.jarProperty(), jar.toAbsolutePath().toString());
             } else {
                 Path located = w.locateStored(JkStores.storeCas());

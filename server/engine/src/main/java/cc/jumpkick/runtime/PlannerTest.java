@@ -647,7 +647,8 @@ public final class PlannerTest {
         // Worker jars feed both the forked JVM and the TestStamp
         // nested-engine CLI modules enrich with engine + every PluginJar so the stamp
         // matches what the suite actually loads — same set forecast uses.
-        Map<String, String> workerJars = testStampWorkerJars(in.dir(), projectUnderTest);
+        Map<String, String> workerJars =
+                PlannerSetup.awaitWorkerSiblings(ctx, in, testStampWorkerJars(in.dir(), projectUnderTest));
         Map<String, String> profileEnv = TestLaunch.profileEnv(projectUnderTest, in.profileName());
         WorkerEnv testEnv = TestLaunch.withFastTierWalls(
                 TestLaunch.testEnvironment(ctx, in, projectUnderTest).with(profileEnv), effectiveSel);

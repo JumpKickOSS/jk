@@ -28,7 +28,6 @@ import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.FileHashMemo;
-import cc.jumpkick.test.SuiteReads;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -904,7 +903,7 @@ public final class PreflightMemo {
             if (!skipTests && project != null) {
                 for (String token : MemoInputs.testInputs(moduleDir, project, found)) feed(md, "test:" + token);
             }
-            return new Known(Hashing.hex(md.digest()) + SettledReads.READS + SuiteReads.digest(found));
+            return new Known(Hashing.hex(md.digest()) + SettledReads.READS + MemoInputs.readsDigest(moduleDir, found));
         } catch (Exception e) {
             return uncertain(moduleDir, e);
         }
