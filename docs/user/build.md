@@ -65,7 +65,12 @@ in a dependency recompiles and re-packages that dependency and re-runs the tests
 but leaves every consumer's compile cached: no compiler forks. A change to a public signature, an
 inlined constant or an inline function recompiles the consumers, and `jk explain -v` names
 the dependency whose API moved. Annotation processors are keyed on their full content, so a
-processor jar change always recompiles the modules that run it. A jar's ABI is read from its
+processor jar change always recompiles the modules that run it. A compile that runs processors,
+and every Groovy compile, also keys each dependency's `META-INF` resources (service files,
+extension modules), which a processor or groovyc reads besides the API; a jar that registers a
+global Groovy AST transform, and every dependency of a compile that asks javac to find its
+processors on the classpath (`-proc:full` with no processor path), are keyed on their full
+content, since their bodies run in the compile. A jar's ABI is read from its
 central directory as a stream, a window of names at a time, so a bundle jar of several hundred
 thousand classes is keyed in the same few megabytes of engine heap as a small one.
 

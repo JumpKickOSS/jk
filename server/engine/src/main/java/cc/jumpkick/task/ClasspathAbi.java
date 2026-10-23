@@ -17,7 +17,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
+import java.util.zip.ZipInputStream;
 
 /**
  * Whole-entry JVM ABI token for a jar or classes directory. {@code abi:<sha256>} of the sorted
@@ -60,6 +62,75 @@ public final class ClasspathAbi {
         AbiMemo.put(MEMO_NAMESPACE + identity, abi);
         return abi;
     }
+
+    /** Memo namespace of {@link #resources}: its own shape, apart from the ABI's. */
+    private static final String RESOURCES_NAMESPACE = "meta-inf.1:";
+
+    /**
+     * The entry's {@code META-INF} resources by name and content: {@code res:<sha256>}, or {@code
+     * res:none} when it has none. An annotation processor reads them through its {@code Filer} or
+     * the class loader, and groovyc reads its extension modules and global AST transforms from
+     * them, so a compile that runs either keys them beside the ABI. Memoized on the entry's content.
+     */
+    public static String resources(Path entry) throws IOException {
+        Path abs = entry.toAbsolutePath().normalize();
+        String identity = ClasspathFingerprint.entry(abs);
+        if (identity.startsWith("missing:")) return "res:" + identity;
+        String hit = AbiMemo.get(RESOURCES_NAMESPACE + identity);
+        if (hit != null) return hit;
+        Map<String, String> found = new TreeMap<>();
+        if (Files.isDirectory(abs)) {
+            Path metaInf = abs.resolve("META-INF");
+            PathUtil.forEachRegularFile(metaInf, (f, a) -> {
+                String rel = abs.relativize(f).toString().replace('\\', '/');
+                if (!rel.endsWith(".class")
+                        && !BuildStamps.isStampFile(f.getFileName().toString())) {
+                    found.put(rel, FileHashMemo.contentHash(f.toAbsolutePath().normalize(), a));
+                }
+            });
+        } else {
+            try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(abs))) {
+                for (ZipEntry e = zip.getNextEntry(); e != null; e = zip.getNextEntry()) {
+                    String name = e.getName();
+                    if (e.isDirectory() || !name.startsWith("META-INF/") || name.endsWith(".class")) continue;
+                    found.put(name, Hashing.sha256Hex(zip.readAllBytes()));
+                }
+            } catch (ZipException notAZip) {
+                // Not an archive: nothing beside its classes.
+            }
+        }
+        Lines digest = new Lines();
+        found.forEach((name, sha) -> digest.accept(name + ":" + sha));
+        String token = found.isEmpty() ? "res:none" : "res:" + digest.hex();
+        AbiMemo.put(RESOURCES_NAMESPACE + identity, token);
+        return token;
+    }
+
+    /** The service file a jar lists its global Groovy AST transforms in. */
+    private static final String GLOBAL_TRANSFORMS = "META-INF/services/org.codehaus.groovy.transform.ASTTransformation";
+
+    /** Whether the entry registers a global Groovy AST transform, which runs on every groovyc compile it is on. */
+    public static boolean hasGlobalTransform(Path entry) throws IOException {
+        Path abs = entry.toAbsolutePath().normalize();
+        if (Files.isDirectory(abs)) return Files.isRegularFile(abs.resolve(GLOBAL_TRANSFORMS));
+        if (!Files.isRegularFile(abs)) return false;
+        String identity = TRANSFORMS_NAMESPACE + ClasspathFingerprint.entry(abs);
+        String hit = AbiMemo.get(identity);
+        if (hit != null) return Boolean.parseBoolean(hit);
+        boolean found = false;
+        try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(abs))) {
+            for (ZipEntry e = zip.getNextEntry(); e != null && !found; e = zip.getNextEntry()) {
+                found = e.getName().equals(GLOBAL_TRANSFORMS);
+            }
+        } catch (ZipException notAZip) {
+            found = false;
+        }
+        AbiMemo.put(identity, Boolean.toString(found));
+        return found;
+    }
+
+    /** Memo namespace of {@link #hasGlobalTransform}, keyed on the jar's content. */
+    private static final String TRANSFORMS_NAMESPACE = "groovy-transforms.1:";
 
     /**
      * The token of a classes tree that is not on disk, from the compile record that produced it:

@@ -77,7 +77,8 @@ class MainStampParityTest {
         assertThat(fresh(out, sources, recomputed)).isTrue();
         assertThat(ActionKey.javacClasspathTokens(recomputed))
                 .as("the sibling compiler's output dir is a classpath token")
-                .contains("cp:" + ClasspathAbi.token(layout.kotlinClassesDir()));
+                .contains("cp:" + ClasspathAbi.token(layout.kotlinClassesDir()) + "+"
+                        + ClasspathAbi.resources(layout.kotlinClassesDir()));
 
         // A request without the Kotlin classes dir hashes a different classpath → never fresh.
         CompileRequest javaOnly = PlannerCompile.mainCompileRequest(

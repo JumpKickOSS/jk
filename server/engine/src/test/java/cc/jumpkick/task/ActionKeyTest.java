@@ -477,15 +477,16 @@ class ActionKeyTest {
                 .release(25)
                 .build();
 
+        // A compile that runs processors spells each classpath entry by its ABI and its META-INF.
+        String cp = ClasspathAbi.token(dep) + "+" + ClasspathAbi.resources(dep);
         List<String> lines = ActionKey.javacClasspathTokens(request);
-        assertThat(lines)
-                .containsExactly("cp:" + ClasspathAbi.token(dep), "pp:" + ClasspathFingerprint.entry(processor));
+        assertThat(lines).containsExactly("cp:" + cp, "pp:" + ClasspathFingerprint.entry(processor));
         assertThat(lines.get(0)).startsWith("cp:abi:");
         assertThat(lines.get(1)).startsWith("pp:file:");
 
         var snapshot = ActionKey.snapshotInputs(request);
         assertThat(snapshot)
-                .containsEntry("cp:" + PortablePath.key(dep), ClasspathAbi.token(dep))
+                .containsEntry("cp:" + PortablePath.key(dep), cp)
                 .containsEntry("pp:" + PortablePath.key(processor), ClasspathFingerprint.entry(processor));
     }
 
