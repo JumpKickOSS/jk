@@ -203,6 +203,54 @@ class JavaAbiCompileAvoidanceE2eTest {
                 .isNotEqualTo(usesLibInitial);
     }
 
+    /**
+     * A class of the same package in another module sees lib's package-private members: javac
+     * inlines a package-private constant into it, so the constant is part of lib's ABI.
+     */
+    @Test
+    void a_same_package_consumer_recompiles_when_a_package_private_constant_changes(@TempDir Path tmp)
+            throws Exception {
+        Path cache = TestCaches.dir("abi-avoidance-cache");
+        Path ws = workspace(tmp);
+        Path limits = ws.resolve("lib/src/com/example/Limits.java");
+        Files.writeString(limits, """
+                package com.example;
+
+                final class Limits {
+                    static final int MAX = 1;
+
+                    private Limits() {}
+                }
+                """);
+        Path samePackage = Files.createDirectories(ws.resolve("app/src/com/example"));
+        Files.writeString(samePackage.resolve("ReadsLimits.java"), """
+                package com.example;
+
+                public final class ReadsLimits {
+                    private ReadsLimits() {}
+
+                    public static int max() {
+                        return Limits.MAX;
+                    }
+                }
+                """);
+        lock(ws, cache);
+        BuildLayout app = BuildLayout.of(ws, ws.resolve("app"), JkBuildParser.parse(ws.resolve("app/jk.toml")));
+        Path reads = app.classesDir().resolve("com/example/ReadsLimits.class");
+
+        build(ws, cache, "initial");
+        byte[] before = Files.readAllBytes(reads);
+
+        Files.writeString(limits, Files.readString(limits).replace("MAX = 1", "MAX = 2"));
+        Steps edited = build(ws, cache, "after lib's package-private constant changed");
+        assertThat(edited.labels("app", TaskNames.COMPILE_JAVA))
+                .as("a package-private constant is a same-package consumer's compile input")
+                .anyMatch(l -> l.startsWith("compiling "));
+        assertThat(Files.readAllBytes(reads))
+                .as("javac copied the new constant into the consumer")
+                .isNotEqualTo(before);
+    }
+
     private static void assertNotCompiled(Steps steps, String when) {
         List<String> labels = steps.labels("app", TaskNames.COMPILE_JAVA);
         assertThat(labels).as("app compile labels " + when).noneMatch(l -> l.startsWith("compiling "));

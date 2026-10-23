@@ -18,10 +18,13 @@ import org.objectweb.asm.RecordComponentVisitor;
 
 /**
  * Language-neutral ABI fingerprint of a JVM class file. Gradle {@code ApiMemberSelector} semantics
- * (not Gradle's compiler): public/protected members, generic {@code Signature}, {@code throws},
- * {@code ConstantValue} of {@code static final} fields, API annotations with values, record
- * components, permitted subclasses, {@code module-info}. Method bodies, private members, debug, and
- * {@code kotlin.Metadata} stay out. Named nested classes fold into their owner's fingerprint
+ * (not Gradle's compiler), widened to what a class of the same package sees: public, protected and
+ * package-private members (javac inlines a package-private constant into, and links a
+ * package-private method from, any class of its package, a same-package test compile included),
+ * generic {@code Signature}, {@code throws}, {@code ConstantValue} of {@code static final} fields,
+ * API annotations with values, record components, permitted subclasses, {@code module-info}.
+ * Method bodies, private and synthetic package-private members, debug, and {@code kotlin.Metadata}
+ * stay out. Named nested classes fold into their owner's fingerprint
  * ({@link #of(byte[], SortedMap)}) for affected-test ranking.
  */
 public final class ClassAbi {
@@ -32,7 +35,7 @@ public final class ClassAbi {
      * Names the shape of {@link #apiLines}. Moves with any change to what a line carries or how
      * it is rendered, so a token memoized under the earlier shape is never served again.
      */
-    static final String FORMAT = "1";
+    static final String FORMAT = "2";
 
     private ClassAbi() {}
 
@@ -298,7 +301,8 @@ public final class ClassAbi {
     }
 
     private static boolean isApi(int access) {
-        return (access & (Opcodes.ACC_PUBLIC | Opcodes.ACC_PROTECTED)) != 0;
+        if ((access & (Opcodes.ACC_PUBLIC | Opcodes.ACC_PROTECTED)) != 0) return true;
+        return !isPrivate(access) && (access & Opcodes.ACC_SYNTHETIC) == 0;
     }
 
     private static boolean isPrivate(int access) {
