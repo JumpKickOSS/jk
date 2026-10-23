@@ -229,7 +229,8 @@ public final class WorkerEnv {
      * those, so the worker goes where the request goes and draws where it draws rather than where
      * the engine's spawning shell did; {@code extras} on top in their own order. Windows variable
      * names are case-insensitive, so there {@code Path} passes the {@code PATH} rule and lands under
-     * its own spelling.
+     * its own spelling, a later {@code PATH} replaces it rather than standing beside it (the child
+     * would read whichever the OS meets first), and a lookup by either spelling finds it.
      */
     static Map<String, String> compose(
             Map<String, String> engine,
@@ -237,7 +238,8 @@ public final class WorkerEnv {
             boolean inherit,
             Map<String, String> extras,
             boolean caseInsensitive) {
-        Map<String, String> out = new LinkedHashMap<>();
+        Map<String, String> out =
+                caseInsensitive ? new TreeMap<>(String.CASE_INSENSITIVE_ORDER) : new LinkedHashMap<>();
         for (Map.Entry<String, String> e : engine.entrySet()) {
             if (inherit || allowed(e.getKey(), caseInsensitive)) out.put(e.getKey(), e.getValue());
         }

@@ -213,4 +213,13 @@ class WorkerEnvTest {
                 .isEqualTo(tmp.resolve("scratch").toAbsolutePath());
         assertThat(env.extras()).as("an unset forward is absent, not empty").doesNotContainKey("JK_UNSET_ON_PURPOSE");
     }
+
+    @Test
+    void on_windows_a_later_PATH_replaces_the_inherited_Path_and_either_spelling_finds_it() {
+        Map<String, String> out =
+                WorkerEnv.compose(Map.of("Path", "C:\\Windows"), Map.of(), false, Map.of("PATH", "C:\\node"), true);
+        assertThat(out).hasSize(1);
+        assertThat(out.get("PATH")).isEqualTo("C:\\node");
+        assertThat(out.get("Path")).isEqualTo("C:\\node");
+    }
 }
