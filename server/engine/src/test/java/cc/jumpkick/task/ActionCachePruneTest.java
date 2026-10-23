@@ -51,25 +51,23 @@ class ActionCachePruneTest {
     }
 
     /**
-     * Supersession outranks age: a key that is neither its task's pointer nor in its generation list
-     * can never be hit again, so taking it costs nothing — while the older key it jumps ahead of is
-     * still reachable and would cost a recompute.
+     * Last use alone ranks: a key its task pointer no longer names is not dead — a revert, a branch
+     * switch or a sibling worktree names it again, and the pointer only says which checkout stored
+     * last — so the recently used one stays and the older one goes first.
      */
     @Test
-    void takes_a_superseded_entry_before_an_older_reachable_one(@TempDir Path root) throws IOException {
+    void takes_the_least_recently_used_key_first_whatever_the_pointer_names(@TempDir Path root) throws IOException {
         Cas cas = new Cas(root);
-        String dead = blob(cas, 300_000, 'd', RECENT);
-        String reachable = blob(cas, 100_000, 'r', OLDER);
-        Path supersededKey = key(root, "key-churn", "compile-main@churn", RECENT, dead);
-        Path reachableKey = key(root, "key-stable", "compile-main@stable", OLDER, reachable);
-        pointAt(root, "compile-main@churn", "key-churn-newer"); // its inputs moved on
+        String recent = blob(cas, 100_000, 'd', RECENT);
+        String older = blob(cas, 300_000, 'r', OLDER);
+        Path recentKey = key(root, "key-churn", "compile-main@churn", RECENT, recent);
+        Path olderKey = key(root, "key-stable", "compile-main@stable", OLDER, older);
+        pointAt(root, "compile-main@churn", "key-churn-newer"); // another checkout stored last
 
         var report = ActionCachePrune.run(root, cas, budgetOnly(150_000), Set.of(), false);
 
-        assertThat(supersededKey).doesNotExist();
-        assertThat(reachableKey)
-                .as("the older key is still reachable, so it outranks a young dead one")
-                .exists();
+        assertThat(olderKey).doesNotExist();
+        assertThat(recentKey).as("used recently, whatever the pointer names").exists();
         assertThat(report.deletedKeys()).isEqualTo(1);
     }
 
@@ -176,13 +174,13 @@ class ActionCachePruneTest {
         assertThat(Files.readString(gens)).isEqualTo("checkout-a gen-previous\n");
     }
 
-    /** A key only another checkout's generation list names is still reachable, so it is not superseded. */
+    /** A key only another checkout's generation list names ranks by its last use like any other. */
     @Test
-    void a_generation_another_checkout_keeps_is_not_superseded(@TempDir Path root) throws IOException {
+    void a_generation_another_checkout_keeps_ranks_by_last_use(@TempDir Path root) throws IOException {
         Cas cas = new Cas(root);
-        String dead = blob(cas, 300_000, 'd', RECENT);
-        String theirs = blob(cas, 100_000, 't', OLDER);
-        Path supersededKey = key(root, "key-churn", "native-image@mod", RECENT, dead);
+        String recent = blob(cas, 100_000, 'd', RECENT);
+        String theirs = blob(cas, 300_000, 't', OLDER);
+        Path recentKey = key(root, "key-churn", "native-image@mod", RECENT, recent);
         Path theirKey = key(root, "key-theirs", "native-image@mod", OLDER, theirs);
         pointAt(root, "native-image@mod", "key-current");
         Path tasks = root.resolve("actions").resolve("tasks");
@@ -190,8 +188,8 @@ class ActionCachePruneTest {
 
         var report = ActionCachePrune.run(root, cas, budgetOnly(150_000), Set.of(), false);
 
-        assertThat(supersededKey).doesNotExist();
-        assertThat(theirKey).exists();
+        assertThat(theirKey).doesNotExist();
+        assertThat(recentKey).exists();
         assertThat(report.deletedKeys()).isEqualTo(1);
     }
 

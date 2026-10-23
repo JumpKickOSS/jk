@@ -9,7 +9,6 @@ import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
-import cc.jumpkick.host.DeleteParallelism;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -29,7 +28,6 @@ import cc.jumpkick.task.HeavyActionPolicy;
 import cc.jumpkick.task.TmpGc;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -37,10 +35,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.LongAdder;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Cache-maintenance plans for {@code jk cache clean}, {@code jk cache nuke}, {@code jk storage
@@ -243,59 +238,30 @@ public final class CachePlans {
     }
 
     /**
-     * Project-scoped action-cache invalidation ({@code jk clean -F}): drop action-cache
-     * keys/tasks/incremental state for {@code projectDir} and its workspace modules (match by
-     * output {@link ActionKey#taskTag} or INPUT path under a module). CAS blobs are left for a later
-     * {@code jk cache clean}.
+     * Project-scoped forgetting: drop the incremental compiler state and the preflight memos of
+     * {@code projectDir} and its workspace modules, so the next build re-derives every verdict from
+     * its keys. The action records themselves stay: they are content-keyed and every checkout of
+     * the project shares them; removing them is {@code jk cache clean} / {@code nuke}.
      */
     public static BuildPlan clearBuildPlan(Path cacheRoot, Path projectDir, boolean dryRun) {
         Task clearStep = Task.builder("clear")
                 .ticks(1)
                 .execute(ctx -> {
-                    ctx.label(dryRun ? "Inspecting build cache…" : "Clearing build cache…");
+                    ctx.label(dryRun ? "Inspecting build state…" : "Clearing build state…");
                     var acc = new Tally();
                     List<Path> allModuleDirs = resolveModuleDirs(projectDir);
                     Path actionsDir = CacheTree.ACTIONS.under(cacheRoot);
                     if (Files.isDirectory(actionsDir)) {
-                        List<Path> moduleDirs = allModuleDirs;
-                        Set<String> tags = tagsFor(moduleDirs);
-                        List<String> prefixes =
-                                moduleDirs.stream().map(p -> p.toString()).toList();
-                        Set<String> deletedTaskIds = ConcurrentHashMap.newKeySet();
-
-                        // 1) key records: match by qualified-task tag, or by an INPUT path under a module dir.
-                        // Thousands of small files read, matched and unlinked — across the delete pool.
-                        Path keysDir = ActionTree.KEYS.under(actionsDir);
-                        if (Files.isDirectory(keysDir)) {
-                            List<Path> keys = new ArrayList<>();
-                            PathUtil.forEachChild(keysDir, (key, attrs) -> {
-                                if (attrs.isRegularFile()) keys.add(key);
-                                return true;
-                            });
-                            forEachOnDeletePool(keys, key -> {
-                                String content = Files.readString(key);
-                                String taskId = taskIdOf(content);
-                                boolean hit = (taskId != null && tags.contains(tagOf(taskId)))
-                                        || inputsUnder(content, prefixes);
-                                if (!hit) return;
-                                if (taskId != null) deletedTaskIds.add(taskId);
-                                acc.file(Files.size(key));
-                                if (!dryRun) Files.deleteIfExists(key);
-                            });
-                        }
-
-                        // 2) task pointers + incremental state, keyed by the same qualified-task id.
+                        Set<String> tags = tagsFor(allModuleDirs);
                         List<Path> qualified = new ArrayList<>();
-                        qualified.addAll(qualifiedChildren(ActionTree.TASKS.under(actionsDir), tags, deletedTaskIds));
                         for (Path tree : ActionTree.incrementalUnder(actionsDir)) {
-                            qualified.addAll(qualifiedChildren(tree, tags, deletedTaskIds));
+                            qualified.addAll(qualifiedChildren(tree, tags, Set.of()));
                         }
                         PathUtil.Removed removed = dryRun ? PathUtil.measureTrees(qualified) : deleteAll(qualified);
                         acc.add(removed);
                     }
-                    // 3) preflight memos, both copies — their "clean" conclusions were derived
-                    // from the action keys just deleted; a surviving memo turns clear into a no-op,
-                    // and the load prefers the durable copy under the cache root.
+                    // Preflight memos, both copies: a surviving memo would answer the next build
+                    // from the conclusions this clear is there to drop.
                     for (Path m : allModuleDirs) {
                         for (Path preflight : List.of(
                                 m.resolve(BuildLayout.TARGET).resolve(".jk").resolve("preflight"),
@@ -400,15 +366,6 @@ public final class CachePlans {
         return tags;
     }
 
-    /** First {@code TASK <id>} line of an action record, or {@code null}. */
-    private static @Nullable String taskIdOf(String recordContent) {
-        for (String line : recordContent.split("\n", -1)) {
-            if (line.startsWith("TASK "))
-                return line.substring("TASK ".length()).trim();
-        }
-        return null;
-    }
-
     /**
      * The {@code @<tag>} suffix of a qualified task id, or {@code ""} for an unqualified name. A
      * {@code tasks/} entry may be the pointer's generation list or that list's lock rather than the
@@ -424,23 +381,6 @@ public final class CachePlans {
         }
         int at = name.lastIndexOf('@');
         return at < 0 ? "" : name.substring(at + 1);
-    }
-
-    /** True when any {@code INPUT} source/classpath path in the record is under one of {@code prefixes}. */
-    private static boolean inputsUnder(String recordContent, List<String> prefixes) {
-        for (String line : recordContent.split("\n", -1)) {
-            if (!line.startsWith("INPUT ")) continue;
-            String body = line.substring("INPUT ".length());
-            int sp = body.indexOf(' ');
-            if (sp < 0) continue;
-            String pathKey = body.substring(sp + 1);
-            if (pathKey.startsWith("cp:")) pathKey = pathKey.substring(3);
-            else if (pathKey.startsWith("pp:")) pathKey = pathKey.substring(3);
-            for (String prefix : prefixes) {
-                if (pathKey.equals(prefix) || pathKey.startsWith(prefix + "/")) return true;
-            }
-        }
-        return false;
     }
 
     /**
@@ -462,33 +402,6 @@ public final class CachePlans {
         var removed = new PathUtil.Removed();
         PathUtil.deleteTrees(roots, removed);
         return removed;
-    }
-
-    /** {@code body} over every item on the delete pool; the first failure is rethrown. */
-    private static void forEachOnDeletePool(List<Path> items, IoConsumer body) throws IOException {
-        try {
-            DeleteParallelism.pool()
-                    .submit(() -> items.parallelStream().forEach(item -> {
-                        try {
-                            body.accept(item);
-                        } catch (IOException e) {
-                            throw new UncheckedIOException(e);
-                        }
-                    }))
-                    .get();
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof UncheckedIOException unchecked) throw unchecked.getCause();
-            if (cause instanceof RuntimeException runtime) throw runtime;
-            throw new IOException(cause);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("interrupted while clearing the build cache", e);
-        }
-    }
-
-    private interface IoConsumer {
-        void accept(Path item) throws IOException;
     }
 
     /** Files and bytes the clear reclaimed, written from the pool's threads. */
