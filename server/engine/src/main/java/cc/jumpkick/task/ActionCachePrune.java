@@ -226,11 +226,11 @@ public final class ActionCachePrune {
     }
 
     /**
-     * Superseded first — those can never be hit again, so they cost nothing to take — then oldest
-     * last use.
+     * Oldest last use first, and nothing else. A key the task pointer no longer names is not dead:
+     * its inputs come back with a revert, a branch switch or a sibling worktree, and the pointer is
+     * shared by every checkout of the project, so "superseded" only says which checkout stored last.
      */
-    private static final Comparator<Entry> EVICTION_ORDER =
-            Comparator.comparingInt((Entry e) -> e.superseded() ? 0 : 1).thenComparingLong(Entry::mtime);
+    private static final Comparator<Entry> EVICTION_ORDER = Comparator.comparingLong(Entry::mtime);
 
     /** Evict everything in {@code candidates} older than {@code window}; returns the bytes freed. */
     private static long expire(List<Entry> candidates, Duration window, long now, Evictor evictor) throws IOException {

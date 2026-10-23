@@ -9,7 +9,7 @@ jk build -P        # guard scripts, no JUnit (same as test -P)
 jk build -S
 jk build -r                    # ignore action cache (full rebuild): every step runs, plugin steps too
 jk clean                # delete target/; unchanged inputs restore from cache
-jk clean -F                    # also invalidate this project's action-cache entries
+jk clean -F                    # also node_modules; the shared action cache stays
 ```
 
 `jk build` uses [`jk-lock.toml`](lockfile.md) and does **not** re-resolve. Packaging

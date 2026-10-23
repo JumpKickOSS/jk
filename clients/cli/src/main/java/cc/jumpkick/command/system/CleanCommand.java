@@ -3,14 +3,9 @@ package cc.jumpkick.command.system;
 
 import cc.jumpkick.builds.CheckoutSlot;
 import cc.jumpkick.cli.api.CliOutput;
-import cc.jumpkick.cli.api.CliPaths;
-import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
-import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineProbe;
-import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
-import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -22,7 +17,6 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
-import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.util.FileHolders;
@@ -37,13 +31,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
-import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk clean}: remove per-module {@code target/} ({@code -A} keeps final jars).
- * With global {@code --force}, also invalidates this project's action-cache entries so the next
- * build starts from scratch. Shared-cache hygiene is {@code jk cache clean} / {@code jk storage
- * clean}.
+ * {@code jk clean}: remove per-module {@code target/} ({@code -A} keeps final jars); with global
+ * {@code --force}, a node module's {@code node_modules} too. The action cache is shared by every
+ * checkout of the project and is left alone: the next build restores what its keys still name, and
+ * {@code jk build --force} runs every step without reading a record. Shared-cache hygiene is {@code
+ * jk cache clean} / {@code jk storage clean}.
  */
 public final class CleanCommand implements CliCommand {
 
@@ -59,16 +53,13 @@ public final class CleanCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(
-                Opt.flag("Delete only target/ intermediates; keep artifacts.", "-A", "--keep-artifacts"),
-                CommonOpts.cacheDir());
+        return List.of(Opt.flag("Delete only target/ intermediates; keep artifacts.", "-A", "--keep-artifacts"));
     }
 
     @Override
     public int run(Invocation in) throws IOException {
         boolean keepArtifacts = in.isSet("keep-artifacts");
         boolean force = GlobalOptions.from(in).force;
-        Path cacheDirOverride = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         Path dir = GlobalOptions.from(in).workingDir();
         Path workspaceRoot = resolveWorkspaceRoot(dir);
         List<String> warnings = new ArrayList<>();
@@ -130,12 +121,6 @@ public final class CleanCommand implements CliCommand {
             CommandWedge.printOk("Clean", removed + " " + stats + " " + inTime);
         }
 
-        if (force) {
-            // The hammer's second half: this project's action-cache entries go too, so the
-            // next build genuinely starts from scratch. No prompt — --force IS the consent.
-            int cleared = clearProjectActionCache(dir, cacheDirOverride);
-            if (cleared != 0) return cleared;
-        }
         return 0;
     }
 
@@ -314,41 +299,5 @@ public final class CleanCommand implements CliCommand {
 
     private static Path resolveWorkspaceRoot(Path dir) {
         return WorkspaceScan.findRoot(dir).orElse(dir);
-    }
-
-    /** Invalidate this project's (+ workspace's) action-cache entries for {@code --force}. */
-    private static int clearProjectActionCache(Path projectDir, @Nullable Path cacheDirOverride) {
-        if (!Files.isRegularFile(ManifestPaths.manifestIn(projectDir))) {
-            // Not a project dir: nothing project-scoped to clear; the file clean already ran.
-            return 0;
-        }
-        // Match the build verbs: action-cache tags/INPUT paths are keyed on the realpath of the
-        // module root. Without this, macOS /var → /private/var (and other symlink roots) make
-        // `jk clean -F` miss every entry the build just wrote.
-        try {
-            projectDir = projectDir.toRealPath();
-        } catch (IOException ignored) {
-            projectDir = projectDir.toAbsolutePath().normalize();
-        }
-        Path root = CacheCommand.resolveCacheRoot(cacheDirOverride);
-        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(new GlobalOptions());
-
-        var summary = new EngineRequests.CacheMaintSummary[1];
-        ConsoleSpec spec = CacheCommand.clearSpec(
-                false,
-                () -> summary[0] != null ? summary[0].files() : 0L,
-                () -> summary[0] != null ? summary[0].bytes() : 0L);
-        try {
-            var result = EngineClient.runCacheMaintenance(
-                    EnginePaths.current(),
-                    new EngineRequests.CacheMaintRequest("clear", root, false, false, projectDir),
-                    steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
-                    CacheCommand::printWait,
-                    summary);
-            return result.success() ? 0 : 1;
-        } catch (IOException e) {
-            CommandWedge.printFail("Clean", e.getMessage());
-            return Exit.SOFTWARE;
-        }
     }
 }

@@ -125,8 +125,12 @@ class BuildCacheTest {
         assertThat(stdout).contains("Built");
     }
 
+    /**
+     * The action cache is every checkout's: clean, with or without --force, leaves it; a forced
+     * build runs every step without reading it and overwrites what it produces, deleting nothing.
+     */
     @Test
-    void clean_force_also_invalidates_the_project_action_cache(@TempDir Path tempDir) throws Exception {
+    void clean_leaves_the_shared_action_cache_and_a_forced_build_overwrites_it(@TempDir Path tempDir) throws Exception {
         run("new", "--name", "widget", tempDir.toString());
         Path src = tempDir.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
@@ -137,26 +141,23 @@ class BuildCacheTest {
         Path cache = tempDir.resolve("cache");
         run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString());
         Path keys = cache.resolve("actions/keys");
-        assertThat(countKeys(keys)).as("build populated the action cache").isPositive();
+        long built = countKeys(keys);
+        assertThat(built).as("build populated the action cache").isPositive();
 
-        // Plain clean: files go, the action cache STAYS (the next build restores from it).
-        assertThat(run("clean", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
-                .isEqualTo(0);
+        assertThat(run("clean", "-C", tempDir.toString())).isEqualTo(0);
         assertThat(tempDir.resolve("target")).doesNotExist();
-        assertThat(countKeys(keys)).isPositive();
+        assertThat(countKeys(keys)).isEqualTo(built);
 
-        // The hammer: clean --force ALSO invalidates this project's action-cache entries.
-        assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
-                .as("rebuild after plain clean")
-                .isEqualTo(0);
-        int cleanForce = run("clean", "--force", "-C", tempDir.toString(), "--cache-dir", cache.toString());
-        assertThat(cleanForce)
-                .as("clean --force must exit 0 (action-cache clear is part of the contract)")
-                .isEqualTo(0);
-        assertThat(tempDir.resolve("target")).doesNotExist();
+        assertThat(run("clean", "--force", "-C", tempDir.toString())).isEqualTo(0);
         assertThat(countKeys(keys))
-                .as("clean --force left no action-cache entries for the project")
-                .isZero();
+                .as("clean --force leaves every checkout's records")
+                .isEqualTo(built);
+
+        assertThat(run("build", "--force", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
+                .isEqualTo(0);
+        assertThat(countKeys(keys))
+                .as("a forced build overwrites, deleting nothing")
+                .isGreaterThanOrEqualTo(built);
     }
 
     /** Count action-cache key files; always closes the directory stream (macOS handle leak). */

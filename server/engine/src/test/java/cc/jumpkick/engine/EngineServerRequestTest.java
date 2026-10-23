@@ -7,10 +7,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.AuditRequest;
@@ -637,12 +639,13 @@ class EngineServerRequestTest extends EngineServerHarness {
     }
 
     /**
-     * Engine-hosted {@code jk clean -F} round-trip: a real server over the socket invalidates the
-     * action-cache entries for a fixture project, matching a record by its qualified-task tag while
-     * leaving an unrelated project's record untouched. Also asserts the {@code .prune.lock} guard.
+     * Engine-hosted project clear round-trip: a real server over the socket drops the project's
+     * incremental compiler state, matched by its qualified-task tag, and leaves every action record
+     * and task pointer alone — they are content-keyed and shared by every checkout. Also asserts the
+     * {@code .prune.lock} guard.
      */
     @Test
-    void cache_clear_request_invalidates_the_projects_entries_over_the_socket() throws Exception {
+    void cache_clear_request_drops_the_projects_state_and_keeps_shared_records_over_the_socket() throws Exception {
         Path cache = shortTempDir();
         Path project = shortTempDir();
         Files.writeString(project.resolve("jk.toml"), """
@@ -662,6 +665,13 @@ class EngineServerRequestTest extends EngineServerHarness {
         Files.writeString(cache.resolve("actions/tasks/compile-main@" + tag), "mine");
         Path other = cache.resolve("actions/keys/other");
         Files.writeString(other, "TASK compile-main@ffffffffffff\nKEY other\nOUTPUT deadbeef foo.class\n");
+        Path state = ActionKey.stateDir(
+                ActionTree.INCREMENTAL_JAVA.under(cache.resolve("actions")),
+                TaskNames.COMPILE_MAIN,
+                BuildLayout.of(projectReal, JkBuildParser.parse(projectReal.resolve("jk.toml")))
+                        .classesDir());
+        Files.createDirectories(state);
+        Files.writeString(state.resolve("analysis"), "zinc");
 
         EnginePaths.Paths p = paths(shortTempDir());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
@@ -689,10 +699,12 @@ class EngineServerRequestTest extends EngineServerHarness {
         assertThat(buildError).isNull();
         assertThat(planFinish).isNotNull();
         assertThat(Jsonl.bool(planFinish, "success", false)).isTrue();
-        assertThat(Jsonl.longValue(planFinish, "cacheFiles", -1)).isEqualTo(2); // record + pointer
-        assertThat(Files.exists(mine)).isFalse();
-        assertThat(Files.exists(cache.resolve("actions/tasks/compile-main@" + tag)))
+        assertThat(Files.exists(state))
+                .as("this checkout's incremental state goes")
                 .isFalse();
+        assertThat(Files.exists(mine)).as("the shared record stays").isTrue();
+        assertThat(Files.exists(cache.resolve("actions/tasks/compile-main@" + tag)))
+                .isTrue();
         assertThat(Files.exists(other)).isTrue();
         assertThat(Files.exists(cache.resolve(".prune.lock"))).isTrue();
 

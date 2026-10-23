@@ -21,9 +21,11 @@ jk self nuke          # jk-owned product dirs (not PATH, not JDKs)
 | **Store** (`JK_STORE_DIR`) | Maven-layout `repos/<origin>/` + `.jk` memos (deps, workers) — one tree per repository *origin*, never per name ([Repositories](repositories.md#store-layout-one-tree-per-origin)); `libs.global.toml`, cloned Giter8 catalogs under `templates/`, provisioned build tools under `tools/` (Kotlin, Maven, Gradle, the build-logic `.kts` host). With `[m2] integration` on (default) a fetched jar is also written through to the Maven local repo, and a digest-matching file already there is copied in instead of downloaded; the store is what a build reads. | `jk storage nuke` (does **not** delete `~/.m2`) |
 | **Project `target/`** | This checkout’s outputs | `jk clean` |
 
-`jk clean` does **not** by itself force a full recompute: unchanged inputs restore from
-the action cache. `--force` also invalidates this project’s action-cache entries — every
-checkout's, since the entries are shared; a neighbour worktree rebuilds them on its next build.
+`jk clean` does **not** force a full recompute: unchanged inputs restore from the action
+cache, which every checkout of the project shares and `jk clean` (with or without `-F`) leaves
+alone. To run every step anyway, `jk build --force` (or `--redo`) skips reading the cache and
+overwrites the records it produces, so no other checkout loses anything. Removing records is
+`jk cache clean` / `jk cache nuke`.
 
 A record is written only after every output it names is in the cache, and a step that names an
 output it did not write is not recorded at all, so a build that runs out of disk part-way leaves
