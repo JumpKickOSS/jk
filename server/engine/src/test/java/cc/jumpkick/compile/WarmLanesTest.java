@@ -80,8 +80,8 @@ class WarmLanesTest {
                 .isEqualTo(1);
 
         second.compile.complete(ok());
-        awaitTrue(() -> WarmLanes.poolCount() == 0, "the idle pool is retired");
-        assertThat(pool.closing()).isTrue();
+        // The watcher takes the pool off the map, then closes it.
+        awaitTrue(() -> WarmLanes.poolCount() == 0 && pool.closing(), "the idle pool is retired");
     }
 
     @Test
