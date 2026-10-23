@@ -341,6 +341,7 @@ public final class JobWorkers {
             gc.finish();
             throw e;
         }
+        ExecutionSpeed.child(process);
         // Released when the process is gone, including a crash or a kill. onExit runs if it has
         // already exited. The GC log is read after the process has flushed it.
         process.onExit().whenComplete((code, error) -> {
