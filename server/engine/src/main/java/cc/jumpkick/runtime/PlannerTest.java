@@ -687,6 +687,7 @@ public final class PlannerTest {
                 PlannerTest::awaitTestGate);
         TestSummary result;
         TagExcludedCapture tagExcluded;
+        SuiteDiscovery.Recording recording = SuiteDiscovery.start(ctx.require(LAYOUT));
         try {
             // Module pin ([test] workers / [build] test-workers) wins over CLI for
             // hermetic opt-out. Auto hands the launcher the share; it applies the
@@ -704,7 +705,7 @@ public final class PlannerTest {
                     .withSuites(suites)
                     .withIntegrationResults(ctx.require(LAYOUT).integrationResultsDir())
                     .withAutoShare(auto)
-                    .withReadRecording(SuiteDiscovery.recordFlag(ctx.require(LAYOUT)));
+                    .withReadRecording(recording.flag());
             try {
                 result = TestLaunch.launch(ctx, in, launcher, runtimeCp, testWorkers, workerJars, testEnv, tagExcluded);
             } catch (TestLauncherFailure e) {
@@ -718,14 +719,18 @@ public final class PlannerTest {
         if (jacoco != null && coverageExec != null) {
             TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
         }
-        stampKey = SuiteDiscovery.settle(
+        stampKey = vouched(
                 ctx,
-                in.dir(),
-                ctx.require(LAYOUT),
+                in,
+                projectUnderTest,
                 effectiveSel,
-                keyedRoots(ctx, in, testEnv, testSrcs, runtimeCp, workerJars),
-                projectUnderTest.build().testNetworkAllowed(),
-                unlessMoved(ctx, suiteGuard, stampKey));
+                recording,
+                suiteGuard,
+                testEnv,
+                testSrcs,
+                runtimeCp,
+                workerJars,
+                stampKey);
         settle(
                 ctx,
                 in,
@@ -750,6 +755,34 @@ public final class PlannerTest {
         suiteInputs.addAll(ctx.get(TEST_RESOURCE_DIRS).orElse(List.of()));
         suiteInputs.addAll(testRtCp);
         return InputGuard.of(suiteInputs);
+    }
+
+    /**
+     * {@code stampKey} when nothing the suite read moved while it ran and it read nothing beyond the
+     * inputs its key was taken from ({@link SuiteDiscovery}); null otherwise, so no marker is stored.
+     */
+    private static @Nullable String vouched(
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            JkBuild project,
+            TestSelection selection,
+            SuiteDiscovery.Recording recording,
+            InputGuard guard,
+            WorkerEnv testEnv,
+            List<Path> testSrcs,
+            List<Path> runtimeCp,
+            Map<String, String> workerJars,
+            @Nullable String stampKey)
+            throws IOException {
+        return SuiteDiscovery.settle(
+                ctx,
+                in.dir(),
+                ctx.require(LAYOUT),
+                selection,
+                recording,
+                keyedRoots(ctx, in, testEnv, testSrcs, runtimeCp, workerJars),
+                project.build().testNetworkAllowed(),
+                unlessMoved(ctx, guard, stampKey));
     }
 
     /** Everything the run-tests stamp already hashes, as roots: what a suite reads there is no discovery. */
