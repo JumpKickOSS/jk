@@ -191,6 +191,8 @@ public final class ModuleInputProvenance {
     /** Record each built module's inputs and outputs. Best-effort: never fails a build. */
     public static void record(Path workspaceRoot, BuildGraph.Result graph, Map<Path, String> fingerprints) {
         if (graph == null || fingerprints == null || fingerprints.isEmpty()) return;
+        // The guard salt is the workspace's, not the module's: one reading of it serves every module.
+        Map<Path, String> saltByRoot = new LinkedHashMap<>();
         for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
             Path dir = unit.dir().toAbsolutePath().normalize();
             String fp = fingerprints.get(dir);
@@ -199,7 +201,7 @@ public final class ModuleInputProvenance {
                 BuildLayout layout = BuildLayout.of(workspaceRoot, dir, unit.manifest());
                 Path target = norm(layout.moduleTargetDir());
                 StringBuilder sb = new StringBuilder("inputs ").append(fp).append('\n');
-                String sources = PreflightMemo.sourceFingerprint(dir);
+                String sources = PreflightMemo.sourceFingerprint(dir, saltByRoot);
                 if (sources != null) sb.append("sources ").append(sources).append('\n');
                 Map<String, String> digests = new TreeMap<>();
                 for (Path tree : trees(layout)) {

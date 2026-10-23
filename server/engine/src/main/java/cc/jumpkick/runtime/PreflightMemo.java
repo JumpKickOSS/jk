@@ -828,10 +828,13 @@ public final class PreflightMemo {
      * from. Null when an input will not read.
      */
     public static @Nullable String sourceFingerprint(Path moduleDir) {
+        return sourceFingerprint(moduleDir, new LinkedHashMap<>());
+    }
+
+    /** As {@link #sourceFingerprint(Path)}, the guard salt taken once per root across calls sharing {@code saltByRoot}. */
+    public static @Nullable String sourceFingerprint(Path moduleDir, Map<Path, String> saltByRoot) {
         Path dir = moduleDir.toAbsolutePath().normalize();
-        return fingerprintModule(dir, null, false, guardSaltFor(dir, new LinkedHashMap<>())) instanceof Known k
-                ? k.hex()
-                : null;
+        return fingerprintModule(dir, null, false, guardSaltFor(dir, saltByRoot)) instanceof Known k ? k.hex() : null;
     }
 
     static Fingerprint fingerprintModule(Path moduleDir, boolean skipTests) {
