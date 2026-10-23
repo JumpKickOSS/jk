@@ -177,6 +177,45 @@ public final class CommonOpts {
     }
 
     /**
+     * {@code --verify-cache}: every step runs for real; its outputs must match the record its key
+     * already names, and a step the forecast would have skipped must key as the forecast said.
+     */
+    public static Opt verifyCache() {
+        // A CI and nightly switch, documented in docs/user/cache.md rather than on every verb's help.
+        return Opt.flag("Run every step and check it against the cache", "--verify-cache")
+                .hide();
+    }
+
+    /** {@code --verify-sample N}: verify N of the modules the preflight would skip, at random. */
+    public static Opt verifySample() {
+        return Opt.value("<N>", "Verify N skippable modules at random", "--verify-sample")
+                .hide();
+    }
+
+    /** {@code --verify-sample}'s count; {@code 0} when absent. A count below one is refused. */
+    public static int verifySampleValue(Invocation in) {
+        String raw = in.value("verify-sample").orElse(null);
+        if (raw == null) return 0;
+        int n;
+        try {
+            n = Integer.parseInt(raw.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(
+                    "--verify-sample must be a number of modules (got `" + raw.trim() + "`)");
+        }
+        if (n < 1) throw new IllegalArgumentException("--verify-sample must be at least 1 (got " + n + ")");
+        return n;
+    }
+
+    /** {@code JK_VERIFY_CACHE}: the default for {@code --verify-cache}. */
+    public static final String VERIFY_CACHE_ENV = "JK_VERIFY_CACHE";
+
+    /** {@code --verify-cache}, else a true {@code JK_VERIFY_CACHE}. */
+    public static boolean verifyCacheValue(Invocation in, Function<String, @Nullable String> env) {
+        return in.isSet("verify-cache") || EnvValues.bool(env, VERIFY_CACHE_ENV).orElse(false);
+    }
+
+    /**
      * {@code --guard}: the guard lanes (tree, fixtures), the integration suite and the root's guard
      * scripts — on every verb that builds through the test stage, so the share-the-commit bar is one
      * flag wherever a build is asked for.

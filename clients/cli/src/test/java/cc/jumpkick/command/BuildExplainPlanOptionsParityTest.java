@@ -86,6 +86,7 @@ class BuildExplainPlanOptionsParityTest {
             case "modules" -> "app";
             case "affected-since" -> "HEAD";
             case "variant" -> "type=release";
+            case "verify-sample" -> "2";
             default -> throw new AssertionError("no sample value for --" + option);
         };
     }

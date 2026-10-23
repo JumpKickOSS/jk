@@ -44,6 +44,7 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.CompileToolchain;
+import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.GroovyPluginSetup;
 import cc.jumpkick.runtime.base.GroovyToolResolver;
 import cc.jumpkick.runtime.base.KotlinPluginSetup;
@@ -909,10 +910,16 @@ public final class PlannerSupport {
                 project, layout, PlannerFixtures.withOwnFixtures(project, layout, testRuntimeCp));
         List<String> stampExtras =
                 TestStamp.withCompileTest(testStampExtras(dir, project, profileName, identity), compileTestKeys);
-        List<Path> stampRes = ModuleLayout.suiteResourceDirs(
-                dir,
-                compact,
-                TestSuites.compiled(dir, compact, suites, project.build().testClassSuites()));
+        List<String> compiledSuites =
+                TestSuites.compiled(dir, compact, suites, project.build().testClassSuites());
+        List<Path> stampRes = new ArrayList<>(ModuleLayout.suiteResourceDirs(dir, compact, compiledSuites));
+        if (compiledSuites.contains(TestSuites.DEFAULT)) {
+            // The live run keys the default suite's [resources] test-dirs and staged test-filtered
+            // roots too. A staged root that no longer holds what its source expands to is one the
+            // run restages: nothing on disk prices it, so the suite is forecast to run.
+            if (FilteredResources.testStageOutOfSync(dir, project, layout)) return null;
+            stampRes.addAll(FilteredResources.testRootsAsStaged(dir, project, layout));
+        }
         String key = TestStamp.computeKey(
                 stampSrcs, mainClasses, mainClassesFingerprint, stampRes, lockFile, stampRt, stampExtras, identity);
         if (Perf.enabled()) {

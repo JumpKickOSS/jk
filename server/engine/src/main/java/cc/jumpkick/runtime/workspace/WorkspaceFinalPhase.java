@@ -11,11 +11,13 @@ import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.TestClassMatch;
 import cc.jumpkick.runtime.base.ScheduleBias;
 import cc.jumpkick.runtime.base.StepTimings;
+import cc.jumpkick.task.VerifyCache;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -39,6 +41,8 @@ final class WorkspaceFinalPhase {
         if (!decision.learn()) return decision.result();
         WorkspaceResult noMatch = noClassMatched(run);
         if (noMatch != null) return noMatch;
+        WorkspaceResult diverged = cacheDivergence(run);
+        if (diverged != null) return diverged;
         learn(run);
         return decision.result();
     }
@@ -55,6 +59,28 @@ final class WorkspaceFinalPhase {
         String verdict = TestClassMatch.runWideVerdict(SessionContext.current(), skipTests, plans);
         if (verdict == null) return null;
         return new WorkspaceResult(false, Exit.USAGE, run.outcomes(), List.of(verdict), false);
+    }
+
+    /**
+     * A verifying build's verdict on the preflight: every output of a module it would have skipped
+     * that the build produced otherwise. {@code null} when there is none, or the build is not
+     * verifying.
+     */
+    static @Nullable WorkspaceResult cacheDivergence(WorkspaceRunPhase.Run run) {
+        if (!VerifyCache.on()) return null;
+        List<String> found;
+        try {
+            found = VerifyCache.divergences(run.prepared()
+                    .resources()
+                    .preflight()
+                    .forecast()
+                    .map(BuildForecasting.Preflight::claims)
+                    .orElse(Map.of()));
+        } catch (IOException unreadable) {
+            found = List.of("--verify-cache: the outputs could not be read back: " + unreadable.getMessage());
+        }
+        if (found.isEmpty()) return null;
+        return new WorkspaceResult(false, Exit.FAILURE, run.outcomes(), found, false);
     }
 
     /**

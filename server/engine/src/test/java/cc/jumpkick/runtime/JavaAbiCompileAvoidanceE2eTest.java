@@ -5,8 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -18,6 +22,7 @@ import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.ModulePlan;
@@ -25,6 +30,7 @@ import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -287,6 +293,64 @@ class JavaAbiCompileAvoidanceE2eTest {
                     .as("and never reached the jar")
                     .isNull();
         }
+    }
+
+    /**
+     * {@code --verify-cache} runs every step and holds the cache to it: a clean tree verifies, a record
+     * whose outputs are not what its key produces fails the step that hits it, and outputs the
+     * preflight vouched for that a fresh build does not reproduce fail the build.
+     */
+    @Test
+    void verify_cache_passes_a_sound_cache_and_names_a_poisoned_record_and_a_false_skip(@TempDir Path tmp)
+            throws Exception {
+        Path cache = TestCaches.dir("abi-avoidance-cache");
+        Path ws = workspace(tmp);
+        lock(ws, cache);
+        BuildLayout lib = BuildLayout.of(ws, ws.resolve("lib"), JkBuildParser.parse(ws.resolve("lib/jk.toml")));
+        build(ws, cache, "initial");
+
+        assertThat(verify(ws, cache).success()).as("a sound cache verifies").isTrue();
+
+        // A false skip: the jar on disk is not the one these inputs produce, and the module's
+        // record vouches for it anyway.
+        Path record = lib.moduleTargetDir().resolve(".jk/inputs");
+        String good = Hashing.sha256Hex(lib.mainJar());
+        Files.write(lib.mainJar(), "not the jar".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(record, Files.readString(record).replace(good, Hashing.sha256Hex(lib.mainJar())));
+        WorkspaceResult skipped = verify(ws, cache);
+        assertThat(skipped.success()).isFalse();
+        assertThat(skipped.errors())
+                .anyMatch(e -> e.contains("the preflight called lib up to date")
+                        && e.contains(lib.mainJar().getFileName().toString()));
+
+        // A poisoned record: the package record's digest is not what packaging produces.
+        ActionCache ac = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
+        String taskId = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, lib.mainJar());
+        ActionCache.ActionRecord jarRecord = ac.lastFor(taskId).orElseThrow();
+        Path keyFile = CacheTree.ACTIONS.under(cache).resolve("keys").resolve(jarRecord.actionKey());
+        String sha = jarRecord.outputs().values().iterator().next();
+        Files.writeString(keyFile, Files.readString(keyFile).replace(sha, "0".repeat(64)));
+        Steps steps = new Steps();
+        WorkspaceResult poisoned = verify(ws, cache, steps);
+        assertThat(poisoned.success()).isFalse();
+        assertThat(steps.failed())
+                .as("the step that hit the poisoned record fails")
+                .containsEntry("lib", List.of(TaskNames.PACKAGE_JAR));
+    }
+
+    private static WorkspaceResult verify(Path ws, Path cache) throws Exception {
+        return verify(ws, cache, new Steps());
+    }
+
+    private static WorkspaceResult verify(Path ws, Path cache, Steps steps) throws Exception {
+        Session verifying = Session.defaults()
+                .withCacheDir(cache)
+                .withConfig(JkConfig.empty().withRebuild(true))
+                .withVerifyCache(true);
+        return SessionContext.where(
+                verifying,
+                () -> WorkspaceExecute.buildWorkspace(
+                        new WorkspaceRequest(ws, cache, null, 0, null, true, false, 2, null, false, false), steps));
     }
 
     private static void assertNotCompiled(Steps steps, String when) {

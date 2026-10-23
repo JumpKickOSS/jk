@@ -43,6 +43,10 @@ public record BuildFlags(
         TestSelection testSelection,
         @Nullable TestFailureMode testFailures,
         boolean skipNode,
+        /** {@code --verify-cache}: every step runs and is held against the record its key names. */
+        boolean verifyCache,
+        /** {@code --verify-sample N}: modules a verifying build checks; {@code 0} = all. */
+        int verifySample,
         boolean keepGoing,
         boolean parallelTests,
         @Nullable Path jdksDir,
@@ -87,6 +91,8 @@ public record BuildFlags(
         opts.add(CommonOpts.jdksDir());
         opts.add(CommonOpts.keepGoing());
         opts.add(CommonOpts.skipNode());
+        opts.add(CommonOpts.verifyCache());
+        opts.add(CommonOpts.verifySample());
         opts.addAll(
                 affected == Affected.MODULES
                         ? CommonOpts.moduleSelection()
@@ -122,6 +128,8 @@ public record BuildFlags(
                 selection,
                 CommonOpts.testFailuresValue(in, System::getenv),
                 CommonOpts.skipNodeValue(in, System::getenv),
+                CommonOpts.verifyCacheValue(in, System::getenv) || CommonOpts.verifySampleValue(in) > 0,
+                CommonOpts.verifySampleValue(in),
                 CommonOpts.keepGoingValue(in),
                 ParallelTestsOpts.enabled(in),
                 CommonOpts.jdksDirValue(in),
@@ -136,9 +144,9 @@ public record BuildFlags(
         return global.jobsEffective();
     }
 
-    /** {@code --redo} / {@code --force}: price and run the full work. */
+    /** {@code --redo} / {@code --force} / {@code --verify-cache}: price and run the full work. */
     public boolean rebuild() {
-        return global.rebuild || global.force;
+        return global.rebuild || global.force || verifyCache;
     }
 
     /** Any of {@code -m}, {@code --affected}, {@code --affected-since}. */
@@ -156,6 +164,8 @@ public record BuildFlags(
                 testSelection,
                 testFailures,
                 skipNode,
+                verifyCache,
+                verifySample,
                 keepGoing,
                 parallelTests,
                 jdksDir,
@@ -175,6 +185,8 @@ public record BuildFlags(
                 selection,
                 testFailures,
                 skipNode,
+                verifyCache,
+                verifySample,
                 keepGoing,
                 parallelTests,
                 jdksDir,
@@ -194,6 +206,8 @@ public record BuildFlags(
                 testSelection,
                 testFailures,
                 skipNode,
+                verifyCache,
+                verifySample,
                 keepGoing,
                 false,
                 jdksDir,
@@ -212,7 +226,9 @@ public record BuildFlags(
                 .withParallelTests(parallelTests)
                 .withTestSelection(testSelection)
                 .withTestFailures(testFailures)
-                .withSkipNode(skipNode));
+                .withSkipNode(skipNode)
+                .withVerifyCache(verifyCache)
+                .withVerifySample(verifySample));
     }
 
     /** {@code --guard} is one option identity. */

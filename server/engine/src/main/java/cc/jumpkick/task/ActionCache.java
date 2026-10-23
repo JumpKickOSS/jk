@@ -449,6 +449,7 @@ public final class ActionCache {
         meter(outputs, true); // every store path funnels here — one place to count cache-in bytes
         String task = Objects.requireNonNull(taskId, "taskId");
         String key = Objects.requireNonNull(actionKey, "actionKey");
+        if (VerifyCache.on()) VerifyCache.check(this, task, key, outputs);
         ActionRecord record = new ActionRecord(task, key, inputs, outputs, executables);
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
         // truncated keys/ or tasks/ file. Order preserved: key before task pointer.

@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
@@ -19,6 +20,7 @@ import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -81,20 +83,33 @@ public final class BuildForecasting {
      * A preflight verdict: input-dirty modules, modules needing output restore (inputs clean),
      * fingerprints for the dirty memo, optional {@link TaskForecast.Module} list when a full
      * forecast walk ran (reuse for ETA — do not walk twice), and per-module reasons for the dirty
-     * modules the preflight itself scheduled — those whose inputs it could not read.
+     * modules the preflight itself scheduled — those whose inputs it could not read. Under {@code
+     * --verify-cache}, {@code claims} names each module a build would have skipped with the output
+     * files it vouched for (absolute path to digest), read before the build replaced them.
      */
     record Preflight(
             Set<Path> dirty,
             Set<Path> restoreNeeded,
             Map<Path, String> fingerprints,
             List<TaskForecast.Module> modules,
-            Map<Path, String> reasons) {
+            Map<Path, String> reasons,
+            Map<Path, Map<Path, String>> claims) {
         Preflight {
             dirty = dirty == null ? Set.of() : Set.copyOf(dirty);
             restoreNeeded = restoreNeeded == null ? Set.of() : Set.copyOf(restoreNeeded);
             fingerprints = fingerprints == null ? Map.of() : Map.copyOf(fingerprints);
             modules = modules == null ? List.of() : List.copyOf(modules);
             reasons = reasons == null ? Map.of() : Map.copyOf(reasons);
+            claims = claims == null ? Map.of() : Map.copyOf(claims);
+        }
+
+        Preflight(
+                Set<Path> dirty,
+                Set<Path> restoreNeeded,
+                Map<Path, String> fingerprints,
+                List<TaskForecast.Module> modules,
+                Map<Path, String> reasons) {
+            this(dirty, restoreNeeded, fingerprints, modules, reasons, Map.of());
         }
 
         Preflight(
@@ -162,7 +177,33 @@ public final class BuildForecasting {
             Map<Path, String> before = entryDir != null && memoWritable
                     ? PreflightMemo.snapshotFingerprints(graph, skipTests).fingerprints()
                     : Map.of();
-            return new Preflight(all, before, List.of());
+            Map<Path, Map<Path, String>> claims = new LinkedHashMap<>();
+            Set<Path> scheduled = all;
+            if (SessionContext.current().verifyCache() && entryDir != null) {
+                Set<Path> clean = claimedClean(graph, cache, skipTests, entryDir, t, profile);
+                List<BuildGraph.BuildUnit> skippable = new ArrayList<>();
+                for (BuildGraph.BuildUnit u : graph.topoOrder()) {
+                    if (clean.contains(u.dir())
+                            || clean.contains(u.dir().toAbsolutePath().normalize())) skippable.add(u);
+                }
+                int sample = SessionContext.current().verifySample();
+                if (sample > 0 && sample < skippable.size()) {
+                    // A sample is checked for real; the other skippable modules are left as a
+                    // plain build leaves them, so the run's cost is bounded by the sample.
+                    Collections.shuffle(skippable);
+                    Set<Path> left = new HashSet<>();
+                    for (BuildGraph.BuildUnit u : skippable.subList(sample, skippable.size())) left.add(u.dir());
+                    skippable = skippable.subList(0, sample);
+                    scheduled = new HashSet<>(all);
+                    scheduled.removeAll(left);
+                }
+                for (BuildGraph.BuildUnit u : skippable) {
+                    Path dir = u.dir().toAbsolutePath().normalize();
+                    claims.put(
+                            dir, ModuleInputProvenance.recordedOutputs(entryDir, dir, u.manifest(), before.get(dir)));
+                }
+            }
+            return new Preflight(scheduled, Set.of(), before, List.of(), Map.of(), claims);
         }
         Map<Path, String> fps;
         Map<Path, PreflightMemo.Uncertain> uncertain = Map.of();
@@ -245,6 +286,50 @@ public final class BuildForecasting {
             Log.warn("jk: forecast failed — the build will not treat every module as dirty", e);
             throw e;
         }
+    }
+
+    /**
+     * The modules a build without {@code --verify-cache} would have left alone: clean by the dirty
+     * memo, and clean by the forecast walk, each asked on its own so a verifying build holds both to
+     * what the steps then key. Neither is stored.
+     */
+    private static Set<Path> claimedClean(
+            BuildGraph.Result graph,
+            Path cache,
+            boolean skipTests,
+            @Nullable Path entryDir,
+            WorkspaceTarget target,
+            @Nullable String profile) {
+        Session honest = SessionContext.current()
+                .withConfig(SessionContext.current().config().withRebuild(false).withForce(false))
+                .withVerifyCache(false);
+        Set<Path> all = new HashSet<>();
+        for (BuildGraph.BuildUnit u : graph.topoOrder()) all.add(u.dir());
+        Set<Path> clean = new HashSet<>();
+        try {
+            SessionContext.where(honest, () -> {
+                if (entryDir != null) {
+                    var memo = PreflightMemo.tryLoadDirty(
+                            entryDir,
+                            graph,
+                            skipTests,
+                            profile,
+                            new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache)));
+                    memo.ifPresent(m -> {
+                        Set<Path> dirty = new HashSet<>(m.dirty());
+                        for (Path dir : all) if (!dirty.contains(dir)) clean.add(dir);
+                    });
+                }
+                Preflight walked = forecastWithFingerprints(graph, cache, skipTests, null, target, false, profile);
+                for (Path dir : all) {
+                    if (!walked.dirty().contains(dir)) clean.add(dir);
+                }
+                return null;
+            });
+        } catch (Exception e) {
+            Log.warn("jk: --verify-cache could not ask the preflight what it would skip", e);
+        }
+        return clean;
     }
 
     /**

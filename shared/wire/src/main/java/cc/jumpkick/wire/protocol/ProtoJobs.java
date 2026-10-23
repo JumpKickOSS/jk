@@ -24,6 +24,12 @@ public final class ProtoJobs {
     /** {@code --skip-node} / {@code JK_SKIP_NODE}: present and true only when no node step runs. */
     public static final String SKIP_NODE = "skipNode";
 
+    /** {@code --verify-cache} / {@code JK_VERIFY_CACHE}: present and true only when every step is held to the cache. */
+    public static final String VERIFY_CACHE = "verifyCache";
+
+    /** {@code --verify-sample N}: how many skippable modules a verifying build checks; absent for all. */
+    public static final String VERIFY_SAMPLE = "verifySample";
+
     private ProtoJobs() {}
 
     /** Per-request progress mode, falling back to the engine environment when omitted. */

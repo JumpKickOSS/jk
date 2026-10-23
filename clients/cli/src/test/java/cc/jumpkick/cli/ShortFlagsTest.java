@@ -35,7 +35,7 @@ class ShortFlagsTest {
         List<String> missing = new ArrayList<>();
         List<String> clashes = new ArrayList<>();
         for (CliCommand c : CommandDispatch.commands()) walk(c, c.name(), missing, clashes);
-        assertThat(missing).as("visible options with no short form").isEmpty();
+        assertThat(missing).as("visible options with no short form: " + missing).isEmpty();
         assertThat(clashes).as("short forms used twice in one command").isEmpty();
     }
 

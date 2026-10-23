@@ -62,6 +62,60 @@ public final class FilteredResources {
     }
 
     /**
+     * {@link #testRoots} without staging anything: the roots a test run copies, as they stand on
+     * disk. Read-only, for the forecast; {@link #testStageOutOfSync} says whether a staged root
+     * still holds what its source expands to.
+     */
+    public static List<Path> testRootsAsStaged(Path moduleDir, JkBuild build, BuildLayout layout) {
+        BuildBlock.Resources r = build.build().resources();
+        Set<Path> filteredRoots = new HashSet<>();
+        for (String rel : r.testFiltered())
+            filteredRoots.add(moduleDir.resolve(rel).normalize());
+        List<Path> out = new ArrayList<>();
+        for (String rel : r.testDirs()) {
+            Path dir = moduleDir.resolve(rel);
+            if (Files.isDirectory(dir) && !filteredRoots.contains(dir.normalize())) out.add(dir);
+        }
+        Path stageBase = layout.targetDir().resolve(TEST_STAGE);
+        for (String rel : r.testFiltered()) {
+            if (Files.isDirectory(moduleDir.resolve(rel))) out.add(stageBase.resolve(rel));
+        }
+        return out;
+    }
+
+    /**
+     * Whether a {@code test-filtered} root's staged copy is not what the root expands to now: a
+     * file missing, different, or left over. Read-only; true when anything will not read.
+     */
+    public static boolean testStageOutOfSync(Path moduleDir, JkBuild build, BuildLayout layout) {
+        Map<String, String> values = ResourceFilter.values(build);
+        Path stageBase = layout.targetDir().resolve(TEST_STAGE);
+        try {
+            for (String rel : build.build().resources().testFiltered()) {
+                Path root = moduleDir.resolve(rel);
+                Path staged = stageBase.resolve(rel);
+                if (!Files.isDirectory(root)) {
+                    if (Files.exists(staged)) return true;
+                    continue;
+                }
+                if (expandedOutOfSync(root, values, staged)) return true;
+                Set<String> expected = new HashSet<>();
+                PathUtil.forEachRegularFile(
+                        root,
+                        (file, attrs) -> expected.add(root.relativize(file).toString()));
+                boolean[] extra = {false};
+                PathUtil.forEachRegularFile(staged, (file, attrs) -> {
+                    if (!expected.contains(staged.relativize(file).toString())) extra[0] = true;
+                });
+                if (extra[0]) return true;
+            }
+        } catch (IOException e) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Whether {@code classes} differs from what the main roots would copy into it, read-only: the
      * forecast's question. A filtered root is compared by its expanded bytes.
      */
