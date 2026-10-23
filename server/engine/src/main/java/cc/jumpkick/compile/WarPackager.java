@@ -45,7 +45,7 @@ public final class WarPackager {
             PathUtil.copyTree(root.getKey(), exploded.resolve(root.getValue()), PathUtil.Copy.OVERWRITE_ALWAYS);
         }
         Path classes = exploded.resolve(CLASSES);
-        PathUtil.copyTree(request.classes(), classes);
+        request.classes().copyInto(classes);
         deleteStamps(classes);
         Path lib = exploded.resolve(LIB);
         Files.createDirectories(lib);
@@ -134,13 +134,25 @@ public final class WarPackager {
      *     under its war-relative path ({@code ""} for the root): a node sibling's build output
      */
     public record WarRequest(
-            Path classes,
+            PackagedTree classes,
             @Nullable Path webapp,
             List<Path> libs,
             Path explodedDir,
             Path warFile,
             Map<String, String> attributes,
             Map<Path, String> webContent) {
+
+        /** The files of one classes directory. */
+        public WarRequest(
+                Path classes,
+                @Nullable Path webapp,
+                List<Path> libs,
+                Path explodedDir,
+                Path warFile,
+                Map<String, String> attributes,
+                Map<Path, String> webContent) {
+            this(PackagedTree.of(classes), webapp, libs, explodedDir, warFile, attributes, webContent);
+        }
 
         public WarRequest {
             Objects.requireNonNull(classes, "classes");

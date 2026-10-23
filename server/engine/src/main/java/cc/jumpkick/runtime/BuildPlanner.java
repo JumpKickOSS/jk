@@ -164,10 +164,6 @@ public final class BuildPlanner {
     public static final BuildPlanKey<String> KOTLIN_OUTCOME = BuildPlanKey.scalar("kotlin-outcome", String.class);
     public static final BuildPlanKey<String> GROOVY_OUTCOME = BuildPlanKey.scalar("groovy-outcome", String.class);
 
-    /** Fingerprint of last {@code target/package-classes} staging. */
-    public static final BuildPlanKey<String> STAGED_CLASSES_INPUTS =
-            BuildPlanKey.scalar("staged-classes-inputs", String.class);
-
     public static final BuildPlanKey<Path> MAIN_CLASSES = BuildPlanKey.scalar("main-classes", Path.class);
     public static final BuildPlanKey<Path> TEST_CLASSES = BuildPlanKey.scalar("test-classes", Path.class);
     public static final BuildPlanKey<BuildLayout> LAYOUT = BuildPlanKey.scalar("layout", BuildLayout.class);
@@ -228,7 +224,6 @@ public final class BuildPlanner {
             BUILD_OUTCOME,
             KOTLIN_OUTCOME,
             GROOVY_OUTCOME,
-            STAGED_CLASSES_INPUTS,
             MAIN_CLASSES,
             TEST_CLASSES,
             LAYOUT,

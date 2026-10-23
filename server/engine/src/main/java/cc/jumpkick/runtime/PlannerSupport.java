@@ -9,6 +9,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.ModuleRuntimeClasspath;
+import cc.jumpkick.compile.PackagedTree;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.JkBuildParser;
@@ -1034,7 +1035,7 @@ public final class PlannerSupport {
 
     /**
      * The plugin {@code contributesClasses}/{@code contributesResources} dirs that exist, in
-     * declaration order. Listing is cheap; {@link #stageClassesWithContributions} is the copy.
+     * declaration order; {@link #packagedClasses} lays them over the classes.
      */
     // Package-private for BuildPlannerStagedClassesTest.
     static List<Path> existingContributedDirs(@Nullable PluginDeclarations decls, BuildLayout layout) {
@@ -1168,45 +1169,37 @@ public final class PlannerSupport {
     }
 
     /**
-     * Main classes plus the plugin-contributed dirs, merged into one tree for the packagers.
-     * Returns {@code classes} unchanged when nothing is contributed.
-     *
-     * <p>Both packaging tasks call this, and package-jar always runs first, so it publishes the
-     * staged dir under {@link #STAGED_CLASSES} and assembly reuses it. Reuse is keyed on the
-     * inputs, not merely on the dir existing: package-jar may have restored from cache without
-     * staging at all, in which case assembly stages for itself.
+     * Main classes plus the plugin-contributed dirs, as the one tree the packagers write: each
+     * contribution laid over the classes in order, its plugin-templates root left out, the plugin
+     * descriptor only ever the module's own, and every source's service registrations merged. Read
+     * where the files lie; nothing is copied. Just the classes when nothing is contributed.
      */
-    // Package-private for BuildPlannerStagedClassesTest.
-    static Path stageClassesWithContributions(TaskContext ctx, Path classes, List<Path> extra, BuildLayout layout)
-            throws IOException {
-        if (extra.isEmpty()) return classes;
-        Path stage = layout.moduleTargetDir().resolve("package-classes");
-        String inputs = ClasspathFingerprint.entry(classes) + "|" + contributionsToken(extra);
-        if (ctx != null && inputs.equals(ctx.get(STAGED_CLASSES_INPUTS).orElse(null)) && Files.isDirectory(stage)) {
-            return stage;
+    static PackagedTree packagedClasses(Path classes, List<Path> extra) throws IOException {
+        if (extra.isEmpty()) return PackagedTree.of(classes);
+        PackagedTree.Builder tree = PackagedTree.builder(classes);
+        String descriptor = ManifestPaths.PLUGIN_MANIFEST;
+        for (Path contrib : extra) {
+            if (!Files.isDirectory(contrib)) continue;
+            tree.layer(contrib, dir -> isPluginTemplatesRoot(contrib, dir));
+            if (!Files.isRegularFile(contrib.resolve(descriptor))) continue;
+            Path own = classes.resolve(descriptor);
+            if (Files.isRegularFile(own)) tree.put(descriptor, own);
+            else tree.remove(descriptor);
         }
-        // A wipe that cannot finish is a build error, not something to paper over: the copy below
-        // only overwrites paths it reproduces, so a survivor from a previous build (a renamed or
-        // no-longer-emitted class) would be packaged, and the packaging key is taken over this
-        // dir — so the wrong content is what gets cached and restored.
-        PathUtil.deleteRecursivelyOrThrow(stage);
-        Files.createDirectories(stage);
-        copyTreeInto(classes, stage);
-        for (Path contrib : extra) copyContributionInto(classes, contrib, stage);
-        mergeServiceRegistrations(stage, classes, extra);
-        if (ctx != null) ctx.put(STAGED_CLASSES_INPUTS, inputs);
-        return stage;
+        mergeServiceRegistrations(tree, classes, extra);
+        return tree.build();
     }
 
     /**
      * {@code META-INF/services/*} is the one path a contribution must add to rather than replace.
-     * The tree copies above let the last source win, and for a plugin worker whose contribution is
-     * a workspace sibling that is itself a plugin — grails over spring-boot — that left the jar
-     * registering the sibling's plugin and not its own; the worker then reported "no plugin with
-     * protocol prefix" for the very jar it was launched from. Every source's registrations are kept,
-     * the module's own first, each provider once.
+     * Laying the trees over each other lets the last source win, and for a plugin worker whose
+     * contribution is a workspace sibling that is itself a plugin — grails over spring-boot — that
+     * left the jar registering the sibling's plugin and not its own; the worker then reported "no
+     * plugin with protocol prefix" for the very jar it was launched from. Every source's
+     * registrations are kept, the module's own first, each provider once.
      */
-    static void mergeServiceRegistrations(Path stage, Path classes, List<Path> extra) throws IOException {
+    static void mergeServiceRegistrations(PackagedTree.Builder tree, Path classes, List<Path> extra)
+            throws IOException {
         Path servicesRel = Path.of("META-INF", "services");
         Map<String, LinkedHashSet<String>> merged = new LinkedHashMap<>();
         List<Path> sources = new ArrayList<>();
@@ -1226,37 +1219,10 @@ public final class PlannerSupport {
             }
         }
         for (var e : merged.entrySet()) {
-            if (e.getValue().size() < 2) continue; // one source, or one provider: the copy is right
-            Path out = Files.createDirectories(stage.resolve(servicesRel)).resolve(e.getKey());
-            Files.writeString(out, String.join("\n", e.getValue()) + "\n", StandardCharsets.UTF_8);
-        }
-    }
-
-    static void copyTreeInto(Path from, Path to) throws IOException {
-        PathUtil.copyTree(from, to);
-    }
-
-    /**
-     * Copy a contributed tree into the stage without the entries a plugin module owns at its
-     * root (its descriptor and {@code templates/}). A worker vendors its workspace siblings' class trees,
-     * and a sibling that is itself a plugin has its own {@code jk-plugin.toml} and {@code
-     * templates/} at that root: copied over, the sibling's descriptor replaces the module's, so
-     * the jar describes the wrong plugin, the registry makes it the owner of the sibling's table,
-     * and every project configuring that table locks this jar too. The {@code templates/} tree is
-     * left out of the copy; the descriptor the copy carries is put back to the module's own
-     * ({@code classes}), or removed when the module has none. Everything else a contribution
-     * carries keeps the plain-copy semantics it has always had.
-     */
-    static void copyContributionInto(Path classes, Path from, Path to) throws IOException {
-        if (!Files.isDirectory(from)) return;
-        PathUtil.copyTree(from, to, dir -> isPluginTemplatesRoot(from, dir));
-        if (!Files.isRegularFile(from.resolve(ManifestPaths.PLUGIN_MANIFEST))) return;
-        Path own = classes.resolve(ManifestPaths.PLUGIN_MANIFEST);
-        Path staged = to.resolve(ManifestPaths.PLUGIN_MANIFEST);
-        if (Files.isRegularFile(own)) {
-            Files.copy(own, staged, StandardCopyOption.REPLACE_EXISTING);
-        } else {
-            Files.deleteIfExists(staged);
+            if (e.getValue().size() < 2) continue; // one source, or one provider: the overlay is right
+            tree.put(
+                    "META-INF/services/" + e.getKey(),
+                    (String.join("\n", e.getValue()) + "\n").getBytes(StandardCharsets.UTF_8));
         }
     }
 
