@@ -8,6 +8,7 @@ import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.PreflightMemo;
+import cc.jumpkick.runtime.SettledReads;
 import cc.jumpkick.runtime.TestClassMatch;
 import cc.jumpkick.runtime.base.ScheduleBias;
 import cc.jumpkick.runtime.base.StepTimings;
@@ -143,7 +144,8 @@ final class WorkspaceFinalPhase {
      * build ran is not among them, so the next preflight misses the memo and schedules the module;
      * fingerprinting the tree now instead would record that edit as built and ship a jar without
      * it until some other change to the same module. A preflight that captured nothing certifies
-     * nothing.
+     * nothing. The one part taken later is the inputs a suite was found to read, and only as the
+     * suite proved them unchanged since before it ran.
      */
     static void certifyClean(
             Path entryDir,
@@ -151,8 +153,8 @@ final class WorkspaceFinalPhase {
             boolean skipTests,
             @Nullable String profile,
             Optional<BuildForecasting.Preflight> forecast) {
-        Map<Path, String> fingerprints =
-                forecast.map(BuildForecasting.Preflight::fingerprints).orElse(Map.of());
+        Map<Path, String> fingerprints = SettledReads.amend(
+                forecast.map(BuildForecasting.Preflight::fingerprints).orElse(Map.of()));
         if (fingerprints.isEmpty()) return;
         PreflightMemo.storeDirty(entryDir, graph, skipTests, profile, Set.of(), fingerprints);
         // One set of fingerprints, two records: the memo says these inputs are clean, and this

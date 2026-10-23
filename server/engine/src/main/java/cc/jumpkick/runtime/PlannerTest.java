@@ -638,19 +638,7 @@ public final class PlannerTest {
                         testClasses,
                         effectiveSel.classes(),
                         projectUnderTest.build().testExcludeClasses())) {
-            settle(
-                    ctx,
-                    in,
-                    effectiveSel,
-                    false,
-                    suites,
-                    null,
-                    new TestSummary(0, 0, 0, 0, List.of()),
-                    actionCache,
-                    testTaskId,
-                    null,
-                    !testSrcs.isEmpty(),
-                    snippets);
+            settleUnmatched(ctx, in, effectiveSel, suites, actionCache, testTaskId, !testSrcs.isEmpty(), snippets);
             return;
         }
         // The test runtime classpath is the siblings' jars: wait for them to be written.
@@ -666,8 +654,9 @@ public final class PlannerTest {
         TestTier tier = TestTier.of(effectiveSel, in.profileName(), fastMethodBudget(projectUnderTest, in.dir()));
         List<String> testJvmArgs = tier.suiteJvmArgs(TestLaunch.testJvmArgs(ctx, in, projectUnderTest, pluginDecls));
         InputGuard suiteGuard = suiteGuard(ctx, testClasses, testRtCp);
-        String stampKey = testStampKey(
+        SuiteDiscovery.Rekey rekey = () -> testStampKey(
                 ctx, in, projectUnderTest, effectiveSel, affected, workerJars, testJvmArgs, testSrcs, testRtCp);
+        String stampKey = rekey.key();
         // --force forces a real test run, matching the compile/package
         // freshness checks above (which all guard on !rerun). Without
         // this guard the action record would skip the runner even when
@@ -729,7 +718,7 @@ public final class PlannerTest {
         if (jacoco != null && coverageExec != null) {
             TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
         }
-        stampKey = reads.settle(ctx, unlessMoved(ctx, suiteGuard, stampKey));
+        stampKey = reads.settle(ctx, unlessMoved(ctx, suiteGuard, stampKey), rekey);
         settle(
                 ctx,
                 in,
@@ -743,6 +732,21 @@ public final class PlannerTest {
                 stampKey,
                 !testSrcs.isEmpty(),
                 snippets);
+    }
+
+    /** Settle a {@code --class} selection that names no compiled class of this module: nothing ran. */
+    private static void settleUnmatched(
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            TestSelection sel,
+            SuiteClassFilter suites,
+            ActionCache actionCache,
+            String testTaskId,
+            boolean testSourcesExist,
+            TestFailureSource.Cache snippets)
+            throws Exception {
+        TestSummary none = new TestSummary(0, 0, 0, 0, List.of());
+        settle(ctx, in, sel, false, suites, null, none, actionCache, testTaskId, null, testSourcesExist, snippets);
     }
 
     /**
