@@ -13,6 +13,7 @@ import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.workspace.SyncPlans;
+import cc.jumpkick.testing.FakeJdk;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.io.IOException;
@@ -140,7 +141,9 @@ class SyncToolsTest {
         assertThat(result.errors().toString()).contains("jk-lock.toml pins sha256 " + "0".repeat(64));
     }
 
-    private static BuildPlanResult sync(Path project, Path tmp) {
+    private static BuildPlanResult sync(Path project, Path tmp) throws IOException {
+        // The sync resolves java = 25 first; a JDK of its own keeps the host's inventory out of it.
+        FakeJdk.create(tmp.resolve("jdks").resolve("temurin-25.0.4"), "25.0.4");
         return SyncPlans.syncBuildPlan(
                         project,
                         tmp.resolve("cache"),
