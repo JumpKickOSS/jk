@@ -3,8 +3,8 @@ package cc.jumpkick.compile;
 
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.DeterministicZip;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -29,7 +29,6 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -56,13 +55,17 @@ public final class AssemblyPackager {
             emitter.written.add("META-INF/MANIFEST.MF");
 
             // 1. Project classes + resources win.
-            List<Path> files = collectFiles(request.classesDir());
-            files.sort(Comparator.comparing(p -> normalize(request.classesDir(), p)));
-            for (Path file : files) {
-                String name = normalize(request.classesDir(), file);
+            for (PackagedTree.Entry e : request.classes().entries()) {
+                String name = e.name();
                 if (name.equals("META-INF/MANIFEST.MF")) continue;
                 if (BuildStamps.isStampFile(name)) continue; // freshness stamp, not jar content
-                emitter.emit(name, () -> Files.newInputStream(file));
+                Path file = e.file();
+                byte[] bytes = e.bytes();
+                emitter.emit(
+                        name,
+                        () -> file != null
+                                ? Files.newInputStream(file)
+                                : new ByteArrayInputStream(Objects.requireNonNull(bytes)));
             }
 
             // 2. Dependency jars, in declared order (earlier wins).
@@ -288,28 +291,13 @@ public final class AssemblyPackager {
         return JarPackager.manifest(request.mainClass(), request.attributes());
     }
 
-    private static List<Path> collectFiles(Path root) throws IOException {
-        if (!Files.exists(root)) return List.of();
-        List<Path> result = new ArrayList<>();
-        // Files.find, not walk+isRegularFile: the walk already read each entry's attributes, and
-        // re-resolving every path to ask again is the dominant cost of packaging a large tree.
-        try (Stream<Path> stream = Files.find(root, Integer.MAX_VALUE, (p, attrs) -> attrs.isRegularFile())) {
-            stream.forEach(result::add);
-        }
-        return result;
-    }
-
-    private static String normalize(Path root, Path file) {
-        return root.relativize(file).toString().replace(File.separatorChar, '/');
-    }
-
     /**
      * Inputs for {@link #packageAssembly(AssemblyRequest)}. {@code relocate} is the {@code
      * [application] relocate} table — source package to shaded package, declaration order — applied
      * by {@link Relocations}; empty bundles every class under its own name.
      */
     public record AssemblyRequest(
-            Path classesDir,
+            PackagedTree classes,
             List<Path> dependencyJars,
             Path outputJar,
             @Nullable String mainClass,
@@ -319,12 +307,33 @@ public final class AssemblyPackager {
             long timestampEpochSeconds) {
 
         public AssemblyRequest {
-            Objects.requireNonNull(classesDir, "classesDir");
+            Objects.requireNonNull(classes, "classes");
             Objects.requireNonNull(outputJar, "outputJar");
             dependencyJars = dependencyJars == null ? List.of() : List.copyOf(dependencyJars);
             attributes = attributes == null ? Map.of() : Map.copyOf(attributes);
             extraEntries = extraEntries == null ? Map.of() : Map.copyOf(extraEntries);
             relocate = relocate == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(relocate));
+        }
+
+        /** The files of one classes directory. */
+        public AssemblyRequest(
+                Path classesDir,
+                List<Path> dependencyJars,
+                Path outputJar,
+                @Nullable String mainClass,
+                Map<String, String> attributes,
+                Map<String, byte[]> extraEntries,
+                Map<String, String> relocate,
+                long timestampEpochSeconds) {
+            this(
+                    PackagedTree.of(classesDir),
+                    dependencyJars,
+                    outputJar,
+                    mainClass,
+                    attributes,
+                    extraEntries,
+                    relocate,
+                    timestampEpochSeconds);
         }
 
         /** No package relocation. */

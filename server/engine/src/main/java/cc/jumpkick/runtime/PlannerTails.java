@@ -7,15 +7,16 @@ import static cc.jumpkick.runtime.PlannerPlugin.applicationSbom;
 import static cc.jumpkick.runtime.PlannerPlugin.packagePlugin;
 import static cc.jumpkick.runtime.PlannerSupport.assemblyDependencyJars;
 import static cc.jumpkick.runtime.PlannerSupport.contributionsToken;
+import static cc.jumpkick.runtime.PlannerSupport.packagedClasses;
 import static cc.jumpkick.runtime.PlannerSupport.packagedDirs;
 import static cc.jumpkick.runtime.PlannerSupport.pluginDeclarationsFor;
 import static cc.jumpkick.runtime.PlannerSupport.restorePackaged;
-import static cc.jumpkick.runtime.PlannerSupport.stageClassesWithContributions;
 import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.SourcesJar;
 import cc.jumpkick.compile.AssemblyPackager;
+import cc.jumpkick.compile.PackagedTree;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.git.GitFetcher;
@@ -288,7 +289,7 @@ public final class PlannerTails {
                         return;
                     }
                     ctx.label("package " + assemblyJar.getFileName());
-                    classes = stageClassesWithContributions(ctx, classes, contributed, layout);
+                    PackagedTree tree = packagedClasses(classes, contributed);
                     byte[] assemblySbom = null;
                     if (Files.exists(lockFile)) {
                         assemblySbom = applicationSbom(project, LockfileReader.read(lockFile));
@@ -297,7 +298,7 @@ public final class PlannerTails {
                     }
                     new AssemblyPackager()
                             .packageAssembly(new AssemblyPackager.AssemblyRequest(
-                                    classes,
+                                    tree,
                                     depJars,
                                     assemblyJar,
                                     PackagingKeys.mainClass(layout.moduleRoot(), project),

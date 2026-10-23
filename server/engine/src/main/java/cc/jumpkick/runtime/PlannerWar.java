@@ -4,12 +4,13 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 import static cc.jumpkick.runtime.PlannerSupport.assemblyDependencyJars;
 import static cc.jumpkick.runtime.PlannerSupport.contributionsToken;
+import static cc.jumpkick.runtime.PlannerSupport.packagedClasses;
 import static cc.jumpkick.runtime.PlannerSupport.packagedDirs;
 import static cc.jumpkick.runtime.PlannerSupport.pluginDeclarationsFor;
 import static cc.jumpkick.runtime.PlannerSupport.restorePackaged;
-import static cc.jumpkick.runtime.PlannerSupport.stageClassesWithContributions;
 import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
 
+import cc.jumpkick.compile.PackagedTree;
 import cc.jumpkick.compile.WarPackager;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildBlock;
@@ -101,10 +102,10 @@ final class PlannerWar {
                         return;
                     }
                     ctx.label("package " + warFile.getFileName());
-                    classes = stageClassesWithContributions(ctx, classes, contributed, layout);
+                    PackagedTree tree = packagedClasses(classes, contributed);
                     WarPackager.War packaged = new WarPackager()
                             .packageWar(new WarPackager.WarRequest(
-                                    classes,
+                                    tree,
                                     Files.isDirectory(webapp) ? webapp : null,
                                     libs,
                                     exploded,

@@ -8,12 +8,13 @@ import static cc.jumpkick.runtime.PlannerNative.kotlinSources;
 import static cc.jumpkick.runtime.PlannerPlugin.applicationSbom;
 import static cc.jumpkick.runtime.PlannerPlugin.packagePlugin;
 import static cc.jumpkick.runtime.PlannerSupport.contributionsToken;
+import static cc.jumpkick.runtime.PlannerSupport.packagedClasses;
 import static cc.jumpkick.runtime.PlannerSupport.restorePackaged;
-import static cc.jumpkick.runtime.PlannerSupport.stageClassesWithContributions;
 import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.JarPackager;
+import cc.jumpkick.compile.PackagedTree;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
@@ -139,9 +140,9 @@ public final class PlannerPackage {
                     }
                     ctx.label("package " + jarPath.getFileName());
                     long t1 = Perf.start();
-                    classes = stageClassesWithContributions(ctx, classes, contributed, layout);
+                    PackagedTree tree = packagedClasses(classes, contributed);
                     long t2 = Perf.start();
-                    JarPackager.JarRequest jarRequest = JarPackager.JarRequest.of(classes, jarPath);
+                    JarPackager.JarRequest jarRequest = JarPackager.JarRequest.of(tree, jarPath);
                     if (mainClass != null && !mainClass.isBlank()) jarRequest = jarRequest.withMainClass(mainClass);
                     Map<String, String> jarAttrs = new LinkedHashMap<>(project.manifest());
                     if (PlannerVersions.declared(project)) jarAttrs.putIfAbsent(PlannerVersions.MULTI_RELEASE, "true");
@@ -174,7 +175,7 @@ public final class PlannerPackage {
                                 t0,
                                 "restoreCheck",
                                 (t1 - t0) / ms,
-                                "stage",
+                                "list",
                                 (t2 - t1) / ms,
                                 "jar",
                                 (t3 - t2) / ms,
