@@ -59,7 +59,10 @@ import kotlin.script.experimental.jvm.defaultJvmScriptingHostConfiguration
 import kotlin.script.experimental.jvm.dependenciesFromCurrentContext
 import kotlin.script.experimental.jvm.jvm
 import kotlin.script.experimental.jvmhost.BasicJvmScriptingHost
+import kotlin.script.experimental.api.CompiledScript
+import kotlin.script.experimental.jvm.CompiledJvmScriptsCache
 import kotlin.script.experimental.jvmhost.CompiledScriptJarsCache
+import kotlin.script.experimental.jvmhost.loadScriptFromJar
 import org.jetbrains.kotlin.mainKts.CompilerOptions
 import org.jetbrains.kotlin.mainKts.Import
 import org.jetbrains.kotlin.mainKts.MainKtsConfigurator
@@ -123,6 +126,48 @@ private data class Done(val reply: String) : Event
 
 private object Eof : Event
 
+/**
+ * Kotlin's jar cache, with a hit loaded from a copy outside the cache directory. The class loader of a
+ * loaded script holds its jar open for the life of this host, and Windows cannot delete an open file,
+ * so loading the cache's own jar would leave `cache/kts/` undeletable while the host is resident. A
+ * jar's name is its content hash, so a copy that exists is the same bytes.
+ */
+private class LoadedFromCopyCache(
+    private val loadDir: File,
+    private val jarFor: (SourceCode, ScriptCompilationConfiguration) -> File,
+) : CompiledJvmScriptsCache {
+    private val jars = CompiledScriptJarsCache(jarFor)
+
+    override fun get(script: SourceCode, scriptCompilationConfiguration: ScriptCompilationConfiguration): CompiledScript? {
+        val jar = jarFor(script, scriptCompilationConfiguration)
+        if (!jar.isFile) return null
+        loadDir.mkdirs()
+        val copy = File(loadDir, jar.name)
+        if (!copy.isFile) {
+            val staged = File(loadDir, jar.name + ".tmp")
+            jar.copyTo(staged, overwrite = true)
+            if (!staged.renameTo(copy)) staged.delete()
+        }
+        return copy.loadScriptFromJar()
+    }
+
+    override fun store(
+        compiledScript: CompiledScript,
+        script: SourceCode,
+        scriptCompilationConfiguration: ScriptCompilationConfiguration,
+    ) = jars.store(compiledScript, script, scriptCompilationConfiguration)
+}
+
+/** This host's directory of loaded copies, under the temp dir; the copies of hosts that have exited are removed. */
+private fun loadDir(): File {
+    val root = File(System.getProperty("java.io.tmpdir"), "jk-kts-loaded")
+    root.listFiles()?.forEach { dir ->
+        val pid = dir.name.toLongOrNull()
+        if (pid != null && !ProcessHandle.of(pid).isPresent) dir.deleteRecursively()
+    }
+    return File(root, ProcessHandle.current().pid().toString())
+}
+
 fun main() {
     // Captured before anything can redirect it: control lines must never mix with script output.
     val control = System.out
@@ -142,7 +187,7 @@ fun main() {
                 // directory to write into, or a nuked cache turns into a failed script instead of one
                 // recompile.
                 compilationCache(
-                    CompiledScriptJarsCache { source, cfg ->
+                    LoadedFromCopyCache(loadDir()) { source, cfg ->
                         cacheDir.mkdirs()
                         // A hit stamps the jar, so the retention sweep ages jars by last use.
                         File(cacheDir, cacheKey(source, cfg) + ".jar").also {
