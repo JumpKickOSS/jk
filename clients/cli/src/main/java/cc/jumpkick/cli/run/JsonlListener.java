@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.run;
 
 import java.io.PrintStream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Emit one JSON object per event to stdout. Triggered by {@code -O jsonl}.
@@ -22,7 +23,12 @@ public final class JsonlListener extends JsonlEmittingListener {
      * {@code workspace-progress} snapshot is the only aggregate truth there.
      */
     public JsonlListener(PrintStream out, boolean aggregateRider) {
-        super(aggregateRider);
+        this(out, aggregateRider, null);
+    }
+
+    /** As above for one workspace member: every line names {@code module} ({@code group:name}). */
+    public JsonlListener(PrintStream out, boolean aggregateRider, @Nullable String module) {
+        super(aggregateRider, module);
         this.out = out;
     }
 
