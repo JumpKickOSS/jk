@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.NodeProject;
 import cc.jumpkick.layout.NodeShape;
@@ -12,11 +13,16 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.FreshnessStamp;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -153,67 +159,88 @@ public final class ModuleOutputs {
     private static final List<String> TREE_STAMPS = List.of(BuildStamps.JAVA, BuildStamps.KOTLIN, BuildStamps.GROOVY);
 
     /**
-     * {@link #compileOutputsOnDisk(ActionCache, String, Path)} against every key the tree's own
+     * {@link #compileOutputsOnDisk(ActionCache, List, Path)} against every key the tree's own
      * freshness stamps name — the Java, Kotlin and Groovy compiles whose outputs are merged into
      * it. A stamp that is absent, or names no key, holds the tree against nothing.
      */
     public static boolean compileOutputsOnDisk(ActionCache actionCache, Path classesDir) {
-        for (String stamp : TREE_STAMPS) {
-            if (!compileOutputsOnDisk(actionCache, classesDir, stamp)) return false;
-        }
-        return true;
+        List<@Nullable String> keys = new ArrayList<>();
+        for (String stamp : TREE_STAMPS)
+            keys.add(FreshnessStamp.stampedKey(classesDir, stamp).orElse(null));
+        return compileOutputsOnDisk(actionCache, keys, classesDir);
     }
 
-    /** As above, against the one compile record the stamp named {@code stamp} points at. */
+    /** As {@link #compileOutputsOnDisk(ActionCache, String, Path)}, against the record the stamp named {@code stamp} points at. */
     public static boolean compileOutputsOnDisk(ActionCache actionCache, Path classesDir, String stamp) {
         return compileOutputsOnDisk(
                 actionCache, FreshnessStamp.stampedKey(classesDir, stamp).orElse(null), classesDir);
     }
 
     /**
-     * True when every output the compile record for {@code key} owns is present under {@code
-     * dir}. Presence only — one stat per owned output, no digest is re-read — because the question
-     * is whether the tree is whole, not whether it is unmodified: a tree that is a strict subset of
-     * what the record produced is the case a hitting key cannot see on its own. A null key or a
-     * record that is gone (pruned) leaves nothing to compare and answers true; the stamp's or the
-     * key's own evidence then stands. Extra files the record does not own are the restore's prune,
-     * not this probe's concern.
-     *
-     * <p>A whole tree is remembered for the rest of the request. Five arms ask this of the same
-     * (key, tree) pair in one build — the restore gate, the package-key reconstruction, the
-     * run-tests fingerprint, the preflight memo and compile-main's stamp arm — and nothing in a
-     * build removes an output a hitting record owns, so the first yes holds until the request
-     * ends. A no is never remembered: the module it schedules restores the tree before its later
-     * arms ask again, and they must see the restored tree.
+     * True when every output the compile record for {@code key} owns is in {@code dir} with the
+     * digest the record gives it, or the one the module's last successful build left there ({@link
+     * ModuleInputProvenance#treeDigests}: a step that rewrites the classes in place). Digests come
+     * through {@link FileHashMemo}, so an untouched output costs one stat. A null key holds the tree
+     * against nothing; a key whose record is gone or will not read answers false, since nothing then
+     * vouches for the tree and the step should restore or run.
      */
     public static boolean compileOutputsOnDisk(ActionCache actionCache, @Nullable String key, Path dir) {
-        if (key == null || key.isBlank()) return true;
-        Probe probe = new Probe(key, dir.toAbsolutePath().normalize());
+        return compileOutputsOnDisk(actionCache, Collections.singletonList(key), dir, false);
+    }
+
+    /**
+     * As {@link #compileOutputsOnDisk(ActionCache, String, Path)} for a tree every compile in {@code
+     * keys} writes into, which also holds every class file in it to one of their records: a class
+     * no compile produced (an IDE builder's, a hand-copied one) would otherwise ride into the jar.
+     */
+    public static boolean compileOutputsOnDisk(ActionCache actionCache, List<@Nullable String> keys, Path dir) {
+        return compileOutputsOnDisk(actionCache, keys, dir, true);
+    }
+
+    private static boolean compileOutputsOnDisk(
+            ActionCache actionCache, List<@Nullable String> keys, Path dir, boolean wholeTree) {
+        List<String> named = new ArrayList<>();
+        for (String k : keys) if (k != null && !k.isBlank()) named.add(k);
+        if (named.isEmpty()) return true;
+        Probe probe = new Probe(List.copyOf(named), dir.toAbsolutePath().normalize(), wholeTree);
         Set<Probe> whole = RequestScope.current().get(WHOLE_TREES, k -> ConcurrentHashMap.newKeySet());
         if (whole.contains(probe)) return true;
-        boolean result = outputsPresent(actionCache, key, probe.dir());
+        boolean result = outputsMatch(actionCache, probe.keys(), probe.dir(), wholeTree);
         if (result) whole.add(probe);
         return result;
     }
 
-    /** The request-scope key of the set of (record key, tree) pairs already found whole. */
+    /** The request-scope key of the set of (record keys, tree) pairs already found whole. */
     private static final Object WHOLE_TREES = new Object();
 
-    /** One wholeness question: a compile record's key and the tree held against it. */
-    private record Probe(String key, Path dir) {}
+    /** One wholeness question: the compile records' keys and the tree held against them. */
+    private record Probe(List<String> keys, Path dir, boolean wholeTree) {}
 
-    private static boolean outputsPresent(ActionCache actionCache, String key, Path dir) {
-        Optional<ActionCache.ActionRecord> record;
+    private static boolean outputsMatch(ActionCache actionCache, List<String> keys, Path dir, boolean wholeTree) {
+        Set<String> owned = new HashSet<>();
         try {
-            record = actionCache.lookup(key);
-        } catch (IOException e) {
-            return true;
+            for (String key : keys) {
+                Optional<ActionCache.ActionRecord> record = actionCache.lookup(key);
+                if (record.isEmpty()) return false;
+                Map<String, String> built = ModuleInputProvenance.treeDigests(dir, key);
+                for (Map.Entry<String, String> out : record.get().outputs().entrySet()) {
+                    Path file = dir.resolve(out.getKey());
+                    if (!Files.isRegularFile(file)) return false;
+                    String now = FileHashMemo.contentHash(file.toAbsolutePath().normalize());
+                    if (!now.equals(out.getValue()) && !now.equals(built.get(out.getKey()))) return false;
+                    owned.add(out.getKey());
+                }
+            }
+            if (!wholeTree) return true;
+            boolean[] foreign = {false};
+            PathUtil.forEachRegularFile(dir, (file, attrs) -> {
+                String rel = dir.relativize(file).toString().replace('\\', '/');
+                if (rel.endsWith(".class") && !owned.contains(rel)) foreign[0] = true;
+            });
+            return !foreign[0];
+        } catch (IOException | RuntimeException unreadable) {
+            return false;
         }
-        if (record.isEmpty()) return true;
-        for (String rel : record.get().outputs().keySet()) {
-            if (!Files.exists(dir.resolve(rel))) return false;
-        }
-        return true;
     }
 
     private static boolean nativePresent(BuildLayout layout, JkBuild build) {

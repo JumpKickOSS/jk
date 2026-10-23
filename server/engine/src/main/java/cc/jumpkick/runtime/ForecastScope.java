@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -611,8 +612,7 @@ public final class ForecastScope implements StepForecast.Scope {
 
     /** The tree holds every output of every compile merged into it: javac's, Kotlin's and Groovy's. */
     private boolean compileOutputsOnDisk(Path classesDir) {
-        return ModuleOutputs.compileOutputsOnDisk(actionCache, compileMainKey, classesDir)
-                && ModuleOutputs.compileOutputsOnDisk(actionCache, compileKotlinKey, classesDir)
-                && ModuleOutputs.compileOutputsOnDisk(actionCache, compileGroovyKey, classesDir);
+        return ModuleOutputs.compileOutputsOnDisk(
+                actionCache, Arrays.asList(compileMainKey, compileKotlinKey, compileGroovyKey), classesDir);
     }
 }

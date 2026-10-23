@@ -33,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.jar.JarFile;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -249,6 +250,43 @@ class JavaAbiCompileAvoidanceE2eTest {
         assertThat(Files.readAllBytes(reads))
                 .as("javac copied the new constant into the consumer")
                 .isNotEqualTo(before);
+    }
+
+    /**
+     * The outputs in target/ are jk's only while they are the bytes its records name: a class an IDE
+     * or a hand edit replaced, and one nothing compiled, are put right by the next build instead of
+     * riding into the jar and the test run.
+     */
+    @Test
+    void a_replaced_or_foreign_class_in_target_is_restored_by_the_next_build(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("abi-avoidance-cache");
+        Path ws = workspace(tmp);
+        lock(ws, cache);
+        BuildLayout lib = BuildLayout.of(ws, ws.resolve("lib"), JkBuildParser.parse(ws.resolve("lib/jk.toml")));
+        Path libClass = lib.classesDir().resolve("com/example/Lib.class");
+        Path foreign = lib.classesDir().resolve("com/example/Foreign.class");
+
+        build(ws, cache, "initial");
+        byte[] built = Files.readAllBytes(libClass);
+        build(ws, cache, "settled");
+
+        Files.write(
+                libClass,
+                Files.readAllBytes(BuildLayout.of(ws, ws.resolve("app"), JkBuildParser.parse(ws.resolve("app/jk.toml")))
+                        .classesDir()
+                        .resolve("com/example/app/Alone.class")));
+        Files.write(foreign, built);
+        build(ws, cache, "after target/classes was tampered with");
+
+        assertThat(Files.readAllBytes(libClass))
+                .as("the compiled class is back")
+                .isEqualTo(built);
+        assertThat(foreign).as("a class no compile produced is gone").doesNotExist();
+        try (var jar = new JarFile(lib.mainJar().toFile())) {
+            assertThat(jar.getEntry("com/example/Foreign.class"))
+                    .as("and never reached the jar")
+                    .isNull();
+        }
     }
 
     private static void assertNotCompiled(Steps steps, String when) {

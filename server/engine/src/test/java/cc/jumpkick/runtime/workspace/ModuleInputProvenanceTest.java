@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.PreflightMemo;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -70,17 +71,48 @@ class ModuleInputProvenanceTest {
         assertThat(forecast.dirty()).isEmpty();
     }
 
-    /**
-     * No record is not evidence of staleness. Every target dir built by an earlier jk has none, and
-     * reading absence as dirty would make one upgrade recompile the world.
-     */
+    /** Nothing vouches for outputs no successful build recorded: the module is scheduled to restore. */
     @Test
-    void a_missing_record_is_not_a_rebuild(@TempDir Path tmp) throws Exception {
+    void a_missing_record_schedules_the_module(@TempDir Path tmp) throws Exception {
         BuildGraph.Result graph = project(tmp);
         var fps = PreflightMemo.snapshotFingerprints(graph, false);
         PreflightMemo.storeDirty(tmp, graph, false, Set.of(), fps.fingerprints());
 
         var forecast = BuildForecasting.forecastWithFingerprints(graph, tmp.resolve("cache"), false, tmp);
-        assertThat(forecast.dirty()).isEmpty();
+        assertThat(forecast.dirty()).contains(tmp.toAbsolutePath().normalize());
+    }
+
+    /**
+     * A class replaced or added in target/classes after the build is not jk's output. One that is
+     * gone is a restore, judged against the compile record.
+     */
+    @Test
+    void a_class_changed_or_added_after_the_build_schedules_the_module(@TempDir Path tmp) throws Exception {
+        BuildGraph.Result graph = project(tmp);
+        Path classes =
+                BuildLayout.of(tmp, graph.topoOrder().getFirst().manifest()).classesDir();
+        Path app = Files.createDirectories(classes).resolve("App.class");
+        Files.write(app, new byte[] {1, 2, 3});
+        var fps = PreflightMemo.snapshotFingerprints(graph, false);
+        PreflightMemo.storeDirty(tmp, graph, false, Set.of(), fps.fingerprints());
+        ModuleInputProvenance.record(tmp, graph, fps.fingerprints());
+        Path module = tmp.toAbsolutePath().normalize();
+        assertThat(BuildForecasting.forecastWithFingerprints(graph, tmp.resolve("cache"), false, tmp)
+                        .dirty())
+                .isEmpty();
+
+        Thread.sleep(20);
+        Files.write(app, new byte[] {9, 9, 9});
+        assertThat(BuildForecasting.forecastWithFingerprints(graph, tmp.resolve("cache"), false, tmp)
+                        .dirty())
+                .as("a replaced class")
+                .contains(module);
+
+        Files.write(app, new byte[] {1, 2, 3});
+        Files.write(classes.resolve("Foreign.class"), new byte[] {4});
+        assertThat(BuildForecasting.forecastWithFingerprints(graph, tmp.resolve("cache"), false, tmp)
+                        .dirty())
+                .as("an added class")
+                .contains(module);
     }
 }

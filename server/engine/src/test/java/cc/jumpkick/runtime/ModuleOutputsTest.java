@@ -57,14 +57,22 @@ class ModuleOutputsTest {
                 .as("extra files are the restore's prune, not this probe's concern")
                 .isTrue();
 
+        Files.writeString(classes.resolve("p/q/B.class"), "BYTES");
+        assertThat(ModuleOutputs.compileOutputsOnDisk(ac, "key-a", classes))
+                .as("an output with other bytes than the record's")
+                .isFalse();
+        assertThat(ModuleOutputs.compileOutputsOnDisk(ac, List.of("key-a"), classes))
+                .as("a whole-tree check holds every class to a record")
+                .isFalse();
         Files.delete(classes.resolve("p/q/B.class"));
         assertThat(ModuleOutputs.compileOutputsOnDisk(ac, "key-a", classes))
                 .as("a strict subset of the record's outputs")
                 .isFalse();
         assertThat(ModuleOutputs.compileOutputsOnDisk(ac, "no-such-key", classes))
-                .as("no record: nothing to hold the tree against")
+                .as("no record: nothing vouches for the tree")
+                .isFalse();
+        assertThat(ModuleOutputs.compileOutputsOnDisk(ac, (String) null, classes))
                 .isTrue();
-        assertThat(ModuleOutputs.compileOutputsOnDisk(ac, null, classes)).isTrue();
 
         // Through the stamp: the tree's own .jstamp names the key it was compiled under.
         FreshnessStamp.write(
@@ -78,6 +86,10 @@ class ModuleOutputsTest {
                 "");
         assertThat(ModuleOutputs.compileOutputsOnDisk(ac, classes)).isFalse();
         Files.writeString(classes.resolve("p/q/B.class"), "bytes");
+        assertThat(ModuleOutputs.compileOutputsOnDisk(ac, classes))
+                .as("the whole tree: a class no record owns")
+                .isFalse();
+        Files.delete(classes.resolve("p/Extra.class"));
         assertThat(ModuleOutputs.compileOutputsOnDisk(ac, classes)).isTrue();
     }
 
