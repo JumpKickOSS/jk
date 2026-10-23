@@ -39,10 +39,10 @@ import org.jspecify.annotations.Nullable;
  * module's own outputs and the run's sandbox — is a <em>discovered input</em>: it is kept in the
  * module's target dir and keys the suite from then on, by content, together with the listing of
  * the directory it sits in (so a file added beside it is seen, though JFR records no directory
- * listing), and a process by the identity of its executable. A green marker is stored only when the
- * run read nothing outside the set its key was taken from; a run that found new inputs runs again
- * next build, keyed on them, and from then on is replayed only while they hold. A suite that talks
- * to anything but this host is never replayed.
+ * listing), and a process by the identity of its executable. A run that found new inputs stores its
+ * green marker under the key that folds them in, when they held still while it ran; from then on
+ * it is replayed only while they hold. A suite that talks to anything but this host is never
+ * replayed.
  *
  * <p>JFR on JDK 22 and later records every read; an older suite JDK records stream and random-access
  * reads only, so a channel read there goes unseen.
@@ -366,6 +366,16 @@ public final class SuiteReads {
         for (String c : d.commands()) out.add("proc:" + executable(c) + "=" + programIdentity(executable(c)));
         if (d.network()) out.add("network");
         return out;
+    }
+
+    /** {@link #tokens} as one digest; {@code none} when the suites were found to read nothing. */
+    public static String digest(Path moduleDir, TestSelection selection, Path workspaceRoot) {
+        return digest(tokens(moduleDir, selection, workspaceRoot));
+    }
+
+    /** {@code tokens} as one digest; {@code none} for no tokens. */
+    public static String digest(List<String> tokens) {
+        return tokens.isEmpty() ? "none" : Hashing.sha256Hex(String.join("\n", tokens));
     }
 
     private static String spell(Path root, Path p) {

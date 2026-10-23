@@ -305,6 +305,14 @@ public final class Oracle {
             Path f = ws.resolve(greet);
             Files.writeString(f, Files.readString(f).replace("\r\n", "\n").replace("\n", "\r\n"));
         }));
+        e.add(edit("new-test-input", ws -> {
+            Files.writeString(ws.resolve("data/extra.txt"), "x\n");
+            replace(
+                    ws.resolve("app/src/test/java/com/example/app/AppTest.java"),
+                    "        assertNotEquals(\"two\"",
+                    "        assertFalse(Files.readString(Path.of(\"../data/extra.txt\")).isEmpty());\n"
+                            + "        assertNotEquals(\"two\"");
+        }));
         e.add(new Edit(
                 "undeclared-test-input",
                 ws -> Files.writeString(ws.resolve("data/expected.txt"), "two\n"),

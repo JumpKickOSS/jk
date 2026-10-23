@@ -20,7 +20,8 @@ declare, a suite that sleeps on request), and for each edit class:
 
 One line per class; the exit status is non-zero when any failed. The classes cover source edits
 (body, signature, public and package-private constants, add, delete, rename, case-only rename,
-package move), resources, `touch -r` and older copies, CRLF, a test input nothing declares,
+package move), resources, `touch -r` and older copies, CRLF, a passing test that starts reading a
+file nothing declares, a test input nothing declares,
 `--jvm-arg`, `[test] env`, javac args, `java =`, Kotlin `const`, Groovy, a symlinked source (POSIX
 only), edits landing during a plain and a `--force` build, a branch switch and a stash.
 

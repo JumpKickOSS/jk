@@ -27,8 +27,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A suite that reads a file nothing declares: the run that finds it stores no marker, the next is
- * keyed on it and stores one, the one after replays, and an edit to the file runs the suite again.
+ * A suite that reads a file nothing declares: the run that finds it stores its marker under a key
+ * that folds the file in, the next build replays it, and an edit to the file runs the suite again.
  */
 @Tag("integration")
 class SuiteDiscoveryE2eTest {
@@ -78,22 +78,18 @@ class SuiteDiscoveryE2eTest {
 
         Steps first = build(m, cache);
         assertThat(first.status(TaskNames.RUN_TESTS)).isEqualTo(TaskStatus.SUCCESS);
-        assertThat(first.warnings).anyMatch(w -> w.contains("fixture.txt"));
+        assertThat(first.warnings)
+                .as("keying what a suite reads is jk's own bookkeeping")
+                .isEmpty();
 
         Steps second = build(m, cache);
         assertThat(second.status(TaskNames.RUN_TESTS))
-                .as("keyed on what it read, it runs once more")
-                .isEqualTo(TaskStatus.SUCCESS);
-        assertThat(second.warnings).noneMatch(w -> w.contains("fixture.txt"));
-
-        Steps third = build(m, cache);
-        assertThat(third.status(TaskNames.RUN_TESTS))
                 .as("nothing it reads moved: the module is not scheduled, or its suite replays")
                 .isIn(null, TaskStatus.SKIPPED);
 
         Files.writeString(data, "two");
-        Steps fourth = build(m, cache);
-        assertThat(fourth.status(TaskNames.RUN_TESTS))
+        Steps third = build(m, cache);
+        assertThat(third.status(TaskNames.RUN_TESTS))
                 .as("the file it reads changed")
                 .isEqualTo(TaskStatus.FAIL);
     }
