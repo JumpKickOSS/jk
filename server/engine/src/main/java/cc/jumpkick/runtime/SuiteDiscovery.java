@@ -2,6 +2,8 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
@@ -23,9 +25,13 @@ final class SuiteDiscovery {
 
     private SuiteDiscovery() {}
 
-    /** Ready the module's recording and return the flag every suite JVM starts with. */
-    static String recordFlag(BuildLayout layout) throws IOException {
-        return SuiteReads.prepare(SuiteReads.recordingDir(layout.moduleTargetDir()));
+    /** One run's recording: the flag every suite JVM starts with, and when the run began. */
+    record Recording(String flag, long startedMillis) {}
+
+    /** Ready the module's recording for a run that starts now. */
+    static Recording start(BuildLayout layout) throws IOException {
+        long now = Clock.SYSTEM.millis();
+        return new Recording(SuiteReads.prepare(SuiteReads.recordingDir(layout.moduleTargetDir())), now);
     }
 
     /**
@@ -38,6 +44,7 @@ final class SuiteDiscovery {
             Path moduleDir,
             BuildLayout layout,
             TestSelection selection,
+            Recording recording,
             Collection<Path> keyed,
             boolean networkAllowed,
             @Nullable String stampKey) {
@@ -48,8 +55,9 @@ final class SuiteDiscovery {
         roots.add(target);
         // Every module's test sandbox, this one's and those of the projects its tests make.
         roots.add(TestHomes.root());
-        Set<Path> read = SuiteReads.undeclared(seen, roots);
-        Set<String> started = SuiteReads.undeclaredCommands(seen, roots);
+        Path workspace = WorkspaceScan.findRoot(moduleDir).orElse(moduleDir);
+        Set<Path> read = SuiteReads.undeclared(seen, roots, workspace, recording.startedMillis());
+        Set<String> started = SuiteReads.undeclaredCommands(seen, roots, workspace, recording.startedMillis());
         boolean reached = seen.network() && !networkAllowed;
         SuiteReads.Discovered before = SuiteReads.load(moduleDir, selection);
         if (before.covers(read, started, reached)) {

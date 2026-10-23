@@ -16,9 +16,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
@@ -171,19 +174,56 @@ public final class SuiteReads {
      * operating system's live pseudo trees, whose content changes with every read.
      */
     public static Set<Path> undeclared(Observed observed, Collection<Path> keyed) {
+        return undeclared(observed, keyed, null, 0);
+    }
+
+    /**
+     * As {@link #undeclared(Observed, Collection)}, also leaving out a file under a directory outside
+     * {@code workspace} that was created at or after {@code startedMillis}: the run made it (a temp
+     * root a test framework chose, a store a nested build filled), so what is in it is the run's own
+     * output, whichever process wrote it. Inside the workspace a new directory is no such proof.
+     */
+    public static Set<Path> undeclared(
+            Observed observed, Collection<Path> keyed, @Nullable Path workspace, long startedMillis) {
         List<Path> roots = new ArrayList<>();
         for (Path k : keyed) {
             roots.add(k.toAbsolutePath().normalize());
             real(k).ifPresent(roots::add);
         }
+        Map<Path, Boolean> made = new HashMap<>();
         Set<Path> out = new TreeSet<>();
         for (Path f : observed.files()) {
             if (live(f) || under(f, roots)) continue;
             // A file is the same input under either spelling (macOS's /var is /private/var).
             if (real(f).filter(r -> under(r, roots)).isPresent()) continue;
+            if (workspace != null && madeDuringRun(f, workspace, startedMillis, made)) continue;
             out.add(f);
         }
         return out;
+    }
+
+    /** Whether an ancestor of {@code f} outside {@code workspace} came into being once the run had started. */
+    static boolean madeDuringRun(Path f, Path workspace, long startedMillis, Map<Path, Boolean> memo) {
+        Path ws = workspace.toAbsolutePath().normalize();
+        for (Path dir = f.getParent(); dir != null && dir.getParent() != null; dir = dir.getParent()) {
+            if (dir.startsWith(ws) || ws.startsWith(dir)) continue;
+            Boolean known = memo.get(dir);
+            if (known == null) {
+                try {
+                    // A second of slack: a file system's creation clock is coarser than ours.
+                    known = Files.readAttributes(dir, BasicFileAttributes.class)
+                                    .creationTime()
+                                    .toMillis()
+                            >= startedMillis - 1_000;
+                } catch (IOException gone) {
+                    // Gone already: only the run's own scratch is reaped before it ends.
+                    known = true;
+                }
+                memo.put(dir, known);
+            }
+            if (known) return true;
+        }
+        return false;
     }
 
     private static Optional<Path> real(Path p) {
@@ -195,7 +235,9 @@ public final class SuiteReads {
     }
 
     /** The commands of {@code observed} whose program lies outside {@code keyed}: one the run made itself is its own. */
-    public static Set<String> undeclaredCommands(Observed observed, Collection<Path> keyed) {
+    public static Set<String> undeclaredCommands(
+            Observed observed, Collection<Path> keyed, @Nullable Path workspace, long startedMillis) {
+        Map<Path, Boolean> made = new HashMap<>();
         List<Path> roots = new ArrayList<>();
         for (Path k : keyed) {
             roots.add(k.toAbsolutePath().normalize());
@@ -206,6 +248,11 @@ public final class SuiteReads {
             try {
                 Path program = Path.of(executable(c));
                 if (program.isAbsolute() && under(program.normalize(), roots)) continue;
+                if (program.isAbsolute()
+                        && workspace != null
+                        && madeDuringRun(program.normalize(), workspace, startedMillis, made)) {
+                    continue;
+                }
             } catch (InvalidPathException notAPath) {
                 // A bare name: keyed by what the PATH resolves it to.
             }
