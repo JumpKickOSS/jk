@@ -30,7 +30,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A suite that reads a file nothing declares: the run that finds it stores its marker under a key
  * that folds the file in, the next build replays it, so does a build after a clean, and an edit to
- * the file runs the suite again.
+ * the file runs the suite again; once the suite stops reading the file, it keys it no more.
  */
 @Tag("integration")
 class SuiteDiscoveryE2eTest {
@@ -100,6 +100,26 @@ class SuiteDiscoveryE2eTest {
         assertThat(third.status(TaskNames.RUN_TESTS))
                 .as("the file it reads changed")
                 .isEqualTo(TaskStatus.FAIL);
+
+        Files.writeString(
+                test,
+                Files.readString(test)
+                        .replace(
+                                "assertEquals(\"one\", Files.readString(Path.of(\"../data/fixture.txt\")));",
+                                "assertEquals(1, 1);"));
+        Steps rewritten = build(m, cache);
+        assertThat(rewritten.status(TaskNames.RUN_TESTS))
+                .as("its source changed")
+                .isEqualTo(TaskStatus.SUCCESS);
+        Steps settled = build(m, cache);
+        assertThat(settled.status(TaskNames.RUN_TESTS))
+                .as("the whole run that stopped reading the file keyed what it reads now")
+                .isIn(null, TaskStatus.SKIPPED);
+        Files.writeString(data, "three");
+        Steps unread = build(m, cache);
+        assertThat(unread.status(TaskNames.RUN_TESTS))
+                .as("a file the suite no longer reads keys nothing")
+                .isIn(null, TaskStatus.SKIPPED);
     }
 
     private static Steps build(Path dir, Path cache) {
