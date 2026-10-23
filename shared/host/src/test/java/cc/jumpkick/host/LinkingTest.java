@@ -142,4 +142,28 @@ class LinkingTest {
     private static Object fileKey(Path p) throws IOException {
         return Files.readAttributes(p, BasicFileAttributes.class).fileKey();
     }
+
+    @Test
+    void a_target_already_linked_to_its_source_is_left_alone(@TempDir Path dir) throws Exception {
+        Path source = Files.writeString(dir.resolve("blob"), "bytes");
+        Path target = dir.resolve("out/app.jar");
+        Linking.linkOrCopy(source, target);
+        Object inode = Files.readAttributes(target, BasicFileAttributes.class).fileKey();
+
+        Linking.linkOrCopy(source, target);
+
+        assertThat(Files.readAttributes(target, BasicFileAttributes.class).fileKey())
+                .isEqualTo(inode);
+        assertThat(Linking.alreadyLinked(source, target)).isTrue();
+    }
+
+    @Test
+    void a_target_holding_other_bytes_is_replaced(@TempDir Path dir) throws Exception {
+        Path source = Files.writeString(dir.resolve("blob"), "new");
+        Path target = Files.writeString(dir.resolve("app.jar"), "old");
+
+        Linking.linkOrCopy(source, target);
+
+        assertThat(Files.readString(target)).isEqualTo("new");
+    }
 }
