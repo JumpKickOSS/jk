@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.util.DirKeys;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * In-process buffer: module path → FQCN → wall-ms for the run currently finishing. Written by
+ * In-process buffer: module path → FQCN → wall-ms for the run currently finishing, keyed by
+ * {@link DirKeys#key} so the recorder's spelling of a module and the journal's ({@code C:\ws} and
+ * {@code C:/ws} on Windows) are one module. Written by
  * {@link StepTimingsRecorder} from {@link cc.jumpkick.run.TestSummary#classWallMs()}; consumed when
  * the journal writes {@code metrics.toml} so harvest can fold class means without a second scan.
  */
@@ -22,19 +26,19 @@ public final class TestClassWalls {
         walls.forEach((k, v) -> {
             if (k != null && !k.isBlank() && v != null && v > 0) copy.put(k, v);
         });
-        if (!copy.isEmpty()) BY_MODULE.put(moduleDir, Map.copyOf(copy));
+        if (!copy.isEmpty()) BY_MODULE.put(key(moduleDir), Map.copyOf(copy));
     }
 
     /** Snapshot without clearing (ETA within the same process after a train). */
     public static Map<String, Long> get(String moduleDir) {
         if (moduleDir == null) return Map.of();
-        return BY_MODULE.getOrDefault(moduleDir, Map.of());
+        return BY_MODULE.getOrDefault(key(moduleDir), Map.of());
     }
 
     /** Drain walls for journal write (one-shot). */
     public static Map<String, Long> take(String moduleDir) {
         if (moduleDir == null) return Map.of();
-        Map<String, Long> m = BY_MODULE.remove(moduleDir);
+        Map<String, Long> m = BY_MODULE.remove(key(moduleDir));
         return m == null ? Map.of() : m;
     }
 
@@ -46,5 +50,9 @@ public final class TestClassWalls {
             if (v != null && !v.isEmpty()) out.put(k, v);
         }
         return out;
+    }
+
+    private static String key(String moduleDir) {
+        return Objects.requireNonNullElse(DirKeys.key(moduleDir), moduleDir);
     }
 }
