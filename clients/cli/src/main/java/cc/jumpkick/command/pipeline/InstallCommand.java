@@ -15,6 +15,7 @@ import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.JobCancelledException;
+import cc.jumpkick.cli.engine.WireStream;
 import cc.jumpkick.cli.run.AggregateContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
@@ -462,7 +463,11 @@ public final class InstallCommand {
             // it, and a shelf packaged by the displaced engine would need yet another install.
             int refused = handoffRefusal(engineAfter);
             if (refused != Exit.SUCCESS) return refused;
-            return runWorkspaceInstall(wsRoot, cwdScope);
+            // The install's verdict is the pass that built and tested; the re-shelve only restamps.
+            WireStream.LastJob built = WireStream.lastJob();
+            int reshelved = runWorkspaceInstall(wsRoot, cwdScope);
+            if (reshelved == Exit.SUCCESS) WireStream.reportJob(built);
+            return reshelved;
         }
         String notice = shelfBehindEngineNotice(reshelving, engineBefore, engineAfter);
         if (notice != null && !json) {
