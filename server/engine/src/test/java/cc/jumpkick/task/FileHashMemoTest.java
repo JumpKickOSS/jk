@@ -123,6 +123,8 @@ class FileHashMemoTest {
         Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
         settle(f);
         BasicFileAttributes attrs = Files.readAttributes(f, BasicFileAttributes.class);
+        // Windows' stat carries no file key: the identity reads the file id through a handle.
+        assumeTrue(attrs.fileKey() != null, "the walk's stat carries the file key");
         withCache(dir.resolve("cache"), () -> {
             try {
                 String hex = FileHashMemo.contentHash(f, attrs);

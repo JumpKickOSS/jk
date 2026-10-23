@@ -11,6 +11,7 @@ import cc.jumpkick.engine.plugin.HostPressure;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WarmLinger;
 import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.testing.Sleepers;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -214,7 +215,7 @@ class WarmLanesTest {
                 2,
                 (owner, index) -> new Session(owner, scopes[next.getAndIncrement()], index, self -> {
                     self.takeNext();
-                    Process p = JobWorkers.start(new ProcessBuilder("sleep", "60"));
+                    Process p = JobWorkers.start(Sleepers.sleeper(60));
                     bothTaken.countDown();
                     p.waitFor();
                 }),

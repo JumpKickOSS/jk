@@ -24,7 +24,8 @@ class GraphTrainingTest {
         assertThat(cmd).contains("-XX:AOTCacheOutput=" + aot, PluginLoader.WORKER_MAIN);
         Path root = scratch.resolve("workspace");
         String spec = Files.readString(scratch.resolve("train.spec"), StandardCharsets.UTF_8);
-        assertThat(spec).contains("query", "Greeter greet", root.toString());
+        // The spec is JSON: a Windows root's backslashes are escaped in it.
+        assertThat(spec).contains("query", "Greeter greet", root.toString().replace("\\", "\\\\"));
         assertThat(cmd.getLast())
                 .isEqualTo(scratch.resolve("train.spec").toAbsolutePath().toString());
         assertThat(root.resolve(ManifestNames.MANIFEST)).isRegularFile();

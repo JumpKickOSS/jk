@@ -8,6 +8,7 @@ import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -32,7 +33,10 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class WorkerArgvOwnerTest {
 
-    private static final String CP = "/tmp/worker.jar:/tmp/dep.jar";
+    private static final String CP = String.join(
+            File.pathSeparator,
+            Path.of("tmp", "worker.jar").toAbsolutePath().toString(),
+            Path.of("tmp", "dep.jar").toAbsolutePath().toString());
 
     /** The owner's contract, stated once. Every other case derives its expectation from it. */
     @Test

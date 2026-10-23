@@ -39,9 +39,9 @@ class DiagnosticReportTest {
     void plain_compiler_error_has_no_pill_and_no_rail() throws Exception {
         String raw = String.join("\n", "/w/Foo.java:3: error: ';' expected", "    int x", "         ^");
         String report = NoAnsi.forced(() -> DiagnosticReport.renderError("compile-java", "javac", raw, "g:app", true));
-        assertThat(report)
-                .startsWith("/w/Foo.java:3:10: error: ';' expected")
-                .doesNotContain("Compile Java", "+--", " | ");
+        // The path is the host's absolute spelling of /w/Foo.java: C:/w/Foo.java on Windows.
+        assertThat(report.lines().findFirst().orElseThrow()).endsWith("/w/Foo.java:3:10: error: ';' expected");
+        assertThat(report).doesNotContain("Compile Java", "+--", " | ");
     }
 
     @Test

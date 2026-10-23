@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.testing.Sleepers;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -62,8 +64,7 @@ class WorkerBudgetJobsTest {
         CompletableFuture<Integer> first = new CompletableFuture<>();
         Thread.ofVirtual().start(() -> {
             try {
-                first.complete(
-                        run(ledger, 1L, "sh", "-c", "while [ ! -e \"$0\" ]; do sleep 0.01; done", release.toString()));
+                first.complete(run(ledger, 1L, Sleepers.waitsFor(release)));
             } catch (RuntimeException e) {
                 first.completeExceptionally(e);
             }
@@ -72,7 +73,7 @@ class WorkerBudgetJobsTest {
         CompletableFuture<Integer> second = new CompletableFuture<>();
         Thread.ofVirtual().start(() -> {
             try {
-                second.complete(run(ledger, 2L, "sleep", "0.1"));
+                second.complete(run(ledger, 2L, Sleepers.sleeper(0).command()));
             } catch (RuntimeException e) {
                 second.completeExceptionally(e);
             }
@@ -91,7 +92,7 @@ class WorkerBudgetJobsTest {
         WorkerLeases.Ledger ledger = ledger(WorkerLeases.TOOL_BYTES, 8);
         long before = ledger.snapshot().leasedBytes();
         JobWorkers.open(11L);
-        Process process = JobWorkers.start(new ProcessBuilder("sleep", "30"), ledger);
+        Process process = JobWorkers.start(Sleepers.sleeper(30), ledger);
         try {
             assertThat(ledger.snapshot().leasedBytes()).isGreaterThan(before);
             process.destroyForcibly();
@@ -144,7 +145,7 @@ class WorkerBudgetJobsTest {
         return new WorkerLeases.Ledger(() -> capacityBytes, () -> cpu, id -> false);
     }
 
-    private static int run(WorkerLeases.Ledger ledger, long requestId, String... command) {
+    private static int run(WorkerLeases.Ledger ledger, long requestId, List<String> command) {
         JobWorkers.open(requestId);
         try {
             Process process = JobWorkers.start(new ProcessBuilder(command), ledger);
