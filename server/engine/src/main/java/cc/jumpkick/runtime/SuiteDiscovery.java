@@ -41,8 +41,9 @@ final class SuiteDiscovery {
     }
 
     /**
-     * One run's recording: the flag every suite JVM starts with, when the run began, and what the
-     * stamp already keys for it.
+     * One run's recording: the flag every suite JVM starts with, when the run began, what the stamp
+     * already keys for it, and whether it runs the whole suite (not only the classes an edit
+     * affects), so that what it reads is all the suite reads.
      */
     record Run(
             String flag,
@@ -51,7 +52,8 @@ final class SuiteDiscovery {
             BuildLayout layout,
             TestSelection selection,
             Collection<Path> keyed,
-            boolean networkAllowed) {
+            boolean networkAllowed,
+            boolean whole) {
 
         /** As {@link SuiteDiscovery#settle}, for this run. */
         @Nullable
@@ -62,11 +64,16 @@ final class SuiteDiscovery {
 
     /** Ready the module's recording for a run that starts now. */
     static Run start(
-            BuildLayout layout, Path moduleDir, TestSelection selection, Collection<Path> keyed, boolean networkAllowed)
+            BuildLayout layout,
+            Path moduleDir,
+            TestSelection selection,
+            Collection<Path> keyed,
+            boolean networkAllowed,
+            boolean whole)
             throws IOException {
         long now = Clock.SYSTEM.millis();
         String flag = SuiteReads.prepare(SuiteReads.recordingDir(layout.moduleTargetDir()));
-        return new Run(flag, now, moduleDir, layout, selection, List.copyOf(keyed), networkAllowed);
+        return new Run(flag, now, moduleDir, layout, selection, List.copyOf(keyed), networkAllowed, whole);
     }
 
     /**
@@ -93,12 +100,16 @@ final class SuiteDiscovery {
         Set<String> started = SuiteReads.undeclaredCommands(seen, roots, workspace, run.startedMillis());
         boolean reached = seen.network() && !run.networkAllowed();
         SuiteReads.Discovered before = SuiteReads.load(moduleDir, run.selection());
-        if (before.covers(read, started, reached)) {
-            Log.debug("suite reads: " + moduleDir + " read nothing new"
+        // A whole run's reads are all the suite reads now: what it no longer reads drops out. A run
+        // of only the affected classes adds to what the whole suite was found to read.
+        SuiteReads.Discovered after = run.whole()
+                ? SuiteReads.Discovered.NONE.with(read, started, reached)
+                : before.with(read, started, reached);
+        if (after.equals(before)) {
+            Log.debug("suite reads: " + moduleDir + " read what it was keyed on"
                     + (reached ? "; not replayed, it reached another host" : stampKey == null ? "; no key" : ""));
             return reached ? null : stampKey;
         }
-        SuiteReads.Discovered after = before.with(read, started, reached);
         if (reached) {
             SuiteReads.save(moduleDir, run.selection(), after);
             if (!before.network()) {

@@ -687,7 +687,7 @@ public final class PlannerTest {
                 PlannerTest::awaitTestGate);
         TestSummary result;
         TagExcludedCapture tagExcluded;
-        SuiteDiscovery.Run reads = recordReads(ctx, in, projectUnderTest, effectiveSel, testEnv, runtimeCp);
+        SuiteDiscovery.Run reads = recordReads(ctx, in, projectUnderTest, effectiveSel, testEnv, runtimeCp, affected);
         try {
             // Module pin ([test] workers / [build] test-workers) wins over CLI for
             // hermetic opt-out. Auto hands the launcher the share; it applies the
@@ -768,7 +768,8 @@ public final class PlannerTest {
             JkBuild project,
             TestSelection selection,
             WorkerEnv testEnv,
-            List<Path> runtimeCp)
+            List<Path> runtimeCp,
+            AffectedTestRun.@Nullable Outcome affected)
             throws IOException {
         List<Path> keyed = keyedRoots(
                 ctx,
@@ -778,7 +779,12 @@ public final class PlannerTest {
                 runtimeCp,
                 testStampWorkerJars(in.dir(), project));
         return SuiteDiscovery.start(
-                ctx.require(LAYOUT), in.dir(), selection, keyed, project.build().testNetworkAllowed());
+                ctx.require(LAYOUT),
+                in.dir(),
+                selection,
+                keyed,
+                project.build().testNetworkAllowed(),
+                affected == null);
     }
 
     /** Everything the run-tests stamp already hashes, as roots: what a suite reads there is no discovery. */
