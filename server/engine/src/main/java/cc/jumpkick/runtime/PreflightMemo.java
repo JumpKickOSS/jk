@@ -902,7 +902,7 @@ public final class PreflightMemo {
                 }
             }
             feedNodeBuild(md, moduleDir);
-            List<String> found = skipTests || project == null ? List.of() : MemoInputs.readsTokens(moduleDir);
+            List<String> found = new ArrayList<>();
             if (!skipTests && project != null) {
                 for (String token : MemoInputs.testInputs(moduleDir, project, found)) feed(md, "test:" + token);
             }
