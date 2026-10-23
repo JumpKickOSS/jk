@@ -2,6 +2,7 @@
 package cc.jumpkick.graph;
 
 import cc.jumpkick.codegraph.extract.Extractors;
+import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -13,7 +14,7 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Every graphed file's size, modification time and content hash at the last build, in {@code
+ * Every graphed file's {@link StatIdentity} and content hash at the last build, in {@code
  * files.tsv} beside the graph: small enough that "did anything change?" costs one walk and one
  * read. The header names the extractor version; a different one discards the index.
  */
@@ -21,10 +22,10 @@ final class StatIndex {
 
     static final String FILE = "files.tsv";
 
-    /** A file touched this recently may still be mid-write within the same mtime tick: always hash it. */
+    /** A file touched this recently may still be mid-write within the same timestamp tick: always hash it. */
     static final long RACY_MILLIS = 2_000;
 
-    record Stat(long size, long mtimeMillis, String sha) {}
+    record Stat(StatIdentity identity, String sha) {}
 
     private final Map<String, Stat> stats;
 
@@ -44,10 +45,11 @@ final class StatIndex {
             List<String> lines = Files.readAllLines(file);
             if (lines.isEmpty() || !lines.getFirst().equals(header())) return new StatIndex(stats);
             for (String line : lines.subList(1, lines.size())) {
-                String[] f = line.split("\t", 4);
-                if (f.length == 4) stats.put(f[3], new Stat(Long.parseLong(f[1]), Long.parseLong(f[2]), f[0]));
+                String[] f = line.split("\t", 3);
+                StatIdentity identity = f.length == 3 ? StatIdentity.decode(f[1]) : null;
+                if (identity != null) stats.put(f[2], new Stat(identity, f[0]));
             }
-        } catch (IOException | NumberFormatException unreadable) {
+        } catch (IOException unreadable) {
             stats.clear();
         }
         return new StatIndex(stats);
@@ -57,8 +59,8 @@ final class StatIndex {
     @Nullable
     String unchanged(GraphSources.Source source, long now) {
         Stat s = stats.get(source.rel());
-        if (s == null || s.size() != source.size() || s.mtimeMillis() != source.mtimeMillis()) return null;
-        return now - source.mtimeMillis() < RACY_MILLIS ? null : s.sha();
+        if (s == null || !s.identity().equals(source.identity())) return null;
+        return now - source.identity().lastTouchedMillis() < RACY_MILLIS ? null : s.sha();
     }
 
     @Nullable
@@ -72,7 +74,7 @@ final class StatIndex {
     }
 
     void put(GraphSources.Source source, String sha) {
-        stats.put(source.rel(), new Stat(source.size(), source.mtimeMillis(), sha));
+        stats.put(source.rel(), new Stat(source.identity(), sha));
     }
 
     /** Writes the stats of {@code live} only, so deleted files leave the index. */
@@ -81,13 +83,13 @@ final class StatIndex {
         lines.add(header());
         for (GraphSources.Source s : live) {
             Stat st = stats.get(s.rel());
-            if (st != null) lines.add(st.sha() + "\t" + st.size() + "\t" + st.mtimeMillis() + "\t" + s.rel());
+            if (st != null) lines.add(st.sha() + "\t" + st.identity().encode() + "\t" + s.rel());
         }
         Files.createDirectories(graphDir);
         AtomicWrites.replace(graphDir.resolve(FILE), String.join("\n", lines) + "\n");
     }
 
     private static String header() {
-        return "# jk graph files, extractors " + Extractors.VERSION;
+        return "# jk graph files, identity 2, extractors " + Extractors.VERSION;
     }
 }

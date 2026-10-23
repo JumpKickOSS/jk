@@ -10,6 +10,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.task.IoLedger;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -392,15 +393,19 @@ class InputTreesTest {
     }
 
     @Test
-    void file_ref_carries_size_mtime_nanos_and_regular_bit(@TempDir Path dir) throws Exception {
+    void file_ref_carries_the_files_stat_identity(@TempDir Path dir) throws Exception {
         Path src = Files.createDirectories(dir.resolve("src"));
         Files.writeString(src.resolve("A.java"), "class A {}");
         inRequest(() -> {
             InputTrees.coverModule(dir);
             InputTrees.FileRef ref = InputTrees.of(src).files().getFirst();
             assertThat(ref.size()).isPositive();
-            assertThat(ref.mtimeMillis()).isPositive();
-            assertThat(ref.mtimeNanos()).isPositive();
+            assertThat(ref.identity().mtimeNanos()).isPositive();
+            try {
+                assertThat(ref.identity()).isEqualTo(StatIdentity.of(src.resolve("A.java")));
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
             assertThat(ref.name()).isEqualTo("A.java");
         });
     }

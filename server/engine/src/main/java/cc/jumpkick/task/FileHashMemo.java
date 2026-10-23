@@ -6,6 +6,8 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.StatIdentity;
+import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,14 +18,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Content fingerprints for source and input files, memoized on {@code (path, size, mtime)}.
+ * Content fingerprints for source and input files, memoized on the path and its {@link
+ * StatIdentity}: size, mtime, change time and file id, so a tool that restores a file's size and
+ * mtime over different bytes ({@code cp -p}, {@code rsync -a}, {@code touch -r}) is still a miss.
  *
  * <p>One store per cache root, held in memory while that root is in use ({@link CacheRootStores}
  * bounds how many are) and persisted as a single file at {@code <cache>/hash-memo/memo.v1}. A hit costs one map read; the caller's own stat is the
@@ -38,11 +41,11 @@ import org.jspecify.annotations.Nullable;
  * here because an entry's own timestamps measure the churn of the file it describes, not use.
  *
  * <p>Trust is provenance-based. {@link #rememberContent} seeds a <em>known</em> digest (a CAS blob
- * just restored) and records the nanosecond mtime it was seeded at; such an entry is trusted
- * immediately, but only while that stamp still matches — an in-place rewrite landing in the same
- * millisecond tick, which compilers do to restored class files, moves the nanoseconds and voids the
- * seed. A self-hash carries no stamp and is instead gated on {@link #SETTLE_MS}, so a same-size
- * rewrite inside one mtime tick cannot reuse a stale digest.
+ * just restored); such an entry is trusted immediately, while its identity still matches. A
+ * self-hash is recorded only when the file's identity after the read equals the one the caller
+ * hashed against, so bytes that changed under the read are never filed under the old stat, and
+ * only once the file was last touched {@link #SETTLE_MS} ago, so a same-size rewrite inside one
+ * timestamp tick of a coarse file system cannot reuse a stale digest.
  *
  * <p>The file is a {@link MemoLog}: a flush appends the entries that changed since the last one, and
  * a load keeps the last line per path. A line whose token is not a SHA-256 is not an entry, so a
@@ -89,7 +92,7 @@ public final class FileHashMemo {
      */
     public static String contentHash(Path file) throws IOException {
         Path abs = file.toAbsolutePath().normalize();
-        return contentHash(abs, Files.readAttributes(abs, BasicFileAttributes.class));
+        return contentHash(abs, StatIdentity.of(abs));
     }
 
     /**
@@ -98,24 +101,21 @@ public final class FileHashMemo {
      * build. {@code file} must already be absolute and normalized.
      */
     public static String contentHash(Path file, BasicFileAttributes attrs) throws IOException {
-        return contentHash(
-                file,
-                attrs.size(),
-                attrs.lastModifiedTime().toMillis(),
-                attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS));
+        return contentHash(file, StatIdentity.of(file, attrs));
     }
 
     /**
-     * As {@link #contentHash(Path, BasicFileAttributes)} for a caller holding the stat identity
-     * itself — a retained tree snapshot carries size and both mtime resolutions without the
-     * attributes object. {@code file} must already be absolute and normalized.
+     * As {@link #contentHash(Path, BasicFileAttributes)} for a caller holding the identity itself —
+     * a retained tree snapshot carries it without the attributes object. {@code file} must already
+     * be absolute and normalized. The digest is of the bytes read now; it is remembered only when
+     * the file still has {@code identity} after the read.
      */
-    public static String contentHash(Path file, long size, long mtime, long nanos) throws IOException {
+    public static String contentHash(Path file, StatIdentity identity) throws IOException {
         CONTENT_HASH_INVOCATIONS.incrementAndGet();
 
         Store store = store();
         if (store != null) {
-            Entry hit = store.get(file.toString(), size, mtime, nanos);
+            Entry hit = store.get(file.toString(), identity);
             if (hit != null) {
                 MEMO_HITS.incrementAndGet();
                 return hit.token;
@@ -125,9 +125,11 @@ public final class FileHashMemo {
         CONTENT_READS.incrementAndGet();
         String token = Hashing.sha256Hex(file);
         // A file written moments ago can change again at the same size and tick; only record it
-        // once the clock can tell the two apart.
-        if (store != null && System.currentTimeMillis() - mtime >= SETTLE_MS) {
-            store.put(file.toString(), new Entry(size, mtime, -1L, token));
+        // once the clock can tell the two apart, and only under the identity the bytes were read at.
+        if (store != null
+                && Clock.SYSTEM.millis() - identity.lastTouchedMillis() >= SETTLE_MS
+                && identity.equals(StatIdentity.of(file))) {
+            store.put(file.toString(), new Entry(identity, false, token));
         }
         return token;
     }
@@ -147,13 +149,7 @@ public final class FileHashMemo {
             if (!attrs.isRegularFile()) return;
             Store store = store();
             if (store == null) return;
-            store.put(
-                    abs.toString(),
-                    new Entry(
-                            attrs.size(),
-                            attrs.lastModifiedTime().toMillis(),
-                            attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS),
-                            sha256Hex));
+            store.put(abs.toString(), new Entry(StatIdentity.of(abs, attrs), true, sha256Hex));
         } catch (IOException | RuntimeException e) {
             // best-effort
             Log.debug("rememberContent: best-effort", e);
@@ -247,36 +243,28 @@ public final class FileHashMemo {
     }
 
     /**
-     * One memoized fingerprint.
-     *
-     * @param nanos nanosecond mtime this entry was seeded at, or {@code -1} for a self-hash, which
-     *     is validated by settle instead
+     * One memoized fingerprint: the identity the digest was taken at, and whether it was seeded
+     * from a known blob ({@link #rememberContent}) rather than hashed here.
      */
     static final class Entry {
-        final long size;
-        final long mtimeMillis;
-        final long nanos;
+        final StatIdentity identity;
+        final boolean seeded;
         final String token;
         volatile long used;
 
-        Entry(long size, long mtimeMillis, long nanos, String token) {
-            this.size = size;
-            this.mtimeMillis = mtimeMillis;
-            this.nanos = nanos;
+        Entry(StatIdentity identity, boolean seeded, String token) {
+            this.identity = identity;
+            this.seeded = seeded;
             this.token = token;
             this.used = USE_TICK.incrementAndGet();
         }
 
         /**
-         * Whether this entry already says what {@code o} would: the same stat identity and digest.
-         * A settled self-hash answers for a restore seed of the same file too; it was only recorded
-         * once the mtime was out of the settle window, and that mtime has not moved.
+         * Whether this entry already says what {@code o} would: the same identity and digest. A
+         * settled self-hash answers for a restore seed of the same file too.
          */
         boolean answersFor(Entry o) {
-            return size == o.size
-                    && mtimeMillis == o.mtimeMillis
-                    && token.equals(o.token)
-                    && (nanos == o.nanos || nanos < 0);
+            return identity.equals(o.identity) && token.equals(o.token) && (seeded == o.seeded || !seeded);
         }
     }
 
@@ -336,10 +324,10 @@ public final class FileHashMemo {
 
         /** The entry for {@code path} when it still describes the file the caller just stat'ed. */
         @Nullable
-        Entry get(String path, long size, long mtimeMillis, long nanos) {
+        Entry get(String path, StatIdentity identity) {
             Entry e = entries.get(path);
-            if (e == null || e.size != size || e.mtimeMillis != mtimeMillis) return null;
-            boolean valid = e.nanos >= 0 ? e.nanos == nanos : System.currentTimeMillis() - mtimeMillis >= SETTLE_MS;
+            if (e == null || !e.identity.equals(identity)) return null;
+            boolean valid = e.seeded || Clock.SYSTEM.millis() - identity.lastTouchedMillis() >= SETTLE_MS;
             if (!valid) return null;
             e.used = USE_TICK.incrementAndGet();
             return e;
@@ -388,7 +376,7 @@ public final class FileHashMemo {
          */
         private static @Nullable String encode(String path, Entry v) {
             if (path.indexOf('\n') >= 0 || path.indexOf('\0') >= 0) return null;
-            return path + '\0' + v.size + '\0' + v.mtimeMillis + '\0' + v.nanos + '\0' + v.token;
+            return path + '\0' + v.identity.encode() + '\0' + (v.seeded ? "s" : "h") + '\0' + v.token;
         }
 
         private static void decode(String line, ConcurrentMap<String, Entry> into) {
@@ -398,20 +386,11 @@ public final class FileHashMemo {
             if (b < 0) return;
             int c = line.indexOf('\0', b + 1);
             if (c < 0) return;
-            int d = line.indexOf('\0', c + 1);
-            if (d < 0) return;
-            String token = line.substring(d + 1);
+            String token = line.substring(c + 1);
             if (!isSha256(token)) return;
-            try {
-                Entry e = new Entry(
-                        Long.parseLong(line.substring(a + 1, b)),
-                        Long.parseLong(line.substring(b + 1, c)),
-                        Long.parseLong(line.substring(c + 1, d)),
-                        token);
-                into.put(line.substring(0, a), e);
-            } catch (NumberFormatException malformed) {
-                // A torn or hand-edited line is not an entry.
-            }
+            StatIdentity identity = StatIdentity.decode(line.substring(a + 1, b));
+            if (identity == null) return;
+            into.put(line.substring(0, a), new Entry(identity, "s".equals(line.substring(b + 1, c)), token));
         }
     }
 }

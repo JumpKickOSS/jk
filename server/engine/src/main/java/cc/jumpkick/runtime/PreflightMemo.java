@@ -13,6 +13,7 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
@@ -35,7 +36,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -44,7 +44,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -857,15 +856,8 @@ public final class PreflightMemo {
             boolean mtimeMode = useMtimeMode();
             for (Path r : ModuleLayoutPlugins.fingerprintRoots(moduleDir, skipTests)) {
                 if (Files.isRegularFile(r)) {
-                    var attrs = Files.readAttributes(r, BasicFileAttributes.class);
-                    feedFingerprint(
-                            md,
-                            moduleDir,
-                            r,
-                            attrs.size(),
-                            attrs.lastModifiedTime().toMillis(),
-                            attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS),
-                            mtimeMode);
+                    Path abs = r.toAbsolutePath().normalize();
+                    feedFingerprint(md, moduleDir, abs, StatIdentity.of(abs), mtimeMode);
                     continue;
                 }
                 if (!Files.isDirectory(r)) continue;
@@ -874,21 +866,14 @@ public final class PreflightMemo {
                     // A file that vanished mid-walk is skipped by the helper; a directory that
                     // cannot be opened surfaces as an uncertain fingerprint, which is the honest
                     // answer — a fingerprint over a tree with a hole in it would look stable.
-                    PathUtil.forEachRegularFile(
-                            r,
-                            (file, attrs) -> feedFingerprint(
-                                    md,
-                                    moduleDir,
-                                    file,
-                                    attrs.size(),
-                                    attrs.lastModifiedTime().toMillis(),
-                                    attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS),
-                                    mtimeMode));
+                    PathUtil.forEachRegularFile(r, (file, attrs) -> {
+                        Path abs = file.toAbsolutePath().normalize();
+                        feedFingerprint(md, moduleDir, abs, StatIdentity.of(abs, attrs), mtimeMode);
+                    });
                     continue;
                 }
                 for (var ref : snap.files()) {
-                    feedFingerprint(
-                            md, moduleDir, ref.path(), ref.size(), ref.mtimeMillis(), ref.mtimeNanos(), mtimeMode);
+                    feedFingerprint(md, moduleDir, ref.path(), ref.identity(), mtimeMode);
                 }
             }
             feedNodeBuild(md, moduleDir);
@@ -951,22 +936,14 @@ public final class PreflightMemo {
      * file that will not read is an {@link UnreadableInput}, never a constant in the digest.
      */
     private static void feedFingerprint(
-            MessageDigest md,
-            Path moduleDir,
-            Path file,
-            long size,
-            long mtimeMillis,
-            long mtimeNanos,
-            boolean mtimeMode)
-            throws IOException {
+            MessageDigest md, Path moduleDir, Path file, StatIdentity identity, boolean mtimeMode) throws IOException {
         feed(md, moduleDir.relativize(file).toString().replace('\\', '/'));
         if (mtimeMode) {
-            feed(md, Long.toString(size));
-            feed(md, Long.toString(mtimeMillis));
+            feed(md, identity.encode());
             return;
         }
         try {
-            feed(md, FileHashMemo.contentHash(file.toAbsolutePath().normalize(), size, mtimeMillis, mtimeNanos));
+            feed(md, FileHashMemo.contentHash(file, identity));
         } catch (IOException e) {
             throw new UnreadableInput(file, e);
         }

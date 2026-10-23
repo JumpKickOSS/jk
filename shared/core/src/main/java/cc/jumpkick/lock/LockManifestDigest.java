@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PathSource;
@@ -13,8 +14,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -24,6 +23,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Content digest of every {@code jk.toml} that feeds a workspace (or standalone) lock — the owner
@@ -119,28 +119,24 @@ public final class LockManifestDigest {
      * invisible to it, and {@code LockFreshnessTest} caught it. Every fixed-path probe and every
      * probed-but-missing member or path-dep manifest is recorded, so a file appearing is a mismatch.
      */
-    private record Stamp(Path file, long size, FileTime modified) {
+    private record Stamp(Path file, @Nullable StatIdentity identity) {
 
-        /** {@link #size} for a path that was consulted and found absent. */
-        private static final long ABSENT = -1L;
-
-        /** Distrust size+mtime for a file touched within this window; see {@code JkBuildParser}. */
+        /** Distrust stat identity for a file touched within this window; see {@code JkBuildParser}. */
         private static final long SETTLE_MS = 2_000;
 
         static Stamp absent(Path file) {
-            return new Stamp(file, ABSENT, FileTime.fromMillis(0));
+            return new Stamp(file, null);
         }
 
         boolean matchesDisk() {
             try {
-                BasicFileAttributes a = Files.readAttributes(file, BasicFileAttributes.class);
-                if (size == ABSENT) return false; // appeared since
-                if (a.size() != size || !a.lastModifiedTime().equals(modified)) return false;
-                // A same-length edit inside one coarse mtime tick is invisible to size+mtime, and on
-                // Windows an editor save followed by a build hits that window. Recompute instead.
-                return System.currentTimeMillis() - a.lastModifiedTime().toMillis() >= SETTLE_MS;
+                StatIdentity now = StatIdentity.of(file);
+                if (identity == null || !identity.equals(now)) return false; // appeared, or moved
+                // A same-length edit inside one coarse timestamp tick is invisible to the stat, and
+                // on Windows an editor save followed by a build hits that window. Recompute instead.
+                return System.currentTimeMillis() - now.lastTouchedMillis() >= SETTLE_MS;
             } catch (IOException e) {
-                return size == ABSENT; // still absent is a match; unreadable is not
+                return identity == null; // still absent is a match; unreadable is not
             }
         }
     }
@@ -168,9 +164,11 @@ public final class LockManifestDigest {
     /** Read {@code file}'s bytes and record the identity they were read at. */
     private static byte[] read(Path file, List<Stamp> inputs) throws IOException {
         MANIFEST_READS.incrementAndGet();
-        BasicFileAttributes a = Files.readAttributes(file, BasicFileAttributes.class);
-        inputs.add(new Stamp(file, a.size(), a.lastModifiedTime()));
-        return Files.readAllBytes(file);
+        StatIdentity before = StatIdentity.of(file);
+        byte[] bytes = Files.readAllBytes(file);
+        // Bytes that moved under the read are recorded as no identity, which never matches.
+        inputs.add(new Stamp(file, before.equals(StatIdentity.of(file)) ? before : null));
+        return bytes;
     }
 
     /** Test seam: drop every memoized digest. */

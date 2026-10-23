@@ -253,6 +253,26 @@ class GraphBuildTest {
                 .isTrue();
     }
 
+    /** {@code cp -p}, {@code touch -r}: new bytes behind the old size and mtime are read again. */
+    @Test
+    void anEditThatRestoresSizeAndMtimeIsExtracted(@TempDir Path dir) throws Exception {
+        Path root = workspace(dir);
+        Path readme = root.resolve("README.md");
+        String before = Files.readString(readme);
+        FileTime mtime = Files.getLastModifiedTime(readme);
+        refresh(root, false);
+        Thread.sleep(20);
+        String after = before.replace("OrderService", "BaseService ");
+        assertThat(after).hasSameSizeAs(before);
+        Files.writeString(readme, after);
+        Files.setLastModifiedTime(readme, mtime);
+
+        GraphBuild.Result second = refresh(root, false);
+        assertThat(second.extracted()).isEqualTo(1);
+        assertThat(edge(second.graph(), "readme_shop", "baseservice_baseservice", "references"))
+                .isTrue();
+    }
+
     @Test
     void aServedWorkerAnswersAnUnchangedRefreshFromMemory(@TempDir Path dir) throws IOException {
         GraphMemory.clear();

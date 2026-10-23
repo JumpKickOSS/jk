@@ -4,6 +4,7 @@ package cc.jumpkick.layout;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
@@ -14,7 +15,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
@@ -248,18 +248,18 @@ public final class InputTrees {
         boolean overflow();
     }
 
-    public record FileRef(Path path, String name, long size, long mtimeMillis, long mtimeNanos) {
-        static FileRef from(Path file, BasicFileAttributes attrs) {
-            return new FileRef(
-                    file.toAbsolutePath().normalize(),
-                    file.getFileName().toString(),
-                    attrs.size(),
-                    attrs.lastModifiedTime().toMillis(),
-                    attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS));
+    public record FileRef(Path path, String name, StatIdentity identity) {
+        static FileRef from(Path file, BasicFileAttributes attrs) throws IOException {
+            Path abs = file.toAbsolutePath().normalize();
+            return new FileRef(abs, file.getFileName().toString(), StatIdentity.of(abs, attrs));
+        }
+
+        public long size() {
+            return identity.size();
         }
 
         long estimateBytes() {
-            return 48L + (long) path.toString().length() * 2L;
+            return 96L + (long) (path.toString().length() + identity.fileKey().length()) * 2L;
         }
     }
 

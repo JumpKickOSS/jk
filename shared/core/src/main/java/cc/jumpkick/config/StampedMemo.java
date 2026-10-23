@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.StatIdentity;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -26,7 +24,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p><strong>The stamp type is the caller's, deliberately.</strong> {@code S} is compared with
  * {@link Object#equals}, so a reader keeps the staleness policy its file needs while sharing this
- * mechanism: {@link FileStamp} (size + mtime) for the user config, the file's own bytes for
+ * mechanism: {@link FileStamp} (the file's stat identity) for the user config, the file's own bytes for
  * {@code jk.toml}, where size+mtime is too coarse on Windows — a same-length edit inside one clock
  * tick served the previous parse. Typing the stamp rather than erasing it to {@code Object} is what
  * stops one memo from mixing two rules.
@@ -132,14 +130,12 @@ public final class StampedMemo<K, S, V extends @Nullable Object> {
     }
 
     /**
-     * A file's (size, mtime) staleness stamp — the rule for files jk only reads, where one stat is
-     * cheaper than the parse it guards.
-     *
-     * <p>The mtime is kept as a {@link FileTime}, not truncated to milliseconds: every reader of
-     * {@code ~/.jk/config.toml} shares this stamp, and a coarser one can only ever serve a stale
-     * parse.
+     * A file's {@link StatIdentity} as a staleness stamp — the rule for files jk only reads, where one
+     * stat is cheaper than the parse it guards. Size, nanosecond mtime, change time and file id: a
+     * coarser stamp can only ever serve a stale parse, and an mtime-preserving copy moves the change
+     * time.
      */
-    public record FileStamp(long size, FileTime modified) {
+    public record FileStamp(StatIdentity identity) {
 
         /** The stamp for {@code file}, or {@code null} when it is null, absent, or cannot be stat'ed. */
         public static @Nullable FileStamp of(@Nullable Path file) {
@@ -147,13 +143,16 @@ public final class StampedMemo<K, S, V extends @Nullable Object> {
             try {
                 // No exists() first: readAttributes throws NoSuchFileException for an absent file and
                 // the catch below already answers null, so the guard was a second syscall answering a
-                // question this one answers — 21.4 us instead of 11.1 on NTFS, on every jk.toml parse
-                // . PathUtil.deleteTree shows the same shape.
-                BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
-                return new FileStamp(attrs.size(), attrs.lastModifiedTime());
+                // question this one answers — 21.4 us instead of 11.1 on NTFS, on every jk.toml parse.
+                return new FileStamp(StatIdentity.of(file));
             } catch (IOException e) {
                 return null;
             }
+        }
+
+        /** When the file was last touched, in milliseconds: see {@link StatIdentity#lastTouchedMillis}. */
+        public long touchedMillis() {
+            return identity.lastTouchedMillis();
         }
     }
 }

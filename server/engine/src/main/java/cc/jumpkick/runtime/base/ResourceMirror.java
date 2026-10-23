@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.task.MirroredOutputs;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
@@ -103,7 +104,7 @@ public final class ResourceMirror {
     }
 
     /**
-     * Size and mtime of each non-class file under {@code classes}, keyed by relative path. A later
+     * The {@link StatIdentity} of each non-class file under {@code classes}, keyed by relative path. A later
      * {@link #changedNonClass} names what a compile rewrote, which adoption must not remove.
      */
     public static Map<String, String> nonClassIdentity(Path classes) throws IOException {
@@ -112,7 +113,7 @@ public final class ResourceMirror {
         PathUtil.forEachRegularFile(classes, (file, attrs) -> {
             String rel = classes.relativize(file).toString().replace('\\', '/');
             if (rel.endsWith(".class")) return;
-            out.put(rel, attrs.size() + ":" + attrs.lastModifiedTime().toMillis());
+            out.put(rel, StatIdentity.of(file, attrs).encode());
         });
         return out;
     }
@@ -124,7 +125,7 @@ public final class ResourceMirror {
         PathUtil.forEachRegularFile(classes, (file, attrs) -> {
             String rel = classes.relativize(file).toString().replace('\\', '/');
             if (rel.endsWith(".class")) return;
-            String id = attrs.size() + ":" + attrs.lastModifiedTime().toMillis();
+            String id = StatIdentity.of(file, attrs).encode();
             if (!id.equals(before.get(rel))) out.add(rel);
         });
         return out;

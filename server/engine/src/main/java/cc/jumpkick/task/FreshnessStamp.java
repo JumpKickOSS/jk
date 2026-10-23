@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.StatIdentity;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -19,7 +20,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -378,11 +378,8 @@ public final class FreshnessStamp {
         sb.append("RELEASE ").append(release).append('\n');
         sb.append("DIGEST ").append(optionsDigest).append('\n');
         for (Path src : sortedAbs(sources)) {
-            Seen seen = seen(src);
             sb.append("SOURCE ")
-                    .append(seen.size())
-                    .append(' ')
-                    .append(seen.mtimeNanos())
+                    .append(seen(src).token())
                     .append(' ')
                     .append(src)
                     .append('\n');
@@ -423,14 +420,13 @@ public final class FreshnessStamp {
             } else if (line.startsWith("DIGEST ")) {
                 optionsDigest = line.substring("DIGEST ".length()).trim();
             } else if (line.startsWith("SOURCE ")) {
-                // SOURCE <size> <mtime-nanos> <path>; a line in any other shape voids the stamp.
-                String[] parts = line.substring("SOURCE ".length()).trim().split(" ", 3);
-                if (parts.length != 3) return Optional.empty();
-                try {
-                    sources.put(Path.of(parts[2]), new Seen(Long.parseLong(parts[0]), Long.parseLong(parts[1])));
-                } catch (NumberFormatException e) {
+                // SOURCE <identity> <path>; a line in any other shape voids the stamp.
+                String[] parts = line.substring("SOURCE ".length()).trim().split(" ", 2);
+                if (parts.length != 2) return Optional.empty();
+                if (!parts[0].equals(Seen.NONE.token()) && StatIdentity.decode(parts[0]) == null) {
                     return Optional.empty();
                 }
+                sources.put(Path.of(parts[1]), new Seen(parts[0]));
             } else if (line.startsWith("CP ")) {
                 classpath.add(Path.of(line.substring("CP ".length()).trim()));
             } else if (line.startsWith("TOKEN ")) {
@@ -470,20 +466,23 @@ public final class FreshnessStamp {
     }
 
     /**
-     * A source's stat identity: size and nanosecond mtime, or {@code -1} for both when it was
-     * absent or a directory.
+     * A source's {@link StatIdentity}, encoded, or {@code none} when it was absent or a directory.
      */
-    public record Seen(long size, long mtimeNanos) {
-        static final Seen NONE = new Seen(-1, -1);
+    public record Seen(String token) {
+        static final Seen NONE = new Seen("none");
 
-        static Seen of(BasicFileAttributes attrs) {
+        static Seen of(Path file, BasicFileAttributes attrs) {
             if (!attrs.isRegularFile()) return NONE;
-            return new Seen(attrs.size(), attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS));
+            try {
+                return new Seen(StatIdentity.of(file, attrs).encode());
+            } catch (IOException unreadable) {
+                return NONE;
+            }
         }
     }
 
     private static Seen seen(Path file) {
-        return PathUtil.stat(file).map(Seen::of).orElse(Seen.NONE);
+        return PathUtil.stat(file).map(a -> Seen.of(file, a)).orElse(Seen.NONE);
     }
 
     /**
@@ -498,7 +497,7 @@ public final class FreshnessStamp {
             Optional<BasicFileAttributes> stat = PathUtil.stat(src);
             if (stat.isEmpty()) return true;
             Seen recorded = stamp.sourceStats().get(src);
-            if (recorded != null && !recorded.equals(Seen.of(stat.get()))) return true;
+            if (recorded != null && !recorded.equals(Seen.of(src, stat.get()))) return true;
             if (newerThan(src, stat.get(), stamp.stampMillis())) return true;
         }
         return false;

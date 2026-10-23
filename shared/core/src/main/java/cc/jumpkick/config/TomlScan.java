@@ -97,7 +97,7 @@ public final class TomlScan {
         Path key = file.toAbsolutePath().normalize();
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(key);
         if (stamp == null) return List.of();
-        if (Clock.SYSTEM.millis() - stamp.modified().toMillis() < SETTLE_MS) {
+        if (Clock.SYSTEM.millis() - stamp.touchedMillis() < SETTLE_MS) {
             return headOnly ? readHead(key) : read(key);
         }
         List<String> hit =
