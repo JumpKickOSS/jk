@@ -477,7 +477,9 @@ and exclusions stay GA-scoped.
    classpath-snapshot digest for kotlinc (`KotlinClasspathAbi`, which also covers inline bodies
    and `const val`). Sources enter by content, a mixed module's Java sources enter the kotlinc key
    by declaration digest (`JavaSourceApi`), and options, the JDK and the compiler closure ride
-   along. The processor path stays full content. A body-only change in a dependency therefore
+   along: kotlinc's Build Tools API closure, groovyc's worker and runtime, and the launch
+   classpath of jk's own javac worker (`JavacWorker`), each by content, so a reinstalled worker
+   re-keys the compiles it drives under a release version too. The processor path stays full content. A body-only change in a dependency therefore
    leaves every consumer's compile key — and its freshness stamp — alone; the compilers still see
    the full jars and directories. A jar's ABI is extracted through `JarClassReader`, which scans
    the central directory as a stream and holds one window of class names at a time (never

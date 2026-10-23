@@ -140,6 +140,11 @@ public final class ActionKey {
         // `--add-modules a --limit-modules b` and `--add-modules b --limit-modules a` hold the
         // same words and are different compiles.
         sb.append("options:").append(optionsToken(request.extraOptions())).append('\n');
+        // The worker that drives javac, by content: jk's wrapper decides the options javac sees
+        // and what is kept of its output, so a different worker is a different compiler. Its jar
+        // carries no version of its own under a release build, so its bytes are the identity.
+        for (String token : JavacWorker.tokens())
+            sb.append("worker:").append(token).append('\n');
         if (request.mixedScala()) {
             sb.append("scala:").append(request.scalaVersion()).append('\n');
             List<Path> scp = new ArrayList<>(request.compilerClasspath());

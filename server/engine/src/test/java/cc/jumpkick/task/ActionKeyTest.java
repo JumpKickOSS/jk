@@ -590,10 +590,28 @@ class ActionKeyTest {
                 .release(25)
                 .build();
 
+        StringBuilder worker = new StringBuilder();
+        for (String token : JavacWorker.tokens())
+            worker.append("worker:").append(token).append('\n');
         assertThat(ActionKey.forJavac("compile-main", request, "0.1.0"))
-                .isEqualTo(
-                        Hashing.sha256Hex(
-                                "task:compile-main\njk:0.1.0\nrelease:25\nencoding:UTF-8\njdk:none\noptions:\nmirrored:excluded\n"));
+                .isEqualTo(Hashing.sha256Hex(
+                        "task:compile-main\njk:0.1.0\nrelease:25\nencoding:UTF-8\njdk:none\noptions:\n" + worker
+                                + "mirrored:excluded\n"));
+    }
+
+    /** The worker that drives javac is part of what it compiled with: its bytes key the compile. */
+    @Test
+    void the_javac_key_carries_the_java_compiler_worker(@TempDir Path tempDir) throws IOException {
+        assertThat(JavacWorker.tokens())
+                .as("the worker's launch classpath, by content")
+                .isNotEmpty();
+        CompileRequest request = CompileRequest.builder()
+                .outputDir(tempDir.resolve("out"))
+                .release(25)
+                .build();
+        assertThat(ActionKey.javacOptionsDigest(request))
+                .as("the stamp's options digest moves with it too")
+                .isNotEqualTo(Hashing.sha256Hex("release:25\nencoding:UTF-8\njdk:none\noptions:\n"));
     }
 
     /**
