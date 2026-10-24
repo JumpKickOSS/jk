@@ -43,8 +43,8 @@ import org.jspecify.annotations.Nullable;
  * writes fake bytes under a public coordinate or a real tool version, mirrors Central at a stub, or
  * must see a cold download takes a private store ({@code jk.env.JK_STORE_DIR}).
  *
- * <p>The pool is bounded by {@link #reap}: least recently used units go once it is over its cap,
- * and what a killed process left staged goes after an hour.
+ * <p>The pool is bounded by {@link #reap}: a unit unused for {@link #UNUSED_MILLIS} goes, then least
+ * recently used units go once it is over its cap, and what a killed process left staged goes after an hour.
  */
 public final class TestStorePool {
 
@@ -72,14 +72,21 @@ public final class TestStorePool {
     /** A unit used this recently is never evicted, over the cap or not: a running suite may hold it. */
     static final long IDLE_MILLIS = 24L * 60 * 60 * 1000;
 
+    /**
+     * A unit unused this long goes whatever the pool weighs. The pool is a convenience for the next
+     * run, not an archive: a fetched dependency nobody has asked for in a week is cheaper fetched
+     * again than held.
+     */
+    static final long UNUSED_MILLIS = 7L * 24 * 60 * 60 * 1000;
+
     /** One reap per host per this long: {@link #REAPED_AT} records the last. */
     static final long REAP_EVERY_MILLIS = 60L * 60 * 1000;
 
     /**
-     * Bytes the pool may hold before the least recently used units go: about twice what the
+     * Bytes the pool may hold before the least recently used units go: about what the
      * integration, slow and network tiers fetch together. {@link #MAX_MB_PROPERTY} overrides it.
      */
-    static final long DEFAULT_MAX_BYTES = 4L << 30;
+    static final long DEFAULT_MAX_BYTES = 2L << 30;
 
     /** The default on CI, where one runner serves many branches and a cold fetch costs the most. */
     static final long CI_MAX_BYTES = 8L << 30;
@@ -253,9 +260,10 @@ public final class TestStorePool {
         long bytes = walk.bytes;
         int evicted = 0;
         long idleBefore = nowMillis - IDLE_MILLIS;
+        long unusedBefore = nowMillis - UNUSED_MILLIS;
         walk.units.sort(Comparator.comparingLong(Unit::usedAt));
         for (Unit unit : walk.units) {
-            if (bytes <= capBytes || unit.usedAt() >= idleBefore) break;
+            if (unit.usedAt() >= idleBefore || (bytes <= capBytes && unit.usedAt() >= unusedBefore)) break;
             if (evict(unit.dir(), trash, idleBefore)) {
                 bytes -= unit.bytes();
                 evicted++;

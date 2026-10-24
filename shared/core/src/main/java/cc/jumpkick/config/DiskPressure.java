@@ -37,6 +37,16 @@ public final class DiskPressure {
         return NONE;
     }
 
+    /**
+     * The most the artifact store's blobs may hold: 10 GiB, or 8% of the volume when that is less, so a
+     * small disk is not asked to give up more than a twelfth of itself. No probe means 10 GiB.
+     */
+    public static long budgetBytes(JkCacheConfig.@Nullable DiskSpace space) {
+        long cap = 10 * GIB;
+        if (space == null || space.totalBytes() <= 0) return cap;
+        return Math.min(cap, (long) (space.totalBytes() * 0.08));
+    }
+
     /** True when {@code factor} is at the emergency level. */
     public static boolean emergency(double factor) {
         return factor <= EMERGENCY;

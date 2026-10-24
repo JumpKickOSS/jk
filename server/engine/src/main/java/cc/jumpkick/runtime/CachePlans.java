@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.StoreCasGc;
+import cc.jumpkick.cache.ToolsGc;
+import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.config.DiskPressure;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkCacheConfig;
@@ -24,6 +27,7 @@ import cc.jumpkick.repo.M2Backing;
 import cc.jumpkick.repo.M2Clean;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.repo.StoreRepoGc;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.Task;
@@ -34,7 +38,9 @@ import cc.jumpkick.task.CacheRoots;
 import cc.jumpkick.task.CasSweep;
 import cc.jumpkick.task.HeavyActionPolicy;
 import cc.jumpkick.task.TmpGc;
+import cc.jumpkick.util.AccessLedger;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -132,15 +138,35 @@ public final class CachePlans {
                     // The artifact store's CAS has no other collector: what installs and syncs leave there
                     // ages out by what it is and how big, faster as the volume fills.
                     if (includeJkTmp) {
-                        double pressure = DiskPressure.factor(JkCacheConfig.DiskSpace.probe(JkStores.store()));
+                        var space = JkCacheConfig.DiskSpace.probe(JkStores.store());
+                        double pressure = DiskPressure.factor(space);
+                        long now = System.currentTimeMillis();
+                        Path toolsRoot = JkStores.store().resolve("tools");
+                        AccessLedger toolLedger = ToolUse.ledger(toolsRoot);
+                        var toolsGc = ToolsGc.run(toolsRoot, toolFamilies(), toolLedger.load(), pressure, now, dryRun);
+                        totalFiles += toolsGc.deleted();
+                        totalBytes += toolsGc.freedBytes();
+                        if (!dryRun) {
+                            toolLedger.compact(key -> ToolUse.exists(toolsRoot, key));
+                        }
+                        Path storeRoot = JkStores.store();
+                        AccessLedger blobLedger = AccessLedger.at(storeRoot.resolve(".access"));
                         var storeGc = StoreCasGc.run(
                                 JkStores.storeCas(),
                                 StoreCasGc.pinnedShas(),
-                                StoreCasGc.Policy.defaults(pressure),
-                                System.currentTimeMillis(),
+                                blobLedger.load(),
+                                StoreCasGc.Policy.defaults(pressure).withBudget(DiskPressure.budgetBytes(space)),
+                                now,
                                 dryRun);
+                        if (!dryRun) {
+                            Cas untracked = new Cas(storeRoot);
+                            blobLedger.compact(key -> key.startsWith("cas:") && untracked.contains(key.substring(4)));
+                        }
                         totalFiles += storeGc.deleted();
                         totalBytes += storeGc.freedBytes();
+                        var repoGc = StoreRepoGc.run(storeRoot, pressure, now, dryRun);
+                        totalFiles += repoGc.deleted();
+                        totalBytes += repoGc.freedBytes();
                         SweepReport shadowed = reclaimShadowedArtifacts(dryRun);
                         totalFiles += shadowed.files();
                         totalBytes += shadowed.bytes();
@@ -318,6 +344,13 @@ public final class CachePlans {
         totalBytes += shadowed.bytes();
 
         return new SweepReport(totalFiles, totalBytes);
+    }
+
+    /** The tool families whose installs the collector manages: the ones the registry hands out and stamps. */
+    private static Set<String> toolFamilies() {
+        Set<String> slugs = new LinkedHashSet<>();
+        for (BuildTool tool : BuildTool.values()) slugs.add(tool.slug());
+        return slugs;
     }
 
     /**

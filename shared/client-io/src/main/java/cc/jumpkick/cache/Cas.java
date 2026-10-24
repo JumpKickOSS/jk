@@ -2,6 +2,7 @@
 package cc.jumpkick.cache;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.util.AccessLedger;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.io.InputStream;
@@ -15,6 +16,7 @@ import java.security.MessageDigest;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
+import org.jspecify.annotations.Nullable;
 
 /**
  * SHA-256-keyed content-addressed store ({@code <root>/sha256/AB/CD/<rest>}). Atomic writes;
@@ -37,8 +39,26 @@ public final class Cas {
 
     private final Path root;
 
+    private final @Nullable AccessLedger ledger;
+
     public Cas(Path root) {
         this.root = Objects.requireNonNull(root, "root");
+        this.ledger = null;
+    }
+
+    private Cas(Path root, AccessLedger ledger) {
+        this.root = root;
+        this.ledger = ledger;
+    }
+
+    /**
+     * A CAS that records each blob it is asked for in the access ledger kept under {@code root}, which
+     * is what lets {@link StoreCasGc} weigh how often a blob is reached for and not only how old it is.
+     * The action-cache CAS is not tracked: its own budgeted pruning decides what stays.
+     */
+    public static Cas tracked(Path root) {
+        Objects.requireNonNull(root, "root");
+        return new Cas(root, AccessLedger.at(root.resolve(".access")));
     }
 
     public Path root() {
@@ -54,6 +74,7 @@ public final class Cas {
         if (sha256Hex.length() < 4) {
             throw new IllegalArgumentException("sha256 hex must be at least 4 chars, got: " + sha256Hex);
         }
+        if (ledger != null) ledger.touch(StoreCasGc.key(sha256Hex));
         return root.resolve("sha256")
                 .resolve(sha256Hex.substring(0, 2))
                 .resolve(sha256Hex.substring(2, 4))

@@ -464,8 +464,9 @@ final class TestLaunch {
             WorkerEnv testEnv,
             TestProgressListener listener)
             throws Exception {
+        TestSummary summary;
         try (TestHomes.Hold held = TestEnv.holdSandboxes(in.dir())) {
-            return launcher.run(
+            summary = launcher.run(
                     ctx.require(JAVA_HOME),
                     ctx.require(TEST_CLASSES),
                     runtimeCp,
@@ -490,6 +491,9 @@ final class TestLaunch {
             int gone = TestHomes.reapNow(TestHomes.nestedRoot(in.dir()));
             if (gone > 0) Log.debug("test: reaped nested sandbox slots", "slots", gone);
         }
+        // Green: the sandbox has nothing left to show anyone. Red keeps it for a look, and for the reaper's window.
+        if (summary.allPassed()) TestHomes.discard(in.dir());
+        return summary;
     }
 
     /** The warning a run whose failing tests did not fail it carries; readers key on it. */

@@ -106,6 +106,7 @@ public final class NodeProvisioning {
                 .filter(t -> NodeSelector.satisfies(spec, t.version(), releases))
                 .filter(t -> Files.exists(BuildTool.NODE.launcher(t.home())))
                 .max(Comparator.comparing(t -> NodeDiscovery.VersionKey.of(t.version())))
+                .map(registry::used)
                 .map(t -> new NodeHome(t.home(), t.version(), "jk", null));
         if (managed.isPresent()) return managed.get();
         if (!policy.noDiscover()) {
@@ -144,7 +145,7 @@ public final class NodeProvisioning {
                     .filter(i -> Files.exists(t.launcher(i.home())))
                     .max(Comparator.comparing(i -> NodeDiscovery.VersionKey.of(i.version())))
                     .orElseThrow(() -> offline);
-            return node.withManager(managerHome(spec.manager(), newest));
+            return node.withManager(managerHome(spec.manager(), registry.used(newest)));
         }
     }
 

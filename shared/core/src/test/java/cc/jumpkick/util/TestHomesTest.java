@@ -115,6 +115,27 @@ class TestHomesTest {
         assertThat(stale).doesNotExist();
     }
 
+    /** A green suite has nothing left to show anyone; a live launch's hold is the one thing that stops it going. */
+    @Test
+    void a_green_runs_slot_is_discarded_unless_another_launch_holds_it(@TempDir Path tmp) throws Exception {
+        System.setProperty("jk.env.JK_HOME", tmp.resolve("jk-home").toString());
+        try {
+            Path module = Files.createDirectories(tmp.resolve("module"));
+            Path slot = TestHomes.slotFor(module);
+            Files.createDirectories(slot.resolve("home/store"));
+            try (TestHomes.Hold other = TestHomes.hold(slot)) {
+                assertThat(TestHomes.discard(module)).isFalse();
+                assertThat(slot).exists();
+            }
+
+            assertThat(TestHomes.discard(module)).isTrue();
+            assertThat(slot).doesNotExist();
+            assertThat(TestHomes.discard(module)).as("nothing to discard").isFalse();
+        } finally {
+            System.clearProperty("jk.env.JK_HOME");
+        }
+    }
+
     /** Nothing else writes here, so an unstamped directory is a crashed run's leftover. */
     @Test
     void an_unstamped_leftover_is_reaped(@TempDir Path tmp) throws Exception {

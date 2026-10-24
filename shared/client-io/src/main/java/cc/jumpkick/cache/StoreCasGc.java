@@ -3,6 +3,7 @@ package cc.jumpkick.cache;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.util.AccessLedger;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.io.InputStream;
@@ -13,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -65,7 +67,8 @@ public final class StoreCasGc {
             Duration jarTtl,
             Duration otherTtl,
             Duration minAge,
-            double pressure) {
+            double pressure,
+            long budgetBytes) {
 
         public static Policy defaults(double pressure) {
             return new Policy(
@@ -76,15 +79,33 @@ public final class StoreCasGc {
                     Duration.ofDays(21),
                     Duration.ofDays(30),
                     Duration.ofHours(1),
-                    pressure);
+                    pressure,
+                    Long.MAX_VALUE);
         }
 
         /** This policy keeping the newest {@code count} unpinned natives. */
         public Policy withKeepNative(int count) {
-            return new Policy(nativeTtl, count, largeJarTtl, largeBytes, jarTtl, otherTtl, minAge, pressure);
+            return new Policy(
+                    nativeTtl, count, largeJarTtl, largeBytes, jarTtl, otherTtl, minAge, pressure, budgetBytes);
         }
 
-        Duration ttl(Kind kind) {
+        /** This policy holding the store to {@code bytes}: past it, whatever has the least life left goes first. */
+        public Policy withBudget(long bytes) {
+            return new Policy(
+                    nativeTtl, keepNative, largeJarTtl, largeBytes, jarTtl, otherTtl, minAge, pressure, bytes);
+        }
+
+        /**
+         * How much longer a blob used on {@code days} distinct days lives: 1.5x for two, 2x for four,
+         * doubling again per doubling of days, to a cap that is lower for the kinds that are dear to hold.
+         */
+        double reuseBonus(Kind kind, int days) {
+            if (days <= 1) return 1.0;
+            double cap = kind == Kind.NATIVE || kind == Kind.LARGE_JAR ? 2.0 : 4.0;
+            return Math.min(cap, 1.0 + 0.5 * (Math.log(days) / Math.log(2)));
+        }
+
+        Duration ttl(Kind kind, int days) {
             Duration base =
                     switch (kind) {
                         case NATIVE -> nativeTtl;
@@ -92,7 +113,7 @@ public final class StoreCasGc {
                         case JAR -> jarTtl;
                         case OTHER -> otherTtl;
                     };
-            long millis = (long) (base.toMillis() * pressure);
+            long millis = (long) (base.toMillis() * reuseBonus(kind, days) * pressure);
             return Duration.ofMillis(Math.max(millis, minAge.toMillis()));
         }
     }
@@ -149,51 +170,90 @@ public final class StoreCasGc {
      * One pass over {@code storeCas}: every unpinned blob past its window goes, except the newest
      * {@link Policy#keepNative()} natives. {@code dryRun} reports without deleting.
      */
-    public static Report run(Cas storeCas, Set<String> pinned, Policy policy, long nowMillis, boolean dryRun)
+    public static Report run(
+            Cas storeCas,
+            Set<String> pinned,
+            Map<String, AccessLedger.Use> uses,
+            Policy policy,
+            long nowMillis,
+            boolean dryRun)
             throws IOException {
         Path shaRoot = storeCas.root().resolve("sha256");
         if (!Files.isDirectory(shaRoot)) return new Report(0, 0L, 0, 0);
 
-        record Blob(Path file, Kind kind, long size, long mtime) {}
+        record Blob(Path file, String hex, Kind kind, long size, long usedAt, int days) {
+            long age(long now) {
+                return now - usedAt;
+            }
+        }
         List<Blob> unpinned = new ArrayList<>();
         int[] pinnedCount = {0};
+        long[] total = {0};
         PathUtil.forEachRegularFile(shaRoot, (file, attrs) -> {
             if (file.getFileName().toString().startsWith(".put-")) return;
             Optional<String> hex = storeCas.hashFromPath(file);
             if (hex.isEmpty()) return;
+            total[0] += attrs.size();
             if (pinned.contains(hex.get())) {
                 pinnedCount[0]++;
                 return;
             }
             long size = attrs.size();
+            AccessLedger.Use use = uses.get(key(hex.get()));
+            long mtime = attrs.lastModifiedTime().toMillis();
             unpinned.add(new Blob(
                     file,
+                    hex.get(),
                     classify(file, size, policy.largeBytes()),
                     size,
-                    attrs.lastModifiedTime().toMillis()));
+                    use == null ? mtime : Math.max(mtime, use.lastMillis()),
+                    use == null ? 1 : use.days()));
         });
 
         Set<Path> keep = new HashSet<>();
         unpinned.stream()
                 .filter(b -> b.kind() == Kind.NATIVE)
-                .sorted(Comparator.comparingLong(Blob::mtime).reversed())
+                .sorted(Comparator.comparingLong(Blob::usedAt).reversed())
                 .limit(policy.keepNative())
                 .forEach(b -> keep.add(b.file()));
 
         int deleted = 0;
         long freed = 0;
-        int kept = 0;
+        List<Blob> survivors = new ArrayList<>();
         for (Blob blob : unpinned) {
-            long age = nowMillis - blob.mtime();
-            boolean expired = age >= policy.ttl(blob.kind()).toMillis();
+            long age = blob.age(nowMillis);
+            boolean expired = age >= policy.ttl(blob.kind(), blob.days()).toMillis();
             if (!expired || keep.contains(blob.file()) || age < policy.minAge().toMillis()) {
-                kept++;
+                survivors.add(blob);
                 continue;
             }
             if (!dryRun) Files.deleteIfExists(blob.file());
             deleted++;
             freed += blob.size();
+            total[0] -= blob.size();
         }
-        return new Report(deleted, freed, kept, pinnedCount[0]);
+        // Over budget: the blob with the least countdown left goes first, whatever its kind.
+        if (total[0] > policy.budgetBytes()) {
+            survivors.sort(
+                    Comparator.comparingLong(b -> policy.ttl(b.kind(), b.days()).toMillis() - b.age(nowMillis)));
+            List<Blob> remaining = new ArrayList<>(survivors);
+            for (Blob blob : survivors) {
+                if (total[0] <= policy.budgetBytes()) break;
+                if (keep.contains(blob.file())
+                        || blob.age(nowMillis) < policy.minAge().toMillis()) continue;
+                if (!dryRun) Files.deleteIfExists(blob.file());
+                remaining.remove(blob);
+                deleted++;
+                freed += blob.size();
+                total[0] -= blob.size();
+            }
+            survivors = remaining;
+        }
+        return new Report(deleted, freed, survivors.size(), pinnedCount[0]);
+    }
+
+    /** The ledger key of the blob with {@code sha256Hex}; the store CAS records its uses under it. */
+    public static String key(String sha256Hex) {
+        return "cas:" + sha256Hex;
     }
 }

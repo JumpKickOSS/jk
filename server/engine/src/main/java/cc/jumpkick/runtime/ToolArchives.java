@@ -2,10 +2,12 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.ToolsGc;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,8 +28,15 @@ final class ToolArchives {
 
     /** The unpacked directory of {@code archive}, extracted on first use. */
     static Path unpack(Path archive, Cas cas) throws IOException {
+        Path toolsRoot = cas.root().resolve("tools");
+        Path dir = unpackInto(archive, cas, toolsRoot);
+        ToolUse.record(toolsRoot, ToolsGc.UNPACKED, dir);
+        return dir;
+    }
+
+    private static Path unpackInto(Path archive, Cas cas, Path toolsRoot) throws IOException {
         String sha = FileHashMemo.contentHash(archive.toAbsolutePath().normalize());
-        Path dir = cas.root().resolve("tools").resolve("unpacked").resolve(sha);
+        Path dir = toolsRoot.resolve(ToolsGc.UNPACKED).resolve(sha);
         if (Files.isRegularFile(dir.resolve(COMPLETE))) return dir;
         Path staging = Files.createTempDirectory(Files.createDirectories(dir.getParent()), ".unpack-");
         try {
