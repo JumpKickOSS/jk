@@ -16,6 +16,7 @@ import java.util.Random;
 import net.jqwik.api.Arbitraries;
 import net.jqwik.api.Arbitrary;
 import net.jqwik.api.EdgeCasesMode;
+import net.jqwik.api.Example;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
@@ -163,6 +164,50 @@ class PubGrubSolverPropertyTest {
                             .toList());
             return table.flatMap(t -> roots.map(r -> new Universe(t, r)));
         });
+    }
+
+    /**
+     * A universe the generator found: {@code p0 1.0} needs nothing, while its 3.0 and 1.1 each lead
+     * to a conflict through {@code p1} and {@code p3}. Every input order must find a solution.
+     */
+    @Example
+    void a_conflict_through_two_packages_backs_off_to_the_version_that_needs_nothing() throws Exception {
+        Map<String, Map<String, Map<String, VersionSet>>> table = new LinkedHashMap<>();
+        table.put("p0", new LinkedHashMap<>());
+        table.get("p0").put("1.0", Map.of());
+        table.get("p0")
+                .put("3.0", ordered("p1", VersionSet.lessThan("1.1", false), "p2", VersionSet.atLeast("1.0", true)));
+        table.get("p0").put("3.0-rc2", Map.of());
+        table.get("p0")
+                .put(
+                        "1.1",
+                        ordered(
+                                "p3",
+                                VersionSet.between("1.0", true, "3.0-rc2", false),
+                                "p1",
+                                VersionSet.atLeast("1.0", true)));
+        table.put("p1", new LinkedHashMap<>());
+        table.get("p1").put("3.0-rc2", Map.of("p3", VersionSet.atLeast("3.0-rc1", true)));
+        table.get("p1").put("3.0", Map.of("p3", VersionSet.atLeast("3.0", true)));
+        table.put("p2", new LinkedHashMap<>(Map.of("1.0", Map.of())));
+        table.put("p3", new LinkedHashMap<>(Map.of("3.0-rc1", Map.of("p1", VersionSet.exact("1.0")))));
+        Universe u = new Universe(table, List.of(Term.positive("p0", VersionSet.ALL)));
+        assertThat(u.satisfiableByBruteForce()).isTrue();
+
+        for (int seed = 0; seed < 64; seed++) {
+            Map<String, String> solution = solveOrNull(u, new Random(seed));
+            assertThat(solution).as("input order %d", seed).isNotNull();
+            assertThat(u.isValidSolution(requireNonNull(solution)))
+                    .as("input order %d", seed)
+                    .isTrue();
+        }
+    }
+
+    private static Map<String, VersionSet> ordered(String a, VersionSet aSet, String b, VersionSet bSet) {
+        Map<String, VersionSet> m = new LinkedHashMap<>();
+        m.put(a, aSet);
+        m.put(b, bSet);
+        return m;
     }
 
     @Property(tries = 300, edgeCases = EdgeCasesMode.NONE)
