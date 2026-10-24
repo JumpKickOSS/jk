@@ -8,8 +8,8 @@ What a release may change in the formats projects depend on: [Compatibility](com
 
 | Line | Meaning |
 |------|---------|
-| **`0.30.0`** | Current product version (no `-SNAPSHOT` on `main`) |
-| Tag **`v0.30.0`** | Next public release cut from that line |
+| **`0.40.0`** | Current product version (no `-SNAPSHOT` on `main`) |
+| Tag **`v0.40.0`** | Next public release cut from that line |
 | Prior | **`0.20.0`** — previous release; **`0.10.1`** first public |
 | Later | Semver-ish: `0.30.1`, `0.31.0`, … |
 
@@ -26,8 +26,20 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
 
-### 0.30.0
+### 0.40.0
 
+0.30.0 was never published; its changes ship here.
+
+- **Central is stored once, in `~/.m2`.** Central and the repositories `settings.xml` declares keep their
+  jars in the Maven local repository and the store keeps only memos; a garbage collector ages tool
+  installs, compiler closures, repository trees and test sandboxes by size and use, tighter as the
+  disk fills. `jk cache clean --m2` and `[m2] auto-clean` remove only files jk fetched;
+  `jk storage` reports tool installs, scratch space and the test pool.
+- **Windows builds at full speed.** The engine and everything it forks opt out of power throttling,
+  so a hybrid CPU no longer runs the build on its efficiency cores; a suite's class walls are recorded
+  there and its test JVMs are sized from them.
+- **The longest dependency chain is not held out by a full module cap:** its head is admitted past
+  the cap, by at most an eighth of it; `-j1` stays strictly serial.
 - **Skipped work is proven done.** A suite is keyed on everything it reads, not only what it
   declares; stat-based skips key on size, mtime, change time and file id; outputs are verified by
   digest; a compile running annotation processors or groovyc keys what they read of the classpath;
