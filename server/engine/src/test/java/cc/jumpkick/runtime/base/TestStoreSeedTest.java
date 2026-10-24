@@ -75,6 +75,24 @@ class TestStoreSeedTest {
     }
 
     @Test
+    void a_file_the_pool_already_holds_takes_the_hint_so_the_sandbox_still_gets_its_version_list() throws Exception {
+        Path pom = m2File(userM2(), LAUNCHER, "6.1.3", ".pom", "central");
+        Path sandboxM2 = tmp.resolve("sandbox-m2");
+        // an earlier suite fetched the same bytes into the pool and recorded no provenance
+        Path held = sandboxM2.resolve(LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.pom");
+        Files.createDirectories(held.getParent());
+        Files.copy(pom, held);
+        Path store = tmp.resolve("store");
+
+        TestStoreSeed.seed(store, sandboxM2);
+        System.setProperty("jk.m2.local", sandboxM2.toString());
+
+        assertThat(TestStoreSeed.seeded(store, LAUNCHER + "/maven-metadata.xml")
+                        .map(xml -> new String(xml, StandardCharsets.UTF_8)))
+                .hasValueSatisfying(xml -> assertThat(xml).contains("<latest>6.1.3</latest>"));
+    }
+
+    @Test
     void the_files_are_copied_into_the_sandbox_local_repository_and_vouched_for_in_its_store() throws Exception {
         Path source = m2File(userM2(), LAUNCHER, "6.1.3", ".jar", "central");
         m2File(userM2(), LAUNCHER, "6.1.3", ".pom", "central");

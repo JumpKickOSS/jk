@@ -157,7 +157,10 @@ public final class TestStoreSeed {
                 if (!name.endsWith(".pom") && !name.endsWith(".jar")) return;
                 if (!centralServed(file) || EmptyArchive.is(file)) return;
                 Path destination = target.resolve(source.relativize(file).toString());
-                if (!seedable(destination)) return;
+                if (!seedable(destination)) {
+                    if (adoptHint(file, destination)) materialised[0]++;
+                    return;
+                }
                 copyInto(file, destination);
                 copyInto(
                         file.resolveSibling("_remote.repositories"),
@@ -165,6 +168,23 @@ public final class TestStoreSeed {
                 materialised[0]++;
             });
         }
+    }
+
+    /**
+     * A file the pool already holds — fetched by an earlier suite, which records no provenance — takes
+     * the source's {@code _remote.repositories} when it is the same bytes and the slot has no hint of
+     * its own, so the seed can tell it was Central's. True when a hint was written.
+     */
+    private static boolean adoptHint(Path source, Path destination) throws IOException {
+        Path hint = destination.resolveSibling("_remote.repositories");
+        Path sourceHint = source.resolveSibling("_remote.repositories");
+        if (Files.exists(hint) || !Files.isRegularFile(sourceHint) || !Files.isRegularFile(destination)) return false;
+        if (Files.size(source) != Files.size(destination)
+                || !Hashing.sha256Hex(source).equals(Hashing.sha256Hex(destination))) {
+            return false;
+        }
+        copyInto(sourceHint, hint);
+        return true;
     }
 
     /** True when a memo now vouches for {@code file}: written when absent or no longer describing it. */
