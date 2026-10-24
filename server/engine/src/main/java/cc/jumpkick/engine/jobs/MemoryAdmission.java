@@ -287,17 +287,20 @@ public final class MemoryAdmission {
                 Verdict verdict;
                 int position;
                 long waited;
+                // One reading per round: the wait it reports is the one that made the report due.
+                long now;
                 synchronized (lock) {
-                    waited = nowMillis.getAsLong() - arrived;
+                    now = nowMillis.getAsLong();
+                    waited = now - arrived;
                     verdict = judge(jid, estimate, brief, waited, draining);
                     if (verdict != null) return verdict;
                     position = positionOf(jid);
-                    if (nowMillis.getAsLong() - lastReport < timing.reportMs()) {
+                    if (now - lastReport < timing.reportMs()) {
                         lock.wait(pollMs);
                         continue;
                     }
                 }
-                lastReport = nowMillis.getAsLong();
+                lastReport = now;
                 onQueued.queued(position, waited);
             }
         } catch (InterruptedException interrupted) {
