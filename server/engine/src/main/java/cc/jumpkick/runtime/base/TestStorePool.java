@@ -3,8 +3,10 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.jdk.DirLinks;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.JkDirs;
@@ -14,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -134,10 +137,11 @@ public final class TestStorePool {
             Path parent = Files.createDirectories(entry.getParent());
             Path staged = parent.resolve("." + entry.getFileName() + ".link-"
                     + ProcessHandle.current().pid() + "-" + SEQ.incrementAndGet());
-            Files.createSymbolicLink(staged, shared);
+            DirLinks.replace(staged, shared);
             try {
-                if (Files.exists(entry, LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(entry)) {
-                    PathUtil.deleteRecursivelyOrThrow(entry);
+                if (Files.exists(entry, LinkOption.NOFOLLOW_LINKS)) {
+                    if (!isLink(entry)) PathUtil.deleteRecursivelyOrThrow(entry);
+                    else if (Os.isWindows()) Files.delete(entry); // a junction cannot be renamed over
                 }
                 Files.move(staged, entry, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
                 placed++;
@@ -148,12 +152,22 @@ public final class TestStorePool {
         return placed;
     }
 
+    /** Whether {@code entry} is itself a directory link: a symlink, or a junction on Windows. */
+    static boolean isLink(Path entry) {
+        try {
+            BasicFileAttributes a = Files.readAttributes(entry, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            return a.isSymbolicLink() || a.isOther();
+        } catch (IOException unreadable) {
+            return false;
+        }
+    }
+
     /** Whether {@code entry} is a link naming {@code target}. */
     static boolean linksTo(Path entry, Path target) {
-        if (!Files.isSymbolicLink(entry)) return false;
+        if (!isLink(entry)) return false;
         try {
-            return Files.readSymbolicLink(entry).equals(target);
-        } catch (IOException | UnsupportedOperationException unreadable) {
+            return Files.isSameFile(entry, target);
+        } catch (IOException unreadable) {
             return false;
         }
     }
