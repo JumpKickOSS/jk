@@ -345,6 +345,11 @@ public final class RepoArtifactStore {
     /** Under a repository tree: the ledger of how often its artifacts are used. */
     public static final String ACCESS_DIR = ".access";
 
+    /** True for a tree's ledger directory, which a walk of the tree's artifacts must not enter. */
+    public static boolean isAccessDir(Path dir) {
+        return ACCESS_DIR.equals(String.valueOf(dir.getFileName()));
+    }
+
     /** The ledger key of the artifact whose memo is {@code memo}, a file under the tree {@code root}. */
     public static String useKey(Path root, Path memo) {
         return "m2:" + root.relativize(memo).toString().replace('\\', '/');
@@ -642,7 +647,7 @@ public final class RepoArtifactStore {
         Map<Path, Boolean> versionDirs = new TreeMap<>();
         try {
             // A tree another process prunes while this walks loses that entry, not the whole store.
-            PathUtil.forEachRegularFile(tree, (file, attrs) -> {
+            PathUtil.forEachRegularFile(tree, RepoArtifactStore::isAccessDir, (file, attrs) -> {
                 if (!isBookkeeping(file.getFileName().toString())) versionDirs.put(file.getParent(), Boolean.TRUE);
             });
         } catch (IOException e) {

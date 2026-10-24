@@ -59,7 +59,7 @@ public final class StoreRepoGc {
             Map<String, AccessLedger.Use> uses =
                     AccessLedger.at(tree.resolve(RepoArtifactStore.ACCESS_DIR)).load();
             List<Path> memos = new ArrayList<>();
-            PathUtil.forEachRegularFile(tree, (file, attrs) -> {
+            PathUtil.forEachRegularFile(tree, RepoArtifactStore::isAccessDir, (file, attrs) -> {
                 if (file.getFileName().toString().endsWith(".jk")) memos.add(file);
             });
             for (Path memo : memos) {

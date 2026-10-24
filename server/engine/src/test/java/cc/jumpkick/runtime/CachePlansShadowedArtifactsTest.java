@@ -70,6 +70,18 @@ class CachePlansShadowedArtifactsTest {
     }
 
     @Test
+    void the_use_ledger_beside_the_memos_is_not_a_stray_artifact() throws Exception {
+        leave("https://repo.maven.apache.org/maven2", "central");
+        Path journal = store.resolve("repos/central").resolve(RepoArtifactStore.ACCESS_DIR + "/journal");
+        Files.createDirectories(journal.getParent());
+        Files.writeString(journal, "1\tm2:x\n");
+
+        CachePlans.reclaimShadowedArtifacts(false);
+
+        assertThat(journal).exists();
+    }
+
+    @Test
     void a_tree_that_keeps_its_own_artifacts_is_left_alone() throws Exception {
         Path jar = leave("https://private.example/maven/", "private");
 
