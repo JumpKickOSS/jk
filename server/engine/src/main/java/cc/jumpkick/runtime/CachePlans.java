@@ -382,7 +382,7 @@ public final class CachePlans {
             Path tree = JkStores.resolve("repos").resolve(origin.id());
             if (tree.toRealPath().equals(m2Real)) continue;
             List<Path> stray = new ArrayList<>();
-            PathUtil.forEachRegularFile(tree, (file, attrs) -> {
+            PathUtil.forEachRegularFile(tree, RepoArtifactStore::isAccessDir, (file, attrs) -> {
                 String name = file.getFileName().toString();
                 if (!name.endsWith(".jk") && !RepoArtifactStore.ORIGIN_FILE.equals(name)) stray.add(file);
             });
