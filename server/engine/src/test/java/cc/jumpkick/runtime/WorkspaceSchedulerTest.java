@@ -103,6 +103,89 @@ class WorkspaceSchedulerTest {
     }
 
     @Test
+    void the_tallest_remaining_chain_is_admitted_past_a_full_cap() {
+        // Cap 2 is full with p and the slow leaf s1 when p publishes and c, the head of the
+        // remaining chain, becomes ready. Neither running unit finishes until c has started, so
+        // c starts only if it may go past the cap.
+        CountDownLatch s1Started = new CountDownLatch(1);
+        CountDownLatch cStarted = new CountDownLatch(1);
+        AtomicInteger inFlight = new AtomicInteger();
+        AtomicInteger inFlightAtC = new AtomicInteger();
+        AtomicBoolean cameInTime = new AtomicBoolean(true);
+        WorkspaceScheduler.run(
+                List.of("p", "c", "d", "s1", "s2"),
+                WorkspaceSchedulerTest::p,
+                Map.of(
+                        p("p"), Set.of(),
+                        p("c"), Set.of(p("p")),
+                        p("d"), Set.of(p("c")),
+                        p("s1"), Set.of(),
+                        p("s2"), Set.of()),
+                (unit, publish) -> {
+                    inFlight.incrementAndGet();
+                    try {
+                        switch (unit) {
+                            case "p" -> {
+                                if (!s1Started.await(10, TimeUnit.SECONDS)) cameInTime.set(false);
+                                publish.run();
+                                if (!cStarted.await(10, TimeUnit.SECONDS)) cameInTime.set(false);
+                            }
+                            case "s1" -> {
+                                s1Started.countDown();
+                                if (!cStarted.await(10, TimeUnit.SECONDS)) cameInTime.set(false);
+                            }
+                            case "c" -> {
+                                inFlightAtC.set(inFlight.get());
+                                cStarted.countDown();
+                            }
+                            default -> {}
+                        }
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        inFlight.decrementAndGet();
+                    }
+                    return unit;
+                },
+                (justCompleted, results, remaining) -> null,
+                2,
+                () -> false);
+        assertThat(cameInTime).isTrue();
+        assertThat(inFlightAtC.get())
+                .as("c ran beside p and s1, over the cap of 2")
+                .isEqualTo(3);
+    }
+
+    @Test
+    void a_unit_off_the_tallest_chain_still_waits_for_a_slot() {
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger inFlight = new AtomicInteger();
+        AtomicInteger peak = new AtomicInteger();
+        List<String> units = List.of("a", "b", "c", "d");
+        Map<Path, Set<Path>> none = Map.of(p("a"), Set.of(), p("b"), Set.of(), p("c"), Set.of(), p("d"), Set.of());
+        WorkspaceScheduler.run(
+                units,
+                WorkspaceSchedulerTest::p,
+                none,
+                (unit, publish) -> {
+                    peak.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
+                    try {
+                        if ("a".equals(unit)) release.await(200, TimeUnit.MILLISECONDS);
+                        else Thread.sleep(20);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        inFlight.decrementAndGet();
+                    }
+                    return unit;
+                },
+                (justCompleted, results, remaining) -> null,
+                2,
+                () -> false);
+        assertThat(peak.get()).as("equal heights never overshoot the cap").isEqualTo(2);
+    }
+
+    @Test
     void cancel_drains_in_flight_units_before_returning() {
         // : cancel(true) settled the futures instantly while suppliers kept running, so
         // module-finish events could land AFTER workspace-finish. The cancel path must wait
