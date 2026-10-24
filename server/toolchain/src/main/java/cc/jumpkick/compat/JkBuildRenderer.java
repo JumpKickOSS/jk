@@ -479,6 +479,8 @@ public final class JkBuildRenderer {
         if (app.nativeImage()) sb.append("native   = true\n");
         if (app.config() != null)
             sb.append("config   = ").append(quote(app.config())).append('\n');
+        if (!app.jvmArgs().isEmpty())
+            sb.append("jvm-args = ").append(list(app.jvmArgs())).append('\n');
     }
 
     /** {@code [library]} table — a library's fat jar and the packages it relocates. */

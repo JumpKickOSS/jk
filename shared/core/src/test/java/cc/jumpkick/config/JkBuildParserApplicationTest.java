@@ -44,6 +44,34 @@ class JkBuildParserApplicationTest {
     }
 
     @Test
+    void application_jvm_args_are_kept_in_order_and_default_to_none() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+
+                [application]
+                main     = "com.example.Main"
+                jvm-args = ["--enable-native-access=ALL-UNNAMED", "-Xmx512m"]
+                """);
+        assertThat(parsed.applicationJvmArgs()).containsExactly("--enable-native-access=ALL-UNNAMED", "-Xmx512m");
+        assertThat(JkBuildParser.parse(PROJECT + """
+
+                [application]
+                main = "com.example.Main"
+                """).applicationJvmArgs()).isEmpty();
+    }
+
+    @Test
+    void application_jvm_args_must_be_a_list_of_strings() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                [application]
+                main = "com.example.Main"
+                jvm-args = "-Xmx1g"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("application.jvm-args");
+    }
+
+    @Test
     void application_relocate_maps_each_package_onto_its_shaded_name() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
 

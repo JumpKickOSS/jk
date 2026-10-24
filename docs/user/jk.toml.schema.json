@@ -212,6 +212,13 @@
             "type": "string"
           },
           "description": "Package relocation in the fat jar: source package prefix to shaded package prefix."
+        },
+        "jvm-args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Flags jk run and jk dev put on the application JVM, such as --enable-native-access=ALL-UNNAMED."
         }
       }
     },
