@@ -32,8 +32,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * {@code TMPDIR} is deep and resolves through {@code /var} → {@code /private/var}; Windows stops at
  * 260 characters), survives a reboot, and moves with {@code JK_HOME}: an engine already running in a
  * sandbox keeps its own sandboxes inside it rather than writing into the developer's real home. It
- * is <b>warm on purpose</b> — it holds a fetched store, and a per-run home would re-download every
- * dependency on every {@code jk test}. The store's public-origin repository trees and tool distributions are links into a
+ * holds a fetched store, but the downloads are the shared pool's, so a green run takes its slot with
+ * it ({@link #discard}) and a red one keeps it a short while for the developer to look at. The store's public-origin repository trees and tool distributions are links into a
  * pool every slot on the host shares ({@code <home>/test-store}), outside every slot; a slot's
  * delete and size walk see the links, never the pool.
  *
@@ -53,7 +53,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * one of them launching must not pull the dependency jars out from under another. A hold whose
  * process has exited is dropped as it is read. A slot stamped within {@link #HOLD_HOURS} is kept
  * from the byte cap as well, the fallback for a launch that could not write its hold. {@code jk
- * clean} deletes this module's slot outright. Nothing is deleted after a run: that is the warmth.
+ * clean} deletes this module's slot outright. A green run deletes its own slot; a red one leaves it to the window above.
  *
  * <p><b>The shared local m2.</b> A workspace's test JVMs share one Maven local repository, {@code
  * <workspace slot>/test-m2}: the sandbox store answers a lock row from it, so it is the classpath a
@@ -71,11 +71,11 @@ public final class TestHomes {
     /** Under the product home ({@link JkDirs#home()}), so {@code JK_HOME} relocates the sandboxes too. */
     public static final String DIR = "test-homes";
 
-    /** A slot untouched for this long belongs to a project that has moved on. */
-    static final int KEEP_DAYS = 14;
+    /** A slot untouched for this long is a red run's leftovers or a project that has moved on: a green run removes its own ({@link #discard}). */
+    static final int KEEP_DAYS = 2;
 
     /** Bytes the root may hold before the least recently used slots go. */
-    static final long KEEP_BYTES = 2L << 30;
+    static final long KEEP_BYTES = 1L << 30;
 
     /**
      * Bytes one slot may hold on its own — half the root's budget, so no single module's sandbox
@@ -223,6 +223,18 @@ public final class TestHomes {
         Pass pass = reapStale(root, Clock.SYSTEM.millis(), KEEP_BYTES);
         PASSES.put(root, pass);
         return pass.removed();
+    }
+
+    /**
+     * Remove {@code moduleDir}'s slot after a suite that passed: nothing in it is worth keeping, since
+     * the fetched dependencies sit in the shared pool beside it and a failed run is the only one whose
+     * sandbox anyone opens. Left alone when another live launch holds it. True when it went.
+     */
+    public static boolean discard(Path moduleDir) {
+        Path slot = slotFor(moduleDir);
+        if (!Files.isDirectory(slot) || held(slot)) return false;
+        PathUtil.deleteRecursively(slot);
+        return !Files.exists(slot);
     }
 
     /** The nested {@code test-homes} root a sandboxed suite's own fixtures take their slots in. */

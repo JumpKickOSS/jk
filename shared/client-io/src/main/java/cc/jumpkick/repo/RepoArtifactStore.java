@@ -10,6 +10,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.lock.RepoSource;
 import cc.jumpkick.lock.RepoStoreDirs;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.util.AccessLedger;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.PoolUse;
@@ -285,7 +286,7 @@ public final class RepoArtifactStore {
         try {
             Path sidecar = sidecarPath(relativePath);
             boolean ok = ArtifactMemo.verify(artifact, sidecar, inferGav(relativePath), expectedSha256);
-            if (ok) stampUse(sidecar);
+            if (ok) stampUse(root, sidecar);
             return ok ? IndexState.VERIFIED : IndexState.MISMATCH;
         } catch (IOException unreadable) {
             return IndexState.MISMATCH;
@@ -329,7 +330,8 @@ public final class RepoArtifactStore {
      * artifact and do not change on a use; its mtime is the last-use clock retention reads, since an
      * artifact's own mtime is its download time and its atime is not something jk can rely on.
      */
-    private static void stampUse(Path memo) {
+    private static void stampUse(Path root, Path memo) {
+        AccessLedger.at(root.resolve(ACCESS_DIR)).touch(useKey(root, memo));
         try {
             long now = Clock.SYSTEM.millis();
             if (now - Files.getLastModifiedTime(memo).toMillis() > USE_STAMP_GRANULARITY_MILLIS) {
@@ -338,6 +340,14 @@ public final class RepoArtifactStore {
         } catch (IOException e) {
             Log.debug("stampUse: a use that cannot be recorded costs retention a little accuracy", e);
         }
+    }
+
+    /** Under a repository tree: the ledger of how often its artifacts are used. */
+    public static final String ACCESS_DIR = ".access";
+
+    /** The ledger key of the artifact whose memo is {@code memo}, a file under the tree {@code root}. */
+    public static String useKey(Path root, Path memo) {
+        return "m2:" + root.relativize(memo).toString().replace('\\', '/');
     }
 
     /** SHA-256 hex from the materialised sidecar, if fully stored. */

@@ -5,6 +5,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.layout.BuildLayout;
@@ -28,8 +29,9 @@ import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The write-image verdict once {@link ImagePlans} has resolved the inputs: restore the tarball
- * from the packaging cache, fork the image worker — or, offline, refuse before the fork.
+ * The write-image verdict once {@link ImagePlans} has resolved the inputs: skip the build when the
+ * image is still where jk put it ({@link ImageSidecar}), else fork the image worker — or, offline,
+ * refuse before the fork.
  */
 final class ImageWrite {
 
@@ -41,10 +43,11 @@ final class ImageWrite {
     }
 
     /**
-     * The write-image verdict once inputs are resolved: restore the tarball from the action cache,
-     * or fork the worker — or, offline, refuse <em>before</em> the fork.
+     * The write-image verdict once inputs are resolved: skip the build when the image is still where
+     * jk put it (the tarball in {@code target/}, or the daemon's store), or fork the worker — or,
+     * offline, refuse <em>before</em> the fork.
      *
-     * <p>Offline handling is three-way. A digest-pinned base with a warm cache restores with no
+     * <p>Offline handling is three-way. A digest-pinned base whose image is still in place needs no
      * network and no fork — the one offline image path that works. A tag base is never pinned
      * offline (the registry round trip is skipped rather than attempted and swallowed), and a cache
      * miss forks a worker whose first act is to refuse — after the entire upstream pipeline already
@@ -116,24 +119,47 @@ final class ImageWrite {
         String base = pinnedBase.orElse(declared);
 
         ActionCache ac = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
-        // The pin probe carries the same registry credential the worker's pull leg gets, so a
-        // private base pins and caches like a public one. A base that still cannot be resolved
-        // (offline, an unreachable registry, a rejected credential) leaves nothing in the key that
-        // identifies the layers underneath the tarball, so it is not cached at all rather than
-        // cached wrongly. Writing `base = "…@sha256:…"` needs no registry round trip and always
-        // caches.
-        boolean useCache = tarballPath != null
+        boolean daemonMode = tarballPath == null
+                && (config.registry() == null || config.registry().isBlank());
+        // Where a daemon image is loaded: the runtime the project names, else whichever answers.
+        String daemonExe = !daemonMode
+                ? null
+                : config.dockerExecutable() != null ? config.dockerExecutable() : ImagePlans.detectDockerExecutable();
+        // The image lives in one place — the tarball beside the build, or the daemon's store — and the
+        // cache holds a small record that proves it is still the image this key describes (see
+        // ImageSidecar), never a second copy of it. The pin probe carries the same registry credential
+        // the worker's pull leg gets, so a private base pins and records like a public one. A base that
+        // still cannot be resolved (offline, an unreachable registry, a rejected credential) leaves
+        // nothing in the key that identifies the layers underneath the image, so it is not recorded at
+        // all rather than recorded wrongly. Writing `base = "…@sha256:…"` needs no registry round trip
+        // and always records. A push is a network side-effect (the remote's state is unknown): never skipped.
+        boolean useCache = (tarballPath != null || daemonExe != null)
                 && pinnedBase.isPresent()
                 && !SessionContext.current().config().rebuildOr(false);
-        String imgTask = null, imgKey = null;
-        if (tarballPath != null && useCache) {
-            imgTask = ActionKey.qualifiedTaskId(TaskNames.WRITE_IMAGE, tarballPath);
-            imgKey = ActionKey.forArtifact(imgTask, BuildIdentity.cacheKeyVersion(), tokens.of(base));
+        ImageKey recorded = null;
+        String daemonRef = config.targetReference(
+                project.project().name(), project.project().version());
+        if (useCache) {
+            String imgTask = ActionKey.qualifiedTaskId(
+                    TaskNames.WRITE_IMAGE, tarballPath != null ? tarballPath : layout.ociImageTar());
+            String imgKey = ActionKey.forArtifact(imgTask, BuildIdentity.cacheKeyVersion(), tokens.of(base));
+            recorded = new ImageKey(imgTask, imgKey);
             var hit = ac.lookup(imgKey);
-            Path tarballDir = Objects.requireNonNull(tarballPath.getParent(), "tarball dir");
-            if (hit.isPresent() && ac.restoreArtifacts(hit.get(), tarballDir)) {
+            if (hit.isPresent()
+                    && tarballPath != null
+                    && ImageSidecar.tarballIntact(hit.get().inputs(), tarballPath)) {
                 ctx.put(ImagePlans.IMAGE_REF, "");
                 ctx.label(tarballPath.getFileName() + " up-to-date");
+                ctx.progress(1);
+                return;
+            }
+            if (hit.isPresent()
+                    && daemonExe != null
+                    && ImageSidecar.daemonHolds(hit.get().inputs(), daemonExe)) {
+                ctx.put(
+                        ImagePlans.IMAGE_REF,
+                        Objects.requireNonNull(hit.get().inputs().get(ImageSidecar.IMAGE_REF)));
+                ctx.label(daemonRef + " up-to-date in " + daemonExe);
                 ctx.progress(1);
                 return;
             }
@@ -147,8 +173,6 @@ final class ImageWrite {
             ctx.error("image", refusal);
             throw new IllegalStateException(refusal);
         }
-        boolean daemonMode = tarballPath == null
-                && (config.registry() == null || config.registry().isBlank());
         if (tarballPath != null) {
             ctx.label("write OCI tarball " + tarballPath.getFileName());
         } else if (daemonMode) {
@@ -159,21 +183,34 @@ final class ImageWrite {
                     + config.targetReference(
                             project.project().name(), project.project().version()));
         }
+        String built;
         try {
-            ctx.put(ImagePlans.IMAGE_REF, fork.run(base));
+            built = fork.run(base);
+            ctx.put(ImagePlans.IMAGE_REF, built);
         } catch (RuntimeException e) {
             ctx.error("image", Errors.text(e));
             throw e;
         }
-        if (tarballPath != null && useCache) {
-            ac.storeArtifacts(
-                    imgTask,
-                    imgKey,
-                    Map.of(),
-                    Objects.requireNonNull(tarballPath.getParent(), "tarball dir"),
-                    List.of(tarballPath));
+        if (recorded != null && tarballPath != null && Files.isRegularFile(tarballPath)) {
+            ac.storeWithOutputs(recorded.task(), recorded.key(), ImageSidecar.ofTarball(tarballPath), Map.of());
+        } else if (recorded != null && daemonExe != null) {
+            String loaded = built.isBlank() ? daemonRef : built;
+            Optional<String> id = ImageSidecar.daemonImageId(daemonExe, loaded);
+            if (id.isPresent()) record(ac, recorded, ImageSidecar.ofDaemonImage(loaded, id.get()));
         }
         ctx.progress(1);
+    }
+
+    /** The task pointer and the action key an image's record is stored under. */
+    private record ImageKey(String task, String key) {}
+
+    private static void record(ActionCache ac, ImageKey image, Map<String, String> sidecar) {
+        try {
+            ac.storeWithOutputs(image.task(), image.key(), sidecar, Map.of());
+        } catch (IOException e) {
+            // an image that cannot be recorded is built again next time, which is all the record saves
+            Log.debug("image: the record is not kept", e);
+        }
     }
 
     /**

@@ -152,6 +152,21 @@ class TestStorePoolTest {
     }
 
     @Test
+    void a_unit_unused_for_a_week_goes_even_under_the_cap(@TempDir Path tmp) throws Exception {
+        Path pool = tmp.resolve("test-store");
+        TestStorePool.link(pool, tmp.resolve("home/store"));
+        long now = Clock.SYSTEM.millis();
+        Path stale = unit(pool.resolve("repos/central/org/example/lib/1.0"), "lib-1.0.jar", 8, now);
+        Path recent = unit(pool.resolve("repos/central/org/example/lib/2.0"), "lib-2.0.jar", 3, now);
+
+        TestStorePool.Pass pass = TestStorePool.reap(pool, now, Long.MAX_VALUE);
+
+        assertThat(pass.evicted()).isEqualTo(1);
+        assertThat(stale).doesNotExist();
+        assertThat(recent).exists();
+    }
+
+    @Test
     void a_unit_used_within_a_day_stays_even_over_the_cap(@TempDir Path tmp) throws Exception {
         Path pool = tmp.resolve("test-store");
         TestStorePool.link(pool, tmp.resolve("home/store"));

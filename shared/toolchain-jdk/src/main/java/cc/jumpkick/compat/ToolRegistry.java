@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compat;
 
-import cc.jumpkick.util.PoolUse;
+import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -90,12 +90,18 @@ public final class ToolRegistry {
         return toolsRoot.resolve(tool.slug()).resolve(requireVersion(version) + ".accepted.sha256");
     }
 
-    /** The install of {@code tool} at {@code version}, stamped as in use in a pooled tree ({@link PoolUse}). */
+    /** The install of {@code tool} at {@code version}, recorded as in use ({@link ToolUse}). */
     public Optional<InstalledTool> find(BuildTool tool, String version) {
         Path dir = installDir(tool, version);
         if (!Files.isDirectory(dir)) return Optional.empty();
-        PoolUse.touch(toolsRoot.resolve(tool.slug()), dir);
+        ToolUse.record(toolsRoot, tool.slug(), dir);
         return Optional.of(new InstalledTool(tool, version, dir));
+    }
+
+    /** Record that a build is using {@code tool}, an install this registry listed rather than found. */
+    public InstalledTool used(InstalledTool tool) {
+        ToolUse.record(toolsRoot, tool.tool().slug(), tool.home());
+        return tool;
     }
 
     /** Usable installs of {@code tool}: a broken link is not one, so it is not listed. */

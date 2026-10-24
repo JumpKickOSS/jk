@@ -20,9 +20,13 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -41,19 +45,58 @@ class ImagePlansOfflineTest {
     private static final String MAIN = "com.example.Main";
 
     @Test
-    void offline_pinned_base_warm_cache_restores_without_forking(@TempDir Path tmp) throws Exception {
+    void offline_pinned_base_with_the_tarball_in_place_does_not_fork(@TempDir Path tmp) throws Exception {
         Fixture fx = fixture(tmp, PINNED_BASE);
         seedPackagingCache(fx);
-        Files.deleteIfExists(fx.tarball());
 
         AtomicInteger forks = new AtomicInteger();
         BuildPlanResult result = runOffline(fx, forks);
 
         assertThat(result.success()).isTrue();
         assertThat(forks.get())
-                .as("a warm-cache offline build must not fork the image worker")
+                .as("a tarball that is still the one jk wrote needs no worker")
                 .isZero();
-        assertThat(fx.tarball()).exists();
+    }
+
+    /** The cache keeps a record, not a second copy: a tarball that is gone cannot be restored from it. */
+    @Test
+    void offline_a_tarball_that_is_gone_or_changed_is_not_restored_from_the_cache(@TempDir Path tmp) throws Exception {
+        Fixture fx = fixture(tmp, PINNED_BASE);
+        seedPackagingCache(fx);
+        Files.writeString(fx.tarball(), "CHANGED BY SOMEONE ELSE");
+
+        AtomicInteger forks = new AtomicInteger();
+        BuildPlanResult result = runOffline(fx, forks);
+
+        assertThat(result.success()).isFalse();
+        assertThat(forks.get()).isZero();
+
+        Files.delete(fx.tarball());
+        assertThat(runOffline(fx, forks).success()).isFalse();
+    }
+
+    /** A daemon image jk loaded and the daemon still holds under the same ID skips the build. */
+    @Test
+    void offline_a_daemon_image_that_is_still_loaded_does_not_fork(@TempDir Path tmp) throws Exception {
+        Assumptions.assumeFalse(
+                System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win"));
+        Path daemon = tmp.resolve("fake-docker");
+        Files.writeString(daemon, "#!/bin/sh\necho sha256:abc123\n");
+        Files.setPosixFilePermissions(daemon, PosixFilePermissions.fromString("rwxr-xr-x"));
+        Fixture fx = fixture(tmp, PINNED_BASE, daemon.toString());
+        String ref = fx.config().targetReference("app", "0.1.0");
+        seedDaemonRecord(fx, ImageSidecar.ofDaemonImage(ref, "abc123"));
+
+        AtomicInteger forks = new AtomicInteger();
+        BuildPlanResult result = runOffline(fx, null, forks);
+
+        assertThat(result.success()).isTrue();
+        assertThat(forks.get()).isZero();
+
+        seedDaemonRecord(fx, ImageSidecar.ofDaemonImage(ref, "someone-rebuilt-it"));
+        assertThat(runOffline(fx, null, forks).success())
+                .as("an image the daemon holds under another ID is not the one jk made")
+                .isFalse();
     }
 
     @Test
@@ -88,6 +131,10 @@ class ImagePlansOfflineTest {
             JkBuild project, BuildLayout layout, ImageConfig config, Path cache, Path tarball, Path workerJar) {}
 
     private static Fixture fixture(Path tmp, String base) throws Exception {
+        return fixture(tmp, base, null);
+    }
+
+    private static Fixture fixture(Path tmp, String base, @Nullable String dockerExecutable) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
             group = "t"
             name = "app"
@@ -102,13 +149,35 @@ class ImagePlansOfflineTest {
         Files.createDirectories(tarball.getParent());
         Path workerJar = Files.writeString(tmp.resolve("jk-image-builder.jar"), "WORKER");
         ImageConfig config = new ImageConfig(
-                base, null, null, List.of(), Map.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null,
+                base,
+                null,
+                null,
+                List.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                null,
+                null,
+                List.of(),
+                null,
+                dockerExecutable,
+                null,
                 false);
         return new Fixture(project, layout, config, tmp.resolve("cache"), tarball, workerJar);
     }
 
-    /** Store the tarball under the same key {@code restoreOrBuild} derives, exactly as production does. */
+    /** Write the tarball and record it under the same key {@code restoreOrBuild} derives, exactly as production does. */
     private static void seedPackagingCache(Fixture fx) throws Exception {
+        Files.writeString(fx.tarball(), "TARBALL");
+        String task = ActionKey.qualifiedTaskId("write-image", fx.tarball());
+        record(fx, task, ImageSidecar.ofTarball(fx.tarball()));
+    }
+
+    private static void seedDaemonRecord(Fixture fx, Map<String, String> sidecar) throws Exception {
+        record(fx, ActionKey.qualifiedTaskId("write-image", fx.layout().ociImageTar()), sidecar);
+    }
+
+    private static void record(Fixture fx, String task, Map<String, String> sidecar) throws Exception {
         List<String> tokens = ImagePlans.imageTokens(
                 fx.layout().mainJar(),
                 new ImagePlans.RuntimeJars(List.of(), List.of(), List.of(), Map.of()),
@@ -118,15 +187,18 @@ class ImagePlansOfflineTest {
                 fx.config(),
                 "",
                 fx.workerJar());
-        String task = ActionKey.qualifiedTaskId("write-image", fx.tarball());
         String key = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens);
-        Files.writeString(fx.tarball(), "TARBALL");
         new ActionCache(JkStores.cacheCas(fx.cache()), CacheTree.ACTIONS.under(fx.cache()), JkStores.storeCas())
-                .storeArtifacts(task, key, Map.of(), fx.tarball().getParent(), List.of(fx.tarball()));
+                .storeWithOutputs(task, key, sidecar, Map.of());
     }
 
     /** One-step plan around {@code restoreOrBuild} under an {@code --offline} session. */
     private static BuildPlanResult runOffline(Fixture fx, AtomicInteger forks) throws Exception {
+        return runOffline(fx, fx.tarball(), forks);
+    }
+
+    private static BuildPlanResult runOffline(Fixture fx, @Nullable Path tarball, AtomicInteger forks)
+            throws Exception {
         Task step = Task.builder("write-image")
                 .ticks(1)
                 .execute(ctx -> ImageWrite.restoreOrBuild(
@@ -135,7 +207,7 @@ class ImagePlansOfflineTest {
                         fx.layout(),
                         fx.config(),
                         fx.cache(),
-                        fx.tarball(),
+                        tarball,
                         new ImagePlans.RuntimeJars(List.of(), List.of(), List.of(), Map.of()),
                         null,
                         MAIN,

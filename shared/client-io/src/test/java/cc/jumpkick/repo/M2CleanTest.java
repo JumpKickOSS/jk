@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.util.AccessLedger;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -154,6 +155,28 @@ class M2CleanTest {
 
         assertThat(report.removed()).isEmpty();
         assertThat(report.young()).isEqualTo(1);
+        assertThat(m2.resolve(rel)).exists();
+    }
+
+    /** Twelve different days of use earn nearly three times the window, so a dependency in steady use is not churned. */
+    @Test
+    void a_download_used_on_many_days_keeps_a_longer_window() throws Exception {
+        String rel = "com/example/steady/1.0/steady-1.0.jar";
+        String plain = "com/example/plain/1.0/plain-1.0.jar";
+        download(rel, "steady", 90);
+        download(plain, "plain", 90);
+        AccessLedger ledger = AccessLedger.at(store.resolve("repos/central").resolve(RepoArtifactStore.ACCESS_DIR));
+        long now = System.currentTimeMillis();
+        for (int day = 91; day >= 80; day--) {
+            ledger.touch(
+                    RepoArtifactStore.useKey(
+                            store.resolve("repos/central"), ArtifactMemo.jkPath(store.resolve("repos/central"), rel)),
+                    now - Duration.ofDays(day).toMillis() + 10 * day);
+        }
+
+        M2Clean.Report report = run(Set.of(), false);
+
+        assertThat(report.removed()).extracting(M2Clean.Removed::relativePath).containsExactly(plain);
         assertThat(m2.resolve(rel)).exists();
     }
 

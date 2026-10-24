@@ -3,11 +3,13 @@ package cc.jumpkick.cache;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.util.AccessLedger;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -50,7 +52,7 @@ class StoreCasGcTest {
         String loose = put(cas, macho(2), 400);
 
         StoreCasGc.Report report = StoreCasGc.run(
-                cas, Set.of(pinned), StoreCasGc.Policy.defaults(1.0).withKeepNative(0), NOW, false);
+                cas, Set.of(pinned), Map.of(), StoreCasGc.Policy.defaults(1.0).withKeepNative(0), NOW, false);
 
         assertThat(cas.contains(pinned)).isTrue();
         assertThat(cas.contains(loose)).isFalse();
@@ -67,7 +69,7 @@ class StoreCasGcTest {
         String second = put(cas, macho(3), 20);
         String third = put(cas, macho(4), 30);
 
-        StoreCasGc.Report report = StoreCasGc.run(cas, Set.of(), StoreCasGc.Policy.defaults(1.0), NOW, false);
+        StoreCasGc.Report report = StoreCasGc.run(cas, Set.of(), Map.of(), StoreCasGc.Policy.defaults(1.0), NOW, false);
 
         assertThat(cas.contains(fresh))
                 .as("the newest, and younger than the minimum age")
@@ -93,7 +95,7 @@ class StoreCasGcTest {
         String smallEightDays = put(cas, zip(4096, 3), 8);
         String smallOld = put(cas, zip(4096, 4), 22);
 
-        StoreCasGc.run(cas, Set.of(), policy, NOW, false);
+        StoreCasGc.run(cas, Set.of(), Map.of(), policy, NOW, false);
 
         assertThat(cas.contains(bigOld)).isFalse();
         assertThat(cas.contains(bigYoung)).isTrue();
@@ -106,10 +108,10 @@ class StoreCasGcTest {
         Cas cas = new Cas(root);
         String smallThreeDays = put(cas, zip(4096, 1), 3);
 
-        StoreCasGc.run(cas, Set.of(), StoreCasGc.Policy.defaults(1.0), NOW, false);
+        StoreCasGc.run(cas, Set.of(), Map.of(), StoreCasGc.Policy.defaults(1.0), NOW, false);
         assertThat(cas.contains(smallThreeDays)).as("21 days of room").isTrue();
 
-        StoreCasGc.run(cas, Set.of(), StoreCasGc.Policy.defaults(0.1), NOW, false);
+        StoreCasGc.run(cas, Set.of(), Map.of(), StoreCasGc.Policy.defaults(0.1), NOW, false);
         assertThat(cas.contains(smallThreeDays))
                 .as("2.1 days of room at the emergency level")
                 .isFalse();
@@ -120,7 +122,7 @@ class StoreCasGcTest {
         Cas cas = new Cas(root);
         String fresh = put(cas, zip(4096, 1), 0.01);
 
-        StoreCasGc.run(cas, Set.of(), StoreCasGc.Policy.defaults(0.01), NOW, false);
+        StoreCasGc.run(cas, Set.of(), Map.of(), StoreCasGc.Policy.defaults(0.01), NOW, false);
 
         assertThat(cas.contains(fresh)).isTrue();
     }
@@ -130,7 +132,7 @@ class StoreCasGcTest {
         Cas cas = new Cas(root);
         String old = put(cas, zip(4096, 1), 100);
 
-        StoreCasGc.Report report = StoreCasGc.run(cas, Set.of(), StoreCasGc.Policy.defaults(1.0), NOW, true);
+        StoreCasGc.Report report = StoreCasGc.run(cas, Set.of(), Map.of(), StoreCasGc.Policy.defaults(1.0), NOW, true);
 
         assertThat(report.deleted()).isEqualTo(1);
         assertThat(cas.contains(old)).isTrue();
@@ -146,5 +148,48 @@ class StoreCasGcTest {
         Path blob = Files.write(root.resolve("c"), clazz);
 
         assertThat(StoreCasGc.classify(blob, clazz.length, 50L << 20)).isEqualTo(StoreCasGc.Kind.OTHER);
+    }
+
+    @Test
+    void a_blob_used_on_many_days_outlives_one_used_once(@TempDir Path root) throws Exception {
+        Cas cas = new Cas(root);
+        String once = put(cas, zip(4096, 1), 30);
+        String often = put(cas, zip(4096, 2), 30);
+        Map<String, AccessLedger.Use> uses = Map.of(
+                StoreCasGc.key(often),
+                new AccessLedger.Use(NOW - 40 * DAY.toMillis(), NOW - 30 * DAY.toMillis(), 20, 16));
+
+        StoreCasGc.run(cas, Set.of(), uses, StoreCasGc.Policy.defaults(1.0), NOW, false);
+
+        assertThat(cas.contains(once)).as("21 days, used once").isFalse();
+        assertThat(cas.contains(often))
+                .as("21 days x 3 for sixteen days of use")
+                .isTrue();
+    }
+
+    @Test
+    void a_recent_use_restarts_the_countdown_whatever_the_files_mtime(@TempDir Path root) throws Exception {
+        Cas cas = new Cas(root);
+        String used = put(cas, zip(4096, 1), 100);
+        Map<String, AccessLedger.Use> uses = Map.of(
+                StoreCasGc.key(used), new AccessLedger.Use(NOW - 100 * DAY.toMillis(), NOW - DAY.toMillis(), 2, 2));
+
+        StoreCasGc.run(cas, Set.of(), uses, StoreCasGc.Policy.defaults(1.0), NOW, false);
+
+        assertThat(cas.contains(used)).isTrue();
+    }
+
+    @Test
+    void over_budget_the_blob_with_the_least_life_left_goes_first(@TempDir Path root) throws Exception {
+        Cas cas = new Cas(root);
+        String nearlyDone = put(cas, zip(4096, 1), 18);
+        String fresh = put(cas, zip(4096, 2), 2);
+
+        StoreCasGc.Report report = StoreCasGc.run(
+                cas, Set.of(), Map.of(), StoreCasGc.Policy.defaults(1.0).withBudget(5000), NOW, false);
+
+        assertThat(report.deleted()).isEqualTo(1);
+        assertThat(cas.contains(nearlyDone)).isFalse();
+        assertThat(cas.contains(fresh)).isTrue();
     }
 }

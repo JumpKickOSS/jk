@@ -36,6 +36,7 @@ public final class PoolUse {
     public static void mark(Path tree) throws IOException {
         Path marker = Files.createDirectories(tree).resolve(MARKER);
         if (!Files.exists(marker)) Files.writeString(marker, "");
+        POOLED.put(tree, true);
     }
 
     /** Record that {@code unit}, a directory under {@code tree}, is in use, if {@code tree} is marked. */

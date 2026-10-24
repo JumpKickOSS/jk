@@ -47,7 +47,7 @@ public final class JkStores {
 
     /** Artifact CAS rooted at {@link #store()}. */
     public static Cas storeCas() {
-        return new Cas(store());
+        return Cas.tracked(store());
     }
 
     // ---- cache CAS ---------------------------------------------------------

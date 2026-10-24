@@ -206,15 +206,35 @@ reclaims only leaked temps, unreferenced blobs, whatever the small derived tiers
 out of their own windows and caps, and anything under the cache root that jk no longer
 writes — it can legitimately report “Nothing to clean up.” on a large cache.
 
-## What is never pruned
+## Beyond the action cache
 
-- **The artifact store** (`JK_STORE_DIR`): its CAS is collected with the cache: a blob an
-  installed engine's shelf manifest (or the client on `PATH`) names is kept; every other blob
-  ages out by what it is and how big. Native binaries last three days (the newest two are
-  always kept), jars over 50 MB a week, other jars three weeks, anything else a month, and
-  every window shrinks as the volume fills (to a tenth under 5% or 10 GiB free). `jk storage
-  clean` reclaims leaked `.put-` download temps and legacy `repos/<name>` trees; `jk storage
-  nuke` removes everything on purpose.
+- **The artifact store** (`JK_STORE_DIR`) is collected by the same idle pass, each entry on a
+  countdown from its last use. How lately comes from the entry's own stamp, how often from an
+  access ledger (`.access/` beside what it counts: a bounded journal folded into a snapshot):
+  an entry used on 2, 4, 8, 16 days gets 1.5×, 2×, 2.5×, 3× its window (capped lower for natives
+  and large jars), and every window shrinks as the volume fills (to a tenth under 5% or 10 GiB
+  free).
+  - *Blobs* in `sha256/`: pinned by an installed engine's shelf manifest or the client on `PATH`,
+    otherwise native binaries three days (the newest two always kept), jars over 50 MB a week,
+    other jars three weeks, anything else a month. The blobs together are held to the smaller of
+    10 GiB and 8% of the volume, the least life left going first.
+  - *Tool installs* under `tools/`: Node and the package managers keep the install used most
+    recently for a month and every other version for two days; Maven, Gradle and Kotlin keep
+    the newest 90 days and the others 14; an archive unpacked for a step (an IDE distribution)
+    goes a week after its last use.
+  - *Repository trees* jk holds itself (`repos/<id>` for a repository no `settings.xml` names):
+    45 days, or a week for a file of 50 MB or more. The first-party `jk-local` and `jumpkick`
+    trees are left to installs.
+
+  `jk storage clean` reclaims leaked `.put-` download temps and legacy `repos/<name>` trees;
+  `jk storage nuke` removes everything on purpose.
+- **Test sandboxes** (`test-homes`, `test-store`): a green `jk test` deletes its module's
+  sandbox as it finishes; a red one keeps it for two days to look at. The shared download pool
+  drops a unit unused for a week and is held to 2 GiB (8 GiB on CI).
+- **Container images** live once. A tarball is recorded by size, mtime and sha256 and a daemon
+  image by the ID Docker or Podman reported, in a small record in the action cache — never as a
+  second copy. `jk image` skips the build when the tarball is unchanged or the daemon still
+  holds the image under that ID, and builds again when either is gone.
 - **The Maven local repository** (`~/.m2/repository`): jk never removes from it on its own
   account. `jk cache clean --m2` (MCP: `disk` `action=m2-clean`) removes files unused for
   `--older-than` days (default `[m2] clean-after-days`, 60) that jk's own memo proves jk
