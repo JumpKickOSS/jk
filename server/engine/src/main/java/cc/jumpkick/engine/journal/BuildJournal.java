@@ -43,7 +43,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Directory name is the project build number (e.g. {@code 27}). {@link BuildRecord#id()} is a
  * UTC timestamp stamp for the run, not a path key. {@link #begin}/{@link #complete} locators are
- * the build-number directory name. On complete, requests {@link MetricsHarvest}.
+ * the build-number directory name. On complete, {@link #current} requests a {@link MetricsHarvest}.
  *
  * <p>A numbered run admitted through {@link #beginLater} has no directory until it has run for
  * {@link #STUB_DELAY_MILLIS}: a run that ends sooner is finished by {@link #complete}, which writes the
@@ -103,18 +103,28 @@ public final class BuildJournal {
 
     private final long stubDelayMillis;
 
+    /** Whether a finished run requests a {@link MetricsHarvest} of {@link #buildsRoot}. */
+    private final boolean harvests;
+
+    /** A journal under {@code buildsRoot} that leaves harvesting to its caller. */
     public BuildJournal(Path buildsRoot) {
-        this(buildsRoot, STUB_DELAY_MILLIS);
+        this(buildsRoot, STUB_DELAY_MILLIS, false);
     }
 
     /** {@code stubDelayMillis}: how long {@link #beginLater} waits before writing the in-flight entry. */
     BuildJournal(Path buildsRoot, long stubDelayMillis) {
-        this.buildsRoot = buildsRoot.normalize();
-        this.stubDelayMillis = stubDelayMillis;
+        this(buildsRoot, stubDelayMillis, false);
     }
 
+    private BuildJournal(Path buildsRoot, long stubDelayMillis, boolean harvests) {
+        this.buildsRoot = buildsRoot.normalize();
+        this.stubDelayMillis = stubDelayMillis;
+        this.harvests = harvests;
+    }
+
+    /** This process's journal: every finished build-like run requests a harvest of its root. */
     public static BuildJournal current() {
-        return new BuildJournal(JkDirs.builds());
+        return new BuildJournal(JkDirs.builds(), STUB_DELAY_MILLIS, true);
     }
 
     public Path buildsRoot() {
@@ -246,8 +256,11 @@ public final class BuildJournal {
                 }
                 OwnerOnlyFiles.seal(tmp);
                 move(tmp, target);
-                if (!record.running() && !record.synthetic() && BuildHistoryKinds.isBuildLike(record.kind()))
-                    MetricsHarvest.get().request();
+                if (harvests
+                        && !record.running()
+                        && !record.synthetic()
+                        && BuildHistoryKinds.isBuildLike(record.kind()))
+                    MetricsHarvest.get().request(buildsRoot);
                 return dirName;
             } catch (IOException e) {
                 PathUtil.deleteRecursively(tmp);
@@ -386,8 +399,8 @@ public final class BuildJournal {
             }
             PathUtil.deleteRecursively(tmp);
             // Synthetic optimize/calibrate fixtures must not train host ETA aggregates.
-            if (!toWrite.synthetic() && BuildHistoryKinds.isBuildLike(toWrite.kind())) {
-                MetricsHarvest.get().request();
+            if (harvests && !toWrite.synthetic() && BuildHistoryKinds.isBuildLike(toWrite.kind())) {
+                MetricsHarvest.get().request(buildsRoot);
             }
             return true;
         } catch (IOException | RuntimeException e) {
