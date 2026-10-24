@@ -28,6 +28,7 @@ import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoMirrors;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.RepoGroupBuilder;
+import cc.jumpkick.runtime.base.TestStorePool;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.StoreWriteGate;
 import cc.jumpkick.util.TestHomes;
@@ -269,14 +270,29 @@ public final class CacheInventoryOps {
         } catch (Exception e) {
             sandboxes = new DiskUsage.Stats(0, 0);
         }
+        DiskUsage.Stats tools = usageOf(storeRoot.resolve("tools"));
+        DiskUsage.Stats scratch = usageOf(JkDirs.tmp());
+        DiskUsage.Stats testPool = usageOf(TestStorePool.root());
         List<String> stats = List.of(
                 pack("jars", jarFiles, jarBytes),
                 pack("executables", execFiles, execBytes),
                 pack("oci", ociFiles, ociBytes),
                 pack("workers", workers.files, workers.bytes),
                 pack("maven-local", mavenLocal.files(), mavenLocal.bytes()),
-                pack("test-homes", sandboxes.files(), sandboxes.bytes()));
+                pack("test-homes", sandboxes.files(), sandboxes.bytes()),
+                pack("tools", tools.files(), tools.bytes()),
+                pack("scratch", scratch.files(), scratch.bytes()),
+                pack("test-store", testPool.files(), testPool.bytes()));
         return CacheInventoryAck.usage("store-usage", stats, totalFiles, totalBytes);
+    }
+
+    /** What {@code dir} holds, or nothing when it cannot be read. */
+    private static DiskUsage.Stats usageOf(Path dir) {
+        try {
+            return DiskUsage.of(dir);
+        } catch (IOException | RuntimeException unreadable) {
+            return new DiskUsage.Stats(0, 0);
+        }
     }
 
     private static CacheInventoryAck repoSearch(Path storeRoot, List<String> terms) {
