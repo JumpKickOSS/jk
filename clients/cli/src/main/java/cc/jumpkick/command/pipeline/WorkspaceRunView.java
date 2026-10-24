@@ -19,6 +19,7 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.SlowestTests;
@@ -107,10 +108,20 @@ final class WorkspaceRunView {
      * The two per-verb strings the shared ladder cannot know. {@code exec}: a success hands the
      * terminal to the program the verb launches next ({@code jk run}) instead of settling to a chip.
      */
-    record Tails(SuccessTail success, FailureTail failure, boolean exec) {
+    record Tails(SuccessTail success, FailureTail failure, boolean exec, LaunchFailure launch) {
         Tails(SuccessTail success, FailureTail failure) {
-            this(success, failure, false);
+            this(success, failure, false, r -> null);
         }
+    }
+
+    /**
+     * A green build whose program cannot be launched: the failure sentence that replaces the
+     * success tail, or {@code null} when the launch can proceed.
+     */
+    @FunctionalInterface
+    interface LaunchFailure {
+        @Nullable
+        String of(WorkspaceResult result);
     }
 
     /**
@@ -444,6 +455,14 @@ final class WorkspaceRunView {
         }
         // An empty execute plan (planned == 0) is the engine finding nothing dirty; an explicit
         // empty module selection settles here too, as up to date.
+        String launchFailure = tails.launch().of(result);
+        if (launchFailure != null) {
+            view.finishBuildPlanFailureCustom(launchFailure, above);
+            if (session != null) session.wedge(launchFailure);
+            event(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
+            after.accept(Settled.FAILED);
+            return Exit.DATA_ERR;
+        }
         String okTail = tails.success().of(result, planned());
         if (tails.exec()) view.finishBuildPlanExec(okTail, above);
         else view.finishBuildPlanSuccess(okTail, above);
@@ -491,6 +510,16 @@ final class WorkspaceRunView {
             event(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
             after.accept(Settled.FAILED);
             return result.exitCode() == 0 ? 1 : result.exitCode();
+        }
+        String launchFailure = tails.launch().of(result);
+        if (launchFailure != null) {
+            if (!toStdout)
+                CommandWedge.printLine(
+                        JkWedge.failureLineCustom(chrome.planName(), GlobalConfig.nerdFont(), launchFailure));
+            if (session != null) session.wedge(launchFailure);
+            event(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
+            after.accept(Settled.FAILED);
+            return Exit.DATA_ERR;
         }
         String okTail = tails.success().of(result, planned());
         if (!toStdout && !tails.exec()) CommandWedge.printOk(chrome.planName(), okTail);
