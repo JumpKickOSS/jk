@@ -54,6 +54,13 @@ public final class PomRuntimeClasspath {
      */
     public static final String HOST_STORE_PROPERTY = "jk.host.store";
 
+    /**
+     * System property naming the Maven local repository of the host whose store {@link
+     * #HOST_STORE_PROPERTY} names. A sandboxed JVM's own local repository is a throwaway, so the
+     * host store's Central artifacts are read from this one.
+     */
+    public static final String HOST_M2_PROPERTY = "jk.host.m2";
+
     private PomRuntimeClasspath() {}
 
     /**
@@ -298,7 +305,7 @@ public final class PomRuntimeClasspath {
         leading.add(local);
         leading.add(jumpkickStore);
         if (extraStore != null && !extraStore.equals(storeRoot.toAbsolutePath().normalize())) {
-            leading.addAll(fileRepos(extraStore));
+            leading.addAll(fileRepos(extraStore, configuredHostM2()));
         }
         return remotes.withReposPrepended(leading);
     }
@@ -323,7 +330,7 @@ public final class PomRuntimeClasspath {
 
     /** File-only {@code local} / {@code jumpkick} / {@code central} / {@code google} under {@code storeRoot}. */
     static RepoGroup localRepos(Path storeRoot) {
-        return new RepoGroup(fileRepos(storeRoot));
+        return new RepoGroup(fileRepos(storeRoot, null));
     }
 
     /** The stores a worker closure is read from: the first-party three, then Google's. */
@@ -334,7 +341,7 @@ public final class PomRuntimeClasspath {
         return stores;
     }
 
-    private static List<MavenRepo> fileRepos(Path storeRoot) {
+    private static List<MavenRepo> fileRepos(Path storeRoot, @Nullable Path hostM2) {
         Cas cas = Cas.tracked(storeRoot);
         Http http = new Http();
         List<String> names = List.of(
@@ -345,13 +352,19 @@ public final class PomRuntimeClasspath {
         List<RepoArtifactStore> stores = workerStores(storeRoot);
         List<MavenRepo> repos = new ArrayList<>(stores.size());
         for (int i = 0; i < stores.size(); i++) {
-            repos.add(storeOnlyRepo(names.get(i), storeUri(stores.get(i)), http, cas));
+            repos.add(storeOnlyRepo(names.get(i), storeUri(stores.get(i), hostM2), http, cas));
         }
         return repos;
     }
 
     /** A store's artifacts as a {@code file:} repository; reading it through {@link MavenRepo} writes nothing elsewhere. */
     private static URI storeUri(RepoArtifactStore store) {
+        return storeUri(store, null);
+    }
+
+    /** As {@link #storeUri(RepoArtifactStore)}; an m2-backed store is read from {@code hostM2} when given. */
+    private static URI storeUri(RepoArtifactStore store, @Nullable Path hostM2) {
+        if (hostM2 != null && store.m2Backed()) return hostM2.toUri();
         return Objects.requireNonNull(store.artifactRoot(), "store root").toUri();
     }
 
@@ -394,6 +407,13 @@ public final class PomRuntimeClasspath {
 
     static @Nullable Path configuredHostStore() {
         String p = System.getProperty(HOST_STORE_PROPERTY);
+        if (p == null || p.isBlank()) return null;
+        Path path = Path.of(p).toAbsolutePath().normalize();
+        return Files.isDirectory(path) ? path : null;
+    }
+
+    static @Nullable Path configuredHostM2() {
+        String p = System.getProperty(HOST_M2_PROPERTY);
         if (p == null || p.isBlank()) return null;
         Path path = Path.of(p).toAbsolutePath().normalize();
         return Files.isDirectory(path) ? path : null;
