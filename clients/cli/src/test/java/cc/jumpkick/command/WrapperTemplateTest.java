@@ -40,6 +40,8 @@ import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 /**
  * The wrapper scripts are bootstrappers, not pins: they may depend on exactly two surfaces —
@@ -487,39 +489,50 @@ class WrapperTemplateTest {
      * A release whose signed sums list no native client for this host gets the JVM client, whatever
      * the architecture: the wrapper installs its jar, verified against the sums, under
      * {@code lib\jk}, lets it write {@code bin\jk.bat}, and runs that. The next run finds it
-     * installed and downloads nothing. {@code JK_CLIENT=native} refuses instead.
+     * installed and downloads nothing.
      */
-    @Test
-    void windows_wrapper_installs_the_jvm_client_where_the_release_lists_no_native_one(@TempDir Path tmp)
-            throws Exception {
+    @ParameterizedTest
+    @CsvSource({"ARM64, aarch64", "AMD64, x86_64", "SPARC, sparc"})
+    void windows_wrapper_installs_the_jvm_client_where_the_release_lists_no_native_one(
+            String processorArchitecture, String arch, @TempDir Path tmp) throws Exception {
         if (!Os.isWindows()) return;
         KeyPair key = Keys.RELEASE;
         Path repo = materializeBat(tmp.resolve("repo"), key);
         String releases = jvmClientRelease(tmp.resolve("releases"), "1.0.0", key, tmp);
         Path empty = Files.createDirectories(tmp.resolve("empty-path"));
-        String java = System.getProperty("java.home");
+        Path home = Files.createDirectories(tmp.resolve("home"));
+        Map<String, String> env = Map.of(
+                "JK_RELEASES_URL",
+                releases,
+                "PROCESSOR_ARCHITECTURE",
+                processorArchitecture,
+                "JK_JAVA_HOME",
+                System.getProperty("java.home"));
 
-        for (String[] host : new String[][] {{"ARM64", "aarch64"}, {"AMD64", "x86_64"}, {"SPARC", "sparc"}}) {
-            Path home = Files.createDirectories(tmp.resolve("home-" + host[1]));
-            Map<String, String> env =
-                    Map.of("JK_RELEASES_URL", releases, "PROCESSOR_ARCHITECTURE", host[0], "JK_JAVA_HOME", java);
+        Run first = finish(startBat(repo, tmp, empty.toString(), home, env));
+        assertThat(first.exit()).as(first.stderr()).isZero();
+        assertThat(first.stderr())
+                .contains("publishes no native windows-" + arch + " client; installing the JVM client");
+        assertThat(first.stdout()).contains("jvm jk: --version");
+        assertThat(home.resolve("lib/jk/jk-1.0.0.jar")).isRegularFile();
+        assertThat(home.resolve("bin/VERSION")).content().isEqualToIgnoringWhitespace("1.0.0");
+        assertThat(home.resolve("bin/.jk-wrapper.lock")).doesNotExist();
 
-            Run first = finish(startBat(repo, tmp, empty.toString(), home, env));
-            assertThat(first.exit()).as(first.stderr()).isZero();
-            assertThat(first.stderr())
-                    .contains("publishes no native windows-" + host[1] + " client; installing the JVM client");
-            assertThat(first.stdout()).contains("jvm jk: --version");
-            assertThat(home.resolve("lib/jk/jk-1.0.0.jar")).isRegularFile();
-            assertThat(home.resolve("bin/VERSION")).content().isEqualToIgnoringWhitespace("1.0.0");
-            assertThat(home.resolve("bin/.jk-wrapper.lock")).doesNotExist();
+        Run second = finish(startBat(repo, tmp, empty.toString(), home, env));
+        assertThat(second.exit()).isZero();
+        assertThat(second.stderr()).doesNotContain("fetching");
+        assertThat(second.stdout()).contains("jvm jk: --version");
+        assertThat(home.resolve("launchers-written")).content().isEqualTo("x");
+    }
 
-            Run second = finish(startBat(repo, tmp, empty.toString(), home, env));
-            assertThat(second.exit()).isZero();
-            assertThat(second.stderr()).doesNotContain("fetching");
-            assertThat(second.stdout()).contains("jvm jk: --version");
-            assertThat(home.resolve("launchers-written")).content().isEqualTo("x");
-        }
-
+    /** {@code JK_CLIENT=native} refuses the JVM client and installs nothing. */
+    @Test
+    void windows_wrapper_refuses_the_jvm_client_when_JK_CLIENT_is_native(@TempDir Path tmp) throws Exception {
+        if (!Os.isWindows()) return;
+        KeyPair key = Keys.RELEASE;
+        Path repo = materializeBat(tmp.resolve("repo"), key);
+        String releases = jvmClientRelease(tmp.resolve("releases"), "1.0.0", key, tmp);
+        Path empty = Files.createDirectories(tmp.resolve("empty-path"));
         Path refusedHome = Files.createDirectories(tmp.resolve("home-native"));
         Run refused = finish(startBat(
                 repo,
