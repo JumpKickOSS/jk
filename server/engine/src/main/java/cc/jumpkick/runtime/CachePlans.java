@@ -149,6 +149,15 @@ public final class CachePlans {
                         if (!dryRun) {
                             toolLedger.compact(key -> ToolUse.exists(toolsRoot, key));
                         }
+                        // The unpacked archives (an IDE distribution) live in scratch space, not the store.
+                        Path scratch = JkDirs.tmp();
+                        AccessLedger scratchLedger = ToolUse.ledger(scratch);
+                        var unpackedGc = ToolsGc.run(scratch, Set.of(), scratchLedger.load(), pressure, now, dryRun);
+                        totalFiles += unpackedGc.deleted();
+                        totalBytes += unpackedGc.freedBytes();
+                        if (!dryRun) {
+                            scratchLedger.compact(key -> ToolUse.exists(scratch, key));
+                        }
                         Path storeRoot = JkStores.store();
                         AccessLedger blobLedger = AccessLedger.at(storeRoot.resolve(".access"));
                         var storeGc = StoreCasGc.run(

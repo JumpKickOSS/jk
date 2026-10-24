@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.cache.ToolsGc;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -16,6 +17,10 @@ import java.util.List;
  * <p>The scratch dir holds transient, regenerable artefacts — e.g. {@code jk import} reports.
  * Nothing here is load-bearing, so a flat 7-day age cutoff (no liveness/reachability check) keeps
  * it bounded without user attention.
+ *
+ * <p>The exception is what is tracked by use: the archives unpacked for steps ({@code unpacked/})
+ * and the ledger that counts their uses ({@code .access/}) are whole directories that {@link
+ * ToolsGc} ages by last use, since a file-by-file sweep would leave a torn tree.
  */
 public final class TmpGc {
 
@@ -39,6 +44,7 @@ public final class TmpGc {
         // Attributes from the walk: mtime and size were two extra stats per file.
         long[] bytes = {0};
         PathUtil.forEachRegularFile(tmpDir, (file, attrs) -> {
+            if (tracked(tmpDir.relativize(file))) return;
             if (attrs.lastModifiedTime().toMillis() < cutoff) {
                 doomed.add(file);
                 bytes[0] += attrs.size();
@@ -49,5 +55,10 @@ public final class TmpGc {
             for (Path file : doomed) Files.deleteIfExists(file);
         }
         return new Report(doomed.size(), total);
+    }
+
+    private static boolean tracked(Path relative) {
+        String first = relative.getName(0).toString();
+        return first.equals(ToolsGc.UNPACKED) || first.equals(".access");
     }
 }

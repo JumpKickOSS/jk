@@ -221,9 +221,9 @@ writes — it can legitimately report “Nothing to clean up.” on a large cach
   - *Tool installs* under `tools/`: Node and the package managers keep the install used most
     recently for a month and every other version for two days; Maven, Gradle and Kotlin keep
     the newest 90 days and the others 14; an archive unpacked for a step (an IDE distribution)
-    goes a week after its last use.
+    lives in `state/tmp/unpacked/` and goes a week after its last use.
   - *Repository trees* jk holds itself (`repos/<id>` for a repository no `settings.xml` names):
-    45 days, or a week for a file of 50 MB or more. The first-party `jk-local` and `jumpkick`
+    30 days, or a week for a file of 50 MB or more. The first-party `jk-local` and `jumpkick`
     trees are left to installs.
 
   `jk storage clean` reclaims leaked `.put-` download temps and legacy `repos/<name>` trees;

@@ -38,6 +38,23 @@ class TmpGcTest {
     }
 
     @Test
+    void use_tracked_trees_are_left_to_their_own_collector(@TempDir Path tmp) throws IOException {
+        Path unpacked = tmp.resolve("unpacked/abc/lib/app.jar");
+        Path ledger = tmp.resolve(".access/journal");
+        for (Path file : new Path[] {unpacked, ledger}) {
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, "x");
+            backdate(file, 30);
+        }
+
+        var r = TmpGc.sweep(tmp, TmpGc.DEFAULT_TTL, false);
+
+        assertThat(r.deleted()).isZero();
+        assertThat(unpacked).exists();
+        assertThat(ledger).exists();
+    }
+
+    @Test
     void dry_run_reports_but_keeps_files(@TempDir Path tmp) throws IOException {
         Path stale = Files.writeString(tmp.resolve("old-import.md"), "x");
         backdate(stale, 10);

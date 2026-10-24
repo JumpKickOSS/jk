@@ -3,7 +3,6 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cache.Cas;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -18,19 +17,19 @@ class ToolArchivesTest {
 
     @Test
     void an_archive_unpacks_once_and_is_its_digest(@TempDir Path tmp) throws Exception {
-        Cas cas = new Cas(tmp.resolve("store"));
+        Path scratch = tmp.resolve("scratch");
         Path archive = zip(tmp.resolve("ide.zip"), "lib/app.jar", "product-info.json");
 
-        Path dir = ToolArchives.unpack(archive, cas);
+        Path dir = ToolArchives.unpack(archive, scratch);
 
-        assertThat(dir).startsWith(cas.root().resolve("tools/unpacked"));
+        assertThat(dir).startsWith(scratch.resolve("unpacked"));
         assertThat(dir.resolve("lib/app.jar")).hasContent("lib/app.jar");
         assertThat(dir.resolve("product-info.json")).exists();
         assertThat(ToolArchives.isUnpacked(dir)).isTrue();
         assertThat(ToolArchives.identity(dir)).isEqualTo("unpacked:" + dir.getFileName());
 
         Files.delete(dir.resolve("product-info.json"));
-        assertThat(ToolArchives.unpack(archive, cas))
+        assertThat(ToolArchives.unpack(archive, scratch))
                 .as("a whole unpack is served as it stands, not extracted again")
                 .isEqualTo(dir);
         assertThat(dir.resolve("product-info.json")).doesNotExist();
@@ -38,16 +37,16 @@ class ToolArchivesTest {
 
     @Test
     void a_torn_unpack_is_replaced_and_another_archive_is_another_directory(@TempDir Path tmp) throws Exception {
-        Cas cas = new Cas(tmp.resolve("store"));
+        Path scratch = tmp.resolve("scratch");
         Path archive = zip(tmp.resolve("ide.zip"), "lib/app.jar");
-        Path dir = ToolArchives.unpack(archive, cas);
+        Path dir = ToolArchives.unpack(archive, scratch);
         Files.delete(dir.resolve(ToolArchives.COMPLETE));
         Files.delete(dir.resolve("lib/app.jar"));
 
-        assertThat(ToolArchives.unpack(archive, cas)).isEqualTo(dir);
+        assertThat(ToolArchives.unpack(archive, scratch)).isEqualTo(dir);
         assertThat(dir.resolve("lib/app.jar")).exists();
 
-        Path other = ToolArchives.unpack(zip(tmp.resolve("other.zip"), "lib/other.jar"), cas);
+        Path other = ToolArchives.unpack(zip(tmp.resolve("other.zip"), "lib/other.jar"), scratch);
         assertThat(other).isNotEqualTo(dir);
         assertThat(other.resolve("lib/other.jar")).exists();
     }

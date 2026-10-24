@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.ToolsGc;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -14,8 +14,9 @@ import java.nio.file.Path;
 
 /**
  * A step-dependency handed over unpacked ({@code unpack = true}): the fetched zip is extracted once
- * into the store under {@code tools/unpacked/<sha256 of the archive>/}, staged and published
- * atomically, so the directory is whole or absent and an unchanged archive is never unpacked again.
+ * into scratch space ({@code JkDirs.tmp()}, {@code unpacked/<sha256 of the archive>/}) — a means to
+ * an end, regenerable from the archive in the store, so it lives where everything is safe to delete —
+ * staged and published atomically, so the directory is whole or absent and an unchanged archive is never unpacked again.
  * The directory's name is the archive's content digest, which is the tool's identity in an action
  * key ({@link #identity}): fingerprinting the unpacked tree would walk every file of it per build.
  */
@@ -27,14 +28,18 @@ final class ToolArchives {
     private ToolArchives() {}
 
     /** The unpacked directory of {@code archive}, extracted on first use. */
-    static Path unpack(Path archive, Cas cas) throws IOException {
-        Path toolsRoot = cas.root().resolve("tools");
-        Path dir = unpackInto(archive, cas, toolsRoot);
-        ToolUse.record(toolsRoot, ToolsGc.UNPACKED, dir);
+    static Path unpack(Path archive) throws IOException {
+        return unpack(archive, JkDirs.tmp());
+    }
+
+    /** The unpacked directory of {@code archive} under {@code scratch}, extracted on first use. */
+    static Path unpack(Path archive, Path scratch) throws IOException {
+        Path dir = unpackInto(archive, scratch);
+        ToolUse.record(scratch, ToolsGc.UNPACKED, dir);
         return dir;
     }
 
-    private static Path unpackInto(Path archive, Cas cas, Path toolsRoot) throws IOException {
+    private static Path unpackInto(Path archive, Path toolsRoot) throws IOException {
         String sha = FileHashMemo.contentHash(archive.toAbsolutePath().normalize());
         Path dir = toolsRoot.resolve(ToolsGc.UNPACKED).resolve(sha);
         if (Files.isRegularFile(dir.resolve(COMPLETE))) return dir;

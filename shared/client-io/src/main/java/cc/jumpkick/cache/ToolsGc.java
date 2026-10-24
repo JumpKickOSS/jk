@@ -17,7 +17,7 @@ import java.util.Set;
 /**
  * Garbage collection of the tool installs under {@code <store>/tools}: Node, Maven, Gradle, Kotlin and
  * the package managers, one directory per version ({@code tools/<slug>/<version>}), and the archives
- * a step unpacked once ({@code tools/unpacked/<sha256>}).
+ * a step unpacked once (scratch {@code unpacked/<sha256>}).
  *
  * <p>A tool install is big and cheap to fetch again, and a project picks the newest install that
  * satisfies it, so an older one is nearly always dead weight: two Node patch releases, never mind two
