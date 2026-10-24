@@ -319,7 +319,8 @@ public final class RepoArtifactStore {
     /**
      * Copy {@code source} into this store at {@code relativePath} and write the {@code .jk} memo.
      * Idempotent when the destination already verifies as {@code sha256}. Source may be the
-     * destination (memo-only refresh).
+     * destination (memo-only refresh). A stored file whose bytes hash to {@code sha256} is kept as it
+     * is when {@code source} is another copy of them: a re-fetch rewrites neither it nor its memo.
      */
     public void materialize(String relativePath, Path source, String sha256) {
         if (root == null || source == null || !Files.isRegularFile(source)) return;
@@ -328,6 +329,14 @@ public final class RepoArtifactStore {
             if (Files.isRegularFile(artifact)
                     && verify(relativePath, sha256) == IndexState.VERIFIED
                     && Files.isSameFile(artifact, source)) {
+                return;
+            }
+            // Hashed rather than judged by the memo's stat, so a store copy corrupted in place under
+            // the same size and mtime is still replaced by the fetch.
+            if (Files.isRegularFile(artifact)
+                    && !Files.isSameFile(artifact, source)
+                    && Hashing.sha256Hex(artifact).equalsIgnoreCase(sha256)) {
+                verify(relativePath, sha256);
                 return;
             }
             Files.createDirectories(artifact.getParent());
