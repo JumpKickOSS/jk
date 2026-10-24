@@ -9,6 +9,7 @@ import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.PubGrubResolver;
 import cc.jumpkick.resolver.Resolution;
+import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -44,7 +45,10 @@ final class ToolClosure {
         boolean refresh = SessionContext.current().config().forceOr(false);
         if (!refresh) {
             List<Path> cached = readCachedClosure(cacheFile, cas);
-            if (cached != null) return cached;
+            if (cached != null) {
+                stamp(cas, tool, version);
+                return cached;
+            }
         }
 
         Dependency root = new Dependency(module, VersionSelector.parse("=" + version));
@@ -65,7 +69,14 @@ final class ToolClosure {
                     + version + " available in the configured repositories?");
         }
         writeCachedClosure(cacheFile, shas);
+        stamp(cas, tool, version);
         return jars;
+    }
+
+    /** Record a use of {@code tool}'s {@code version} so the tools collector can age it by use. */
+    static void stamp(Cas cas, String tool, String version) {
+        Path toolsRoot = cas.root().resolve("tools");
+        ToolUse.record(toolsRoot, tool, toolsRoot.resolve(tool).resolve(version));
     }
 
     /**

@@ -13,6 +13,7 @@ import cc.jumpkick.node.NodeCaches;
 import cc.jumpkick.node.NodeHome;
 import cc.jumpkick.runtime.PlannerNodeSetup;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -49,6 +50,7 @@ final class GraphScripts {
             NodeHome home = PlannerNodeSetup.ensure(new NodeProvisioning(), pin, ToolProgress.NONE);
             Path oxc = JkDirs.store().resolve("tools").resolve("graph-oxc").resolve(OXC_PARSER + "-" + OXC_RESOLVER);
             if (!installed(oxc) && !install(home, oxc)) return null;
+            ToolUse.record(JkDirs.store().resolve("tools"), "graph-oxc", oxc);
             return new Tools(home.node(), oxc);
         } catch (IOException | RuntimeException unavailable) {
             Log.debug("graph: no Node.js tools for " + root + "; scripts are scanned", unavailable);

@@ -51,7 +51,10 @@ public final class KspResolver {
         boolean refresh = SessionContext.current().config().forceOr(false);
         if (!refresh) {
             List<Path> cached = readCachedClosure(cacheFile, cas);
-            if (cached != null) return cached;
+            if (cached != null) {
+                ToolClosure.stamp(cas, "ksp", kspVersion);
+                return cached;
+            }
         }
 
         Dependency root = new Dependency(KSP_AA_MODULE, VersionSelector.parse("=" + kspVersion));
@@ -71,6 +74,7 @@ public final class KspResolver {
         }
         Files.createDirectories(cacheFile.getParent());
         Files.writeString(cacheFile, String.join("\n", shas), StandardCharsets.UTF_8);
+        ToolClosure.stamp(cas, "ksp", kspVersion);
         return jars;
     }
 

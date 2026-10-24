@@ -44,7 +44,10 @@ public final class ScalaToolResolver {
         boolean refresh = SessionContext.current().config().forceOr(false);
         if (!refresh) {
             List<Path> cached = readValidatedClosure(libDir, cacheFile);
-            if (cached != null) return cached;
+            if (cached != null) {
+                ToolClosure.stamp(cas, "scala", scalaVersion);
+                return cached;
+            }
         }
 
         List<Dependency> roots = List.of(
@@ -92,6 +95,7 @@ public final class ScalaToolResolver {
         pruneOrphanJars(libDir, jars);
         // Write the completion marker LAST — its presence + jar-count match is the read-path gate.
         writeCachedClosure(cacheFile, shas);
+        ToolClosure.stamp(cas, "scala", scalaVersion);
         return jars;
     }
 
