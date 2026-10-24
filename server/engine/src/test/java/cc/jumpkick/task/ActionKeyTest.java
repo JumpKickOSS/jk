@@ -12,6 +12,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Settled;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.BuildIdentity;
@@ -20,12 +21,22 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class ActionKeyTest {
+
+    /** Long enough after its writes that every file this test wrote reads as {@link Settled}. */
+    private static final Duration SETTLED = Duration.ofSeconds(5);
+
+    @AfterEach
+    void realClock() {
+        Settled.aheadForTests(null);
+    }
 
     /**
      * Two checkouts of the same project at different paths: identical inputs, identical key and
@@ -394,6 +405,7 @@ class ActionKeyTest {
 
     @Test
     void forJavac_then_snapshotInputs_hashes_each_source_once(@TempDir Path tempDir) throws IOException {
+        Settled.aheadForTests(SETTLED);
         Path src = tempDir.resolve("Hello.java");
         Files.writeString(src, "class Hello {}");
         long mtime = System.currentTimeMillis() - 60_000;

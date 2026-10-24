@@ -14,6 +14,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.Settled;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jdk.JdkOwnership;
@@ -32,6 +33,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermission;
+import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +46,14 @@ import org.junit.jupiter.api.io.TempDir;
 
 /** The local dirty-set memo and the module fingerprints it keys on. */
 class PreflightMemoTest {
+
+    /** Long enough after its writes that every file this test wrote reads as {@link Settled}. */
+    private static final Duration SETTLED = Duration.ofSeconds(5);
+
+    @AfterEach
+    void realClock() {
+        Settled.aheadForTests(null);
+    }
 
     @AfterEach
     void tidy() {
@@ -212,6 +222,7 @@ class PreflightMemoTest {
      */
     @Test
     void source_bytes_are_read_once_across_the_preflight_and_the_test_stamp(@TempDir Path tmp) throws Exception {
+        Settled.aheadForTests(SETTLED);
         writeProject(tmp);
         Path testSrc = tmp.resolve("src/test/java/AppTest.java");
         Files.createDirectories(testSrc.getParent());

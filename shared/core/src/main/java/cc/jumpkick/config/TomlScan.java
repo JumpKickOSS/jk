@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
-import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.host.Settled;
 import cc.jumpkick.util.MinimalToml;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -51,16 +51,13 @@ public final class TomlScan {
      * lines rather than the scan result means every key-set shares one read — the scan itself is a
      * line walk with an early exit, and never was the cost.
      *
-     * <p>A file touched within {@link #SETTLE_MS} bypasses the memo entirely. Size+mtime cannot see a
+     * <p>A file that is not yet {@link Settled} bypasses the memo entirely. Size+mtime cannot see a
      * same-length edit inside one coarse mtime tick, and a config file being edited is exactly the
      * case where that matters; the extra read costs one file for a couple of seconds. Same rule, same
      * constant, as {@code JkBuildParser}'s manifest stamp.
      */
     private static final StampedMemo<Path, StampedMemo.FileStamp, List<String>> LINES =
             StampedMemo.bounded(FILE_MEMO_ENTRIES);
-
-    /** Distrust {@code (size, mtime)} for a file modified within this window. */
-    private static final long SETTLE_MS = 2_000;
 
     /**
      * Scan {@code file} for {@code keys}, each spelled {@code "section.key"} (or just
@@ -97,7 +94,7 @@ public final class TomlScan {
         Path key = file.toAbsolutePath().normalize();
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(key);
         if (stamp == null) return List.of();
-        if (Clock.SYSTEM.millis() - stamp.touchedMillis() < SETTLE_MS) {
+        if (!stamp.settled()) {
             return headOnly ? readHead(key) : read(key);
         }
         List<String> hit =

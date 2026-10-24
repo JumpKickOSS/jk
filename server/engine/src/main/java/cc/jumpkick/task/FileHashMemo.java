@@ -6,8 +6,8 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.Settled;
 import cc.jumpkick.host.StatIdentity;
-import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,7 +44,7 @@ import org.jspecify.annotations.Nullable;
  * just restored); such an entry is trusted immediately, while its identity still matches. A
  * self-hash is recorded only when the file's identity after the read equals the one the caller
  * hashed against, so bytes that changed under the read are never filed under the old stat, and
- * only once the file was last touched {@link #SETTLE_MS} ago, so a same-size rewrite inside one
+ * only once the file is {@link Settled}, so a same-size rewrite inside one
  * timestamp tick of a coarse file system cannot reuse a stale digest.
  *
  * <p>The file is a {@link MemoLog}: a flush appends the entries that changed since the last one, and
@@ -58,9 +58,6 @@ import org.jspecify.annotations.Nullable;
  * the bytes come back on the next flush rather than going stale.
  */
 public final class FileHashMemo {
-
-    /** Distrust stat-identity for files modified within this window (mtime-granularity guard). */
-    private static final long SETTLE_MS = 2_000;
 
     /**
      * Entries one store keeps. Around 200 B each, so the cap is a heap bound before it is a disk
@@ -126,9 +123,7 @@ public final class FileHashMemo {
         String token = Hashing.sha256Hex(file);
         // A file written moments ago can change again at the same size and tick; only record it
         // once the clock can tell the two apart, and only under the identity the bytes were read at.
-        if (store != null
-                && Clock.SYSTEM.millis() - identity.lastTouchedMillis() >= SETTLE_MS
-                && identity.equals(StatIdentity.of(file))) {
+        if (store != null && Settled.is(identity) && identity.equals(StatIdentity.of(file))) {
             store.put(file.toString(), new Entry(identity, false, token));
         }
         return token;
@@ -137,7 +132,7 @@ public final class FileHashMemo {
     /**
      * Seed the memo with a <em>known</em> content hash — a CAS blob this build just restored, whose
      * bytes are complete and whose mtime is ours. Recorded with its nanosecond stamp so it is
-     * trusted without waiting out {@link #SETTLE_MS}; this is what keeps stamps and package keys
+     * trusted without waiting until it is {@link Settled}; this is what keeps stamps and package keys
      * cheap after {@code jk clean} plus an action-cache restore, which would otherwise re-hash
      * every class file and jar it just wrote.
      */
@@ -327,7 +322,7 @@ public final class FileHashMemo {
         Entry get(String path, StatIdentity identity) {
             Entry e = entries.get(path);
             if (e == null || !e.identity.equals(identity)) return null;
-            boolean valid = e.seeded || Clock.SYSTEM.millis() - identity.lastTouchedMillis() >= SETTLE_MS;
+            boolean valid = e.seeded || Settled.is(identity);
             if (!valid) return null;
             e.used = USE_TICK.incrementAndGet();
             return e;

@@ -3,15 +3,18 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Settled;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Set;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -27,6 +30,14 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class JkBuildParserReadBudgetTest {
 
+    /** Long enough after its writes that every file this test wrote reads as {@link Settled}. */
+    private static final Duration SETTLED = Duration.ofSeconds(5);
+
+    @AfterEach
+    void realClock() {
+        Settled.aheadForTests(null);
+    }
+
     @BeforeEach
     void clearCounters() {
         JkBuildParser.resetStats();
@@ -34,6 +45,7 @@ class JkBuildParserReadBudgetTest {
 
     @Test
     void a_settled_manifest_is_read_once_however_often_it_is_parsed(@TempDir Path dir) throws IOException {
+        Settled.aheadForTests(SETTLED);
         Path toml = settledManifest(dir, "name = \"m\"\nversion = \"1.0\"\n");
 
         for (int i = 0; i < 40; i++) {
@@ -83,6 +95,7 @@ class JkBuildParserReadBudgetTest {
 
     @Test
     void a_workspace_fan_out_reads_each_manifest_once(@TempDir Path dir) throws IOException {
+        Settled.aheadForTests(SETTLED);
         // The shape that produced the finding: `parse` resolves workspace inheritance, which reads the
         // root and every member, so resolving all N modules used to read O(N^2) manifests. With the
         // stamp cheap, each distinct file is read once no matter how many times it is visited.
@@ -123,6 +136,7 @@ class JkBuildParserReadBudgetTest {
 
     @Test
     void resolving_every_module_is_linear_in_the_workspace(@TempDir Path dir) throws IOException {
+        Settled.aheadForTests(SETTLED);
         // WorkspaceClasspath.resolve used to call JkBuildParser.parse per sibling, and each parse
         // resolved the whole workspace — O(N) work per sibling over N siblings. It now loads the
         // workspace once. The read budget was fixed in; this pins the *request* count, which

@@ -2,6 +2,7 @@
 package cc.jumpkick.graph;
 
 import cc.jumpkick.codegraph.extract.Extractors;
+import cc.jumpkick.host.Settled;
 import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
@@ -21,9 +22,6 @@ import org.jspecify.annotations.Nullable;
 final class StatIndex {
 
     static final String FILE = "files.tsv";
-
-    /** A file touched this recently may still be mid-write within the same timestamp tick: always hash it. */
-    static final long RACY_MILLIS = 2_000;
 
     record Stat(StatIdentity identity, String sha) {}
 
@@ -60,7 +58,7 @@ final class StatIndex {
     String unchanged(GraphSources.Source source, long now) {
         Stat s = stats.get(source.rel());
         if (s == null || !s.identity().equals(source.identity())) return null;
-        return now - source.identity().lastTouchedMillis() < RACY_MILLIS ? null : s.sha();
+        return Settled.at(source.identity(), now) ? s.sha() : null;
     }
 
     /** A copy a refresh mutates and publishes only once the graph it vouches for is written. */

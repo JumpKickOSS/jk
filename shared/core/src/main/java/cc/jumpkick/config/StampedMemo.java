@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.Settled;
 import cc.jumpkick.host.StatIdentity;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -150,9 +151,9 @@ public final class StampedMemo<K, S, V extends @Nullable Object> {
             }
         }
 
-        /** When the file was last touched, in milliseconds: see {@link StatIdentity#lastTouchedMillis}. */
-        public long touchedMillis() {
-            return identity.lastTouchedMillis();
+        /** Whether the file was written long enough ago for this stamp to vouch for it: {@link Settled}. */
+        public boolean settled() {
+            return Settled.is(identity);
         }
     }
 }

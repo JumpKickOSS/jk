@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.Settled;
 import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -121,9 +122,6 @@ public final class LockManifestDigest {
      */
     private record Stamp(Path file, @Nullable StatIdentity identity) {
 
-        /** Distrust stat identity for a file touched within this window; see {@code JkBuildParser}. */
-        private static final long SETTLE_MS = 2_000;
-
         static Stamp absent(Path file) {
             return new Stamp(file, null);
         }
@@ -134,7 +132,7 @@ public final class LockManifestDigest {
                 if (identity == null || !identity.equals(now)) return false; // appeared, or moved
                 // A same-length edit inside one coarse timestamp tick is invisible to the stat, and
                 // on Windows an editor save followed by a build hits that window. Recompute instead.
-                return System.currentTimeMillis() - now.lastTouchedMillis() >= SETTLE_MS;
+                return Settled.is(now);
             } catch (IOException e) {
                 return identity == null; // still absent is a match; unreadable is not
             }
