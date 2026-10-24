@@ -571,6 +571,13 @@ public final class PluginDescriptors {
                 throw new JkBuildParseException(
                         where + ": unpack applies to one archive — a coordinate" + " without transitive, or a url");
             }
+            List<String> unpackInclude = stringList(t, "unpack-include", where);
+            if (!unpackInclude.isEmpty() && !unpack) {
+                throw new JkBuildParseException(where + ": unpack-include only applies with unpack = true");
+            }
+            for (String glob : unpackInclude) {
+                Interpolation.validate(glob, schemaKeys, entryKeys, where + ".unpack-include");
+            }
             String managedBy = t.getString("managed-by");
             if (managedBy != null) {
                 Interpolation.validate(managedBy, schemaKeys, entryKeys, where + ".managed-by");
@@ -612,7 +619,8 @@ public final class PluginDescriptors {
                     perEntry,
                     when,
                     url,
-                    unpack));
+                    unpack,
+                    unpackInclude));
         }
         return deps;
     }

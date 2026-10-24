@@ -760,6 +760,7 @@ class PluginContributionsTest {
                         artifact = "ide"
                         coordinate = "com.acme:ide:${config.version}!zip"
                         unpack = true
+                        unpack-include = ["lib/**", "plugins/${config.bundled}/**"]
 
                         [[contribute.step-dependency]]
                         artifact = "test-kit"
@@ -787,6 +788,10 @@ class PluginContributionsTest {
         assertThat(PluginContributions.stepDependencies(build, null, Map.of()))
                 .extracting(PluginContributions.StepDep::artifact, PluginContributions.StepDep::unpack)
                 .containsExactly(tuple("ide", true), tuple("test-kit", false));
+        assertThat(PluginContributions.stepDependencies(build, null, Map.of())
+                        .getFirst()
+                        .unpackInclude())
+                .containsExactly("lib/**", "plugins/java/**", "plugins/kotlin/**");
         assertThat(PluginContributions.providedClasspath(build, null))
                 .containsExactly(
                         new PluginContributions.Provided(
@@ -815,6 +820,10 @@ class PluginContributionsTest {
                         plugin.formatted("coordinate = \"g:a:1\"\ntransitive = true\nunpack = true", ""), "p.toml"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("unpack applies to one archive");
+        assertThatThrownBy(() -> PluginDescriptors.parse(
+                        plugin.formatted("coordinate = \"g:a:1\"\nunpack-include = [\"lib/**\"]", ""), "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("unpack-include only applies with unpack = true");
         assertThatThrownBy(() -> PluginDescriptors.parse(
                         plugin.formatted("coordinate = \"g:a:1\"", "jars = [\"lib/*.jar\"]"), "p.toml"))
                 .isInstanceOf(JkBuildParseException.class)

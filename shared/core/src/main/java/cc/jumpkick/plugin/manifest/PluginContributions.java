@@ -315,16 +315,30 @@ public final class PluginContributions {
             List<String> forSteps,
             @Nullable String url,
             boolean unpack,
+            List<String> unpackInclude,
             List<String> hostVariants) {
 
         public StepDep {
             with = with == null ? List.of() : List.copyOf(with);
             forSteps = forSteps == null ? List.of() : List.copyOf(forSteps);
+            unpackInclude = unpackInclude == null ? List.of() : List.copyOf(unpackInclude);
             hostVariants = hostVariants == null ? List.of() : List.copyOf(hostVariants);
         }
 
         public StepDep(String artifact, @Nullable String coordinateSpec) {
-            this(artifact, coordinateSpec, false, null, null, null, List.of(), List.of(), null, false, List.of());
+            this(
+                    artifact,
+                    coordinateSpec,
+                    false,
+                    null,
+                    null,
+                    null,
+                    List.of(),
+                    List.of(),
+                    null,
+                    false,
+                    List.of(),
+                    List.of());
         }
 
         public StepDep(
@@ -344,7 +358,25 @@ public final class PluginContributions {
                     List.of(),
                     null,
                     false,
+                    List.of(),
                     List.of());
+        }
+
+        /** This dependency extracting only the entries {@code globs} name. */
+        public StepDep withUnpackInclude(List<String> globs) {
+            return new StepDep(
+                    artifact,
+                    coordinateSpec,
+                    transitive,
+                    sdkComponent,
+                    sdkPath,
+                    managedBy,
+                    with,
+                    forSteps,
+                    url,
+                    unpack,
+                    globs,
+                    hostVariants);
         }
 
         /**
@@ -353,7 +385,8 @@ public final class PluginContributions {
          */
         public static StepDep atUrl(
                 String artifact, String url, List<String> forSteps, boolean unpack, List<String> hostVariants) {
-            return new StepDep(artifact, null, false, null, null, null, List.of(), forSteps, url, unpack, hostVariants);
+            return new StepDep(
+                    artifact, null, false, null, null, null, List.of(), forSteps, url, unpack, List.of(), hostVariants);
         }
 
         /**
@@ -507,13 +540,29 @@ public final class PluginContributions {
             String url = Interpolation.resolve(sd.url(), config, project, null, entry);
             return isHttpUrl(url)
                     ? StepDep.atUrl(
-                            artifact, url, forSteps, sd.unpack(), hostVariants(sd.url(), config, project, entry))
+                                    artifact,
+                                    url,
+                                    forSteps,
+                                    sd.unpack(),
+                                    hostVariants(sd.url(), config, project, entry))
+                            .withUnpackInclude(unpackInclude(sd, config, project))
                     : null;
         }
         if (sd.sdkComponent() != null) {
             String component = Interpolation.resolve(sd.sdkComponent(), config, project, null, entry);
             return new StepDep(
-                    artifact, null, false, component, sd.sdkPath(), null, List.of(), forSteps, null, false, List.of());
+                    artifact,
+                    null,
+                    false,
+                    component,
+                    sd.sdkPath(),
+                    null,
+                    List.of(),
+                    forSteps,
+                    null,
+                    false,
+                    List.of(),
+                    List.of());
         }
         String template = Objects.requireNonNull(sd.coordinate(), "coordinate");
         if (!Interpolation.configProvides(template, config)) return null;
@@ -550,7 +599,18 @@ public final class PluginContributions {
                 forSteps,
                 null,
                 sd.unpack(),
+                unpackInclude(sd, config, project),
                 hostVariants(template, config, project, entry));
+    }
+
+    /** {@code sd}'s extraction globs, each template expanded (a list-valued key gives one per element). */
+    private static List<String> unpackInclude(
+            PluginDescriptor.StepDependency sd, PluginConfig config, Project project) {
+        List<String> globs = new ArrayList<>();
+        for (String template : sd.unpackInclude()) {
+            globs.addAll(Interpolation.resolveEach(template, config, project));
+        }
+        return globs;
     }
 
     /**

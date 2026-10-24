@@ -7,6 +7,15 @@ javadoc = false   # an IDE plugin has no API to document
 [intellij]
 version = "262.10968.63"
 plugins = ["java"]
+requires = [
+  "java-aetherDependencyResolver-plugin",
+  "java-coverage",
+  "libraries-misc-plugin",
+  "platform-structuralSearch-plugin",
+  "platform-structureView-plugin",
+  "platform-testRunner-plugin",
+  "platform-todo-plugin",
+]
 
 [repositories.jetbrains]
 url = "https://www.jetbrains.com/intellij-repository/releases"

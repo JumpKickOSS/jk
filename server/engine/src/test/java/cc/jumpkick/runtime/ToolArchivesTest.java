@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.Test;
@@ -20,7 +21,7 @@ class ToolArchivesTest {
         Path scratch = tmp.resolve("scratch");
         Path archive = zip(tmp.resolve("ide.zip"), "lib/app.jar", "product-info.json");
 
-        Path dir = ToolArchives.unpack(archive, scratch);
+        Path dir = ToolArchives.unpack(archive, List.of(), scratch);
 
         assertThat(dir).startsWith(scratch.resolve("unpacked"));
         assertThat(dir.resolve("lib/app.jar")).hasContent("lib/app.jar");
@@ -29,7 +30,7 @@ class ToolArchivesTest {
         assertThat(ToolArchives.identity(dir)).isEqualTo("unpacked:" + dir.getFileName());
 
         Files.delete(dir.resolve("product-info.json"));
-        assertThat(ToolArchives.unpack(archive, scratch))
+        assertThat(ToolArchives.unpack(archive, List.of(), scratch))
                 .as("a whole unpack is served as it stands, not extracted again")
                 .isEqualTo(dir);
         assertThat(dir.resolve("product-info.json")).doesNotExist();
@@ -39,16 +40,39 @@ class ToolArchivesTest {
     void a_torn_unpack_is_replaced_and_another_archive_is_another_directory(@TempDir Path tmp) throws Exception {
         Path scratch = tmp.resolve("scratch");
         Path archive = zip(tmp.resolve("ide.zip"), "lib/app.jar");
-        Path dir = ToolArchives.unpack(archive, scratch);
+        Path dir = ToolArchives.unpack(archive, List.of(), scratch);
         Files.delete(dir.resolve(ToolArchives.COMPLETE));
         Files.delete(dir.resolve("lib/app.jar"));
 
-        assertThat(ToolArchives.unpack(archive, scratch)).isEqualTo(dir);
+        assertThat(ToolArchives.unpack(archive, List.of(), scratch)).isEqualTo(dir);
         assertThat(dir.resolve("lib/app.jar")).exists();
 
-        Path other = ToolArchives.unpack(zip(tmp.resolve("other.zip"), "lib/other.jar"), scratch);
+        Path other = ToolArchives.unpack(zip(tmp.resolve("other.zip"), "lib/other.jar"), List.of(), scratch);
         assertThat(other).isNotEqualTo(dir);
         assertThat(other.resolve("lib/other.jar")).exists();
+    }
+
+    @Test
+    void an_include_extracts_only_what_its_globs_match_and_is_its_own_directory(@TempDir Path tmp) throws Exception {
+        Path scratch = tmp.resolve("scratch");
+        Path archive = zip(
+                tmp.resolve("ide.zip"),
+                "lib/app.jar",
+                "product-info.json",
+                "plugins/java/lib/java.jar",
+                "plugins/Kotlin/lib/kotlin.jar");
+
+        Path part = ToolArchives.unpack(archive, List.of("lib/**", "product-info.json", "plugins/java/**"), scratch);
+        Path whole = ToolArchives.unpack(archive, List.of(), scratch);
+
+        assertThat(part.resolve("lib/app.jar")).exists();
+        assertThat(part.resolve("product-info.json")).exists();
+        assertThat(part.resolve("plugins/java/lib/java.jar")).exists();
+        assertThat(part.resolve("plugins/Kotlin")).doesNotExist();
+        assertThat(whole).isNotEqualTo(part);
+        assertThat(whole.resolve("plugins/Kotlin/lib/kotlin.jar")).exists();
+        assertThat(ToolArchives.unpack(archive, List.of("lib/**", "product-info.json", "plugins/java/**"), scratch))
+                .isEqualTo(part);
     }
 
     @Test

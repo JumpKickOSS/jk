@@ -43,8 +43,18 @@ final class TestEnvironment {
             }
             named.add(id);
         }
+        List<String> closure = PluginClosure.of(ide, info, named);
+        List<String> absent = new ArrayList<>();
+        for (String id : closure) {
+            String dir = info.pluginDir(id);
+            if (dir != null && !Files.isDirectory(ide.resolve("plugins").resolve(dir))) absent.add(dir);
+        }
+        if (!absent.isEmpty()) {
+            throw new IOException("the IDE needs bundled plugins that were not unpacked: add " + absent
+                    + " to [intellij] requires (a plugin's own dependencies may then name more)");
+        }
         List<String> classpath = new ArrayList<>();
-        for (String id : PluginClosure.of(ide, info, named)) {
+        for (String id : closure) {
             if (named.contains(id)) continue; // already provided, with the compile classpath
             for (Path jar : pluginJars(ide.resolve("plugins").resolve(String.valueOf(info.pluginDir(id))))) {
                 classpath.add(jar.toAbsolutePath().normalize().toString());
