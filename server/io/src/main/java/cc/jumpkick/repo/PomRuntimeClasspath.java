@@ -350,14 +350,14 @@ public final class PomRuntimeClasspath {
         return repos;
     }
 
-    /** A store's tree as a {@code file:} repository; reading it through {@link MavenRepo} writes nothing elsewhere. */
+    /** A store's artifacts as a {@code file:} repository; reading it through {@link MavenRepo} writes nothing elsewhere. */
     private static URI storeUri(RepoArtifactStore store) {
-        return Objects.requireNonNull(store.root(), "store root").toUri();
+        return Objects.requireNonNull(store.artifactRoot(), "store root").toUri();
     }
 
-    /** Worker closures stay under {@code JK_STORE_DIR}; they do not write-through {@code ~/.m2}. */
+    /** A worker-closure repository: anonymous, with Central and the declared repositories kept where {@link M2Backing} says. */
     private static MavenRepo storeOnlyRepo(String name, URI url, Http http, Cas cas) {
-        return new MavenRepo(name, url, http, cas, RepoCredential.ANONYMOUS, false);
+        return new MavenRepo(name, url, http, cas, RepoCredential.ANONYMOUS, true);
     }
 
     static @Nullable Path siblingPom(Path jar) {
@@ -448,6 +448,7 @@ public final class PomRuntimeClasspath {
                     if (parent != null && "repos".equals(fileName(parent)) && RepoIdentity.looksLikeStoreId(n)) {
                         break;
                     }
+                    if (cur.equals(M2Dirs.localRepository().toAbsolutePath().normalize())) break;
                     if (!n.isEmpty()) groupSegs.add(0, n);
                     cur = parent;
                     if (groupSegs.size() > 12) break;

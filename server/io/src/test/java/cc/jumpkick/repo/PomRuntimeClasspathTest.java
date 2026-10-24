@@ -7,16 +7,23 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.RepositorySpec;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class PomRuntimeClasspathTest {
+
+    @AfterEach
+    void forgetM2() {
+        System.clearProperty("jk.m2.local");
+    }
 
     @BeforeEach
     void clearCaches() {
@@ -820,11 +827,21 @@ class PomRuntimeClasspathTest {
         put(store, repo, MavenLayout.pomPath(coord), xml.getBytes(StandardCharsets.UTF_8));
     }
 
+    /**
+     * Central's artifacts live in the Maven local repository (a sibling {@code m2} of the store here),
+     * with their memos in the store; every other repository keeps both in its own tree.
+     */
     private static Path put(Path store, String repo, String rel, byte[] bytes) throws Exception {
-        Path f = store.resolve("repos").resolve(repo).resolve(rel);
+        boolean shared = "central".equals(repo);
+        if (shared) System.setProperty("jk.m2.local", store.resolveSibling("m2").toString());
+        Path root = shared ? store.resolveSibling("m2") : store.resolve("repos").resolve(repo);
+        Path f = root.resolve(rel);
         Files.createDirectories(f.getParent());
         Files.write(f, bytes);
-        RepoArtifactStore.forStoreId(store, repo).writeMemo(rel, f, Hashing.sha256Hex(bytes));
+        RepoArtifactStore memos = shared
+                ? RepoArtifactStore.forRepository(store, "central", RepositorySpec.MAVEN_CENTRAL.url())
+                : RepoArtifactStore.forStoreId(store, repo);
+        memos.writeMemo(rel, f, Hashing.sha256Hex(bytes));
         return f;
     }
 }

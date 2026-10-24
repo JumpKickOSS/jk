@@ -350,7 +350,7 @@ public final class CacheCommand extends GroupCommand {
                 BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
                 var planResult = EngineClient.runCacheMaintenance(
                         EnginePaths.current(),
-                        new EngineRequests.CacheMaintRequest("purge", root, false, false, null),
+                        new EngineRequests.CacheMaintRequest("purge", root, false, false, null, 0),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                         CacheCommand::printWait,
                         new EngineRequests.CacheMaintSummary[1]);
@@ -531,7 +531,17 @@ public final class CacheCommand extends GroupCommand {
         @Override
         public List<Opt> options() {
             return List.of(
-                    CommonOpts.cacheDir(), Opt.flag("Print what would be removed; touch nothing.", "-U", "--dry-run"));
+                    CommonOpts.cacheDir(),
+                    Opt.flag("Print what would be removed; touch nothing.", "-U", "--dry-run"),
+                    Opt.flag(
+                            "Instead of the cache, remove what jk downloaded into the Maven local repository"
+                                    + " (~/.m2) and has not used for --older-than days. Only files jk's own memo"
+                                    + " proves it downloaded and nobody changed; the lockfile in the current"
+                                    + " directory is kept.",
+                            "-m",
+                            "--m2"),
+                    Opt.value(
+                            "<DAYS>", "With --m2: days unused (default: [m2] clean-after-days)", "-t", "--older-than"));
         }
 
         @Override
@@ -541,28 +551,41 @@ public final class CacheCommand extends GroupCommand {
             GlobalOptions global = GlobalOptions.from(in);
 
             Path root = resolveCacheRoot(cacheDir);
+            if (in.isSet("m2")) {
+                int days = in.value("older-than").map(Integer::parseInt).orElse(0);
+                return runHosted(root, false, dryRun, global, "m2", CliPaths.abs(""), days);
+            }
             if (!Files.isDirectory(root)) {
                 CliOutput.out("Nothing to clean — " + root + " does not exist.");
                 return 0;
             }
 
-            return runHosted(root, cacheDir == null, dryRun, global);
+            return runHosted(root, cacheDir == null, dryRun, global, "prune", null, 0);
         }
 
         /** The engine-hosted foreground path: send the request, explain any wait, render the stream. */
-        private static int runHosted(Path root, boolean defaultCacheDir, boolean dryRun, GlobalOptions global) {
+        private static int runHosted(
+                Path root,
+                boolean defaultCacheDir,
+                boolean dryRun,
+                GlobalOptions global,
+                String op,
+                @Nullable Path projectRoot,
+                int olderThanDays) {
             // Settled from the terminal plan-finish before the console listener renders the line.
             var summary = new EngineRequests.CacheMaintSummary[1];
             ConsoleSpec spec = cleanSpec(
                     dryRun,
                     () -> summary[0] != null ? summary[0].files() : 0L,
-                    () -> summary[0] != null ? summary[0].bytes() : 0L);
+                    () -> summary[0] != null ? summary[0].bytes() : 0L,
+                    "m2".equals(op) ? "the Maven local repository" : "cache");
             BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
             BuildPlanResult result;
             try {
                 result = EngineClient.runCacheMaintenance(
                         EnginePaths.current(),
-                        new EngineRequests.CacheMaintRequest("prune", root, dryRun, defaultCacheDir, null),
+                        new EngineRequests.CacheMaintRequest(
+                                op, root, dryRun, defaultCacheDir, projectRoot, olderThanDays),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                         CacheCommand::printWait,
                         summary);
@@ -575,6 +598,11 @@ public final class CacheCommand extends GroupCommand {
 
         /** The Cache chip spec; counts are read lazily, at result-line render time. */
         static ConsoleSpec cleanSpec(boolean dryRun, LongSupplier files, LongSupplier bytes) {
+            return cleanSpec(dryRun, files, bytes, "cache");
+        }
+
+        /** As above, naming what is being cleaned. */
+        static ConsoleSpec cleanSpec(boolean dryRun, LongSupplier files, LongSupplier bytes, String what) {
             return new ConsoleSpec(
                     "Cache",
                     r -> {
@@ -586,12 +614,12 @@ public final class CacheCommand extends GroupCommand {
                                     + f + " " + (f == 1 ? "file" : "files")
                                     + ", " + fmtBytes(b) + " reclaimable.";
                         }
-                        if (f == 0) return "Finished cleaning cache. Nothing to clean up.";
-                        return "Finished cleaning cache. "
+                        if (f == 0) return "Finished cleaning " + what + ". Nothing to clean up.";
+                        return "Finished cleaning " + what + ". "
                                 + f + " " + (f == 1 ? "file" : "files")
                                 + " removed, " + fmtBytes(b) + " reclaimed.";
                     },
-                    r -> "Failed to clean cache.",
+                    r -> "Failed to clean " + what + ".",
                     true);
         }
     }

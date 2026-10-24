@@ -157,6 +157,21 @@ public final class M2CompatWriter {
         return new MavenHashes(Hashing.hex(sha1.digest()), Hashing.hex(md5.digest()));
     }
 
+    /** The Maven hashes of the bytes already at {@code file}. */
+    public static MavenHashes hashesOf(Path file) throws IOException {
+        MessageDigest sha1 = Hashing.newDigest("SHA-1");
+        MessageDigest md5 = Hashing.newDigest("MD5");
+        try (InputStream in = Files.newInputStream(file)) {
+            byte[] buf = new byte[64 * 1024];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                sha1.update(buf, 0, n);
+                md5.update(buf, 0, n);
+            }
+        }
+        return new MavenHashes(Hashing.hex(sha1.digest()), Hashing.hex(md5.digest()));
+    }
+
     // -------------------------------------------------------------------------
 
     private static void writeSidecar(Path sidecar, String hex) {

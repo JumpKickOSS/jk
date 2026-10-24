@@ -8,9 +8,13 @@ jk repo login | logout | search | refresh
 Credentials: env, `jk repo login`, or Maven `settings.xml` — see [Credentials](#credentials) for
 the order and for why a credential only travels to the origin its name is bound to. Prefer
 `${VAR}` references in your own `~/.jk/config.toml` over secrets in TOML. Corporate mirrors, forge
-package registries, S3/MinIO, and GCS are supported. After lock, a build reads the repository's store under `JK_STORE_DIR/repos/` (see below); a
-digest-matching file in the Maven local repository is copied into it rather than downloaded. Set
-`[m2] integration = false` to leave the Maven local repository alone. `jk install` writes the Maven local repo
+package registries, S3/MinIO, and GCS are supported. After lock, a build reads the repository's artifacts where they live: Maven Central, and every
+repository an active profile of your `~/.m2/settings.xml` declares, keep their artifacts in the
+Maven local repository (`~/.m2/repository`), once, shared with Maven; every other origin keeps a
+tree under `JK_STORE_DIR/repos/` (see below). jk's `.jk` memos for the former live in the store,
+never in `~/.m2`. A file already in the local repository is used where it is once it verifies,
+not copied and not downloaded. Set `[m2] integration = false` to keep every origin's artifacts in
+its own store tree and leave the Maven local repository alone. `jk install` writes the Maven local repo
 when `[m2] install` is on (default); `[m2] install = false` or `JK_M2_INSTALL=false`
 keeps those artifacts in `repos/jk-local`. First-party workers always live in `repos/jk-local`
 (`jk-local` is reserved; `[repositories.local]` is a normal user remote name).
@@ -32,9 +36,9 @@ A `repos/<name>` tree from before this rule carries no origin anyone can vouch f
 reads it; `jk storage usage` flags it and `jk storage clean` removes it. The next resolve
 re-fetches into the identity-keyed tree. The cost of that upgrade is bounded: the reserved trees
 (`central`, `google`, `jumpkick`) and the `jk-local` shelf are kept as they are, and with
-`[m2] integration` on (the default) third-party jars already in `~/.m2/repository` are copied
-in rather than downloaded, so what is fetched again is the POMs and jars of the repositories you
-named yourself. Lockfile `source`
+`[m2] integration` on (the default) third-party jars already in `~/.m2/repository` are used
+where they are rather than downloaded, so what is fetched again is the POMs and jars of the
+repositories you named yourself. Lockfile `source`
 fields are unchanged (`"<name>+<url>"`): the URL in the row is what the lookup keys on.
 
 ## Built-in remotes

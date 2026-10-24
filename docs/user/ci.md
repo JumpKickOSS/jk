@@ -22,7 +22,7 @@ an engine that does not overbook worker leases — see [Engine](engine.md#worker
 |------|----------------|------------------|
 | Platform **cache** | Action index + cache CAS | **Yes** |
 | Platform **store** | `repos/` + `.jk` memos | **Yes** |
-| Maven **local repo** | Third-party jars when `[m2] integration` is on; a digest-matching file is copied into the store instead of downloaded | **Yes** — a warm-fetch win |
+| Maven **local repo** | Central's and your `settings.xml` repositories' artifacts when `[m2] integration` is on, used in place | **Yes** — a warm-fetch win; `[m2] auto-clean = true` keeps it bounded on a long-lived runner |
 | Shared **JDKs** | Managed JDKs | Yes if jobs share the same pin / OS |
 | `store/tools/node`, `store/tools/<pnpm\|yarn\|bun>` | Provisioned Node.js and package managers ([Node.js](node.md)) | **Yes** — inside the store above |
 | `cache/npm`, `cache/bun`, `cache/yarn`, `store/pnpm-store` | The package managers' download caches | **Yes** — a warm `node-install` |

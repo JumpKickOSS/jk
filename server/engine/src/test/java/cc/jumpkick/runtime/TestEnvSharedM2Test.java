@@ -17,14 +17,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The sandbox local-m2 is one per workspace; the sandbox product home stays one per module.
+ * The sandbox local repository is its store's pooled {@code repos/central} tree; the sandbox product
+ * home stays one per module.
  *
- * <p>An m2 is a content-addressed artifact cache with nothing module-specific in it, so a copy per
- * module fetches and stores the same dependency once per module. A product home is state, locks,
- * learned rates and a calibration, which concurrent suites must not share.
- *
- * <p>Both live outside the project under test ({@code TestHomes}); these assertions pin the sharing
- * rule at that location.
+ * <p>Central's jars live in the local repository, and the pool is what keeps a dependency fetched
+ * once for every sandbox, so the two are one tree. A product home is state, locks, learned rates and
+ * a calibration, which concurrent suites must not share.
  */
 class TestEnvSharedM2Test {
 
@@ -71,17 +69,16 @@ class TestEnvSharedM2Test {
     }
 
     @Test
-    void every_member_of_a_workspace_shares_one_local_m2(@TempDir Path tmp) throws Exception {
+    void every_member_of_a_workspace_reads_the_pooled_central_tree_through_its_own_store(@TempDir Path tmp)
+            throws Exception {
         Path root = workspace(tmp, "a", "b");
         Path a = member(root, "a");
         Path b = member(root, "b");
 
-        assertThat(m2Of(a)).isEqualTo(m2Of(b));
-        assertThat(Path.of(m2Of(a)))
-                .as("in the workspace's own slot, not either member's")
-                .isEqualTo(TestHomes.slotFor(root).resolve("test-m2"));
+        assertThat(Path.of(m2Of(a))).isEqualTo(TestHomes.pathFor(a).resolve("store/repos/central"));
+        assertThat(Path.of(m2Of(b))).isEqualTo(TestHomes.pathFor(b).resolve("store/repos/central"));
         assertThat(m2Of(a))
-                .as("and outside the checkout, like every sandbox path now")
+                .as("outside the checkout, like every sandbox path")
                 .doesNotStartWith(root.toAbsolutePath().toString());
     }
 
@@ -93,24 +90,5 @@ class TestEnvSharedM2Test {
         Path b = member(root, "b");
 
         assertThat(homeOf(a)).isNotEqualTo(homeOf(b));
-    }
-
-    /** No workspace to share with: the cache is the module's own, exactly as before. */
-    @Test
-    void a_standalone_project_keeps_a_local_cache(@TempDir Path tmp) throws Exception {
-        Path solo = member(tmp, "solo");
-
-        assertThat(Path.of(m2Of(solo))).isEqualTo(TestHomes.slotFor(solo).resolve("test-m2"));
-    }
-
-    /** Proximity is not membership — an unlisted project nested under a workspace keeps its own. */
-    @Test
-    void a_project_nested_under_a_workspace_but_unlisted_keeps_its_own(@TempDir Path tmp) throws Exception {
-        Path root = workspace(tmp, "a");
-        member(root, "a");
-        Path stranger = member(root, "target/fixture");
-
-        assertThat(Path.of(m2Of(stranger)))
-                .isEqualTo(TestHomes.slotFor(stranger).resolve("test-m2"));
     }
 }

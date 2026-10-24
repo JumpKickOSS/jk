@@ -29,12 +29,13 @@ import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One Maven-style repository: fetch into {@code repos/<name>/} (Maven layout + {@code .jk} memo).
- * When {@code m2integration} is on, the Maven local repository is a source of vouched bytes and a
- * courtesy copy ({@link M2Adoption}); the store is what jk reads. A store copy about to be pinned
- * by a lock is confirmed against the checksum the repository publishes, the way an adopted copy
- * is; one the repository disowns is evicted and downloaded again. Offline serves from the named
- * repo store ({@link ArtifactNotFoundException} on miss).
+ * One Maven-style repository: fetch into where its store keeps artifacts (Maven layout + {@code .jk}
+ * memo): the Maven local repository for Central and the repositories {@code settings.xml}
+ * declares, {@code repos/<id>/} for the rest ({@link M2Backing}). A file already in the local
+ * repository is used where it is, with no download, once its bytes verify as the lock's pin or,
+ * unpinned, as the checksum the repository publishes; one the repository disowns is evicted
+ * (removed only if jk put it there) and downloaded again. Offline serves from the store
+ * ({@link ArtifactNotFoundException} on miss).
  */
 public final class MavenRepo {
 
@@ -61,11 +62,8 @@ public final class MavenRepo {
     private final Cas cas;
     private final RepoArtifactStore repoStore;
     private final RepoCredential credential;
-    /** When true, prefer/write the Maven local repository for third-party artifacts. */
+    /** When true, Central and the repositories {@code settings.xml} declares keep their artifacts in the Maven local repository. */
     private final boolean m2integration;
-
-    /** The Maven local repository as a source of vouched bytes and a courtesy copy; see {@link M2Adoption}. */
-    private final M2Adoption m2;
 
     /** TTL + conditional-GET cache for maven-metadata.xml; null for non-HTTP transports. */
     private final @Nullable MavenMetadataCache metadataCache;
@@ -298,7 +296,7 @@ public final class MavenRepo {
         // Full store for every repo: Maven-layout artifact + {@code .jk} memo under the store
         // keyed by this repo's ORIGIN — the name is a label, and two projects calling different
         // origins by one name must never read each other's bytes.
-        this.repoStore = RepoArtifactStore.forRepository(cas.root(), name, this.baseUrl);
+        this.repoStore = RepoArtifactStore.forRepository(cas.root(), name, this.baseUrl, m2integration);
         this.credential = Objects.requireNonNull(credential, "credential");
         this.m2integration = m2integration;
         this.allowUnverified = allowUnverified;
@@ -317,7 +315,6 @@ public final class MavenRepo {
         this.metadataCache = (httpOrNull != null && isHttp(this.fetchBase))
                 ? new MavenMetadataCache(httpOrNull, metadataDir(), ttl)
                 : null;
-        this.m2 = new M2Adoption(name, transport, credential, isHttp(this.fetchBase), repoStore, m2integration);
         this.download = new DownloadLeg(name, this.fetchBase, transport, credential, storeDir(), allowUnverified);
     }
 
@@ -562,15 +559,6 @@ public final class MavenRepo {
         }
         // Pinned bytes prefer the mirror; enumeration stays on Central (see Leg).
         URI primary = leg == Leg.ARTIFACT ? CENTRAL_MIRROR.routeForDownload(uri) : uri;
-        // A Maven local-repository copy this repository's own checksum vouches for costs one small GET.
-        if (mirror && !force) {
-            Optional<M2Adoption.Adopted> adopted = m2.tryAdopt(relativePath, uri, expectedSha256);
-            if (adopted.isPresent()) {
-                M2Adoption.Adopted a = adopted.get();
-                if (leg == Leg.ARTIFACT) download.countVerified();
-                return new Fetched(uri, a.placed(), a.sha256(), a.size());
-            }
-        }
         // The network leg runs under the host's permit (DownloadLeg). Warm mirror hits short-circuit
         // above, so re-locks stay uncapped, but a cold lock's fan-out is bounded to what the host
         // tolerates.
@@ -658,12 +646,13 @@ public final class MavenRepo {
     }
 
     /**
-     * Put verified bytes on disk: this repository's store, which is what every build reads, then
-     * the Maven local repository when integration is on and that slot is empty or already equal.
-     * Never overwrites a mismatched local-repo file. Returns the store's path.
+     * Put verified bytes on disk where this repository keeps them — the Maven local repository for
+     * Central and the repositories {@code settings.xml} declares, its own store tree for the rest —
+     * and write the memo that says jk downloaded them. A slot in the local repository holding other
+     * bytes that jk did not put there is left alone, and the placement fails rather than replace it.
      */
     private Path placeArtifact(Coordinate coord, String relativePath, Path source, String sha256) throws IOException {
-        repoStore.materialize(relativePath, source, sha256);
+        repoStore.materialize(relativePath, source, sha256, true);
         // Fail loudly rather than returning the transient download temp as the "stored" path: a
         // swallowed store-write error (disk full, permissions) otherwise makes sync report success
         // and the later requirePresent gate throws a misleading "run jk sync -F" loop.
@@ -672,8 +661,34 @@ public final class MavenRepo {
                 .orElseThrow(() -> new IOException(
                         "failed to store " + coord.group() + ":" + coord.artifact() + ":" + coord.version() + " at "
                                 + relativePath + " (store write failed — check disk space and permissions)"));
-        m2.writeThrough(relativePath, placed);
+        if (repoStore.verify(relativePath, sha256) != RepoArtifactStore.IndexState.VERIFIED) {
+            throw new IOException(placed + " holds other bytes than the " + sha256 + " " + coord.group() + ":"
+                    + coord.artifact() + ":" + coord.version() + " is pinned to, and jk did not put it there: "
+                    + "remove the file, or point JK_M2_LOCAL elsewhere");
+        }
+        if (repoStore.m2Backed() && repoStore.fetchedByJk(relativePath)) writeMavenSidecars(placed);
         return placed;
+    }
+
+    /**
+     * What Maven expects beside a file in its local repository: the {@code .sha1} and {@code .md5}
+     * sidecars and the {@code _remote.repositories} line naming the repository that served it. Only
+     * for a file jk just downloaded; best-effort, since a Maven that wants them re-fetches
+     * and jk's own build has no use for them.
+     */
+    private void writeMavenSidecars(Path placed) {
+        try {
+            if (!Files.exists(placed.resolveSibling(placed.getFileName() + ".sha1"))) {
+                M2CompatWriter.MavenHashes hashes = M2CompatWriter.hashesOf(placed);
+                M2CompatWriter.writeMavenSidecars(placed, hashes.sha1(), hashes.md5());
+            }
+            M2CompatWriter.writeRemoteRepositories(
+                    Objects.requireNonNull(placed.getParent()),
+                    name,
+                    placed.getFileName().toString());
+        } catch (IOException | RuntimeException e) {
+            Log.debug("writeMavenSidecars: the local repository's checksums are a courtesy to Maven", e);
+        }
     }
 
     /**
@@ -685,9 +700,14 @@ public final class MavenRepo {
     private Optional<Fetched> mirrored(
             Coordinate coord, String relativePath, Leg leg, @Nullable String expectedSha256, BooleanSupplier abort)
             throws IOException, InterruptedException {
+        // A file in the Maven local repository that jk has never verified is only a candidate: the
+        // repository's published checksum is the authority, and none published means no vouching.
+        boolean unvouched = repoStore.m2Backed()
+                && expectedSha256 == null
+                && repoStore.readSha256Sidecar(relativePath).isEmpty();
         Optional<Fetched> local = tryLocalMirror(relativePath, expectedSha256);
-        if (local.isEmpty() || expectedSha256 != null || leg != Leg.ARTIFACT) return local;
-        return confirmed(coord, relativePath, local.get(), abort);
+        if (local.isEmpty() || expectedSha256 != null || (leg != Leg.ARTIFACT && !unvouched)) return local;
+        return confirmed(coord, relativePath, local.get(), leg, abort, unvouched);
     }
 
     /**
@@ -700,14 +720,21 @@ public final class MavenRepo {
      * (the lock has already failed and pins nothing) or with the repository unreachable the store
      * answers as it stands.
      */
-    private Optional<Fetched> confirmed(Coordinate coord, String relativePath, Fetched local, BooleanSupplier abort)
+    private Optional<Fetched> confirmed(
+            Coordinate coord,
+            String relativePath,
+            Fetched local,
+            Leg leg,
+            BooleanSupplier abort,
+            boolean requirePublished)
             throws IOException, InterruptedException {
         if (SessionContext.current().config().offlineOr(false) || abort.getAsBoolean() || unreachable.get() != null) {
             return Optional.of(local);
         }
         URI uri = CENTRAL_MIRROR.routeForDownload(fetchBase.resolve(relativePath));
         try {
-            if (download.confirmStored(coord, uri, relativePath, local.cachePath(), local.sha256(), Leg.ARTIFACT)) {
+            if (download.confirmStored(
+                    coord, uri, relativePath, local.cachePath(), local.sha256(), leg, requirePublished)) {
                 return Optional.of(local);
             }
             repoStore.evict(relativePath);

@@ -6,430 +6,198 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.ArtifactMemo;
+import cc.jumpkick.testing.MavenStub;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A sandbox store learns the JUnit Platform from the host store, version lists included, so the
- * {@code latest} launcher every fixture lock injects resolves without Central.
+ * A sandbox learns the JUnit Platform from the machine's local repositories — its own local
+ * repository gets the files, its store the memos that vouch for them and the version lists — so
+ * the {@code latest} launcher every fixture lock injects resolves without Central.
  */
 class TestStoreSeedTest {
 
     private static final String LAUNCHER = "org/junit/platform/junit-platform-launcher";
 
-    @Test
-    void a_seeded_store_answers_central_layout_paths_bodies_and_version_lists(@TempDir Path tmp) throws Exception {
-        Path host = tmp.resolve("host");
-        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".pom", ".jar");
-        Path sandbox = tmp.resolve("sandbox");
-        TestStoreSeed.seed(host, sandbox);
+    @TempDir
+    Path tmp;
 
-        assertThat(TestStoreSeed.seeded(sandbox, LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.jar"))
+    private @Nullable String priorHome;
+    private @Nullable String priorM2;
+
+    /** The machine: the developer's {@code ~/.m2} is {@code tmp/home/.m2/repository}, nothing real is read. */
+    @BeforeEach
+    void isolate() {
+        priorHome = System.getProperty("user.home");
+        priorM2 = System.getProperty("jk.m2.local");
+        System.setProperty("user.home", tmp.resolve("home").toString());
+        System.setProperty("jk.m2.local", tmp.resolve("own").toString());
+    }
+
+    @AfterEach
+    void restore() {
+        if (priorHome != null) System.setProperty("user.home", priorHome);
+        if (priorM2 == null) System.clearProperty("jk.m2.local");
+        else System.setProperty("jk.m2.local", priorM2);
+    }
+
+    private Path userM2() {
+        return tmp.resolve("home/.m2/repository");
+    }
+
+    @Test
+    void a_seeded_sandbox_answers_central_layout_paths_bodies_and_version_lists() throws Exception {
+        m2File(userM2(), LAUNCHER, "6.1.3", ".pom", "central");
+        m2File(userM2(), LAUNCHER, "6.1.3", ".jar", "central");
+        Path store = tmp.resolve("store");
+        Path sandboxM2 = tmp.resolve("sandbox-m2");
+
+        TestStoreSeed.seed(store, sandboxM2);
+        System.setProperty("jk.m2.local", sandboxM2.toString());
+
+        assertThat(TestStoreSeed.seeded(store, LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.jar"))
                 .isPresent();
-        assertThat(TestStoreSeed.seeded(sandbox, LAUNCHER + "/maven-metadata.xml")
+        assertThat(TestStoreSeed.seeded(store, LAUNCHER + "/maven-metadata.xml")
                         .map(xml -> new String(xml, StandardCharsets.UTF_8)))
                 .hasValueSatisfying(xml -> assertThat(xml).contains("<latest>6.1.3</latest>"));
-        assertThat(TestStoreSeed.seeded(sandbox, LAUNCHER + "/6.0.3/junit-platform-launcher-6.0.3.jar"))
+        assertThat(TestStoreSeed.seeded(store, LAUNCHER + "/6.0.3/junit-platform-launcher-6.0.3.jar"))
                 .isEmpty();
-        assertThat(TestStoreSeed.seeded(sandbox, "org/scala-sbt/zinc_3/maven-metadata.xml"))
+        assertThat(TestStoreSeed.seeded(store, "org/scala-sbt/zinc_3/maven-metadata.xml"))
                 .isEmpty();
-        assertThat(TestStoreSeed.seeded(sandbox, "../../metadata/x")).isEmpty();
+        assertThat(TestStoreSeed.seeded(store, "../../metadata/x")).isEmpty();
     }
 
     @Test
-    void the_junit_closure_and_its_version_lists_come_from_the_host_store(@TempDir Path tmp) throws Exception {
-        Path host = tmp.resolve("host");
-        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".pom", ".jar", ".jk", ".pom.jk");
-        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.0.3", ".pom", ".jar");
-        artifact(host, RepositorySpec.CENTRAL, "org/opentest4j/opentest4j", "1.3.0", ".pom", ".jar");
-        artifact(host, RepositorySpec.CENTRAL, "org/scala-sbt/zinc_3", "2.0.4", ".pom", ".jar");
-        artifact(host, "google", "com/android/tools/r8", "8.9.35", ".pom", ".jar");
-        Path sandbox = tmp.resolve("sandbox");
+    void the_files_are_copied_into_the_sandbox_local_repository_and_vouched_for_in_its_store() throws Exception {
+        Path source = m2File(userM2(), LAUNCHER, "6.1.3", ".jar", "central");
+        m2File(userM2(), LAUNCHER, "6.1.3", ".pom", "central");
+        m2File(userM2(), "org/opentest4j/opentest4j", "1.3.0", ".jar", "central");
+        m2File(userM2(), "org/scala-sbt/zinc_3", "2.0.4", ".jar", "central");
+        Path store = tmp.resolve("store");
+        Path sandboxM2 = tmp.resolve("sandbox-m2");
 
-        int seeded = TestStoreSeed.seed(host, sandbox);
+        int seeded = TestStoreSeed.seed(store, sandboxM2);
 
-        Path central = sandbox.resolve("repos").resolve(RepositorySpec.CENTRAL);
-        assertThat(central.resolve(LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.jar"))
+        String rel = LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.jar";
+        Path copy = sandboxM2.resolve(rel);
+        assertThat(copy).hasSameBinaryContentAs(source);
+        assertThat(Files.isSameFile(source, copy))
+                .as("a copy, never a link into the developer's local repository")
+                .isFalse();
+        assertThat(sandboxM2.resolve("org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar"))
                 .isRegularFile();
-        assertThat(central.resolve(LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.pom.jk"))
-                .isRegularFile();
-        assertThat(central.resolve(LAUNCHER + "/6.0.3/junit-platform-launcher-6.0.3.pom"))
-                .isRegularFile();
-        assertThat(central.resolve("org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar"))
-                .isRegularFile();
-        assertThat(central.resolve("org/scala-sbt/zinc_3"))
-                .as("only the JUnit Platform is the suite's to warm; the rest is exact-pinned and fetched once")
+        assertThat(sandboxM2.resolve("org/scala-sbt"))
+                .as("only the JUnit trees")
                 .doesNotExist();
-        assertThat(sandbox.resolve("repos/google")).doesNotExist();
-
-        String launcherList = Files.readString(metadata(sandbox, LAUNCHER));
-        assertThat(launcherList)
-                .contains("<groupId>org.junit.platform</groupId>")
-                .contains("<artifactId>junit-platform-launcher</artifactId>")
-                .contains("<latest>6.1.3</latest>")
-                .contains("<release>6.1.3</release>")
-                .contains("<version>6.0.3</version>")
-                .contains("<version>6.1.3</version>");
-        assertThat(launcherList.indexOf("<version>6.0.3</version>"))
-                .as("ascending, as Central writes it")
-                .isLessThan(launcherList.indexOf("<version>6.1.3</version>"));
-        assertThat(metadata(sandbox, "org/opentest4j/opentest4j")).isRegularFile();
-        // 6 launcher files + 2 opentest4j files + 2 version lists
-        assertThat(seeded).isEqualTo(10);
-    }
-
-    /**
-     * A hollow stand-in (a fixture's empty zip under a real coordinate) is never seeded, and one an
-     * earlier seed left in the sandbox gives way to the host's real bytes.
-     */
-    @Test
-    void a_hollow_stand_in_is_neither_seeded_nor_kept(@TempDir Path tmp) throws Exception {
-        byte[] emptyZip = {0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-        Path host = tmp.resolve("host");
-        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".pom", ".jar");
-        Path hostStub = host.resolve("repos").resolve(RepositorySpec.CENTRAL).resolve(LAUNCHER + "/6.1.4");
-        Files.createDirectories(hostStub);
-        Files.write(hostStub.resolve("junit-platform-launcher-6.1.4.jar"), emptyZip);
-        Path sandbox = tmp.resolve("sandbox");
-        Path central = sandbox.resolve("repos").resolve(RepositorySpec.CENTRAL);
-        Path slot = central.resolve(LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.jar");
-        Files.createDirectories(slot.getParent());
-        Files.write(slot, emptyZip);
-        Path memo =
-                slot.resolveSibling(ArtifactMemo.jkFileName(slot.getFileName().toString()));
-        Files.writeString(memo, "memo of the stand-in");
-
-        TestStoreSeed.seed(host, sandbox);
-
-        assertThat(central.resolve(LAUNCHER + "/6.1.4/junit-platform-launcher-6.1.4.jar"))
-                .as("the host's hollow jar is not the coordinate's bytes")
+        Path memos = store.resolve("repos").resolve(RepositorySpec.CENTRAL);
+        assertThat(ArtifactMemo.read(ArtifactMemo.jkPath(memos, rel)))
+                .get()
+                .extracting(ArtifactMemo::sha256)
+                .isEqualTo(Hashing.sha256Hex(copy));
+        assertThat(memos.resolve(rel))
+                .as("the store holds the memo and no second copy")
                 .doesNotExist();
-        assertThat(Files.readString(slot))
-                .as("the real bytes replace the stand-in")
-                .isEqualTo(".jar");
-        assertThat(memo).as("the stand-in's memo goes with it").doesNotExist();
+        assertThat(seeded).isPositive();
     }
 
-    /**
-     * Filling an empty slot must not delete the memo beside it. A POM memo is {@code <file>.pom.jk}
-     * and a jar memo is {@code <file>.jk}; both live in the version directory the seed walks, so
-     * deleting the sibling of every file removes a memo the same seed has linked or is about to.
-     */
     @Test
-    void an_empty_slot_keeps_the_memo_beside_it(@TempDir Path tmp) throws Exception {
-        Path host = tmp.resolve("host");
-        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".pom", ".jar");
-        Path sandbox = tmp.resolve("sandbox");
-        Path dir = sandbox.resolve("repos").resolve(RepositorySpec.CENTRAL).resolve(LAUNCHER + "/6.1.3");
-        Files.createDirectories(dir);
-        Path pomMemo = dir.resolve("junit-platform-launcher-6.1.3.pom.jk");
-        Path jarMemo = dir.resolve("junit-platform-launcher-6.1.3.jk");
-        Files.writeString(pomMemo, "pom memo");
-        Files.writeString(jarMemo, "jar memo");
+    void a_body_another_repository_served_or_nobody_vouches_for_is_not_seeded_as_centrals() throws Exception {
+        m2File(userM2(), LAUNCHER, "6.1.3", ".pom", "nexus");
+        m2File(userM2(), LAUNCHER, "6.1.3", ".jar", null);
+        Path sandboxM2 = tmp.resolve("sandbox-m2");
 
-        TestStoreSeed.seed(host, sandbox);
-
-        assertThat(Files.readString(pomMemo)).isEqualTo("pom memo");
-        assertThat(Files.readString(jarMemo)).isEqualTo("jar memo");
-        assertThat(dir.resolve("junit-platform-launcher-6.1.3.pom")).isRegularFile();
-        assertThat(dir.resolve("junit-platform-launcher-6.1.3.jar")).isRegularFile();
+        assertThat(TestStoreSeed.seed(tmp.resolve("store"), sandboxM2)).isZero();
+        assertThat(sandboxM2).doesNotExist();
     }
 
-    /**
-     * A hollow jar and the stale memo beside it give way to the host's bytes, including the memo,
-     * whichever directory order the walk happens to use.
-     */
     @Test
-    void a_hollow_stand_in_gives_way_to_the_hosts_file_and_its_memo(@TempDir Path tmp) throws Exception {
-        byte[] emptyZip = {0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-        Path host = tmp.resolve("host");
-        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".pom", ".jar", ".jk", ".pom.jk");
-        Path sandbox = tmp.resolve("sandbox");
-        Path dir = sandbox.resolve("repos").resolve(RepositorySpec.CENTRAL).resolve(LAUNCHER + "/6.1.3");
-        Files.createDirectories(dir);
-        Path slot = dir.resolve("junit-platform-launcher-6.1.3.jar");
-        Files.write(slot, emptyZip);
-        Files.writeString(dir.resolve("junit-platform-launcher-6.1.3.jk"), "stale");
+    void a_pom_in_a_version_dir_central_served_is_taken_without_its_own_hint_line() throws Exception {
+        Path pom = m2File(userM2(), LAUNCHER, "6.1.3", ".pom", null);
+        Files.writeString(
+                pom.resolveSibling("_remote.repositories"),
+                "junit-platform-launcher-6.1.3.jar>central=\n",
+                StandardOpenOption.CREATE);
+        Path sandboxM2 = tmp.resolve("sandbox-m2");
 
-        TestStoreSeed.seed(host, sandbox);
+        TestStoreSeed.seed(tmp.resolve("store"), sandboxM2);
 
-        assertThat(Files.readString(slot)).isEqualTo(".jar");
-        assertThat(Files.readString(dir.resolve("junit-platform-launcher-6.1.3.jk")))
-                .isEqualTo(".jk");
-        assertThat(Files.readString(dir.resolve("junit-platform-launcher-6.1.3.pom.jk")))
-                .isEqualTo(".pom.jk");
-        assertThat(dir.resolve("junit-platform-launcher-6.1.3.pom")).isRegularFile();
-    }
-
-    /** A version whose POM the host never fetched cannot be solved from, so the list does not offer it. */
-    @Test
-    void a_version_without_a_pom_is_linked_but_not_advertised(@TempDir Path tmp) throws Exception {
-        Path host = tmp.resolve("host");
-        artifact(host, "central", LAUNCHER, "6.1.3", ".pom", ".jar");
-        artifact(host, "central", LAUNCHER, "6.1.4", ".jar");
-
-        TestStoreSeed.seed(host, tmp.resolve("sandbox"));
-
-        assertThat(tmp.resolve("sandbox/repos/central/" + LAUNCHER + "/6.1.4/junit-platform-launcher-6.1.4.jar"))
+        assertThat(sandboxM2.resolve(LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.pom"))
                 .isRegularFile();
-        assertThat(Files.readString(metadata(tmp.resolve("sandbox"), LAUNCHER)))
-                .contains("<latest>6.1.3</latest>")
+    }
+
+    @Test
+    void a_version_without_a_pom_is_copied_but_not_advertised() throws Exception {
+        m2File(userM2(), LAUNCHER, "6.1.3", ".pom", "central");
+        m2File(userM2(), LAUNCHER, "6.1.3", ".jar", "central");
+        m2File(userM2(), LAUNCHER, "6.1.4", ".jar", "central");
+        Path store = tmp.resolve("store");
+        Path sandboxM2 = tmp.resolve("sandbox-m2");
+
+        TestStoreSeed.seed(store, sandboxM2);
+
+        assertThat(sandboxM2.resolve(LAUNCHER + "/6.1.4/junit-platform-launcher-6.1.4.jar"))
+                .isRegularFile();
+        assertThat(Files.readString(metadata(store, LAUNCHER)))
+                .contains("<version>6.1.3</version>")
                 .doesNotContain("6.1.4");
     }
 
-    /**
-     * Maven-local adoption leaves the jar in the host store and the POM in {@code ~/.m2}. Completing
-     * the POM from that tree is what lets {@code latest} resolve without Central.
-     */
     @Test
-    void a_jar_the_host_stored_without_a_pom_is_completed_from_m2(@TempDir Path tmp) throws Exception {
-        Path host = tmp.resolve("host");
-        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".jar");
-        Path m2 = tmp.resolve("m2");
-        m2File(m2, LAUNCHER, "6.1.3", ".pom", RepositorySpec.CENTRAL);
-        m2File(m2, "org/junit/junit-bom", "6.1.3", ".pom", RepositorySpec.CENTRAL);
-        Path sandbox = tmp.resolve("sandbox");
-
-        TestStoreSeed.seed(host, sandbox, m2);
-
-        assertThat(sandbox.resolve("repos/central/" + LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.pom"))
-                .isRegularFile();
-        assertThat(sandbox.resolve("repos/central/org/junit/junit-bom/6.1.3/junit-bom-6.1.3.pom"))
-                .isRegularFile();
-        assertThat(Files.readString(metadata(sandbox, LAUNCHER))).contains("<latest>6.1.3</latest>");
-    }
-
-    /**
-     * A sandbox runs test code against its store, and an in-place write through a hard link lands in
-     * every other name of the file. Whatever the seed took from a local repository, and a host file
-     * an earlier seed left as one inode with {@code ~/.m2}'s, must not share {@code ~/.m2}'s inode.
-     */
-    @Test
-    void a_write_through_a_seeded_file_leaves_the_local_repository_unchanged(@TempDir Path tmp) throws Exception {
-        Path m2 = tmp.resolve("m2");
-        Path m2Pom = m2File(m2, LAUNCHER, "6.1.3", ".pom", RepositorySpec.CENTRAL);
-        Path m2Bom = m2File(m2, "org/junit/junit-bom", "6.1.3", ".pom", RepositorySpec.CENTRAL);
-        Path host = tmp.resolve("host");
-        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".jar");
-        Path hostCentral = host.resolve("repos").resolve(RepositorySpec.CENTRAL);
-        Path engineDir = Files.createDirectories(hostCentral.resolve("org/junit/jupiter/junit-jupiter-engine/6.1.3"));
-        Path m2Engine = m2File(m2, "org/junit/jupiter/junit-jupiter-engine", "6.1.3", ".pom", RepositorySpec.CENTRAL);
-        Path hostEngine = Files.createLink(engineDir.resolve("junit-jupiter-engine-6.1.3.pom"), m2Engine);
-        Path sandbox = tmp.resolve("sandbox");
-
-        TestStoreSeed.seed(host, sandbox, m2);
-
-        Path central = sandbox.resolve("repos").resolve(RepositorySpec.CENTRAL);
-        for (String rel : new String[] {
-            LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.pom",
-            "org/junit/junit-bom/6.1.3/junit-bom-6.1.3.pom",
-            "org/junit/jupiter/junit-jupiter-engine/6.1.3/junit-jupiter-engine-6.1.3.pom"
-        }) {
-            Files.writeString(central.resolve(rel), "org.checkerframework:checker-qual:4.2.3\n");
-        }
-        assertThat(Files.readString(m2Pom)).isEqualTo(".pom");
-        assertThat(Files.readString(m2Bom)).isEqualTo(".pom");
-        assertThat(Files.readString(m2Engine)).isEqualTo(".pom");
-        assertThat(Files.isSameFile(hostEngine, m2Engine))
-                .as("the host store's file is its own")
-                .isFalse();
-    }
-
-    /** A sandbox an earlier seed linked to {@code ~/.m2} is given its own file by the next seed. */
-    @Test
-    void a_sandbox_file_already_linked_to_the_local_repository_is_detached(@TempDir Path tmp) throws Exception {
-        Path m2 = tmp.resolve("m2");
-        Path m2Pom = m2File(m2, LAUNCHER, "6.1.3", ".pom", RepositorySpec.CENTRAL);
-        Path host = tmp.resolve("host");
-        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".pom", ".jar");
-        Path sandbox = tmp.resolve("sandbox");
-        Path slot = sandbox.resolve("repos/central/" + LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.pom");
+    void a_hollow_stand_in_gives_way_to_the_real_file() throws Exception {
+        Path real = m2File(userM2(), LAUNCHER, "6.1.3", ".jar", "central");
+        Path sandboxM2 = tmp.resolve("sandbox-m2");
+        Path slot = sandboxM2.resolve(LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.jar");
         Files.createDirectories(slot.getParent());
-        Files.createLink(slot, m2Pom);
+        Files.write(slot, MavenStub.EMPTY_JAR);
 
-        TestStoreSeed.seed(host, sandbox, m2);
-        Files.writeString(slot, "rewritten");
+        TestStoreSeed.seed(tmp.resolve("store"), sandboxM2);
 
-        assertThat(Files.readString(m2Pom)).isEqualTo(".pom");
+        assertThat(slot).hasSameBinaryContentAs(real);
     }
 
+    /** A second seed finds nothing to do, and an index the sandbox fetched itself is kept. */
     @Test
-    void a_same_store_seed_completes_missing_poms_from_m2(@TempDir Path tmp) throws Exception {
+    void a_second_seed_finds_nothing_to_do_and_a_real_index_already_there_is_kept() throws Exception {
+        m2File(userM2(), LAUNCHER, "6.1.3", ".pom", "central");
+        m2File(userM2(), LAUNCHER, "6.1.3", ".jar", "central");
         Path store = tmp.resolve("store");
-        artifact(store, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".jar");
-        Path m2 = tmp.resolve("m2");
-        m2File(m2, LAUNCHER, "6.1.3", ".pom", RepositorySpec.CENTRAL);
-
-        assertThat(TestStoreSeed.seed(store, store, m2)).isGreaterThan(0);
-        assertThat(store.resolve("repos/central/" + LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.pom"))
-                .isRegularFile();
-        assertThat(Files.readString(metadata(store, LAUNCHER))).contains("<latest>6.1.3</latest>");
-    }
-
-    /**
-     * The gate's shared test-m2 ({@code JK_M2_LOCAL}) holds POMs a jar-only {@code ~/.m2} lacks.
-     * {@link TestStoreSeed#complete} must read that tree first, or fixture locks dial Central.
-     */
-    @Test
-    void complete_takes_junit_poms_from_jk_m2_local_when_user_m2_has_only_jars(@TempDir Path tmp) throws Exception {
-        Path store = tmp.resolve("store");
-        artifact(store, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".jar");
-
-        Path home = tmp.resolve("home");
-        Path userJunit = home.resolve(".m2/repository/org/junit");
-        Files.createDirectories(userJunit);
-        Path userJar = home.resolve(".m2/repository")
-                .resolve(LAUNCHER)
-                .resolve("6.1.3")
-                .resolve("junit-platform-launcher-6.1.3.jar");
-        Files.createDirectories(userJar.getParent());
-        Files.writeString(userJar, "jar");
-
-        Path local = tmp.resolve("test-m2");
-        m2File(local, LAUNCHER, "6.1.3", ".pom", RepositorySpec.CENTRAL);
-
-        String prevHome = System.getProperty("user.home");
-        String prevM2 = System.getProperty("jk.m2.local");
-        try {
-            System.setProperty("user.home", home.toString());
-            System.setProperty("jk.m2.local", local.toString());
-            assertThat(TestStoreSeed.complete(store)).isGreaterThan(0);
-            assertThat(store.resolve("repos/central/" + LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.pom"))
-                    .isRegularFile();
-            assertThat(Files.readString(metadata(store, LAUNCHER))).contains("<latest>6.1.3</latest>");
-        } finally {
-            if (prevHome != null) System.setProperty("user.home", prevHome);
-            else System.clearProperty("user.home");
-            if (prevM2 != null) System.setProperty("jk.m2.local", prevM2);
-            else System.clearProperty("jk.m2.local");
-        }
-    }
-
-    /**
-     * A local repository holds what any repository answered under a coordinate: a lock test's stub
-     * server publishes an empty jar as {@code org.junit.support:testng-engine} and jk's write-through
-     * records it under Central's path with the stub's id. Seeded as Central's, those bytes would be
-     * pinned in every sandbox and the forked runner would find no engine in the jar. Only a file
-     * whose hint names Central is Central's; a body nobody vouches for is not either.
-     */
-    @Test
-    void a_body_another_repository_served_or_nobody_vouches_for_is_not_seeded_as_centrals(@TempDir Path tmp)
-            throws Exception {
-        Path host = tmp.resolve("host");
-        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".pom", ".jar");
-        artifact(host, RepositorySpec.CENTRAL, "org/junit/support/testng-engine", "1.1.0", ".jar");
-        Path m2 = tmp.resolve("m2");
-        m2File(m2, "org/junit/support/testng-engine", "1.1.0", ".jar", "local");
-        m2File(m2, "org/junit/support/testng-engine", "1.1.0", ".pom", "local");
-        m2File(m2, "org/junit/jupiter/junit-jupiter", "6.1.3", ".pom", null);
-        m2File(m2, "org/junit/vintage/junit-vintage-engine", "6.1.3", ".jar", RepositorySpec.CENTRAL);
-        Path sandbox = tmp.resolve("sandbox");
-
-        TestStoreSeed.seed(host, sandbox, m2);
-
-        Path central = sandbox.resolve("repos").resolve(RepositorySpec.CENTRAL);
-        assertThat(central.resolve("org/junit/support/testng-engine/1.1.0/testng-engine-1.1.0.pom"))
-                .as("a POM another repository served does not complete the host's jar")
-                .doesNotExist();
-        assertThat(metadata(sandbox, "org/junit/support/testng-engine"))
-                .as("so the version is not advertised either")
-                .doesNotExist();
-        assertThat(central.resolve("org/junit/jupiter/junit-jupiter/6.1.3/junit-jupiter-6.1.3.pom"))
-                .as("no hint, no provenance")
-                .doesNotExist();
-        assertThat(central.resolve("org/junit/vintage/junit-vintage-engine/6.1.3/junit-vintage-engine-6.1.3.jar"))
-                .isRegularFile();
-    }
-
-    /**
-     * A hint that lost the POM's own line still vouches for it when every line it kept names
-     * Central: the version's files came from one repository, and the seed completes and advertises
-     * the version rather than leaving the fixture lock to reach for Central.
-     */
-    @Test
-    void a_pom_in_a_version_dir_central_served_is_taken_without_its_own_hint_line(@TempDir Path tmp) throws Exception {
-        Path host = tmp.resolve("host");
-        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".jar");
-        Path m2 = tmp.resolve("m2");
-        m2File(m2, LAUNCHER, "6.1.3", ".pom", null);
-        m2File(m2, LAUNCHER, "6.1.3", ".module", RepositorySpec.CENTRAL);
-        Path mixed = tmp.resolve("m2-mixed");
-        m2File(mixed, LAUNCHER, "6.1.3", ".pom", null);
-        m2File(mixed, LAUNCHER, "6.1.3", ".module", "nexus");
-
-        Path sandbox = tmp.resolve("sandbox");
-        TestStoreSeed.seed(host, sandbox, m2);
-        Path central = sandbox.resolve("repos").resolve(RepositorySpec.CENTRAL);
-        assertThat(central.resolve(LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.pom"))
-                .isRegularFile();
-        assertThat(metadata(sandbox, LAUNCHER)).content().contains("<latest>6.1.3</latest>");
-
-        Path sandbox2 = tmp.resolve("sandbox-mixed");
-        TestStoreSeed.seed(host, sandbox2, mixed);
-        assertThat(sandbox2.resolve("repos")
-                        .resolve(RepositorySpec.CENTRAL)
-                        .resolve(LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.pom"))
-                .as("a sibling another repository served vouches for nothing")
-                .doesNotExist();
-    }
-
-    /** A second seed finds nothing to link, and an index the sandbox fetched itself is kept. */
-    @Test
-    void a_second_seed_finds_nothing_to_do_and_a_real_index_already_there_is_kept(@TempDir Path tmp) throws Exception {
-        Path host = tmp.resolve("host");
-        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".pom", ".jar");
-        Path sandbox = tmp.resolve("sandbox");
-        Path body = metadata(sandbox, LAUNCHER);
+        Path sandboxM2 = tmp.resolve("sandbox-m2");
+        Path body = metadata(store, LAUNCHER);
         Files.createDirectories(body.getParent());
         Files.writeString(body, "<metadata>the store's own fetch</metadata>");
 
-        assertThat(TestStoreSeed.seed(host, sandbox))
-                .as("the two launcher files alone")
-                .isEqualTo(2);
+        assertThat(TestStoreSeed.seed(store, sandboxM2)).isPositive();
         assertThat(Files.readString(body)).isEqualTo("<metadata>the store's own fetch</metadata>");
-        assertThat(TestStoreSeed.seed(host, sandbox)).isZero();
+        assertThat(TestStoreSeed.seed(store, sandboxM2)).isZero();
     }
 
-    /**
-     * A slot seeded when the host knew one launcher version must lock a version the host fetched
-     * later: the synthesised list follows the host, where an index the store fetched itself is
-     * not touched.
-     */
+    /** A list seeded when the machine knew one launcher version must follow it to the next. */
     @Test
-    void a_synthesised_version_list_follows_the_host_store(@TempDir Path tmp) throws Exception {
-        Path host = tmp.resolve("host");
-        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".pom", ".jar");
-        Path sandbox = tmp.resolve("sandbox");
-        TestStoreSeed.seed(host, sandbox);
-        assertThat(Files.readString(metadata(sandbox, LAUNCHER)))
+    void a_synthesised_version_list_follows_the_machine() throws Exception {
+        m2File(userM2(), LAUNCHER, "6.1.3", ".pom", "central");
+        Path store = tmp.resolve("store");
+        Path sandboxM2 = tmp.resolve("sandbox-m2");
+        TestStoreSeed.seed(store, sandboxM2);
+        assertThat(Files.readString(metadata(store, LAUNCHER)))
                 .contains(TestStoreSeed.SEED_MARK)
                 .contains("<latest>6.1.3</latest>")
                 .doesNotContain("6.1.4");
 
-        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.4", ".pom", ".jar");
-        assertThat(TestStoreSeed.seed(host, sandbox))
-                .as("two new files and the rewritten list")
-                .isEqualTo(3);
-        assertThat(Files.readString(metadata(sandbox, LAUNCHER)))
+        m2File(userM2(), LAUNCHER, "6.1.4", ".pom", "central");
+        assertThat(TestStoreSeed.seed(store, sandboxM2)).isPositive();
+
+        assertThat(Files.readString(metadata(store, LAUNCHER)))
                 .contains("<version>6.1.3</version>")
                 .contains("<version>6.1.4</version>")
                 .contains("<latest>6.1.4</latest>");
-        assertThat(TestStoreSeed.seed(host, sandbox)).as("settled").isZero();
-    }
-
-    @Test
-    void one_store_named_twice_or_a_host_without_central_is_a_no_op(@TempDir Path tmp) throws Exception {
-        Path store = tmp.resolve("store");
-        artifact(store, "central", LAUNCHER, "6.1.3", ".pom", ".jar");
-        assertThat(TestStoreSeed.seed(store, tmp.resolve("./store"))).isZero();
-        assertThat(TestStoreSeed.seed(tmp.resolve("empty"), tmp.resolve("sandbox")))
-                .isZero();
-        assertThat(tmp.resolve("sandbox")).doesNotExist();
+        assertThat(TestStoreSeed.seed(store, sandboxM2)).as("settled").isZero();
     }
 
     /** The key is the one the metadata cache derives from the Central URL. */
@@ -438,6 +206,20 @@ class TestStoreSeedTest {
         assertThat(TestStoreSeed.metadataKey(Path.of(LAUNCHER)))
                 .isEqualTo(
                         Hashing.sha256Hex("https://repo.maven.apache.org/maven2/" + LAUNCHER + "/maven-metadata.xml"));
+    }
+
+    @Test
+    void a_local_repository_filled_from_a_lock_holds_jars_but_not_the_test_roots() throws Exception {
+        Path own = tmp.resolve("own");
+        m2File(own, "org/junit/platform/junit-platform-launcher", "6.1.3", ".jar", "central");
+        m2File(own, "org/junit/jupiter/junit-jupiter", "6.1.3", ".jar", "central");
+        assertThat(TestStoreSeed.holdsTestRoots()).isFalse();
+
+        m2File(own, "org/junit/platform/junit-platform-launcher", "6.1.3", ".pom", "central");
+        assertThat(TestStoreSeed.holdsTestRoots()).isFalse();
+
+        m2File(own, "org/junit/jupiter/junit-jupiter", "6.1.3", ".pom", "central");
+        assertThat(TestStoreSeed.holdsTestRoots()).isTrue();
     }
 
     private static Path metadata(Path store, String artifactDir) {
@@ -452,7 +234,7 @@ class TestStoreSeedTest {
             throws Exception {
         Path dir = Files.createDirectories(m2.resolve(artifactDir).resolve(version));
         String name = Path.of(artifactDir).getFileName() + "-" + version + ext;
-        Path file = Files.writeString(dir.resolve(name), ext);
+        Path file = Files.writeString(dir.resolve(name), ext + version);
         if (servedBy != null) {
             Files.writeString(
                     dir.resolve("_remote.repositories"),
@@ -461,28 +243,5 @@ class TestStoreSeedTest {
                     StandardOpenOption.APPEND);
         }
         return file;
-    }
-
-    @Test
-    void a_store_filled_from_a_lock_holds_jars_but_not_the_test_roots(@TempDir Path tmp) throws Exception {
-        Path store = tmp.resolve("store");
-        String central = RepositorySpec.CENTRAL;
-        artifact(store, central, "org/junit/platform/junit-platform-launcher", "6.1.3", ".jar");
-        artifact(store, central, "org/junit/jupiter/junit-jupiter", "6.1.3", ".jar");
-        assertThat(TestStoreSeed.holdsTestRoots(store)).isFalse();
-
-        artifact(store, central, "org/junit/platform/junit-platform-launcher", "6.1.3", ".pom");
-        assertThat(TestStoreSeed.holdsTestRoots(store)).isFalse();
-
-        artifact(store, central, "org/junit/jupiter/junit-jupiter", "6.1.3", ".pom");
-        assertThat(TestStoreSeed.holdsTestRoots(store)).isTrue();
-    }
-
-    private static void artifact(Path store, String origin, String artifactDir, String version, String... extensions)
-            throws Exception {
-        Path dir = Files.createDirectories(
-                store.resolve("repos").resolve(origin).resolve(artifactDir).resolve(version));
-        String name = Path.of(artifactDir).getFileName() + "-" + version;
-        for (String ext : extensions) Files.writeString(dir.resolve(name + ext), ext);
     }
 }

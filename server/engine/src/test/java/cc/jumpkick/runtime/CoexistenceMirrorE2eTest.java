@@ -16,7 +16,6 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.base.TestStoreSeed;
-import cc.jumpkick.util.JkDirs;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -92,7 +91,7 @@ class CoexistenceMirrorE2eTest {
         RepoGroup.clearProcessFetchCache();
         RepoGroup.clearProcessVersionsCache();
         Files.createDirectories(CACHE);
-        TestStoreSeed.seed(JkDirs.store(), CACHE);
+        TestStoreSeed.seed(CACHE);
         nexus.start();
     }
 

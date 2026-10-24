@@ -344,7 +344,7 @@ class EngineClientTest {
         EngineRequests.CacheMaintSummary[] summary = new EngineRequests.CacheMaintSummary[1];
         BuildPlanResult result = EngineClient.runCacheMaintenance(
                 p,
-                new EngineRequests.CacheMaintRequest("prune", cache, true, false, cache),
+                new EngineRequests.CacheMaintRequest("prune", cache, true, false, cache, 0),
                 steps -> {
                     liveWhileRunning.addAll(ActiveJobs.snapshot());
                     return new BuildPlanListener() {};

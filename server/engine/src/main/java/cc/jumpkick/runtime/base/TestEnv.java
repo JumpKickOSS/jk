@@ -3,19 +3,17 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.TestEnvValues;
-import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
@@ -92,11 +90,10 @@ public final class TestEnv {
 
     /**
      * The sandbox store's pooled trees become links into the host's shared pool ({@link
-     * TestStorePool}), then it learns the JUnit Platform from this engine's store ({@link
-     * TestStoreSeed}), so the suite's fixtures lock their injected test roots without Central.
-     * Completes missing POMs from the workspace's shared test-m2 first (where prior fetches leave
-     * them), then from {@code ~/.m2}. Warmth only: a link or seed that fails leaves the fixtures to
-     * fetch what they need.
+     * TestStorePool}), then the sandbox store and its local m2 learn the JUnit Platform from this
+     * machine's local repositories ({@link TestStoreSeed}), so the suite's fixtures lock their
+     * injected test roots without Central. Warmth only: a link or seed that fails leaves the
+     * fixtures to fetch what they need.
      */
     private static void warmStore(Path sandboxHome, Path sandboxM2) {
         Path store = sandboxHome.resolve("store");
@@ -106,14 +103,7 @@ public final class TestEnv {
             Log.debug("TestEnv: the sandbox keeps its own repository trees; fixtures fetch into them", e);
         }
         try {
-            Path host = JkDirs.store();
-            int seeded = TestStoreSeed.seed(host, store, sandboxM2);
-            Path user = Path.of(System.getProperty("user.home"), ".m2", "repository")
-                    .toAbsolutePath()
-                    .normalize();
-            if (!user.equals(sandboxM2.toAbsolutePath().normalize())) {
-                seeded += TestStoreSeed.seed(host, store, user);
-            }
+            int seeded = TestStoreSeed.seed(store, sandboxM2);
             if (seeded > 0) Log.debug("TestEnv: seeded " + seeded + " JUnit Platform files into " + sandboxHome);
         } catch (IOException | RuntimeException e) {
             Log.debug("TestEnv: the sandbox store keeps whatever it had; fixtures fetch the rest", e);
@@ -121,46 +111,22 @@ public final class TestEnv {
     }
 
     /**
-     * The sandbox local-m2 root: one per <em>workspace</em>, not one per module.
-     *
-     * <p>Unlike the product home beside it, a local m2 is a content-addressed artifact cache with
-     * nothing module-specific in it, so a copy per module buys nothing and costs twice: the same
-     * dependency is fetched once per module that needs it, and stored once per module that has it.
-     *
-     * <p>{@code JK_HOME} deliberately stays per module: it holds state, locks, learned rates and a
-     * calibration, and concurrent suites writing one copy would race on all four.
-     *
-     * <p>Not part of the run-tests action key — the key hashes the module's declared
-     * {@code [test] env}, not the sandbox underneath it — so moving it re-runs nothing.
+     * The sandbox's Maven local repository: its pooled {@code repos/central} tree. Central's jars
+     * live in the local repository, and the pool ({@link TestStorePool}) is what keeps a fetched
+     * dependency from being fetched again by the next sandbox, so the two are one tree — the memos
+     * that vouch for a file sit beside it, as they did when the store held the jars itself. A test
+     * sandbox is the one place the local repository holds {@code .jk} files.
      */
-    private static Path sandboxM2(Path moduleDir) throws IOException {
-        // Stamped as in use at every launch: the suite reads its dependency jars out of this
-        // directory, and a concurrent launch's reaper spares a stamped slot.
-        return TestHomes.prepareSlot(m2Owner(moduleDir)).resolve("test-m2");
-    }
-
-    /** The directory whose slot holds the shared local m2: the workspace root, else the module itself. */
-    private static Path m2Owner(Path moduleDir) {
-        try {
-            // The workspace's slot, not its home: the m2 is a sibling of one member's home rather
-            // than inside it, so it outlives a home being wiped and `jk clean` at the root takes it.
-            Optional<Path> root = WorkspaceScan.findRoot(moduleDir);
-            if (root.isPresent()) return root.get();
-        } catch (RuntimeException e) {
-            // A workspace root that will not read is the build's error to report, not this one's:
-            // fall back to the module's own slot so a test JVM still gets a sandbox.
-            Log.debug("m2Owner: A workspace root that will not read is the build's error to report, not this one's", e);
-        }
-        return moduleDir;
+    private static Path sandboxM2(Path sandboxHome) {
+        return sandboxHome.resolve("store").resolve("repos").resolve(RepositorySpec.CENTRAL);
     }
 
     /**
-     * Mark the slots {@code moduleDir}'s test JVMs read — the module's home and the workspace's
-     * shared local m2 — as held by a live launch until the hold is closed, so no reaper takes their
-     * jars while the suite runs.
+     * Mark the slot {@code moduleDir}'s test JVMs read as held by a live launch until the hold is
+     * closed, so no reaper takes their jars while the suite runs.
      */
     public static TestHomes.Hold holdSandboxes(Path moduleDir) {
-        return TestHomes.hold(TestHomes.slotFor(moduleDir), TestHomes.slotFor(m2Owner(moduleDir)));
+        return TestHomes.hold(TestHomes.slotFor(moduleDir));
     }
 
     /**
@@ -199,7 +165,7 @@ public final class TestEnv {
         // build stages into it before the suite launches survives the reaper another module's
         // preparation may run meanwhile.
         Path sandboxHome = TestHomes.prepare(moduleDir);
-        Path m2 = sandboxM2(moduleDir);
+        Path m2 = sandboxM2(sandboxHome);
         if (seed) warmStore(sandboxHome, m2);
         out.put(JK_HOME, sandboxHome.toString());
         out.put(JK_STATE_DIR, sandboxHome.resolve("state").toString());

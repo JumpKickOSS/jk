@@ -48,7 +48,6 @@ import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.repo.ArtifactLocator;
-import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.MavenMetadataCache;
 import cc.jumpkick.repo.RepoArtifactResolver;
@@ -944,7 +943,7 @@ public final class LockPipeline {
     private static ArtifactLocator offlineLocator(Lockfile lock, Cas cas) {
         boolean m2 = JkM2Config.resolve().integration()
                 && lock.modules().stream().noneMatch(m -> Boolean.FALSE.equals(m.m2integration()));
-        return new ArtifactLocator(cas.root(), m2 ? M2Dirs.localRepository() : null, m2);
+        return new ArtifactLocator(cas.root(), m2);
     }
 
     /**

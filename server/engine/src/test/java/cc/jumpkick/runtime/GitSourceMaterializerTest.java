@@ -12,7 +12,6 @@ import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.runtime.base.TestStoreSeed;
-import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.eclipse.jgit.api.Git;
@@ -62,7 +61,7 @@ class GitSourceMaterializerTest {
 
         Cas cas = new Cas(tmp.resolve("cas"));
 
-        TestStoreSeed.seed(JkDirs.store(), cas.root());
+        TestStoreSeed.seed(cas.root());
         RepoGroup buildRepos =
                 RepoGroup.of(new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), new Http(), cas));
         var materializer = new GitSourceMaterializer(
@@ -97,7 +96,7 @@ class GitSourceMaterializerTest {
     void is_idempotent_on_a_cache_hit(@TempDir Path tmp) throws Exception {
         GitSource source = buildLibraryRepo(tmp.resolve("lib"));
         Cas cas = new Cas(tmp.resolve("cas"));
-        TestStoreSeed.seed(JkDirs.store(), cas.root());
+        TestStoreSeed.seed(cas.root());
         RepoGroup buildRepos =
                 RepoGroup.of(new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), new Http(), cas));
         var materializer = new GitSourceMaterializer(

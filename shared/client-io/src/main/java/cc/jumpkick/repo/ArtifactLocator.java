@@ -3,8 +3,6 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
@@ -15,28 +13,26 @@ import org.jspecify.annotations.Nullable;
  * repository the lock row's {@code source} names — keyed by that repository's origin, so two
  * projects that call different origins by one name never read each other's bytes.
  *
- * <p>Every answer is a file the store owns. The Maven local repository, when integration is on,
- * is a read-through source and never an address: a row the store lacks and the local repository
- * holds under the locked digest is copied into the store and answered from there. A build
- * therefore never reads a classpath entry another writer of {@code ~/.m2} — or of the shared
- * test-m2 a forked test JVM runs against — can move or replace under it.
+ * <p>Where the artifact is depends on the repository ({@link M2Backing}): the Maven local
+ * repository for Central and the repositories {@code settings.xml} declares, the store's own tree
+ * for the rest. Either way the answer is a file whose digest matches the lock row, checked through
+ * the memo jk keeps in the store, so another writer of {@code ~/.m2} replacing a jar changes the
+ * answer from a path to a miss, never to different bytes.
  */
 public final class ArtifactLocator {
 
     private final Path storeRoot;
-    private final @Nullable Path m2Root;
     private final boolean m2integration;
 
-    /** {@code m2Root} null, or {@code m2integration} false, means the store alone answers. */
-    public ArtifactLocator(Path storeRoot, @Nullable Path m2Root, boolean m2integration) {
+    /** {@code m2integration} false means every repository's artifacts live in its own store tree. */
+    public ArtifactLocator(Path storeRoot, boolean m2integration) {
         this.storeRoot = Objects.requireNonNull(storeRoot, "storeRoot");
-        this.m2Root = m2Root;
-        this.m2integration = m2integration && m2Root != null;
+        this.m2integration = m2integration;
     }
 
-    /** Store-only locator (no Maven local repo). */
+    /** Store-only locator: no repository's artifacts are read from the Maven local repository. */
     public ArtifactLocator(Path storeRoot) {
-        this(storeRoot, null, false);
+        this(storeRoot, false);
     }
 
     public Optional<Path> locate(Lockfile.Artifact pkg) {
@@ -44,7 +40,7 @@ public final class ArtifactLocator {
         if (pkg.name().indexOf(':') < 0) return Optional.empty();
         Coordinate coord = pkg.coordinate();
         String rel = MavenLayout.artifactPath(coord);
-        return locate(pkg.source(), rel, pkg.checksumHex(), coord.toGav());
+        return locate(pkg.source(), rel, pkg.checksumHex());
     }
 
     /**
@@ -57,16 +53,11 @@ public final class ArtifactLocator {
         Coordinate sources = new Coordinate(pkg.moduleGroup(), pkg.moduleArtifact(), pkg.version(), "sources", "jar");
         String rel = MavenLayout.artifactPath(sources);
         String hex = pkg.sourcesChecksumHex();
-        if (hex != null) return locate(pkg.source(), rel, hex, sources.toGav());
+        if (hex != null) return locate(pkg.source(), rel, hex);
         if (!RepoArtifactResolver.isNamedRemote(RepoArtifactResolver.repoName(pkg.source()))) return Optional.empty();
-        Optional<Path> found =
-                RepoArtifactStore.forSource(storeRoot, pkg.source()).locate(rel);
-        if (found.isPresent()) return found.map(p -> p.toAbsolutePath().normalize());
-        Path m2 = m2Root;
-        Path m2File = m2integration && m2 != null ? MavenLayout.safeResolve(m2, rel) : null;
-        return m2File != null && Files.isRegularFile(m2File)
-                ? Optional.of(m2File.toAbsolutePath().normalize())
-                : Optional.empty();
+        return RepoArtifactStore.forSource(storeRoot, pkg.source(), m2integration)
+                .locate(rel)
+                .map(p -> p.toAbsolutePath().normalize());
     }
 
     /**
@@ -74,25 +65,14 @@ public final class ArtifactLocator {
      *     synthetic source reads the first-party shelf only
      */
     public Optional<Path> locate(
-            @Nullable String source, @Nullable String relativePath, @Nullable String expectedSha256, String gav) {
+            @Nullable String source, @Nullable String relativePath, @Nullable String expectedSha256) {
         if (expectedSha256 == null || expectedSha256.isBlank() || relativePath == null) return Optional.empty();
         String repoName = source == null ? null : RepoArtifactResolver.repoName(source);
         boolean storeOnly = !RepoArtifactResolver.isNamedRemote(repoName);
         RepoArtifactStore store = storeOnly || source == null
                 ? RepoArtifactStore.forStoreId(storeRoot, RepoArtifactResolver.JK_LOCAL)
-                : RepoArtifactStore.forSource(storeRoot, source);
-        Path m2 = m2Root;
-        // The lock row names the path; ~/.m2 is a root the row must not climb out of.
-        Path m2File = m2integration && m2 != null && !storeOnly ? MavenLayout.safeResolve(m2, relativePath) : null;
-        Optional<Path> found = fromStore(store, relativePath, expectedSha256);
-        if (found.isPresent()) return found;
-        if (m2File != null
-                && Files.isRegularFile(m2File)
-                && verified(m2File, store.m2MemoPath(relativePath), gav, expectedSha256)) {
-            store.materialize(relativePath, m2File, expectedSha256);
-            return fromStore(store, relativePath, expectedSha256);
-        }
-        return Optional.empty();
+                : RepoArtifactStore.forSource(storeRoot, source, m2integration);
+        return fromStore(store, relativePath, expectedSha256);
     }
 
     /** The row in {@code store}, else on the first-party shelf, where every first-party install lands. */
@@ -105,13 +85,5 @@ public final class ArtifactLocator {
                     .locate(relativePath, expectedSha256);
         }
         return found.map(p -> p.toAbsolutePath().normalize());
-    }
-
-    private static boolean verified(Path blob, Path jkFile, String gav, String expectedSha256) {
-        try {
-            return ArtifactMemo.verify(blob, jkFile, gav, expectedSha256);
-        } catch (IOException e) {
-            return false;
-        }
     }
 }

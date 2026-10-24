@@ -101,7 +101,7 @@ class GuardTestClassPopulationTest {
 
     private static BuildPlanResult build(Path project, Path cache, boolean skipTests, TestSelection selection)
             throws Exception {
-        TestStoreSeed.complete(JkDirs.store());
+        TestStoreSeed.seed(JkDirs.store());
         var build = JkBuildParser.parse(project.resolve("jk.toml"));
         BuildPlan lock = LockPlans.lockBuildPlan(
                 project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);

@@ -70,4 +70,39 @@ class ArtifactMemoTest {
         assertThat(ArtifactMemo.read(jk).orElseThrow().packagedBy()).isNull();
         assertThat(Files.readString(jk).strip().split("\n")).hasSize(4);
     }
+
+    @Test
+    void a_download_is_recorded_and_survives_a_rewrite_and_a_rehash(@TempDir Path dir) throws Exception {
+        Path jar = dir.resolve("bar-1.0.jar");
+        Files.writeString(jar, "bytes");
+        String hex = Hashing.sha256Hex(jar);
+        Path jk = dir.resolve("bar-1.0.jk");
+        ArtifactMemo.ofBlob(jar, "com.foo:bar:1.0", hex, null, true).write(jk);
+
+        assertThat(ArtifactMemo.read(jk)).get().satisfies(memo -> {
+            assertThat(memo.fetched()).isTrue();
+            assertThat(memo.packagedBy()).isNull();
+            assertThat(memo.provesFetchedBy(jar)).isTrue();
+        });
+
+        Files.setLastModifiedTime(
+                jar, FileTime.fromMillis(Files.getLastModifiedTime(jar).toMillis() + 5_000));
+        assertThat(ArtifactMemo.read(jk).orElseThrow().provesFetchedBy(jar))
+                .as("a file touched since the memo no longer proves jk's")
+                .isFalse();
+        assertThat(ArtifactMemo.verify(jar, jk, "com.foo:bar:1.0", hex)).isTrue();
+        assertThat(ArtifactMemo.read(jk).orElseThrow().provesFetchedBy(jar))
+                .as("a rehash that finds the same bytes keeps the download on record")
+                .isTrue();
+    }
+
+    @Test
+    void a_memo_with_no_download_line_proves_nothing(@TempDir Path dir) throws Exception {
+        Path jar = dir.resolve("bar-1.0.jar");
+        Files.writeString(jar, "bytes");
+        Path jk = dir.resolve("bar-1.0.jk");
+        ArtifactMemo.ofBlob(jar, "com.foo:bar:1.0", Hashing.sha256Hex(jar)).write(jk);
+
+        assertThat(ArtifactMemo.read(jk).orElseThrow().provesFetchedBy(jar)).isFalse();
+    }
 }

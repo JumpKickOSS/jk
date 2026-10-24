@@ -17,6 +17,7 @@ import cc.jumpkick.jdk.JdkOwnership;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkService;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.repo.M2Clean;
 import cc.jumpkick.runtime.CachePlans;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
@@ -309,6 +310,52 @@ public final class McpMachine {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    /**
+     * Remove what jk downloaded into the Maven local repository and has not used for {@code
+     * olderThanDays} ({@code 0} = the machine's {@code [m2] clean-after-days}), holding back what the
+     * lockfile in {@code projectDir} pins. Without {@code confirm} it only says what it would remove. A
+     * removal takes the same exclusive locks as a cache clean: no plan is in flight, so no build loses a
+     * jar mid-compile.
+     */
+    public static Map<String, Object> m2Clean(
+            boolean confirm, int olderThanDays, @Nullable Path projectDir, @Nullable ReentrantReadWriteLock cacheGate) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        try {
+            M2Clean.Report[] report = new M2Clean.Report[1];
+            if (!confirm) {
+                report[0] = CachePlans.cleanM2(projectDir, olderThanDays, true);
+                out.put("preview", true);
+                out.put(
+                        "note",
+                        "pass confirm=true to remove these; only files jk downloaded and nothing changed since");
+            } else {
+                boolean ran = CacheMaintenanceLocks.tryExclusively(cacheGate, JkDirs.cache(), () -> {
+                    report[0] = CachePlans.cleanM2(projectDir, olderThanDays, false);
+                });
+                if (!ran) {
+                    out.put("error", "cache is busy (build in flight or another prune) — retry when idle");
+                    return out;
+                }
+                out.put("cleaned", true);
+            }
+            M2Clean.Report r = report[0];
+            out.put("files", r.removed().size());
+            out.put("bytes", r.freedBytes());
+            out.put("changedSinceDownload", r.foreign());
+            out.put("pinned", r.pinned());
+            out.put("recentlyUsed", r.young());
+            out.put(
+                    "examples",
+                    r.removed().stream()
+                            .limit(20)
+                            .map(M2Clean.Removed::relativePath)
+                            .toList());
+        } catch (Exception e) {
+            out.put("error", Errors.text(e));
+        }
+        return out;
     }
 
     public static Map<String, Object> diskAction(

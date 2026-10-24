@@ -601,7 +601,7 @@ class EngineServerRequestTest extends EngineServerHarness {
         String planFinish = null;
         String buildError = null;
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            c.sendLine(new CachePruneRequest("prune", cache.toString(), null, false, false).encode());
+            c.sendLine(new CachePruneRequest("prune", cache.toString(), null, false, false, 0).encode());
             String line;
             while ((line = c.readLine()) != null) {
                 String type = requireNonNull(EngineProtocol.typeOf(line), line);
@@ -681,7 +681,7 @@ class EngineServerRequestTest extends EngineServerHarness {
         String planFinish = null;
         String buildError = null;
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            c.sendLine(new CachePruneRequest("clear", cache.toString(), project.toString(), false, false).encode());
+            c.sendLine(new CachePruneRequest("clear", cache.toString(), project.toString(), false, false, 0).encode());
             String line;
             while ((line = c.readLine()) != null) {
                 String type = requireNonNull(EngineProtocol.typeOf(line), line);

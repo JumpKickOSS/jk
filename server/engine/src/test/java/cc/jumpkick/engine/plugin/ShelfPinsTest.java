@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -46,6 +47,16 @@ class ShelfPinsTest {
         EffectivePomBuilder.clearProcessCache();
         RepoGroup.clearProcessFetchCache();
         PomRuntimeClasspath.clearResolveCacheForTests();
+        // Central's artifacts live in the Maven local repository; here it sits beside the memos, in the store's central
+        // tree.
+        System.setProperty(
+                "jk.m2.local",
+                JkStores.store().resolve("repos").resolve("central").toString());
+    }
+
+    @AfterEach
+    void forgetLocalRepository() {
+        System.clearProperty("jk.m2.local");
     }
 
     @Test

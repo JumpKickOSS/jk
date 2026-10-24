@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -38,6 +39,7 @@ class ClasspathAfterSyncTest {
     @Test
     void publishClasspaths_requires_jars_on_disk(@TempDir Path tmp) throws Exception {
         Path store = tmp.resolve("store");
+        centralIsTheLocalRepository(store);
         Files.createDirectories(store);
         Fixture f = fixture(tmp, store, /* materializeLib */ false);
 
@@ -51,6 +53,7 @@ class ClasspathAfterSyncTest {
     @Test
     void publishClasspaths_puts_compile_cp_when_jar_present(@TempDir Path tmp) throws Exception {
         Path store = tmp.resolve("store");
+        centralIsTheLocalRepository(store);
         Fixture f = fixture(tmp, store, /* materializeLib */ true);
 
         PlannerSetup.publishClasspaths(f.ctx, f.in, new Cas(store), new PluginBuild.StepTools());
@@ -69,6 +72,7 @@ class ClasspathAfterSyncTest {
     @Test
     void production_entries_fail_naming_every_lock_row_that_is_not_on_disk(@TempDir Path tmp) throws Exception {
         Path store = Files.createDirectories(tmp.resolve("store"));
+        centralIsTheLocalRepository(store);
         Path module = Files.createDirectories(tmp.resolve("app"));
         Files.writeString(module.resolve("jk.toml"), """
                 group = "com.example"
@@ -116,6 +120,7 @@ class ClasspathAfterSyncTest {
     @Test
     void test_exclude_dependencies_leave_the_test_runtime_classpath_only(@TempDir Path tmp) throws Exception {
         Path store = Files.createDirectories(tmp.resolve("store"));
+        centralIsTheLocalRepository(store);
         Path module = Files.createDirectories(tmp.resolve("app"));
         Files.writeString(module.resolve("jk.toml"), """
                 group = "com.example"
@@ -204,6 +209,7 @@ class ClasspathAfterSyncTest {
     void publishClasspaths_compiles_against_a_siblings_classes_tree_before_its_jar_exists(@TempDir Path tmp)
             throws Exception {
         Path store = Files.createDirectories(tmp.resolve("store"));
+        centralIsTheLocalRepository(store);
         Workspace ws = twoModules(tmp, "");
         Files.createDirectories(ws.libLayout.classesDir());
 
@@ -229,6 +235,7 @@ class ClasspathAfterSyncTest {
     void publishClasspaths_requires_a_siblings_classes_tree_even_when_its_jar_exists(@TempDir Path tmp)
             throws Exception {
         Path store = Files.createDirectories(tmp.resolve("store"));
+        centralIsTheLocalRepository(store);
         Workspace ws = twoModules(tmp, "");
         Files.createDirectories(ws.libLayout.mainJar().getParent());
         Files.writeString(ws.libLayout.mainJar(), "jar-bytes");
@@ -249,6 +256,7 @@ class ClasspathAfterSyncTest {
     void tests_kind_sibling_without_test_output_fails_at_the_artifact_wait_not_compile_test(@TempDir Path tmp)
             throws Exception {
         Path store = Files.createDirectories(tmp.resolve("store"));
+        centralIsTheLocalRepository(store);
         Workspace ws = twoModules(tmp, """
 
                 [test-dependencies]
@@ -276,6 +284,7 @@ class ClasspathAfterSyncTest {
     @Test
     void skip_tests_tolerates_unbuilt_test_scope_siblings(@TempDir Path tmp) throws Exception {
         Path store = Files.createDirectories(tmp.resolve("store"));
+        centralIsTheLocalRepository(store);
         Workspace ws = twoModules(tmp, """
 
                 [test-dependencies]
@@ -319,6 +328,7 @@ class ClasspathAfterSyncTest {
     @Test
     void a_sibling_lock_row_that_is_not_on_disk_fails_by_name(@TempDir Path tmp) throws Exception {
         Path store = Files.createDirectories(tmp.resolve("store"));
+        centralIsTheLocalRepository(store);
         Workspace ws = twoModules(tmp, "");
         Files.writeString(ws.root.resolve("lib/jk.toml"), """
                 group   = "com.example"
@@ -534,5 +544,16 @@ class ClasspathAfterSyncTest {
         public boolean cancelled() {
             return false;
         }
+    }
+
+    /** Central's artifacts live in the Maven local repository; these fixtures keep it beside the memos, in the store's central tree. */
+    private static void centralIsTheLocalRepository(Path store) {
+        System.setProperty(
+                "jk.m2.local", store.resolve("repos").resolve("central").toString());
+    }
+
+    @AfterEach
+    void forgetLocalRepository() {
+        System.clearProperty("jk.m2.local");
     }
 }

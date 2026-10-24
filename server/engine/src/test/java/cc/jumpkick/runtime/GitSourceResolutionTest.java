@@ -20,7 +20,6 @@ import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.LockOrchestrator;
 import cc.jumpkick.runtime.base.TestStoreSeed;
-import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -81,7 +80,7 @@ class GitSourceResolutionTest {
     void materializes_pins_and_stamps_a_git_dependency(@TempDir Path tmp) throws Exception {
         GitSource lib = buildLibraryRepo(tmp.resolve("lib"));
         Cas cas = new Cas(tmp.resolve("cas"));
-        TestStoreSeed.seed(JkDirs.store(), cas.root());
+        TestStoreSeed.seed(cas.root());
         RepoGroup baseRepos =
                 RepoGroup.of(new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), new Http(), cas));
 
@@ -147,7 +146,7 @@ class GitSourceResolutionTest {
 
         Cas cas = new Cas(tmp.resolve("cas"));
 
-        TestStoreSeed.seed(JkDirs.store(), cas.root());
+        TestStoreSeed.seed(cas.root());
         RepoGroup baseRepos =
                 RepoGroup.of(new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), new Http(), cas));
 
@@ -171,7 +170,7 @@ class GitSourceResolutionTest {
         Path libDir = tmp.resolve("lib");
         GitSource lib = buildLibraryRepo(libDir);
         Cas cas = new Cas(tmp.resolve("cas"));
-        TestStoreSeed.seed(JkDirs.store(), cas.root());
+        TestStoreSeed.seed(cas.root());
         RepoGroup baseRepos =
                 RepoGroup.of(new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), new Http(), cas));
         Path javaHome = Path.of(System.getProperty("java.home"));
