@@ -305,7 +305,7 @@ public final class ForecastScope implements StepForecast.Scope {
                 langs.kotlin(),
                 // The build adds these to every compile and test classpath (PlannerSetup), so a
                 // key priced without them names a compile the build never makes.
-                ProvidedClasspath.forecast(project, dir, lockFile, cas));
+                ProvidedClasspath.forecast(project, dir, lockFile, cas, !skipTests));
     }
 
     /** The suites this session selected, as the build's source lists see them (empty when unreadable). */

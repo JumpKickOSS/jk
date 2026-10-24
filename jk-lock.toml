@@ -1,10 +1,10 @@
 version = 1
 generated-by = "jk 0.30.0"
-generated-by-build = "20f37f24af02"
-generated-by-build-time = "2026-10-24T16:40:43Z"
+generated-by-build = "d90718f1f7dd"
+generated-by-build-time = "2026-10-24T16:42:48Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "8e85b56dfbf78c9dd12ef47f09057328a6626ae78c2966a82517855e81154a6b"
+manifests-sha256 = "e5ad693bc83b3c28a72b971d47fb2c78d26985790829f0b629918859cc61b9bd"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -4465,10 +4465,1484 @@ version    = "0.30.0"
 path       = "shared/guard-api"
 
 [[tool]]
+coordinate = "at.yawk.lz4:lz4-java"
+version    = "1.11.0"
+checksum   = "sha256:535c5578cab5dcd0a438e202df80091632b873c0370c25d9b1c1ad1d73577207"
+
+[[tool]]
+coordinate = "com.amazon.ion:ion-java"
+version    = "1.11.11"
+checksum   = "sha256:9637c74909f00b33de83ae517b3542156cdaa215fcbd6ebff54a019bf845cd0b"
+
+[[tool]]
+coordinate = "com.dynatrace.hash4j:hash4j"
+version    = "0.30.0"
+checksum   = "sha256:d3224b113ea835ce3452097747e5209ec760cf443dbed770d6ba68a0d480178f"
+
+[[tool]]
+coordinate = "com.esotericsoftware:kryo5"
+version    = "5.6.0"
+checksum   = "sha256:2ceef6a5a0527ad89ab6d1fd71bba4fef355cded510970c650d1443412b18dc5"
+
+[[tool]]
+coordinate = "com.fasterxml.jackson.core:jackson-annotations"
+version    = "2.21"
+checksum   = "sha256:53ca085f4a150f703f49e1aabd935bd03b43e1ea3d55d135438292af22cef56b"
+
+[[tool]]
+coordinate = "com.fasterxml.jackson.core:jackson-core"
+version    = "2.19.0"
+checksum   = "sha256:da8e859bac94874528116a25f20c68560e4287acbf27628711b8a4f96b028430"
+
+[[tool]]
+coordinate = "com.fasterxml.jackson.core:jackson-databind"
+version    = "2.19.0"
+checksum   = "sha256:ceda311f476c3b18e1d2b240c94e2dcb9c8d44e70f8afa9facab88bac4ddc03a"
+
+[[tool]]
+coordinate = "com.fasterxml.jackson.jr:jackson-jr-objects"
+version    = "2.19.0"
+checksum   = "sha256:1fbd56f47b0a35031585fa0444b81f1f284ebe4a8752a86f42d0c092c4d693e7"
+
+[[tool]]
+coordinate = "com.fasterxml.jackson.module:jackson-module-kotlin"
+version    = "2.19.0"
+checksum   = "sha256:df967eebc2c87eaa3f55338607104ffc8fa62fb2e813d67f95ed4f7f9c6f8cee"
+
+[[tool]]
+coordinate = "com.fasterxml:aalto-xml"
+version    = "1.3.4"
+checksum   = "sha256:f4ac68d91184a28b4204cef6b124b8aaf439b23d3f13f5821b5ce7a6754f5f20"
+
+[[tool]]
+coordinate = "com.github.ben-manes.caffeine:caffeine"
+version    = "3.2.3"
+checksum   = "sha256:ca70c90a5d1ce1511880ce9c93d4ad22108f61111d3daf91eb52762b571bd179"
+
+[[tool]]
+coordinate = "com.github.luben:zstd-jni"
+version    = "1.5.7-7"
+checksum   = "sha256:d4725bce2c3e4f3df54cbea8bf5966e240872bb7ba7658572ededaef28a01d83"
+
+[[tool]]
+coordinate = "com.github.spullara.cli-parser:cli-parser"
+version    = "1.1.6"
+checksum   = "sha256:436143bc3b925a1af4d0b8c9c7c53ac5c937f0f7aa32e4d97a24ce0a301ede27"
+
+[[tool]]
+coordinate = "com.github.weisj:jsvg"
+version    = "2.1.0"
+checksum   = "sha256:a538142d27c57c55066da02a535cc8eee3afd0d37b3daff8eba6344bd0ffc1b6"
+
+[[tool]]
+coordinate = "com.google.code.gson:gson"
+version    = "2.13.2"
+checksum   = "sha256:dd0ce1b55a3ed2080cb70f9c655850cda86c206862310009dcb5e5c95265a5e0"
+
+[[tool]]
+coordinate = "com.google.errorprone:error_prone_annotations"
+version    = "2.43.0"
+checksum   = "sha256:48272e75c16e1f7bdc7bd19529ccacd5ee170404701d7f5a23441bb5847957f5"
+
+[[tool]]
+coordinate = "com.google.guava:failureaccess"
+version    = "1.0.3"
+checksum   = "sha256:cbfc3906b19b8f55dd7cfd6dfe0aa4532e834250d7f080bd8d211a3e246b59cb"
+
+[[tool]]
+coordinate = "com.google.guava:guava"
+version    = "33.5.0-jre"
+checksum   = "sha256:1e301f0c52ac248b0b14fdc3d12283c77252d4d6f48521d572e7d8c4c2cc4ac7"
+
+[[tool]]
+coordinate = "com.google.protobuf:protobuf-java"
+version    = "3.25.5"
+checksum   = "sha256:8540247fad9e06baefa8fb45eb313802d019f485f14300e0f9d6b556ed88e753"
+
+[[tool]]
+coordinate = "com.googlecode.plist:dd-plist"
+version    = "1.28"
+checksum   = "sha256:88ed8e730f7386297485176c4387146c6914a38c0e58fc296e8a01cdc3b621e1"
+
+[[tool]]
+coordinate = "com.h2database:h2-mvstore"
+version    = "2.4.240"
+checksum   = "sha256:28d9ead5bc525a66b0da0e35bc56d64c5ecaba5e9be864f917d503180f12d47c"
+
+[[tool]]
+coordinate = "com.ibm.icu:icu4j"
+version    = "78.3"
+checksum   = "sha256:e962c1758d9659ea1e1fbab99c58683f654d304e1126ace19aaabfe39e0edb25"
+
+[[tool]]
+coordinate = "com.jetbrains.fus.reporting:ap-validation-all"
+version    = "1.0.229"
+checksum   = "sha256:b02d4c38b8fae8c828fe548216d43373738f4439912e62d50a576c9f83cdc325"
+
+[[tool]]
+coordinate = "com.jetbrains.fus.reporting:fus-api"
+version    = "1.0.229"
+checksum   = "sha256:cfb20d34d4a4f3fe2384f21db80fdf55da99ab4e6e173f3ddd3d5d29015db468"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.fleet:andel"
+version    = "262.10968.63"
+checksum   = "sha256:19b89d3ae879264bcc9064814aa5ae41017b7ee2b38d43fa824d5cbfdb17b113"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.fleet:bifurcan"
+version    = "262.10968.63"
+checksum   = "sha256:19b6f1735faeca82dc36454c525ee4a22091e0d15cbf5179874ca5a43686acbd"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.fleet:fastutil"
+version    = "262.10968.63"
+checksum   = "sha256:440a6135eed1f95110a5834a5fd7938bfb0e62556cdde1c64676f4683dd12d57"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.fleet:kernel"
+version    = "262.10968.63"
+checksum   = "sha256:84b2d1c33d629e48422e31c783d346faccbeafce24aca3c3e7b6bb995ca80959"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.fleet:multiplatform-shims"
+version    = "262.10968.63"
+checksum   = "sha256:20264d341e20225d7bce88465983cf129c37c4a93c6f6b5336da26428082d84f"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.fleet:openmap"
+version    = "262.10968.63"
+checksum   = "sha256:74dd5fb648e612152a81c7d31197b315d10e5cfc81d72c7af88639a951c47ace"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.fleet:radix-trie"
+version    = "262.10968.63"
+checksum   = "sha256:b9b00e22368384c96d038b867eb6c5262b7802fd9ed2e4219742be604cf44e92"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.fleet:reporting-api"
+version    = "262.10968.63"
+checksum   = "sha256:7cfd2bc2302964308ee45b90fd894df382e54a1af18a0c2bb61a112006c00888"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.fleet:reporting-shared"
+version    = "262.10968.63"
+checksum   = "sha256:2f2b93ef0cef1f1f2657c79de6bb74d79ecc2f92c1e734e19deb3688b62f0574"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.fleet:rhizomedb"
+version    = "262.10968.63"
+checksum   = "sha256:c518a05b4c324ad6e207dc7f7d5ea440416ea84ae80059ccc7d5ad15c2281a5b"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.fleet:rhizomedb-transactor"
+version    = "262.10968.63"
+checksum   = "sha256:ad07cc561cc4900274ebd2e70e126cc209c471546649980412a5390e586541d1"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.fleet:rhizomedb-transactor-rebase"
+version    = "262.10968.63"
+checksum   = "sha256:f72d5c86b03bd150085eedfc4d435d053ff62b148440ea571f6e6dfc8d4971b3"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.fleet:rpc"
+version    = "262.10968.63"
+checksum   = "sha256:11092ddf933e96a9a0122c0a4082ed6da828ba8d5d25a401b17ee6800e233347"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.fleet:rpc-server"
+version    = "262.10968.63"
+checksum   = "sha256:c3b188e20d569fbcf4e6bfc461a0b7dbe926d7232245c7eb71aaff68aaac0ba4"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.fleet:util-codepoints"
+version    = "262.10968.63"
+checksum   = "sha256:f00acce51b29cbfa780a739f06ae67b1754a5e164b3e8e2eef55fbd21a1feff0"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.fleet:util-core"
+version    = "262.10968.63"
+checksum   = "sha256:5a55ea301c8c02b59b4269407915b5dde1252a78a4b7dd1e4c40a301c12f7d63"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.fleet:util-logging-api"
+version    = "262.10968.63"
+checksum   = "sha256:35dcf84f8408176d1f7640f15ae3c2eadcb01637a5d19fe2c7cf336ade7d8097"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.fleet:util-serialization"
+version    = "262.10968.63"
+checksum   = "sha256:d23c2aac618b4f70d63a81a6cb303870ebae7131ac93b91b63d294d35c295dea"
+
+[[tool]]
 coordinate = "com.jetbrains.intellij.idea:ideaIC"
 version    = "262.10968.63"
 type       = "zip"
 checksum   = "sha256:4d25ba9308dffc84903e805833aa6a2652effc17e54b126189610c140c2f30b1"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java"
+version    = "262.10968.63"
+checksum   = "sha256:ed0f19f1ece1c2c2682f2ac05457d9056700938edc73a7a5d9e7e6b51a5c55cf"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-aether-dependency-resolver"
+version    = "262.10968.63"
+checksum   = "sha256:3efbca966a54d0aa4eedde68008dc71443c312e6d3403535dc978accee9eacad"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-analysis"
+version    = "262.10968.63"
+checksum   = "sha256:c0fac0f82da55c4d2c923d3f6a4c89035fcb4d463e6e337380b2d078c42bda74"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-analysis-impl"
+version    = "262.10968.63"
+checksum   = "sha256:e7bb9b7c8313a8038f3034e5f50841bd6e6f2323b957f21803cda0332349150f"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-codeserver-core"
+version    = "262.10968.63"
+checksum   = "sha256:069056bd9e643a7bb1fc16d0015b801d06f4e764575ab4aebb9c5811383b5ad4"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-codeserver-highlighting"
+version    = "262.10968.63"
+checksum   = "sha256:0da0bb28a574ab6787843088eed190ee8f2c63847efd508aa09d46318fe5528f"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-compiler"
+version    = "262.10968.63"
+checksum   = "sha256:643adf66d5a5f869d02b919db0d67ec490f025127e589d8fe2ca69f341f581ce"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-compiler-impl"
+version    = "262.10968.63"
+checksum   = "sha256:5f0aff413f74dfaf83acbf65eff6ffb5b316999d3e3996fafdc58c6b8106ffa9"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-compiler-instrumentation-util"
+version    = "262.10968.63"
+checksum   = "sha256:2a5e2a1f7093936916cfb2e28749843240b165aae7a04635f521dae4e8234fe9"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-compiler-instrumentation-util-java8"
+version    = "262.10968.63"
+checksum   = "sha256:421769882dcdcc0d6e9a79e685808a2e599860f339a03b96599369eb93136c14"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-debugger"
+version    = "262.10968.63"
+checksum   = "sha256:b898309f6437731e895dd2ab0b41a15d26a350f1ecafb626d7724c7dc05a42c5"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-debugger-impl"
+version    = "262.10968.63"
+checksum   = "sha256:80ecf87a0cfe7bf28424e7e6aa94777919e98663b2e34429814ca1bfb72eab4e"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-debugger-impl-shared"
+version    = "262.10968.63"
+checksum   = "sha256:4ab34aa6f9830298aa36b765ec333bbcda4f4772198b6156180b7e51fcd3452a"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-debugger-memory-agent"
+version    = "262.10968.63"
+checksum   = "sha256:bbf24e64b378e40903034612e806419ccbe450f70bb65a9bc29db81061557e3d"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-execution"
+version    = "262.10968.63"
+checksum   = "sha256:57d3c0fcd8eb6ec1fab7d3cf509f7eef8916492e80c386400b8d0f637dd02306"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-frontback-impl"
+version    = "262.10968.63"
+checksum   = "sha256:bf1e10b34c3688540c13802285480e163123f662666c944187d9d0252642a2f4"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-frontback-psi"
+version    = "262.10968.63"
+checksum   = "sha256:f90a68c1f975adac3c0afbc0b63c8083436fb4c28c3a60ed7983649252b7e95b"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-frontback-psi-impl"
+version    = "262.10968.63"
+checksum   = "sha256:36a93f5f363b5f905cc370c19655d5d49776296d8047d8d59836e39103143884"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-gui-forms-compiler"
+version    = "262.10968.63"
+checksum   = "sha256:0ce2ba06b3ca01ed93b3ac70025c7bd06b3d610ce7d3896e0c20b93fc864c05b"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-gui-forms-rt"
+version    = "262.10968.63"
+checksum   = "sha256:3f5169e6555bfc776ab48647ee22570165154e001432cd01bb46f7e829744a35"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-impl"
+version    = "262.10968.63"
+checksum   = "sha256:263f1d65a6f35b5360a6cad9b1a1e0ef355afc42f985e49d76b0f2920446f8df"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-impl-refactorings"
+version    = "262.10968.63"
+checksum   = "sha256:6bd48432623a6bff7ea030482f9cdb53e651e228bd9a9bebb8fd774ac0a3875d"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-indexing"
+version    = "262.10968.63"
+checksum   = "sha256:19cf67ce3a5720add31f31dcb0658d5e8baa0f1e3afcca9fd1509d58ff10c584"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-indexing-impl"
+version    = "262.10968.63"
+checksum   = "sha256:4e86b249e98ec211978094df72793daa3706834ac8c5e6c367e4704c64ce23e8"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-psi"
+version    = "262.10968.63"
+checksum   = "sha256:cae0b4deb0f8949c3aae95eda3ad4e7992300324803724009cd0f6d98bf0d358"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-psi-impl"
+version    = "262.10968.63"
+checksum   = "sha256:db53a9d5381c42d99c655d7c9b7c21da3598ed5d5ce8c970848dcd8644d24c4d"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-rt"
+version    = "262.10968.63"
+checksum   = "sha256:6eee5bdfdaf4a09aff0fbab5249b8395b87fa8806adeb96744d8e5f81b1b8cb9"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-structure-view"
+version    = "262.10968.63"
+checksum   = "sha256:e3dc38ad534cfde8277883761f8676be3ca3b7f17a62262e19174b8602e18031"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.java:java-syntax"
+version    = "262.10968.63"
+checksum   = "sha256:c5980a1bf29a5e3811ddd3358a061aaca51d3e6261704d5cecf913eaacc97d44"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.jsp:jsp"
+version    = "262.10968.63"
+checksum   = "sha256:70194fd527e506d3343eb354bd1e6d512503835199f10cf58af12a9499bf0b48"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.jsp:jsp-base"
+version    = "262.10968.63"
+checksum   = "sha256:5440ee5e3fdce1f6a817cdbddb7781788f8f9f38b3d1fa03dc7ab124e66af455"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.jsp:jsp-spi"
+version    = "262.10968.63"
+checksum   = "sha256:8944d78ad348486dbd8966363d28722747dabbd80988f625e8c84cfbdec3ba14"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.libraries:libraries-microba"
+version    = "262.10968.63"
+checksum   = "sha256:7c5e70ff2c31a3deececbaf6b50ed35b3ac4e77b7fa2d7b927766df34aaf078c"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:analysis"
+version    = "262.10968.63"
+checksum   = "sha256:81662cf8a9239edddaa89504d33d43bfff8e126616122ea5994b95894dc344f3"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:analysis-impl"
+version    = "262.10968.63"
+checksum   = "sha256:d356c1e20966b74c582cc08a8b0dcc8e7b3c971b520c9aa3152c94d4f8d0dd9d"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:backend"
+version    = "262.10968.63"
+checksum   = "sha256:ca96523abdd32e1dbf804f6107bff3f14676009c4853055406751ab50ae1d2f6"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:backend-observation"
+version    = "262.10968.63"
+checksum   = "sha256:44bce4ef71b79945e2078ca285a6c92014ff0971b04c6886a337505acf2e8d55"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:backend-workspace"
+version    = "262.10968.63"
+checksum   = "sha256:ec84c1551e156e07516bc4199fd833e9e9a606e16d9cad920226ff708352cad9"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:bazel-runfiles"
+version    = "262.10968.63"
+checksum   = "sha256:9d0927fa6451fa2a650dc30b0d24a3b668037cb8f1cc9917babfd5b48c2877cf"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:boot"
+version    = "262.10968.63"
+checksum   = "sha256:8511111ab464e66957a6cd65dc85e16fe6b22856e6d2781d8ec204a5ba816613"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:bootstrap-coroutine"
+version    = "262.10968.63"
+checksum   = "sha256:3c97ab083986172b1988f20e8db58ff17710003633ef9161d77f1a8df0a50462"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:build-data"
+version    = "262.10968.63"
+checksum   = "sha256:3432d437a16444db57371b2a00902bd908360fd1c141344746735cf095266a32"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:build-scripts-downloader"
+version    = "262.10968.63"
+checksum   = "sha256:50b76d87f6b35a13f98da06e8710514b8518fe5dfec4e7c73f104bb31abc57b6"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:built-in-server"
+version    = "262.10968.63"
+checksum   = "sha256:17bf1ece2936e571a2c7a8290dfe1ebfd46371bdf72f9e8b0ff024829985683f"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:built-in-server-impl"
+version    = "262.10968.63"
+checksum   = "sha256:1a813bcfe0eee1cb6b620cd4badc8ecb1181863365b0a6cbfcb0871aba263f35"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:code-style"
+version    = "262.10968.63"
+checksum   = "sha256:24e18d42f331a61264758ecc5f84335e9e42d9f561280ad63b5fcc2b9e6134b7"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:code-style-impl"
+version    = "262.10968.63"
+checksum   = "sha256:371ce7de1dc7907c88a20520d655e464bb71811870836d6dfba9a50c06985868"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:concurrency"
+version    = "262.10968.63"
+checksum   = "sha256:c364e29747dccd93feb23ff6e1ef70308232720b69623a91e04e177e9ee88969"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:configuration-store-impl"
+version    = "262.10968.63"
+checksum   = "sha256:44c52dda23d0c47a4faf1317d0ec88a58ca429be2b3257db3c8a7e12dd892080"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:core"
+version    = "262.10968.63"
+checksum   = "sha256:d9d69ea5b1468021c0b3b01d6df30abb50a715f53dd02c08b91a62834e610787"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:core-impl"
+version    = "262.10968.63"
+checksum   = "sha256:84f46d7f46ce96d9a08600d57042c24ef3ecb0df98c62544dcc72604b5782687"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:core-nio-fs"
+version    = "262.10968.63"
+checksum   = "sha256:fcc6a64c52ca00e2ac4dde26d22970f0bcb9ba3c81efb1bf90498016cf8773fb"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:core-ui"
+version    = "262.10968.63"
+checksum   = "sha256:a762431be71409bbd3148bfb9abb39f9f85f994cd5f40d32c1620103c0359631"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:credential-store"
+version    = "262.10968.63"
+checksum   = "sha256:5df24630d425e104b37f2ceb28ab3e6327c2359aa945d356d96b8dd07aa200ed"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:debugger"
+version    = "262.10968.63"
+checksum   = "sha256:2bae27081b0bfb0ab6a1f2ea89aad818b3269ebcf41dd006826cdaf9e19a75a9"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:debugger-impl"
+version    = "262.10968.63"
+checksum   = "sha256:675af7c4cccf07f6e8da2227962fda89a11601c46f4852d331e0a688f2364658"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:debugger-impl-rpc"
+version    = "262.10968.63"
+checksum   = "sha256:806df71b355390a32f4525d5cab7f5328828ad23269e51b67c0fac8bf9f7a9a8"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:debugger-impl-shared"
+version    = "262.10968.63"
+checksum   = "sha256:74c912edf45ec8a0f6af883e47c99c64146c48e0a517353148ebd5d3fdd6d5a3"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:debugger-impl-ui"
+version    = "262.10968.63"
+checksum   = "sha256:942ffeefe4dcbd284f58d099e1093b724837af5891761900541a691b0afce611"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:diagnostic"
+version    = "262.10968.63"
+checksum   = "sha256:ae913281eab24b6f9205168f7010725764a0f18e793cec56944f831c6740a924"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:diagnostic-start-up-performance-reporter"
+version    = "262.10968.63"
+checksum   = "sha256:13ebba38a7d05483cd4a337363926a567d0fc677be4ab4fffd9a6c40d52883fc"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:diagnostic-telemetry"
+version    = "262.10968.63"
+checksum   = "sha256:d1c75b22a46f7e432a05be02ce50131861710aae01f822fd55408c65be966ab1"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:diagnostic-telemetry-exporters"
+version    = "262.10968.63"
+checksum   = "sha256:259f3bfa905f5ae19622b87452d44a1182a60ee7749dd223b9df419347a87c95"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:diagnostic-telemetry-impl"
+version    = "262.10968.63"
+checksum   = "sha256:b66ec8055c9f51fa02c39891d3ca6ee03a721175fc655be8b0022043eeb139fe"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:diagnostic-telemetry-rt"
+version    = "262.10968.63"
+checksum   = "sha256:d1fb75663b87a378c9dbf8e26ec0e1b85d44ceca82994177485da8a510367bdb"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:diff"
+version    = "262.10968.63"
+checksum   = "sha256:03ab89ea61eb7ab4b8de96e9b5e6826fc7da78c11c34024d29ec8539d328b163"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:diff-impl"
+version    = "262.10968.63"
+checksum   = "sha256:d8c4b04acf4eae22e61d70728700e9e144190f76dc52b88da8d142a615f741e1"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:editor-ex"
+version    = "262.10968.63"
+checksum   = "sha256:3fb4044361ab34c76296861e29adee6e116dc30b95c789df74e6326c271fdaa4"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:editor-ui"
+version    = "262.10968.63"
+checksum   = "sha256:94b0dfc8fe3b8f62e914836f97e969a970337943c5cefc302de2ad9e73750288"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:eel"
+version    = "262.10968.63"
+checksum   = "sha256:164be15f8e9c8e3387e80fbf21e8bf11f6029f1ac28c4f4c62db15051d7c1f21"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:eel-impl"
+version    = "262.10968.63"
+checksum   = "sha256:b5f5bcc07245efff3854d3dabc38cd3ba4a780cb405faaaf4c3ea4fe28540e76"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:eel-impl-base"
+version    = "262.10968.63"
+checksum   = "sha256:4cdf6775efa511e2f4d7e639bf058c6ba542aab0c9905cf42f38dd9f9b722cf5"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:eel-nio-fs"
+version    = "262.10968.63"
+checksum   = "sha256:a8f2f76760c94983e96bda6a3b928a343fb8682c6ffba8bb62ac70ff3de1be7e"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:eel-nio-fs-impl"
+version    = "262.10968.63"
+checksum   = "sha256:558c2fa7c70fec057854e040b25a2865cb406060815a671e5414d664fd21bb4e"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:eel-provider"
+version    = "262.10968.63"
+checksum   = "sha256:f48025dc96c31e4a103d855ef9c2687cf5abce97a25555386e7395891f47d274"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:execution"
+version    = "262.10968.63"
+checksum   = "sha256:22316205deaca8fcb5396f2ad564dfedb911bfc82b6c174d5b69225e41b02363"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:execution-impl"
+version    = "262.10968.63"
+checksum   = "sha256:4d447feabce7fc9852654135aacc9f58a3bb7cedf438903158cd5f5b7e611a41"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:experiment"
+version    = "262.10968.63"
+checksum   = "sha256:36e56897624903bedb674e6c1bebdd3eea0293cc3ec79f77b303198688f4fd8f"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:extensions"
+version    = "262.10968.63"
+checksum   = "sha256:1c4c27bdd61e6140a28cb98de2e71160f13dec3aafd7b5869b5b271d45503c5a"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:external-process-auth-helper-rt"
+version    = "262.10968.63"
+checksum   = "sha256:8b9c00627d900af706b8813c23a44806c430d8f8043cec5a2f046b2c24538271"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:external-system"
+version    = "262.10968.63"
+checksum   = "sha256:474e12c086620badcb305ecf2e01333cef3046e58967bd0ce09a7c4db2c62fd1"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:external-system-dependency-updater"
+version    = "262.10968.63"
+checksum   = "sha256:04361ade085aebc528f3271008ff53378e12bac72cd243e85526841a543c9c98"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:external-system-impl"
+version    = "262.10968.63"
+checksum   = "sha256:8a4264f889f11cee0f47d3bfa2fad66c0ab61ce48258526bbfb00fe4f411c713"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:external-system-impl"
+version    = "262.10968.63"
+with       = ["com.jetbrains.intellij.platform:ide-impl:262.10968.63", "com.jetbrains.intellij.platform:execution-impl:262.10968.63", "com.jetbrains.intellij.java:java-impl:262.10968.63", "com.jetbrains.intellij.java:java-debugger-impl:262.10968.63"]
+closure = [
+  "at.yawk.lz4:lz4-java:1.11.0",
+  "com.amazon.ion:ion-java:1.11.11",
+  "com.dynatrace.hash4j:hash4j:0.30.0",
+  "com.esotericsoftware:kryo5:5.6.0",
+  "com.fasterxml.jackson.core:jackson-annotations:2.21",
+  "com.fasterxml.jackson.core:jackson-core:2.19.0",
+  "com.fasterxml.jackson.core:jackson-databind:2.19.0",
+  "com.fasterxml.jackson.jr:jackson-jr-objects:2.19.0",
+  "com.fasterxml.jackson.module:jackson-module-kotlin:2.19.0",
+  "com.fasterxml:aalto-xml:1.3.4",
+  "com.github.ben-manes.caffeine:caffeine:3.2.3",
+  "com.github.luben:zstd-jni:1.5.7-7",
+  "com.github.spullara.cli-parser:cli-parser:1.1.6",
+  "com.github.weisj:jsvg:2.1.0",
+  "com.google.code.gson:gson:2.13.2",
+  "com.google.errorprone:error_prone_annotations:2.43.0",
+  "com.google.guava:failureaccess:1.0.3",
+  "com.google.guava:guava:33.5.0-jre",
+  "com.google.protobuf:protobuf-java:3.25.5",
+  "com.googlecode.plist:dd-plist:1.28",
+  "com.h2database:h2-mvstore:2.4.240",
+  "com.ibm.icu:icu4j:78.3",
+  "com.jetbrains.fus.reporting:ap-validation-all:1.0.229",
+  "com.jetbrains.fus.reporting:fus-api:1.0.229",
+  "com.jetbrains.intellij.fleet:andel:262.10968.63",
+  "com.jetbrains.intellij.fleet:bifurcan:262.10968.63",
+  "com.jetbrains.intellij.fleet:fastutil:262.10968.63",
+  "com.jetbrains.intellij.fleet:kernel:262.10968.63",
+  "com.jetbrains.intellij.fleet:multiplatform-shims:262.10968.63",
+  "com.jetbrains.intellij.fleet:openmap:262.10968.63",
+  "com.jetbrains.intellij.fleet:radix-trie:262.10968.63",
+  "com.jetbrains.intellij.fleet:reporting-api:262.10968.63",
+  "com.jetbrains.intellij.fleet:reporting-shared:262.10968.63",
+  "com.jetbrains.intellij.fleet:rhizomedb-transactor-rebase:262.10968.63",
+  "com.jetbrains.intellij.fleet:rhizomedb-transactor:262.10968.63",
+  "com.jetbrains.intellij.fleet:rhizomedb:262.10968.63",
+  "com.jetbrains.intellij.fleet:rpc-server:262.10968.63",
+  "com.jetbrains.intellij.fleet:rpc:262.10968.63",
+  "com.jetbrains.intellij.fleet:util-codepoints:262.10968.63",
+  "com.jetbrains.intellij.fleet:util-core:262.10968.63",
+  "com.jetbrains.intellij.fleet:util-logging-api:262.10968.63",
+  "com.jetbrains.intellij.fleet:util-serialization:262.10968.63",
+  "com.jetbrains.intellij.java:java-aether-dependency-resolver:262.10968.63",
+  "com.jetbrains.intellij.java:java-analysis-impl:262.10968.63",
+  "com.jetbrains.intellij.java:java-analysis:262.10968.63",
+  "com.jetbrains.intellij.java:java-codeserver-core:262.10968.63",
+  "com.jetbrains.intellij.java:java-codeserver-highlighting:262.10968.63",
+  "com.jetbrains.intellij.java:java-compiler-impl:262.10968.63",
+  "com.jetbrains.intellij.java:java-compiler-instrumentation-util-java8:262.10968.63",
+  "com.jetbrains.intellij.java:java-compiler-instrumentation-util:262.10968.63",
+  "com.jetbrains.intellij.java:java-compiler:262.10968.63",
+  "com.jetbrains.intellij.java:java-debugger-impl-shared:262.10968.63",
+  "com.jetbrains.intellij.java:java-debugger-impl:262.10968.63",
+  "com.jetbrains.intellij.java:java-debugger-memory-agent:262.10968.63",
+  "com.jetbrains.intellij.java:java-debugger:262.10968.63",
+  "com.jetbrains.intellij.java:java-execution:262.10968.63",
+  "com.jetbrains.intellij.java:java-frontback-impl:262.10968.63",
+  "com.jetbrains.intellij.java:java-frontback-psi-impl:262.10968.63",
+  "com.jetbrains.intellij.java:java-frontback-psi:262.10968.63",
+  "com.jetbrains.intellij.java:java-gui-forms-compiler:262.10968.63",
+  "com.jetbrains.intellij.java:java-gui-forms-rt:262.10968.63",
+  "com.jetbrains.intellij.java:java-impl-refactorings:262.10968.63",
+  "com.jetbrains.intellij.java:java-impl:262.10968.63",
+  "com.jetbrains.intellij.java:java-indexing-impl:262.10968.63",
+  "com.jetbrains.intellij.java:java-indexing:262.10968.63",
+  "com.jetbrains.intellij.java:java-psi-impl:262.10968.63",
+  "com.jetbrains.intellij.java:java-psi:262.10968.63",
+  "com.jetbrains.intellij.java:java-rt:262.10968.63",
+  "com.jetbrains.intellij.java:java-structure-view:262.10968.63",
+  "com.jetbrains.intellij.java:java-syntax:262.10968.63",
+  "com.jetbrains.intellij.java:java:262.10968.63",
+  "com.jetbrains.intellij.jsp:jsp-base:262.10968.63",
+  "com.jetbrains.intellij.jsp:jsp-spi:262.10968.63",
+  "com.jetbrains.intellij.jsp:jsp:262.10968.63",
+  "com.jetbrains.intellij.libraries:libraries-microba:262.10968.63",
+  "com.jetbrains.intellij.platform:analysis-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:analysis:262.10968.63",
+  "com.jetbrains.intellij.platform:backend-observation:262.10968.63",
+  "com.jetbrains.intellij.platform:backend-workspace:262.10968.63",
+  "com.jetbrains.intellij.platform:backend:262.10968.63",
+  "com.jetbrains.intellij.platform:bazel-runfiles:262.10968.63",
+  "com.jetbrains.intellij.platform:boot:262.10968.63",
+  "com.jetbrains.intellij.platform:bootstrap-coroutine:262.10968.63",
+  "com.jetbrains.intellij.platform:build-data:262.10968.63",
+  "com.jetbrains.intellij.platform:build-scripts-downloader:262.10968.63",
+  "com.jetbrains.intellij.platform:built-in-server-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:built-in-server:262.10968.63",
+  "com.jetbrains.intellij.platform:code-style-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:code-style:262.10968.63",
+  "com.jetbrains.intellij.platform:concurrency:262.10968.63",
+  "com.jetbrains.intellij.platform:configuration-store-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:core-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:core-nio-fs:262.10968.63",
+  "com.jetbrains.intellij.platform:core-ui:262.10968.63",
+  "com.jetbrains.intellij.platform:core:262.10968.63",
+  "com.jetbrains.intellij.platform:credential-store:262.10968.63",
+  "com.jetbrains.intellij.platform:debugger-impl-rpc:262.10968.63",
+  "com.jetbrains.intellij.platform:debugger-impl-shared:262.10968.63",
+  "com.jetbrains.intellij.platform:debugger-impl-ui:262.10968.63",
+  "com.jetbrains.intellij.platform:debugger-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:debugger:262.10968.63",
+  "com.jetbrains.intellij.platform:diagnostic-start-up-performance-reporter:262.10968.63",
+  "com.jetbrains.intellij.platform:diagnostic-telemetry-exporters:262.10968.63",
+  "com.jetbrains.intellij.platform:diagnostic-telemetry-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:diagnostic-telemetry-rt:262.10968.63",
+  "com.jetbrains.intellij.platform:diagnostic-telemetry:262.10968.63",
+  "com.jetbrains.intellij.platform:diagnostic:262.10968.63",
+  "com.jetbrains.intellij.platform:diff-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:diff:262.10968.63",
+  "com.jetbrains.intellij.platform:editor-ex:262.10968.63",
+  "com.jetbrains.intellij.platform:editor-ui:262.10968.63",
+  "com.jetbrains.intellij.platform:eel-impl-base:262.10968.63",
+  "com.jetbrains.intellij.platform:eel-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:eel-nio-fs-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:eel-nio-fs:262.10968.63",
+  "com.jetbrains.intellij.platform:eel-provider:262.10968.63",
+  "com.jetbrains.intellij.platform:eel:262.10968.63",
+  "com.jetbrains.intellij.platform:execution-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:execution:262.10968.63",
+  "com.jetbrains.intellij.platform:experiment:262.10968.63",
+  "com.jetbrains.intellij.platform:extensions:262.10968.63",
+  "com.jetbrains.intellij.platform:external-process-auth-helper-rt:262.10968.63",
+  "com.jetbrains.intellij.platform:external-system-dependency-updater:262.10968.63",
+  "com.jetbrains.intellij.platform:external-system-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:external-system-rt:262.10968.63",
+  "com.jetbrains.intellij.platform:external-system:262.10968.63",
+  "com.jetbrains.intellij.platform:feedback:262.10968.63",
+  "com.jetbrains.intellij.platform:foldings:262.10968.63",
+  "com.jetbrains.intellij.platform:icons-api-rendering:262.10968.63",
+  "com.jetbrains.intellij.platform:icons-api:262.10968.63",
+  "com.jetbrains.intellij.platform:icons-impl-intellij:262.10968.63",
+  "com.jetbrains.intellij.platform:icons-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:icons:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-bootstrap-eel:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-bootstrap-kernel:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-bootstrap:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-codeinsight-inline:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-concurrency:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-core-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-core-plugins:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-core:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-favorites-tree-view:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-initial-config-import:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-internal:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-observable:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-progress:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-recent-projects:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-rpc:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-ui:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-update-checker:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-util-io-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-util-io:262.10968.63",
+  "com.jetbrains.intellij.platform:ide-util-netty:262.10968.63",
+  "com.jetbrains.intellij.platform:ide:262.10968.63",
+  "com.jetbrains.intellij.platform:ijent-community-build-constants:262.10968.63",
+  "com.jetbrains.intellij.platform:ijent-community-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:ijent:262.10968.63",
+  "com.jetbrains.intellij.platform:indexing-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:indexing:262.10968.63",
+  "com.jetbrains.intellij.platform:instance-container:262.10968.63",
+  "com.jetbrains.intellij.platform:jbr:262.10968.63",
+  "com.jetbrains.intellij.platform:jps-build-dependency-graph:262.10968.63",
+  "com.jetbrains.intellij.platform:jps-build-javac-rt:262.10968.63",
+  "com.jetbrains.intellij.platform:jps-build-launcher:262.10968.63",
+  "com.jetbrains.intellij.platform:jps-build:262.10968.63",
+  "com.jetbrains.intellij.platform:jps-model-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:jps-model-serialization:262.10968.63",
+  "com.jetbrains.intellij.platform:jps-model:262.10968.63",
+  "com.jetbrains.intellij.platform:kernel-backend:262.10968.63",
+  "com.jetbrains.intellij.platform:kernel:262.10968.63",
+  "com.jetbrains.intellij.platform:lang-core:262.10968.63",
+  "com.jetbrains.intellij.platform:lang-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:lang:262.10968.63",
+  "com.jetbrains.intellij.platform:locking-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:lvcs:262.10968.63",
+  "com.jetbrains.intellij.platform:macro:262.10968.63",
+  "com.jetbrains.intellij.platform:markdown-utils:262.10968.63",
+  "com.jetbrains.intellij.platform:ml:262.10968.63",
+  "com.jetbrains.intellij.platform:object-serializer-annotations:262.10968.63",
+  "com.jetbrains.intellij.platform:object-serializer:262.10968.63",
+  "com.jetbrains.intellij.platform:pasta:262.10968.63",
+  "com.jetbrains.intellij.platform:plugin-system-parser-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:poly-symbols:262.10968.63",
+  "com.jetbrains.intellij.platform:pratt:262.10968.63",
+  "com.jetbrains.intellij.platform:project-frame:262.10968.63",
+  "com.jetbrains.intellij.platform:project-model-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:project-model:262.10968.63",
+  "com.jetbrains.intellij.platform:project:262.10968.63",
+  "com.jetbrains.intellij.platform:rd-community:262.10968.63",
+  "com.jetbrains.intellij.platform:refactoring:262.10968.63",
+  "com.jetbrains.intellij.platform:remote-core:262.10968.63",
+  "com.jetbrains.intellij.platform:resources-en:262.10968.63",
+  "com.jetbrains.intellij.platform:resources:262.10968.63",
+  "com.jetbrains.intellij.platform:rpc-backend:262.10968.63",
+  "com.jetbrains.intellij.platform:rpc-topics:262.10968.63",
+  "com.jetbrains.intellij.platform:rpc:262.10968.63",
+  "com.jetbrains.intellij.platform:runtime-product:262.10968.63",
+  "com.jetbrains.intellij.platform:runtime-repository:262.10968.63",
+  "com.jetbrains.intellij.platform:service-container:262.10968.63",
+  "com.jetbrains.intellij.platform:settings:262.10968.63",
+  "com.jetbrains.intellij.platform:statistics-config:262.10968.63",
+  "com.jetbrains.intellij.platform:statistics-uploader:262.10968.63",
+  "com.jetbrains.intellij.platform:statistics:262.10968.63",
+  "com.jetbrains.intellij.platform:structure-view:262.10968.63",
+  "com.jetbrains.intellij.platform:syntax-extensions:262.10968.63",
+  "com.jetbrains.intellij.platform:syntax-i18-n:262.10968.63",
+  "com.jetbrains.intellij.platform:syntax-psi:262.10968.63",
+  "com.jetbrains.intellij.platform:syntax-tree:262.10968.63",
+  "com.jetbrains.intellij.platform:syntax-util:262.10968.63",
+  "com.jetbrains.intellij.platform:syntax:262.10968.63",
+  "com.jetbrains.intellij.platform:test-integration-ui:262.10968.63",
+  "com.jetbrains.intellij.platform:test-integration:262.10968.63",
+  "com.jetbrains.intellij.platform:thread-dump-parser:262.10968.63",
+  "com.jetbrains.intellij.platform:todo:262.10968.63",
+  "com.jetbrains.intellij.platform:tracing-rt:262.10968.63",
+  "com.jetbrains.intellij.platform:uast-ide:262.10968.63",
+  "com.jetbrains.intellij.platform:uast:262.10968.63",
+  "com.jetbrains.intellij.platform:usage-view-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:usage-view:262.10968.63",
+  "com.jetbrains.intellij.platform:util-base-multiplatform:262.10968.63",
+  "com.jetbrains.intellij.platform:util-base:262.10968.63",
+  "com.jetbrains.intellij.platform:util-class-loader:262.10968.63",
+  "com.jetbrains.intellij.platform:util-coroutines:262.10968.63",
+  "com.jetbrains.intellij.platform:util-diff:262.10968.63",
+  "com.jetbrains.intellij.platform:util-ex:262.10968.63",
+  "com.jetbrains.intellij.platform:util-http:262.10968.63",
+  "com.jetbrains.intellij.platform:util-io-storages:262.10968.63",
+  "com.jetbrains.intellij.platform:util-jdom:262.10968.63",
+  "com.jetbrains.intellij.platform:util-multiplatform:262.10968.63",
+  "com.jetbrains.intellij.platform:util-nanoxml:262.10968.63",
+  "com.jetbrains.intellij.platform:util-progress:262.10968.63",
+  "com.jetbrains.intellij.platform:util-rt-java8:262.10968.63",
+  "com.jetbrains.intellij.platform:util-rt:262.10968.63",
+  "com.jetbrains.intellij.platform:util-text-matching:262.10968.63",
+  "com.jetbrains.intellij.platform:util-ui:262.10968.63",
+  "com.jetbrains.intellij.platform:util-xml-dom:262.10968.63",
+  "com.jetbrains.intellij.platform:util-zip:262.10968.63",
+  "com.jetbrains.intellij.platform:util:262.10968.63",
+  "com.jetbrains.intellij.platform:vcs-core:262.10968.63",
+  "com.jetbrains.intellij.platform:vcs-impl-shared:262.10968.63",
+  "com.jetbrains.intellij.platform:vcs-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:vcs-log-graph:262.10968.63",
+  "com.jetbrains.intellij.platform:vcs-log:262.10968.63",
+  "com.jetbrains.intellij.platform:vcs-shared:262.10968.63",
+  "com.jetbrains.intellij.platform:vcs:262.10968.63",
+  "com.jetbrains.intellij.platform:welcome-screen-impl:262.10968.63",
+  "com.jetbrains.intellij.platform:welcome-screen:262.10968.63",
+  "com.jetbrains.intellij.platform:workspace-jps:262.10968.63",
+  "com.jetbrains.intellij.platform:workspace-storage:262.10968.63",
+  "com.jetbrains.intellij.platform:wsl-impl:262.10968.63",
+  "com.jetbrains.intellij.regexp:regexp:262.10968.63",
+  "com.jetbrains.intellij.spellchecker:spellchecker:262.10968.63",
+  "com.jetbrains.intellij.xml:xml-analysis:262.10968.63",
+  "com.jetbrains.intellij.xml:xml-dom:262.10968.63",
+  "com.jetbrains.intellij.xml:xml-parser:262.10968.63",
+  "com.jetbrains.intellij.xml:xml-psi-impl:262.10968.63",
+  "com.jetbrains.intellij.xml:xml-psi:262.10968.63",
+  "com.jetbrains.intellij.xml:xml-syntax:262.10968.63",
+  "com.jetbrains.rd:rd-core:2026.2.5",
+  "com.jetbrains.rd:rd-framework:2026.2.5",
+  "com.jetbrains.rd:rd-swing:2026.2.5",
+  "com.jetbrains.rd:rd-text:2026.2.5",
+  "com.jgoodies:forms:1.1-preview",
+  "com.jgoodies:jgoodies-common:1.4.0",
+  "com.miglayout:miglayout-core:11.4.2",
+  "com.miglayout:miglayout-swing:11.4.2",
+  "com.sun.activation:jakarta.activation:1.2.2",
+  "com.sun.istack:istack-commons-runtime:3.0.12",
+  "com.thoughtworks.qdox:qdox:2.2.0",
+  "commons-cli:commons-cli:1.11.0",
+  "commons-codec:commons-codec:1.21.0",
+  "commons-io:commons-io:2.21.0",
+  "commons-logging:commons-logging:1.2",
+  "dk.brics:automaton:1.12-4",
+  "io.github.classgraph:classgraph:4.8.181",
+  "io.ktor:ktor-client-auth-jvm:3.4.1",
+  "io.ktor:ktor-client-content-negotiation-jvm:3.4.1",
+  "io.ktor:ktor-client-core-jvm:3.4.1",
+  "io.ktor:ktor-client-encoding-jvm:3.4.1",
+  "io.ktor:ktor-client-java-jvm:3.4.1",
+  "io.ktor:ktor-client-logging-jvm:3.4.1",
+  "io.ktor:ktor-events-jvm:3.4.1",
+  "io.ktor:ktor-http-cio-jvm:3.4.1",
+  "io.ktor:ktor-http-jvm:3.4.1",
+  "io.ktor:ktor-io-jvm:3.4.1",
+  "io.ktor:ktor-network-jvm:3.4.1",
+  "io.ktor:ktor-network-tls-jvm:3.4.1",
+  "io.ktor:ktor-serialization-jvm:3.4.1",
+  "io.ktor:ktor-serialization-kotlinx-json-jvm:3.4.1",
+  "io.ktor:ktor-serialization-kotlinx-jvm:3.4.1",
+  "io.ktor:ktor-sse-jvm:3.4.1",
+  "io.ktor:ktor-utils-jvm:3.4.1",
+  "io.ktor:ktor-websocket-serialization-jvm:3.4.1",
+  "io.ktor:ktor-websockets-jvm:3.4.1",
+  "io.netty:netty-buffer:4.2.15.Final",
+  "io.netty:netty-codec-base:4.2.15.Final",
+  "io.netty:netty-codec-compression:4.2.15.Final",
+  "io.netty:netty-codec-http2:4.2.15.Final",
+  "io.netty:netty-codec-http:4.2.15.Final",
+  "io.netty:netty-codec-protobuf:4.2.15.Final",
+  "io.netty:netty-common:4.2.15.Final",
+  "io.netty:netty-handler:4.2.15.Final",
+  "io.netty:netty-resolver:4.2.15.Final",
+  "io.netty:netty-transport-native-unix-common:4.2.15.Final",
+  "io.netty:netty-transport:4.2.15.Final",
+  "io.opentelemetry.semconv:opentelemetry-semconv:1.30.0",
+  "io.opentelemetry:opentelemetry-api:1.48.0",
+  "io.opentelemetry:opentelemetry-context:1.48.0",
+  "io.opentelemetry:opentelemetry-exporter-common:1.48.0",
+  "io.opentelemetry:opentelemetry-exporter-otlp-common:1.48.0",
+  "io.opentelemetry:opentelemetry-exporter-sender-jdk:1.48.0",
+  "io.opentelemetry:opentelemetry-extension-kotlin:1.48.0",
+  "io.opentelemetry:opentelemetry-sdk-common:1.48.0",
+  "io.opentelemetry:opentelemetry-sdk-extension-autoconfigure-spi:1.48.0",
+  "io.opentelemetry:opentelemetry-sdk-logs:1.48.0",
+  "io.opentelemetry:opentelemetry-sdk-metrics:1.48.0",
+  "io.opentelemetry:opentelemetry-sdk-trace:1.48.0",
+  "io.opentelemetry:opentelemetry-sdk:1.48.0",
+  "javax.annotation:javax.annotation-api:1.3.2",
+  "jaxen:jaxen:1.2.0",
+  "net.java.dev.jna:jna-platform:5.17.0",
+  "net.java.dev.jna:jna:5.17.0",
+  "net.jcip:jcip-annotations:1.0",
+  "one.util:streamex:0.8.4",
+  "org.apache.commons:commons-compress:1.28.0",
+  "org.apache.commons:commons-lang3:3.20.0",
+  "org.apache.httpcomponents:httpclient:4.5.14",
+  "org.apache.httpcomponents:httpcore:4.4.16",
+  "org.apache.httpcomponents:httpmime:4.5.14",
+  "org.apache.lucene:lucene-analysis-common:10.3.0",
+  "org.apache.lucene:lucene-core:10.3.0",
+  "org.apache.maven.resolver:maven-resolver-api:1.9.22",
+  "org.apache.maven.resolver:maven-resolver-connector-basic:1.9.22",
+  "org.apache.maven.resolver:maven-resolver-impl:1.9.22",
+  "org.apache.maven.resolver:maven-resolver-named-locks:1.9.22",
+  "org.apache.maven.resolver:maven-resolver-spi:1.9.22",
+  "org.apache.maven.resolver:maven-resolver-transport-file:1.9.22",
+  "org.apache.maven.resolver:maven-resolver-transport-http:1.9.22",
+  "org.apache.maven.resolver:maven-resolver-util:1.9.22",
+  "org.apache.maven:maven-artifact:3.9.9",
+  "org.apache.maven:maven-builder-support:3.9.9",
+  "org.apache.maven:maven-model-builder:3.9.9",
+  "org.apache.maven:maven-model:3.9.9",
+  "org.apache.maven:maven-repository-metadata:3.9.9",
+  "org.apache.maven:maven-resolver-provider:3.9.9",
+  "org.apache.velocity:velocity-engine-core:2.3",
+  "org.bidib.com.github.markusbernhardt:proxy-vole:1.1.9",
+  "org.bouncycastle:bcpkix-jdk18on:1.84",
+  "org.bouncycastle:bcprov-jdk18on:1.84",
+  "org.bouncycastle:bcutil-jdk18on:1.84",
+  "org.codehaus.plexus:plexus-interpolation:1.27",
+  "org.codehaus.plexus:plexus-utils:3.6.1",
+  "org.codehaus.woodstox:stax2-api:4.2.2",
+  "org.eclipse.sisu:org.eclipse.sisu.inject:0.9.0.M3",
+  "org.glassfish.jaxb:jaxb-runtime:2.3.9",
+  "org.glassfish.jaxb:txw2:2.3.9",
+  "org.hdrhistogram:HdrHistogram:2.2.2",
+  "org.imgscalr:imgscalr-lib:4.2",
+  "org.javadelight:delight-rhino-sandbox:0.2.2",
+  "org.jetbrains.intellij.deps.completion:completion-ranking-java:0.9.3",
+  "org.jetbrains.intellij.deps.fastutil:intellij-deps-fastutil:8.5.18-jb1",
+  "org.jetbrains.intellij.deps.kotlinx:kotlinx-coroutines-core-jvm:1.10.2-intellij-2",
+  "org.jetbrains.intellij.deps.kotlinx:kotlinx-coroutines-debug:1.10.2-intellij-2",
+  "org.jetbrains.intellij.deps.kotlinx:kotlinx-coroutines-slf4j:1.10.2-intellij-2",
+  "org.jetbrains.intellij.deps.winp:winp:1.30.1",
+  "org.jetbrains.intellij.deps:asm-all:9.6.1",
+  "org.jetbrains.intellij.deps:commons-imaging:1.0-RC-1",
+  "org.jetbrains.intellij.deps:debugger-memory-agent:1.0.51",
+  "org.jetbrains.intellij.deps:intellij-deps-java-atk-wrapper:263.33",
+  "org.jetbrains.intellij.deps:java-compatibility:1.0.1",
+  "org.jetbrains.intellij.deps:jb-jdi:2.45",
+  "org.jetbrains.intellij.deps:rwmutex-idea:0.0.10",
+  "org.jetbrains.intellij.deps:sa-jdwp:1.25",
+  "org.jetbrains.intellij:blockmap:1.0.7",
+  "org.jetbrains.jediterm:jediterm-core:3.73",
+  "org.jetbrains.jediterm:jediterm-ui:3.73",
+  "org.jetbrains.jps:jps-javac-extension:10",
+  "org.jetbrains.kotlin:kotlin-metadata-jvm:2.4.0",
+  "org.jetbrains.kotlin:kotlin-reflect:2.4.0",
+  "org.jetbrains.kotlin:kotlin-stdlib:2.4.0",
+  "org.jetbrains.kotlinx:kotlinx-collections-immutable-jvm:0.5.0",
+  "org.jetbrains.kotlinx:kotlinx-datetime-jvm:0.7.1-0.6.x-compat",
+  "org.jetbrains.kotlinx:kotlinx-html-jvm:0.12.0",
+  "org.jetbrains.kotlinx:kotlinx-io-bytestring-jvm:0.7.0",
+  "org.jetbrains.kotlinx:kotlinx-io-core-jvm:0.7.0",
+  "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.9.0",
+  "org.jetbrains.kotlinx:kotlinx-serialization-json-io-jvm:1.9.0",
+  "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.9.0",
+  "org.jetbrains.kotlinx:kotlinx-serialization-protobuf-jvm:1.9.0",
+  "org.jetbrains.nativecerts:jvm-native-trusted-roots:1.1.7",
+  "org.jetbrains.pty4j:pty4j:0.13.12",
+  "org.jetbrains.runtime:jbr-api:1.9.0",
+  "org.jetbrains.teamcity:serviceMessages:2024.07",
+  "org.jetbrains:annotations:26.0.2",
+  "org.jetbrains:markdown-jvm:0.7.7",
+  "org.jetbrains:marketplace-zip-signer:0.1.43",
+  "org.jsoup:jsoup:1.22.1",
+  "org.jspecify:jspecify:1.0.0",
+  "org.mozilla:rhino-runtime:1.7.15.1",
+  "org.slf4j:log4j-over-slf4j:1.7.36",
+  "org.slf4j:slf4j-api:2.0.13",
+  "org.slf4j:slf4j-jdk14:2.0.13",
+  "org.snakeyaml:snakeyaml-engine:2.9",
+  "org.swinglabs:swingx-core:1.6.2-2",
+  "org.tukaani:xz:1.10",
+  "oro:oro:2.0.8",
+  "tools.jackson.core:jackson-core:3.1.4",
+  "tools.jackson.core:jackson-databind:3.1.4",
+  "tools.jackson.jr:jackson-jr-objects:3.1.4",
+  "tools.jackson.module:jackson-module-kotlin:3.1.4",
+  "xml-resolver:xml-resolver:1.2",
+]
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:external-system-rt"
+version    = "262.10968.63"
+checksum   = "sha256:45c95219259581a749bc682bce303f78910a913f47ba8c005df1cbc7a61d4a5e"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:feedback"
+version    = "262.10968.63"
+checksum   = "sha256:647b6caf4390dcdfc341c0f1c7d86f523d10763bb9740b429c8a6f97e2997214"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:foldings"
+version    = "262.10968.63"
+checksum   = "sha256:e0783eb7c52239beac1ba28f2690d46e1fa6971e13c1729d11a663112effdeb0"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:icons"
+version    = "262.10968.63"
+checksum   = "sha256:639bb9363ea4e6855f957957849a468b33ebf1da77c5302adebe2d9bc8d66bad"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:icons-api"
+version    = "262.10968.63"
+checksum   = "sha256:f73063782dd3324e3739920804cde6b906f632d6484783cccf66aa43e0f8230b"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:icons-api-rendering"
+version    = "262.10968.63"
+checksum   = "sha256:9d4e1c9693c84bc88264c43206767fb2b6478f46ad0c8c533991eda8fea0454e"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:icons-impl"
+version    = "262.10968.63"
+checksum   = "sha256:fc062f29e0169fd52410dc47e88c042de7afb37210cb857ea0920ed82fc5468c"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:icons-impl-intellij"
+version    = "262.10968.63"
+checksum   = "sha256:3412d19688669de4cf6a5307eef024e83ee0b50164791f7a67c7e1b92e1137bd"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide"
+version    = "262.10968.63"
+checksum   = "sha256:766a0d28079b080afdc96ea755a26fb32c597de14901bcdf07d42f6ba4f5da39"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-bootstrap"
+version    = "262.10968.63"
+checksum   = "sha256:083a358c6d8efa1c600f3c95b073be62387ee6a458ab313d759d3772a4b124bb"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-bootstrap-eel"
+version    = "262.10968.63"
+checksum   = "sha256:3ca125a95fe6b7a8e0c721edc3fc3798fced09d84cd6ee14e345c3cb7341aa6d"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-bootstrap-kernel"
+version    = "262.10968.63"
+checksum   = "sha256:91c48a68a16d513dce440e8eea5577f12174979bcd1cd19f7dc118b9a4cad4dc"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-codeinsight-inline"
+version    = "262.10968.63"
+checksum   = "sha256:deb17a29b404df518c6eb72b1351fe8d5bd957dd3a51392d3dd2f1be557a5326"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-concurrency"
+version    = "262.10968.63"
+checksum   = "sha256:fda606db100f4d31cdddda162e87c0764ed20a058f545d5b4e99814afe627c45"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-core"
+version    = "262.10968.63"
+checksum   = "sha256:b819b0b15ac5413dfbe4d76c854e5ac284706d2f80b5a9b89bac4dc1e1e7ec0a"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-core-impl"
+version    = "262.10968.63"
+checksum   = "sha256:bb94200c6dd5ae8a7be80b2fe74cec758457605efe581602e5d0dc6eea8a9677"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-core-plugins"
+version    = "262.10968.63"
+checksum   = "sha256:97071b8a294fd6652dfba3b56da345b4cad44d9025bb7e00037ddfa9b3cdaacf"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-favorites-tree-view"
+version    = "262.10968.63"
+checksum   = "sha256:0a4354e48fa902a7cc51fd54910153623c236a3cba984ea1dad45c62d8db4e56"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-impl"
+version    = "262.10968.63"
+checksum   = "sha256:6efed282e7978fe12155b70f7185c4ed77649ef8da0c0772652361e91704ec5e"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-initial-config-import"
+version    = "262.10968.63"
+checksum   = "sha256:63e2d086b5f0067d36b2784e154fbbe9ac9051b4b4cebbf0d4dfc72e2216da1a"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-internal"
+version    = "262.10968.63"
+checksum   = "sha256:ea7b2490111fdf0870e37c2f96aea929dc6950072971a1acb5cc2529c36d1d2e"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-observable"
+version    = "262.10968.63"
+checksum   = "sha256:161b1959aa5739a015034ab4e681f7b318d7cbbeb0e3de3f43b3033a56ff0512"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-progress"
+version    = "262.10968.63"
+checksum   = "sha256:3c094f97129881acd7742a17cf9027ac20f051fde0d5e9a01ed6813889231123"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-recent-projects"
+version    = "262.10968.63"
+checksum   = "sha256:f15d444628e1eef47de14cbb105b37754c8fbc4fc140d5d5c9b3d6f732f72747"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-rpc"
+version    = "262.10968.63"
+checksum   = "sha256:20e972707998786c6e465bc89c76edf850f9ba714c592a60914fac3e18437110"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-ui"
+version    = "262.10968.63"
+checksum   = "sha256:911fe4f93e434db4586c6b7cbd4aaafe80a8b68f7410159462826fbd328eb16e"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-update-checker"
+version    = "262.10968.63"
+checksum   = "sha256:9336dec79fd8c5f37a65d2aac2a4b39dd602020b4d0690e111c14243a11164da"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-util-io"
+version    = "262.10968.63"
+checksum   = "sha256:f390f8a34c36815e2b071bae44f8776133ec8fccea8bfa585a5f66d914de5da8"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-util-io-impl"
+version    = "262.10968.63"
+checksum   = "sha256:e6a8521d2e78924e942af1b830d84c6e8d590956caf38c567260ba8f423143f7"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ide-util-netty"
+version    = "262.10968.63"
+checksum   = "sha256:b4fb5c7b25ee542113793af2a27ce436634ad2850d04307278cd18cdca4805b3"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ijent"
+version    = "262.10968.63"
+checksum   = "sha256:c51d9eb43c115269237e8de5ab40289723abdcb90fe2349deae62dbee9f36aef"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ijent-community-build-constants"
+version    = "262.10968.63"
+checksum   = "sha256:32e98ed21034ebb5c1f37f17e040b9863080c22b8db33c114bbbe04036ca847a"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ijent-community-impl"
+version    = "262.10968.63"
+checksum   = "sha256:7db9e04193e7ae28a451cf06f5569e7f2321bc7a99b6412e527872df50c232cb"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:indexing"
+version    = "262.10968.63"
+checksum   = "sha256:28a4b3a8bc2d3425328fbd7ea13189d9014dca46ed3b5c31730dbaac61c3bf21"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:indexing-impl"
+version    = "262.10968.63"
+checksum   = "sha256:09b2e185c92f84fcf5b6eade6c769f9cccb5f112ee06679bc39e13e976cc70aa"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:instance-container"
+version    = "262.10968.63"
+checksum   = "sha256:2073a8f60f04a75c9b374ef61f8d23ddf34d03dd6ee877a8c3f0d851f1fa0fe8"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:jbr"
+version    = "262.10968.63"
+checksum   = "sha256:01a7b1ab3312cd8e6631d115df8367be31e0c73d71e61fd45cfa44d4c692ce35"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:jps-build"
+version    = "262.10968.63"
+checksum   = "sha256:061d13399602aef7c4cc395c63fdc2ced99e8ce4503ea7c2b73b130ae1e9cc88"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:jps-build-dependency-graph"
+version    = "262.10968.63"
+checksum   = "sha256:aa3636c4e8fd10e47c02a9de81df655f58ac61556713ef53e94df72f05f76a0f"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:jps-build-javac-rt"
+version    = "262.10968.63"
+checksum   = "sha256:b6e4794fc7749bee989c70be39707350200d304b2ffc838df109ac7f129dd476"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:jps-build-launcher"
+version    = "262.10968.63"
+checksum   = "sha256:93b9a6bb852aa2e265c0ccab5107939a3705c1fea61dabd437b471b1f24f5167"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:jps-model"
+version    = "262.10968.63"
+checksum   = "sha256:5540e9e935a6e82a876bd712f619d3fee41a2cb0800b5268ce4ddb340b79d108"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:jps-model-impl"
+version    = "262.10968.63"
+checksum   = "sha256:66767821bfd513655768003276955210153576d79ed7dc8c10ecb8e55591a49c"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:jps-model-serialization"
+version    = "262.10968.63"
+checksum   = "sha256:d25f8914da03db4dd806ca97a27c693f7a7efe77dd61e84ab3ee49be11278dfb"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:kernel"
+version    = "262.10968.63"
+checksum   = "sha256:a4aed258417ba0d9872637daff02235da174aeecd354dfaf0bf8b4d865ae8d25"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:kernel-backend"
+version    = "262.10968.63"
+checksum   = "sha256:5d21b0edf29f5ee98aa2208e8b06f2470527699004e14aafbbedd6143beebfc0"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:lang"
+version    = "262.10968.63"
+checksum   = "sha256:f5ea2d0f8ce02d046baa5fa3daa53723da2e3bd6387fdadc3c5511bedb0ab810"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:lang-core"
+version    = "262.10968.63"
+checksum   = "sha256:97a8a1750f6099af01edeb86fc5129296a269ba2e096c5b22b11589303bbd19d"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:lang-impl"
+version    = "262.10968.63"
+checksum   = "sha256:fc674728a672b2b5308ce5e7c2bd290ee99c4cce9e97e5f6a58954c8047c6a51"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:locking-impl"
+version    = "262.10968.63"
+checksum   = "sha256:a60f9b5b546402b621c61087aaf6cd97101cf5fdedf5a698f736ec60d3471053"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:lvcs"
+version    = "262.10968.63"
+checksum   = "sha256:033d91aaee16aee95b6e7c2998f55b884577bb1cf05318979618c0570e71cc9e"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:macro"
+version    = "262.10968.63"
+checksum   = "sha256:fdf9a33905b898b3b6200894d3576f0d766fc8d478a528747bc764be7c075d7b"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:markdown-utils"
+version    = "262.10968.63"
+checksum   = "sha256:09536147be8265d4f7f9a225eacfb85ac4d3f827def489be82ffb5881c4be8d9"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:ml"
+version    = "262.10968.63"
+checksum   = "sha256:cedc54b8f3d781fef6b03e730572208efd219375b4a8d350a52d49cf41736c47"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:object-serializer"
+version    = "262.10968.63"
+checksum   = "sha256:6746787b342e98bad539c41aa170aed5c356a9308616c02f1a1acba1047aab70"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:object-serializer-annotations"
+version    = "262.10968.63"
+checksum   = "sha256:18b5861341cd179bd0032d8e14241c1414476fac4685601632e54109036fea7e"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:pasta"
+version    = "262.10968.63"
+checksum   = "sha256:8d9cbed80b9de798f994bf0500ba98ca0d711412444f55d32dd267be101ac378"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:plugin-system-parser-impl"
+version    = "262.10968.63"
+checksum   = "sha256:76bf564298783f076bfc19d3ed509d533b57731530ab7c8c9255c3ed88eb0606"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:poly-symbols"
+version    = "262.10968.63"
+checksum   = "sha256:7d954c31f7b787feb2ee92292ab83450338a76ee8ab858ad7dc647691364b017"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:pratt"
+version    = "262.10968.63"
+checksum   = "sha256:d4b04eb4dcad8e71d9d1ab6938b21a9f6251c213f31a71b92e5f9529d8462f5c"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:project"
+version    = "262.10968.63"
+checksum   = "sha256:205b33b011fd3fb76e9db8688bb010c3caa23cd5d305645339ef80c3b96948d1"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:project-frame"
+version    = "262.10968.63"
+checksum   = "sha256:df5d9ee7d802658f6f0b200fbd8693f89f579a623d71da20f2a16c6abc3c69b3"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:project-model"
+version    = "262.10968.63"
+checksum   = "sha256:afdb0a7fb50f79d927cc51737fc889f84ebc90df89f79ce37be2f42293a719e2"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:project-model-impl"
+version    = "262.10968.63"
+checksum   = "sha256:1c888a4c4bdf6e7867021560ab13352c6cbd100ea0d215d8ef18026571b0ed69"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:rd-community"
+version    = "262.10968.63"
+checksum   = "sha256:8dfc1cb1367e64de34e10679b4c7b6201b20a2e8fda321e5c101a417336f47fd"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:refactoring"
+version    = "262.10968.63"
+checksum   = "sha256:bbd9390bd0a4ead2ec070e02fd85682f530072f8aff8f3dd6b84cacd83bd4875"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:remote-core"
+version    = "262.10968.63"
+checksum   = "sha256:001cb61339104b8b5ccfa501cf2d37c49dbb63ebbeefd9b66cdc616ff1b9a204"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:resources"
+version    = "262.10968.63"
+checksum   = "sha256:45c89d2d018771cfce6ad68522d5e42f8115209cc76d5dde1fec2dff6a4832b8"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:resources-en"
+version    = "262.10968.63"
+checksum   = "sha256:0f4b47e693095a17ce8d561c178621b13cd8de8c8622851ab9d15f8a795887ab"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:rpc"
+version    = "262.10968.63"
+checksum   = "sha256:3a22b82d305516efe15c415adb27e65336cf91c5c8a735b26f5b4723ec3159b1"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:rpc-backend"
+version    = "262.10968.63"
+checksum   = "sha256:ec2151d23d3082950e159fe93bf44e0ddd41fc874c4aee0ae97d7e662a516cd0"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:rpc-topics"
+version    = "262.10968.63"
+checksum   = "sha256:d6828dc95b68ae050f571e25ab6c77fa9901e15c36ebfb6efca5071de30ee58f"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:runtime-product"
+version    = "262.10968.63"
+checksum   = "sha256:a337ac349476445c07791fa3f908694b5ad47243e8fcca11fa49d4b7bcb596aa"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:runtime-repository"
+version    = "262.10968.63"
+checksum   = "sha256:01983ec33d73df592a8e6af979036ed63425293037aca0a1155cdd23b004b7d5"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:service-container"
+version    = "262.10968.63"
+checksum   = "sha256:44dbb580f3bf4b342187954441d750c409de5372e8e22c6c97c8b11b7d4ef135"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:settings"
+version    = "262.10968.63"
+checksum   = "sha256:91f5b2ecbf8d94540d8ea57af3411647f42354ec964ddc4b655fd322a4d4f383"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:statistics"
+version    = "262.10968.63"
+checksum   = "sha256:732ff728e7c8f3ade23e47c0809a6f4e271b13768e48f9674c144a38a0236d30"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:statistics-config"
+version    = "262.10968.63"
+checksum   = "sha256:15f549bb58d6047c1dc16eaf78b9f0be51912dd0fd7aba1f21be05be4b820141"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:statistics-uploader"
+version    = "262.10968.63"
+checksum   = "sha256:56a6e8a4416e46d1e64f3c6cffef2f3aee90ef949474eebcf22c702e16d77745"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:structure-view"
+version    = "262.10968.63"
+checksum   = "sha256:733ee8d7e3e5003f922e3e646c6b1f42ca3b5a72efc31451e7980b0b8c14d7c3"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:syntax"
+version    = "262.10968.63"
+checksum   = "sha256:f8d0023bd9a6c908495919699bc9d908b9b98bf74c57567e2d44c2c339ccd944"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:syntax-extensions"
+version    = "262.10968.63"
+checksum   = "sha256:99abc161f2410d51d56eaecdeaff2859771703c0c39d6395e3a09653cb1b7723"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:syntax-i18-n"
+version    = "262.10968.63"
+checksum   = "sha256:ac9dbca8919024885faa2642d73606b010bd5e5bb17f856bca3be7f99de48673"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:syntax-psi"
+version    = "262.10968.63"
+checksum   = "sha256:cfe325bc9d77013f482076ce0e53a4ea55e953e94f96d19ea93997776447ba18"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:syntax-tree"
+version    = "262.10968.63"
+checksum   = "sha256:d329a33d9b7c8440c057d8f7b0a569644d9900c16000dcf0148ac307373e06cc"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:syntax-util"
+version    = "262.10968.63"
+checksum   = "sha256:12d8bad2d277ddb65af704a70af46ea2f8a03bd2d79d25387be7758b7c3717a5"
 
 [[tool]]
 coordinate = "com.jetbrains.intellij.platform:test-framework"
@@ -4486,9 +5960,739 @@ version    = "262.10968.63"
 checksum   = "sha256:2680da5da14830adf79fece75a66881e5e3e62ae414cd70b2f84b8a81e73dbcc"
 
 [[tool]]
+coordinate = "com.jetbrains.intellij.platform:test-integration"
+version    = "262.10968.63"
+checksum   = "sha256:d8b817ea517a050e3404d385d64fde4f48cee9316ffef679fc951be140355d89"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:test-integration-ui"
+version    = "262.10968.63"
+checksum   = "sha256:70be921bf233028087e1083a24ff5a4961e3681647323eba4c3dfd128d43a57b"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:thread-dump-parser"
+version    = "262.10968.63"
+checksum   = "sha256:5809dad461cf2d2873908b7ba1d88cd1c399ff13717d952936ba845b05d4afe3"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:todo"
+version    = "262.10968.63"
+checksum   = "sha256:27dbece35b7e15b3ffda881d1e46f13618f4e45fcfad0e675178bcfab9d4799e"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:tracing-rt"
+version    = "262.10968.63"
+checksum   = "sha256:2143e832450d559621d3aa6ee78f8493ab0c0f0e78cdec385ec4de7d2d3af705"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:uast"
+version    = "262.10968.63"
+checksum   = "sha256:a5e14553832ed96000be32085ff8d90d6cf0a23f33bc20d8b5e9364e6275aa72"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:uast-ide"
+version    = "262.10968.63"
+checksum   = "sha256:f52f9768d67219806b59d4ae46599f40b9745646dbf85c7b707b26027363c1ea"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:usage-view"
+version    = "262.10968.63"
+checksum   = "sha256:c80fbfc4bcbf3a57a50f0e83cf65f190fda2c9e7f4a1d80e82b7fe5bae98aefb"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:usage-view-impl"
+version    = "262.10968.63"
+checksum   = "sha256:d7604fecd3d971d8c94dccae2d9618a133caf54e0c097a0b4978eedaf2e8496b"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util"
+version    = "262.10968.63"
+checksum   = "sha256:d709e4291ab868e8be9b32e9dfc851891bf079238d9f7866d5be683132a6c9fb"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util-base"
+version    = "262.10968.63"
+checksum   = "sha256:1495e2c3375855c4f5bb60953e9fcf8f0f81986d9f79ef49463e2c2fe6710bac"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util-base-multiplatform"
+version    = "262.10968.63"
+checksum   = "sha256:ca167ca0919b0dd791886f3d593c9c4606e79c388675e491a7631907bf352dfa"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util-class-loader"
+version    = "262.10968.63"
+checksum   = "sha256:c74ea74a65f480c8eea8de145a01ff1544e1709e2c4265b708bc2ecf178b814d"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util-coroutines"
+version    = "262.10968.63"
+checksum   = "sha256:b81476c9fe20b8f216cd4587a24eeccb868f8839626a34a9bad906bda526a534"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util-diff"
+version    = "262.10968.63"
+checksum   = "sha256:ed329cb3b549c64af883a03a03230592732d5c3cf5c61dcecd802661606c8a94"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util-ex"
+version    = "262.10968.63"
+checksum   = "sha256:a99b4853131bd16eb52939213a2efc50cdd8db7171700aee0174ff2fbe246b24"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util-http"
+version    = "262.10968.63"
+checksum   = "sha256:908c3601ce3ecd37eed28e9af24ddb90b30622b58ddd82ffd3ff022fb4cebd00"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util-io-storages"
+version    = "262.10968.63"
+checksum   = "sha256:0d66297edff59450983b29b2bc0d6d0a6367707b5dc6307dc2da63901b656a43"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util-jdom"
+version    = "262.10968.63"
+checksum   = "sha256:a31e2171e747ea3cde6c44a3b2e43f664aced0e2dc8260cb5ba6ffde9ac568d2"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util-multiplatform"
+version    = "262.10968.63"
+checksum   = "sha256:0f2184c1ba37407d5b1c60117d94d41761a31e03d393909a80113fc2971870fd"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util-nanoxml"
+version    = "262.10968.63"
+checksum   = "sha256:acef1411897d0e8c89d5fb1403577eee6856abd61308faffb2f67d41f2fdc350"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util-progress"
+version    = "262.10968.63"
+checksum   = "sha256:923722568cbb633ff06f49af5db434bd26357335b16e79096692d56648243612"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util-rt"
+version    = "262.10968.63"
+checksum   = "sha256:bce7ac53f35678cac62f6bf4487e2258c8c148c9b2ccc3ce2dd57396cbbeb64f"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util-rt-java8"
+version    = "262.10968.63"
+checksum   = "sha256:04a3556ffdb51c22b8e4e47f81c6b85f96707d404721f8f0c3ab57744d767f77"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util-text-matching"
+version    = "262.10968.63"
+checksum   = "sha256:145d67771ffddc6050deccebf72c60ea5d7e8929f312400022ade44a19249218"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util-ui"
+version    = "262.10968.63"
+checksum   = "sha256:e4dcc28e56407373c32d5262388d1fcc5e90a12b42eee7a1e9cd43f7b33dfac6"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util-xml-dom"
+version    = "262.10968.63"
+checksum   = "sha256:a80e0b69d0f73c93ee955108753037ee40887535bfc30a1ca9c84d7a5b7e021a"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:util-zip"
+version    = "262.10968.63"
+checksum   = "sha256:32d4c10e480b586271d70441f5cb2abbe4958733540b3a75153eb00dfe754ed2"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:vcs"
+version    = "262.10968.63"
+checksum   = "sha256:769d7acd47a3b8b28829e93f6a25970255934ad4195139418bc2ecd6a3d94d2b"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:vcs-core"
+version    = "262.10968.63"
+checksum   = "sha256:63f960389ea5609c98303f5afa7bc64a6ea8a033ef454c21485372a801fc0f55"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:vcs-impl"
+version    = "262.10968.63"
+checksum   = "sha256:83c9fd1a3a74cadc7321fee52e5cb176b10a445640658fddad63bf6fa595aa9f"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:vcs-impl-shared"
+version    = "262.10968.63"
+checksum   = "sha256:7608ca2016562e0e1a222b020fc1c228f4b246df6d21d212612bd09c3ec05050"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:vcs-log"
+version    = "262.10968.63"
+checksum   = "sha256:a243c2c141049ab30ab9fa61218f9d014c8532b54505e9d30e67d468bcef08ca"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:vcs-log-graph"
+version    = "262.10968.63"
+checksum   = "sha256:ff2798a9ef1969f24acdd8e3e76c00e70ab8871559bca38ab64ae9398e588f14"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:vcs-shared"
+version    = "262.10968.63"
+checksum   = "sha256:871e864ca2d824e95dfd8debbd52345622555d16f3512cface0dfb9178a01b8d"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:welcome-screen"
+version    = "262.10968.63"
+checksum   = "sha256:b88baf04930624f6bdc2b92a845767f0c259bbb5ed927694019c78f5fecc1327"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:welcome-screen-impl"
+version    = "262.10968.63"
+checksum   = "sha256:446765aa20a96e0eb00587d9b526e1948c5ec931f5e18ca64a2f929066010f39"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:workspace-jps"
+version    = "262.10968.63"
+checksum   = "sha256:48a7967c3004875698da5b8414bf2d4a16bd14631b7649492ddd814b06b3ce52"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:workspace-storage"
+version    = "262.10968.63"
+checksum   = "sha256:8e9d3a728a36e0dbec2dea0be50c5d3d650f1b9092a46d28bc2cc8612c9e32bb"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.platform:wsl-impl"
+version    = "262.10968.63"
+checksum   = "sha256:614ee92711233e2f8b9044002c99d409fc2d3dd1d3817d3da2f4cb28754697ec"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.regexp:regexp"
+version    = "262.10968.63"
+checksum   = "sha256:d45ec0c92ff16323c5395459e32d169993118260fc5576821b8ec3326846f3e9"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.spellchecker:spellchecker"
+version    = "262.10968.63"
+checksum   = "sha256:5c185fcf6d3a78adebeefa76cc6c3e110df3c9620b5e94ff7e5d3a1456441f22"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.xml:xml-analysis"
+version    = "262.10968.63"
+checksum   = "sha256:d43a42a9b973c8bf4f3b0c5bb2b5f79fe545c4d8e3c9be0a0ae3e9459345191b"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.xml:xml-dom"
+version    = "262.10968.63"
+checksum   = "sha256:21a5bc8540c7d5dff4c8f2e1b2d5ec259f5931ccc27130701e451011b9842d1f"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.xml:xml-parser"
+version    = "262.10968.63"
+checksum   = "sha256:0d1d7f64dee1d24a25d53177ccaeb44d598347b227aafb972f81eff6dab6a8c1"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.xml:xml-psi"
+version    = "262.10968.63"
+checksum   = "sha256:b814cf25dcf45f86b0d0392eb199c0d079e9dfb79bc64d6411c078b0c476ae1f"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.xml:xml-psi-impl"
+version    = "262.10968.63"
+checksum   = "sha256:b27dd80e563610476ce23533fa78af7a49504fdb4e031ffc0096469e4c7c00de"
+
+[[tool]]
+coordinate = "com.jetbrains.intellij.xml:xml-syntax"
+version    = "262.10968.63"
+checksum   = "sha256:004ef50f1f83900c23c714e45fdea7228b3f5066e2e6fb724eff3831a2f8bd1b"
+
+[[tool]]
+coordinate = "com.jetbrains.rd:rd-core"
+version    = "2026.2.5"
+checksum   = "sha256:0dc4da676b3e86f6fb30627aaea71f207b27ce268e794d8a7cb3ad76695295ab"
+
+[[tool]]
+coordinate = "com.jetbrains.rd:rd-framework"
+version    = "2026.2.5"
+checksum   = "sha256:f092bb7da6cfa7e316c7e9b135d143159d6feea653590c234c6a485aaecac49e"
+
+[[tool]]
+coordinate = "com.jetbrains.rd:rd-swing"
+version    = "2026.2.5"
+checksum   = "sha256:79d038eb2cb05e5122d204607ee2336d9ec40d21ed2a2cb665b0b112cbfed0e1"
+
+[[tool]]
+coordinate = "com.jetbrains.rd:rd-text"
+version    = "2026.2.5"
+checksum   = "sha256:37dd44e9414fc1fa25811832300dfa7d73ec28d495d0c73b43d13d2b53dc84c7"
+
+[[tool]]
+coordinate = "com.jgoodies:forms"
+version    = "1.1-preview"
+checksum   = "sha256:26b0fc745ea051b57462be22a150c7600dbac6716b24cc60a5ecc0e8085c41a0"
+
+[[tool]]
+coordinate = "com.jgoodies:jgoodies-common"
+version    = "1.4.0"
+checksum   = "sha256:efd986ec851c3a5cd57907e72f27d1af9c1e5b1874b07a8b778588646d71d9fc"
+
+[[tool]]
+coordinate = "com.miglayout:miglayout-core"
+version    = "11.4.2"
+checksum   = "sha256:1c23f628d8f2a7a1b72c8f634c6775d1a8fd0100fcf05bf50d7a2ac8dafb0e62"
+
+[[tool]]
+coordinate = "com.miglayout:miglayout-swing"
+version    = "11.4.2"
+checksum   = "sha256:036b8532021092afcc7159d3756086a5fbe19f6014ac8474817d55d1289af756"
+
+[[tool]]
+coordinate = "com.sun.activation:jakarta.activation"
+version    = "1.2.2"
+checksum   = "sha256:02156773e4ae9d048d14a56ad35d644bee9f1052a791d072df3ded3c656e6e1a"
+
+[[tool]]
+coordinate = "com.sun.istack:istack-commons-runtime"
+version    = "3.0.12"
+checksum   = "sha256:27d85fc134c9271d5c79d3300fc4669668f017e72409727c428f54f2417f04cd"
+
+[[tool]]
+coordinate = "com.thoughtworks.qdox:qdox"
+version    = "2.2.0"
+checksum   = "sha256:c260c3230b2340af97d54bf01f7f67ebc57c901922736c881bb11cb981302be2"
+
+[[tool]]
+coordinate = "commons-cli:commons-cli"
+version    = "1.11.0"
+checksum   = "sha256:8f7f8605d68e15bf32db61ec94eac6fdafc51b1bdbe1e0e0802b57d23f387792"
+
+[[tool]]
+coordinate = "commons-codec:commons-codec"
+version    = "1.21.0"
+checksum   = "sha256:4da851cb6abfb98bfe9eb77c5e5fc47f5414fa28b94e21b7fd9a646705dc167f"
+
+[[tool]]
+coordinate = "commons-io:commons-io"
+version    = "2.21.0"
+checksum   = "sha256:7d643a2afea8b058b762aa6fb90e5b256f6c729739f8b3784c3370ddc609e88d"
+
+[[tool]]
+coordinate = "commons-logging:commons-logging"
+version    = "1.2"
+checksum   = "sha256:daddea1ea0be0f56978ab3006b8ac92834afeefbd9b7e4e6316fca57df0fa636"
+
+[[tool]]
+coordinate = "dk.brics:automaton"
+version    = "1.12-4"
+checksum   = "sha256:3941b48f2e9281aab7234395c549cbb399b3dc80fed2e13999a80db47f94b041"
+
+[[tool]]
+coordinate = "io.github.classgraph:classgraph"
+version    = "4.8.181"
+checksum   = "sha256:62a6436d69710ef5fab6ec243781ce4c5b299047ed1841b5f92746ae852ce545"
+
+[[tool]]
+coordinate = "io.ktor:ktor-client-auth-jvm"
+version    = "3.4.1"
+checksum   = "sha256:b3bee0707cb099afb14d2075c7a6b6f2a66761b75275682beaef4cce0ecccf67"
+
+[[tool]]
+coordinate = "io.ktor:ktor-client-content-negotiation-jvm"
+version    = "3.4.1"
+checksum   = "sha256:6c6a27ea1690b06ab4beab2e187f9b0bec449efb76762688c2a4adf20ebf2f3e"
+
+[[tool]]
+coordinate = "io.ktor:ktor-client-core-jvm"
+version    = "3.4.1"
+checksum   = "sha256:ec96ff9c9d6be26b630c6d7cdf1a9cccfc7c1d2c0e56eb4616021bb35ee1d008"
+
+[[tool]]
+coordinate = "io.ktor:ktor-client-encoding-jvm"
+version    = "3.4.1"
+checksum   = "sha256:f1c045ccedbc36b19ff43a2000cde9d444be443a2f45a00867cbc757b1f2325f"
+
+[[tool]]
+coordinate = "io.ktor:ktor-client-java-jvm"
+version    = "3.4.1"
+checksum   = "sha256:4cec7db20b08dc1b75d56dd90fbb56144351dc5214d4b82da1fcf6ace7b1ac96"
+
+[[tool]]
+coordinate = "io.ktor:ktor-client-logging-jvm"
+version    = "3.4.1"
+checksum   = "sha256:89a2bb53e58b99b0ffd8d3df2b2b11f083656e0fee3a6ec4431e5182c0850029"
+
+[[tool]]
+coordinate = "io.ktor:ktor-events-jvm"
+version    = "3.4.1"
+checksum   = "sha256:23298cc59f787e5d4f0f61b297a5990197910b2d368a0cac20c05a26b97f2419"
+
+[[tool]]
+coordinate = "io.ktor:ktor-http-cio-jvm"
+version    = "3.4.1"
+checksum   = "sha256:fb0fc54a46d52c18c6c225b9f15ac8c57d25f717a31b405a95c369d2cc30b45e"
+
+[[tool]]
+coordinate = "io.ktor:ktor-http-jvm"
+version    = "3.4.1"
+checksum   = "sha256:c460cba4b48dc528c6cd03b0c6e36516fbd83c7eb84c8d1951c9273a2d3eb223"
+
+[[tool]]
+coordinate = "io.ktor:ktor-io-jvm"
+version    = "3.4.1"
+checksum   = "sha256:cbccf401f15b35760c5165fbea1c85cad42c76f2098ef1c0ed89f4f58e09f829"
+
+[[tool]]
+coordinate = "io.ktor:ktor-network-jvm"
+version    = "3.4.1"
+checksum   = "sha256:963e6fcfe1d8eeef31e614bd59ed1d59a65812b7d1bb79d36f8cdb523b38bcd6"
+
+[[tool]]
+coordinate = "io.ktor:ktor-network-tls-jvm"
+version    = "3.4.1"
+checksum   = "sha256:3ca53243f9d04a463cdc2f8cf40276e6293845ddf7be8c2e041f53acbd795de2"
+
+[[tool]]
+coordinate = "io.ktor:ktor-serialization-jvm"
+version    = "3.4.1"
+checksum   = "sha256:93d162051f614a7e922b4c11d2e7ba46c78c83f5809cea9fae1134d6d5d17286"
+
+[[tool]]
+coordinate = "io.ktor:ktor-serialization-kotlinx-json-jvm"
+version    = "3.4.1"
+checksum   = "sha256:9133a9241650cb4010b22cf3af30c0d8bfce6b972798790311774875d03966db"
+
+[[tool]]
+coordinate = "io.ktor:ktor-serialization-kotlinx-jvm"
+version    = "3.4.1"
+checksum   = "sha256:614e2ae6aee5565d0aaf555edb409d816d5b2e082ec217ac6f188594f9fb81e4"
+
+[[tool]]
+coordinate = "io.ktor:ktor-sse-jvm"
+version    = "3.4.1"
+checksum   = "sha256:f2f3c39b38e6f112e450841661004f7f011f0bcf71c1169cc01957979944c17d"
+
+[[tool]]
+coordinate = "io.ktor:ktor-utils-jvm"
+version    = "3.4.1"
+checksum   = "sha256:1973900965f9401aeaaffa77550988b3dd2d1acbe751ec8b1453043a4c599914"
+
+[[tool]]
+coordinate = "io.ktor:ktor-websocket-serialization-jvm"
+version    = "3.4.1"
+checksum   = "sha256:c10c3bd39e69a1958434e332450ff5b70e9da3531a1818cdac958ee085a3fdac"
+
+[[tool]]
+coordinate = "io.ktor:ktor-websockets-jvm"
+version    = "3.4.1"
+checksum   = "sha256:2236bda6b82df0bd4722e2e86a9cb623185d944c399123531d033dc3d4672dc8"
+
+[[tool]]
+coordinate = "io.netty:netty-buffer"
+version    = "4.2.15.Final"
+checksum   = "sha256:1361fd9c9ba85b9831cf54a1b2e45ddc3ce34a768931726c099d3f5ef0efe4a3"
+
+[[tool]]
+coordinate = "io.netty:netty-codec-base"
+version    = "4.2.15.Final"
+checksum   = "sha256:2c6d39d7270628b8cfc3166fbd7a93d595958e59c461bc32ddb383c8c91bf811"
+
+[[tool]]
+coordinate = "io.netty:netty-codec-compression"
+version    = "4.2.15.Final"
+checksum   = "sha256:4adaa5cdd4d2e9b50b23e4c3eff42e73de6eb40848718b3aa84cd5b454da6ce8"
+
+[[tool]]
+coordinate = "io.netty:netty-codec-http"
+version    = "4.2.15.Final"
+checksum   = "sha256:76ae57e87af37b3c4107140f50b9244b1456163a6a225510838f7c5a4458ec22"
+
+[[tool]]
+coordinate = "io.netty:netty-codec-http2"
+version    = "4.2.15.Final"
+checksum   = "sha256:4a9b052bd815c765d9c05e27b32abbd32a2c7c3e3364ccb992ce71da1a26bc0d"
+
+[[tool]]
+coordinate = "io.netty:netty-codec-protobuf"
+version    = "4.2.15.Final"
+checksum   = "sha256:ecf3a24695374b3544700d94db56875da90c1dfbe1e43c744dcc15e1e8998a01"
+
+[[tool]]
+coordinate = "io.netty:netty-common"
+version    = "4.2.15.Final"
+checksum   = "sha256:78206aa7f6d197caa926291408c01889b6b910ca0f74017d3fcbdaccf9562959"
+
+[[tool]]
+coordinate = "io.netty:netty-handler"
+version    = "4.2.15.Final"
+checksum   = "sha256:99b59e4bea72220d2aed52df8baf37d97431b06ade0b135226cdf73168975eab"
+
+[[tool]]
+coordinate = "io.netty:netty-resolver"
+version    = "4.2.15.Final"
+checksum   = "sha256:24318497f2a3a645964fed418f48879ba11365cab8e1f8d66c47fa7da15ef19a"
+
+[[tool]]
+coordinate = "io.netty:netty-transport"
+version    = "4.2.15.Final"
+checksum   = "sha256:9fb671e96651066cf1a28dad3f1382c7c99df5b8326d4a214d9a375b311f8dc1"
+
+[[tool]]
+coordinate = "io.netty:netty-transport-native-unix-common"
+version    = "4.2.15.Final"
+checksum   = "sha256:b9ea9fc5ad5eba04e99afdff75b2eb97b5ddfb2ad772e2f2ef5d8f277f3cbd76"
+
+[[tool]]
+coordinate = "io.opentelemetry.semconv:opentelemetry-semconv"
+version    = "1.30.0"
+checksum   = "sha256:99c2478a9b803b7d385d1624d5c1ab6f9a64cac5a2dc00f44a350744a1d858ac"
+
+[[tool]]
+coordinate = "io.opentelemetry:opentelemetry-api"
+version    = "1.48.0"
+checksum   = "sha256:8d3781bda58892f7d14216908fc0d1faf6f4e6b806e6e73e23489e41c0ecf012"
+
+[[tool]]
+coordinate = "io.opentelemetry:opentelemetry-context"
+version    = "1.48.0"
+checksum   = "sha256:1fcccff0f8171fe2001a17b99da229c12d0c4edcca617e453460344e92249d42"
+
+[[tool]]
+coordinate = "io.opentelemetry:opentelemetry-exporter-common"
+version    = "1.48.0"
+checksum   = "sha256:bc7af4f3c4ba1a23c20a6e1945f3e17fd3f5719f6f17d62961b3167d939a18e2"
+
+[[tool]]
+coordinate = "io.opentelemetry:opentelemetry-exporter-otlp-common"
+version    = "1.48.0"
+checksum   = "sha256:9b3211ad7f1508f6453d16922aad6c7dce5b2f9a88b7e272171f63875ee78efd"
+
+[[tool]]
+coordinate = "io.opentelemetry:opentelemetry-exporter-sender-jdk"
+version    = "1.48.0"
+checksum   = "sha256:a8e33b293554a46f69ffbb97d0e108ef8c6475f4fcf812b38e8c3bc47fa3b581"
+
+[[tool]]
+coordinate = "io.opentelemetry:opentelemetry-extension-kotlin"
+version    = "1.48.0"
+checksum   = "sha256:2285ebfe8e0fd38e186b7033f6f6c542324c9bab23260b914b1b73eaf4492c5d"
+
+[[tool]]
+coordinate = "io.opentelemetry:opentelemetry-sdk"
+version    = "1.48.0"
+checksum   = "sha256:668e78642d50709dd147406a197cfdd256b1d5931023a23f4a25ed88154c8089"
+
+[[tool]]
+coordinate = "io.opentelemetry:opentelemetry-sdk-common"
+version    = "1.48.0"
+checksum   = "sha256:d8cfbfe6403965f68fc5efca0c9cb85c2cafd5facda9238cd83468692bc00109"
+
+[[tool]]
+coordinate = "io.opentelemetry:opentelemetry-sdk-extension-autoconfigure-spi"
+version    = "1.48.0"
+checksum   = "sha256:c2f95d66182b71e852a97b9bcb6e545ecf6c3e155a0e3d5faf2dbf96deb1a9df"
+
+[[tool]]
+coordinate = "io.opentelemetry:opentelemetry-sdk-logs"
+version    = "1.48.0"
+checksum   = "sha256:3cb8107e3d142fb990ce7f7198cd051a3364fc9d254daa22d248215246857567"
+
+[[tool]]
+coordinate = "io.opentelemetry:opentelemetry-sdk-metrics"
+version    = "1.48.0"
+checksum   = "sha256:70622ff3bbeee435fba5c49d9ff6b056511a0f9982080aa5959ccfccb8650fd9"
+
+[[tool]]
+coordinate = "io.opentelemetry:opentelemetry-sdk-trace"
+version    = "1.48.0"
+checksum   = "sha256:d575e493f6c2e89d3100b3e73d3a2ae720bb8f3ee2fa0f70a7d0da81d048c87a"
+
+[[tool]]
+coordinate = "javax.annotation:javax.annotation-api"
+version    = "1.3.2"
+checksum   = "sha256:e04ba5195bcd555dc95650f7cc614d151e4bcd52d29a10b8aa2197f3ab89ab9b"
+
+[[tool]]
+coordinate = "jaxen:jaxen"
+version    = "1.2.0"
+checksum   = "sha256:70feef9dd75ad064def05a3ce8975aeba515ee7d1be146d12199c8828a64174c"
+
+[[tool]]
 coordinate = "junit:junit"
 version    = "4.13.2"
 checksum   = "sha256:8e495b634469d64fb8acfa3495a065cbacc8a0fff55ce1e31007be4c16dc57d3"
+
+[[tool]]
+coordinate = "net.java.dev.jna:jna"
+version    = "5.17.0"
+checksum   = "sha256:b3a9408e7c51e08ef0e3bfcc08f443f6ec0f6191ba8cd7c18d53d2b22e5bdbc0"
+
+[[tool]]
+coordinate = "net.java.dev.jna:jna-platform"
+version    = "5.17.0"
+checksum   = "sha256:b7e3d46c87bad2eb409b0e704916bcd81206168e357312dfddd0e253679cd9e0"
+
+[[tool]]
+coordinate = "net.jcip:jcip-annotations"
+version    = "1.0"
+checksum   = "sha256:be5805392060c71474bf6c9a67a099471274d30b83eef84bfc4e0889a4f1dcc0"
+
+[[tool]]
+coordinate = "one.util:streamex"
+version    = "0.8.4"
+checksum   = "sha256:c8bcde95bb6c659bd611a5bc464380f38118a10a0443f3fc15304d91e5c9dd81"
+
+[[tool]]
+coordinate = "org.apache.commons:commons-compress"
+version    = "1.28.0"
+checksum   = "sha256:e1522945218456f3649a39bc4afd70ce4bd466221519dba7d378f2141a4642ca"
+
+[[tool]]
+coordinate = "org.apache.commons:commons-lang3"
+version    = "3.20.0"
+checksum   = "sha256:69e5c9fa35da7a51a5fd2099dfe56a2d8d32cf233e2f6d770e796146440263f4"
+
+[[tool]]
+coordinate = "org.apache.httpcomponents:httpclient"
+version    = "4.5.14"
+checksum   = "sha256:c8bc7e1c51a6d4ce72f40d2ebbabf1c4b68bfe76e732104b04381b493478e9d6"
+
+[[tool]]
+coordinate = "org.apache.httpcomponents:httpcore"
+version    = "4.4.16"
+checksum   = "sha256:6c9b3dd142a09dc468e23ad39aad6f75a0f2b85125104469f026e52a474e464f"
+
+[[tool]]
+coordinate = "org.apache.httpcomponents:httpmime"
+version    = "4.5.14"
+checksum   = "sha256:d401243d5c6eae928a37121b6e819158c8c32ea0584793e7285bb489ab2a3d17"
+
+[[tool]]
+coordinate = "org.apache.lucene:lucene-analysis-common"
+version    = "10.3.0"
+checksum   = "sha256:124bddea3fa0683d3e174552fba5fcf0f24a2f57f1ccf6957010d010d246db8b"
+
+[[tool]]
+coordinate = "org.apache.lucene:lucene-core"
+version    = "10.3.0"
+checksum   = "sha256:9d70afe194568ca0328b7f762e64eb8094a5e5a76ea3a30b7182f0e7d5f0dd35"
+
+[[tool]]
+coordinate = "org.apache.maven.resolver:maven-resolver-api"
+version    = "1.9.22"
+checksum   = "sha256:63f5f665e44a09ef55463b3b91fda0b78ff07dd24b1060d56e79c10b6e32cbfb"
+
+[[tool]]
+coordinate = "org.apache.maven.resolver:maven-resolver-connector-basic"
+version    = "1.9.22"
+checksum   = "sha256:4ab68bdec97eec318b2a3bd27e7c954e316f890df92d544b68afd0bf666c9588"
+
+[[tool]]
+coordinate = "org.apache.maven.resolver:maven-resolver-impl"
+version    = "1.9.22"
+checksum   = "sha256:e4dafb8acc13d736377c02d2170d869438dd74b98b860745909d238726babcbb"
+
+[[tool]]
+coordinate = "org.apache.maven.resolver:maven-resolver-named-locks"
+version    = "1.9.22"
+checksum   = "sha256:0685f29ec3b548d9b6917c527f13c667685a3394b955aaa5b25d0559818b7fc5"
+
+[[tool]]
+coordinate = "org.apache.maven.resolver:maven-resolver-spi"
+version    = "1.9.22"
+checksum   = "sha256:99ad721e4631d9bd0c4f9e29c869672577c66f2a674a5723ce38eff13c75cbfd"
+
+[[tool]]
+coordinate = "org.apache.maven.resolver:maven-resolver-transport-file"
+version    = "1.9.22"
+checksum   = "sha256:4f2a857d8b832494bae9ef6d7db7bb8409378b28aabd3615f03faebe42a4ad1d"
+
+[[tool]]
+coordinate = "org.apache.maven.resolver:maven-resolver-transport-http"
+version    = "1.9.22"
+checksum   = "sha256:1cf2a88c984e0eae8b3f13e1eec904eedead2f076d1f3c1d5cb5103a21538bd1"
+
+[[tool]]
+coordinate = "org.apache.maven.resolver:maven-resolver-util"
+version    = "1.9.22"
+checksum   = "sha256:4aaea1584c39294ca926fc474723d9684473609ef4490c4eb169d6ea7daca6b5"
+
+[[tool]]
+coordinate = "org.apache.maven:maven-artifact"
+version    = "3.9.9"
+checksum   = "sha256:30f015d1c1a393e19c18cd4f43532089c36d4ca328608ce3dda78b74d3d31515"
+
+[[tool]]
+coordinate = "org.apache.maven:maven-builder-support"
+version    = "3.9.9"
+checksum   = "sha256:2ca4a967bdd12a9e85d40e012374f86e63d4a1030c199da4832e3d0a1c6770d8"
+
+[[tool]]
+coordinate = "org.apache.maven:maven-model"
+version    = "3.9.9"
+checksum   = "sha256:8f59b0a16fe9c933be749a60ae0705a0cb337bb5abaf38801b40b740ff775727"
+
+[[tool]]
+coordinate = "org.apache.maven:maven-model-builder"
+version    = "3.9.9"
+checksum   = "sha256:a4377182ac2e5adfe16be3b3c81981a5ecddab014184de72ae1e522f04a77602"
+
+[[tool]]
+coordinate = "org.apache.maven:maven-repository-metadata"
+version    = "3.9.9"
+checksum   = "sha256:137c297e6a52d489b76663c82324d54e40f5d498a8fc015c0203fd91df8623b0"
+
+[[tool]]
+coordinate = "org.apache.maven:maven-resolver-provider"
+version    = "3.9.9"
+checksum   = "sha256:5dea05049c94f952f48ce2bfe0111afdf986acc591fcc11d23fe3b8dcb70291e"
+
+[[tool]]
+coordinate = "org.apache.velocity:velocity-engine-core"
+version    = "2.3"
+checksum   = "sha256:b086cee8fd8183e240b4afcf54fe38ec33dd8eb0da414636e5bf7aa4d9856629"
+
+[[tool]]
+coordinate = "org.bidib.com.github.markusbernhardt:proxy-vole"
+version    = "1.1.9"
+checksum   = "sha256:e1ba3df2f656bea17a07edcacd4e0377a370880b8efd8a7c7122751ff0d92be0"
+
+[[tool]]
+coordinate = "org.bouncycastle:bcpkix-jdk18on"
+version    = "1.84"
+checksum   = "sha256:c87f16ed9e5ec61bc94151e9f3646ac44e50cd448121ce84367fa4b7ec7ec1bb"
+
+[[tool]]
+coordinate = "org.bouncycastle:bcprov-jdk18on"
+version    = "1.84"
+checksum   = "sha256:64d6c5a6121fcd927152dd182cbed39afe0fda641a970d9bcc0c9cb1858b2731"
+
+[[tool]]
+coordinate = "org.bouncycastle:bcutil-jdk18on"
+version    = "1.84"
+checksum   = "sha256:b374e16963421fb9cfb01cc20d7ad8fd2f8b8188e3eef0ec0a8965e245f7619a"
+
+[[tool]]
+coordinate = "org.codehaus.plexus:plexus-interpolation"
+version    = "1.27"
+checksum   = "sha256:3fb4fb6143fdf964024c3cb738551524b9ea84e5c211cd660c559ad0703e5230"
+
+[[tool]]
+coordinate = "org.codehaus.plexus:plexus-utils"
+version    = "3.6.1"
+checksum   = "sha256:05a63effd67e2d6b9d610cc82e2bd7473289d34802e57a529b28110f28af5679"
+
+[[tool]]
+coordinate = "org.codehaus.woodstox:stax2-api"
+version    = "4.2.2"
+checksum   = "sha256:a61c48d553efad78bc01fffc4ac528bebbae64cbaec170b2a5e39cf61eb51abe"
+
+[[tool]]
+coordinate = "org.eclipse.sisu:org.eclipse.sisu.inject"
+version    = "0.9.0.M3"
+checksum   = "sha256:15335c4dcf082f599fb8eddcfb58d6a7e9a9c97de2883c257089a479b9b24522"
+
+[[tool]]
+coordinate = "org.glassfish.jaxb:jaxb-runtime"
+version    = "2.3.9"
+checksum   = "sha256:ba88e5bde7c0d878c3e1f2ec2fcabaf51d201eaf93b3bb9cfecfc1f11b2304d4"
+
+[[tool]]
+coordinate = "org.glassfish.jaxb:txw2"
+version    = "2.3.9"
+checksum   = "sha256:973018b87af911ecf6e6d861dd0d6a477e4d8ae6a883ec5d073d3df1330b87f0"
 
 [[tool]]
 coordinate = "org.hamcrest:hamcrest-core"
@@ -4496,9 +6700,284 @@ version    = "1.3"
 checksum   = "sha256:66fdef91e9739348df7a096aa384a5685f4e875584cce89386a7a47251c4d8e9"
 
 [[tool]]
+coordinate = "org.hdrhistogram:HdrHistogram"
+version    = "2.2.2"
+checksum   = "sha256:22d1d4316c4ec13a68b559e98c8256d69071593731da96136640f864fa14fad8"
+
+[[tool]]
+coordinate = "org.imgscalr:imgscalr-lib"
+version    = "4.2"
+checksum   = "sha256:6f128a71c5e87a16f810513a73ad3c77d0ee0bb622ee0ce1ead115bccbc76d0a"
+
+[[tool]]
+coordinate = "org.javadelight:delight-rhino-sandbox"
+version    = "0.2.2"
+checksum   = "sha256:3cd23f59013acaaacee96733a4e84cf82e902d20cf680db25ddad6f7c9791928"
+
+[[tool]]
+coordinate = "org.jetbrains.intellij.deps.completion:completion-ranking-java"
+version    = "0.9.3"
+checksum   = "sha256:e3dcfee71eb13467139a1385152bd28554c79c677738cb617a91a772ea6e9f87"
+
+[[tool]]
+coordinate = "org.jetbrains.intellij.deps.fastutil:intellij-deps-fastutil"
+version    = "8.5.18-jb1"
+checksum   = "sha256:fdb9053d8584253099300e0196fc0d3ec5b828535b0f39b0f97cf66f629df356"
+
+[[tool]]
+coordinate = "org.jetbrains.intellij.deps.kotlinx:kotlinx-coroutines-core-jvm"
+version    = "1.10.2-intellij-2"
+checksum   = "sha256:28f4820b648f65500f9d88d87e0990543399c06f9d6dca57e8102cf802b3f930"
+
+[[tool]]
+coordinate = "org.jetbrains.intellij.deps.kotlinx:kotlinx-coroutines-debug"
+version    = "1.10.2-intellij-2"
+checksum   = "sha256:b3953d4dab6bd76ecdb478b1573a2103512ec9ca244e77b2825e6a970565d5d1"
+
+[[tool]]
+coordinate = "org.jetbrains.intellij.deps.kotlinx:kotlinx-coroutines-slf4j"
+version    = "1.10.2-intellij-2"
+checksum   = "sha256:48db31aa32ed6f5fdf53ef45d97429292b80f6e538278658de039b78777b221b"
+
+[[tool]]
+coordinate = "org.jetbrains.intellij.deps.winp:winp"
+version    = "1.30.1"
+checksum   = "sha256:9e2d7a23a1d3921861939509108606ad1cf6b10c64d65ac91958a62043cfa253"
+
+[[tool]]
+coordinate = "org.jetbrains.intellij.deps:asm-all"
+version    = "9.6.1"
+checksum   = "sha256:a72e84efb1406a7ab326e0b28c4376e9e1ebfc08c09f23edff5e6e7249588df7"
+
+[[tool]]
+coordinate = "org.jetbrains.intellij.deps:commons-imaging"
+version    = "1.0-RC-1"
+checksum   = "sha256:ba1cb46e5494286940b016da372ae94a60d2dbc411b6dac5db1e40128725d501"
+
+[[tool]]
+coordinate = "org.jetbrains.intellij.deps:debugger-memory-agent"
+version    = "1.0.51"
+checksum   = "sha256:1408ae6528102c098971bde601f99c791cd1c57cc2485516f75f4ccbb45202ef"
+
+[[tool]]
+coordinate = "org.jetbrains.intellij.deps:intellij-deps-java-atk-wrapper"
+version    = "263.33"
+checksum   = "sha256:effd191bd2589daa12c1d6a11dbdd84529ad290808c8effbb02e86d758d069a3"
+
+[[tool]]
+coordinate = "org.jetbrains.intellij.deps:java-compatibility"
+version    = "1.0.1"
+checksum   = "sha256:1f799c9e7691a4dcddb1cb3e28e8517d5e6b27c2ac75093f39714afdc9216950"
+
+[[tool]]
+coordinate = "org.jetbrains.intellij.deps:jb-jdi"
+version    = "2.45"
+checksum   = "sha256:f31793446f372ee33659fc7a4ce93a079fa520ae89ddf6f6280ea50425c408d4"
+
+[[tool]]
+coordinate = "org.jetbrains.intellij.deps:rwmutex-idea"
+version    = "0.0.10"
+checksum   = "sha256:61cd5eee5367d10e0cca664afdc4bbde2ff7aab9c175c5b520aac8b5315d874d"
+
+[[tool]]
+coordinate = "org.jetbrains.intellij.deps:sa-jdwp"
+version    = "1.25"
+checksum   = "sha256:b2c8f5883adcb8dc37dacca7359df1557cdd8f77144d68752403bf6f6e2de92b"
+
+[[tool]]
+coordinate = "org.jetbrains.intellij:blockmap"
+version    = "1.0.7"
+checksum   = "sha256:7e3f98d3370551fea909ceb952e4797108a3a5ef67a1d7b5fb03a036eab24df9"
+
+[[tool]]
+coordinate = "org.jetbrains.jediterm:jediterm-core"
+version    = "3.73"
+checksum   = "sha256:6d90e511ec091269507211143c4a9d85e7ea28ee8feb339e1ec2803adced732f"
+
+[[tool]]
+coordinate = "org.jetbrains.jediterm:jediterm-ui"
+version    = "3.73"
+checksum   = "sha256:8f4457edba20a51e430b992a6fe0758a32f2d5479889c3ad7518e7c29f71ebec"
+
+[[tool]]
+coordinate = "org.jetbrains.jps:jps-javac-extension"
+version    = "10"
+checksum   = "sha256:86b9d2a2378cff951f3bd0750d56ff4cef64f78dbb33e9f7abd9c7e6e14d99de"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlin:kotlin-metadata-jvm"
+version    = "2.4.0"
+checksum   = "sha256:9aadc51c588e76c8cf3d83d4090e46a4b687f2edaa1fdf65aa9fe44223294927"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlin:kotlin-reflect"
+version    = "2.4.0"
+checksum   = "sha256:f0d8e8908624eb4478bb131e9f887366680d2e239741195e548fa5c906963b90"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlin:kotlin-stdlib"
+version    = "2.4.0"
+checksum   = "sha256:ccb14ff83fabcb11458b798dbc9824748ccdffeec79c9aba789e6ed1cda86b1c"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlinx:kotlinx-collections-immutable-jvm"
+version    = "0.5.0"
+checksum   = "sha256:9481ed3b87e282ffb95d7e2a033702afa3af476e3b89137294aeccebb27c76f7"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlinx:kotlinx-datetime-jvm"
+version    = "0.7.1-0.6.x-compat"
+checksum   = "sha256:cf9cdf7b3074044657a1a80bc1bb5280b58545a967ac7fe42b1aa3cf93305714"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlinx:kotlinx-html-jvm"
+version    = "0.12.0"
+checksum   = "sha256:f854126f39acbd963fd54e0cd226000a151a76f7225ee28185d52f44e262befb"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlinx:kotlinx-io-bytestring-jvm"
+version    = "0.7.0"
+checksum   = "sha256:ea38a66b0ff46ed82dded9e81d2dce70e5fbe03bd6cc52b4fc8869381dea7b7d"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlinx:kotlinx-io-core-jvm"
+version    = "0.7.0"
+checksum   = "sha256:6ededc9be4d878aea80c7dd609f91bfc47fcd3d36cc91fd0f3f328fbd6656c8f"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm"
+version    = "1.9.0"
+checksum   = "sha256:1f0afa172110e45a7231ef1b44ae8fd84c1ebaff96f3fc3ad68ef8c48120b59c"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlinx:kotlinx-serialization-json-io-jvm"
+version    = "1.9.0"
+checksum   = "sha256:98abb132b03e11b80318d45350ec9ebbb5453d26505e81331bf2eea7143b6fbe"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm"
+version    = "1.9.0"
+checksum   = "sha256:d94cc34cae39246a1af74fda63f9c4812ce12216ef641d5fa3bbbb539a6922d8"
+
+[[tool]]
+coordinate = "org.jetbrains.kotlinx:kotlinx-serialization-protobuf-jvm"
+version    = "1.9.0"
+checksum   = "sha256:555035205ad1a21254b49fd6b5ddbe6ad1abb5c7baba244258bd758f80687bca"
+
+[[tool]]
+coordinate = "org.jetbrains.nativecerts:jvm-native-trusted-roots"
+version    = "1.1.7"
+checksum   = "sha256:8d715c487c8908a8b3b1d982f013f5ec39fb9033eb4272fdb251d648b5ede48c"
+
+[[tool]]
+coordinate = "org.jetbrains.pty4j:pty4j"
+version    = "0.13.12"
+checksum   = "sha256:da86078dafc3c4e4e3a497981df9794e5d9ed081963ad9561d0e69657f2475d4"
+
+[[tool]]
+coordinate = "org.jetbrains.runtime:jbr-api"
+version    = "1.9.0"
+checksum   = "sha256:7e37284e33b5b304ee6174dcaa92db949b257cc4c8991ca865e7daf5113d8279"
+
+[[tool]]
+coordinate = "org.jetbrains.teamcity:serviceMessages"
+version    = "2024.07"
+checksum   = "sha256:5280d3e4bae23c4f1cc59bab77dab9f7a9626aeceeaa0bb07a9868bcedae2da9"
+
+[[tool]]
+coordinate = "org.jetbrains:annotations"
+version    = "26.0.2"
+checksum   = "sha256:2037be378980d3ba9333e97955f3b2cde392aa124d04ca73ce2eee6657199297"
+
+[[tool]]
+coordinate = "org.jetbrains:markdown-jvm"
+version    = "0.7.7"
+checksum   = "sha256:df0b88266501c622ffcd0cc174b29aed9e19e73cb93e0d51b4ebca4cee01a82f"
+
+[[tool]]
+coordinate = "org.jetbrains:marketplace-zip-signer"
+version    = "0.1.43"
+checksum   = "sha256:7db707d839949384760b0f3e58eff49bfedea05f822e4f3361c4b540aa5dcc16"
+
+[[tool]]
+coordinate = "org.jsoup:jsoup"
+version    = "1.22.1"
+checksum   = "sha256:cfd3298d8720cddfb0545109ccc6ea0ef39eff7e9c40a10ad95c93a65f01c916"
+
+[[tool]]
+coordinate = "org.jspecify:jspecify"
+version    = "1.0.0"
+checksum   = "sha256:1fad6e6be7557781e4d33729d49ae1cdc8fdda6fe477bb0cc68ce351eafdfbab"
+
+[[tool]]
+coordinate = "org.mozilla:rhino-runtime"
+version    = "1.7.15.1"
+checksum   = "sha256:0b638531df0405ce68878ac5e37bd0aebf18c3e9a153eb81850212181effbe37"
+
+[[tool]]
 coordinate = "org.opentest4j:opentest4j"
 version    = "1.3.0"
 checksum   = "sha256:48e2df636cab6563ced64dcdff8abb2355627cb236ef0bf37598682ddf742f1b"
+
+[[tool]]
+coordinate = "org.slf4j:log4j-over-slf4j"
+version    = "1.7.36"
+checksum   = "sha256:0a7e032bf5bcdd5b2bf8bf2e5cf02c5646f2aa6fee66933b8150dbe84e651e8a"
+
+[[tool]]
+coordinate = "org.slf4j:slf4j-api"
+version    = "2.0.13"
+checksum   = "sha256:e7c2a48e8515ba1f49fa637d57b4e2f590b3f5bd97407ac699c3aa5efb1204a9"
+
+[[tool]]
+coordinate = "org.slf4j:slf4j-jdk14"
+version    = "2.0.13"
+checksum   = "sha256:83f17205a6470c3cd4214306d3ed011651c173297f705acef544c01795f253cd"
+
+[[tool]]
+coordinate = "org.snakeyaml:snakeyaml-engine"
+version    = "2.9"
+checksum   = "sha256:2f7a957461b6d70c0005e2c35b78a1c97bef6c446704c0ee9393ce98e4958ba8"
+
+[[tool]]
+coordinate = "org.swinglabs:swingx-core"
+version    = "1.6.2-2"
+checksum   = "sha256:0df80935d9bc3b3841bc621c6fef6615c93aaf80393ccaa196db11bf97784f18"
+
+[[tool]]
+coordinate = "org.tukaani:xz"
+version    = "1.10"
+checksum   = "sha256:95c63c1a55b22dd6453890a419cc1a640f790bbf7d8ae82db1e30aefefb08888"
+
+[[tool]]
+coordinate = "oro:oro"
+version    = "2.0.8"
+checksum   = "sha256:e00ccdad5df7eb43fdee44232ef64602bf63807c2d133a7be83ba09fd49af26e"
+
+[[tool]]
+coordinate = "tools.jackson.core:jackson-core"
+version    = "3.1.4"
+checksum   = "sha256:3bda1cd6eff0a8d47bdfcaeae7c2bd5311d6c8ed494ef5f3e51029bb44aa9bdf"
+
+[[tool]]
+coordinate = "tools.jackson.core:jackson-databind"
+version    = "3.1.4"
+checksum   = "sha256:14034bfdf392b6ebec1b4bb6c1de29d604f0aa97251259a19d5f19af8719bb20"
+
+[[tool]]
+coordinate = "tools.jackson.jr:jackson-jr-objects"
+version    = "3.1.4"
+checksum   = "sha256:b7512f9b59012b19606320bdd72f73ae743b108f6b6d285113c786d0722288bc"
+
+[[tool]]
+coordinate = "tools.jackson.module:jackson-module-kotlin"
+version    = "3.1.4"
+checksum   = "sha256:efa7d704dadfabba9dffea17b36b946856a6c92ae349e49be8b363de9ba8f849"
+
+[[tool]]
+coordinate = "xml-resolver:xml-resolver"
+version    = "1.2"
+checksum   = "sha256:47dcde8986019314ef78ae7280a94973a21d2ed95075a40a000b42da956429e1"
 
 [[module]]
 path    = "."

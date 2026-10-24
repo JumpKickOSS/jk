@@ -180,6 +180,7 @@ version = "1.0.0"
 [intellij]
 version = "262.10968.63"   # the platform build: IntelliJ IDEA's About dialog shows IC-262.10968.63
 plugins = ["java"]         # bundled plugins the code uses, by directory under the IDE's plugins/
+libraries = ["platform:ide-impl", "java:java-impl"]   # platform modules to compile against, as Maven artifacts
 # requires = ["platform-todo-plugin"]   # other bundled plugins the named ones need at run time
 # product     = "ideaIC"   # ideaIC (Community, the default) or ideaIU (Ultimate)
 # since-build = "262"      # defaults to the branch of version
@@ -190,13 +191,19 @@ url    = "https://www.jetbrains.com/intellij-repository/releases"
 groups = ["com.jetbrains.intellij.*"]
 ```
 
-- **The distribution.** `com.jetbrains.intellij.idea:<product>:<version>` is fetched from
-  JetBrains' repository and unpacked once into scratch space (`state/tmp/unpacked/`, which jk
+- **Compiling.** The code compiles against the platform modules `libraries` names — each is
+  `<group suffix>:<artifact>` under `com.jetbrains.intellij`, at `version` — with their transitive
+  closure, from JetBrains' repository (and `org.jetbrains.intellij.deps.fastutil` from the
+  `intellij-dependencies` repository, which a module declares restricted to that group). The
+  closure is about a tenth the size of the distribution and compile-only: `jk build` fetches it
+  and never unpacks the distribution.
+- **The distribution.** Only a run of the tests needs it.
+  `com.jetbrains.intellij.idea:<product>:<version>` is fetched from JetBrains' repository and unpacked once into scratch space (`state/tmp/unpacked/`, which jk
   deletes a week after its last use) — and only in part: `lib/`, `modules/`, and the bundled
   plugins `plugins` and `requires` name, about a tenth of the plugin tree. A plugin the IDE needs
-  that is in neither fails the test setup naming the directory to add to `requires`. Its `lib/` jars, and those of each
-  bundled plugin `plugins` names, are the module's provided classpath: compiled against, on the
-  test classpath, never packaged. `jk ide` lists them as provided libraries.
+  that is in neither fails the test setup naming the directory to add to `requires`. Its `lib/`
+  jars, and those of each bundled plugin `plugins` names, are the test JVM's classpath, never
+  compiled against and never packaged. `jk ide` lists the compile jars as provided libraries.
 - **Tests.** The platform test framework (`com.jetbrains.intellij.platform:test-framework` at the
   same build, with JUnit 4 for its `TestCase` bases) joins the test classpath. The test JVM is
   started with the distribution's own launcher flags from its `product-info.json`, a sandbox

@@ -801,6 +801,56 @@ class PluginContributionsTest {
                         new PluginContributions.Provided("test-kit", List.of(), true));
     }
 
+    /** compile-only is compiled against and never run with; test-runtime is the other half; a list key may sit inside a coordinate. */
+    @Test
+    void
+            compile_only_and_test_runtime_scopes_split_the_compile_and_run_sides_and_a_list_key_expands_inside_a_coordinate() {
+        PluginTableRegistry.putBuiltIn(PluginDescriptors.parse("""
+                        [plugin]
+                        id = "split-fixture"
+                        table = "split-fixture"
+
+                        [schema]
+                        version = { type = "string", required = true }
+                        libraries = { type = "string-list", default = [] }
+
+                        [[contribute.step-dependency]]
+                        artifact = "libs"
+                        coordinate = "com.acme.${config.libraries}:${config.version}"
+                        transitive = true
+
+                        [[contribute.provided-classpath]]
+                        dependency = "libs"
+                        jars = ["*.jar"]
+                        scope = "compile-only"
+
+                        [[contribute.provided-classpath]]
+                        dependency = "libs"
+                        scope = "test-runtime"
+                        """, "split-fixture.toml"), null);
+        JkBuild build = JkBuildParser.parse("""
+                name = "demo"
+                group = "com.example"
+                version = "1.0.0"
+                java = 25
+
+                [split-fixture]
+                version = "2.0"
+                libraries = ["platform:ide", "java:impl"]
+                """);
+
+        assertThat(PluginContributions.stepDependencies(build, null, Map.of()))
+                .singleElement()
+                .satisfies(dep -> {
+                    assertThat(dep.coordinateSpec()).isEqualTo("com.acme.platform:ide:2.0");
+                    assertThat(dep.with()).containsExactly("com.acme.java:impl:2.0");
+                });
+        assertThat(PluginContributions.providedClasspath(build, null))
+                .containsExactly(
+                        new PluginContributions.Provided("libs", List.of("*.jar"), false, true, false),
+                        new PluginContributions.Provided("libs", List.of(), false, false, true));
+    }
+
     @Test
     void unpack_jars_and_scope_are_refused_where_they_cannot_apply() {
         String plugin = """
@@ -831,7 +881,7 @@ class PluginContributionsTest {
         assertThatThrownBy(() -> PluginDescriptors.parse(
                         plugin.formatted("coordinate = \"g:a:1\"", "scope = \"runtime\""), "p.toml"))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("scope must be `compile` or `test`");
+                .hasMessageContaining("scope must be `compile`, `compile-only`, `test` or `test-runtime`");
     }
 
     // ---- [contribute.jvm-modules] ------------------------------------------------------------

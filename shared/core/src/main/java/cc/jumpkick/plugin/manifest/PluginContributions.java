@@ -637,9 +637,15 @@ public final class PluginContributions {
     /**
      * One provided-classpath contribution: the step tool {@code dependency} names, the {@code jars}
      * globs under its directory with every {@code ${config.<key>}} resolved (empty: the tool's own
-     * path), and whether it joins the test classpaths alone.
+     * path), whether it joins the test classpaths alone, and whether it stays off the test runtime
+     * classpath ({@code compileOnly}), or on the test runtime classpath alone ({@code runtimeOnly}).
      */
-    public record Provided(String dependency, List<String> jars, boolean testOnly) {
+    public record Provided(
+            String dependency, List<String> jars, boolean testOnly, boolean compileOnly, boolean runtimeOnly) {
+
+        public Provided(String dependency, List<String> jars, boolean testOnly) {
+            this(dependency, jars, testOnly, false, false);
+        }
 
         public Provided {
             jars = List.copyOf(jars);
@@ -670,7 +676,7 @@ public final class PluginContributions {
                 }
                 List<String> jars = new ArrayList<>();
                 for (String glob : pc.jars()) jars.addAll(Interpolation.resolveEach(glob, config, build.project()));
-                out.add(new Provided(pc.dependency(), jars, pc.testOnly()));
+                out.add(new Provided(pc.dependency(), jars, pc.testOnly(), pc.compileOnly(), pc.runtimeOnly()));
             }
         }
         return out;

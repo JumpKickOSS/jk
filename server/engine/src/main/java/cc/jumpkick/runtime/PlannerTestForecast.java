@@ -177,9 +177,7 @@ final class PlannerTestForecast {
         }
         List<Path> testRt =
                 new ArrayList<>(PlannerSupport.testRuntimeClasspath(s.dir, s.project, prepared.lock(), s.resolver));
-        for (Path p : prepared.provided().jars().stream()
-                .map(ProvidedClasspath.Provided.Jar::path)
-                .toList()) {
+        for (Path p : prepared.provided().testRuntime()) {
             if (!testRt.contains(p)) testRt.add(p);
         }
         long ts = Perf.start();

@@ -215,7 +215,11 @@ globs too, so the archive taken whole and taken in part are different trees.
 
 **The provided classpath.** A `[[contribute.provided-classpath]]` entry puts its tool on the main
 compile classpath and both test classpaths, never on the runtime or in an artifact. `scope =
-"test"` keeps it to the test classpaths (a platform's test framework). `jars` globs a directory
+"test"` keeps it to the test classpaths (a platform's test framework). `scope = "compile-only"`
+puts it on the two compile classpaths and never the test JVM's, `scope = "test-runtime"` on the
+test JVM's alone: the pair for a platform compiled against one set of jars and run on another (the
+IntelliJ battery compiles against Maven artifacts and runs on the distribution). A test-runtime
+tool is fetched only by a build that runs tests. `jars` globs a directory
 tool — unpacked or a transitive closure — instead of naming it whole: each regular file a glob
 matches (`*` within a path segment, `**` across them) is an entry, in glob order and path order
 within a glob, and a glob over a string-list key is one glob per element
