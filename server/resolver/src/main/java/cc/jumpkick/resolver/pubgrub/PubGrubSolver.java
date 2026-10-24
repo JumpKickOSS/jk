@@ -507,15 +507,24 @@ public class PubGrubSolver {
         int before = given == null ? Integer.MAX_VALUE : given.globalIndex();
         VersionUniverse u = universes.get(term.pkg());
         if (u != null) {
+            // Judged as PartialSolution#satisfies judges it: over the universe while the prefix
+            // leaves some advertised version, over the sets once it leaves none. Judging an empty
+            // projection by the universe alone found a satisfier propagation never agreed with,
+            // backjumped to a level where the learned clause derived nothing, and re-decided the
+            // same version until the budget ran out.
             AllowedSet target = u.project(term.effectiveVersions());
-            AllowedSet accumulated =
-                    given == null ? u.all() : u.project(given.term().effectiveVersions());
-            if (given != null && (!term.positive() || sawPositive) && accumulated.subsetOf(target)) return null;
+            VersionSet continuous =
+                    given == null ? VersionSet.ALL : given.term().effectiveVersions();
+            AllowedSet accumulated = u.project(continuous);
+            if (given != null && (!term.positive() || sawPositive) && covers(accumulated, continuous, target, term)) {
+                return null;
+            }
             for (PartialSolution.Assignment a : solution.assignmentsFor(term.pkg())) {
                 if (a.globalIndex() >= before) break; // the package's list is in stack order
                 sawPositive |= a.term().positive();
+                continuous = continuous.intersect(a.term().effectiveVersions());
                 accumulated = accumulated.intersect(u.project(a.term().effectiveVersions()));
-                if ((!term.positive() || sawPositive) && accumulated.subsetOf(target)) return a;
+                if ((!term.positive() || sawPositive) && covers(accumulated, continuous, target, term)) return a;
             }
             return null;
         }
@@ -531,6 +540,11 @@ public class PubGrubSolver {
             if ((!term.positive() || sawPositive) && accumulated.subsetOf(term.effectiveVersions())) return a;
         }
         return null;
+    }
+
+    /** Whether a prefix's versions all satisfy {@code term}: see {@link PartialSolution#satisfies}. */
+    private static boolean covers(AllowedSet accumulated, VersionSet continuous, AllowedSet target, Term term) {
+        return accumulated.isEmpty() ? continuous.subsetOf(term.effectiveVersions()) : accumulated.subsetOf(target);
     }
 
     /**
