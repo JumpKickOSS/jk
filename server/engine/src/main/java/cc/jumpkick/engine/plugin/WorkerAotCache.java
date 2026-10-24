@@ -66,6 +66,11 @@ public final class WorkerAotCache {
     /** Trainer forks alive right now; a store wipe and the engine's shutdown stop them. */
     private static final Set<Process> LIVE = ConcurrentHashMap.newKeySet();
 
+    /** Whether {@code arg} is one of the flags {@link #flags} adds to map a cache. */
+    public static boolean mappingFlag(String arg) {
+        return arg.startsWith("-XX:AOTCache=") || arg.equals("-Xlog:aot=off");
+    }
+
     /** Where worker caches live: {@code <state>/aot/}. */
     public static Path dir() {
         return JkDirs.state().resolve("aot");
