@@ -16,9 +16,49 @@ class CachePruneSchedulerTest {
 
     private static final JkCacheConfig ON = new JkCacheConfig(true, 7, 4.0, 0.5);
 
+    private static final long GIB = 1024L * 1024 * 1024;
+
+    /** A volume with room to spare, so these cases do not depend on the disk the build runs on. */
+    private static final JkCacheConfig.DiskSpace ROOMY = new JkCacheConfig.DiskSpace(1000 * GIB, 700 * GIB);
+
+    private static JkCacheConfig.DiskSpace freeGib(long gib) {
+        return new JkCacheConfig.DiskSpace(1000 * GIB, gib * GIB);
+    }
+
+    private static void prunedHoursAgo(Path cacheRoot, long hours) throws IOException {
+        long then = System.currentTimeMillis() - hours * 60 * 60 * 1000;
+        Files.writeString(cacheRoot.resolve(".last-pruned"), Long.toString(then), StandardCharsets.UTF_8);
+    }
+
+    @Test
+    void a_nearly_full_disk_brings_the_next_pass_within_the_hour(@TempDir Path cacheRoot) throws IOException {
+        prunedHoursAgo(cacheRoot, 2);
+
+        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot, freeGib(20), System.currentTimeMillis()))
+                .as("2 GiB of 1000 free: an hour is the cadence")
+                .isTrue();
+        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot, ROOMY, System.currentTimeMillis()))
+                .as("plenty of room: the week stands")
+                .isFalse();
+    }
+
+    @Test
+    void the_cadence_tightens_in_steps_as_the_disk_fills(@TempDir Path cacheRoot) throws IOException {
+        prunedHoursAgo(cacheRoot, 8);
+        long now = System.currentTimeMillis();
+
+        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot, freeGib(150), now))
+                .as("15% free: a day")
+                .isFalse();
+        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot, freeGib(90), now))
+                .as("9% free: six hours")
+                .isTrue();
+    }
+
     @Test
     void should_run_when_stamp_missing(@TempDir Path cacheRoot) throws IOException {
-        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot)).isTrue();
+        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot, ROOMY, System.currentTimeMillis()))
+                .isTrue();
     }
 
     @Test
@@ -27,7 +67,8 @@ class CachePruneSchedulerTest {
         long oneDayAgo = System.currentTimeMillis() - (24L * 60 * 60 * 1000);
         Files.writeString(cacheRoot.resolve(".last-pruned"), Long.toString(oneDayAgo), StandardCharsets.UTF_8);
 
-        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot)).isFalse();
+        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot, ROOMY, System.currentTimeMillis()))
+                .isFalse();
     }
 
     @Test
@@ -35,13 +76,15 @@ class CachePruneSchedulerTest {
         long tenDaysAgo = System.currentTimeMillis() - (10L * 24 * 60 * 60 * 1000);
         Files.writeString(cacheRoot.resolve(".last-pruned"), Long.toString(tenDaysAgo), StandardCharsets.UTF_8);
 
-        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot)).isTrue();
+        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot, ROOMY, System.currentTimeMillis()))
+                .isTrue();
     }
 
     @Test
     void should_run_when_stamp_is_garbage(@TempDir Path cacheRoot) throws IOException {
         Files.writeString(cacheRoot.resolve(".last-pruned"), "not-a-number", StandardCharsets.UTF_8);
-        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot)).isTrue();
+        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot, ROOMY, System.currentTimeMillis()))
+                .isTrue();
     }
 
     @Test

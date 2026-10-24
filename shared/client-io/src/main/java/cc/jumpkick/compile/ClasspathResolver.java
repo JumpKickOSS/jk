@@ -11,7 +11,6 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.ArtifactLocator;
-import cc.jumpkick.repo.M2Dirs;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -109,7 +108,7 @@ public final class ClasspathResolver {
 
     private static ArtifactLocator defaultLocator(Path storeRoot) {
         boolean m2 = JkM2Config.resolve().integration();
-        return new ArtifactLocator(storeRoot, m2 ? M2Dirs.localRepository() : null, m2);
+        return new ArtifactLocator(storeRoot, m2);
     }
 
     public ClasspathResolver(Path storeRoot, ArtifactLocator locator) {

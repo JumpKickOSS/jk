@@ -61,7 +61,8 @@ class TestEnvTest {
         assertThat(env.get("JK_HOME")).isEqualTo(sandbox.toString());
         assertThat(env.get("JK_JDKS_DIR")).isEqualTo(sandbox.resolve("jdks").toString());
         assertThat(env.get("JK_M2_LOCAL"))
-                .isEqualTo(TestHomes.slotFor(tmp).resolve("test-m2").toString());
+                .as("Central's jars live in the local repository: the sandbox store's pooled central tree")
+                .isEqualTo(sandbox.resolve("store/repos/central").toString());
         assertThat(env.get("JK_HOME"))
                 .as("not inside the project under test — the whole point")
                 .doesNotStartWith(tmp.toAbsolutePath().toString());
@@ -165,11 +166,10 @@ class TestEnvTest {
         assertThat(Path.of(env.get("JK_HOME")))
                 .isEqualTo(tmp.resolve("target/mine").toAbsolutePath());
         assertThat(env.get("JK_HTTP_ENABLED")).isEqualTo("false");
-        // The default the module didn't mention survives.
-        assertThat(env.get("JK_M2_LOCAL")).endsWith("test-m2");
+        // The default the module didn't mention survives: the local repository is the sandbox
+        // store's pooled central tree, wherever the declared JK_HOME put the sandbox.
         assertThat(Path.of(env.get("JK_M2_LOCAL")))
-                .as("a standalone project has no workspace to share with, so the cache is its own")
-                .isEqualTo(TestHomes.slotFor(tmp).resolve("test-m2"));
+                .isEqualTo(TestHomes.pathFor(tmp).resolve("store/repos/central"));
     }
 
     @Test

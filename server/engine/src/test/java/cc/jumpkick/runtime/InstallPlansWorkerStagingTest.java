@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -34,6 +35,7 @@ class InstallPlansWorkerStagingTest {
     @Test
     void a_store_short_of_a_pom_fails_the_install_naming_the_dependency(@TempDir Path tmp) throws Exception {
         Path store = tmp.resolve("store");
+        centralIsTheLocalRepository(store);
         shelveWorker(store);
         put(store, "central", MavenLayout.artifactPath(LIB), "lib-bytes");
 
@@ -97,5 +99,16 @@ class InstallPlansWorkerStagingTest {
         Files.write(f, bytes);
         RepoArtifactStore.forStoreId(store, repo).writeMemo(rel, f, Hashing.sha256Hex(bytes));
         return f;
+    }
+
+    /** Central's artifacts live in the Maven local repository; these fixtures keep it beside the memos, in the store's central tree. */
+    private static void centralIsTheLocalRepository(Path store) {
+        System.setProperty(
+                "jk.m2.local", store.resolve("repos").resolve("central").toString());
+    }
+
+    @AfterEach
+    void forgetLocalRepository() {
+        System.clearProperty("jk.m2.local");
     }
 }

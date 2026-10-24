@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -78,6 +79,7 @@ class ExecPlansProductBinTest {
     void the_jvm_launcher_s_classpath_is_the_client_s_own_closure_not_the_workspace_lock(@TempDir Path tmp)
             throws Exception {
         Path store = Files.createDirectories(tmp.resolve("store"));
+        centralIsTheLocalRepository(store);
         Path cli = putJar(store, "com/foo/cli-lib/1.0/cli-lib-1.0.jar");
         Path leaf = putJar(store, "com/foo/leaf/1.0/leaf-1.0.jar");
         Path noise = putJar(store, "com/other/noise/9.0/noise-9.0.jar");
@@ -137,13 +139,11 @@ class ExecPlansProductBinTest {
     }
 
     /**
-     * The launcher names only paths under the home. A row the Maven local repository has and the
-     * store lacks is copied into the store and named from there; the mirror stays a source, never
-     * an address the launcher depends on.
+     * Central's jars live in the Maven local repository, so a row it holds is named where it is:
+     * the launcher's classpath is the local repository's path, and nothing is copied into the store.
      */
     @Test
-    void the_jvm_launcher_names_store_paths_even_when_the_maven_local_repo_has_the_row(@TempDir Path tmp)
-            throws Exception {
+    void the_jvm_launcher_names_the_local_repository_path_for_a_central_row(@TempDir Path tmp) throws Exception {
         Path store = Files.createDirectories(tmp.resolve("store"));
         Path m2 = Files.createDirectories(tmp.resolve("m2"));
         String rel = "org/tomlj/tomlj/1.1.1/tomlj-1.1.1.jar";
@@ -173,13 +173,11 @@ class ExecPlansProductBinTest {
                     ExecPlans.execPlan(dir, tmp.resolve("cache"), "install", null, null, tmp.resolve("bin"), null);
 
             assertThat(plan.error()).isNull();
-            Path placed = store.resolve("repos/central").resolve(rel);
-            assertThat(placed)
-                    .as("the mirror's row is materialized into the store")
-                    .exists();
+            assertThat(store.resolve("repos/central").resolve(rel))
+                    .as("nothing is copied into the store")
+                    .doesNotExist();
             assertThat(plan.launcherScript())
-                    .contains(placed.toAbsolutePath().normalize().toString())
-                    .doesNotContain(m2.toString())
+                    .contains(mirrored.toAbsolutePath().normalize().toString())
                     .contains(AppLauncher.NATIVE_ACCESS_FLAG);
         } finally {
             restore("jk.env.JK_STORE_DIR", prevStore);
@@ -195,6 +193,7 @@ class ExecPlansProductBinTest {
     void the_jvm_launcher_lists_a_shelved_sibling_from_the_shelf_not_the_checkout_s_target(@TempDir Path tmp)
             throws Exception {
         Path store = Files.createDirectories(tmp.resolve("store"));
+        centralIsTheLocalRepository(store);
         Path root = Files.createDirectories(tmp.resolve("ws"));
         Files.writeString(root.resolve("jk.toml"), """
                 group = "cc.jumpkick"
@@ -299,5 +298,16 @@ class ExecPlansProductBinTest {
                 """);
         Files.createDirectories(dir.resolve("target"));
         return dir;
+    }
+
+    /** Central's artifacts live in the Maven local repository; these fixtures keep it beside the memos, in the store's central tree. */
+    private static void centralIsTheLocalRepository(Path store) {
+        System.setProperty(
+                "jk.m2.local", store.resolve("repos").resolve("central").toString());
+    }
+
+    @AfterEach
+    void forgetLocalRepository() {
+        System.clearProperty("jk.m2.local");
     }
 }

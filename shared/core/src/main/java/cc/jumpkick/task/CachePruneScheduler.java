@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.config.DiskPressure;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -34,7 +36,9 @@ public final class CachePruneScheduler {
     /** Cadence ceiling once the cache is under pressure — daily instead of the configured week. */
     static final int PRESSURE_INTERVAL_DAYS = 1;
 
-    private static final long DAY_MILLIS = 24L * 60L * 60L * 1000L;
+    private static final long HOUR_MILLIS = 60L * 60L * 1000L;
+
+    private static final long DAY_MILLIS = 24L * HOUR_MILLIS;
 
     private CachePruneScheduler() {}
 
@@ -47,15 +51,34 @@ public final class CachePruneScheduler {
      */
     public record Stamp(long millis, long finalActionBytes) {}
 
-    /** True if the configured cadence — tightened by cache pressure — calls for a prune now. */
+    /** True if the configured cadence — tightened by cache pressure and by a filling disk — calls for a prune now. */
     public static boolean shouldRun(JkCacheConfig config, Path cacheRoot) throws IOException {
+        return shouldRun(config, cacheRoot, JkCacheConfig.DiskSpace.probe(cacheRoot), Clock.SYSTEM.millis());
+    }
+
+    /** As above with the volume's space and the time given, so the cadence can be driven without a disk. */
+    static boolean shouldRun(JkCacheConfig config, Path cacheRoot, JkCacheConfig.@Nullable DiskSpace disk, long now)
+            throws IOException {
         Optional<Stamp> stamp = read(cacheRoot);
         if (stamp.isEmpty()) return true;
-        long intervalDays = config.pruneIntervalDays();
+        long interval = config.pruneIntervalDays() * DAY_MILLIS;
         if (underPressure(config, stamp.get())) {
-            intervalDays = Math.min(intervalDays, PRESSURE_INTERVAL_DAYS);
+            interval = Math.min(interval, PRESSURE_INTERVAL_DAYS * DAY_MILLIS);
         }
-        return (System.currentTimeMillis() - stamp.get().millis()) > intervalDays * DAY_MILLIS;
+        interval = Math.min(interval, diskInterval(DiskPressure.factor(disk)));
+        return (now - stamp.get().millis()) > interval;
+    }
+
+    /**
+     * How often a volume this full is worth a pass: a day at the first sign, six hours as it tightens, an
+     * hour when it is nearly out. Retention windows shrink with the same factor, so each pass frees more
+     * than the last found.
+     */
+    static long diskInterval(double pressure) {
+        if (DiskPressure.emergency(pressure)) return HOUR_MILLIS;
+        if (pressure <= 0.25) return 6 * HOUR_MILLIS;
+        if (pressure < DiskPressure.NONE) return DAY_MILLIS;
+        return Long.MAX_VALUE;
     }
 
     /** The last prune ended with the action tier at or above {@link #PRESSURE_FRACTION} of budget. */

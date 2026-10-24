@@ -2,12 +2,14 @@
 package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.Coordinate;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -25,7 +27,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * a {@code stat} of {@code ~/.m2} before paying for an artifact.
+ * A repository Maven shares (Central, or one {@code settings.xml} declares; the stub here is
+ * declared) is read out of {@code ~/.m2} before paying for an artifact.
  *
  * <p>The point of every test here is the integrity rule. {@code ~/.m2} is writable by anything on the
  * machine and Maven enforces no integrity, so a local hit is only ever a <em>candidate</em>; the
@@ -38,6 +41,9 @@ class MavenRepoM2LookupTest {
     private static final String REL = "com/example/widget/1.0/widget-1.0.jar";
     private static final byte[] REAL = "the genuine artifact bytes".getBytes(StandardCharsets.UTF_8);
 
+    @TempDir
+    Path settingsDir;
+
     private HttpServer server;
     private URI base;
     private final List<String> hits = new CopyOnWriteArrayList<>();
@@ -47,12 +53,24 @@ class MavenRepoM2LookupTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.start();
         base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
+        // Maven shares this repository: the user's settings.xml declares it in an active profile.
+        Path xml = settingsDir.resolve("settings.xml");
+        Files.writeString(xml, """
+                <settings>
+                  <profiles><profile><id>p</id><repositories>
+                    <repository><id>stub</id><url>%s</url></repository>
+                  </repositories></profile></profiles>
+                  <activeProfiles><activeProfile>p</activeProfile></activeProfiles>
+                </settings>
+                """.formatted(base));
+        System.setProperty(MavenSettings.SETTINGS_PROPERTY, xml.toString());
     }
 
     @AfterEach
     void stop() {
         server.stop(0);
         System.clearProperty("jk.m2.local");
+        System.clearProperty(MavenSettings.SETTINGS_PROPERTY);
         SessionContext.reset();
     }
 
@@ -128,12 +146,11 @@ class MavenRepoM2LookupTest {
     }
 
     /**
-     * An adopted file is the store's copy, keyed by the repository's origin: the build reads only
-     * what the store owns, the local repository keeps its own file, and no CAS blob is involved.
+     * A confirmed file in the local repository is the answer where it is: nothing is copied into the
+     * store, the memo that vouches for it lives there, and no CAS blob is involved.
      */
     @Test
-    void a_confirmed_m2_hit_is_copied_into_the_store_and_the_store_file_is_the_answer(@TempDir Path tmp)
-            throws Exception {
+    void a_confirmed_m2_hit_is_used_in_place_and_nothing_is_copied(@TempDir Path tmp) throws Exception {
         Path m2 = tmp.resolve("m2");
         seedM2(m2, REAL);
         serve("/" + REL + ".sha1", 200, sha1Of(REAL).getBytes(StandardCharsets.UTF_8));
@@ -144,28 +161,30 @@ class MavenRepoM2LookupTest {
 
         Path repoStore = Objects.requireNonNull(
                 RepoArtifactStore.forRepository(store, "test", base).root());
-        assertThat(fetched.cachePath()).isEqualTo(repoStore.resolve(REL));
-        assertThat(Files.readAllBytes(fetched.cachePath())).isEqualTo(REAL);
-        assertThat(m2.resolve(REL)).hasBinaryContent(REAL);
+        assertThat(fetched.cachePath()).isEqualTo(m2.resolve(REL));
+        assertThat(repoStore.resolve(REL)).as("the store holds no second copy").doesNotExist();
         assertThat(new Cas(store).contains(Hashing.sha256Hex(REAL))).isFalse();
-        assertThat(ArtifactMemo.jkPath(repoStore, REL))
-                .as("the memo lives in the store keyed by the repository's origin")
-                .exists();
+        assertThat(ArtifactMemo.read(ArtifactMemo.jkPath(repoStore, REL)))
+                .as("the memo lives in the store, and says jk verified the file, not that it downloaded it")
+                .get()
+                .extracting(ArtifactMemo::fetched)
+                .isEqualTo(false);
     }
 
     @Test
-    void bytes_that_do_not_match_the_remote_checksum_are_refused(@TempDir Path tmp) throws Exception {
+    void bytes_that_do_not_match_the_remote_checksum_are_refused_and_left_alone(@TempDir Path tmp) throws Exception {
         // The case the whole design exists for: something at the right coordinate that is not the right
-        // artifact. It must be ignored and the real one downloaded.
+        // artifact. It is never used. It is also never replaced or removed: the file is Maven's or the
+        // user's (a local `mvn install` of a patched build looks exactly like this), so the fetch
+        // fails and names it.
         seedM2(tmp.resolve("m2"), "a hand-built impostor".getBytes(StandardCharsets.UTF_8));
         serve("/" + REL + ".sha1", 200, sha1Of(REAL).getBytes(StandardCharsets.UTF_8));
         serve("/" + REL, 200, REAL);
         MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tmp.resolve("store")));
 
-        MavenRepo.Fetched fetched = repo.fetchArtifact(coord());
-
-        assertThat(Files.readAllBytes(fetched.cachePath())).isEqualTo(REAL);
-        assertThat(hits).contains("/" + REL); // the jar really was transferred
+        assertThatThrownBy(() -> repo.fetchArtifact(coord()))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("did not put it there");
         assertThat(Files.readAllBytes(tmp.resolve("m2").resolve(REL)))
                 .isEqualTo("a hand-built impostor".getBytes(StandardCharsets.UTF_8));
     }

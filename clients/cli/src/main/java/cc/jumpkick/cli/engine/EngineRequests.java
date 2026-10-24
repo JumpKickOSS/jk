@@ -464,16 +464,17 @@ public final class EngineRequests {
 
     /**
      * Everything an engine-hosted cache maintenance op needs ({@code op} = {@code prune}/{@code
-     * purge}/{@code sweep}/{@code clear} — {@code jk cache clean}/{@code nuke}, {@code jk storage
+     * purge}/{@code sweep}/{@code clear}/{@code m2} — {@code jk cache clean}/{@code nuke}, {@code jk storage
      * clean}, {@code jk clean -F}). Ops ignore the fields they don't use; {@code projectRoot}
-     * is {@code null} for everything but {@code clear}.
+     * is {@code null} for everything but {@code clear} and {@code m2}; {@code olderThanDays} is only {@code m2}'s.
      */
     public record CacheMaintRequest(
             String op,
             Path cache,
             boolean dryRun,
             boolean includeJkTmp,
-            @Nullable Path projectRoot) {}
+            @Nullable Path projectRoot,
+            int olderThanDays) {}
 
     /** A hosted cache maintenance op's summary, decoded from the terminal plan-finish ({@code -1} = n/a). */
     public record CacheMaintSummary(long files, long bytes) {}

@@ -93,12 +93,13 @@ class HardwareProbeStoreTest {
     }
 
     /**
-     * The headline: a networked probe on a cold machine. Every jar has to land in the store as a
-     * full entry — artifact plus {@code .jk} memo, which is what makes it a thing a later resolve
-     * can hash-verify — and the cache root must still not exist afterwards.
+     * The headline: a networked probe on a cold machine. Every jar has to land in the Maven local
+     * repository, where Central's artifacts live, with its {@code .jk} memo in the store, which is
+     * what makes it a thing a later resolve can hash-verify — and the cache root must still not
+     * exist afterwards.
      */
     @Test
-    void a_fetched_jar_lands_in_the_store_with_a_memo_and_never_under_the_cache_root(@TempDir Path tmp)
+    void a_fetched_jar_lands_in_the_local_repository_with_a_memo_and_never_under_the_cache_root(@TempDir Path tmp)
             throws Exception {
         Path store = tmp.resolve("store");
         Path cache = tmp.resolve("cache");
@@ -107,9 +108,10 @@ class HardwareProbeStoreTest {
 
         List<Path> cp = HardwareProbe.resolveJunitClasspath(HardwareProbe.Options.of(true), central);
 
-        Path centralRepo = store.resolve("repos").resolve(RepositorySpec.CENTRAL);
+        Path centralRepo = tmp.resolve("m2");
         assertThat(cp).hasSameSizeAs(PINNED).allSatisfy(p -> assertThat(p).startsWith(centralRepo));
-        RepoArtifactStore repo = RepoArtifactStore.forStoreId(store, RepositorySpec.CENTRAL);
+        RepoArtifactStore repo =
+                RepoArtifactStore.forRepository(store, RepositorySpec.CENTRAL, RepositorySpec.MAVEN_CENTRAL.url());
         for (String rel : PINNED) {
             assertThat(repo.contains(rel))
                     .as("%s stored without a .jk memo is an orphan no resolve will trust", rel)

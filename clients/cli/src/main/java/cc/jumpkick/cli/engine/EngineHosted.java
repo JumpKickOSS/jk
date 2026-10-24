@@ -325,9 +325,12 @@ final class EngineHosted {
         String requestLine = new CachePruneRequest(
                         req.op(),
                         req.cache().toString(),
-                        "clear".equals(req.op()) ? Objects.toString(req.projectRoot(), null) : null,
+                        "clear".equals(req.op()) || "m2".equals(req.op())
+                                ? Objects.toString(req.projectRoot(), null)
+                                : null,
                         req.dryRun(),
-                        req.includeJkTmp())
+                        req.includeJkTmp(),
+                        req.olderThanDays())
                 .encode();
         return EnginePluginAdapter.stream(
                         paths,

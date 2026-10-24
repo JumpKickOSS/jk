@@ -161,6 +161,8 @@ public final class EffectiveUserConfig {
         JkM2Config e = JkM2Config.resolve(file, env);
         add(out, "m2.integration", d.integration(), e.integration());
         add(out, "m2.install", d.install(), e.install());
+        add(out, "m2.auto-clean", d.autoClean(), e.autoClean());
+        add(out, "m2.clean-after-days", d.cleanAfterDays(), e.cleanAfterDays());
     }
 
     private static void addTemplates(List<Row> out, Path file) {

@@ -220,11 +220,21 @@ final class DownloadLeg {
      * False, with a note, when the repository disowns the bytes. A sidecar-less copy the rule
      * refuses is refused with the {@link MavenRepo.MissingChecksumException} a download gets.
      */
-    boolean confirmStored(Coordinate coord, URI uri, String relativePath, Path path, String sha256, MavenRepo.Leg leg)
+    boolean confirmStored(
+            Coordinate coord,
+            URI uri,
+            String relativePath,
+            Path path,
+            String sha256,
+            MavenRepo.Leg leg,
+            boolean requirePublished)
             throws IOException, InterruptedException {
         ChecksumSidecars sidecars = ChecksumSidecars.start(transport, credential, uri);
         Optional<ChecksumSidecars.Published> published = sidecars.strongest();
         if (published.isEmpty()) {
+            // A file nobody here has verified, found in the Maven local repository, has only the
+            // repository's word to stand on: none published, nothing vouches, even under allow-unverified.
+            if (requirePublished) return false;
             unpublished(coord, relativePath, leg);
             return true;
         }

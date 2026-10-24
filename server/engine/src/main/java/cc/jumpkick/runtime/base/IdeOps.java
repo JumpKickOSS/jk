@@ -30,7 +30,6 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.ArtifactLocator;
-import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.resolver.CacheSync;
 import cc.jumpkick.scala.ScalaResolver;
 import cc.jumpkick.wire.protocol.IdeWireModel;
@@ -451,7 +450,7 @@ public final class IdeOps {
 
         Set<String> siblingCoords = siblingCoordinates(module, modules);
         boolean m2 = JkM2Config.resolve().integration();
-        ArtifactLocator locator = new ArtifactLocator(cas.root(), m2 ? M2Dirs.localRepository() : null, m2);
+        ArtifactLocator locator = new ArtifactLocator(cas.root(), m2);
 
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             if (pkg.checksum() == null) continue; // path/git dep

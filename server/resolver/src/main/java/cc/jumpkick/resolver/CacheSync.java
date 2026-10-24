@@ -11,7 +11,6 @@ import cc.jumpkick.lock.RepoSource;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.ArtifactLocator;
 import cc.jumpkick.repo.DownloadSlots;
-import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoCredentialResolver;
@@ -88,7 +87,7 @@ public final class CacheSync {
         // [m2] integration = false is honored here too.
         boolean effectiveM2 = m2integration && JkM2Config.resolve().integration();
         this.m2integration = effectiveM2;
-        this.locator = new ArtifactLocator(cas.root(), effectiveM2 ? M2Dirs.localRepository() : null, effectiveM2);
+        this.locator = new ArtifactLocator(cas.root(), effectiveM2);
     }
 
     /**

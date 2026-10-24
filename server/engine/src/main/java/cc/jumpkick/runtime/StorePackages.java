@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.compile.PackageIndex;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.RepoStoreDirs;
+import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -32,17 +33,30 @@ final class StorePackages {
         Path cached = indexDir.resolve("store").resolve(pkg + ".txt");
         List<String> hit = read(cached);
         if (hit != null) return hit;
-        Path repos = store.resolve("repos");
-        if (!Files.isDirectory(repos)) return List.of();
         String[] segments = pkg.split("\\.");
         if (segments.length < 2) return List.of();
+        List<Path> trees = new ArrayList<>();
+        Path repos = store.resolve("repos");
+        try {
+            if (Files.isDirectory(repos)) {
+                PathUtil.forEachChild(repos, (repo, attrs) -> {
+                    if (RepoStoreDirs.isTree(repo, attrs)) trees.add(repo);
+                    return true;
+                });
+            }
+        } catch (IOException e) {
+            return List.of();
+        }
+        // Central and the repositories settings.xml declares keep their jars in the Maven local repository.
+        Path m2 = M2Dirs.localRepository();
+        if (Files.isDirectory(m2)) trees.add(m2);
         List<String> found = new ArrayList<>();
         boolean[] capped = {false};
         try {
-            PathUtil.forEachChild(repos, (repo, attrs) -> {
-                if (!RepoStoreDirs.isTree(repo, attrs) || found.size() == 2) return found.size() < 2;
+            for (Path repo : trees) {
+                if (found.size() == 2 || capped[0]) break;
                 Path base = deepest(repo, segments);
-                if (base == null) return true;
+                if (base == null) continue;
                 int[] seen = {0};
                 PathUtil.forEachEntry(base, dir -> dir.getNameCount() - base.getNameCount() > 3, (path, fileAttrs) -> {
                     if (!fileAttrs.isRegularFile()) return true;
@@ -57,8 +71,7 @@ final class StorePackages {
                     if (ga != null && !found.contains(ga)) found.add(ga);
                     return found.size() < 2;
                 });
-                return found.size() < 2 && !capped[0];
-            });
+            }
         } catch (IOException e) {
             return List.of();
         }

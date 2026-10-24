@@ -20,6 +20,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -431,5 +432,110 @@ class RepoArtifactStoreTest {
                     .as("no staging file lingers")
                     .noneMatch(n -> n.endsWith(".part"));
         }
+    }
+
+    // ---- a store whose artifacts live in the Maven local repository --------------------------
+
+    private static final URI CENTRAL = URI.create("https://repo.maven.apache.org/maven2/");
+    private static final String JAR = "com/example/lib/1.0/lib-1.0.jar";
+
+    private static RepoArtifactStore centralOver(Path cache, Path m2) {
+        System.setProperty("jk.m2.local", m2.toString());
+        return RepoArtifactStore.forRepository(cache, "central", CENTRAL);
+    }
+
+    @AfterEach
+    void clearM2() {
+        System.clearProperty("jk.m2.local");
+    }
+
+    @Test
+    void a_downloaded_artifact_lands_in_the_local_repository_and_its_memo_in_the_store(@TempDir Path dir)
+            throws IOException {
+        Path cache = dir.resolve("store");
+        Path m2 = dir.resolve("m2");
+        RepoArtifactStore store = centralOver(cache, m2);
+        Path download = Files.writeString(dir.resolve("dl.jar"), "bytes");
+        String sha = Hashing.sha256Hex(download);
+
+        store.materialize(JAR, download, sha, true);
+
+        assertThat(store.m2Backed()).isTrue();
+        assertThat(m2.resolve(JAR)).hasContent("bytes");
+        assertThat(cache.resolve("repos/central").resolve(JAR)).doesNotExist();
+        Path memo = ArtifactMemo.jkPath(cache.resolve("repos/central"), JAR);
+        assertThat(ArtifactMemo.read(memo)).get().satisfies(m -> {
+            assertThat(m.fetched()).isTrue();
+            assertThat(m.provesFetchedBy(m2.resolve(JAR))).isTrue();
+        });
+        assertThat(m2.resolve(JAR).resolveSibling("lib-1.0.jk"))
+                .as("the local repository never holds a jk file")
+                .doesNotExist();
+    }
+
+    @Test
+    void a_file_in_the_local_repository_that_jk_did_not_download_is_not_replaced(@TempDir Path dir) throws IOException {
+        Path cache = dir.resolve("store");
+        Path m2 = dir.resolve("m2");
+        RepoArtifactStore store = centralOver(cache, m2);
+        Path theirs = m2.resolve(JAR);
+        Files.createDirectories(theirs.getParent());
+        Files.writeString(theirs, "maven-wrote-this");
+        Path download = Files.writeString(dir.resolve("dl.jar"), "different-bytes");
+
+        store.materialize(JAR, download, Hashing.sha256Hex(download), true);
+
+        assertThat(theirs).hasContent("maven-wrote-this");
+        assertThat(store.verify(JAR, Hashing.sha256Hex(download))).isEqualTo(RepoArtifactStore.IndexState.MISMATCH);
+    }
+
+    @Test
+    void a_file_jk_downloaded_that_no_longer_verifies_is_replaced(@TempDir Path dir) throws IOException {
+        Path cache = dir.resolve("store");
+        Path m2 = dir.resolve("m2");
+        RepoArtifactStore store = centralOver(cache, m2);
+        Path first = Files.writeString(dir.resolve("first.jar"), "first");
+        store.materialize(JAR, first, Hashing.sha256Hex(first), true);
+        Files.writeString(m2.resolve(JAR), "corrupted-since");
+        Path again = Files.writeString(dir.resolve("again.jar"), "first");
+
+        store.materialize(JAR, again, Hashing.sha256Hex(again), true);
+
+        assertThat(m2.resolve(JAR)).hasContent("first");
+    }
+
+    @Test
+    void evicting_removes_the_artifact_only_when_jk_downloaded_it(@TempDir Path dir) throws IOException {
+        Path cache = dir.resolve("store");
+        Path m2 = dir.resolve("m2");
+        RepoArtifactStore store = centralOver(cache, m2);
+        Path mine = Files.writeString(dir.resolve("mine.jar"), "mine");
+        store.materialize(JAR, mine, Hashing.sha256Hex(mine), true);
+        String other = "com/example/other/2.0/other-2.0.jar";
+        Path theirs = m2.resolve(other);
+        Files.createDirectories(theirs.getParent());
+        Files.writeString(theirs, "theirs");
+        store.locate(other, Hashing.sha256Hex(theirs)); // verified, not downloaded
+
+        assertThat(store.evict(JAR)).isTrue();
+        assertThat(store.evict(other)).isTrue();
+
+        assertThat(m2.resolve(JAR)).as("jk's own download goes").doesNotExist();
+        assertThat(theirs).as("the file jk only verified stays").exists();
+    }
+
+    @Test
+    void looking_at_an_unmemoed_file_in_the_local_repository_does_not_vouch_for_it(@TempDir Path dir)
+            throws IOException {
+        Path cache = dir.resolve("store");
+        Path m2 = dir.resolve("m2");
+        RepoArtifactStore store = centralOver(cache, m2);
+        Path theirs = m2.resolve(JAR);
+        Files.createDirectories(theirs.getParent());
+        Files.writeString(theirs, "unknown");
+
+        assertThat(store.locate(JAR)).contains(theirs);
+        assertThat(ArtifactMemo.jkPath(cache.resolve("repos/central"), JAR)).doesNotExist();
+        assertThat(store.contains(JAR)).isFalse();
     }
 }

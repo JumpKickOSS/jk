@@ -10,6 +10,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.Coordinate;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
@@ -212,9 +213,11 @@ class MavenRepoTest {
     }
 
     @Test
-    void m2integration_true_write_through_populates_m2(@TempDir Path tempDir, @TempDir Path m2) throws Exception {
+    void a_shared_repository_downloads_into_m2_and_keeps_only_its_memo_in_the_store(
+            @TempDir Path tempDir, @TempDir Path m2, @TempDir Path settingsDir) throws Exception {
         String previous = System.setProperty("jk.m2.local", m2.toString());
         try {
+            declareShared(settingsDir);
             byte[] jar = "fake-jar-bytes".getBytes(StandardCharsets.UTF_8);
             serveArtifact("/com/example/widget/1.0/widget-1.0.jar", jar);
             MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, true);
@@ -222,20 +225,57 @@ class MavenRepoTest {
             Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
             MavenRepo.Fetched fetched = repo.fetchArtifact(coord);
 
-            Path m2Jar = m2.resolve(MavenLayout.artifactPath(coord));
-            // The store is what jk reads; the local repository gets Maven's copy.
-            assertThat(fetched.cachePath())
-                    .isEqualTo(RepoArtifactStore.forRepository(tempDir, "test", base)
-                            .locate(MavenLayout.artifactPath(coord))
-                            .orElseThrow());
-            assertThat(m2Jar).exists();
+            String rel = MavenLayout.artifactPath(coord);
+            Path m2Jar = m2.resolve(rel);
+            assertThat(fetched.cachePath()).isEqualTo(m2Jar);
             assertThat(Files.readAllBytes(m2Jar)).isEqualTo(jar);
-            assertThat(m2Jar.resolveSibling(m2Jar.getFileName() + ".sha1")).exists();
-            assertThat(m2Jar.resolveSibling(m2Jar.getFileName() + ".md5")).exists();
-            assertThat(m2Jar.resolveSibling("_remote.repositories")).exists();
+            Path tree = Objects.requireNonNull(
+                    RepoArtifactStore.forRepository(tempDir, "test", base).root());
+            assertThat(tree.resolve(rel)).as("no second copy in the store").doesNotExist();
+            assertThat(ArtifactMemo.read(ArtifactMemo.jkPath(tree, rel)))
+                    .get()
+                    .satisfies(memo -> assertThat(memo.provesFetchedBy(m2Jar)).isTrue());
+            assertThat(m2Jar.resolveSibling("widget-1.0.jk"))
+                    .as("the local repository holds no jk file")
+                    .doesNotExist();
+        } finally {
+            System.clearProperty(MavenSettings.SETTINGS_PROPERTY);
+            restoreM2Local(previous);
+        }
+    }
+
+    @Test
+    void a_repository_settings_do_not_declare_keeps_its_jars_in_the_store_even_with_m2_integration_on(
+            @TempDir Path tempDir, @TempDir Path m2) throws Exception {
+        String previous = System.setProperty("jk.m2.local", m2.toString());
+        try {
+            byte[] jar = "fake-jar-bytes".getBytes(StandardCharsets.UTF_8);
+            serveArtifact("/com/example/widget/1.0/widget-1.0.jar", jar);
+            MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, true);
+
+            Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
+            repo.fetchArtifact(coord);
+
+            assertThat(RepoArtifactStore.forRepository(tempDir, "test", base).locate(MavenLayout.artifactPath(coord)))
+                    .isPresent();
+            assertThat(m2.resolve(MavenLayout.artifactPath(coord))).doesNotExist();
         } finally {
             restoreM2Local(previous);
         }
+    }
+
+    /** The user's settings.xml declares the stub in an active profile, so Maven shares it as it does Central. */
+    private void declareShared(Path settingsDir) throws Exception {
+        Path xml = settingsDir.resolve("settings.xml");
+        Files.writeString(xml, """
+                <settings>
+                  <profiles><profile><id>p</id><repositories>
+                    <repository><id>stub</id><url>%s</url></repository>
+                  </repositories></profile></profiles>
+                  <activeProfiles><activeProfile>p</activeProfile></activeProfiles>
+                </settings>
+                """.formatted(base));
+        System.setProperty(MavenSettings.SETTINGS_PROPERTY, xml.toString());
     }
 
     /** Restore {@code jk.m2.local} to its prior value (the class-level {@link #isolateM2} temp dir). */

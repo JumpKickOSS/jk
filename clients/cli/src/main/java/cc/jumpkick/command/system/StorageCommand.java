@@ -350,7 +350,7 @@ public final class StorageCommand extends GroupCommand {
             try {
                 result = EngineClient.runCacheMaintenance(
                         EnginePaths.current(),
-                        new EngineRequests.CacheMaintRequest("sweep", root, dryRun, false, null),
+                        new EngineRequests.CacheMaintRequest("sweep", root, dryRun, false, null, 0),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Storage"),
                         CacheCommand::printWait,
                         summary);

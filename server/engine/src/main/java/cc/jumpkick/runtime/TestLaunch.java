@@ -216,7 +216,7 @@ final class TestLaunch {
         synchronized (TEST_ROOTS_WARMED) {
             if (testRootsWarm) return;
             testRootsWarm = true;
-            if (TestStoreSeed.holdsTestRoots(JkDirs.store())) return;
+            if (TestStoreSeed.holdsTestRoots()) return;
             Path dir = null;
             try {
                 dir = Files.createTempDirectory(Files.createDirectories(JkDirs.cache()), "test-roots-");

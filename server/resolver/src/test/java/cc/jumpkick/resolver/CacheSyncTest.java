@@ -7,6 +7,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.repo.DownloadSlots;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.run.JkThreads;
@@ -21,9 +22,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -79,39 +82,93 @@ class CacheSyncTest {
         assertThat(report.errors()).singleElement().asString().contains("checksum mismatch");
     }
 
+    /** The stub is Maven's to share, as Central is: a user's settings.xml declares it in an active profile. */
+    private void declareStubShared(Path tempDir) throws Exception {
+        System.setProperty("jk.m2.local", tempDir.resolve("m2").toString());
+        Path xml = tempDir.resolve("settings.xml");
+        Files.writeString(xml, """
+                <settings>
+                  <profiles><profile><id>p</id><repositories>
+                    <repository><id>stub</id><url>%s/</url></repository>
+                  </repositories></profile></profiles>
+                  <activeProfiles><activeProfile>p</activeProfile></activeProfiles>
+                </settings>
+                """.formatted(http.base()));
+        System.setProperty(MavenSettings.SETTINGS_PROPERTY, xml.toString());
+    }
+
+    @AfterEach
+    void forgetSettings() {
+        System.clearProperty(MavenSettings.SETTINGS_PROPERTY);
+    }
+
+    private static Path m2Jar() {
+        return Path.of(System.getProperty("jk.m2.local")).resolve("com/foo/leaf/1.0/leaf-1.0.jar");
+    }
+
     @Test
-    void mismatching_m2_is_not_overwritten(@TempDir Path tempDir) throws Exception {
+    void a_shared_repository_is_downloaded_into_the_local_repository_and_not_the_store(@TempDir Path tempDir)
+            throws Exception {
         byte[] jar = "genuine-bytes".getBytes(StandardCharsets.UTF_8);
         String hex = Hashing.sha256Hex(jar);
         registerJar("com.foo", "leaf", "1.0", jar);
+        declareStubShared(tempDir);
+
+        assertThat(newSync(tempDir, true)
+                        .sync(lockOf(pkg("com.foo:leaf", "1.0", "sha256:" + hex)))
+                        .fetched())
+                .isEqualTo(1);
+
+        assertThat(Files.readAllBytes(m2Jar())).isEqualTo(jar);
+        assertThat(Objects.requireNonNull(centralStore(tempDir.resolve("cache")).root())
+                        .resolve("com/foo/leaf/1.0/leaf-1.0.jar"))
+                .as("no second copy in the store tree")
+                .doesNotExist();
+    }
+
+    @Test
+    void a_file_in_the_local_repository_jk_did_not_put_there_is_not_overwritten(@TempDir Path tempDir)
+            throws Exception {
+        byte[] jar = "genuine-bytes".getBytes(StandardCharsets.UTF_8);
+        String hex = Hashing.sha256Hex(jar);
+        registerJar("com.foo", "leaf", "1.0", jar);
+        declareStubShared(tempDir);
+        Files.createDirectories(m2Jar().getParent());
+        Files.write(m2Jar(), "poisoned".getBytes(StandardCharsets.UTF_8));
+
+        CacheSync.Report report = newSync(tempDir, true).sync(lockOf(pkg("com.foo:leaf", "1.0", "sha256:" + hex)));
+
+        assertThat(report.errors()).isNotEmpty();
+        assertThat(Files.readAllBytes(m2Jar())).isEqualTo("poisoned".getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void a_file_jk_downloaded_and_that_was_damaged_since_is_repaired(@TempDir Path tempDir) throws Exception {
+        byte[] jar = "genuine-bytes".getBytes(StandardCharsets.UTF_8);
+        String hex = Hashing.sha256Hex(jar);
+        registerJar("com.foo", "leaf", "1.0", jar);
+        declareStubShared(tempDir);
         Lockfile lock = lockOf(pkg("com.foo:leaf", "1.0", "sha256:" + hex));
         assertThat(newSync(tempDir, true).sync(lock).fetched()).isEqualTo(1);
-
-        Path m2Jar = Path.of(System.getProperty("jk.m2.local")).resolve("com/foo/leaf/1.0/leaf-1.0.jar");
-        Files.write(m2Jar, "poisoned".getBytes(StandardCharsets.UTF_8));
+        Files.write(m2Jar(), "damaged".getBytes(StandardCharsets.UTF_8));
 
         CacheSync.Report report = newSync(tempDir, true).sync(lock);
 
         assertThat(report.errors()).isEmpty();
-        assertThat(Files.readAllBytes(m2Jar)).isEqualTo("poisoned".getBytes(StandardCharsets.UTF_8));
-        Path storeJar = centralStore(tempDir.resolve("cache"))
-                .locate("com/foo/leaf/1.0/leaf-1.0.jar")
-                .orElseThrow();
-        assertThat(storeJar).exists();
-        assertThat(Files.readAllBytes(storeJar)).isEqualTo(jar);
+        assertThat(Files.readAllBytes(m2Jar())).isEqualTo(jar);
     }
 
     @Test
-    void does_not_touch_m2_when_mirroring_is_disabled(@TempDir Path tempDir) throws Exception {
+    void does_not_touch_m2_when_integration_is_disabled(@TempDir Path tempDir) throws Exception {
         byte[] jar = "abc".getBytes(StandardCharsets.UTF_8);
         String hex = Hashing.sha256Hex(jar);
         registerJar("com.foo", "leaf", "1.0", jar);
+        declareStubShared(tempDir);
         Lockfile lock = lockOf(pkg("com.foo:leaf", "1.0", "sha256:" + hex));
 
         assertThat(newSync(tempDir).sync(lock).fetched()).isEqualTo(1);
 
-        Path m2Jar = Path.of(System.getProperty("jk.m2.local")).resolve("com/foo/leaf/1.0/leaf-1.0.jar");
-        assertThat(m2Jar).doesNotExist();
+        assertThat(m2Jar()).doesNotExist();
     }
 
     @Test

@@ -14,6 +14,7 @@ import cc.jumpkick.repo.RepoArtifactStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -30,6 +31,7 @@ class PluginClasspathMemberViewTest {
     void a_step_s_classpaths_read_the_member_s_partition_row_in_place_of_the_workspace_s(@TempDir Path tmp)
             throws Exception {
         Path store = Files.createDirectories(tmp.resolve("store"));
+        centralIsTheLocalRepository(store);
         Path root = Files.createDirectories(tmp.resolve("ws"));
         Files.writeString(root.resolve("jk.toml"), """
                 group   = "com.example"
@@ -111,5 +113,16 @@ class PluginClasspathMemberViewTest {
                 null,
                 List.of(scopes),
                 List.of());
+    }
+
+    /** Central's artifacts live in the Maven local repository; these fixtures keep it beside the memos, in the store's central tree. */
+    private static void centralIsTheLocalRepository(Path store) {
+        System.setProperty(
+                "jk.m2.local", store.resolve("repos").resolve("central").toString());
+    }
+
+    @AfterEach
+    void forgetLocalRepository() {
+        System.clearProperty("jk.m2.local");
     }
 }

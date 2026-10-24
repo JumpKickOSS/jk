@@ -4,17 +4,25 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.cache.StoreCasGc;
+import cc.jumpkick.config.DiskPressure;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkCacheConfig;
+import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Workspace;
+import cc.jumpkick.repo.M2Backing;
+import cc.jumpkick.repo.M2Clean;
+import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
@@ -28,14 +36,17 @@ import cc.jumpkick.task.HeavyActionPolicy;
 import cc.jumpkick.task.TmpGc;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.LongAdder;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Cache-maintenance plans for {@code jk cache clean}, {@code jk cache nuke}, {@code jk storage
@@ -61,8 +72,8 @@ public final class CachePlans {
     /**
      * Hygiene plan for the cache at {@code root}: leaked CAS temps, format stamps, step timings, an
      * unreferenced-blob sweep, and a tiered retention pass over whole action-cache entries down to
-     * {@code cache.max-cache-size-gb}. Never touches the artifact store. {@code includeJkTmp} sweeps
-     * {@code state/tmp} only for the default cache dir.
+     * {@code cache.max-cache-size-gb}. For the default cache dir ({@code includeJkTmp}) it also sweeps
+     * {@code state/tmp} and collects the artifact store's CAS ({@link StoreCasGc}).
      */
     public static BuildPlan pruneBuildPlan(Path root, boolean dryRun, boolean includeJkTmp) {
         Task pruneStep = Task.builder("prune")
@@ -117,6 +128,36 @@ public final class CachePlans {
                     totalFiles += retention.deletedFiles();
                     totalBytes += retention.freedBytes();
                     ctx.put(FINAL_ACTION_BYTES, retention.finalActionBytes());
+
+                    // The artifact store's CAS has no other collector: what installs and syncs leave there
+                    // ages out by what it is and how big, faster as the volume fills.
+                    if (includeJkTmp) {
+                        double pressure = DiskPressure.factor(JkCacheConfig.DiskSpace.probe(JkStores.store()));
+                        var storeGc = StoreCasGc.run(
+                                JkStores.storeCas(),
+                                StoreCasGc.pinnedShas(),
+                                StoreCasGc.Policy.defaults(pressure),
+                                System.currentTimeMillis(),
+                                dryRun);
+                        totalFiles += storeGc.deleted();
+                        totalBytes += storeGc.freedBytes();
+                        SweepReport shadowed = reclaimShadowedArtifacts(dryRun);
+                        totalFiles += shadowed.files();
+                        totalBytes += shadowed.bytes();
+                        // Only on an admin's say-so: the local repository is shared, and jk never reclaims it
+                        // on its own account.
+                        if (JkM2Config.resolve().autoClean()) {
+                            M2Clean.Report m2 = cleanM2(null, 0, dryRun);
+                            totalFiles += m2.removed().size();
+                            totalBytes += m2.freedBytes();
+                        }
+                        if (pressure < DiskPressure.NONE) {
+                            ctx.warn(
+                                    "prune",
+                                    "disk space is low: store retention windows are scaled to "
+                                            + Math.round(pressure * 100) + "%");
+                        }
+                    }
                     if (!retention.unknownEntries().isEmpty()) {
                         ctx.warn(
                                 "prune",
@@ -139,6 +180,43 @@ public final class CachePlans {
                 .stateKeys(FILES, BYTES, FINAL_ACTION_BYTES)
                 .addTask(pruneStep)
                 .build();
+    }
+
+    /**
+     * Remove what jk downloaded into the Maven local repository and no longer uses: files its own memos
+     * prove it fetched ({@link M2Clean}), unused for {@code olderThanDays} (the machine's {@code [m2]
+     * clean-after-days} when {@code 0}), holding back what the lockfile at {@code projectDir} still pins.
+     * Never run on its own account: a request, or the machine's {@code [m2] auto-clean}.
+     */
+    public static BuildPlan m2CleanBuildPlan(@Nullable Path projectDir, int olderThanDays, boolean dryRun) {
+        Task step = Task.builder("m2-clean")
+                .ticks(1)
+                .execute(ctx -> {
+                    ctx.label("Cleaning the Maven local repository…");
+                    M2Clean.Report report = cleanM2(projectDir, olderThanDays, dryRun);
+                    if (report.foreign() > 0) {
+                        ctx.warn(
+                                "m2",
+                                report.foreign() + " file(s) jk downloaded have changed since and were left alone");
+                    }
+                    ctx.put(FILES, (long) report.removed().size());
+                    ctx.put(BYTES, report.freedBytes());
+                    ctx.progress(1);
+                })
+                .build();
+        return BuildPlan.builder("cache-m2-clean")
+                .stateKeys(FILES, BYTES)
+                .addTask(step)
+                .build();
+    }
+
+    /** One {@link M2Clean} pass over the machine's local repository, with the window and pins a request or the config names. */
+    public static M2Clean.Report cleanM2(@Nullable Path projectDir, int olderThanDays, boolean dryRun)
+            throws IOException {
+        int days = olderThanDays > 0 ? olderThanDays : JkM2Config.resolve().cleanAfterDays();
+        Set<String> pins = projectDir == null ? Set.of() : M2Clean.pinsOf(projectDir.resolve(ManifestNames.LOCK));
+        return M2Clean.run(
+                JkStores.store(), M2Dirs.localRepository(), Duration.ofDays(days), pins, Clock.SYSTEM.millis(), dryRun);
     }
 
     /**
@@ -206,9 +284,10 @@ public final class CachePlans {
     public record SweepReport(long files, long bytes) {}
 
     /**
-     * Artifact-store GC: leaked {@code .put-} download temps and legacy name-keyed repository
-     * stores, nothing else. The store is never size-bounded and its blobs are never collected —
-     * {@code jk storage nuke} is the only way to shrink it.
+     * Artifact-store GC: leaked {@code .put-} download temps, legacy name-keyed repository stores
+     * and artifacts the Maven local repository now owns ({@link #reclaimShadowedArtifacts}). The
+     * store's CAS blobs are collected by the cache prune ({@link StoreCasGc}); {@code jk storage
+     * nuke} removes everything.
      */
     public static SweepReport sweepStore(Path root, boolean dryRun) throws IOException {
         long totalFiles = 0;
@@ -234,7 +313,44 @@ public final class CachePlans {
             if (!dryRun) PathUtil.deleteRecursivelyOrThrow(legacy);
         }
 
+        SweepReport shadowed = reclaimShadowedArtifacts(dryRun);
+        totalFiles += shadowed.files();
+        totalBytes += shadowed.bytes();
+
         return new SweepReport(totalFiles, totalBytes);
+    }
+
+    /**
+     * Artifacts a store tree holds that the Maven local repository now owns. A repository whose
+     * artifacts live in {@code ~/.m2} ({@link M2Backing}) keeps only {@code .jk} memos under {@code
+     * repos/<id>/}; the jars an earlier layout left beside them are never read again, and are the
+     * largest thing in the store. Trees that do keep their own artifacts, and a tree that <em>is</em>
+     * the local repository (a test sandbox), are left alone.
+     */
+    public static SweepReport reclaimShadowedArtifacts(boolean dryRun) throws IOException {
+        long files = 0;
+        long bytes = 0;
+        Path m2 = M2Dirs.localRepository();
+        Path m2Real =
+                Files.isDirectory(m2) ? m2.toRealPath() : m2.toAbsolutePath().normalize();
+        for (RepoArtifactStore.Origin origin : RepoArtifactStore.describeAll(JkStores.store())) {
+            String canonical = origin.origin();
+            if (origin.isLegacy() || canonical == null) continue;
+            if (M2Backing.rootFor(URI.create(canonical), true).isEmpty()) continue;
+            Path tree = JkStores.resolve("repos").resolve(origin.id());
+            if (tree.toRealPath().equals(m2Real)) continue;
+            List<Path> stray = new ArrayList<>();
+            PathUtil.forEachRegularFile(tree, (file, attrs) -> {
+                String name = file.getFileName().toString();
+                if (!name.endsWith(".jk") && !RepoArtifactStore.ORIGIN_FILE.equals(name)) stray.add(file);
+            });
+            for (Path file : stray) {
+                files++;
+                bytes += Files.size(file);
+                if (!dryRun) Files.deleteIfExists(file);
+            }
+        }
+        return new SweepReport(files, bytes);
     }
 
     /**

@@ -18,7 +18,7 @@ jk self nuke          # jk-owned product dirs (not PATH, not JDKs)
 | Tier | Holds | Wipe |
 |------|--------|------|
 | **Cache** (`JK_CACHE_DIR`) | Action index + cache CAS (classes, tests, jars, natives, OCI, stamps), and compiled build-logic `.kts` under `kts/` | `jk cache nuke` |
-| **Store** (`JK_STORE_DIR`) | Maven-layout `repos/<origin>/` + `.jk` memos (deps, workers) — one tree per repository *origin*, never per name ([Repositories](repositories.md#store-layout-one-tree-per-origin)); `libs.global.toml`, cloned Giter8 catalogs under `templates/`, provisioned build tools under `tools/` (Kotlin, Maven, Gradle, the build-logic `.kts` host). With `[m2] integration` on (default) a fetched jar is also written through to the Maven local repo, and a digest-matching file already there is copied in instead of downloaded; the store is what a build reads. | `jk storage nuke` (does **not** delete `~/.m2`) |
+| **Store** (`JK_STORE_DIR`) | Maven-layout `repos/<origin>/` + `.jk` memos (deps, workers) — one tree per repository *origin*, never per name ([Repositories](repositories.md#store-layout-one-tree-per-origin)); `libs.global.toml`, cloned Giter8 catalogs under `templates/`, provisioned build tools under `tools/` (Kotlin, Maven, Gradle, the build-logic `.kts` host). With `[m2] integration` on (default) Maven Central's and your `settings.xml` repositories' artifacts live in the Maven local repo instead (one copy, shared with Maven), with only their `.jk` memos here; a digest-matching file already there is used where it is. | `jk storage nuke` (does **not** delete `~/.m2`) |
 | **Project `target/`** | This checkout’s outputs | `jk clean` |
 
 `jk clean` does **not** force a full recompute: unchanged inputs restore from the action
@@ -121,9 +121,9 @@ closure jars stay: they are shared with project resolution and are re-walked, no
 `jk doctor`'s `m2:` line hashes the Maven local repository's copy of every POM and jar the
 current project's `jk-lock.toml` names and compares it with the `.sha1` Maven wrote beside it. A
 mismatch is a warning naming the file: something rewrote it after Maven verified it, and every
-build that reads it fails until it is deleted and fetched again. jk never writes into a file it
-took from `~/.m2`: it copies such a file into its store, and a store write replaces a file by
-temp and rename instead of writing through it.
+build that reads it fails until it is deleted and fetched again. jk never replaces or removes a file in `~/.m2` that it did not download: a slot that holds
+other bytes than the lock pins fails the fetch and names the file, and a file jk fetched that
+has since been damaged is replaced by temp and rename.
 
 ## Budgets
 
@@ -208,13 +208,19 @@ writes — it can legitimately report “Nothing to clean up.” on a large cach
 
 ## What is never pruned
 
-- **The artifact store** (`JK_STORE_DIR`): Maven-layout `repos/`, worker jars and promoted
-  blobs grow without limit. No budget, no eviction, no reachability sweep. `jk storage
-  clean` reclaims only leaked `.put-` download temps and legacy `repos/<name>` trees that
-  predate origin keying (nothing reads them; `jk storage usage` flags them). `jk storage
-  nuke` is the only way to shrink it on purpose.
-- **The Maven local repository** (`~/.m2/repository`): jk does not own it and never deletes
-  from it. `jk storage usage` reports its size for information only.
+- **The artifact store** (`JK_STORE_DIR`): its CAS is collected with the cache: a blob an
+  installed engine's shelf manifest (or the client on `PATH`) names is kept; every other blob
+  ages out by what it is and how big. Native binaries last three days (the newest two are
+  always kept), jars over 50 MB a week, other jars three weeks, anything else a month, and
+  every window shrinks as the volume fills (to a tenth under 5% or 10 GiB free). `jk storage
+  clean` reclaims leaked `.put-` download temps and legacy `repos/<name>` trees; `jk storage
+  nuke` removes everything on purpose.
+- **The Maven local repository** (`~/.m2/repository`): jk never removes from it on its own
+  account. `jk cache clean --m2` (MCP: `disk` `action=m2-clean`) removes files unused for
+  `--older-than` days (default `[m2] clean-after-days`, 60) that jk's own memo proves jk
+  downloaded and nothing has changed since, and keeps what the current project's lockfile pins;
+  `--dry-run` lists them. A build server that wants `~/.m2` bounded sets `[m2] auto-clean =
+  true` (or `JK_M2_AUTO_CLEAN=true`) and the engine does the same at its idle boundary.
 - **Managed JDKs**: `jk jdk uninstall` removes them; nothing else does.
 
 MCP: `disk` (`clean`/`nuke` require `confirm=true`).

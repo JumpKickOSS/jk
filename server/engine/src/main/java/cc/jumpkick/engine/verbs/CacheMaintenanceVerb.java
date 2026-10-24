@@ -53,7 +53,7 @@ public final class CacheMaintenanceVerb implements HostedVerb {
 
     @Override
     public String decodeJob(JobSpec spec) {
-        return new CachePruneRequest("clear", JkDirs.cache().toString(), spec.dir(), false, false).encode();
+        return new CachePruneRequest("clear", JkDirs.cache().toString(), spec.dir(), false, false, 0).encode();
     }
 
     @Override
@@ -79,6 +79,11 @@ public final class CacheMaintenanceVerb implements HostedVerb {
                                     case "purge" -> CachePlans.purgeBuildPlan(cache);
                                     case "sweep" -> CachePlans.sweepBuildPlan(cache, dryRun);
                                     case "clear" -> CachePlans.clearBuildPlan(cache, Path.of(req.dir()), dryRun);
+                                    case "m2" ->
+                                        CachePlans.m2CleanBuildPlan(
+                                                req.dir() == null ? null : Path.of(req.dir()),
+                                                req.olderThanDays(),
+                                                dryRun);
                                     default -> CachePlans.pruneBuildPlan(cache, dryRun, req.includeJkTmp());
                                 };
                         Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);

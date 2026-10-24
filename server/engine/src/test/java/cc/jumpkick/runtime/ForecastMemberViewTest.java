@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -41,6 +42,7 @@ class ForecastMemberViewTest {
     @Test
     void a_member_forecasts_the_processor_path_the_build_compiles_with(@TempDir Path tmp) throws Exception {
         Path store = Files.createDirectories(tmp.resolve("store"));
+        centralIsTheLocalRepository(store);
         Path cache = Files.createDirectories(tmp.resolve("cache"));
         Path root = Files.createDirectories(tmp.resolve("ws")).toRealPath();
         Files.writeString(root.resolve("jk.toml"), """
@@ -130,5 +132,16 @@ class ForecastMemberViewTest {
                 null,
                 List.of(scopes),
                 List.of());
+    }
+
+    /** Central's artifacts live in the Maven local repository; these fixtures keep it beside the memos, in the store's central tree. */
+    private static void centralIsTheLocalRepository(Path store) {
+        System.setProperty(
+                "jk.m2.local", store.resolve("repos").resolve("central").toString());
+    }
+
+    @AfterEach
+    void forgetLocalRepository() {
+        System.clearProperty("jk.m2.local");
     }
 }
