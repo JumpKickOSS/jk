@@ -94,6 +94,20 @@ class QuarkusPluginTest {
     }
 
     @Test
+    void the_bootstrap_runner_in_lib_boot_is_not_taken_for_an_uber_jar(@TempDir Path dir) throws Exception {
+        Path augment = dir.resolve("augment");
+        Path app = augment.resolve("quarkus-app/quarkus-app");
+        Files.createDirectories(app.resolve("lib/boot"));
+        Files.writeString(app.resolve("quarkus-run.jar"), "RUN");
+        Files.writeString(app.resolve("lib/boot/io.quarkus.quarkus-bootstrap-runner-3.40.1.jar"), "BOOT");
+
+        Path outJar = dir.resolve("target/hello.jar");
+        QuarkusPlugin.produceFastJar(fake(dir, outJar, augment));
+
+        assertThat(outJar).hasContent("RUN");
+    }
+
+    @Test
     void uber_jar_wins_and_needs_no_siblings(@TempDir Path dir) throws Exception {
         Path augment = dir.resolve("augment");
         Files.createDirectories(augment);
