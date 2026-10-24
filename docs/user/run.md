@@ -13,6 +13,18 @@ is not available on this path.
 `jk run` is a **wrapper** around the process: Ctrl-C is owned by JumpKick (cancels the
 engine job, then the process). It is not `exec`-replace.
 
+### JVM flags
+
+`[application] jvm-args` lists flags for the app JVM, placed before the classpath. `jk run` and `jk dev` both pass them.
+
+```toml
+[application]
+main     = "com.example.AppKt"
+jvm-args = ["--enable-native-access=ALL-UNNAMED", "-Xmx512m"]
+```
+
+They are separate from `[jvm] args` (jk's worker JVMs) and `[test] jvm-args` (forked test JVMs).
+
 ### Environment
 
 The app inherits the shell's environment, and the module's `.env` files fill in what the shell

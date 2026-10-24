@@ -126,6 +126,11 @@ public record JkBuild(
         return application == null ? null : application.main();
     }
 
+    /** {@code [application].jvm-args}; empty when {@code [application]} is absent or sets none. */
+    public List<String> applicationJvmArgs() {
+        return application == null ? List.of() : application.jvmArgs();
+    }
+
     /** True when a {@code main} class is set — the {@code [application]} table declares one. */
     public boolean isRunnable() {
         return mainClass() != null;
@@ -252,7 +257,8 @@ public record JkBuild(
                 workspace,
                 manifest,
                 plugins,
-                new Application(app.main(), assembly, minified, app.nativeImage(), app.config(), app.relocate()),
+                new Application(
+                        app.main(), assembly, minified, app.nativeImage(), app.config(), app.relocate(), app.jvmArgs()),
                 nativeConfig,
                 pluginConfigs,
                 build,
@@ -802,6 +808,8 @@ public record JkBuild(
      *     shaded package in declaration order — every class under a source package is rewritten
      *     to the shaded one, in its own name, in every reference to it and in the service files
      *     that name it. Empty for a fat jar that bundles classes under their own names.
+     * @param jvmArgs {@code jvm-args}: flags {@code jk run} and {@code jk dev} put on the
+     *     application's JVM, before the classpath; empty for none
      */
     public record Application(
             @Nullable String main,
@@ -809,7 +817,8 @@ public record JkBuild(
             boolean minified,
             boolean nativeImage,
             @Nullable String config,
-            Map<String, String> relocate) {
+            Map<String, String> relocate,
+            List<String> jvmArgs) {
 
         public Application {
             if (main != null && main.isBlank()) main = null;
@@ -819,6 +828,18 @@ public record JkBuild(
             // A/B-testable without a config change.
             if (minified) assembly = true;
             relocate = relocate == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(relocate));
+            jvmArgs = jvmArgs == null ? List.of() : List.copyOf(jvmArgs);
+        }
+
+        /** Convenience: no application JVM flags. */
+        public Application(
+                @Nullable String main,
+                boolean assembly,
+                boolean minified,
+                boolean nativeImage,
+                @Nullable String config,
+                Map<String, String> relocate) {
+            this(main, assembly, minified, nativeImage, config, relocate, List.of());
         }
 
         /** Convenience: no package relocation. */

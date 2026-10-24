@@ -490,6 +490,7 @@ public final class ExecPlans {
         List<String> argv = new ArrayList<>();
         argv.add(java);
         argv.addAll(JvmModulePath.args(project, dir, classpath));
+        argv.addAll(project.applicationJvmArgs());
         if (classesEntry) {
             PluginBuild.shape(project, dir)
                     .ifPresent(sh -> sh.runSystemProperties().forEach((k, v) -> argv.add("-D" + k + "=" + v)));

@@ -745,7 +745,13 @@ public final class ManifestTables {
             throw new JkBuildParseException("[application].main is required");
         }
         return Optional.of(new JkBuild.Application(
-                main, assembly, minified, nativeImage, config, parseRelocate(application, "[application]")));
+                main,
+                assembly,
+                minified,
+                nativeImage,
+                config,
+                parseRelocate(application, "[application]"),
+                optionalStringList(application, "jvm-args", "application.jvm-args")));
     }
 
     /**
@@ -802,7 +808,7 @@ public final class ManifestTables {
      * a class rather than one key at a time.
      */
     static final List<String> APPLICATION_KEYS =
-            List.of("main", "assembly", "minified", "native", "config", "relocate");
+            List.of("main", "assembly", "minified", "native", "config", "relocate", "jvm-args");
 
     /**
      * Reject an {@code [application]} key written at the top level.
