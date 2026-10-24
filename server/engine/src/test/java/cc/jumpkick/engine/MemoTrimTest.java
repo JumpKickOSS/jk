@@ -6,20 +6,32 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.host.Interned;
+import cc.jumpkick.host.Settled;
 import cc.jumpkick.version.Versions;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /** The settled idle trim empties the process-wide memos and its log fragment names what went. */
 class MemoTrimTest {
 
+    /** Long enough after its writes that every file this test wrote reads as {@link Settled}. */
+    private static final Duration SETTLED = Duration.ofSeconds(5);
+
+    @AfterEach
+    void realClock() {
+        Settled.aheadForTests(null);
+    }
+
     @Test
     void the_trim_names_what_it_dropped_and_leaves_the_memos_empty(@TempDir Path dir) throws Exception {
+        Settled.aheadForTests(SETTLED);
         MemoTrim.drop(null);
         Path toml = dir.resolve("jk.toml");
         Files.writeString(toml, "name = \"m\"\nversion = \"1.0\"\n");
@@ -50,6 +62,7 @@ class MemoTrimTest {
      */
     @Test
     void the_trim_keeps_the_last_built_workspaces_manifests_and_drops_every_other(@TempDir Path dir) throws Exception {
+        Settled.aheadForTests(SETTLED);
         MemoTrim.drop(null);
         Path kept = manifest(dir.resolve("kept"), "kept");
         Path gone = manifest(dir.resolve("gone"), "gone");

@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.config.StampedMemo.FileStamp;
+import cc.jumpkick.host.Settled;
 import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.library.LibraryCatalog;
@@ -99,7 +100,7 @@ public final class JkBuildParser {
      * <p>A same-length edit landing inside one filesystem mtime tick is invisible to
      * {@code (size, mtime)}, and on Windows the tick is coarse enough that an editor save followed
      * immediately by a build hits it. Bytes are included only while the mtime is fresh, so the extra
-     * read happens for one file. Outside {@link #SETTLE_MS} the stamp is one {@code readAttributes}
+     * read happens for one file. Once the file is {@link Settled} the stamp is one {@code readAttributes}
      * and the read is skipped entirely.
      *
      * <p>Crossing the window changes the stamp shape for the same file, so the first lookup after a
@@ -120,9 +121,6 @@ public final class JkBuildParser {
     private record ManifestStamp(
             StatIdentity identity, @Nullable String body, Map<Path, @Nullable FileStamp> catalog) {
 
-        /** Distrust {@code (size, mtime)} for a file modified within this window. */
-        private static final long SETTLE_MS = 2_000;
-
         static ManifestStamp of(Path file, ByteSource read) throws IOException {
             BasicFileAttributes attrs;
             try {
@@ -131,7 +129,7 @@ public final class JkBuildParser {
                 throw new JkBuildParseException("jk.toml not found: " + file);
             }
             StatIdentity identity = StatIdentity.of(file, attrs);
-            boolean settled = System.currentTimeMillis() - identity.lastTouchedMillis() >= SETTLE_MS;
+            boolean settled = Settled.is(identity);
             return new ManifestStamp(
                     identity, settled ? null : read.read(file), LibraryCatalog.stamp(moduleDirOf(file)));
         }

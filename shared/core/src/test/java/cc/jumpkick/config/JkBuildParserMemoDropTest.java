@@ -3,12 +3,15 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Settled;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -19,6 +22,14 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class JkBuildParserMemoDropTest {
 
+    /** Long enough after its writes that every file this test wrote reads as {@link Settled}. */
+    private static final Duration SETTLED = Duration.ofSeconds(5);
+
+    @AfterEach
+    void realClock() {
+        Settled.aheadForTests(null);
+    }
+
     @BeforeEach
     void startClean() {
         JkBuildParser.dropMemos();
@@ -27,6 +38,7 @@ class JkBuildParserMemoDropTest {
 
     @Test
     void dropping_the_memos_counts_what_went_and_the_next_parse_reads_again(@TempDir Path dir) throws IOException {
+        Settled.aheadForTests(SETTLED);
         Path toml = settledManifest(dir, "name = \"m\"\nversion = \"1.0\"\n");
         JkBuildParser.parseLocal(toml);
         JkBuildParser.parseLocal(toml);

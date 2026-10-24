@@ -3,12 +3,15 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Settled;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -22,6 +25,14 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class TomlScanReadBudgetTest {
 
+    /** Long enough after its writes that every file this test wrote reads as {@link Settled}. */
+    private static final Duration SETTLED = Duration.ofSeconds(5);
+
+    @AfterEach
+    void realClock() {
+        Settled.aheadForTests(null);
+    }
+
     @BeforeEach
     void clear() {
         TomlScan.clearCache();
@@ -29,6 +40,7 @@ class TomlScanReadBudgetTest {
 
     @Test
     void one_file_asked_many_different_questions_is_read_once(@TempDir Path dir) throws IOException {
+        Settled.aheadForTests(SETTLED);
         Path toml = aged(dir.resolve("config.toml"), """
                 [engine]
                 jobs = 4
@@ -83,6 +95,7 @@ class TomlScanReadBudgetTest {
      */
     @Test
     void a_head_scalar_of_a_long_lock_reads_and_keeps_only_the_head(@TempDir Path dir) throws IOException {
+        Settled.aheadForTests(SETTLED);
         StringBuilder lock =
                 new StringBuilder("version = 1\nproject-id = \"abc\"\n\n[jdk]\nsuggested-vendor = \"temurin\"\n\n");
         for (int i = 0; i < 20_000; i++) {
@@ -134,6 +147,7 @@ class TomlScanReadBudgetTest {
 
     @Test
     void dropping_the_memos_counts_what_went_and_the_next_scan_reads_again(@TempDir Path dir) throws IOException {
+        Settled.aheadForTests(SETTLED);
         Path toml = aged(dir.resolve("config.toml"), "[engine]\njobs = 4\n");
         TomlScan.scan(toml, "engine.jobs");
         TomlScan.scan(toml, "engine.jobs");

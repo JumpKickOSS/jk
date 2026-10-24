@@ -80,15 +80,15 @@ public record StatIdentity(long size, long mtimeNanos, long ctimeNanos, String f
     }
 
     /**
-     * When the file was last written as far as a coarse clock can tell, in milliseconds: its mtime,
-     * and its change time too where that clock ticks in whole seconds (FAT, some network and WSL
-     * mounts). A file written within one tick of now may still change under the same identity, so
-     * callers distrust a hash taken that soon. A nanosecond change time already tells two writes in
-     * one tick apart, and is left out so a file whose mtime was set back reads as settled.
+     * When the file was last written, in milliseconds: the later of its mtime and its change time. A
+     * file written within one clock tick of now may still change under the same identity, so callers
+     * distrust a hash taken that soon. The change time counts even when the mtime was set back, and
+     * even at nanosecond resolution: NTFS and ext4 stamp it from a clock that ticks every few
+     * milliseconds, so two same-size writes in one tick under a pinned mtime share every field here.
      */
     public long lastTouchedMillis() {
         long mtime = mtimeMillis();
-        if (ctimeNanos == 0 || ctimeNanos % 1_000_000_000L != 0) return mtime;
+        if (ctimeNanos == 0) return mtime;
         return Math.max(mtime, Math.floorDiv(ctimeNanos, 1_000_000L));
     }
 

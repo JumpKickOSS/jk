@@ -3,12 +3,15 @@ package cc.jumpkick.lock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Settled;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -22,6 +25,14 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class LockManifestDigestBudgetTest {
 
+    /** Long enough after its writes that every file this test wrote reads as {@link Settled}. */
+    private static final Duration SETTLED = Duration.ofSeconds(5);
+
+    @AfterEach
+    void realClock() {
+        Settled.aheadForTests(null);
+    }
+
     @BeforeEach
     void clear() {
         LockManifestDigest.clearCache();
@@ -29,6 +40,7 @@ class LockManifestDigestBudgetTest {
 
     @Test
     void an_unchanged_workspace_is_read_once_however_many_callers_ask(@TempDir Path dir) throws IOException {
+        Settled.aheadForTests(SETTLED);
         int members = 8;
         StringBuilder root =
                 new StringBuilder("group = \"g\"\nversion = \"1\"\nname = \"root\"\n[workspace]\nmodules = [");

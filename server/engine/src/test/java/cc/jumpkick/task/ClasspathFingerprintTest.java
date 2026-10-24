@@ -7,20 +7,31 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Settled;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class ClasspathFingerprintTest {
+
+    /** Long enough after its writes that every file this test wrote reads as {@link Settled}. */
+    private static final Duration SETTLED = Duration.ofSeconds(5);
+
+    @AfterEach
+    void realClock() {
+        Settled.aheadForTests(null);
+    }
 
     private static Path write(Path p, String content) throws IOException {
         Files.createDirectories(p.getParent());
@@ -168,6 +179,7 @@ class ClasspathFingerprintTest {
 
     @Test
     void settled_jar_fingerprint_is_memoized_and_a_content_change_invalidates(@TempDir Path dir) throws Exception {
+        Settled.aheadForTests(SETTLED);
         // A jar whose mtime has settled takes the FileHashMemo stat fast-path on the
         // second read; a content change (new size/mtime) must still re-fingerprint.
         Path jar = writeJar(dir.resolve("dep.jar"), new String[][] {{"A.class", "AA"}}, 1000);

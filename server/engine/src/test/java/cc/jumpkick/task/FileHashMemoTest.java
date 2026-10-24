@@ -7,11 +7,13 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Settled;
 import cc.jumpkick.host.StatIdentity;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -22,10 +24,19 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class FileHashMemoTest {
+
+    /** Long enough after its writes that every file this test wrote reads as {@link Settled}. */
+    private static final Duration SETTLED = Duration.ofSeconds(5);
+
+    @AfterEach
+    void realClock() {
+        Settled.aheadForTests(null);
+    }
 
     /** Run {@code body} with the session cache rooted at {@code cache}, on a memo that starts cold. */
     private static void withCache(Path cache, Runnable body) {
@@ -43,6 +54,7 @@ class FileHashMemoTest {
 
     @Test
     void a_settled_file_is_hashed_once(@TempDir Path dir) throws Exception {
+        Settled.aheadForTests(SETTLED);
         Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
         settle(f);
         withCache(dir.resolve("cache"), () -> {
@@ -120,6 +132,7 @@ class FileHashMemoTest {
 
     @Test
     void a_hit_touches_no_filesystem_beyond_the_caller_stat(@TempDir Path dir) throws Exception {
+        Settled.aheadForTests(SETTLED);
         Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
         settle(f);
         BasicFileAttributes attrs = Files.readAttributes(f, BasicFileAttributes.class);
@@ -220,6 +233,7 @@ class FileHashMemoTest {
 
     @Test
     void the_store_is_one_file_and_survives_a_restart(@TempDir Path dir) throws Exception {
+        Settled.aheadForTests(SETTLED);
         Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
         settle(f);
         Path cache = dir.resolve("cache");
@@ -256,6 +270,7 @@ class FileHashMemoTest {
     /** A flush writes what changed since the last one, after what is already there. */
     @Test
     void a_flush_appends_only_what_changed(@TempDir Path dir) throws Exception {
+        Settled.aheadForTests(SETTLED);
         Path a = Files.writeString(dir.resolve("A.java"), "class A {}");
         Path b = Files.writeString(dir.resolve("B.java"), "class B {}");
         settle(a);
@@ -287,6 +302,7 @@ class FileHashMemoTest {
      */
     @Test
     void the_same_fingerprint_again_leaves_the_store_unwritten(@TempDir Path dir) throws Exception {
+        Settled.aheadForTests(SETTLED);
         Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
         settle(f);
         Path cache = dir.resolve("cache");
@@ -314,6 +330,7 @@ class FileHashMemoTest {
     /** An append cut short is not an entry, and the next flush starts the log clean. */
     @Test
     void a_torn_tail_is_never_read_as_a_fingerprint(@TempDir Path dir) throws Exception {
+        Settled.aheadForTests(SETTLED);
         Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
         settle(f);
         Path abs = f.toAbsolutePath().normalize();
@@ -429,6 +446,7 @@ class FileHashMemoTest {
      */
     @Test
     void a_third_cache_root_persists_and_drops_the_coldest_store(@TempDir Path dir) throws Exception {
+        Settled.aheadForTests(SETTLED);
         Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
         settle(f);
         Path first = dir.resolve("cache-1");
