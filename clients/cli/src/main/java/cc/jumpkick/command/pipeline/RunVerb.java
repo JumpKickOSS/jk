@@ -122,7 +122,20 @@ public final class RunVerb implements BuildVerb {
                 r -> r.errors().isEmpty()
                         ? "workspace build failed"
                         : r.errors().getFirst(),
-                true);
+                true,
+                r -> {
+                    if (!run.standalone()) return null;
+                    Path projectDir = run.global().workingDir();
+                    try {
+                        execPlan(projectDir);
+                        return null;
+                    } catch (EntryPointUnresolvedException e) {
+                        String coord = ProjectInfos.buildTarget(ManifestPaths.manifestIn(projectDir), projectDir);
+                        return mainIssueSentence(e.issue(), coord);
+                    } catch (IOException e) {
+                        return null;
+                    }
+                });
     }
 
     /**
