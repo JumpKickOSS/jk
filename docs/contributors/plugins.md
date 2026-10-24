@@ -208,7 +208,10 @@ against the step lane only: a command-only tool never joins a compile classpath.
 a zip handed over unpacked: extracted once into scratch space (`state/tmp/unpacked/<sha256 of the
 archive>/`, regenerable from the archive in the store) and published whole, so a step receives the directory. Its action-key identity is that
 digest, not a walk of the tree. The IntelliJ battery's distribution is one
-(`com.jetbrains.intellij.idea:ideaIC:${config.version}!zip`).
+(`com.jetbrains.intellij.idea:ideaIC:${config.version}!zip`). `unpack-include` is a list of glob
+templates over the zip's own paths that names the only entries extracted (a list-valued
+`${config.<key>}` gives one glob per element); the directory's name then carries a digest of the
+globs too, so the archive taken whole and taken in part are different trees.
 
 **The provided classpath.** A `[[contribute.provided-classpath]]` entry puts its tool on the main
 compile classpath and both test classpaths, never on the runtime or in an artifact. `scope =

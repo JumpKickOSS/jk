@@ -366,7 +366,7 @@ public final class PluginBuild {
                     fetched = fetchPinned(
                             repos, lockedCoordinate(Objects.requireNonNull(dep.coordinateSpec()), lock), lock);
                 }
-                out.put(dep.artifact(), dep.unpack() ? ToolArchives.unpack(fetched) : fetched);
+                out.put(dep.artifact(), dep.unpack() ? ToolArchives.unpack(fetched, dep.unpackInclude()) : fetched);
             } catch (IOException | RuntimeException e) {
                 if (!lenient) throw e;
                 // Best-effort: the command that needs this tool reports the miss itself.

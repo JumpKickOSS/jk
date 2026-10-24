@@ -261,15 +261,35 @@ public record PluginDescriptor(
              */
             @Nullable String url,
             /** The fetched file is a zip the tool is handed unpacked, as a directory. */
-            boolean unpack) {
+            boolean unpack,
+            /**
+             * With {@code unpack}: glob templates (over the zip's own paths) naming the only entries
+             * extracted, expanded like any template, so a list-valued config key contributes one
+             * glob per element. Empty extracts the whole archive.
+             */
+            List<String> unpackInclude) {
 
         public StepDependency {
             with = with == null ? List.of() : List.copyOf(with);
             forSteps = forSteps == null ? List.of() : List.copyOf(forSteps);
+            unpackInclude = unpackInclude == null ? List.of() : List.copyOf(unpackInclude);
         }
 
         public StepDependency(String artifact, @Nullable String coordinate, @Nullable Condition when) {
-            this(artifact, coordinate, false, null, null, null, List.of(), List.of(), false, when, null, false);
+            this(
+                    artifact,
+                    coordinate,
+                    false,
+                    null,
+                    null,
+                    null,
+                    List.of(),
+                    List.of(),
+                    false,
+                    when,
+                    null,
+                    false,
+                    List.of());
         }
     }
 

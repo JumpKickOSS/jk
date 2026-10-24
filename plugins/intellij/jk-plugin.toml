@@ -24,16 +24,28 @@ artifact-extension = "zip"
 version     = { type = "string", required = true, example = "262.10968.63", hint = "the IntelliJ Platform build to compile and test against: the build number IntelliJ IDEA's About dialog shows after IC-" }
 product     = { type = "string", default = "ideaIC", hint = "the distribution under com.jetbrains.intellij.idea: ideaIC (Community) or ideaIU (Ultimate)" }
 plugins     = { type = "string-list", default = [], example = "[\"java\"]", hint = "bundled plugins whose jars join the classpaths, by their directory under the IDE's plugins/" }
+requires    = { type = "string-list", default = [], example = "[\"platform-todo-plugin\"]", hint = "other bundled plugins, by directory, that the named plugins need at run time: only these and the named ones are unpacked from the distribution, and the test-env step names any it finds missing" }
 since-build = { type = "string", hint = "plugin.xml's since-build; the branch of version (262) when unset" }
 until-build = { type = "string", hint = "plugin.xml's until-build; no upper bound when unset" }
 
-# The distribution, unpacked once into the store. Its jars are the provided classpath below; the
-# test-environment step reads its product-info.json for the IDE's own JVM flags.
+# The distribution, unpacked once into scratch space, and only in part: the platform (lib/,
+# modules/) and the bundled plugins the module names or requires, which is a tenth of the plugins/
+# tree (the Kotlin plugin alone is half a gigabyte). Its jars are the provided classpath below;
+# the test-environment step reads its product-info.json for the IDE's own JVM flags.
 [[contribute.step-dependency]]
-artifact   = "intellij-ide"
-coordinate = "com.jetbrains.intellij.idea:${config.product}:${config.version}!zip"
-unpack     = true
-for-step   = "intellij-test-env"
+artifact       = "intellij-ide"
+coordinate     = "com.jetbrains.intellij.idea:${config.product}:${config.version}!zip"
+unpack         = true
+unpack-include = [
+  "lib/**",
+  "modules/**",
+  "bin/**",
+  "product-info.json",
+  "build.txt",
+  "plugins/${config.plugins}/**",
+  "plugins/${config.requires}/**",
+]
+for-step       = "intellij-test-env"
 
 [[contribute.provided-classpath]]
 dependency = "intellij-ide"

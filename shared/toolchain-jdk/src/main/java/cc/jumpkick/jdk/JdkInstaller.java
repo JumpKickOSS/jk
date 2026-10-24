@@ -31,6 +31,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongConsumer;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipEntry;
@@ -559,11 +560,21 @@ public final class JdkInstaller {
     public static void extract(Path archive, Path destDir, String archiveType) throws IOException {
         Files.createDirectories(destDir);
         switch (archiveType) {
-            case "zip" -> unzip(archive, destDir);
+            case "zip" -> unzip(archive, destDir, name -> true);
             case "tar.gz", "tgz", "targz" -> extractTar(archive, destDir, true);
             case "tar" -> extractTar(archive, destDir, false);
             default -> throw new IOException("unsupported archive type: " + archiveType);
         }
+    }
+
+    /**
+     * Extract only the entries of a {@code zip} whose names {@code keep} accepts (names as the zip
+     * spells them, {@code /}-separated and relative to its root). Judged exactly as {@link #extract}
+     * judges an entry; an entry that is left out is never read.
+     */
+    public static void extractZip(Path archive, Path destDir, Predicate<String> keep) throws IOException {
+        Files.createDirectories(destDir);
+        unzip(archive, destDir, keep);
     }
 
     private static void extractTar(Path archive, Path destDir, boolean gzipped) throws IOException {
@@ -611,9 +622,10 @@ public final class JdkInstaller {
      * <p>Tar.gz can't be parallelized this way: gunzip is a single sequential stream and the tar
      * metadata is interleaved with the file data.
      */
-    private static void unzip(Path archive, Path destDir) throws IOException {
+    private static void unzip(Path archive, Path destDir, Predicate<String> keep) throws IOException {
         try (ZipFile zip = new ZipFile(archive.toFile())) {
             List<? extends ZipEntry> entries = Collections.list(zip.entries());
+            entries.removeIf(e -> !keep.test(e.getName()));
             for (ZipEntry e : entries) {
                 Path out = destDir.resolve(e.getName());
                 if (e.isDirectory()) MinimalTar.createDirectoryInside(destDir, out);
