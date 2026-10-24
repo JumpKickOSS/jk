@@ -196,7 +196,10 @@ public final class WorkspaceScheduler {
                 drainCancelled(inflight);
                 return null;
             }
-            while (inFlight < maxConcurrency && !stop.getAsBoolean()) {
+            while (inFlight < maxConcurrency + criticalOvershoot(maxConcurrency) && !stop.getAsBoolean()) {
+                // At the cap only the head of the one tallest remaining chain is admitted: a leaf
+                // holding a slot through its tests must not hold the build's spine out of the schedule.
+                boolean full = inFlight >= maxConcurrency;
                 U next = null;
                 for (U u : notStarted) {
                     Set<Path> gate = awaitsCompletion.test(u) ? done : published;
@@ -204,7 +207,7 @@ public final class WorkspaceScheduler {
                             .filter(unitDirs::contains)
                             .allMatch(gate::contains);
                     if (ready) {
-                        next = u;
+                        if (!full || isSpineHead(u, notStarted, height, dirOf)) next = u;
                         break;
                     }
                 }
@@ -270,6 +273,25 @@ public final class WorkspaceScheduler {
                 return sinkStop;
             }
         }
+    }
+
+    /**
+     * Units the tallest remaining chain may run beyond {@code maxConcurrency}: enough that a few
+     * slow leaves cannot hold the spine back, few enough that the cap still bounds the build.
+     */
+    static int criticalOvershoot(int maxConcurrency) {
+        return maxConcurrency <= 1 ? 0 : Math.max(1, maxConcurrency / 8);
+    }
+
+    /**
+     * Whether {@code unit}, the first ready one in {@code backlog} (tallest chain first), is the
+     * head of a chain strictly taller than every other waiting unit's.
+     */
+    private static <U> boolean isSpineHead(
+            U unit, List<U> backlog, Map<Path, Integer> height, Function<U, Path> dirOf) {
+        int h = height.getOrDefault(dirOf.apply(unit), 0);
+        if (h <= 0 || backlog.get(0) != unit) return false;
+        return backlog.size() < 2 || height.getOrDefault(dirOf.apply(backlog.get(1)), 0) < h;
     }
 
     /**
