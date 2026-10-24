@@ -84,6 +84,28 @@ class StorageSurfacesRenderTest {
     }
 
     @Test
+    void store_usage_names_the_trees_that_age_out_by_use() {
+        var none = new CacheCommand.Stats(0, 0);
+        var stats = new CacheCommand.StoreUsageStats(
+                none,
+                none,
+                none,
+                none,
+                none,
+                none,
+                new CacheCommand.Stats(40, 600_000_000),
+                new CacheCommand.Stats(9, 2_200_000_000L),
+                new CacheCommand.Stats(5, 1_000));
+        List<String> lines = CacheCommand.renderStoreUsageTable(stats, "today");
+
+        assertBoxedRowsShareWidth(lines);
+        String joined = TestAnsi.strip(String.join("\n", lines));
+        assertThat(joined).contains("Tool installs (aged by use): 40 files");
+        assertThat(joined).contains("Scratch (aged by use): 9 files");
+        assertThat(joined).contains("Test download pool (aged by use): 5 files");
+    }
+
+    @Test
     void store_usage_table_omits_the_utilization_row() {
         // The artifact store has no budget, so a percentage row would have no denominator.
         var stats = new CacheCommand.StoreUsageStats(

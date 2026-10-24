@@ -183,7 +183,10 @@ public final class CacheCommand extends GroupCommand {
                 statFromAck(ack, "oci"),
                 statFromAck(ack, "workers"),
                 statFromAck(ack, "maven-local"),
-                statFromAck(ack, "test-homes"));
+                statFromAck(ack, "test-homes"),
+                statFromAck(ack, "tools"),
+                statFromAck(ack, "scratch"),
+                statFromAck(ack, "test-store"));
     }
 
     private static Stats statFromAck(CacheInventoryAck ack, String name) {
@@ -215,9 +218,26 @@ public final class CacheCommand extends GroupCommand {
 
     /** Rows for {@code jk storage usage} (store-tier only). */
     public record StoreUsageStats(
-            Stats jars, Stats executables, Stats oci, Stats workers, Stats mavenLocal, Stats testHomes) {
+            Stats jars,
+            Stats executables,
+            Stats oci,
+            Stats workers,
+            Stats mavenLocal,
+            Stats testHomes,
+            Stats tools,
+            Stats scratch,
+            Stats testPool) {
         StoreUsageStats(Stats jars, Stats executables, Stats oci, Stats workers) {
-            this(jars, executables, oci, workers, new Stats(0, 0), new Stats(0, 0));
+            this(
+                    jars,
+                    executables,
+                    oci,
+                    workers,
+                    new Stats(0, 0),
+                    new Stats(0, 0),
+                    new Stats(0, 0),
+                    new Stats(0, 0),
+                    new Stats(0, 0));
         }
 
         long totalFiles() {
@@ -782,6 +802,15 @@ public final class CacheCommand extends GroupCommand {
                 + Theme.colorize(
                         fmtCount(s.testHomes().files) + " files · " + fmtSize(s.testHomes().bytes), t.normalGray())
                 + Theme.colorize("  (jk clean drops this module's)", t.normalGray()));
+        // Each of these ages out by how long and how often it is used rather than against a budget.
+        out.add("  Tool installs (aged by use): "
+                + Theme.colorize(fmtCount(s.tools().files) + " files · " + fmtSize(s.tools().bytes), t.normalGray()));
+        out.add("  Scratch (aged by use): "
+                + Theme.colorize(
+                        fmtCount(s.scratch().files) + " files · " + fmtSize(s.scratch().bytes), t.normalGray()));
+        out.add("  Test download pool (aged by use): "
+                + Theme.colorize(
+                        fmtCount(s.testPool().files) + " files · " + fmtSize(s.testPool().bytes), t.normalGray()));
         return out;
     }
 
