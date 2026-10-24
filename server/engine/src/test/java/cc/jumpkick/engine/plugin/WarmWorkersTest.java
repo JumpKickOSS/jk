@@ -104,6 +104,20 @@ class WarmWorkersTest {
     }
 
     @Test
+    void a_run_that_maps_a_startup_cache_shares_the_worker_that_started_without_one() throws Exception {
+        WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
+        long cold = run(launch("a"), "ok", out).pid;
+
+        WarmWorkers.Launch mapped = launch("a");
+        List<String> command = new ArrayList<>(mapped.command());
+        command.addAll(1, List.of("-XX:AOTCache=" + dir.resolve("w.aot"), "-Xlog:aot=off"));
+        mapped = new WarmWorkers.Launch(mapped.name(), command, mapped.env(), mapped.prefix(), mapped.heapKey());
+
+        assertThat(run(mapped, "ok", out).pid).isEqualTo(cold);
+        assertThat(WarmWorkers.idleCount()).isEqualTo(1);
+    }
+
+    @Test
     void an_idle_worker_with_enough_heap_serves_a_run_that_asks_for_less() throws Exception {
         WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
         long big = run(launch("a", "256m"), "ok", out).pid;

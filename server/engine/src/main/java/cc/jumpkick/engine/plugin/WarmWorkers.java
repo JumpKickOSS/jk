@@ -43,10 +43,11 @@ import org.jspecify.annotations.Nullable;
  * fresh one.
  *
  * <p><strong>A launch</strong> is the whole command line and environment. Anything a running
- * worker cannot be given (JVM flags, classpath, startup cache) is part of it, so two runs that
- * differ there never share a worker. The heap is the exception: an idle worker of the same launch
- * with at least the heap a run asks for serves it, and one that a bigger idle sibling covers
- * exits instead of idling, so a tool settles on one warm worker at the largest heap it needed.
+ * worker cannot be given (JVM flags, classpath) is part of it, so two runs that differ there never
+ * share a worker. The heap and the startup cache are the exceptions: an idle worker of the same
+ * launch with at least the heap a run asks for serves it, whether or not it mapped a cache, and one
+ * that a bigger idle sibling covers exits instead of idling, so a tool settles on one warm worker
+ * at the largest heap it needed.
  *
  * <p>The worker's output is read on a platform thread, for the reason {@code KtsSession} gives: an
  * idle worker is silent for as long as the linger, and a virtual thread parked on that pipe would
@@ -67,11 +68,15 @@ public final class WarmWorkers {
     public record Launch(
             String name, List<String> command, WorkerEnv env, String prefix, HeapScope.@Nullable Key heapKey) {
 
-        /** The launch without its heap flags: workers of one key differ at most in heap. */
+        /**
+         * The launch without its heap and startup-cache flags: workers of one key differ at most in
+         * heap, and in whether they started by mapping a cache.
+         */
         String key() {
             StringBuilder sb = new StringBuilder();
             for (String arg : command) {
-                if (!WorkerLeases.heapFlag(arg)) sb.append(arg).append('\u0000');
+                if (!WorkerLeases.heapFlag(arg) && !WorkerAotCache.mappingFlag(arg))
+                    sb.append(arg).append('\u0000');
             }
             sb.append('\u0001').append(new TreeMap<>(env.environment()));
             return sb.toString();
