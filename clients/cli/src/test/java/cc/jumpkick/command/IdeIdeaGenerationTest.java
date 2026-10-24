@@ -10,6 +10,7 @@ import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.testing.FakeJdk;
@@ -318,12 +319,13 @@ class IdeIdeaGenerationTest {
                 .formatted(LockManifestDigest.compute(ws), hex));
 
         // Stage the processor JAR exactly where a real `jk sync` leaves it: a Maven-layout entry
-        // under <store>/repos/<repo>/. That tree — not a bare CAS blob — is what ArtifactLocator
+        // under the Maven local repository, where Central's artifacts live. That tree — not a bare CAS blob — is what
+        // ArtifactLocator
         // resolves locked deps out of, and it is what makes the "myprocessor-1.0.0.jar" assertion
         // below reachable: a blob is named by its digest and carries no coordinate.
         Path cache = tmp.resolve("cache");
         Coordinate processor = Coordinate.of("org.example", "myprocessor", "1.0.0");
-        RepoArtifactStore.forStoreId(JkStores.store(), "central")
+        RepoArtifactStore.forRepository(JkStores.store(), RepositorySpec.CENTRAL, RepositorySpec.MAVEN_CENTRAL.url())
                 .materialize(MavenLayout.artifactPath(processor), new Cas(cache).put(processorJar), hex);
 
         Path jdks = tmp.resolve("jdks");
