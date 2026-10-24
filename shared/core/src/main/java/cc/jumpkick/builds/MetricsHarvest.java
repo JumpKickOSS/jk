@@ -6,7 +6,6 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -15,23 +14,27 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Single serial worker that walks project run directories, reaps old runs, and writes host-metrics
  * plus each project's project-metrics as scalar trimmed means and last-success values (no sample
  * rings on disk), with per-class test walls as one table per package of a module ({@link MetricsFile}).
  *
- * <p>Every build finish calls {@link #request()}; concurrent requests coalesce into one re-run.
+ * <p>Every build finish calls {@link #request} with its builds root; requests made while a pass is
+ * in flight queue that root, once however often it is asked for.
  */
 public final class MetricsHarvest {
 
@@ -61,9 +64,13 @@ public final class MetricsHarvest {
 
     private static final MetricsHarvest INSTANCE = new MetricsHarvest();
 
-    private final AtomicBoolean running = new AtomicBoolean(false);
-    private final AtomicBoolean rerun = new AtomicBoolean(false);
     private final Object startLock = new Object();
+
+    /** Builds roots asked for and not yet harvested, in request order; guarded by {@link #startLock}. */
+    private final Set<Path> pending = new LinkedHashSet<>();
+
+    /** Whether the worker thread is up; guarded by {@link #startLock}. */
+    private boolean running;
 
     private volatile int maxRuns = DEFAULT_MAX_RUNS;
     private volatile long maxAgeMillis = DEFAULT_MAX_AGE_DAYS * 86_400_000L;
@@ -79,23 +86,26 @@ public final class MetricsHarvest {
         if (maxAgeDays > 0) this.maxAgeMillis = maxAgeDays * 86_400_000L;
     }
 
-    /** Request a harvest pass; starts the worker if idle, else sets re-run. */
-    public void request() {
+    /**
+     * Request a harvest pass over {@code buildsRoot}, the root the finished run was journaled under;
+     * starts the worker if idle, else queues the root behind the pass in flight.
+     */
+    public void request(Path buildsRoot) {
         synchronized (startLock) {
-            if (running.get()) {
-                rerun.set(true);
-                return;
-            }
-            running.set(true);
+            pending.add(buildsRoot.toAbsolutePath().normalize());
+            if (running) return;
+            running = true;
         }
         Thread t = new Thread(this::loop, "jk-metrics-harvest");
         t.setDaemon(true);
         t.start();
     }
 
-    /** True while a harvest pass (or coalesced re-run) is in flight. */
+    /** True while a harvest pass is in flight or queued. */
     public boolean busy() {
-        return running.get() || rerun.get();
+        synchronized (startLock) {
+            return running || !pending.isEmpty();
+        }
     }
 
     /**
@@ -115,27 +125,39 @@ public final class MetricsHarvest {
     }
 
     private void loop() {
+        boolean drained = false;
         try {
-            do {
-                rerun.set(false);
+            for (Path root = next(); root != null; root = next()) {
                 try {
-                    runOnce(JkDirs.builds());
+                    runOnce(root);
                 } catch (Exception e) {
                     // never fail the product over harvest
                     Log.debug("loop: never fail the product over harvest", e);
                 }
-            } while (rerun.get());
+            }
+            drained = true;
         } finally {
-            running.set(false);
-            if (rerun.get()) {
-                request();
+            // next() already stopped a drained worker, and a later request may have started another.
+            if (!drained) {
+                synchronized (startLock) {
+                    running = false;
+                }
             }
         }
     }
 
-    /** Exposed for tests. Uses live {@link JkDirs#builds()}. */
-    public void runOnce() throws IOException {
-        runOnce(JkDirs.builds());
+    /** The next queued root, or null after marking the worker stopped when none is left. */
+    private @Nullable Path next() {
+        synchronized (startLock) {
+            Iterator<Path> it = pending.iterator();
+            if (!it.hasNext()) {
+                running = false;
+                return null;
+            }
+            Path root = it.next();
+            it.remove();
+            return root;
+        }
     }
 
     /** Harvest under an explicit builds root (tests). */
