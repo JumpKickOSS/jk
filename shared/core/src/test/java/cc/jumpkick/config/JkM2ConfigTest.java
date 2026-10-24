@@ -57,6 +57,22 @@ class JkM2ConfigTest {
     }
 
     @Test
+    void auto_clean_is_off_by_default_and_an_admin_turns_it_on_in_the_file_or_the_env(@TempDir Path tmp)
+            throws Exception {
+        assertThat(JkM2Config.DEFAULTS.autoClean()).isFalse();
+        assertThat(JkM2Config.DEFAULTS.cleanAfterDays()).isEqualTo(60);
+
+        JkM2Config file = JkM2Config.fromToml(toml(tmp, "[m2]\nauto-clean = true\nclean-after-days = 14\n"));
+        assertThat(file.autoClean()).isTrue();
+        assertThat(file.cleanAfterDays()).isEqualTo(14);
+
+        Path f = toml(tmp, "[m2]\nauto-clean = false\nclean-after-days = 14\n");
+        JkM2Config env = JkM2Config.resolve(f, Map.of("JK_M2_AUTO_CLEAN", "true", "JK_M2_CLEAN_AFTER_DAYS", "7")::get);
+        assertThat(env.autoClean()).isTrue();
+        assertThat(env.cleanAfterDays()).isEqualTo(7);
+    }
+
+    @Test
     void a_malformed_value_falls_back_rather_than_failing_a_build(@TempDir Path tmp) throws Exception {
         Path f = toml(tmp, "[m2]\nintegration = \"yes please\"\n");
 
