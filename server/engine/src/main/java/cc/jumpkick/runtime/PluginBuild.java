@@ -231,7 +231,7 @@ public final class PluginBuild {
             throws IOException, InterruptedException {
         List<PluginContributions.StepDep> lane =
                 PluginContributions.stepDependencies(project, moduleDir, platformPins(moduleDir, lockFile));
-        return fetchTools(lane, project, cas, lockOrNull(lockFile), lenient);
+        return fetchTools(lane, project, cas, lockOrNull(lockFile), lenient, true);
     }
 
     /**
@@ -251,7 +251,9 @@ public final class PluginBuild {
             if (dep.sdkComponent() == null) lanes.add(dep);
         }
         List<String> out = new ArrayList<>(
-                fetchTools(lanes, project, cas, lockOrNull(lockFile), false).keySet());
+                // Downloaded and verified, not unpacked: the archive is unpacked by the build that reads it.
+                fetchTools(lanes, project, cas, lockOrNull(lockFile), false, false)
+                        .keySet());
         out.addAll(fetchPackagerDependencies(project, moduleDir, cas, lockFile).keySet());
         return out;
     }
@@ -312,7 +314,8 @@ public final class PluginBuild {
             for (PluginContributions.StepDep dep : deps) {
                 if (!fetched.containsKey(dep.artifact())) missing.add(dep);
             }
-            if (!missing.isEmpty()) fetched.putAll(fetchTools(missing, project, cas, lockOrNull(lockFile), false));
+            if (!missing.isEmpty())
+                fetched.putAll(fetchTools(missing, project, cas, lockOrNull(lockFile), false, true));
             Map<String, Path> out = new LinkedHashMap<>();
             for (PluginContributions.StepDep dep : deps) {
                 out.put(dep.artifact(), Objects.requireNonNull(fetched.get(dep.artifact()), dep.artifact()));
@@ -331,7 +334,7 @@ public final class PluginBuild {
             throws IOException, InterruptedException {
         List<PluginContributions.StepDep> lane =
                 PluginContributions.commandDependencies(project, moduleDir, platformPins(moduleDir, lockFile));
-        return fetchTools(lane, project, cas, lockOrNull(lockFile), lenient);
+        return fetchTools(lane, project, cas, lockOrNull(lockFile), lenient, true);
     }
 
     /**
@@ -340,7 +343,12 @@ public final class PluginBuild {
      * the lock has no row for is refused, and so are bytes other than the pinned ones.
      */
     private static Map<String, Path> fetchTools(
-            List<PluginContributions.StepDep> deps, JkBuild project, Cas cas, @Nullable Lockfile lock, boolean lenient)
+            List<PluginContributions.StepDep> deps,
+            JkBuild project,
+            Cas cas,
+            @Nullable Lockfile lock,
+            boolean lenient,
+            boolean unpackArchives)
             throws IOException, InterruptedException {
         Map<String, Path> out = new LinkedHashMap<>();
         if (deps.isEmpty()) return out;
@@ -366,7 +374,9 @@ public final class PluginBuild {
                     fetched = fetchPinned(
                             repos, lockedCoordinate(Objects.requireNonNull(dep.coordinateSpec()), lock), lock);
                 }
-                out.put(dep.artifact(), dep.unpack() ? ToolArchives.unpack(fetched, dep.unpackInclude()) : fetched);
+                out.put(
+                        dep.artifact(),
+                        dep.unpack() && unpackArchives ? ToolArchives.unpack(fetched, dep.unpackInclude()) : fetched);
             } catch (IOException | RuntimeException e) {
                 if (!lenient) throw e;
                 // Best-effort: the command that needs this tool reports the miss itself.

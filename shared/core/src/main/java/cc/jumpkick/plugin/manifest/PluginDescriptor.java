@@ -296,12 +296,17 @@ public record PluginDescriptor(
     /**
      * A step-dependency also on the compile and test classpaths (PROVIDED: never packaged).
      * {@code jars} are globs relative to an unpacked tool's directory, each matching jar an entry
-     * (empty: the tool's own path); {@code testOnly} keeps it off the main compile classpath.
+     * (empty: the tool's own path); {@code testOnly} keeps it off the main compile classpath;
+     * {@code compileOnly} keeps it off the test runtime classpath (it is compiled against, and the
+     * test JVM gets the same classes from elsewhere); {@code runtimeOnly} puts it on the test
+     * runtime classpath alone (the other half of that pair).
      */
     public record ProvidedClasspath(
             String dependency,
             List<String> jars,
             boolean testOnly,
+            boolean compileOnly,
+            boolean runtimeOnly,
             @Nullable Condition when) {
 
         public ProvidedClasspath {

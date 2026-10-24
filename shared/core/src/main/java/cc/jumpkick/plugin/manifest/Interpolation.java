@@ -206,6 +206,20 @@ public final class Interpolation {
                 return out;
             }
         }
+        Matcher embedded = VAR.matcher(template);
+        while (embedded.find()) {
+            String var = embedded.group(1);
+            if (!var.startsWith("config.")) continue;
+            if (!(config.values().get(var.substring("config.".length())) instanceof List<?> list)) continue;
+            // A list key inside a longer template is one template per element, each resolved in turn.
+            List<String> out = new ArrayList<>(list.size());
+            for (Object element : list) {
+                String expanded =
+                        template.substring(0, embedded.start()) + element + template.substring(embedded.end());
+                out.addAll(resolveAll(expanded, config, project, kotlinVersion, entry, host));
+            }
+            return out;
+        }
         return List.of(resolve(template, config, project, kotlinVersion, entry, host));
     }
 

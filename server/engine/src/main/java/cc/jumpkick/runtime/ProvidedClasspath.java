@@ -30,14 +30,17 @@ public final class ProvidedClasspath {
     /**
      * The resolved {@code [[contribute.provided-classpath]]} entries, split by where they join:
      * {@code compile} reaches the main compile and both test classpaths, {@code testOnly} the test
-     * classpaths alone. An entry with {@code jars} globs is every regular file they match under its
+     * classpaths alone, {@code compile-only} the two compile classpaths alone, {@code test-runtime}
+     * the test JVM's alone. An entry with {@code jars} globs is every regular file they match under its
      * tool's directory, in glob order and path order within a glob; one without is the tool's own
      * path. The entry names its tool itself, so only the named tools are fetched, whatever their
      * scope.
      */
     static Provided contributed(JkBuild project, BuildPlanner.Inputs in, Cas cas, PluginBuild.StepTools tools) {
         try {
-            return providedClasspath(project, in.dir(), in.lockFile(), cas, tools);
+            // A test-runtime entry is fetched only for a build that runs tests: a distribution that
+            // only the test JVM reads is no cost to a build that compiles.
+            return providedClasspath(project, in.dir(), in.lockFile(), cas, tools, !PlannerResources.skipJUnit(in));
         } catch (IOException | InterruptedException e) {
             throw new RuntimeException("cannot resolve the plugin-contributed compile classpath: " + e.getMessage(), e);
         }
@@ -49,9 +52,9 @@ public final class ProvidedClasspath {
      * does not resolve leaves the forecast without it, which keys a compile the build would not
      * make — a predicted miss, never a false hit.
      */
-    static Provided forecast(JkBuild project, Path moduleDir, Path lockFile, Cas cas) {
+    static Provided forecast(JkBuild project, Path moduleDir, Path lockFile, Cas cas, boolean withTestRuntime) {
         try {
-            return providedClasspath(project, moduleDir, lockFile, cas, new PluginBuild.StepTools());
+            return providedClasspath(project, moduleDir, lockFile, cas, new PluginBuild.StepTools(), withTestRuntime);
         } catch (IOException | RuntimeException e) {
             Log.debug("provided classpath of " + moduleDir + " left out of the forecast", e);
             return Provided.NONE;
@@ -70,10 +73,11 @@ public final class ProvidedClasspath {
         return (moduleDir, module) -> {
             try {
                 Provided provided = providedClasspath(
-                        module, moduleDir, LockPaths.lockFile(moduleDir), cas, new PluginBuild.StepTools());
+                        module, moduleDir, LockPaths.lockFile(moduleDir), cas, new PluginBuild.StepTools(), false);
                 List<ProvidedJars.Jar> out = new ArrayList<>(provided.jars().size());
+                // What only the test JVM runs with is not a library the IDE compiles against.
                 for (Provided.Jar jar : provided.jars())
-                    out.add(new ProvidedJars.Jar(jar.name(), jar.path(), jar.testOnly()));
+                    if (!jar.runtimeOnly()) out.add(new ProvidedJars.Jar(jar.name(), jar.path(), jar.testOnly()));
                 return out;
             } catch (IOException | RuntimeException e) {
                 Log.debug("provided jars of " + moduleDir + " left out of the IDE model", e);
@@ -86,9 +90,16 @@ public final class ProvidedClasspath {
     }
 
     private static Provided providedClasspath(
-            JkBuild project, Path moduleDir, Path lockFile, Cas cas, PluginBuild.StepTools tools)
+            JkBuild project,
+            Path moduleDir,
+            Path lockFile,
+            Cas cas,
+            PluginBuild.StepTools tools,
+            boolean withTestRuntime)
             throws IOException, InterruptedException {
-        List<PluginContributions.Provided> entries = PluginContributions.providedClasspath(project, moduleDir);
+        List<PluginContributions.Provided> entries = PluginContributions.providedClasspath(project, moduleDir).stream()
+                .filter(entry -> withTestRuntime || !entry.runtimeOnly())
+                .toList();
         if (entries.isEmpty()) return Provided.NONE;
         Set<String> names = new LinkedHashSet<>();
         for (PluginContributions.Provided entry : entries) names.add(entry.dependency());
@@ -102,13 +113,18 @@ public final class ProvidedClasspath {
                         + "` but no step-dependency resolved under that artifact name");
             }
             if (entry.jars().isEmpty()) {
-                jars.add(new Provided.Jar(entry.dependency(), path, entry.testOnly()));
+                jars.add(new Provided.Jar(
+                        entry.dependency(), path, entry.testOnly(), entry.compileOnly(), entry.runtimeOnly()));
                 continue;
             }
             for (String glob : entry.jars()) {
                 for (Path jar : matching(path, glob)) {
                     jars.add(new Provided.Jar(
-                            entry.dependency() + "/" + relativeSlashed(path, jar), jar, entry.testOnly()));
+                            entry.dependency() + "/" + relativeSlashed(path, jar),
+                            jar,
+                            entry.testOnly(),
+                            entry.compileOnly(),
+                            entry.runtimeOnly()));
                 }
             }
         }
@@ -119,11 +135,27 @@ public final class ProvidedClasspath {
     record Provided(List<Jar> jars) {
         static final Provided NONE = new Provided(List.of());
 
-        record Jar(String name, Path path, boolean testOnly) {}
+        record Jar(String name, Path path, boolean testOnly, boolean compileOnly, boolean runtimeOnly) {}
 
         /** On every compile classpath. */
         List<Path> compile() {
-            return jars.stream().filter(j -> !j.testOnly()).map(Jar::path).toList();
+            return jars.stream()
+                    .filter(j -> !j.testOnly() && !j.runtimeOnly())
+                    .map(Jar::path)
+                    .toList();
+        }
+
+        /** On the test JVM's classpath whatever the test sources are: not test-only, compile-only or none. */
+        List<Path> runtime() {
+            return jars.stream()
+                    .filter(j -> !j.testOnly() && !j.compileOnly())
+                    .map(Jar::path)
+                    .toList();
+        }
+
+        /** The jars the test JVM runs with: {@link #runtime} and the test-only ones. */
+        List<Path> testRuntime() {
+            return jars.stream().filter(j -> !j.compileOnly()).map(Jar::path).toList();
         }
 
         /** On the test classpaths alone. */

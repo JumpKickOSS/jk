@@ -7,6 +7,13 @@ javadoc = false   # an IDE plugin has no API to document
 [intellij]
 version = "262.10968.63"
 plugins = ["java"]
+libraries = [
+  "platform:external-system-impl",
+  "platform:ide-impl",
+  "platform:execution-impl",
+  "java:java-impl",
+  "java:java-debugger-impl",
+]
 requires = [
   "java-aetherDependencyResolver-plugin",
   "java-coverage",
@@ -20,6 +27,11 @@ requires = [
 [repositories.jetbrains]
 url = "https://www.jetbrains.com/intellij-repository/releases"
 groups = ["com.jetbrains.intellij.*"]
+
+# The one platform dependency that is in neither Central nor the repository above.
+[repositories.ij-deps]
+url = "https://packages.jetbrains.team/maven/p/ij/intellij-dependencies"
+groups = ["org.jetbrains.intellij.deps.fastutil"]
 
 [provided-dependencies]
 jspecify = "1.0.1"

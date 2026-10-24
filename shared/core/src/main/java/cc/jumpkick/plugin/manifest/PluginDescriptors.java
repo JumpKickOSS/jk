@@ -475,8 +475,11 @@ public final class PluginDescriptors {
                         + "` needs unpack = true (an archive) or transitive = true (a closure)");
             }
             String scope = t.getString("scope");
-            if (scope != null && !scope.equals("compile") && !scope.equals("test")) {
-                throw new JkBuildParseException(where + ": scope must be `compile` or `test` — got: " + scope);
+            if (scope != null
+                    && !List.of("compile", "compile-only", "test", "test-runtime")
+                            .contains(scope)) {
+                throw new JkBuildParseException(
+                        where + ": scope must be `compile`, `compile-only`, `test` or `test-runtime` — got: " + scope);
             }
             if (tool == null) {
                 if (commandDeps.stream().anyMatch(cd -> cd.artifact().equals(dependency))) {
@@ -489,7 +492,12 @@ public final class PluginDescriptors {
                         + "` does not name a declared [[contribute.step-dependency]] artifact");
             }
             provided.add(new PluginDescriptor.ProvidedClasspath(
-                    dependency, jars, "test".equals(scope), parseCondition(t, where)));
+                    dependency,
+                    jars,
+                    "test".equals(scope),
+                    "compile-only".equals(scope),
+                    "test-runtime".equals(scope),
+                    parseCondition(t, where)));
         }
         return provided;
     }

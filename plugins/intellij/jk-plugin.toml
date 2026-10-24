@@ -24,6 +24,7 @@ artifact-extension = "zip"
 version     = { type = "string", required = true, example = "262.10968.63", hint = "the IntelliJ Platform build to compile and test against: the build number IntelliJ IDEA's About dialog shows after IC-" }
 product     = { type = "string", default = "ideaIC", hint = "the distribution under com.jetbrains.intellij.idea: ideaIC (Community) or ideaIU (Ultimate)" }
 plugins     = { type = "string-list", default = [], example = "[\"java\"]", hint = "bundled plugins whose jars join the classpaths, by their directory under the IDE's plugins/" }
+libraries   = { type = "string-list", default = [], example = "[\"platform:ide-impl\", \"java:java-impl\"]", hint = "the platform modules the code compiles against, as `<group suffix>:<artifact>` under com.jetbrains.intellij, with their transitive closure, at `version`" }
 requires    = { type = "string-list", default = [], example = "[\"platform-todo-plugin\"]", hint = "other bundled plugins, by directory, that the named plugins need at run time: only these and the named ones are unpacked from the distribution, and the test-env step names any it finds missing" }
 since-build = { type = "string", hint = "plugin.xml's since-build; the branch of version (262) when unset" }
 until-build = { type = "string", hint = "plugin.xml's until-build; no upper bound when unset" }
@@ -47,6 +48,7 @@ unpack-include = [
 ]
 for-step       = "intellij-test-env"
 
+# What the IDE-hosted tests run with: the distribution's own jars, and no others.
 [[contribute.provided-classpath]]
 dependency = "intellij-ide"
 jars       = [
@@ -55,6 +57,21 @@ jars       = [
   "plugins/${config.plugins}/lib/*.jar",
   "plugins/${config.plugins}/lib/modules/*.jar",
 ]
+scope      = "test-runtime"
+
+# What the code compiles against: the platform modules it names, as Maven artifacts with their
+# transitive closure — about a tenth the bytes of the distribution, and no unpack for a plain
+# `jk build`. Compile-only: the test JVM runs on the distribution's jars above, never these.
+[[contribute.step-dependency]]
+artifact   = "intellij-libraries"
+coordinate = "com.jetbrains.intellij.${config.libraries}:${config.version}"
+transitive = true
+for-step   = "intellij-test-env"
+
+[[contribute.provided-classpath]]
+dependency = "intellij-libraries"
+jars       = ["*.jar"]
+scope      = "compile-only"
 
 # The platform test framework (HeavyPlatformTestCase, BasePlatformTestCase, the JUnit 5 fixtures)
 # and the two jars it needs beyond the IDE's own: on the test classpaths only. Its other

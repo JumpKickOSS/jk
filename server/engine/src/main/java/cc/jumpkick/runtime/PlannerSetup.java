@@ -382,13 +382,14 @@ public final class PlannerSetup {
         // A plugin's contributed provided classpath is provided scope by another door: on both test
         // classpaths, as a [provided-dependencies] row is, and in no artifact. Its test-only entries
         // (a platform's test framework) join here and nowhere else.
-        for (List<Path> entries : List.of(contributedProvided, provided.testOnly())) {
-            compileTestCp.addAll(entries);
-            for (Path p : entries) {
-                if (!testRuntimeCp.contains(p)) testRuntimeCp.add(p);
-            }
+        // A compile-only entry (a platform the test JVM gets whole from elsewhere) is compiled against
+        // here and never run with.
+        compileTestCp.addAll(contributedProvided);
+        compileTestCp.addAll(provided.testOnly());
+        for (Path p : provided.testRuntime()) {
+            if (!testRuntimeCp.contains(p)) testRuntimeCp.add(p);
         }
-        ctx.put(PROVIDED_CP, contributedProvided);
+        ctx.put(PROVIDED_CP, provided.runtime());
         ctx.put(COMPILE_TEST_CP, compileTestCp);
         ctx.put(TEST_RUNTIME_CP, testRuntimeCp);
     }
