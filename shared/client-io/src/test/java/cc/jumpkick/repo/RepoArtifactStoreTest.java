@@ -11,6 +11,8 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
@@ -112,6 +114,51 @@ class RepoArtifactStoreTest {
         store.materialize(rel, artifact, sha);
         assertThat(Files.readString(artifact)).isEqualTo("v1");
         assertThat(Files.getLastModifiedTime(artifact).toMillis()).isEqualTo(mtime);
+    }
+
+    @Test
+    void a_refetch_of_the_same_bytes_leaves_the_stored_file_and_its_memo_alone(@TempDir Path dir) throws IOException {
+        Path cache = dir.resolve("cache");
+        Path first = dir.resolve("first.jar");
+        Files.writeString(first, "v1");
+        String sha = Hashing.sha256Hex(first);
+        RepoArtifactStore store = new RepoArtifactStore(cache, "central");
+        String rel = "g/a/1/a-1.jar";
+        store.materialize(rel, first, sha);
+        Path artifact = cache.resolve("repos/central").resolve(rel);
+        Path memo = ArtifactMemo.jkPath(cache.resolve("repos/central"), rel);
+        Files.setLastModifiedTime(artifact, FileTime.fromMillis(1_700_000_000_000L));
+        store.writeMemo(rel, artifact, sha);
+        Object key = Files.readAttributes(artifact, BasicFileAttributes.class).fileKey();
+        byte[] memoBytes = Files.readAllBytes(memo);
+
+        Path again = dir.resolve("again.jar");
+        Files.writeString(again, "v1");
+        store.materialize(rel, again, sha);
+
+        assertThat(Files.getLastModifiedTime(artifact).toMillis()).isEqualTo(1_700_000_000_000L);
+        assertThat(Files.readAttributes(artifact, BasicFileAttributes.class).fileKey())
+                .isEqualTo(key);
+        assertThat(Files.readAllBytes(memo)).isEqualTo(memoBytes);
+    }
+
+    @Test
+    void a_refetch_replaces_a_stored_copy_corrupted_under_the_same_stat(@TempDir Path dir) throws IOException {
+        Path cache = dir.resolve("cache");
+        Path source = dir.resolve("src.jar");
+        Files.writeString(source, "good");
+        String sha = Hashing.sha256Hex(source);
+        RepoArtifactStore store = new RepoArtifactStore(cache, "central");
+        String rel = "g/a/1/a-1.jar";
+        store.materialize(rel, source, sha);
+        Path artifact = cache.resolve("repos/central").resolve(rel);
+        FileTime mtime = Files.getLastModifiedTime(artifact);
+        Files.writeString(artifact, "bad!");
+        Files.setLastModifiedTime(artifact, mtime);
+
+        store.materialize(rel, source, sha);
+
+        assertThat(Files.readString(artifact)).isEqualTo("good");
     }
 
     @Test
