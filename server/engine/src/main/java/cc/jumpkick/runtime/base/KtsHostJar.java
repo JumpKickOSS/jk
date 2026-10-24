@@ -8,6 +8,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -103,6 +104,15 @@ final class KtsHostJar {
      * sits where a later run would load it as a corrupt classpath entry.
      */
     static Path ensure(Path kotlinHome, Path jar) throws IOException, InterruptedException {
+        Path built = build(kotlinHome, jar);
+        Path toolsRoot = JkDirs.tools();
+        if (built.startsWith(toolsRoot) && built.getParent() != null) {
+            ToolUse.record(toolsRoot, "kts-host", built.getParent());
+        }
+        return built;
+    }
+
+    private static Path build(Path kotlinHome, Path jar) throws IOException, InterruptedException {
         if (Files.isRegularFile(jar) && Files.size(jar) > 0) return jar;
 
         Path compilerJar = kotlinHome.resolve("lib").resolve("kotlin-compiler.jar");

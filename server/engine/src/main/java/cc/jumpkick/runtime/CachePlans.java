@@ -359,6 +359,9 @@ public final class CachePlans {
     private static Set<String> toolFamilies() {
         Set<String> slugs = new LinkedHashSet<>();
         for (BuildTool tool : BuildTool.values()) slugs.add(tool.slug());
+        // The closures and builds the resolvers keep beside them, each stamped where it is used.
+        slugs.addAll(List.of("scala", "ksp", "kotlin-bta", "kts-host", "groovy", "dokka-analysis", "dokka-javadoc"));
+        slugs.add("graph-oxc");
         return slugs;
     }
 

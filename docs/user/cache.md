@@ -219,8 +219,9 @@ writes — it can legitimately report “Nothing to clean up.” on a large cach
     other jars three weeks, anything else a month. The blobs together are held to the smaller of
     10 GiB and 8% of the volume, the least life left going first.
   - *Tool installs* under `tools/`: Node and the package managers keep the install used most
-    recently for a month and every other version for two days; Maven, Gradle and Kotlin keep
-    the newest 90 days and the others 14; an archive unpacked for a step (an IDE distribution)
+    recently for a month and every other version for two days; Maven, Gradle, Kotlin and the
+    compiler closures jk keeps beside them (Scala, KSP, the Kotlin build tools, Groovy, Dokka, the
+    script host) keep the newest 90 days and the others 14; an archive unpacked for a step (an IDE distribution)
     lives in `state/tmp/unpacked/` and goes a week after its last use.
   - *Repository trees* jk holds itself (`repos/<id>` for a repository no `settings.xml` names):
     30 days, or a week for a file of 50 MB or more. The first-party `jk-local` and `jumpkick`
