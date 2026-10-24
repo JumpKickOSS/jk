@@ -403,24 +403,13 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
     }
 
     /**
-     * Uber-jar runner written by augment ({@code quarkus-uber.jar} staging or {@code *-runner.jar}).
-     * Never the {@code *-runner.jar} in {@code native-sources/}: that is native-image's input, and a
-     * fast-jar build that declares {@code [native]} has one.
+     * The uber-jar augment staged as {@code quarkus-uber.jar}. A fast-jar tree has other
+     * {@code *-runner.jar} files (the {@code native-sources/} input, {@code lib/boot}'s
+     * bootstrap runner), so only the staged name counts.
      */
-    private static @Nullable Path findUberJar(Path root) throws IOException {
-        if (!Files.isDirectory(root)) return null;
+    private static @Nullable Path findUberJar(Path root) {
         Path staged = root.resolve("quarkus-uber.jar");
-        if (Files.isRegularFile(staged)) return staged;
-        Path nativeSources = root.resolve(NATIVE_SOURCES);
-        try (Stream<Path> walk = Files.walk(root, 5)) {
-            // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
-            // the path for a fresh stat even for entries the name test discards.
-            return walk.filter(p -> p.getFileName().toString().endsWith("-runner.jar"))
-                    .filter(p -> !p.startsWith(nativeSources))
-                    .filter(Files::isRegularFile)
-                    .findFirst()
-                    .orElse(null);
-        }
+        return Files.isRegularFile(staged) ? staged : null;
     }
 
     /**
