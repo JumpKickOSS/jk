@@ -19,6 +19,7 @@ import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
+import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestSummary;
@@ -351,6 +352,12 @@ public final class JUnitLauncher {
                         + PomRuntimeClasspath.HOST_STORE_PROPERTY
                         + "="
                         + JkDirs.store().toAbsolutePath().normalize());
+                // The host store's Central artifacts live in the host's Maven local repository, not
+                // in the sandbox's.
+                flags.add("-D"
+                        + PomRuntimeClasspath.HOST_M2_PROPERTY
+                        + "="
+                        + M2Dirs.localRepository().toAbsolutePath().normalize());
             }
         }
         workerJarProps.forEach((prop, jar) -> flags.add("-D" + prop + "=" + jar));
