@@ -205,8 +205,8 @@ so one artifact may not sit in both (parse error). `[[contribute.provided-classp
 against the step lane only: a command-only tool never joins a compile classpath.
 
 **Archives (`unpack`).** A `coordinate` (not `transitive`) or `url` entry with `unpack = true` is
-a zip handed over unpacked: extracted once into the store under `tools/unpacked/<sha256 of the
-archive>/` and published whole, so a step receives the directory. Its action-key identity is that
+a zip handed over unpacked: extracted once into scratch space (`state/tmp/unpacked/<sha256 of the
+archive>/`, regenerable from the archive in the store) and published whole, so a step receives the directory. Its action-key identity is that
 digest, not a walk of the tree. The IntelliJ battery's distribution is one
 (`com.jetbrains.intellij.idea:ideaIC:${config.version}!zip`).
 

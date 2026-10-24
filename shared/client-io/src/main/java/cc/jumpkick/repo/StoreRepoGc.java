@@ -37,7 +37,7 @@ public final class StoreRepoGc {
 
     public static final Duration LARGE_TTL = Duration.ofDays(7);
 
-    public static final Duration TTL = Duration.ofDays(45);
+    public static final Duration TTL = Duration.ofDays(30);
 
     private static final Duration MIN_AGE = Duration.ofHours(1);
 
