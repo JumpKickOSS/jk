@@ -16,7 +16,20 @@ import org.junit.jupiter.api.io.TempDir;
 class StorePackagesTest {
 
     @Test
-    void a_jar_under_the_packages_group_is_named_and_the_answer_is_cached(@TempDir Path store) throws Exception {
+    void a_jar_under_the_packages_group_is_named_and_the_answer_is_cached(@TempDir Path store, @TempDir Path m2)
+            throws Exception {
+        // The search also walks the Maven local repository; this one is empty, not the host's.
+        String previous = System.getProperty("jk.m2.local");
+        System.setProperty("jk.m2.local", m2.toString());
+        try {
+            namesAndCaches(store);
+        } finally {
+            if (previous == null) System.clearProperty("jk.m2.local");
+            else System.setProperty("jk.m2.local", previous);
+        }
+    }
+
+    private static void namesAndCaches(Path store) throws Exception {
         Path version = store.resolve("repos/central/org/acme/acme-util/1.0");
         Files.createDirectories(version);
         jar(version.resolve("acme-util-1.0.jar"), "org/acme/util/Strings.class");

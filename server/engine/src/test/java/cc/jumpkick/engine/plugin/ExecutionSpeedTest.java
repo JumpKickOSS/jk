@@ -10,6 +10,7 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
+import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
@@ -39,7 +40,9 @@ class ExecutionSpeedTest {
 
     @Test
     void an_exited_child_is_left_alone() throws Exception {
-        Process done = new ProcessBuilder("java", "-version").start();
+        Process done = new ProcessBuilder(
+                        Path.of(System.getProperty("java.home"), "bin", "java").toString(), "-version")
+                .start();
         done.waitFor(30, TimeUnit.SECONDS);
         ExecutionSpeed.child(done);
     }
