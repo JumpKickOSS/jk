@@ -34,7 +34,8 @@ class PubGrubSolverPropertyTest {
     /** A looping solve on a four-package universe fails fast rather than stalling the suite. */
     static final int BUDGET = 2_000;
 
-    static final long TIMEOUT_MS = 5_000;
+    /** No wall-clock stall window: the step budget bounds a loop, and a loaded host cannot trip it. */
+    static final long TIMEOUT_MS = 0;
 
     /** Versions in ascending order; three stables, two pre-releases, one more stable. */
     static final List<String> POOL = List.of("1.0", "1.1", "2.0", "3.0-rc1", "3.0-rc2", "3.0");
@@ -193,7 +194,7 @@ class PubGrubSolverPropertyTest {
     @Property(tries = 300, edgeCases = EdgeCasesMode.NONE)
     void unsatisfiable_means_no_assignment_exists(@ForAll("universes") Universe u) throws Exception {
         boolean solved = solveOrNull(u, new Random(2)) != null;
-        assertThat(solved).as("solver agrees with exhaustive search").isEqualTo(u.satisfiableByBruteForce());
+        assertThat(solved).as("solver agrees with exhaustive search on %s", u).isEqualTo(u.satisfiableByBruteForce());
     }
 
     @Property(tries = 100)
@@ -249,6 +250,7 @@ class PubGrubSolverPropertyTest {
             assertThat(first.rootCause())
                     .as("an unsat result names its root incompatibility")
                     .isNotNull();
+            assertConclusive(first, u);
             if (!narrow.maybeIncomplete()) return null;
             try {
                 return new PubGrubSolver(source, BUDGET, TIMEOUT_MS)
@@ -256,8 +258,16 @@ class PubGrubSolverPropertyTest {
                         .solve("root", "1.0", u.rootDeps());
             } catch (UnsatisfiableException second) {
                 assertThat(second.rootCause()).isNotNull();
+                assertConclusive(second, u);
                 return null;
             }
         }
+    }
+
+    /** A solve that ran out of budget proved nothing; it must not pass for an unsatisfiable verdict. */
+    private static void assertConclusive(UnsatisfiableException unsat, Universe u) {
+        assertThat(unsat.rootCause().cause())
+                .as("the solver gave up on %s", u)
+                .isNotInstanceOf(Incompatibility.Cause.BudgetExceeded.class);
     }
 }
