@@ -72,9 +72,9 @@ class TestStorePoolTest {
 
         for (String rel : List.of(
                 "repos/central", "repos/google", "repos/jumpkick", "tools/kotlin", "tools/gradle", "tools/maven")) {
-            assertThat(store.resolve(rel)).as(rel).isSymbolicLink();
-            assertThat(Files.readSymbolicLink(store.resolve(rel)))
-                    .isEqualTo(pool.resolve(rel).toAbsolutePath().normalize());
+            assertThat(TestStorePool.linksTo(store.resolve(rel), pool.resolve(rel)))
+                    .as(rel)
+                    .isTrue();
         }
         assertThat(store.resolve("repos").resolve(RepositorySpec.JK_LOCAL)).doesNotExist();
         try (var names = Files.list(store.resolve("repos"))) {
@@ -284,7 +284,7 @@ class TestStorePoolTest {
 
         TestStorePool.link(pool, store);
 
-        assertThat(store.resolve("repos/central")).isSymbolicLink();
+        assertThat(TestStorePool.isLink(store.resolve("repos/central"))).isTrue();
         assertThat(pool.resolve("repos/central").resolve(JAR))
                 .as("a private tree is never merged into the pool: it may hold a test's fakes")
                 .doesNotExist();
@@ -335,9 +335,9 @@ class TestStorePoolTest {
                 .extras();
 
         Path central = Path.of(env.get("JK_STORE_DIR")).resolve("repos/central");
-        assertThat(central).isSymbolicLink();
-        assertThat(Files.readSymbolicLink(central))
-                .isEqualTo(JkDirs.home().resolve(TestStorePool.DIR).resolve("repos/central"));
+        assertThat(TestStorePool.linksTo(
+                        central, JkDirs.home().resolve(TestStorePool.DIR).resolve("repos/central")))
+                .isTrue();
         assertThat(TestStorePool.root().startsWith(Path.of(env.get("JK_HOME"))))
                 .as("the pool is outside the sandbox home a test may delete")
                 .isFalse();
