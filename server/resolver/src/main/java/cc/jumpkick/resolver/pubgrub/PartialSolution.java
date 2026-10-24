@@ -62,9 +62,9 @@ public final class PartialSolution {
 
     /**
      * Per-package constraint state. {@code allowed} is non-null once the package has been bound to
-     * a {@link VersionUniverse}; after that further narrowing is bitset-only (avoids Union blow-up
-     * from repeated exact exclusions). {@code continuous} freezes at the pre-bind snapshot for
-     * diagnostics when the bitset becomes empty.
+     * a {@link VersionUniverse}, and is what membership is judged by while it is non-empty. {@code
+     * continuous} is every term's set intersected, narrowed on every assignment; it answers once the
+     * bitset is empty.
      */
     static final class PackageState {
         VersionSet continuous = VersionSet.ALL;
@@ -162,25 +162,27 @@ public final class PartialSolution {
 
         int globalIndex();
 
-        record Decision(Term term, int decisionLevel, int globalIndex) implements Assignment {}
+        /** Every term of this assignment's package up to and including this one, intersected. */
+        VersionSet through();
 
-        record Derivation(Term term, int decisionLevel, int globalIndex, Incompatibility cause) implements Assignment {}
+        record Decision(Term term, int decisionLevel, int globalIndex, VersionSet through) implements Assignment {}
+
+        record Derivation(Term term, int decisionLevel, int globalIndex, Incompatibility cause, VersionSet through)
+                implements Assignment {}
     }
 
     public void decide(String pkg, String version) {
         decisionLevel++;
         Term decision = Term.positive(pkg, VersionSet.exact(version));
-        Assignment a = new Assignment.Decision(decision, decisionLevel, assignments.size());
-        push(a);
+        int at = assignments.size();
         decisionByPackage.put(pkg, version);
-        register(decision, a.globalIndex(), decisionLevel);
+        push(new Assignment.Decision(decision, decisionLevel, at, register(decision, at, decisionLevel)));
         undecidedPositive.remove(Objects.requireNonNull(byPackage.get(pkg)).firstIndex);
     }
 
     public void derive(Term term, Incompatibility cause) {
-        Assignment a = new Assignment.Derivation(term, decisionLevel, assignments.size(), cause);
-        push(a);
-        register(term, a.globalIndex(), decisionLevel);
+        int at = assignments.size();
+        push(new Assignment.Derivation(term, decisionLevel, at, cause, register(term, at, decisionLevel)));
     }
 
     private void push(Assignment a) {
@@ -195,8 +197,11 @@ public final class PartialSolution {
                 .add(a);
     }
 
-    /** Fold {@code t}, recorded at global index {@code at} and decision level {@code level}, into its package's state. */
-    private void register(Term t, int at, int level) {
+    /**
+     * Fold {@code t}, recorded at global index {@code at} and decision level {@code level}, into its
+     * package's state; answers the package's continuous set with {@code t} folded in.
+     */
+    private VersionSet register(Term t, int at, int level) {
         PackageState s = byPackage.computeIfAbsent(t.pkg(), k -> new PackageState());
         s.checkpoint(level);
         if (s.firstIndex < 0) {
@@ -223,6 +228,7 @@ public final class PartialSolution {
                 s.allowed = s.allowed.intersect(u.project(effective));
             }
         }
+        return s.continuous;
     }
 
     /**

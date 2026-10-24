@@ -511,20 +511,28 @@ public class PubGrubSolver {
             // leaves some advertised version, over the sets once it leaves none. Judging an empty
             // projection by the universe alone found a satisfier propagation never agreed with,
             // backjumped to a level where the learned clause derived nothing, and re-decided the
-            // same version until the budget ran out.
+            // same version until the budget ran out. Each assignment carries its package's sets as
+            // of itself, so the fallback costs one intersection.
             AllowedSet target = u.project(term.effectiveVersions());
-            VersionSet continuous =
-                    given == null ? VersionSet.ALL : given.term().effectiveVersions();
-            AllowedSet accumulated = u.project(continuous);
-            if (given != null && (!term.positive() || sawPositive) && covers(accumulated, continuous, target, term)) {
-                return null;
+            AllowedSet accumulated =
+                    given == null ? u.all() : u.project(given.term().effectiveVersions());
+            if (given != null && (!term.positive() || sawPositive)) {
+                if (covers(accumulated, given.term().effectiveVersions(), target, term)) return null;
             }
             for (PartialSolution.Assignment a : solution.assignmentsFor(term.pkg())) {
                 if (a.globalIndex() >= before) break; // the package's list is in stack order
                 sawPositive |= a.term().positive();
-                continuous = continuous.intersect(a.term().effectiveVersions());
                 accumulated = accumulated.intersect(u.project(a.term().effectiveVersions()));
-                if ((!term.positive() || sawPositive) && covers(accumulated, continuous, target, term)) return a;
+                if (!term.positive() || sawPositive) {
+                    if (!accumulated.isEmpty()) {
+                        if (accumulated.subsetOf(target)) return a;
+                    } else {
+                        VersionSet through = given == null
+                                ? a.through()
+                                : given.term().effectiveVersions().intersect(a.through());
+                        if (through.subsetOf(term.effectiveVersions())) return a;
+                    }
+                }
             }
             return null;
         }
