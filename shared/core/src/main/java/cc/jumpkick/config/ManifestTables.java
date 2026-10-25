@@ -497,7 +497,7 @@ public final class ManifestTables {
             }
             String inherits = body.getString("inherits");
             List<String> javacArgs = optionalStringList(body, "javac", "profiles." + name + ".javac");
-            List<String> jvmArgs = optionalStringList(body, "jvm-args", "profiles." + name + ".jvm-args");
+            List<String> jvmArgs = jvmArgsList(body, "profiles." + name);
             boolean includeTagsSet = body.contains("include-tags");
             boolean excludeTagsSet = body.contains("exclude-tags");
             List<String> includeTags = includeTagsSet
@@ -751,7 +751,7 @@ public final class ManifestTables {
                 nativeImage,
                 config,
                 parseRelocate(application, "[application]"),
-                optionalStringList(application, "jvm-args", "application.jvm-args")));
+                jvmArgsList(application, "application")));
     }
 
     /**
@@ -808,7 +808,7 @@ public final class ManifestTables {
      * a class rather than one key at a time.
      */
     static final List<String> APPLICATION_KEYS =
-            List.of("main", "assembly", "minified", "native", "config", "relocate", "jvm-args");
+            List.of("main", "assembly", "minified", "native", "config", "relocate", "jvm-args", "java-opts");
 
     /**
      * Reject an {@code [application]} key written at the top level.

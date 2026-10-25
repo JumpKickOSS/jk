@@ -219,6 +219,13 @@
             "type": "string"
           },
           "description": "Flags jk run and jk dev put on the application JVM, such as --enable-native-access=ALL-UNNAMED."
+        },
+        "java-opts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Another spelling of jvm-args; jvm-args wins when both are set."
         }
       }
     },
@@ -342,6 +349,11 @@
           "type": "array",
           "items": { "type": "string" },
           "description": "Flags appended verbatim to every forked test JVM after jk's own tuning (-Xmx, -Xss, --add-opens, an agent); Surefire's <argLine>. A run-tests input."
+        },
+        "java-opts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Another spelling of jvm-args; jvm-args wins when both are set."
         },
         "system-properties": {
           "type": "object",

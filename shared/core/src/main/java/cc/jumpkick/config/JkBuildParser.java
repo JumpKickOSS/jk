@@ -588,6 +588,18 @@ public final class JkBuildParser {
         return v;
     }
 
+    /** The JVM-flags key a table spells: {@code jvm-args}, which wins over {@code java-opts}; null when neither. */
+    static @Nullable String jvmArgsKey(TomlTable table) {
+        if (table.contains("jvm-args")) return "jvm-args";
+        return table.contains("java-opts") ? "java-opts" : null;
+    }
+
+    /** The table's {@code jvm-args} (or {@code java-opts}) as a list of strings; empty when neither is set. */
+    static List<String> jvmArgsList(TomlTable table, String displayPrefix) {
+        String key = jvmArgsKey(table);
+        return key == null ? List.of() : optionalStringList(table, key, displayPrefix + "." + key);
+    }
+
     static List<String> optionalStringList(TomlTable table, String key, String displayPath) {
         if (!table.contains(key)) return List.of();
         Object value = table.get(key);

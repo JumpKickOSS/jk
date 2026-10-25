@@ -378,13 +378,18 @@ final class ManifestBuildTable {
      * string. Both are run-tests inputs.
      */
     private static void readTestJvm(TomlTable test, Settings s) {
-        TomlArray jvmArgs = test.getArray("jvm-args");
+        String jvmArgsKey = JkBuildParser.jvmArgsKey(test);
+        TomlArray jvmArgs = jvmArgsKey == null ? null : test.getArray(jvmArgsKey);
+        if (jvmArgsKey != null && jvmArgs == null) {
+            throw new JkBuildParseException(
+                    "[test]." + jvmArgsKey + " must be an array of JVM flags: jvm-args = [\"-Xmx1g\"]");
+        }
         if (jvmArgs != null) {
             for (int i = 0; i < jvmArgs.size(); i++) {
                 Object val = jvmArgs.get(i);
                 if (!(val instanceof String str) || str.isBlank()) {
                     throw new JkBuildParseException(
-                            "[test].jvm-args must be an array of JVM flags: jvm-args = [\"-Xmx1g\"]");
+                            "[test]." + jvmArgsKey + " must be an array of JVM flags: jvm-args = [\"-Xmx1g\"]");
                 }
                 s.testJvmArgs.add(str.trim());
             }
