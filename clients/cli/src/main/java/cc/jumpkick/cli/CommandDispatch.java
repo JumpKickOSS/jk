@@ -33,6 +33,7 @@ import cc.jumpkick.command.pipeline.GuardCommand;
 import cc.jumpkick.command.pipeline.JshellCommand;
 import cc.jumpkick.command.pipeline.PublishCommand;
 import cc.jumpkick.command.pipeline.SelectiveCommand;
+import cc.jumpkick.command.pipeline.SnapshotCommand;
 import cc.jumpkick.command.pipeline.WatchCommand;
 import cc.jumpkick.command.project.AddCommand;
 import cc.jumpkick.command.project.AuditCommand;
@@ -176,6 +177,7 @@ public final class CommandDispatch {
             // `run` and `install` are also mounted under `jk tool` (one implementation, two mounts).
             new ToolRunCommand(),
             new ToolInstallCommand(),
+            new SnapshotCommand(),
             BuildVerbCommand.compile(),
             new DevCommand(),
             new WatchCommand(),

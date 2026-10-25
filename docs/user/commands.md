@@ -29,6 +29,7 @@ Canonical names. Hidden aliases (Maven/Gradle muscle memory) are listed in
 | `jk train` | Observe a run for reachability / AOT | [Dynamic surface](dynamic-surface.md) |
 | `jk publish` | Publish artifacts | [Publish](publish.md) |
 | `jk install` | Local repo + PATH / jkx | [Packaging](packaging.md), [Tools](tools.md) |
+| `jk snapshot` | The inner-loop install: this project at its version plus `-SNAPSHOT` | [Packaging](packaging.md#jk-snapshot) |
 | `jk verify` | Rebuild and hash-diff | [Publish](publish.md) |
 | `jk audit` / `jk deny` | OSV / source denylist | [Publish](publish.md) |
 | `jk jdk …` | JDK install / pin / list / verify | [JDK](jdk.md) |

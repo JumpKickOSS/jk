@@ -113,7 +113,7 @@ class TailForecastTest {
 
     @Test
     void an_install_schedules_the_modules_whose_bytes_are_not_shelved() throws Exception {
-        assertThat(scheduled(WorkspaceSpec.install(Set.of(), Map.of(), root.resolve("m2"), null)))
+        assertThat(scheduled(WorkspaceSpec.install(Set.of(), Map.of(), root.resolve("m2"), null, false)))
                 .containsExactlyInAnyOrder(app, lib);
     }
 

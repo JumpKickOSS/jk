@@ -52,7 +52,7 @@ class WorkspacePreflightInstallRefusalTest {
 
     private WorkspaceRequest request(@Nullable InstallTarget target) {
         return new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 0, null, true, false, 0, null, true, true)
-                .withSpec(WorkspaceSpec.install(Set.of(), Map.of(), tmp.resolve("m2"), target));
+                .withSpec(WorkspaceSpec.install(Set.of(), Map.of(), tmp.resolve("m2"), target, false));
     }
 
     private void occupy(String version) throws Exception {

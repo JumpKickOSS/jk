@@ -26,6 +26,7 @@ class ShortFlagsTest {
             "install --ver",
             "install --bin",
             "install --target",
+            "snapshot --target",
             "tool install --with",
             "tool install --ver",
             "tool install --bin",

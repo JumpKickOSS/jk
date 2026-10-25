@@ -122,7 +122,12 @@ public record Session(
         /** Cross-module changed-type carrier for {@code --affected}; shared by every copy. */
         @With AffectedChanged affectedChanged,
         /** Per-run byte accounting — one ledger per invocation, shared by every copy. */
-        @With IoLedger io) {
+        @With IoLedger io,
+        /**
+         * {@code jk snapshot}: every module's effective version is its declared one plus {@code
+         * -SNAPSHOT}, in the model the build plans from; {@code jk.toml} is never touched.
+         */
+        @With boolean snapshot) {
 
     public Session {
         Objects.requireNonNull(config, "config");
@@ -168,7 +173,8 @@ public record Session(
                 lanesOnly,
                 affected,
                 affectedChanged,
-                io);
+                io,
+                snapshot);
     }
 
     /**
@@ -288,7 +294,8 @@ public record Session(
                 false,
                 false,
                 new AffectedChanged(),
-                IoLedger.currentOrNew());
+                IoLedger.currentOrNew(),
+                false);
     }
 
     /** A copy rooted at {@code dir}, absolutized — the working directory is never relative. */
@@ -321,7 +328,8 @@ public record Session(
                 lanesOnly,
                 affected,
                 affectedChanged,
-                io);
+                io,
+                snapshot);
     }
 
     /** A copy with the given JVM tuning ({@code null} → {@link PluginTuning#NONE}). */
@@ -354,7 +362,8 @@ public record Session(
                 lanesOnly,
                 affected,
                 affectedChanged,
-                io);
+                io,
+                snapshot);
     }
 
     /**
@@ -392,7 +401,8 @@ public record Session(
                 lanesOnly,
                 affected,
                 affectedChanged,
-                io);
+                io,
+                snapshot);
     }
 
     private static @Nullable String blankToNull(@Nullable String s) {

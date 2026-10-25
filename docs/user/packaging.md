@@ -420,6 +420,19 @@ before it compiles or tests anything; the comparison at the install step still h
 The record lives in the jk store, never in `~/.m2`: wiping the store makes jk's earlier slots
 foreign, and deleting the slot's directory is the way back.
 
+## `jk snapshot`
+
+`jk snapshot` is `jk install` for the inner loop. It runs the same phases and tests (`-S` skips
+them) and installs to the same place, but every module goes in at its declared version plus
+`-SNAPSHOT`: a project at `1.0.0` installs as `1.0.0-SNAPSHOT`, and a snapshot jk wrote is replaced
+each time. `jk.toml` and the lock keep the release version, so there is nothing to edit to move
+between the two, and a snapshot slot sits beside the release one.
+
+In a workspace every member takes the suffix, and so does each member's dependency on a sibling, so
+the POMs it installs name `lib:1.0.0-SNAPSHOT`, not a release that was never installed. A version
+that already ends in `-SNAPSHOT` is installed as written. The snapshot jar is built for its own
+version, so it is never a release jar renamed; `jk publish` still refuses a `-SNAPSHOT` version.
+
 ## Related
 
 [Build](build.md) · [Dynamic surface](dynamic-surface.md) · [Publish](publish.md)

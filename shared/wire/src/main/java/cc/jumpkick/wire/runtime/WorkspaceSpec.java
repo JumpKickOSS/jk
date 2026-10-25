@@ -58,13 +58,19 @@ public record WorkspaceSpec(
      * ~/.m2}); {@code target} is the {@code --target} override, null when none was given.
      */
     public static WorkspaceSpec install(
-            Set<Path> selected, Map<Path, Path> graalByDir, @Nullable Path m2Dir, @Nullable InstallTarget target) {
-        return new WorkspaceSpec(WorkspaceTarget.INSTALL, selected, graalByDir, new TailArgs.Install(m2Dir, target));
+            Set<Path> selected,
+            Map<Path, Path> graalByDir,
+            @Nullable Path m2Dir,
+            @Nullable InstallTarget target,
+            boolean snapshot) {
+        return new WorkspaceSpec(
+                WorkspaceTarget.INSTALL, selected, graalByDir, new TailArgs.Install(m2Dir, target, snapshot));
     }
 
     /** Install's second pass after the engine jar changes: {@code cache-install} against jars on disk. */
     public static WorkspaceSpec reshelve(Set<Path> selected, @Nullable Path m2Dir, @Nullable InstallTarget target) {
-        return new WorkspaceSpec(WorkspaceTarget.RESHELVE, selected, Map.of(), new TailArgs.Install(m2Dir, target));
+        return new WorkspaceSpec(
+                WorkspaceTarget.RESHELVE, selected, Map.of(), new TailArgs.Install(m2Dir, target, false));
     }
 
     public static WorkspaceSpec train(
@@ -98,6 +104,11 @@ public record WorkspaceSpec(
     /** Install's {@code --target} override, or null when none was given and for every other goal. */
     public @Nullable InstallTarget installTarget() {
         return tail instanceof TailArgs.Install install ? install.target() : null;
+    }
+
+    /** True for {@code jk snapshot}: the install tail puts every module at its version plus {@code -SNAPSHOT}. */
+    public boolean snapshot() {
+        return tail instanceof TailArgs.Install install && install.snapshot();
     }
 
     public WorkspaceTarget effectiveTarget(boolean testOnly) {
