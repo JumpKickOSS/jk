@@ -79,6 +79,7 @@ public final class ReleaseCommand implements CliCommand {
                         .hide()));
         opts.addAll(BuildFlags.options(WorkspaceTarget.INSTALL.tests(), BuildFlags.Affected.MODULES));
         Set<String> taken = new HashSet<>();
+        taken.add("tag"); // a release names its own tag
         for (Opt o : opts) taken.add(o.canonicalName());
         for (Opt o : new PublishCommand().options()) {
             if (taken.add(o.canonicalName())) opts.add(o);
