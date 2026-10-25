@@ -389,8 +389,9 @@ Training (`jk train`) is **not** part of `jk build`. See [Dynamic surface](dynam
 
 ## `jk install` (project)
 
-`jk install` is `jk build` plus the install steps: the same plan, the same tests (unless `-S`)
-and guard lanes, then the install. Do not run `jk build` first.
+`jk install` puts an application or tool on this machine: `jk build` plus the install steps, the same
+plan, the same tests (unless `-S`) and guard lanes. Do not run `jk build` first. A library is refused
+with the verbs that fit it: `jk snapshot` while you edit, `jk release` to cut a version.
 
 The install writes the thin jar and POM once, to the Maven local repository (`~/.m2/repository`),
 with Maven's checksum sidecars, so Maven and Gradle builds on the machine see the artifact. An
@@ -423,7 +424,7 @@ foreign, and deleting the slot's directory is the way back.
 
 ## `jk snapshot`
 
-`jk snapshot` is `jk install` for the inner loop. It runs the same phases and tests (`-S` skips
+`jk snapshot` is the inner-loop install, for libraries and applications alike. It runs the same phases and tests (`-S` skips
 them) and installs to the same place, but every module goes in at its declared version plus
 `-SNAPSHOT`: a project at `1.0.0` installs as `1.0.0-SNAPSHOT`, and a snapshot jk wrote is replaced
 each time. `jk.toml` and the lock keep the release version, so there is nothing to edit to move

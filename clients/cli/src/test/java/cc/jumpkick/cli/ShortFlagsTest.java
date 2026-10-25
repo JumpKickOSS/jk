@@ -26,7 +26,6 @@ class ShortFlagsTest {
             "install --ver",
             "install --bin",
             "install --destination",
-            "install --snapshot",
             "snapshot --destination",
             "publish --tag",
             "release --major",
@@ -39,7 +38,6 @@ class ShortFlagsTest {
             "tool install --ver",
             "tool install --bin",
             "tool install --destination",
-            "tool install --snapshot",
             "guard --schema");
 
     @Test

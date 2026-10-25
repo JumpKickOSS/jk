@@ -123,9 +123,8 @@ jk snapshot -S
 JumpKick follows the flow it asks its users to follow. The root `jk.toml` `version` is the **next
 release** and is never written with `-SNAPSHOT`; `jk snapshot` installs the tree as
 `<version>-SNAPSHOT` (the build stamps that into `JkVersion.VERSION`), replaced on every run.
-`jk install` is for a release: a version is installed once, and a snapshot of an installed
-release is refused, so after a release bump `jk.toml` (and the installers' `RELEASE_FLOOR`) to the
-next version by hand until `jk release` does it.
+`jk release` cuts a release: the version is installed once, tagged, and `jk.toml` moves to the
+next one (bump the installers' `RELEASE_FLOOR` with it). A snapshot of an installed release is refused.
 
 `jk snapshot` is `jk build` plus the install steps: the same plan, the same lanes, tests unless `-S`.
 Never run `jk build` first; it repeats work the snapshot does anyway.
