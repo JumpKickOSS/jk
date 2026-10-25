@@ -33,7 +33,16 @@ class HostedVerbDecodeJobTest {
         WorkspaceBuildVerb verb = new WorkspaceBuildVerb(new InertVerbHost());
         assertThat(verb.jobKinds())
                 .containsExactly(
-                        "build", "assemble", "test", "guard", "compile", "image", "install", "native", "publish");
+                        "build",
+                        "assemble",
+                        "test",
+                        "guard",
+                        "compile",
+                        "image",
+                        "install",
+                        "snapshot",
+                        "native",
+                        "publish");
 
         String build = verb.decodeJob(JobSpec.of("build", dir.toString()));
         assertThat(EngineProtocol.typeOf(build)).isEqualTo(EngineProtocol.BUILD_REQUEST);
