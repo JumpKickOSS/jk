@@ -35,7 +35,8 @@ class VerbRegistryTest {
                         "install",
                         "snapshot",
                         "native",
-                        "publish");
+                        "publish",
+                        "upload");
         assertThat(verb(reg, EngineProtocol.LOCK_REQUEST)).isInstanceOf(LockVerb.class);
         assertThat(verb(reg, EngineProtocol.UPDATE_REQUEST)).isInstanceOf(UpdateVerb.class);
         assertThat(verb(reg, EngineProtocol.SYNC_REQUEST)).isInstanceOf(SyncVerb.class);

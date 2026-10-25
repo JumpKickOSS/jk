@@ -59,6 +59,7 @@ public final class McpJobRuns {
         String kind = pinnedKind;
         if (kind == null) kind = in.str("kind");
         if (kind == null || kind.isBlank()) kind = "test";
+        if ("publish".equals(kind) && in.flag("upload")) kind = "upload";
         List<String> modules = in.strings("modules");
         if (modules.isEmpty()) modules = only(in);
         boolean affected = in.flag("affected");
