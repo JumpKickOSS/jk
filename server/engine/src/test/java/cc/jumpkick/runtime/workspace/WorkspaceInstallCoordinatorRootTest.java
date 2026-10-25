@@ -108,7 +108,7 @@ class WorkspaceInstallCoordinatorRootTest {
 
     private WorkspaceRequest installRequest() {
         return new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 0, null, true, false, 0, null, true, true)
-                .withSpec(WorkspaceSpec.install(Set.of(), Map.of(), null, null));
+                .withSpec(WorkspaceSpec.install(Set.of(), Map.of(), null, null, false));
     }
 
     private WorkspaceRequest reshelveRequest() {

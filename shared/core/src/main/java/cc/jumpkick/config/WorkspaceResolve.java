@@ -35,6 +35,13 @@ public final class WorkspaceResolve {
      * {@code moduleDir} is not part of a workspace (or the workspace cannot be read).
      */
     public static JkBuild applyWorkspace(Path moduleDir, JkBuild module) {
+        JkBuild resolved = resolveWorkspace(moduleDir, module);
+        return SnapshotQualifier.active()
+                ? SnapshotQualifier.qualify(resolved, siblingCoordinates(moduleDir))
+                : resolved;
+    }
+
+    private static JkBuild resolveWorkspace(Path moduleDir, JkBuild module) {
         try {
             var rootDir = WorkspaceLocator.findRoot(moduleDir);
             if (rootDir.isEmpty()) {

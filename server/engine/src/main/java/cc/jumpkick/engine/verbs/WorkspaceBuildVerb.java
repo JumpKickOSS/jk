@@ -121,7 +121,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
         TailArgs tail =
                 switch (target) {
                     case IMAGE -> new TailArgs.Image(null, null, null, null, null);
-                    case INSTALL -> new TailArgs.Install(null, null);
+                    case INSTALL -> new TailArgs.Install(null, null, false);
                     case NATIVE -> new TailArgs.Native(null, List.of());
                     case PUBLISH ->
                         new TailArgs.Publish(
@@ -344,7 +344,10 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
                     .withSpec(new WorkspaceSpec(target, selected, graalByDir, body.tail()));
 
-            Session session = ProtoSession.sessionOf(requestLine, cancelToken);
+            Session base = ProtoSession.sessionOf(requestLine, cancelToken);
+            Session session = body.tail() instanceof TailArgs.Install install && install.snapshot()
+                    ? base.withSnapshot(true)
+                    : base;
             long rid = host.eventRequestId();
             if (rid > 0) host.putProgressRoot(rid, entryDirStr);
             WorkspaceBuildListener listener = host.workspaceListener(writer, entryDirStr);

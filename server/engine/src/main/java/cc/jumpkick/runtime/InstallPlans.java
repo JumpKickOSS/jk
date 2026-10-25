@@ -6,6 +6,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkInstallConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.host.Errors;
@@ -447,7 +448,7 @@ public final class InstallPlans {
 
     private static String releaseSlot(Coordinate coord, Path dir) {
         return coord.toGav() + " is already installed in " + dir + " with different contents. A release version is"
-                + " installed once: raise the version in jk.toml, or install a -SNAPSHOT version while you iterate.";
+                + " installed once: raise the version in jk.toml, or run `jk snapshot` while you iterate.";
     }
 
     private static String foreignSlot(Coordinate coord, Path dir) {
@@ -706,7 +707,7 @@ public final class InstallPlans {
             }
         }
         for (ModuleEntry m : lock.modules()) {
-            out.put(m.group() + ":" + m.name(), m.version());
+            out.put(m.group() + ":" + m.name(), SnapshotQualifier.version(m.version()));
         }
         return out;
     }
