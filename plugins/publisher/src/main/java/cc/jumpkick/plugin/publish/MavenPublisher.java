@@ -11,6 +11,10 @@ import cc.jumpkick.repo.RepoTransports;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Locale;
@@ -18,6 +22,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -109,6 +115,7 @@ public final class MavenPublisher {
     public Result publish(Project project, Iterable<Artifact> artifacts, SigningOptions signing)
             throws IOException, InterruptedException {
         if (signing == null) signing = SigningOptions.none();
+        if (project.version().endsWith(SNAPSHOT)) return publishSnapshot(project, artifacts, signing);
         Map<String, Integer> results = new LinkedHashMap<>();
         Set<String> alreadyThere = new LinkedHashSet<>();
         long[] bytes = {0};
@@ -138,6 +145,91 @@ public final class MavenPublisher {
         }
         publishMetadata(project, groupPath, results, bytes);
         return new Result(results, bytes[0], alreadyThere);
+    }
+
+    private static final String SNAPSHOT = "-SNAPSHOT";
+
+    private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyyMMdd.HHmmss");
+
+    private static final Pattern BUILD_NUMBER = Pattern.compile("<buildNumber>\\s*(\\d+)\\s*</buildNumber>");
+
+    private Clock clock = Clock.systemUTC();
+
+    /** The clock that stamps a snapshot's files; a test pins it. */
+    MavenPublisher withClock(Clock clock) {
+        this.clock = clock;
+        return this;
+    }
+
+    /**
+     * A snapshot goes up in Maven's unique form: {@code name-1.0.1-20261025.201500-3.jar} beside a
+     * version-level {@code maven-metadata.xml} naming the newest build, so a repository that refuses
+     * redeploys takes every publish and a consumer resolves the latest one.
+     */
+    private Result publishSnapshot(Project project, Iterable<Artifact> artifacts, SigningOptions signing)
+            throws IOException, InterruptedException {
+        Map<String, Integer> results = new LinkedHashMap<>();
+        long[] bytes = {0};
+        String groupPath = project.group().replace('.', '/');
+        String prefix = groupPath + "/" + project.name() + "/" + project.version() + "/";
+        String metadataPath = prefix + "maven-metadata.xml";
+        int build = 1;
+        try {
+            Optional<byte[]> previous = transport.fetch(repoBase.resolve(metadataPath), credential);
+            if (previous.isPresent()) {
+                Matcher m = BUILD_NUMBER.matcher(new String(previous.get(), StandardCharsets.UTF_8));
+                if (m.find()) build = Integer.parseInt(m.group(1)) + 1;
+            }
+        } catch (IOException unreadable) {
+            throw new IOException(
+                    "could not read " + repoBase.resolve(metadataPath) + " (" + unreadable.getMessage()
+                            + ") — refusing to guess the next build number of " + project.version() + ".",
+                    unreadable);
+        }
+        ZonedDateTime now = ZonedDateTime.now(clock.withZone(ZoneOffset.UTC));
+        String timestamp = STAMP.format(now);
+        String stamped = project.version().substring(0, project.version().length() - SNAPSHOT.length()) + "-"
+                + timestamp + "-" + build;
+        String stem = project.name() + "-" + stamped;
+        StringBuilder entries = new StringBuilder();
+        for (Artifact a : artifacts) {
+            String relPath = prefix + stem + a.filenameSuffix();
+            putWithChecksums(relPath, a.body(), contentType(a.filenameSuffix()), results, bytes);
+            if (signing.gpg() != null) {
+                putWithChecksums(
+                        relPath + ".asc", signing.gpg().signArmored(a.body()), contentType(".asc"), results, bytes);
+            }
+            if (signing.sigstore() != null) {
+                putWithChecksums(
+                        relPath + ".sigstore",
+                        signing.sigstore().signBundle(a.body()),
+                        contentType(".sigstore"),
+                        results,
+                        bytes);
+            }
+            String suffix = a.filenameSuffix();
+            int dot = suffix.lastIndexOf('.');
+            String classifier = suffix.startsWith("-") ? suffix.substring(1, dot) : "";
+            entries.append("      <snapshotVersion>\n");
+            if (!classifier.isEmpty())
+                entries.append("        <classifier>").append(classifier).append("</classifier>\n");
+            entries.append("        <extension>")
+                    .append(suffix.substring(dot + 1))
+                    .append("</extension>\n        <value>")
+                    .append(stamped)
+                    .append("</value>\n        <updated>")
+                    .append(timestamp.replace(".", ""))
+                    .append("</updated>\n      </snapshotVersion>\n");
+        }
+        String metadata = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<metadata modelVersion=\"1.1.0\">\n  <groupId>"
+                + project.group() + "</groupId>\n  <artifactId>" + project.name() + "</artifactId>\n  <version>"
+                + project.version() + "</version>\n  <versioning>\n    <snapshot>\n      <timestamp>" + timestamp
+                + "</timestamp>\n      <buildNumber>" + build + "</buildNumber>\n    </snapshot>\n"
+                + "    <lastUpdated>" + timestamp.replace(".", "") + "</lastUpdated>\n    <snapshotVersions>\n"
+                + entries + "    </snapshotVersions>\n  </versioning>\n</metadata>\n";
+        putWithChecksums(metadataPath, metadata.getBytes(StandardCharsets.UTF_8), "application/xml", results, bytes);
+        publishMetadata(project, groupPath, results, bytes);
+        return new Result(results, bytes[0], Set.of());
     }
 
     /**

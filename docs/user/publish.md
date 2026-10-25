@@ -25,6 +25,10 @@ jar. A Kotlin library's javadoc jar is Dokka's output, so the bundle
 carries real API docs rather than an empty jar.
 See [Packaging: library artefacts](packaging.md#library-artefacts-sources-and-javadoc-jars).
 
+A `-SNAPSHOT` version publishes only with `--allow-snapshot`, in Maven's unique form: each run uploads
+`name-1.0.1-20261025.201500-3.jar` and rewrites the version's `maven-metadata.xml` to name the newest
+build, so a snapshot repository that refuses redeploys takes every run and consumers resolve the latest.
+
 ## POM metadata: `[publish]`
 
 The POM carries the coordinate, the `description` and the dependencies from `jk.toml`. A release
