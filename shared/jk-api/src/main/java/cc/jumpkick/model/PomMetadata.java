@@ -10,7 +10,10 @@ import org.jspecify.annotations.Nullable;
  * The {@code [publish]} table: what a published POM says about the project beyond its coordinate
  * and dependencies — the human name, the home page, the licenses, the people, the source
  * repository. Maven Central refuses a release missing any of them; a private repository reads
- * them if it cares. A workspace root's table applies to every member that declares none.
+ * them if it cares. The same table names where a release goes: {@code repository} (a
+ * {@code [repositories.<name>]} entry, or {@code central}), whether it is {@code sign}ed and the
+ * {@code keyFile} that signs it — never a secret. A workspace root's table applies to every member
+ * that declares none.
  */
 public record PomMetadata(
         @Nullable String name,
@@ -18,7 +21,10 @@ public record PomMetadata(
         @Nullable String url,
         List<License> licenses,
         List<Developer> developers,
-        @Nullable Scm scm) {
+        @Nullable Scm scm,
+        @Nullable String repository,
+        boolean sign,
+        @Nullable String keyFile) {
 
     public PomMetadata {
         licenses = licenses == null ? List.of() : List.copyOf(licenses);
@@ -26,7 +32,8 @@ public record PomMetadata(
     }
 
     /** No {@code [publish]} table: a POM with coordinate, description and dependencies only. */
-    public static final PomMetadata EMPTY = new PomMetadata(null, null, null, List.of(), List.of(), null);
+    public static final PomMetadata EMPTY =
+            new PomMetadata(null, null, null, List.of(), List.of(), null, null, false, null);
 
     public record License(String name, @Nullable String url) {
         public License {
@@ -53,7 +60,10 @@ public record PomMetadata(
                 && url == null
                 && licenses.isEmpty()
                 && developers.isEmpty()
-                && scm == null;
+                && scm == null
+                && repository == null
+                && !sign
+                && keyFile == null;
     }
 
     /**

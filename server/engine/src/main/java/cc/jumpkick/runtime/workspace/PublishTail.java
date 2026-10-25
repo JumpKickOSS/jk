@@ -69,6 +69,7 @@ public final class PublishTail {
                 destination,
                 plan.get(PublishPlans.DRY_RUN).orElse(false),
                 Math.max(plan.get(PublishPlans.FILES).orElse(0), 0),
+                Math.max(plan.get(PublishPlans.EXISTING).orElse(0), 0),
                 plan.get(PublishPlans.WRITTEN).orElse(List.of()),
                 plan.get(PublishPlans.BUNDLE).orElse(List.of()),
                 deployment == null ? null : deployment.id(),

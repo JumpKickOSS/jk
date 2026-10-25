@@ -80,6 +80,9 @@ public final class PublishPlans {
     /** The plugin's uploaded-file count (0 for {@code --dry-run}), populated by the publish step. */
     public static final BuildPlanKey<Integer> FILES = BuildPlanKey.scalar("pub-files", Integer.class);
 
+    /** How many of the artifacts the repository already held at the same bytes, so the run left them alone. */
+    public static final BuildPlanKey<Integer> EXISTING = BuildPlanKey.scalar("pub-existing", Integer.class);
+
     /** The files the plugin wrote under the module's target/ (the SBOM documents, a Central bundle), for the client to name. */
     public static final BuildPlanKey<List<String>> WRITTEN = BuildPlanKey.list("pub-written", String.class);
 
@@ -186,6 +189,7 @@ public final class PublishPlans {
                     // The facts land before the verdict: a deployment the Portal refused still has
                     // an id and errors the results file must carry.
                     ctx.put(FILES, out.files());
+                    ctx.put(EXISTING, out.existing());
                     ctx.put(WRITTEN, out.written());
                     ctx.put(BUNDLE, out.bundle());
                     if (out.deployment() != null) ctx.put(DEPLOYMENT, out.deployment());
@@ -216,6 +220,7 @@ public final class PublishPlans {
      */
     private record WorkerOutcome(
             int files,
+            int existing,
             List<String> written,
             List<String> bundle,
             @Nullable Deployment deployment,
@@ -227,6 +232,7 @@ public final class PublishPlans {
             Path spec = writeSpec(projectDir, jar, req);
             try {
                 int[] files = {0};
+                int[] existing = {0};
                 boolean[] reported = {false};
                 List<String> written = new ArrayList<>();
                 List<String> bundle = new ArrayList<>();
@@ -237,6 +243,7 @@ public final class PublishPlans {
                         .on(PluginProtocol.RESULT, json -> {
                             reported[0] = true;
                             files[0] = Jsonl.intValue(json, "files", 0);
+                            existing[0] = Jsonl.intValue(json, "existing", 0);
                             written.addAll(Jsonl.strArray(json, "written"));
                             bundle.addAll(Jsonl.strArray(json, "bundle"));
                             String id = Jsonl.str(json, "deploymentId");
@@ -261,9 +268,9 @@ public final class PublishPlans {
                                     ? ": " + error[0]
                                     : diag != null ? ": " + diag : " (exit " + exit + ")");
                     if (!reported[0]) throw new RuntimeException(message);
-                    return new WorkerOutcome(files[0], written, bundle, deployment[0], message);
+                    return new WorkerOutcome(files[0], existing[0], written, bundle, deployment[0], message);
                 }
-                return new WorkerOutcome(files[0], written, bundle, deployment[0], null);
+                return new WorkerOutcome(files[0], existing[0], written, bundle, deployment[0], null);
             } finally {
                 Files.deleteIfExists(spec);
             }

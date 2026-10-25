@@ -45,6 +45,30 @@ class ManifestPublishTest {
     }
 
     @Test
+    void the_table_names_where_a_release_goes() throws Exception {
+        PomMetadata m = parse("""
+                [publish]
+                repository = "releases"
+                sign = true
+                key-file = "~/.gnupg/release.asc"
+                """).pomMetadata();
+
+        assertThat(m.repository()).isEqualTo("releases");
+        assertThat(m.sign()).isTrue();
+        assertThat(m.keyFile()).isEqualTo("~/.gnupg/release.asc");
+    }
+
+    @Test
+    void a_secret_in_the_table_is_refused_with_where_it_belongs() {
+        assertThatThrownBy(() -> parse("""
+                [publish]
+                password = "hunter2"
+                """))
+                .hasMessageContaining("takes no secrets")
+                .hasMessageContaining("jk repo login");
+    }
+
+    @Test
     void the_table_is_read_and_rendered_into_the_pom() throws Exception {
         JkBuild b = parse(TABLE);
         PomMetadata m = b.pomMetadata();

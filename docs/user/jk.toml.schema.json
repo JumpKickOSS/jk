@@ -674,6 +674,9 @@
       "properties": {
         "name": { "type": "string", "description": "POM <name>; default the artifact id" },
         "url": { "type": "string" },
+        "repository": { "type": "string", "description": "Where `jk publish` sends a release: a [repositories.<name>] entry, or \"central\". A --repo-url or --central flag overrides it." },
+        "sign": { "type": "boolean", "description": "Sign the release as `jk publish --sign` does. Default false." },
+        "key-file": { "type": "string", "description": "The signing key file, relative to the module or ~/-prefixed. The passphrase never goes here (JK_GPG_PASSPHRASE)." },
         "licenses": {
           "type": "array",
           "items": {

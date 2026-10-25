@@ -61,6 +61,7 @@ public record ModuleFinishEvent(
                                     .string("destination", published.destination())
                                     .optionalTrue("dryRun", published.dryRun())
                                     .number("files", published.files())
+                                    .number("existing", published.existing())
                                     .optionalArray("written", published.written())
                                     .optionalArray("bundle", published.bundle())
                                     .optionalString("deploymentId", published.deploymentId())
@@ -104,6 +105,7 @@ public record ModuleFinishEvent(
                         Jsonl.requiredStr(pub, "destination"),
                         Jsonl.bool(pub, "dryRun", false),
                         Jsonl.intValue(pub, "files", 0),
+                        Jsonl.intValue(pub, "existing", 0),
                         Jsonl.strArray(pub, "written"),
                         Jsonl.strArray(pub, "bundle"),
                         Jsonl.str(pub, "deploymentId"),

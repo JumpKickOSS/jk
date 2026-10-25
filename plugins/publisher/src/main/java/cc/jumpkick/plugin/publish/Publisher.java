@@ -111,6 +111,7 @@ public final class Publisher implements Plugin, PublishExtension {
             PublishResult result = publish(new SpecPublishContext(spec, out));
             Map<String, Object> fields = new LinkedHashMap<>();
             fields.put("files", result.files());
+            if (result.existing() > 0) fields.put("existing", result.existing());
             if (result.bytes() > 0) fields.put("bytes", result.bytes());
             if (result.dryRun()) fields.put("dry_run", true);
             if (!result.written().isEmpty())
@@ -248,9 +249,11 @@ public final class Publisher implements Plugin, PublishExtension {
             for (Map.Entry<String, Integer> e : result.statusByPath().entrySet()) {
                 ctx.label("upload " + e.getKey() + " → " + e.getValue());
             }
+            for (String path : result.alreadyThere()) ctx.label("already published " + path);
             // No partial-failure check: publish() throws on the first non-2xx PUT, so a Result here
             // is a fully successful upload.
             return PublishResult.uploaded(result.statusByPath().size(), result.bytes())
+                    .withExisting(result.alreadyThere().size())
                     .withWritten(written);
         } finally {
             if (signing.sigstore() instanceof AutoCloseable closeable) {

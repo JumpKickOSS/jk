@@ -12,8 +12,12 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -75,10 +79,18 @@ public final class MavenPublisher {
      * Every recorded status is 2xx: {@link #put} throws on anything else, so a {@code Result} only
      * exists for a publish that fully succeeded.
      */
-    public record Result(Map<String, Integer> statusByPath, long bytes) {
+    public record Result(Map<String, Integer> statusByPath, long bytes, Set<String> alreadyThere) {
         public Result {
             statusByPath = Map.copyOf(statusByPath);
+            alreadyThere = Set.copyOf(alreadyThere);
         }
+    }
+
+    /** Whether the repository holds a file, and if so whether it holds these bytes. */
+    private enum Presence {
+        ABSENT,
+        SAME,
+        DIFFERENT
     }
 
     /**
@@ -98,6 +110,7 @@ public final class MavenPublisher {
             throws IOException, InterruptedException {
         if (signing == null) signing = SigningOptions.none();
         Map<String, Integer> results = new LinkedHashMap<>();
+        Set<String> alreadyThere = new LinkedHashSet<>();
         long[] bytes = {0};
         String groupPath = project.group().replace('.', '/');
         String prefix = groupPath + "/" + project.name() + "/" + project.version() + "/";
@@ -105,6 +118,13 @@ public final class MavenPublisher {
 
         for (Artifact a : artifacts) {
             String relPath = prefix + stem + a.filenameSuffix();
+            // A published file never changes: one the repository already holds at these bytes is left
+            // alone, which makes a re-run after a partial publish finish the rest; one it holds at
+            // other bytes is a version somebody already used.
+            if (presence(relPath, a.body()) == Presence.SAME) {
+                alreadyThere.add(relPath);
+                continue;
+            }
             putWithChecksums(relPath, a.body(), contentType(a.filenameSuffix()), results, bytes);
 
             if (signing.gpg() != null) {
@@ -117,7 +137,39 @@ public final class MavenPublisher {
             }
         }
         publishMetadata(project, groupPath, results, bytes);
-        return new Result(results, bytes[0]);
+        return new Result(results, bytes[0], alreadyThere);
+    }
+
+    /**
+     * Whether {@code relPath} is in the repository, and at {@code body}'s bytes: the {@code .sha1}
+     * beside it when there is one, else the file itself. A repository that will not answer a read
+     * (no read permission, a write-only drop) reads as {@link Presence#ABSENT}: the upload that
+     * follows is the authority, and says so if the file is there.
+     *
+     * @throws IOException when the repository holds the file at other bytes
+     */
+    private Presence presence(String relPath, byte[] body) throws IOException, InterruptedException {
+        String local = Checksums.of(body).sha1();
+        String remote;
+        try {
+            Optional<byte[]> sidecar = transport.fetch(repoBase.resolve(relPath + ".sha1"), credential);
+            if (sidecar.isPresent()) {
+                remote = new String(sidecar.get(), StandardCharsets.US_ASCII)
+                        .strip()
+                        .split("\\s+")[0]
+                        .toLowerCase(Locale.ROOT);
+            } else {
+                Optional<byte[]> raw = transport.fetch(repoBase.resolve(relPath), credential);
+                if (raw.isEmpty()) return Presence.ABSENT;
+                remote = Checksums.of(raw.get()).sha1();
+            }
+        } catch (IOException unreadable) {
+            return Presence.ABSENT;
+        }
+        if (remote.equals(local)) return Presence.SAME;
+        throw new IOException(repoBase.resolve(relPath)
+                + " is already published with other bytes (the repository's sha1 " + remote + ", this build's " + local
+                + "): a published version cannot change. Raise the version in jk.toml.");
     }
 
     /**
@@ -182,6 +234,10 @@ public final class MavenPublisher {
         int status = transport.put(uri, body, contentType, credential);
         out.put(relPath, status);
         bytes[0] += body.length;
+        if (status == 409) {
+            throw new IOException("PUT " + uri + " returned 409: the repository already holds this file and does not"
+                    + " allow it to be replaced. Raise the version in jk.toml.");
+        }
         if (status < 200 || status >= 300) {
             throw new IOException("PUT " + uri + " returned " + status);
         }
