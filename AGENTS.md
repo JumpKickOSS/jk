@@ -117,15 +117,22 @@ After code changes, reinstall the **local** JumpKick so dogfood uses the build y
 (client on PATH under `~/.jk/bin`, engine jar under `~/.jk/lib/jk-engine/`):
 
 ```bash
-jk install -S
+jk snapshot -S
 ```
 
-`jk install` is `jk build` plus the install steps: the same plan, the same lanes, tests unless `-S`.
-Never run `jk build` first; it repeats work the install does anyway.
+JumpKick follows the flow it asks its users to follow. The root `jk.toml` `version` is the **next
+release** and is never written with `-SNAPSHOT`; `jk snapshot` installs the tree as
+`<version>-SNAPSHOT` (the build stamps that into `JkVersion.VERSION`), replaced on every run.
+`jk install` is for a release: a version is installed once, and a snapshot of an installed
+release is refused, so after a release bump `jk.toml` (and the installers' `RELEASE_FLOOR`) to the
+next version by hand until `jk release` does it.
+
+`jk snapshot` is `jk build` plus the install steps: the same plan, the same lanes, tests unless `-S`.
+Never run `jk build` first; it repeats work the snapshot does anyway.
 
 | Command | What it does |
 |---|---|
-| `jk install -S` | Everything `jk build -S` does (every module compiled and packaged; `target/dist/jk` native CLI + `target/dist/lib/jk-engine-<version>.jar`), then shelves every library and worker jar under `~/.jk/store/repos/jk-local` (bytes into the artifact CAS first), materializes the engine jar into `~/.jk/lib/jk-engine/`, pins the shelved jars to that engine by sha in `~/.jk/lib/jk-engine/jk-shelf.toml` and swaps the native client into `~/.jk/bin/jk`. The next invocation takes over the resident engine; every fork of an engine runs the workers its own install pinned, so a second worktree's install never swaps a worker under a running engine, and the displaced engine drains with its own |
+| `jk snapshot -S` | Everything `jk build -S` does (every module compiled and packaged; `target/dist/jk` native CLI + `target/dist/lib/jk-engine-<version>.jar`), then shelves every library and worker jar under `~/.jk/store/repos/jk-local` (bytes into the artifact CAS first), materializes the engine jar into `~/.jk/lib/jk-engine/`, pins the shelved jars to that engine by sha in `~/.jk/lib/jk-engine/jk-shelf.toml` and swaps the native client into `~/.jk/bin/jk`. The next invocation takes over the resident engine; every fork of an engine runs the workers its own install pinned, so a second worktree's install never swaps a worker under a running engine, and the displaced engine drains with its own |
 | `./install.sh target/dist/jk` | The same ship layout onto a machine with no jk yet |
 | `scripts/reinstall-chain.sh` | The same install when the installed jk is too old to build the checkout: installs stepping stones from a scratch worktree first ([self-host](docs/contributors/self-host.md#the-bootstrap-chain)) |
 
@@ -139,7 +146,7 @@ jk engine status          # engine answers, no version-skew crash; `Source` name
 jk new smoke-app -l java && cd smoke-app && jk build
 ```
 
-Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIBUTING.md)). Module and class filters are fine mid-ticket; the merge gate (`jk format`, `jk guard`, `jk build`) and the reinstall smoke are required **before merging a code-changing ticket into local `main`**; `jk test -p integration` is the push gate, run once before pushing `main` to `origin`.
+Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIBUTING.md)). Module and class filters are fine mid-ticket; the merge gate (`jk format`, `jk guard`, `jk snapshot`) and the reinstall smoke are required **before merging a code-changing ticket into local `main`**; `jk snapshot -p integration` is the push gate, run once before pushing `main` to `origin`.
 
 ## Planning / tickets (KanArtist — not this repo)
 
@@ -171,17 +178,18 @@ Prefer a small WIP limit (a few claimed tickets). If blocked: `ka set-status JK-
 
 **Two gates** (keep the merge loop under ~5 minutes; details: [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md)):
 
-- **Merge gate** — before every local merge into `main`: `jk format`, `jk guard`, `jk install`
+- **Merge gate** — before every local merge into `main`: `jk format`, `jk guard`, `jk snapshot`
   (`jk build` plus the reinstall; never run `jk build` before it).
-- **Push gate** — before every `git push` of `main` to `origin`: `jk test -p integration` on the
-  local `main` you are about to push. One run covers every branch merged since the last push, so
+- **Push gate** — before every `git push` of `main` to `origin`: `jk snapshot -p integration` on the
+  local `main` you are about to push (the test classpath and the installed jk must report the same
+  `-SNAPSHOT` version; `jk test -p integration` against a snapshot-installed jk does not). One run covers every branch merged since the last push, so
   worktrees merge on the fast gate and pay for integration once per push, not once per merge.
 
 | Command | What runs | When |
 |---------|-----------|------|
 | `jk guard` | Every house-rule lane, the tree lane and the fixture proofs included | Every local merge |
-| `jk install` | Exactly what `jk build` runs (every module compiled and packaged, its fast tier, the model/module/workspace/output lanes), then the reinstall | Every local merge |
-| `jk test -p integration` | Engine/CLI e2e, workers, install, lock | Every push to `origin` (the push gate) |
+| `jk snapshot` | Exactly what `jk build` runs (every module compiled and packaged, its fast tier, the model/module/workspace/output lanes), then the reinstall | Every local merge |
+| `jk snapshot -p integration` | Engine/CLI e2e, workers, install, lock | Every push to `origin` (the push gate) |
 | `jk test -p slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | Before the push that carries a plugin or toolchain change; nightly |
 
 Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not** put multi-minute e2e in the default `test` task.
@@ -191,16 +199,16 @@ Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not**
 **Any ticket that changes Java (or other runtime) code** must **not** merge into local `main` or move to `done` in kanartist until all of the following pass:
 
 1. **Tests (required, non-negotiable)** — prove the change did not break the build:
-   - **Merge gate:** `jk format`, a clean `jk guard` (every house-rule lane, the tree lane included) and a green `jk install` (every module's fast tier, then the reinstall).
+   - **Merge gate:** `jk format`, a clean `jk guard` (every house-rule lane, the tree lane included) and a green `jk snapshot` (every module's fast tier, then the reinstall).
    - Mid-ticket, narrow with `-m <module>` and `--class <fqcn>`; run a targeted `-p integration --class …` when the change lives in engine/CLI e2e territory, but do not run the full integration profile per merge.
    - Do not merge into local `main` with a red or un-run fast gate. A broken local `main` is a stop-the-line defect: fix it first, then resume tickets.
-2. **Reinstall** — done by the merge gate's `jk install`. Never run `jk build` and then `jk install`; the install is the build.
+2. **Reinstall** — done by the merge gate's `jk snapshot`. Never run `jk build` and then `jk snapshot`; the install is the build.
 3. **Engine smoke** — `jk engine status` succeeds (engine up or able to start; no immediate failure).
 4. **Project smoke** — a simple project builds with the reinstalled binary, e.g. `jk init … && jk build` (or equivalent lock/build path the ticket affects).
 
 Record failures on the kanartist ticket (`status: blocked` or body notes); do not mark done on green unit tests alone if dist/install/dogfood is broken.
 
-**Before pushing `main` to `origin`** (the push gate): green `jk test -p integration` on the exact
+**Before pushing `main` to `origin`** (the push gate): green `jk snapshot -p integration` on the exact
 local `main` being pushed, plus `jk test -p slow` when any merged change touches a framework or
 language plugin. Never push a red or un-run push gate. When it fails, `main` stops: fix forward on
 `main` (re-running the merge gate), re-run the push gate, then push, and note the regression on the
