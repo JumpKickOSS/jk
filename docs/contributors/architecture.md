@@ -551,6 +551,13 @@ the memo's bytes; a release version is installed once. `WorkspacePreflightPhase.
 runs the same decision before any build when the forecast says the jar will be rebuilt. The pinned
 shelf (`jk-shelf.toml`) records only `repos/jk-local` installs.
 
+The files are written as Maven's own install writes them: the jar and POM, their `.sha1` and `.md5`
+sidecars, and a `_remote.repositories` line per file with an **empty** repository id. A named id
+makes a Maven build without that repository refuse the file ("cached from a remote repository ID that
+is unavailable"). No `maven-metadata-local.xml` is needed for a `-SNAPSHOT`: Maven and Gradle
+(`mavenLocal()`) resolve the plain file. `LocalRepoConsumersTest` (slow tier) resolves a release and a
+snapshot through both.
+
 ### Action keys and future remote cache (design)
 
 Local action keys already hash the ingredients a remote cache would need. **Do not rewrite
