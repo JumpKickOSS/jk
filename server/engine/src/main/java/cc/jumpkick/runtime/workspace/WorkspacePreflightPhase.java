@@ -23,6 +23,8 @@ import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.FirstPartyPins;
+import cc.jumpkick.runtime.InstallPlans;
+import cc.jumpkick.runtime.ModuleJar;
 import cc.jumpkick.runtime.PlannerSupport;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.TaskForecaster;
@@ -149,6 +151,9 @@ public final class WorkspacePreflightPhase {
                         + ")",
                 forecastStart);
 
+        List<String> refused = installRefusals(request, units, forecast.preflight());
+        if (!refused.isEmpty()) return completed(false, Exit.FAILURE, refused);
+
         return new Ready(new Context(
                 request,
                 entryBuild,
@@ -159,6 +164,42 @@ public final class WorkspacePreflightPhase {
                 launchedAssemblies(graph),
                 scheduled(units, forecast.dirty(), forecast.restoreNeeded()),
                 forecast.preflight()));
+    }
+
+    /**
+     * What an install would refuse, said before anything builds: a selected module whose release
+     * version is already installed and whose jar the forecast says this build rewrites. Empty when
+     * the goal is not an install or the forecast did not price the jar step (a dirty hint, or a
+     * memo hit that carries no per-step verdicts): the install step's own check still applies.
+     */
+    static List<String> installRefusals(
+            WorkspaceRequest request,
+            List<BuildGraph.BuildUnit> units,
+            Optional<BuildForecasting.Preflight> preflight) {
+        if (request.target() != WorkspaceTarget.INSTALL || preflight.isEmpty()) return List.of();
+        WorkspaceSpec spec = request.spec() == null ? WorkspaceSpec.DEFAULT : request.spec();
+        Path m2Dir = spec.m2Dir() != null ? spec.m2Dir() : Path.of(System.getProperty("user.home", "."), ".m2");
+        Map<Path, TaskForecast.Module> byDir = new LinkedHashMap<>();
+        for (TaskForecast.Module m : preflight.orElseThrow().modules()) {
+            byDir.put(BuildGraph.canonicalPath(m.dir()), m);
+        }
+        List<String> refused = new ArrayList<>();
+        for (BuildGraph.BuildUnit unit : units) {
+            Path dir = BuildGraph.canonicalPath(unit.dir());
+            if (spec.hasSelection()
+                    && spec.selectedModules().stream()
+                            .noneMatch(sel -> BuildGraph.canonicalPath(sel).equals(dir))) {
+                continue;
+            }
+            String packaging = ModuleJar.packagingStep(unit.manifest(), unit.dir());
+            TaskForecast.Module module = byDir.get(dir);
+            if (packaging == null || module == null) continue;
+            boolean jarRebuilds = module.steps().stream().anyMatch(t -> t.name().equals(packaging) && !t.cached());
+            if (!jarRebuilds) continue;
+            String message = InstallPlans.refusedBeforeBuild(unit.manifest(), unit.dir(), m2Dir, spec.installTarget());
+            if (message != null) refused.add(message);
+        }
+        return refused;
     }
 
     private static Optional<Completed> freshenLock(

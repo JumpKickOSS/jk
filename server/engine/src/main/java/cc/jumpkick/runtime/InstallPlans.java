@@ -3,7 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.JkM2Config;
+import cc.jumpkick.config.JkInstallConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceResolve;
@@ -23,8 +23,8 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
+import cc.jumpkick.model.InstallTarget;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.plugin.manifest.VariantApply;
@@ -32,6 +32,7 @@ import cc.jumpkick.publish.PublishablePom;
 import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.M2CompatWriter;
 import cc.jumpkick.repo.M2Dirs;
+import cc.jumpkick.repo.M2InstallMemo;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.RepoArtifactResolver;
@@ -63,8 +64,9 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk install} heavy halves: the {@link #tail} that shelves a built module into
- * {@code repos/jk-local/}, and {@link #gitFetchBuildPlan}. User-home launcher shims stay client-side.
+ * {@code jk install} heavy halves: the {@link #tail} that installs a built module's thin jar and POM
+ * into the Maven local repository (or, for a {@link InstallTarget#JK} target, {@code repos/jk-local/}),
+ * and {@link #gitFetchBuildPlan}. User-home launcher shims stay client-side.
  */
 public final class InstallPlans {
 
@@ -72,18 +74,21 @@ public final class InstallPlans {
 
     // Cross-step keys.
     public static final BuildPlanKey<Coordinate> PRIMARY = BuildPlanKey.scalar("primary-coord", Coordinate.class);
-    /** What {@code cache-install} put on the shelf: the module's coordinate and the shas it published. */
-    public static final BuildPlanKey<ModuleOutcome.Shelved> SHELVED =
-            BuildPlanKey.scalar("shelved", ModuleOutcome.Shelved.class);
+    /** What {@code cache-install} left in the local repository: the module's coordinate, target and the shas it published. */
+    public static final BuildPlanKey<ModuleOutcome.Installed> INSTALLED =
+            BuildPlanKey.scalar("installed", ModuleOutcome.Installed.class);
 
     public static final BuildPlanKey<Path> CHECKOUT = BuildPlanKey.scalar("checkout-dir", Path.class);
     public static final BuildPlanKey<String> FETCHED_SHA = BuildPlanKey.scalar("fetched-sha", String.class);
 
-    /** {@code jk install}'s tail: {@link #appendCacheInstall} after the build; a module with no jar has nothing to shelve. */
-    public static Tail tail(JkBuild proj, Path cache, Path m2Dir) {
+    /**
+     * {@code jk install}'s tail: {@link #appendCacheInstall} after the build; a module with no jar has
+     * nothing to install. {@code override} is the {@code --target} flag, null when none was given.
+     */
+    public static Tail tail(JkBuild proj, Path cache, Path m2Dir, @Nullable InstallTarget override) {
         return (plan, in) -> {
             String packaging = ModuleJar.packagingStep(proj, in.dir());
-            if (packaging != null) appendCacheInstall(plan, proj, cache, m2Dir, packaging);
+            if (packaging != null) appendCacheInstall(plan, proj, cache, m2Dir, override, packaging);
         };
     }
 
@@ -118,21 +123,27 @@ public final class InstallPlans {
      * jar is.
      */
     public static void appendCacheInstall(
-            BuildPlan.Builder builder, JkBuild proj, Path cache, Path m2Dir, String packaging) {
+            BuildPlan.Builder builder,
+            JkBuild proj,
+            Path cache,
+            Path m2Dir,
+            @Nullable InstallTarget override,
+            String packaging) {
         List<String> requires = new ArrayList<>(List.of(packaging));
         if (proj.nativeMode() == JkBuild.NativeMode.ALWAYS) requires.add(TaskNames.NATIVE_IMAGE);
-        builder.stateKeys(PRIMARY, SHELVED)
+        builder.stateKeys(PRIMARY, INSTALLED)
                 .extend(Task.builder(TaskNames.CACHE_INSTALL)
                         .forecast(StepForecast.priced(s -> ForecastPackagingTails.cacheInstall(
                                 proj,
                                 BuildLayout.of(ForecastScope.of(s).dir, proj),
                                 cache,
                                 m2Dir,
+                                override,
                                 ForecastScope.of(s).runs(packaging))))
                         .stage(BuildStage.PUBLISH)
                         .requires(requires.toArray(new String[0]))
                         .ticks(1)
-                        .execute(ctx -> executeCacheInstall(ctx, cache, m2Dir))
+                        .execute(ctx -> executeCacheInstall(ctx, cache, m2Dir, override))
                         .build());
     }
 
@@ -141,7 +152,8 @@ public final class InstallPlans {
      * an install materializes a new engine so shelf packager memos name that engine without
      * re-packaging or re-testing.
      */
-    public static BuildPlan reshelveBuildPlan(Path projectDir, Path cache, Path m2Dir) {
+    public static BuildPlan reshelveBuildPlan(
+            Path projectDir, Path cache, Path m2Dir, @Nullable InstallTarget override) {
         Path jkBuildPath = ManifestPaths.manifestIn(projectDir);
         Task parseBuild = Task.builder(TaskNames.PARSE_BUILD)
                 .forecast(StepForecast.RIDES)
@@ -176,10 +188,10 @@ public final class InstallPlans {
                 .stage(BuildStage.PUBLISH)
                 .requires(TaskNames.PARSE_BUILD)
                 .ticks(1)
-                .execute(ctx -> executeCacheInstall(ctx, cache, m2Dir))
+                .execute(ctx -> executeCacheInstall(ctx, cache, m2Dir, override))
                 .build();
         return BuildPlan.builder("reshelve")
-                .stateKeys(BuildPlanner.PROJECT, BuildPlanner.LAYOUT, PRIMARY, SHELVED)
+                .stateKeys(BuildPlanner.PROJECT, BuildPlanner.LAYOUT, PRIMARY, INSTALLED)
                 .addTask(parseBuild)
                 .addTask(cacheInstall)
                 .terminal(TaskNames.CACHE_INSTALL)
@@ -187,27 +199,39 @@ public final class InstallPlans {
     }
 
     /**
-     * Shared {@code cache-install} body: stamp when the shelf already matches, else write. Either
-     * way {@link #SHELVED} names the shas the shelf holds for this module when the step returns.
+     * Shared {@code cache-install} body: when the target already holds this module's bytes, stamp it;
+     * else check the install policy and write. Either way {@link #INSTALLED} names the target and
+     * the shas it holds for this module when the step returns.
      */
-    private static void executeCacheInstall(TaskContext ctx, Path cache, Path m2Dir) {
+    private static void executeCacheInstall(TaskContext ctx, Path cache, Path m2Dir, @Nullable InstallTarget override) {
         JkBuild project = ctx.require(BuildPlanner.PROJECT);
         BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
         var p = project.project();
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
-        ModuleOutcome.Shelved shelved = installedShas(project, layout, cache, m2Dir);
-        if (shelved != null) {
+        ModuleOutcome.Installed installed = installedShas(project, layout, cache, m2Dir, override);
+        if (installed != null) {
             ctx.label("already in local repo");
             ctx.cached();
-            stampShelfPackager(coord, BuildIdentity.codeSha256());
+            if (installed.target() == InstallTarget.JK) {
+                stampShelfPackager(coord, BuildIdentity.codeSha256());
+            } else {
+                try {
+                    recordOwnership(m2Dir.resolve("repository"), coord, installed.jarSha256(), installed.pomSha256());
+                } catch (IOException e) {
+                    Log.warn("jk: warning: could not record the install of " + coord + ": " + Errors.text(e));
+                }
+            }
             ctx.put(PRIMARY, coord);
-            ctx.put(SHELVED, shelved);
+            ctx.put(INSTALLED, installed);
             ctx.progress(1);
             return;
         }
-        ctx.label("install " + coord.group() + ":" + coord.artifact() + ":" + coord.version() + " to cache");
+        ctx.label("install " + coord.group() + ":" + coord.artifact() + ":" + coord.version() + " to local repo");
         try {
-            shelved = cacheInstallArtifact(project, layout, cache, m2Dir);
+            installed = cacheInstallArtifact(project, layout, cache, m2Dir, override);
+        } catch (Refusal refused) {
+            ctx.error(TaskNames.CACHE_INSTALL, Errors.text(refused));
+            throw new RuntimeException(refused);
         } catch (IOException e) {
             // Class name first: Windows FileSystemException messages are often just
             // "a -> b" with no reason, which hides whether it was access-denied or a
@@ -216,16 +240,16 @@ public final class InstallPlans {
             throw new RuntimeException(e);
         }
         ctx.put(PRIMARY, coord);
-        ctx.put(SHELVED, shelved);
+        ctx.put(INSTALLED, installed);
         ctx.progress(1);
     }
 
     /**
-     * What {@code plan}'s {@code cache-install} step put on the shelf; {@code null} when the plan
-     * has no such step or never reached it.
+     * What {@code plan}'s {@code cache-install} step left in the local repository; {@code null} when
+     * the plan has no such step or never reached it.
      */
-    public static ModuleOutcome.@Nullable Shelved shelvedOf(BuildPlan plan) {
-        return plan.get(SHELVED).orElse(null);
+    public static ModuleOutcome.@Nullable Installed installedOf(BuildPlan plan) {
+        return plan.get(INSTALLED).orElse(null);
     }
 
     /**
@@ -307,77 +331,175 @@ public final class InstallPlans {
         }
     }
 
+    /** An install the policy refuses; the message says what to do. */
+    private static final class Refusal extends IOException {
+        Refusal(String message) {
+            super(message);
+        }
+    }
+
+    /** True for a Maven snapshot version, the one kind a repository slot may be replaced in. */
+    static boolean isSnapshot(String version) {
+        return version.endsWith("-SNAPSHOT");
+    }
+
     /**
-     * Install the built JAR and POM into {@code repos/jk-local/} — always, in full: that shelf is
-     * where jk's own resolvers and the worker launcher read, and a memo pointing elsewhere is a
-     * jar the launcher cannot find. When {@code [m2] install} (and the machine {@code
-     * JK_M2_INSTALL} policy) is on, the same bytes also go to the Maven local repo with Maven's
-     * checksum sidecars, for Maven and Gradle builds beside jk. Independent of {@code [m2]
-     * integration}.
-     *
-     * @return the coordinate and the shas of the jar and POM bytes this call published
+     * Where {@code project}'s install goes. A plugin worker always goes to {@code repos/jk-local}:
+     * the launcher reads it there. Otherwise the {@code --target} flag, then the project's {@code
+     * [install] target}, then the machine's {@code config.toml}, then the Maven local repository.
      */
-    private static ModuleOutcome.Shelved cacheInstallArtifact(
-            JkBuild project, BuildLayout layout, Path cacheDir, Path m2Dir) throws IOException {
+    static InstallTarget targetOf(JkBuild project, Path moduleRoot, @Nullable InstallTarget override) {
+        if (PluginModule.isWorker(moduleRoot)) return InstallTarget.JK;
+        if (override != null) return override;
+        InstallTarget declared = project.project().installTarget();
+        return declared != null ? declared : JkInstallConfig.resolve().target();
+    }
+
+    private static Path m2Repository(@Nullable Path m2Dir) {
+        return m2Dir == null ? M2Dirs.localRepository() : m2Dir.resolve("repository");
+    }
+
+    /**
+     * Install the built thin jar and POM into one place: the Maven local repository (Maven's checksum
+     * sidecars beside each file, for Maven and Gradle builds next to jk), or {@code repos/jk-local/}
+     * for {@link InstallTarget#JK}. A Maven-local slot is written only when {@link #checkSlot}
+     * allows it.
+     *
+     * @return the coordinate, target and shas of the jar and POM bytes the target holds after this call
+     */
+    static ModuleOutcome.Installed cacheInstallArtifact(
+            JkBuild project, BuildLayout layout, Path cacheDir, Path m2Dir, @Nullable InstallTarget override)
+            throws IOException {
         var p = project.project();
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
         Path jar = layout.mainJar();
         String jarRelPath = MavenLayout.artifactPath(coord);
         String pomRelPath = MavenLayout.pomPath(coord);
         byte[] pomBytes = renderedPom(project, layout);
+        InstallTarget target = targetOf(project, layout.moduleRoot(), override);
 
-        String jarSha = writeToLocalStore(cacheDir, jarRelPath, jar);
-        String pomSha = writeBytesToLocalStore(cacheDir, pomRelPath, pomBytes);
-        if (PluginModule.isWorker(layout.moduleRoot())) stageWorkerClosure(coord, cacheDir, jarRelPath);
+        if (target == InstallTarget.JK) {
+            ModuleOutcome.Installed.Change change =
+                    localStore(cacheDir).locate(jarRelPath).isPresent()
+                            ? ModuleOutcome.Installed.Change.REPLACED
+                            : ModuleOutcome.Installed.Change.NEW;
+            String jarSha = writeToLocalStore(cacheDir, jarRelPath, jar);
+            String pomSha = writeBytesToLocalStore(cacheDir, pomRelPath, pomBytes);
+            if (PluginModule.isWorker(layout.moduleRoot())) stageWorkerClosure(coord, cacheDir, jarRelPath);
+            return new ModuleOutcome.Installed(coord.toGav(), jarSha, pomSha, target, change);
+        }
 
-        if (installToMavenLocal(p)) {
-            // m2Dir is caller-resolved (--m2-dir redirects it).
-            Path m2Root = m2Dir.resolve("repository");
-
-            Path m2Jar = m2Root.resolve(jarRelPath);
+        Path m2Root = m2Repository(m2Dir);
+        Path m2Jar = m2Root.resolve(jarRelPath);
+        Path m2Pom = m2Root.resolve(pomRelPath);
+        String jarSha = Hashing.sha256Hex(jar);
+        String pomSha = Hashing.sha256Hex(pomBytes);
+        ModuleOutcome.Installed.Change change = checkSlot(coord, m2Root, jarSha, pomSha);
+        if (change != ModuleOutcome.Installed.Change.UNCHANGED) {
             M2CompatWriter.MavenHashes jarH = M2CompatWriter.copyToM2AndHash(jar, m2Jar);
             M2CompatWriter.writeMavenSidecars(m2Jar, jarH.sha1(), jarH.md5());
             M2CompatWriter.writeRemoteRepositories(
                     Objects.requireNonNull(m2Jar.getParent()),
                     "local",
                     m2Jar.getFileName().toString());
-
-            Path m2Pom = m2Root.resolve(pomRelPath);
             M2CompatWriter.MavenHashes pomH = M2CompatWriter.writeBytesToM2(pomBytes, m2Pom);
             M2CompatWriter.writeMavenSidecars(m2Pom, pomH.sha1(), pomH.md5());
         }
-        return new ModuleOutcome.Shelved(coord.toGav(), jarSha, pomSha);
-    }
-
-    /** Project {@code [m2] install} and the machine {@code JK_M2_INSTALL} / {@code [m2] install} policy. */
-    private static boolean installToMavenLocal(Project p) {
-        return p.m2install() && JkM2Config.resolve().install();
+        recordOwnership(m2Root, coord, jarSha, pomSha);
+        return new ModuleOutcome.Installed(coord.toGav(), jarSha, pomSha, target, change);
     }
 
     /**
-     * True when this module's thin jar and POM are on the shelf at the same SHA-256 — and, when
-     * {@code [m2] install} is on, in the machine's Maven local repo too.
+     * The install policy for a Maven-local slot, given the bytes about to be written. A slot with
+     * other bytes than ours is refused unless the version is a snapshot and jk's own memo says the
+     * slot still holds what jk wrote; a slot jk did not write is never replaced.
+     *
+     * @return {@code NEW} to write, {@code UNCHANGED} when both files already hold these bytes,
+     *     {@code REPLACED} to overwrite a snapshot slot jk owns
      */
-    public static boolean alreadyInstalled(JkBuild project, BuildLayout layout, Path cacheDir) {
-        return alreadyInstalled(project, layout, cacheDir, null);
+    private static ModuleOutcome.Installed.Change checkSlot(Coordinate coord, Path m2Root, String jarSha, String pomSha)
+            throws IOException {
+        Path m2Jar = m2Root.resolve(MavenLayout.artifactPath(coord));
+        Path m2Pom = m2Root.resolve(MavenLayout.pomPath(coord));
+        String jarOnDisk = Files.isRegularFile(m2Jar) ? Hashing.sha256Hex(m2Jar) : null;
+        String pomOnDisk = Files.isRegularFile(m2Pom) ? Hashing.sha256Hex(m2Pom) : null;
+        boolean differs = (jarOnDisk != null && !jarOnDisk.equalsIgnoreCase(jarSha))
+                || (pomOnDisk != null && !pomOnDisk.equalsIgnoreCase(pomSha));
+        if (differs) {
+            M2InstallMemo memo = M2InstallMemo.read(M2InstallMemo.file(JkStores.store(), m2Root, coord))
+                    .orElse(null);
+            boolean owned = memo != null && memo.owns(jarOnDisk, pomOnDisk);
+            Path dir = Objects.requireNonNull(m2Jar.getParent());
+            if (!owned) throw new Refusal(foreignSlot(coord, dir));
+            if (!isSnapshot(coord.version())) throw new Refusal(releaseSlot(coord, dir));
+            return ModuleOutcome.Installed.Change.REPLACED;
+        }
+        return jarOnDisk != null && pomOnDisk != null
+                ? ModuleOutcome.Installed.Change.UNCHANGED
+                : ModuleOutcome.Installed.Change.NEW;
+    }
+
+    /** Remember that jk wrote {@code coord}'s files in {@code m2Root} with these bytes. */
+    private static void recordOwnership(Path m2Root, Coordinate coord, String jarSha, String pomSha)
+            throws IOException {
+        new M2InstallMemo(coord.toGav(), jarSha, pomSha).write(M2InstallMemo.file(JkStores.store(), m2Root, coord));
+    }
+
+    private static String releaseSlot(Coordinate coord, Path dir) {
+        return coord.toGav() + " is already installed in " + dir + " with different contents. A release version is"
+                + " installed once: raise the version in jk.toml, or install a -SNAPSHOT version while you iterate.";
+    }
+
+    private static String foreignSlot(Coordinate coord, Path dir) {
+        return coord.toGav() + " is already in " + dir + ", but jk did not install it (Maven, or a download put it"
+                + " there), so jk will not replace it. Delete that directory to let `jk install` write it.";
     }
 
     /**
-     * As above, checking the Maven local repo under {@code m2Dir} — the caller-resolved {@code ~/.m2}
-     * root that {@code --m2-dir} redirects, the same one the install writes to. Null means the
-     * machine's.
+     * Why installing {@code manifest} would be refused, decided before anything is built: its version
+     * is a release and the Maven-local slot already exists. Null when the install would be allowed or
+     * the target is not the Maven local repository. Only meaningful for a module whose jar will be
+     * rebuilt; the byte comparison at the install step stays the authoritative check.
      */
-    public static boolean alreadyInstalled(JkBuild project, BuildLayout layout, Path cacheDir, @Nullable Path m2Dir) {
-        return installedShas(project, layout, cacheDir, m2Dir) != null;
+    public static @Nullable String refusedBeforeBuild(
+            JkBuild manifest, Path moduleDir, @Nullable Path m2Dir, @Nullable InstallTarget override) {
+        if (targetOf(manifest, moduleDir, override) != InstallTarget.M2) return null;
+        var p = manifest.project();
+        if (isSnapshot(p.version())) return null;
+        Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
+        Path m2Root = m2Repository(m2Dir);
+        Path jar = m2Root.resolve(MavenLayout.artifactPath(coord));
+        if (!Files.exists(jar) && !Files.exists(m2Root.resolve(MavenLayout.pomPath(coord)))) return null;
+        Path dir = Objects.requireNonNull(jar.getParent());
+        boolean owned = M2InstallMemo.read(M2InstallMemo.file(JkStores.store(), m2Root, coord))
+                .isPresent();
+        return owned ? releaseSlot(coord, dir) : foreignSlot(coord, dir);
     }
 
     /**
-     * The shas the shelf (and, when {@code [m2] install} is on, the Maven local repo) already
-     * holds for this module's thin jar and rendered POM; {@code null} when either is missing or
-     * differs from the tree's bytes.
+     * True when this module's thin jar and POM are already at the same SHA-256 in the place its
+     * install goes. {@code m2Dir} is the caller-resolved {@code ~/.m2} root that {@code --m2-dir}
+     * redirects, the same one the install writes to; null means the machine's.
      */
-    static ModuleOutcome.@Nullable Shelved installedShas(
-            JkBuild project, BuildLayout layout, Path cacheDir, @Nullable Path m2Dir) {
+    public static boolean alreadyInstalled(
+            JkBuild project,
+            BuildLayout layout,
+            Path cacheDir,
+            @Nullable Path m2Dir,
+            @Nullable InstallTarget override) {
+        return installedShas(project, layout, cacheDir, m2Dir, override) != null;
+    }
+
+    /**
+     * The shas the install target already holds for this module's thin jar and rendered POM, as an
+     * unchanged install; {@code null} when either is missing or differs from the tree's bytes.
+     */
+    static ModuleOutcome.@Nullable Installed installedShas(
+            JkBuild project,
+            BuildLayout layout,
+            Path cacheDir,
+            @Nullable Path m2Dir,
+            @Nullable InstallTarget override) {
         if (project == null || layout == null) return null;
         Path jar = layout.mainJar();
         if (!Files.isRegularFile(jar)) return null;
@@ -385,17 +507,23 @@ public final class InstallPlans {
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
         String jarRel = MavenLayout.artifactPath(coord);
         String pomRel = MavenLayout.pomPath(coord);
+        InstallTarget target = targetOf(project, layout.moduleRoot(), override);
         try {
             String jarHex = Hashing.sha256Hex(jar);
             String pomHex = Hashing.sha256Hex(renderedPom(project, layout));
-            RepoArtifactStore local = localStore(cacheDir);
-            if (local.locate(jarRel, jarHex).isEmpty()
-                    || local.locate(pomRel, pomHex).isEmpty()) return null;
-            ModuleOutcome.Shelved shelved = new ModuleOutcome.Shelved(coord.toGav(), jarHex, pomHex);
-            if (!installToMavenLocal(p)) return shelved;
-            Path m2 = m2Dir == null ? M2Dirs.localRepository() : m2Dir.resolve("repository");
-            boolean inM2 = sameBytes(m2.resolve(jarRel), jarHex) && sameBytes(m2.resolve(pomRel), pomHex);
-            return inM2 ? shelved : null;
+            boolean held;
+            if (target == InstallTarget.JK) {
+                RepoArtifactStore local = localStore(cacheDir);
+                held = local.locate(jarRel, jarHex).isPresent()
+                        && local.locate(pomRel, pomHex).isPresent();
+            } else {
+                Path m2 = m2Repository(m2Dir);
+                held = sameBytes(m2.resolve(jarRel), jarHex) && sameBytes(m2.resolve(pomRel), pomHex);
+            }
+            return held
+                    ? new ModuleOutcome.Installed(
+                            coord.toGav(), jarHex, pomHex, target, ModuleOutcome.Installed.Change.UNCHANGED)
+                    : null;
         } catch (RuntimeException | IOException e) {
             return null;
         }

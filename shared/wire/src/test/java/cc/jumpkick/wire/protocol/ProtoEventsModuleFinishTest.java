@@ -4,6 +4,7 @@ package cc.jumpkick.wire.protocol;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.InstallTarget;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -35,19 +36,20 @@ class ProtoEventsModuleFinishTest {
     }
 
     @Test
-    void shelf_publish_round_trips_and_is_omitted_when_the_module_shelved_nothing() {
+    void install_round_trips_and_is_omitted_when_the_module_installed_nothing() {
         String plain = ProtoEvents.moduleFinish("/w/app", "g:app", true, 0, 12, true, false);
-        assertThat(plain).doesNotContain("shelfCoord");
-        assertThat(ModuleFinishEvent.decode(plain).shelved()).isNull();
+        assertThat(plain).doesNotContain("installCoord");
+        assertThat(ModuleFinishEvent.decode(plain).installed()).isNull();
 
-        ModuleOutcome.Shelved shelved = new ModuleOutcome.Shelved("g:app:1.0", "a".repeat(64), "b".repeat(64));
-        String line = ProtoEvents.moduleFinish("/w/app", "g:app", true, 0, 12, true, false, null, shelved);
-        assertThat(Jsonl.str(line, "shelfCoord")).isEqualTo("g:app:1.0");
-        assertThat(Jsonl.str(line, "shelfJarSha256")).isEqualTo("a".repeat(64));
-        assertThat(Jsonl.str(line, "shelfPomSha256")).isEqualTo("b".repeat(64));
+        ModuleOutcome.Installed installed = new ModuleOutcome.Installed(
+                "g:app:1.0", "a".repeat(64), "b".repeat(64), InstallTarget.JK, ModuleOutcome.Installed.Change.REPLACED);
+        String line = ProtoEvents.moduleFinish("/w/app", "g:app", true, 0, 12, true, false, null, installed);
+        assertThat(Jsonl.str(line, "installCoord")).isEqualTo("g:app:1.0");
+        assertThat(Jsonl.str(line, "installJarSha256")).isEqualTo("a".repeat(64));
+        assertThat(Jsonl.str(line, "installPomSha256")).isEqualTo("b".repeat(64));
         assertThat(line).doesNotContain("hasImage");
         ModuleFinishEvent decoded = ModuleFinishEvent.decode(line);
-        assertThat(decoded.shelved()).isEqualTo(shelved);
+        assertThat(decoded.installed()).isEqualTo(installed);
         assertThat(decoded.image()).isNull();
     }
 

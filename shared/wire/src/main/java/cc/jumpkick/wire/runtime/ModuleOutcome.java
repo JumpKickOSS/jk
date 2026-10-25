@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.runtime;
 
+import cc.jumpkick.model.InstallTarget;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
@@ -21,7 +22,7 @@ import org.jspecify.annotations.Nullable;
  * @param stopped another module's failure stopped this one before it could be judged (see
  * {@link #stoppedByFailure}); {@code success} is then {@code false}.
  *
- * @param shelved what an install pass published to the shelf for this module; {@code null} when
+ * @param installed what an install pass left in the local repository for this module; {@code null} when
  * the plan carried no {@code cache-install} step, or never reached it.
  */
 public record ModuleOutcome(
@@ -34,7 +35,7 @@ public record ModuleOutcome(
         boolean cancelled,
         boolean stopped,
         @Nullable Image image,
-        @Nullable Shelved shelved,
+        @Nullable Installed installed,
         @Nullable Published published) {
 
     /**
@@ -51,12 +52,38 @@ public record ModuleOutcome(
             @Nullable String daemonExe) {}
 
     /**
-     * The shelf slot an install pass wrote for a module: its plain {@code group:artifact:version}
-     * and the sha256 (lower-case hex) of the thin jar and of the POM the engine published — or
-     * found already on the shelf at those bytes. The client pins the shelf from these, never from a
-     * re-read of the shelf, so a concurrent install landing after the pass cannot be mistaken for it.
+     * The repository slot an install pass wrote for a module: its plain {@code group:artifact:version},
+     * the sha256 (lower-case hex) of the thin jar and of the POM the engine published — or found
+     * already there at those bytes — the {@code target} it went to, and what the pass changed. The
+     * client pins the shelf from these, never from a re-read of it, so a concurrent install landing
+     * after the pass cannot be mistaken for it.
      */
-    public record Shelved(String coordinate, String jarSha256, String pomSha256) {}
+    public record Installed(
+            String coordinate, String jarSha256, String pomSha256, InstallTarget target, Change change) {
+
+        /** What an install pass did to the slot. */
+        public enum Change {
+            /** The slot was empty. */
+            NEW,
+            /** The slot already held these bytes. */
+            UNCHANGED,
+            /** A snapshot slot held other bytes and was overwritten. */
+            REPLACED;
+
+            /** The word on the wire. */
+            public String word() {
+                return name().toLowerCase(Locale.ROOT);
+            }
+
+            /** The change spelled {@code word}; {@link #NEW} for anything else. */
+            public static Change parse(@Nullable String word) {
+                for (Change c : values()) {
+                    if (c.word().equals(word)) return c;
+                }
+                return NEW;
+            }
+        }
+    }
 
     /**
      * What a publish pass sent: where to, how many files (none on a dry run), the files it wrote
@@ -94,7 +121,7 @@ public record ModuleOutcome(
 
     public ModuleOutcome withStopped(boolean stop) {
         return new ModuleOutcome(
-                coord, dir, success, exitCode, millis, didWork, cancelled, stop, image, shelved, published);
+                coord, dir, success, exitCode, millis, didWork, cancelled, stop, image, installed, published);
     }
 
     /**
@@ -122,16 +149,16 @@ public record ModuleOutcome(
 
     public ModuleOutcome withImage(Image img) {
         return new ModuleOutcome(
-                coord, dir, success, exitCode, millis, didWork, cancelled, stopped, img, shelved, published);
+                coord, dir, success, exitCode, millis, didWork, cancelled, stopped, img, installed, published);
     }
 
-    public ModuleOutcome withShelved(Shelved shelf) {
+    public ModuleOutcome withInstalled(Installed shelf) {
         return new ModuleOutcome(
                 coord, dir, success, exitCode, millis, didWork, cancelled, stopped, image, shelf, published);
     }
 
     public ModuleOutcome withPublished(Published pub) {
         return new ModuleOutcome(
-                coord, dir, success, exitCode, millis, didWork, cancelled, stopped, image, shelved, pub);
+                coord, dir, success, exitCode, millis, didWork, cancelled, stopped, image, installed, pub);
     }
 }

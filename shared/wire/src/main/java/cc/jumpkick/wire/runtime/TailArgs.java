@@ -2,6 +2,7 @@
 package cc.jumpkick.wire.runtime;
 
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.model.InstallTarget;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
@@ -34,8 +35,11 @@ public sealed interface TailArgs {
             @Nullable String docker)
             implements TailArgs {}
 
-    /** {@code jk install} and its re-shelve pass: the local Maven repo root; null for {@code ~/.m2}. */
-    record Install(@Nullable Path m2Dir) implements TailArgs {}
+    /**
+     * {@code jk install} and its re-shelve pass: the local Maven repo root (null for {@code ~/.m2})
+     * and the {@code --target} override (null defers to {@code jk.toml}, then {@code config.toml}).
+     */
+    record Install(@Nullable Path m2Dir, @Nullable InstallTarget target) implements TailArgs {}
 
     /** {@code jk train}: the profile filter, and whether to retrain an up-to-date surface. */
     record Train(@Nullable String profile, boolean force) implements TailArgs {}

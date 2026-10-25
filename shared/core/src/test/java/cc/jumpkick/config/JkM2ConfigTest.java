@@ -18,9 +18,8 @@ class JkM2ConfigTest {
     }
 
     @Test
-    void the_default_is_integration_and_install_on(@TempDir Path tmp) {
+    void the_default_is_integration_on(@TempDir Path tmp) {
         assertThat(JkM2Config.DEFAULTS.integration()).isTrue();
-        assertThat(JkM2Config.DEFAULTS.install()).isTrue();
         assertThat(JkM2Config.fromToml(tmp.resolve("absent.toml"))).isEqualTo(JkM2Config.DEFAULTS);
     }
 
@@ -32,12 +31,11 @@ class JkM2ConfigTest {
 
     @Test
     void env_overrides_the_file(@TempDir Path tmp) throws Exception {
-        Path f = toml(tmp, "[m2]\nintegration = true\ninstall = true\n");
+        Path f = toml(tmp, "[m2]\nintegration = true\n");
 
-        JkM2Config c = JkM2Config.resolve(f, Map.of("JK_M2_INTEGRATION", "false", "JK_M2_INSTALL", "false")::get);
+        JkM2Config c = JkM2Config.resolve(f, Map.of("JK_M2_INTEGRATION", "false")::get);
 
         assertThat(c.integration()).isFalse();
-        assertThat(c.install()).isFalse();
     }
 
     @Test
@@ -47,13 +45,6 @@ class JkM2ConfigTest {
         JkM2Config c = JkM2Config.resolve(f, Map.of("JK_M2_LOOKUP", "false")::get);
 
         assertThat(c.integration()).isFalse();
-    }
-
-    @Test
-    void install_can_be_off_while_integration_stays_on(@TempDir Path tmp) throws Exception {
-        JkM2Config c = JkM2Config.fromToml(toml(tmp, "[m2]\ninstall = false\n"));
-        assertThat(c.install()).isFalse();
-        assertThat(c.integration()).isTrue();
     }
 
     @Test

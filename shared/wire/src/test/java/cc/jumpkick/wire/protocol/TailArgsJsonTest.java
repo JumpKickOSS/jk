@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.model.InstallTarget;
 import cc.jumpkick.wire.runtime.TailArgs;
 import java.net.URI;
 import java.nio.file.Path;
@@ -21,8 +22,9 @@ class TailArgsJsonTest {
         List<TailArgs> tails = List.of(
                 new TailArgs.Native("ex.Main", List.of("--no-fallback", "-O2")),
                 new TailArgs.Native(null, List.of()),
-                new TailArgs.Install(Path.of("/home/u/.m2")),
-                new TailArgs.Install(null),
+                new TailArgs.Install(Path.of("/home/u/.m2"), null),
+                new TailArgs.Install(null, InstallTarget.JK),
+                new TailArgs.Install(null, null),
                 new TailArgs.Train("smoke", true),
                 new TailArgs.Train(null, false),
                 publish(new RepoCredential.Basic("u", "p")),

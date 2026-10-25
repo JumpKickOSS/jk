@@ -234,8 +234,8 @@ final class WorkspaceRunPhase {
                     .withStopped(stoppedByFailure(module.plan(), result, cancelled));
             ModuleOutcome.Image image = ImagePlans.outcomeOf(module.plan());
             if (image != null) outcome = outcome.withImage(image);
-            ModuleOutcome.Shelved shelved = InstallPlans.shelvedOf(module.plan());
-            if (shelved != null) outcome = outcome.withShelved(shelved);
+            ModuleOutcome.Installed installed = InstallPlans.installedOf(module.plan());
+            if (installed != null) outcome = outcome.withInstalled(installed);
             ModuleOutcome.Published published = PublishTail.outcomeOf(module.plan());
             if (published != null) outcome = outcome.withPublished(published);
             listener.onModuleFinish(outcome);

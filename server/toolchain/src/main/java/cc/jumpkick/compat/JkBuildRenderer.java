@@ -368,10 +368,11 @@ public final class JkBuildRenderer {
                     .append(quote(versionLiteral(Objects.requireNonNull(p.scala()))))
                     .append('\n');
         }
-        if (!p.m2integration() || !p.m2install()) {
-            sb.append("\n[m2]\n");
-            if (!p.m2integration()) sb.append("integration = false\n");
-            if (!p.m2install()) sb.append("install = false\n");
+        if (!p.m2integration()) sb.append("\n[m2]\nintegration = false\n");
+        if (p.installTarget() != null) {
+            sb.append("\n[install]\ntarget = ")
+                    .append(quote(p.installTarget().spelling()))
+                    .append('\n');
         }
     }
 

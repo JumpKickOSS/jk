@@ -72,15 +72,16 @@ class InstallCommandTest {
     }
 
     @Test
-    void library_project_does_cache_install_only(@TempDir Path tempDir) throws IOException {
+    void a_library_project_with_the_private_target_installs_to_the_private_repository_only(@TempDir Path tempDir)
+            throws IOException {
         Files.writeString(tempDir.resolve("jk.toml"), """
                 group    = "com.example"
                 name     = "lib-only"
                 version  = "0.1.0"
                 jdk      = 25
                 java           = 25
-                [m2]
-                install = false
+                [install]
+                target = "jk"
                 """);
         Path src = tempDir.resolve("src/main/java/com/example/Lib.java");
         Files.createDirectories(src.getParent());
@@ -103,10 +104,9 @@ class InstallCommandTest {
                 tempDir.resolve("lib").toString(),
                 "--m2-dir",
                 m2.toString());
-        // A library is not a usage error any more — it cache-installs.
         assertThat(exit).isEqualTo(0);
         assertThat(bin.resolve("lib-only")).doesNotExist(); // no launcher
-        // [m2] install = false (integration still default true): repos/jk-local, not ~/.m2.
+        // [install] target = "jk": repos/jk-local, not ~/.m2.
         assertThat(JkStores.resolve("repos")
                         .resolve("jk-local")
                         .resolve("com/example/lib-only/0.1.0/lib-only-0.1.0.jar"))
@@ -174,10 +174,10 @@ class InstallCommandTest {
     }
 
     @Test
-    void m2install_writes_jar_and_pom_to_local_maven_repo(@TempDir Path tempDir) throws IOException {
+    void a_library_installs_to_the_maven_local_repo_and_nowhere_else(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("jk.toml"), """
                 group     = "com.example"
-                name      = "lib-only"
+                name      = "lib-m2"
                 version   = "0.1.0"
                 jdk       = 25
                 java      = 25
@@ -203,13 +203,63 @@ class InstallCommandTest {
                 m2.toString());
         assertThat(exit).isEqualTo(0);
 
-        Path repo = m2.resolve("repository/com/example/lib-only/0.1.0");
-        assertThat(repo.resolve("lib-only-0.1.0.jar")).exists();
-        assertThat(repo.resolve("lib-only-0.1.0.pom")).exists();
-        // The Maven copy is in addition to the shelf, never instead of it: jk's own resolvers and
-        // the worker launcher read repos/jk-local and follow no memo into ~/.m2.
-        Path shelf = JkStores.resolve("repos").resolve("jk-local/com/example/lib-only/0.1.0");
-        assertThat(shelf.resolve("lib-only-0.1.0.jar")).hasSameBinaryContentAs(repo.resolve("lib-only-0.1.0.jar"));
-        assertThat(shelf.resolve("lib-only-0.1.0.pom")).hasSameBinaryContentAs(repo.resolve("lib-only-0.1.0.pom"));
+        Path repo = m2.resolve("repository/com/example/lib-m2/0.1.0");
+        assertThat(repo.resolve("lib-m2-0.1.0.jar")).exists();
+        assertThat(repo.resolve("lib-m2-0.1.0.pom")).exists();
+        assertThat(JkStores.resolve("repos").resolve("jk-local/com/example/lib-m2"))
+                .as("the bytes are written once, not copied to the private repository too")
+                .doesNotExist();
+    }
+
+    @Test
+    void the_target_flag_overrides_the_manifest(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group     = "com.example"
+                name      = "lib-flag"
+                version   = "0.1.0"
+                jdk       = 25
+                java      = 25
+                """);
+        Path src = tempDir.resolve("src/main/java/com/example/Lib.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, "package com.example; public final class Lib {}\n");
+
+        Path m2 = tempDir.resolve("m2");
+        int exit = Jk.execute(
+                "install",
+                "-C",
+                tempDir.toString(),
+                "--cache-dir",
+                tempDir.resolve("cache").toString(),
+                "--state-dir",
+                tempDir.resolve("state").toString(),
+                "--bin-dir",
+                tempDir.resolve("bin").toString(),
+                "--lib-dir",
+                tempDir.resolve("lib").toString(),
+                "--m2-dir",
+                m2.toString(),
+                "--target",
+                "jk");
+        assertThat(exit).isEqualTo(0);
+
+        assertThat(JkStores.resolve("repos").resolve("jk-local/com/example/lib-flag/0.1.0/lib-flag-0.1.0.jar"))
+                .exists();
+        assertThat(m2.resolve("repository/com/example/lib-flag")).doesNotExist();
+    }
+
+    @Test
+    void an_unknown_target_word_is_a_usage_error(@TempDir Path tempDir) {
+        int exit = Jk.execute(
+                "install",
+                "-C",
+                tempDir.toString(),
+                "--cache-dir",
+                tempDir.resolve("cache").toString(),
+                "--m2-dir",
+                tempDir.resolve("m2").toString(),
+                "--target",
+                "shelf");
+        assertThat(exit).isEqualTo(64);
     }
 }

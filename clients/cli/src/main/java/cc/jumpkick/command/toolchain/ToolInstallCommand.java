@@ -20,6 +20,7 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.InstallTarget;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -86,6 +87,10 @@ public final class ToolInstallCommand implements CliCommand {
                         .hide(),
                 Opt.value("<dir>", "Override the bin directory.", "--bin-dir").hide(),
                 Opt.value("<dir>", "Override the lib directory.", "--lib-dir").hide(),
+                Opt.value(
+                        "<m2|jk>",
+                        "Where the install goes: m2 (the Maven local repository, default) or jk (jk's private repository)",
+                        "--target"),
                 Opt.value("<dir>", "Override the local Maven repo root (~/.m2).", "--m2-dir")
                         .hide(),
                 Opt.value("<url>", "Override the Maven repository URL (for tests).", "--repo-url")
@@ -145,6 +150,9 @@ public final class ToolInstallCommand implements CliCommand {
     @Nullable
     Path m2DirOverride;
 
+    @Nullable
+    InstallTarget targetOverride;
+
     /** {@code --jdks-dir}: the JDK root the pre-flight and the engine's build resolve under, as on build. */
     @Nullable
     Path jdksDir;
@@ -169,6 +177,13 @@ public final class ToolInstallCommand implements CliCommand {
         this.jdksDir = CommonOpts.jdksDirValue(in);
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.global = GlobalOptions.from(in);
+        String targetWord = in.value(InstallTarget.KEY).orElse(null);
+        this.targetOverride =
+                targetWord == null ? null : InstallTarget.parse(targetWord).orElse(null);
+        if (targetWord != null && targetOverride == null) {
+            CommandWedge.printFail("Install", "--target must be m2 or jk, not `" + targetWord + "`");
+            return Exit.USAGE;
+        }
         BuildFlags flags;
         try {
             flags = BuildFlags.from(in);
@@ -551,6 +566,7 @@ public final class ToolInstallCommand implements CliCommand {
         delegate.binDirOverride = binDirOverride;
         delegate.libDirOverride = libDirOverride;
         delegate.m2DirOverride = m2DirOverride;
+        delegate.targetOverride = targetOverride;
         delegate.jdksDir = jdksDir;
         delegate.repoUrl = repoUrl;
         return delegate;

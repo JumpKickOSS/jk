@@ -14,6 +14,7 @@ import cc.jumpkick.model.Features;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.ImageTable;
+import cc.jumpkick.model.InstallTarget;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
@@ -203,26 +204,26 @@ class JkBuildRendererTest {
                 .build());
         String out = JkBuildRenderer.render(model);
         assertThat(out).contains("[m2]").contains("integration = false");
-        assertThat(out).doesNotContain("install = false");
+        assertThat(out).doesNotContain("[install]");
 
         JkBuild reparsed = JkBuildParser.parse(out);
         assertThat(reparsed.project().m2integration()).isFalse();
-        assertThat(reparsed.project().m2install()).isTrue();
+        assertThat(reparsed.project().installTarget()).isNull();
     }
 
     @Test
-    void m2install_opt_out_round_trips() {
+    void install_target_round_trips() {
         JkBuild model = JkBuild.of(Project.builder("com.example", "widget", "1.0.0")
                 .jdkMajor(25)
                 .java(25)
-                .m2install(false)
+                .installTarget(InstallTarget.JK)
                 .build());
         String out = JkBuildRenderer.render(model);
-        assertThat(out).contains("[m2]").contains("install = false");
+        assertThat(out).contains("[install]").contains("target = \"jk\"");
         assertThat(out).doesNotContain("integration = false");
 
         JkBuild reparsed = JkBuildParser.parse(out);
-        assertThat(reparsed.project().m2install()).isFalse();
+        assertThat(reparsed.project().installTarget()).isEqualTo(InstallTarget.JK);
         assertThat(reparsed.project().m2integration()).isTrue();
     }
 

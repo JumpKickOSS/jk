@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.JavadocTool;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.InstallTarget;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
@@ -117,14 +118,20 @@ final class ForecastPackagingTails {
     }
 
     /**
-     * The cache-install step's forecast: cached when the shelf already holds this jar (matching
-     * SHA) and its POM — and, with {@code [m2] install} on, the Maven local repo under {@code
-     * m2Dir}, the request's {@code --m2-dir} root the step writes to. A packaged-but-never-installed
-     * module still runs, and so does one whose jar this build rewrites.
+     * The cache-install step's forecast: cached when the install target already holds this jar
+     * (matching SHA) and its POM — the Maven local repo under {@code m2Dir}, the request's {@code
+     * --m2-dir} root the step writes to, or the jk-local repository. {@code override} is the
+     * request's {@code --target}. A packaged-but-never-installed module still runs, and so does one
+     * whose jar this build rewrites.
      */
     static TaskForecast.Task cacheInstall(
-            JkBuild project, BuildLayout layout, Path cache, @Nullable Path m2Dir, boolean jarDirty) {
-        boolean skip = !jarDirty && InstallPlans.alreadyInstalled(project, layout, cache, m2Dir);
+            JkBuild project,
+            BuildLayout layout,
+            Path cache,
+            @Nullable Path m2Dir,
+            @Nullable InstallTarget override,
+            boolean jarDirty) {
+        boolean skip = !jarDirty && InstallPlans.alreadyInstalled(project, layout, cache, m2Dir, override);
         return new TaskForecast.Task(
                 TaskNames.CACHE_INSTALL,
                 skip ? TaskForecast.Status.CACHED : TaskForecast.Status.RUN,

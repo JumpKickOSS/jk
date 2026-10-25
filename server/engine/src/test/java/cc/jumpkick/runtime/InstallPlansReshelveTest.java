@@ -29,7 +29,7 @@ class InstallPlansReshelveTest {
                 java = 25
                 """);
 
-        BuildPlan plan = InstallPlans.reshelveBuildPlan(module, tmp.resolve("cache"), tmp.resolve("m2"));
+        BuildPlan plan = InstallPlans.reshelveBuildPlan(module, tmp.resolve("cache"), tmp.resolve("m2"), null);
 
         assertThat(plan.steps().stream().map(Task::name).collect(Collectors.toSet()))
                 .containsExactlyInAnyOrder(TaskNames.PARSE_BUILD, TaskNames.CACHE_INSTALL);

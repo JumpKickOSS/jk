@@ -404,8 +404,10 @@ public final class LockfileWriter {
             if (Boolean.FALSE.equals(m.m2integration())) {
                 out.append("m2.integration = false\n");
             }
-            if (Boolean.FALSE.equals(m.m2install())) {
-                out.append("m2.install = false\n");
+            if (m.installTarget() != null) {
+                out.append("install.target = ")
+                        .append(quote(m.installTarget().spelling()))
+                        .append('\n');
             }
         }
     }

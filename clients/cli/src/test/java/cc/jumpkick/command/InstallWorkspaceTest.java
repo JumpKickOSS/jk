@@ -32,12 +32,14 @@ class InstallWorkspaceTest {
         // Stripped: the coordinate is styled per segment, so a raw substring would neither match
         // the member nor — worse — ever match the root, making the negative assertion vacuous.
         String out = TestAnsi.strip(streams.out());
-        assertThat(out).contains("Installed ex:lib:1.0");
+        assertThat(out).contains("installed ex:lib:1.0").contains("~/").doesNotContain("Pinned");
         assertThat(out)
                 .as("the root packages nothing, so claiming it installed is a lie")
-                .doesNotContain("Installed ex:ws");
-        assertThat(JkStores.resolve("repos").resolve("jk-local/ex/lib/1.0/lib-1.0.jar"))
-                .exists();
+                .doesNotContain("installed ex:ws");
+        assertThat(tmp.resolve("m2/repository/ex/lib/1.0/lib-1.0.jar")).exists();
+        assertThat(JkStores.resolve("repos").resolve("jk-local/ex/lib"))
+                .as("a library goes to the Maven local repository only")
+                .doesNotExist();
     }
 
     @Test
@@ -79,9 +81,6 @@ class InstallWorkspaceTest {
         Files.writeString(tmp.resolve("lib/jk.toml"), """
                 name = "lib"
 
-                [m2]
-                install = false
-
                 [test-dependencies]
                 junit-jupiter = "latest"
 
@@ -120,7 +119,7 @@ class InstallWorkspaceTest {
         assertThat(exit[0])
                 .as("the member's test reads the forwarded name\n%s", TestAnsi.strip(streams.out() + streams.err()))
                 .isEqualTo(0);
-        assertThat(TestAnsi.strip(streams.out())).contains("Installed ex:lib:1.0");
+        assertThat(TestAnsi.strip(streams.out())).contains("installed ex:lib:1.0");
     }
 
     private static int install(Path ws, Path cache, String... extra) {
@@ -165,9 +164,6 @@ class InstallWorkspaceTest {
         Files.createDirectories(lib.resolve("src/main/java/ex"));
         Files.writeString(lib.resolve("jk.toml"), """
                 name = "lib"
-
-                [m2]
-                install = false
                 """);
         Files.writeString(lib.resolve("src/main/java/ex/Lib.java"), "package ex; " + libBody + "\n");
         return tmp.resolve("cache");

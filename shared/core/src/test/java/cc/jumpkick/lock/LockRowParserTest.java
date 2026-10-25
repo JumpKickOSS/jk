@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.model.InstallTarget;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.File;
@@ -58,7 +59,7 @@ class LockRowParserTest {
                 "The one app — tabs\tand \"quotes\"",
                 "src/main/java",
                 Boolean.FALSE,
-                Boolean.FALSE);
+                InstallTarget.JK);
         ModuleEntry plain =
                 new ModuleEntry("apps/two", "org.acme", "two", "0.1.0", null, null, null, null, null, null, null, null);
         return new Lockfile(

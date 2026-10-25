@@ -35,7 +35,9 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.InstallTarget;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.repo.MavenLayout;
@@ -54,10 +56,12 @@ import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import cc.jumpkick.wire.protocol.ProjectInfo;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
+import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -79,9 +83,10 @@ import org.jspecify.annotations.Nullable;
 /**
  * App-install plan used by {@code jk tool install} / {@code jk install}: current project, Maven
  * coordinate, or git URL (optional {@code @}/{@code #} ref; {@code gh:owner/repo} shorthands).
- * Cache-installs the thin jar and POM into {@code repos/jk-local}; applications also get a launcher
- * under {@code ~/.jk/bin}. Plugin workers are those same repo jars — launch reconstructs the
- * classpath from the POM. jk's own modules declare {@code [install] product-lib} (the engine jar
+ * Installs the thin jar and POM into the Maven local repository ({@code --target jk} or {@code
+ * [install] target = "jk"} puts them in {@code repos/jk-local} instead); applications also get a
+ * launcher under {@code ~/.jk/bin}. Plugin workers are always {@code repos/jk-local} jars — launch
+ * reconstructs the classpath from the POM. jk's own modules declare {@code [install] product-lib} (the engine jar
  * into jk's product library) and {@code [install] product-bin} (the native client over the PATH
  * entry), so installing the product tree with jk is one {@code jk install}.
  */
@@ -119,6 +124,10 @@ public final class InstallCommand {
 
     @Nullable
     public Path m2DirOverride;
+
+    /** From {@code jk install --target}; null defers to {@code jk.toml}, then {@code config.toml}. */
+    @Nullable
+    public InstallTarget targetOverride;
 
     /** From {@code jk install --jdks-dir}: the JDK root the pre-flight and the engine resolve under. */
     @Nullable
@@ -426,8 +435,8 @@ public final class InstallCommand {
                 .withModules(tokens)
                 .withSpec(
                         reshelving
-                                ? WorkspaceSpec.reshelve(selected, m2Dir())
-                                : WorkspaceSpec.install(selected, graalByDir, m2Dir()));
+                                ? WorkspaceSpec.reshelve(selected, m2Dir(), targetOverride)
+                                : WorkspaceSpec.install(selected, graalByDir, m2Dir(), targetOverride));
         // The shared workspace renderer, exactly as build/test/native drive it, on the same mode
         // axis they choose on: a live region for a terminal, the append-only block for
         // -O jsonl / --verbose. A hand-rolled listener here is what made a failed workspace
@@ -486,7 +495,7 @@ public final class InstallCommand {
             Path cacheDir) {}
 
     /** What the copy step put in place: the module count for the wedge, the lines naming where each went. */
-    private record Applied(int modules, List<String> lines) {}
+    private record Applied(int modules, List<ModuleOutcome.Installed> outcomes, List<String> lines) {}
 
     /**
      * Workspace install in a live region, exactly as {@code jk build} renders a workspace: the
@@ -518,6 +527,7 @@ public final class InstallCommand {
         }
         long elapsed = BuildTails.elapsedMsSince(start);
         int modules = 0;
+        List<ModuleOutcome.Installed> outcomes = List.of();
         if (result.success() && !result.cancelled() && result.errors().isEmpty()) {
             Applied applied;
             try {
@@ -528,11 +538,13 @@ public final class InstallCommand {
                 return Exit.FAILURE;
             }
             modules = applied.modules();
+            outcomes = applied.outcomes();
             for (String line : applied.lines()) run.defer(line);
         }
         int installed = modules;
+        List<ModuleOutcome.Installed> placed = outcomes;
         var tails = new WorkspaceRunView.Tails(
-                (r, planned) -> installTail(installed, start),
+                (r, planned) -> installTail(installed, placed, repositoryRoots(), start),
                 r -> BuildTails.failureTail(WorkspaceRunView.failedSubject(r, "install"), start));
         return run.settleLive(view, agg, result, elapsed, tails, settled -> {});
     }
@@ -579,7 +591,7 @@ public final class InstallCommand {
         }
         if (json) return 0;
         for (String line : applied.lines()) CliOutput.out(line);
-        CommandWedge.printOk("Install", installTail(applied.modules(), start));
+        CommandWedge.printOk("Install", installTail(applied.modules(), applied.outcomes(), repositoryRoots(), start));
         return 0;
     }
 
@@ -605,6 +617,10 @@ public final class InstallCommand {
         }
         int modules = 0;
         List<String> lines = new ArrayList<>();
+        List<ModuleOutcome.Installed> outcomes = new ArrayList<>();
+        for (var m : result.modules()) {
+            if (m.success() && m.installed() != null) outcomes.add(m.installed());
+        }
         for (Path mod : installed) {
             // Engine-reported module dirs are normalized the same way moduleDirs was; fall back to
             // a fresh request only for a dir the sweep above never saw.
@@ -623,8 +639,8 @@ public final class InstallCommand {
             lines.addAll(installedLines(coord, launcher, binDir, info.productLib(), info.productBin()));
             modules++;
         }
-        lines.add(pinShelf(pass, result));
-        return new Applied(modules, lines);
+        pinShelf(pass, result).ifPresent(lines::add);
+        return new Applied(modules, outcomes, lines);
     }
 
     /**
@@ -634,22 +650,66 @@ public final class InstallCommand {
      * the one this pass materialized (or left in place); the engine adopts it at its next fork, or
      * at startup when the pass replaced it.
      */
-    private static String pinShelf(WorkspacePass pass, WorkspaceResult result) throws IOException {
+    private static Optional<String> pinShelf(WorkspacePass pass, WorkspaceResult result) throws IOException {
         return ShelfPinning.record(
                 liveEngineSha(), EngineInstall.current().shelfFile(), pass.wsRoot(), ShelfPinning.shelved(result));
     }
 
-    /** The success wedge of a workspace install: what this pass put in place, or that nothing needed to be. */
-    static String installTail(int modules, long start) {
+    /** The directory each install target writes under, for the settle line. */
+    private Map<InstallTarget, Path> repositoryRoots() {
+        return Map.of(
+                InstallTarget.M2, m2Dir().resolve("repository"),
+                InstallTarget.JK, JkDirs.store().resolve("repos").resolve(RepositorySpec.JK_LOCAL));
+    }
+
+    /**
+     * The success wedge of a workspace install: what this pass put in place and where. A single
+     * installed module names its coordinate and destination; several name the count, and the
+     * destination when they share one.
+     */
+    static String installTail(
+            int modules, List<ModuleOutcome.Installed> outcomes, Map<InstallTarget, Path> roots, long start) {
         String ok = Theme.colorize("Install successful", Theme.active().success());
-        if (modules == 0) return ok + ", everything already installed " + BuildTails.elapsedSince(start);
+        String took = " " + BuildTails.elapsedSince(start);
+        if (modules == 0) return ok + ", everything already installed" + took;
+        Set<InstallTarget> targets = new LinkedHashSet<>();
+        for (ModuleOutcome.Installed o : outcomes) targets.add(o.target());
+        String where = targets.size() == 1
+                ? " → "
+                        + home(Objects.requireNonNull(
+                                roots.get(targets.iterator().next())))
+                : "";
+        if (modules == 1 && outcomes.size() == 1) {
+            ModuleOutcome.Installed o = outcomes.getFirst();
+            String gav = Coords.gav(Coordinate.parse(o.coordinate()));
+            return ok
+                    + ", "
+                    + switch (o.change()) {
+                        case NEW -> "installed " + gav;
+                        case REPLACED -> "replaced " + gav;
+                        case UNCHANGED -> gav + " already installed";
+                    }
+                    + where
+                    + took;
+        }
         return ok
                 + ", installed "
                 + Theme.colorize(String.valueOf(modules), Theme.active().focused())
                 + " module"
                 + (modules == 1 ? "" : "s")
-                + " "
-                + BuildTails.elapsedSince(start);
+                + where
+                + took;
+    }
+
+    /** {@code path} with the user's home shown as {@code ~}, painted as a path. */
+    private static String home(Path path) {
+        Path home =
+                Path.of(System.getProperty("user.home", "")).toAbsolutePath().normalize();
+        Path abs = path.toAbsolutePath().normalize();
+        String shown = abs.startsWith(home)
+                ? "~/" + home.relativize(abs).toString().replace(File.separatorChar, '/')
+                : abs.toString();
+        return PathDisplay.styledRaw(shown);
     }
 
     /**
@@ -1066,7 +1126,7 @@ public final class InstallCommand {
             return List.of("Installed " + coord + " → "
                     + (launcher == null ? "(no native binary built)" : PathDisplay.styledRaw(launcher)));
         }
-        if (launcher == null) return List.of("Installed " + coord + " to the local cache");
+        if (launcher == null) return List.of();
         return List.of(
                 "Installed " + coord + " → " + launcher,
                 "Add to PATH if needed:",

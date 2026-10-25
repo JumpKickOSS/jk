@@ -15,8 +15,8 @@ tree under `JK_STORE_DIR/repos/` (see below). jk's `.jk` memos for the former li
 never in `~/.m2`. A file already in the local repository is used where it is once it verifies,
 not copied and not downloaded. Set `[m2] integration = false` to keep every origin's artifacts in
 its own store tree and leave the Maven local repository alone. `jk install` writes the Maven local repo
-when `[m2] install` is on (default); `[m2] install = false` or `JK_M2_INSTALL=false`
-keeps those artifacts in `repos/jk-local`. First-party workers always live in `repos/jk-local`
+by default; `[install] target = "jk"` keeps a project's artifacts in `repos/jk-local` instead
+([Install](packaging.md#jk-install-project)). First-party workers always live in `repos/jk-local`
 (`jk-local` is reserved; `[repositories.local]` is a normal user remote name).
 
 ## Store layout: one tree per origin

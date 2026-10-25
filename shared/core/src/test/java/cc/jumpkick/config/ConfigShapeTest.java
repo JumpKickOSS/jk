@@ -42,6 +42,7 @@ class ConfigShapeTest {
                 Session.class,
                 JkEngineConfig.class,
                 JkM2Config.class,
+                JkInstallConfig.class,
                 JkCacheConfig.class,
                 JkCacheConfig.DiskSpace.class,
                 JkHttpConfig.class,
@@ -91,7 +92,7 @@ class ConfigShapeTest {
             }
         }
         // The scan must have seen something, or an empty list would satisfy every assertion above.
-        assertThat(configShapes()).hasSize(13);
+        assertThat(configShapes()).hasSize(14);
         assertThat(componentsChecked).isGreaterThanOrEqualTo(45);
         assertThat(membersChecked).isPositive();
     }

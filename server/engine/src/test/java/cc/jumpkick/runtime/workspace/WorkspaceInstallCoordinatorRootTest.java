@@ -108,12 +108,12 @@ class WorkspaceInstallCoordinatorRootTest {
 
     private WorkspaceRequest installRequest() {
         return new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 0, null, true, false, 0, null, true, true)
-                .withSpec(WorkspaceSpec.install(Set.of(), Map.of(), null));
+                .withSpec(WorkspaceSpec.install(Set.of(), Map.of(), null, null));
     }
 
     private WorkspaceRequest reshelveRequest() {
         return new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 0, null, true, false, 0, null, true, false)
-                .withSpec(WorkspaceSpec.reshelve(Set.of(), null));
+                .withSpec(WorkspaceSpec.reshelve(Set.of(), null, null));
     }
 
     private static Set<String> stepNames(BuildPlan plan) {

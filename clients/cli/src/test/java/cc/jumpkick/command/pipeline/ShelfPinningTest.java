@@ -8,6 +8,7 @@ import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.InstallTarget;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -32,7 +33,7 @@ class ShelfPinningTest {
     void shelf_keys_are_plain_coordinates_when_colour_is_on() throws Exception {
         Coordinate coord = Coordinate.of("cc.jumpkick", "jk-java-compiler", "1.0");
         ModuleOutcome outcome = new ModuleOutcome(coord.toGav(), Path.of("/ws/java"), true, 0, 10)
-                .withShelved(new ModuleOutcome.Shelved(coord.toGav(), "1".repeat(64), "2".repeat(64)));
+                .withInstalled(shelved(coord.toGav(), "1".repeat(64), "2".repeat(64)));
         ShelfPinning.Pins pins = NoAnsi.forcedAnsi(() -> {
             assertThat(Coords.gav(coord)).as("the theme paints coordinates").contains("\u001b[");
             return ShelfPinning.shelved(new WorkspaceResult(true, 0, List.of(outcome), List.of()));
@@ -58,11 +59,11 @@ class ShelfPinningTest {
         Path manifest = tmp.resolve("lib/jk-engine/" + ShelfManifest.FILE_NAME);
         ShelfPinning.Pins pins =
                 new ShelfPinning.Pins(Map.of("g:a:1", "1".repeat(64)), Map.of("g:a:1", "2".repeat(64)));
-        String line = ShelfPinning.record(Optional.empty(), manifest, tmp, pins);
+        String line = ShelfPinning.record(Optional.empty(), manifest, tmp, pins).orElseThrow();
         assertThat(line).isEqualTo(ShelfPinning.SHELF_NOT_PINNED).contains("not pinned");
         assertThat(manifest).doesNotExist();
 
-        line = ShelfPinning.record(Optional.of(ENGINE), manifest, tmp, pins);
+        line = ShelfPinning.record(Optional.of(ENGINE), manifest, tmp, pins).orElseThrow();
         assertThat(line).startsWith("Pinned 1 shelf jar to engine " + ENGINE.substring(0, 12));
         ShelfManifest recorded = ShelfManifest.read(manifest).orElseThrow();
         assertThat(recorded.sha("g:a:1")).contains("1".repeat(64));
@@ -86,7 +87,7 @@ class ShelfPinningTest {
         assertThat(publishedPom).isNotEqualTo(Hashing.sha256Hex(shelfPom));
 
         ModuleOutcome outcome = new ModuleOutcome(coord.toGav(), tmp.resolve("plugins/java"), true, 0, 10)
-                .withShelved(new ModuleOutcome.Shelved(coord.toGav(), publishedJar, publishedPom));
+                .withInstalled(shelved(coord.toGav(), publishedJar, publishedPom));
         Path manifest = tmp.resolve(ShelfManifest.FILE_NAME);
         ShelfPinning.record(
                 Optional.of(ENGINE),
@@ -118,7 +119,7 @@ class ShelfPinningTest {
                 true,
                 0,
                 List.of(new ModuleOutcome(java.toGav(), javaDir, true, 0, 10)
-                        .withShelved(new ModuleOutcome.Shelved(java.toGav(), javaJarV2, javaPomV2))),
+                        .withInstalled(shelved(java.toGav(), javaJarV2, javaPomV2))),
                 List.of());
 
         ShelfPinning.Pins pins = ShelfPinning.shelved(scoped);
@@ -135,6 +136,30 @@ class ShelfPinningTest {
         assertThat(recorded.pomSha(kotlin.toGav())).contains(kotlinV1);
     }
 
+    /** A pass that shelved nothing in the private repository says nothing and writes no manifest. */
+    @Test
+    void a_pass_with_nothing_on_the_private_shelf_pins_nothing_and_prints_nothing(@TempDir Path tmp) throws Exception {
+        Path manifest = tmp.resolve(ShelfManifest.FILE_NAME);
+        ModuleOutcome inMaven = new ModuleOutcome("g:lib:1", tmp.resolve("lib"), true, 0, 1)
+                .withInstalled(new ModuleOutcome.Installed(
+                        "g:lib:1",
+                        "a".repeat(64),
+                        "b".repeat(64),
+                        InstallTarget.M2,
+                        ModuleOutcome.Installed.Change.NEW));
+        ShelfPinning.Pins pins = ShelfPinning.shelved(new WorkspaceResult(true, 0, List.of(inMaven), List.of()));
+
+        assertThat(pins.jars()).isEmpty();
+        assertThat(ShelfPinning.record(Optional.of(ENGINE), manifest, tmp, pins))
+                .isEmpty();
+        assertThat(manifest).doesNotExist();
+    }
+
+    private static ModuleOutcome.Installed shelved(String coordinate, String jarSha, String pomSha) {
+        return new ModuleOutcome.Installed(
+                coordinate, jarSha, pomSha, InstallTarget.JK, ModuleOutcome.Installed.Change.NEW);
+    }
+
     @Test
     void a_failed_module_is_not_pinned() {
         Path dir = Path.of("/ws/plugins/x").toAbsolutePath();
@@ -143,9 +168,9 @@ class ShelfPinningTest {
                 1,
                 List.of(
                         new ModuleOutcome("g:ok:1", dir.resolve("ok"), true, 0, 1)
-                                .withShelved(new ModuleOutcome.Shelved("g:ok:1", "a".repeat(64), "b".repeat(64))),
+                                .withInstalled(shelved("g:ok:1", "a".repeat(64), "b".repeat(64))),
                         new ModuleOutcome("g:bad:1", dir, false, 1, 1)
-                                .withShelved(new ModuleOutcome.Shelved("g:bad:1", "c".repeat(64), "d".repeat(64)))),
+                                .withInstalled(shelved("g:bad:1", "c".repeat(64), "d".repeat(64)))),
                 List.of());
         ShelfPinning.Pins pins = ShelfPinning.shelved(result);
         assertThat(pins.jars()).containsOnlyKeys("g:ok:1");

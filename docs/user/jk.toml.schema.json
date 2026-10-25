@@ -611,7 +611,10 @@
     },
     "install": {
       "type": "object",
-      "description": "[install] table; keys are documented in docs/user."
+      "description": "[install]: where jk install puts the jar and POM (docs/user/packaging.md). product-lib and product-bin are jk installing itself.",
+      "properties": {
+        "target": { "enum": ["m2", "jk"], "description": "m2 (default) is the Maven local repository, ~/.m2/repository; jk is jk's private repos/jk-local. A workspace member inherits the root's." }
+      }
     },
     "dokka": {
       "type": "object",

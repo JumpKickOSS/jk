@@ -2,6 +2,7 @@
 package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.InstallTarget;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
@@ -11,8 +12,8 @@ import org.jspecify.annotations.Nullable;
  * only when true, on a module another module's failure stopped ({@code success} is then false); the image fields ride
  * only for an image module (each only when set) and are followed by {@code hasImage} so a reader can
  * tell "image module with nothing to say" from "not an image module" (see {@link EngineProtocol#MODULE_FINISH}).
- * The shelf fields ({@code shelfCoord}, {@code shelfJarSha256}, {@code shelfPomSha256}) ride only
- * when an install pass shelved the module, all three together; the {@code published} object only
+ * The install fields ({@code installCoord}, {@code installJarSha256}, {@code installPomSha256}, {@code
+ * installTarget}, {@code installChange}) ride only when an install pass installed the module, all together; the {@code published} object only
  * when a publish pass ran.
  */
 public record ModuleFinishEvent(
@@ -25,7 +26,7 @@ public record ModuleFinishEvent(
         boolean cancelled,
         boolean stopped,
         ModuleOutcome.@Nullable Image image,
-        ModuleOutcome.@Nullable Shelved shelved,
+        ModuleOutcome.@Nullable Installed installed,
         ModuleOutcome.@Nullable Published published) {
     public String encode() {
         RequestJson json = RequestJson.request(EngineProtocol.MODULE_FINISH)
@@ -45,10 +46,12 @@ public record ModuleFinishEvent(
                     .optionalString("imageDaemonExe", image.daemonExe())
                     .bool("hasImage", true);
         }
-        if (shelved != null) {
-            json.string("shelfCoord", shelved.coordinate())
-                    .string("shelfJarSha256", shelved.jarSha256())
-                    .string("shelfPomSha256", shelved.pomSha256());
+        if (installed != null) {
+            json.string("installCoord", installed.coordinate())
+                    .string("installJarSha256", installed.jarSha256())
+                    .string("installPomSha256", installed.pomSha256())
+                    .string("installTarget", installed.target().spelling())
+                    .string("installChange", installed.change().word());
         }
         if (published != null) {
             json.token(
@@ -72,7 +75,7 @@ public record ModuleFinishEvent(
     /** The outcome this event reports for the module at {@code dir}. */
     public ModuleOutcome outcome(Path moduleDir) {
         return new ModuleOutcome(
-                coord, moduleDir, success, exitCode, millis, didWork, cancelled, stopped, image, shelved, published);
+                coord, moduleDir, success, exitCode, millis, didWork, cancelled, stopped, image, installed, published);
     }
 
     public static ModuleFinishEvent decode(String json) {
@@ -84,13 +87,16 @@ public record ModuleFinishEvent(
                         Jsonl.str(json, "imageVersion"),
                         Jsonl.str(json, "imageDaemonExe"))
                 : null;
-        String shelfCoord = Jsonl.str(json, "shelfCoord");
-        ModuleOutcome.Shelved shelved = shelfCoord == null
+        String installCoord = Jsonl.str(json, "installCoord");
+        ModuleOutcome.Installed installed = installCoord == null
                 ? null
-                : new ModuleOutcome.Shelved(
-                        shelfCoord,
-                        Jsonl.requiredStr(json, "shelfJarSha256"),
-                        Jsonl.requiredStr(json, "shelfPomSha256"));
+                : new ModuleOutcome.Installed(
+                        installCoord,
+                        Jsonl.requiredStr(json, "installJarSha256"),
+                        Jsonl.requiredStr(json, "installPomSha256"),
+                        InstallTarget.parse(Jsonl.requiredStr(json, "installTarget"))
+                                .orElseThrow(() -> new IllegalArgumentException("unknown install target")),
+                        ModuleOutcome.Installed.Change.parse(Jsonl.str(json, "installChange")));
         String pub = Jsonl.nested(json, "published");
         ModuleOutcome.Published published = pub == null
                 ? null
@@ -113,7 +119,7 @@ public record ModuleFinishEvent(
                 Jsonl.bool(json, "cancelled", false),
                 Jsonl.bool(json, "stopped", false),
                 image,
-                shelved,
+                installed,
                 published);
     }
 }
