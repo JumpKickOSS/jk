@@ -117,7 +117,7 @@ The segment flag picks what moves **after** the release. In order, `jk release`:
 When a later step fails, the message says what was done and the command that finishes the rest.
 A workspace is released from the root; members that inherit its version follow it.
 
-CI usually does the upload: a developer runs `jk release --push`, and the tag triggers a job that
+[Releasing](release.md) has the CI recipes. CI usually does the upload: a developer runs `jk release --push`, and the tag triggers a job that
 runs `jk publish --tag "$GITHUB_REF_NAME"` ([above](#publishing-from-a-tag)). Locally, `jk snapshot`
 is the loop; `jk release` is the end of it.
 

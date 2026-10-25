@@ -130,6 +130,8 @@ Vulnerabilities: `jk audit -s HIGH -O jsonl | tee target/jk-audit.jsonl` under
 `set -o pipefail` — the exit status is the verdict, the JSON lines are the artifact to annotate
 from, and `[audit] ignore` with a reason is the only accepted silence ([Publish](publish.md#audit)).
 
+Releases: a pushed tag runs `jk publish --tag "$GITHUB_REF_NAME"` ([Releasing](release.md)).
+
 MCP: `config apply_preset=ci`. Selective prepare/run: [Workspaces](workspaces.md#selective-ci-plan).
 
 ## Guards

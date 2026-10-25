@@ -73,6 +73,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 - [Native images](native.md)
 - [Container images](images.md)
 - [Publish and supply chain](publish.md)
+- [Releasing](release.md)
 - [Dynamic surface](dynamic-surface.md) — R8 keep rules and native-image reachability
 
 ### Tooling
