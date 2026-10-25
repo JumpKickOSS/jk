@@ -68,7 +68,9 @@ public final class ReleaseCommand implements CliCommand {
                 Opt.flag("After the release, move the major version (1.4.7 → 2.0.0).", "--major"),
                 Opt.flag("After the release, move the minor version (1.4.7 → 1.5.0).", "--minor"),
                 Opt.flag("After the release, move the patch version (1.4.7 → 1.4.8). The default.", "--patch"),
-                Opt.flag("Publish the release (jk publish, to the [publish] target) before it is tagged.", "--publish"),
+                Opt.flag(
+                        "Publish the release (jk publish, to the [publish] target; its options are accepted) before it is tagged.",
+                        "--publish"),
                 Opt.flag("Push the branch and the tag to the branch's upstream when the release succeeded.", "--push"),
                 Opt.flag("Check everything and print what would happen; change nothing.", "--dry-run"),
                 Opt.value("<dir>", "Override the tool state directory.", "--state-dir")
@@ -82,11 +84,24 @@ public final class ReleaseCommand implements CliCommand {
         taken.add("tag"); // a release names its own tag
         for (Opt o : opts) taken.addAll(o.names());
         for (Opt o : new PublishCommand().options()) {
-            // An option sharing any spelling with one already taken is that option, or irrelevant to a release.
-            if (o.names().stream().noneMatch(taken::contains) && taken.add(o.canonicalName())) {
-                taken.addAll(o.names());
-                opts.add(o);
-            }
+            // Publish's options ride along unlisted (the help names --publish); a spelling a release option uses stays
+            // its own.
+            List<String> free =
+                    o.names().stream().filter(n -> !taken.contains(n)).toList();
+            if (free.isEmpty() || taken.contains(o.canonicalName())) continue;
+            taken.addAll(free);
+            opts.add(new Opt(
+                    free,
+                    o.paramLabel(),
+                    o.description(),
+                    o.takesValue(),
+                    o.repeatable(),
+                    o.split(),
+                    true,
+                    o.negatable(),
+                    o.required(),
+                    o.fallbackValue(),
+                    o.aliases()));
         }
         return opts;
     }
