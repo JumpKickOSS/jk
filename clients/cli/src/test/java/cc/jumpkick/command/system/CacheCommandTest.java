@@ -475,8 +475,9 @@ class CacheCommandTest {
         // The store has to exist for there to be a table at all — an absent store reports itself.
         writeBlob(JkStores.store().resolve("sha256/aa/bb/blob"), new byte[4096]);
 
-        String plain = TestAnsi.strip(Capture.stdout(() -> run("storage", "usage")));
-        assertThat(plain).contains("Artifact Storage");
+        var streams = Capture.both(() -> run("storage", "usage"));
+        String plain = TestAnsi.strip(streams.out());
+        assertThat(plain).as("stderr: " + TestAnsi.strip(streams.err())).contains("Artifact Storage");
         assertThat(plain).contains("Jar Files");
         assertThat(plain).contains("Native Bins");
         assertThat(plain).contains("OCI Images");

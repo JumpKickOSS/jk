@@ -225,7 +225,7 @@ public final class CacheInventoryOps {
         // Through PathUtil: the walk already read each entry's attributes, and asking again per
         // entry is what guard G45 is about. It also yields its carrier periodically, which a walk
         // of a store this size on a virtual thread owes the rest of the process.
-        PathUtil.forEachRegularFile(storeCas, (file, attrs) -> {
+        PathUtil.forEachReadableFile(storeCas, (file, attrs) -> {
             Object key = identityKey(file, attrs, sameFile);
             long size = seen.add(key) ? attrs.size() : 0L;
             switch (sniffArtifactKind(file)) {
@@ -721,24 +721,12 @@ public final class CacheInventoryOps {
 
     private static Stat walkExclusiveAdding(Path dir, Set<Object> seenKeys, DiskUsage.SameFileKeys sameFile)
             throws IOException {
-        if (dir == null || !Files.isDirectory(dir)) return new Stat(0, 0);
-        long files = 0;
-        long bytes = 0;
-        try (var walk = Files.walk(dir)) {
-            for (Path p : (Iterable<Path>) walk::iterator) {
-                BasicFileAttributes attrs;
-                try {
-                    attrs = Files.readAttributes(p, BasicFileAttributes.class);
-                } catch (IOException unreadable) {
-                    continue;
-                }
-                if (!attrs.isRegularFile()) continue;
-                files++;
-                Object key = identityKey(p, attrs, sameFile);
-                if (seenKeys.add(key)) bytes += attrs.size();
-            }
-        }
-        return new Stat(files, bytes);
+        long[] tally = {0, 0};
+        PathUtil.forEachReadableFile(dir, (file, attrs) -> {
+            tally[0]++;
+            if (seenKeys.add(identityKey(file, attrs, sameFile))) tally[1] += attrs.size();
+        });
+        return new Stat(tally[0], tally[1]);
     }
 
     /**

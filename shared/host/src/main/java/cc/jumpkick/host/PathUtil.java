@@ -122,6 +122,21 @@ public final class PathUtil {
      */
     public static void forEachRegularFile(Path root, Predicate<Path> skipDirectory, FileVisit visit)
             throws IOException {
+        walkRegularFiles(root, skipDirectory, visit, false);
+    }
+
+    /**
+     * As {@link #forEachRegularFile(Path, FileVisit)}, for a tally over a tree other processes keep
+     * changing: a directory that cannot be opened (deleted, or pending deletion, mid-walk) is left
+     * out instead of failing the walk. A reader that must not mistake an unreadable input for an
+     * empty one uses the strict overload.
+     */
+    public static void forEachReadableFile(Path root, FileVisit visit) throws IOException {
+        walkRegularFiles(root, dir -> false, visit, true);
+    }
+
+    private static void walkRegularFiles(Path root, Predicate<Path> skipDirectory, FileVisit visit, boolean tolerant)
+            throws IOException {
         if (!Files.isDirectory(root)) return;
         WALKS.incrementAndGet();
         CarrierShare share = new CarrierShare();
@@ -154,7 +169,7 @@ public final class PathUtil {
 
             @Override
             public FileVisitResult visitFileFailed(Path file, IOException failure) throws IOException {
-                return unopenedDirectory(file, failure);
+                return tolerant ? FileVisitResult.CONTINUE : unopenedDirectory(file, failure);
             }
         });
     }
