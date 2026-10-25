@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.lock;
 
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
@@ -22,7 +22,7 @@ public record ModuleEntry(
         @Nullable String description,
         @Nullable String sources,
         @Nullable Boolean m2integration,
-        @Nullable InstallTarget installTarget) {
+        @Nullable InstallDestination installDestination) {
     public ModuleEntry {
         Objects.requireNonNull(path, "path");
         Objects.requireNonNull(group, "group");
@@ -30,7 +30,7 @@ public record ModuleEntry(
         Objects.requireNonNull(version, "version");
     }
 
-    /** Unset Scala pin; {@code installTarget} unset (null). */
+    /** Unset Scala pin; {@code installDestination} unset (null). */
     public ModuleEntry(
             String path,
             String group,
@@ -57,7 +57,7 @@ public record ModuleEntry(
             @Nullable String description,
             @Nullable String sources,
             @Nullable Boolean m2integration,
-            @Nullable InstallTarget installTarget) {
+            @Nullable InstallDestination installDestination) {
         this(
                 path,
                 group,
@@ -70,6 +70,6 @@ public record ModuleEntry(
                 description,
                 sources,
                 m2integration,
-                installTarget);
+                installDestination);
     }
 }

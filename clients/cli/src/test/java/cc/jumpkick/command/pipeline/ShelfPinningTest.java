@@ -8,7 +8,7 @@ import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Coordinate;
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -145,7 +145,7 @@ class ShelfPinningTest {
                         "g:lib:1",
                         "a".repeat(64),
                         "b".repeat(64),
-                        InstallTarget.M2,
+                        InstallDestination.M2,
                         ModuleOutcome.Installed.Change.NEW));
         ShelfPinning.Pins pins = ShelfPinning.shelved(new WorkspaceResult(true, 0, List.of(inMaven), List.of()));
 
@@ -157,7 +157,7 @@ class ShelfPinningTest {
 
     private static ModuleOutcome.Installed shelved(String coordinate, String jarSha, String pomSha) {
         return new ModuleOutcome.Installed(
-                coordinate, jarSha, pomSha, InstallTarget.JK, ModuleOutcome.Installed.Change.NEW);
+                coordinate, jarSha, pomSha, InstallDestination.JK, ModuleOutcome.Installed.Change.NEW);
     }
 
     @Test

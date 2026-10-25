@@ -9,7 +9,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Feature;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.GitSource;
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PomMetadata;
@@ -169,7 +169,7 @@ public final class ManifestTables {
         TomlTable install = root.getTable("install");
         if (install == null) return Optional.empty();
         for (String key : install.keySet()) {
-            if (!InstallTarget.KEY.equals(key) && !"product-lib".equals(key) && !"product-bin".equals(key)) {
+            if (!InstallDestination.KEY.equals(key) && !"product-lib".equals(key) && !"product-bin".equals(key)) {
                 throw new JkBuildParseException(
                         "[install] unknown key `" + key + "` — expected target, product-lib or product-bin");
             }

@@ -25,13 +25,13 @@ class ShortFlagsTest {
             "install --with",
             "install --ver",
             "install --bin",
-            "install --target",
+            "install --destination",
             "install --snapshot",
-            "snapshot --target",
+            "snapshot --destination",
             "tool install --with",
             "tool install --ver",
             "tool install --bin",
-            "tool install --target",
+            "tool install --destination",
             "tool install --snapshot",
             "guard --schema");
 

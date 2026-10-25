@@ -352,7 +352,7 @@ public final class ProjectInfoPlans {
                     p.javadocMode(),
                     p.description(),
                     p.m2integration(),
-                    p.installTarget(),
+                    p.installDestination(),
                     p.layout(),
                     Set.of(),
                     p.jdkSpec(),

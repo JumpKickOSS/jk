@@ -24,7 +24,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginModule;
@@ -66,7 +66,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk install} heavy halves: the {@link #tail} that installs a built module's thin jar and POM
- * into the Maven local repository (or, for a {@link InstallTarget#JK} target, {@code repos/jk-local/}),
+ * into the Maven local repository (or, for a {@link InstallDestination#JK} destination, {@code repos/jk-local/}),
  * and {@link #gitFetchBuildPlan}. User-home launcher shims stay client-side.
  */
 public final class InstallPlans {
@@ -75,7 +75,7 @@ public final class InstallPlans {
 
     // Cross-step keys.
     public static final BuildPlanKey<Coordinate> PRIMARY = BuildPlanKey.scalar("primary-coord", Coordinate.class);
-    /** What {@code cache-install} left in the local repository: the module's coordinate, target and the shas it published. */
+    /** What {@code cache-install} left in the local repository: the module's coordinate, destination and the shas it published. */
     public static final BuildPlanKey<ModuleOutcome.Installed> INSTALLED =
             BuildPlanKey.scalar("installed", ModuleOutcome.Installed.class);
 
@@ -84,9 +84,9 @@ public final class InstallPlans {
 
     /**
      * {@code jk install}'s tail: {@link #appendCacheInstall} after the build; a module with no jar has
-     * nothing to install. {@code override} is the {@code --target} flag, null when none was given.
+     * nothing to install. {@code override} is the {@code --destination} flag, null when none was given.
      */
-    public static Tail tail(JkBuild proj, Path cache, Path m2Dir, @Nullable InstallTarget override) {
+    public static Tail tail(JkBuild proj, Path cache, Path m2Dir, @Nullable InstallDestination override) {
         return (plan, in) -> {
             String packaging = ModuleJar.packagingStep(proj, in.dir());
             if (packaging != null) appendCacheInstall(plan, proj, cache, m2Dir, override, packaging);
@@ -128,7 +128,7 @@ public final class InstallPlans {
             JkBuild proj,
             Path cache,
             Path m2Dir,
-            @Nullable InstallTarget override,
+            @Nullable InstallDestination override,
             String packaging) {
         List<String> requires = new ArrayList<>(List.of(packaging));
         if (proj.nativeMode() == JkBuild.NativeMode.ALWAYS) requires.add(TaskNames.NATIVE_IMAGE);
@@ -154,7 +154,7 @@ public final class InstallPlans {
      * re-packaging or re-testing.
      */
     public static BuildPlan reshelveBuildPlan(
-            Path projectDir, Path cache, Path m2Dir, @Nullable InstallTarget override) {
+            Path projectDir, Path cache, Path m2Dir, @Nullable InstallDestination override) {
         Path jkBuildPath = ManifestPaths.manifestIn(projectDir);
         Task parseBuild = Task.builder(TaskNames.PARSE_BUILD)
                 .forecast(StepForecast.RIDES)
@@ -200,11 +200,12 @@ public final class InstallPlans {
     }
 
     /**
-     * Shared {@code cache-install} body: when the target already holds this module's bytes, stamp it;
-     * else check the install policy and write. Either way {@link #INSTALLED} names the target and
+     * Shared {@code cache-install} body: when the destination already holds this module's bytes, stamp it;
+     * else check the install policy and write. Either way {@link #INSTALLED} names the destination and
      * the shas it holds for this module when the step returns.
      */
-    private static void executeCacheInstall(TaskContext ctx, Path cache, Path m2Dir, @Nullable InstallTarget override) {
+    private static void executeCacheInstall(
+            TaskContext ctx, Path cache, Path m2Dir, @Nullable InstallDestination override) {
         JkBuild project = ctx.require(BuildPlanner.PROJECT);
         BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
         var p = project.project();
@@ -213,7 +214,7 @@ public final class InstallPlans {
         if (installed != null) {
             ctx.label("already in local repo");
             ctx.cached();
-            if (installed.target() == InstallTarget.JK) {
+            if (installed.destination() == InstallDestination.JK) {
                 stampShelfPackager(coord, BuildIdentity.codeSha256());
             } else {
                 try {
@@ -346,14 +347,14 @@ public final class InstallPlans {
 
     /**
      * Where {@code project}'s install goes. A plugin worker always goes to {@code repos/jk-local}:
-     * the launcher reads it there. Otherwise the {@code --target} flag, then the project's {@code
-     * [install] target}, then the machine's {@code config.toml}, then the Maven local repository.
+     * the launcher reads it there. Otherwise the {@code --destination} flag, then the project's {@code
+     * [install] destination}, then the machine's {@code config.toml}, then the Maven local repository.
      */
-    static InstallTarget targetOf(JkBuild project, Path moduleRoot, @Nullable InstallTarget override) {
-        if (PluginModule.isWorker(moduleRoot)) return InstallTarget.JK;
+    static InstallDestination destinationOf(JkBuild project, Path moduleRoot, @Nullable InstallDestination override) {
+        if (PluginModule.isWorker(moduleRoot)) return InstallDestination.JK;
         if (override != null) return override;
-        InstallTarget declared = project.project().installTarget();
-        return declared != null ? declared : JkInstallConfig.resolve().target();
+        InstallDestination declared = project.project().installDestination();
+        return declared != null ? declared : JkInstallConfig.resolve().destination();
     }
 
     private static Path m2Repository(@Nullable Path m2Dir) {
@@ -363,13 +364,13 @@ public final class InstallPlans {
     /**
      * Install the built thin jar and POM into one place: the Maven local repository (Maven's checksum
      * sidecars beside each file, for Maven and Gradle builds next to jk), or {@code repos/jk-local/}
-     * for {@link InstallTarget#JK}. A Maven-local slot is written only when {@link #checkSlot}
+     * for {@link InstallDestination#JK}. A Maven-local slot is written only when {@link #checkSlot}
      * allows it.
      *
-     * @return the coordinate, target and shas of the jar and POM bytes the target holds after this call
+     * @return the coordinate, destination and shas of the jar and POM bytes the destination holds after this call
      */
     static ModuleOutcome.Installed cacheInstallArtifact(
-            JkBuild project, BuildLayout layout, Path cacheDir, Path m2Dir, @Nullable InstallTarget override)
+            JkBuild project, BuildLayout layout, Path cacheDir, Path m2Dir, @Nullable InstallDestination override)
             throws IOException {
         var p = project.project();
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
@@ -377,9 +378,9 @@ public final class InstallPlans {
         String jarRelPath = MavenLayout.artifactPath(coord);
         String pomRelPath = MavenLayout.pomPath(coord);
         byte[] pomBytes = renderedPom(project, layout);
-        InstallTarget target = targetOf(project, layout.moduleRoot(), override);
+        InstallDestination destination = destinationOf(project, layout.moduleRoot(), override);
 
-        if (target == InstallTarget.JK) {
+        if (destination == InstallDestination.JK) {
             ModuleOutcome.Installed.Change change =
                     localStore(cacheDir).locate(jarRelPath).isPresent()
                             ? ModuleOutcome.Installed.Change.REPLACED
@@ -387,7 +388,7 @@ public final class InstallPlans {
             String jarSha = writeToLocalStore(cacheDir, jarRelPath, jar);
             String pomSha = writeBytesToLocalStore(cacheDir, pomRelPath, pomBytes);
             if (PluginModule.isWorker(layout.moduleRoot())) stageWorkerClosure(coord, cacheDir, jarRelPath);
-            return new ModuleOutcome.Installed(coord.toGav(), jarSha, pomSha, target, change);
+            return new ModuleOutcome.Installed(coord.toGav(), jarSha, pomSha, destination, change);
         }
 
         Path m2Root = m2Repository(m2Dir);
@@ -408,7 +409,7 @@ public final class InstallPlans {
             M2CompatWriter.writeRemoteRepositories(slot, "", m2Pom.getFileName().toString());
         }
         recordOwnership(m2Root, coord, jarSha, pomSha);
-        return new ModuleOutcome.Installed(coord.toGav(), jarSha, pomSha, target, change);
+        return new ModuleOutcome.Installed(coord.toGav(), jarSha, pomSha, destination, change);
     }
 
     /**
@@ -460,12 +461,12 @@ public final class InstallPlans {
     /**
      * Why installing {@code manifest} would be refused, decided before anything is built: its version
      * is a release and the Maven-local slot already exists. Null when the install would be allowed or
-     * the target is not the Maven local repository. Only meaningful for a module whose jar will be
+     * the destination is not the Maven local repository. Only meaningful for a module whose jar will be
      * rebuilt; the byte comparison at the install step stays the authoritative check.
      */
     public static @Nullable String refusedBeforeBuild(
-            JkBuild manifest, Path moduleDir, @Nullable Path m2Dir, @Nullable InstallTarget override) {
-        if (targetOf(manifest, moduleDir, override) != InstallTarget.M2) return null;
+            JkBuild manifest, Path moduleDir, @Nullable Path m2Dir, @Nullable InstallDestination override) {
+        if (destinationOf(manifest, moduleDir, override) != InstallDestination.M2) return null;
         var p = manifest.project();
         if (isSnapshot(p.version())) return null;
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
@@ -488,12 +489,12 @@ public final class InstallPlans {
             BuildLayout layout,
             Path cacheDir,
             @Nullable Path m2Dir,
-            @Nullable InstallTarget override) {
+            @Nullable InstallDestination override) {
         return installedShas(project, layout, cacheDir, m2Dir, override) != null;
     }
 
     /**
-     * The shas the install target already holds for this module's thin jar and rendered POM, as an
+     * The shas the install destination already holds for this module's thin jar and rendered POM, as an
      * unchanged install; {@code null} when either is missing or differs from the tree's bytes.
      */
     static ModuleOutcome.@Nullable Installed installedShas(
@@ -501,7 +502,7 @@ public final class InstallPlans {
             BuildLayout layout,
             Path cacheDir,
             @Nullable Path m2Dir,
-            @Nullable InstallTarget override) {
+            @Nullable InstallDestination override) {
         if (project == null || layout == null) return null;
         Path jar = layout.mainJar();
         if (!Files.isRegularFile(jar)) return null;
@@ -509,12 +510,12 @@ public final class InstallPlans {
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
         String jarRel = MavenLayout.artifactPath(coord);
         String pomRel = MavenLayout.pomPath(coord);
-        InstallTarget target = targetOf(project, layout.moduleRoot(), override);
+        InstallDestination destination = destinationOf(project, layout.moduleRoot(), override);
         try {
             String jarHex = Hashing.sha256Hex(jar);
             String pomHex = Hashing.sha256Hex(renderedPom(project, layout));
             boolean held;
-            if (target == InstallTarget.JK) {
+            if (destination == InstallDestination.JK) {
                 RepoArtifactStore local = localStore(cacheDir);
                 held = local.locate(jarRel, jarHex).isPresent()
                         && local.locate(pomRel, pomHex).isPresent();
@@ -524,7 +525,7 @@ public final class InstallPlans {
             }
             return held
                     ? new ModuleOutcome.Installed(
-                            coord.toGav(), jarHex, pomHex, target, ModuleOutcome.Installed.Change.UNCHANGED)
+                            coord.toGav(), jarHex, pomHex, destination, ModuleOutcome.Installed.Change.UNCHANGED)
                     : null;
         } catch (RuntimeException | IOException e) {
             return null;

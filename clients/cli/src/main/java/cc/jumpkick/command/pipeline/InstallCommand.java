@@ -35,7 +35,7 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.command.Exit;
@@ -83,8 +83,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * App-install plan used by {@code jk tool install} / {@code jk install}: current project, Maven
  * coordinate, or git URL (optional {@code @}/{@code #} ref; {@code gh:owner/repo} shorthands).
- * Installs the thin jar and POM into the Maven local repository ({@code --target jk} or {@code
- * [install] target = "jk"} puts them in {@code repos/jk-local} instead); applications also get a
+ * Installs the thin jar and POM into the Maven local repository ({@code --destination jk} or {@code
+ * [install] destination = "jk"} puts them in {@code repos/jk-local} instead); applications also get a
  * launcher under {@code ~/.jk/bin}. Plugin workers are always {@code repos/jk-local} jars — launch
  * reconstructs the classpath from the POM. jk's own modules declare {@code [install] product-lib} (the engine jar
  * into jk's product library) and {@code [install] product-bin} (the native client over the PATH
@@ -125,9 +125,9 @@ public final class InstallCommand {
     @Nullable
     public Path m2DirOverride;
 
-    /** From {@code jk install --target}; null defers to {@code jk.toml}, then {@code config.toml}. */
+    /** From {@code jk install --destination}; null defers to {@code jk.toml}, then {@code config.toml}. */
     @Nullable
-    public InstallTarget targetOverride;
+    public InstallDestination destinationOverride;
 
     /** {@code jk snapshot}: install every module at its version plus {@code -SNAPSHOT}. */
     public boolean snapshot;
@@ -438,8 +438,8 @@ public final class InstallCommand {
                 .withModules(tokens)
                 .withSpec(
                         reshelving
-                                ? WorkspaceSpec.reshelve(selected, m2Dir(), targetOverride)
-                                : WorkspaceSpec.install(selected, graalByDir, m2Dir(), targetOverride, snapshot));
+                                ? WorkspaceSpec.reshelve(selected, m2Dir(), destinationOverride)
+                                : WorkspaceSpec.install(selected, graalByDir, m2Dir(), destinationOverride, snapshot));
         // The shared workspace renderer, exactly as build/test/native drive it, on the same mode
         // axis they choose on: a live region for a terminal, the append-only block for
         // -O jsonl / --verbose. A hand-rolled listener here is what made a failed workspace
@@ -659,10 +659,10 @@ public final class InstallCommand {
     }
 
     /** The directory each install target writes under, for the settle line. */
-    private Map<InstallTarget, Path> repositoryRoots() {
+    private Map<InstallDestination, Path> repositoryRoots() {
         return Map.of(
-                InstallTarget.M2, m2Dir().resolve("repository"),
-                InstallTarget.JK, JkDirs.store().resolve("repos").resolve(RepositorySpec.JK_LOCAL));
+                InstallDestination.M2, m2Dir().resolve("repository"),
+                InstallDestination.JK, JkDirs.store().resolve("repos").resolve(RepositorySpec.JK_LOCAL));
     }
 
     /**
@@ -671,16 +671,16 @@ public final class InstallCommand {
      * destination when they share one.
      */
     static String installTail(
-            int modules, List<ModuleOutcome.Installed> outcomes, Map<InstallTarget, Path> roots, long start) {
+            int modules, List<ModuleOutcome.Installed> outcomes, Map<InstallDestination, Path> roots, long start) {
         String ok = Theme.colorize("Install successful", Theme.active().success());
         String took = " " + BuildTails.elapsedSince(start);
         if (modules == 0) return ok + ", everything already installed" + took;
-        Set<InstallTarget> targets = new LinkedHashSet<>();
-        for (ModuleOutcome.Installed o : outcomes) targets.add(o.target());
-        String where = targets.size() == 1
+        Set<InstallDestination> destinations = new LinkedHashSet<>();
+        for (ModuleOutcome.Installed o : outcomes) destinations.add(o.destination());
+        String where = destinations.size() == 1
                 ? " → "
                         + home(Objects.requireNonNull(
-                                roots.get(targets.iterator().next())))
+                                roots.get(destinations.iterator().next())))
                 : "";
         if (modules == 1 && outcomes.size() == 1) {
             ModuleOutcome.Installed o = outcomes.getFirst();

@@ -121,7 +121,7 @@ class PluginSdkFloorTest {
                 integration = false
 
                 [install]
-                target = "jk"
+                destination = "jk"
 
                 [repositories.jumpkick]
                 url    = "%s"

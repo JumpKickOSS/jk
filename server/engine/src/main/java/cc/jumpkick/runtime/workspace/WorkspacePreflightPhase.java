@@ -196,7 +196,8 @@ public final class WorkspacePreflightPhase {
             if (packaging == null || module == null) continue;
             boolean jarRebuilds = module.steps().stream().anyMatch(t -> t.name().equals(packaging) && !t.cached());
             if (!jarRebuilds) continue;
-            String message = InstallPlans.refusedBeforeBuild(unit.manifest(), unit.dir(), m2Dir, spec.installTarget());
+            String message =
+                    InstallPlans.refusedBeforeBuild(unit.manifest(), unit.dir(), m2Dir, spec.installDestination());
             if (message != null) refused.add(message);
         }
         return refused;

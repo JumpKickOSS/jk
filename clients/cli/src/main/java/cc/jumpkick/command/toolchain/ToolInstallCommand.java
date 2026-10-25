@@ -20,7 +20,7 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -90,7 +90,7 @@ public final class ToolInstallCommand implements CliCommand {
                 Opt.value(
                         "<m2|jk>",
                         "Where the install goes: m2 (the Maven local repository, default) or jk (jk's private repository)",
-                        "--target"),
+                        "--destination"),
                 Opt.flag("Install the project at its version plus -SNAPSHOT (same as jk snapshot)", "--snapshot"),
                 Opt.value("<dir>", "Override the local Maven repo root (~/.m2).", "--m2-dir")
                         .hide(),
@@ -152,7 +152,7 @@ public final class ToolInstallCommand implements CliCommand {
     Path m2DirOverride;
 
     @Nullable
-    InstallTarget targetOverride;
+    InstallDestination destinationOverride;
 
     boolean snapshot;
 
@@ -180,12 +180,13 @@ public final class ToolInstallCommand implements CliCommand {
         this.jdksDir = CommonOpts.jdksDirValue(in);
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.global = GlobalOptions.from(in);
-        String targetWord = in.value(InstallTarget.KEY).orElse(null);
+        String destinationWord = in.value(InstallDestination.KEY).orElse(null);
         this.snapshot = in.isSet("snapshot");
-        this.targetOverride =
-                targetWord == null ? null : InstallTarget.parse(targetWord).orElse(null);
-        if (targetWord != null && targetOverride == null) {
-            CommandWedge.printFail("Install", "--target must be m2 or jk, not `" + targetWord + "`");
+        this.destinationOverride = destinationWord == null
+                ? null
+                : InstallDestination.parse(destinationWord).orElse(null);
+        if (destinationWord != null && destinationOverride == null) {
+            CommandWedge.printFail("Install", "--destination must be m2 or jk, not `" + destinationWord + "`");
             return Exit.USAGE;
         }
         BuildFlags flags;
@@ -574,7 +575,7 @@ public final class ToolInstallCommand implements CliCommand {
         delegate.binDirOverride = binDirOverride;
         delegate.libDirOverride = libDirOverride;
         delegate.m2DirOverride = m2DirOverride;
-        delegate.targetOverride = targetOverride;
+        delegate.destinationOverride = destinationOverride;
         delegate.snapshot = snapshot;
         delegate.jdksDir = jdksDir;
         delegate.repoUrl = repoUrl;

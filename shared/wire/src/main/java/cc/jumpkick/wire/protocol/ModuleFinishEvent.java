@@ -2,7 +2,7 @@
 package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
  * only for an image module (each only when set) and are followed by {@code hasImage} so a reader can
  * tell "image module with nothing to say" from "not an image module" (see {@link EngineProtocol#MODULE_FINISH}).
  * The install fields ({@code installCoord}, {@code installJarSha256}, {@code installPomSha256}, {@code
- * installTarget}, {@code installChange}) ride only when an install pass installed the module, all together; the {@code published} object only
+ * installDestination}, {@code installChange}) ride only when an install pass installed the module, all together; the {@code published} object only
  * when a publish pass ran.
  */
 public record ModuleFinishEvent(
@@ -50,7 +50,7 @@ public record ModuleFinishEvent(
             json.string("installCoord", installed.coordinate())
                     .string("installJarSha256", installed.jarSha256())
                     .string("installPomSha256", installed.pomSha256())
-                    .string("installTarget", installed.target().spelling())
+                    .string("installDestination", installed.destination().spelling())
                     .string("installChange", installed.change().word());
         }
         if (published != null) {
@@ -94,8 +94,8 @@ public record ModuleFinishEvent(
                         installCoord,
                         Jsonl.requiredStr(json, "installJarSha256"),
                         Jsonl.requiredStr(json, "installPomSha256"),
-                        InstallTarget.parse(Jsonl.requiredStr(json, "installTarget"))
-                                .orElseThrow(() -> new IllegalArgumentException("unknown install target")),
+                        InstallDestination.parse(Jsonl.requiredStr(json, "installDestination"))
+                                .orElseThrow(() -> new IllegalArgumentException("unknown install destination")),
                         ModuleOutcome.Installed.Change.parse(Jsonl.str(json, "installChange")));
         String pub = Jsonl.nested(json, "published");
         ModuleOutcome.Published published = pub == null

@@ -83,7 +83,7 @@ class PluginInstallLocalTest {
                 java = 25
 
                 [install]
-                target = "jk"
+                destination = "jk"
                 """);
         Files.writeString(mod.resolve("jk-plugin.toml"), """
                 [plugin]

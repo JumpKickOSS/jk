@@ -1,10 +1,10 @@
 version = 1
 generated-by = "jk 0.41.0"
-generated-by-build = "cb01012d8249"
-generated-by-build-time = "2026-10-25T15:42:45Z"
+generated-by-build = "c524e7f0894b"
+generated-by-build-time = "2026-10-25T18:41:28Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "381f04b5f7e10316f9eac93aee2a31e13780f9a3f8cd0fa33d35a185e7c2ec96"
+manifests-sha256 = "24ca9f8ad42064320ef8ec3a19e48b77bcecf17eafe1c08d293a12b27f2ef067"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -6986,7 +6986,7 @@ name    = "jk"
 version = "0.41.0"
 java    = 25
 description = "JumpKick: The best damn build system for the JVM"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "clients/cli"
@@ -6995,7 +6995,7 @@ name    = "jk-cli"
 version = "0.41.0"
 java    = 25
 description = "The CLI (and primary) client for interacting with the JumpKick build system"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "clients/cli-terminal"
@@ -7004,7 +7004,7 @@ name    = "jk-cli-terminal"
 version = "0.41.0"
 java    = 25
 description = "Controlling TTY, VT style, and keys for the native CLI"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "clients/intellij"
@@ -7013,7 +7013,7 @@ name    = "jumpkick-intellij"
 version = "0.41.0"
 java    = 25
 description = "JumpKick for IntelliJ: an external system over the jk CLI and the engine's ide-model; never loads an engine jar"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "clients/maven-spy"
@@ -7022,7 +7022,7 @@ name    = "jk-maven-spy"
 version = "0.41.0"
 java    = 17
 description = "Maven core extension that records reactor events for jk mvn"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "clients/web"
@@ -7031,7 +7031,7 @@ name    = "jk-web"
 version = "0.41.0"
 java    = 25
 description = "Web dashboard static assets for the engine UI"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/android"
@@ -7040,7 +7040,7 @@ name    = "jk-android"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's Android packaging plugin"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/antlr"
@@ -7049,7 +7049,7 @@ name    = "jk-antlr"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's ANTLR preset: [antlr] as one generator entry running the ANTLR tool over a module's grammars, a package per grammar directory"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/auditor"
@@ -7058,7 +7058,7 @@ name    = "jk-auditor"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's OSV audit plugin"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/avro"
@@ -7067,7 +7067,7 @@ name    = "jk-avro"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's Avro preset: [avro] as one generator entry running Avro's SpecificCompiler over a module's schemas, protocols and IDL files"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/formatter"
@@ -7076,7 +7076,7 @@ name    = "jk-formatter"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's source code formatter plugin"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/generator"
@@ -7085,7 +7085,7 @@ name    = "jk-generator"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's code-generator plugin: one worker behind [generate], the preset tables ride on it"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/grails"
@@ -7094,7 +7094,7 @@ name    = "jk-grails"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's Grails packaging plugin"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/graph"
@@ -7103,7 +7103,7 @@ name    = "jk-graph"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's code graph worker: walks a workspace, extracts each file incrementally, maps compiled class facts, links, clusters and answers queries"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/groovy-compiler"
@@ -7112,7 +7112,7 @@ name    = "jk-groovy-compiler"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's Groovy compiler plugin"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/hibernate"
@@ -7121,7 +7121,7 @@ name    = "jk-hibernate"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's Hibernate plugin: the project's own bytecode enhancer over the compiled entity classes, as a cached step whose output is the module's classes"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/image-builder"
@@ -7130,7 +7130,7 @@ name    = "jk-image-builder"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's OCI image builder plugin"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/intellij"
@@ -7139,7 +7139,7 @@ name    = "jk-intellij"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's IntelliJ Platform plugin battery: [intellij] compiles and tests against an IntelliJ distribution and packages the plugin zip"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/java-compiler"
@@ -7148,7 +7148,7 @@ name    = "jk-java-compiler"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's Java compiler plugin"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/javafx"
@@ -7157,7 +7157,7 @@ name    = "jk-javafx"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's JavaFX plugin: the project's OpenJFX modules on the module path of the test JVM and jk run"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/jaxb"
@@ -7166,7 +7166,7 @@ name    = "jk-jaxb"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's JAXB preset: [jaxb] as one generator entry running the xjc schema compiler over a module's XML schemas"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/jenkins-test"
@@ -7175,7 +7175,7 @@ name    = "jk-jenkins-test"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's Jenkins test-plugins step: [jenkins-test] installs the test closure's Jenkins plugins where JenkinsRule loads them"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/jooq"
@@ -7184,7 +7184,7 @@ name    = "jk-jooq"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's jOOQ preset: [jooq] as one generator entry running jOOQ codegen over a module's DDL scripts or a live schema"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/kotlin-compiler"
@@ -7193,7 +7193,7 @@ name    = "jk-kotlin-compiler"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's Kotlin compiler plugin"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/lint"
@@ -7202,7 +7202,7 @@ name    = "jk-lint"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's lint plugin: [lint] runs Checkstyle, PMD, SpotBugs and detekt as cached steps whose findings are the step's diagnostics"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/localizer"
@@ -7211,7 +7211,7 @@ name    = "jk-localizer"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's localizer preset: [localizer] as one generator entry running the localizer generator over Messages.properties bundles"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/micronaut"
@@ -7220,7 +7220,7 @@ name    = "jk-micronaut"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's Micronaut AOT plugin"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/minified"
@@ -7229,7 +7229,7 @@ name    = "jk-minified"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's R8 minify plugin"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/openapi"
@@ -7238,7 +7238,7 @@ name    = "jk-openapi"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's OpenAPI preset: [openapi] as one generator entry over the generator worker"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/protobuf"
@@ -7247,7 +7247,7 @@ name    = "jk-protobuf"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's Protobuf plugin"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/publisher"
@@ -7256,7 +7256,7 @@ name    = "jk-publisher"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's Maven publish plugin"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/quarkus"
@@ -7265,7 +7265,7 @@ name    = "jk-quarkus"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's Quarkus packaging plugin"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/spring-boot"
@@ -7274,7 +7274,7 @@ name    = "jk-spring-boot"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's Spring Boot packaging plugin"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/taglib"
@@ -7283,7 +7283,7 @@ name    = "jk-taglib"
 version = "0.41.0"
 java    = 25
 description = "JumpKick's taglib preset: [taglib] as one generator entry writing the typed Jelly tag-library interfaces a Jenkins module's Groovy views call"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "plugins/test-runner"
@@ -7292,7 +7292,7 @@ name    = "jk-test-runner"
 version = "0.41.0"
 java    = 17
 description = "JumpKick's JUnit Platform test-runner plugin"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "server/engine"
@@ -7301,7 +7301,7 @@ name    = "jk-engine"
 version = "0.41.0"
 java    = 25
 description = "Resident build engine: plan, cache, compile, and test"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "server/guard"
@@ -7310,7 +7310,7 @@ name    = "jk-guard"
 version = "0.41.0"
 java    = 25
 description = "House-rule guards: rule schema, facts index, evaluators, baseline; engine-only"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "server/guard/packs/android"
@@ -7319,7 +7319,7 @@ name    = "android"
 version = "0.41.0"
 java    = 25
 description = "Android house rules: one logging owner, no blocking sleeps, java.time, test libraries in the test scope, a file-size ratchet."
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "server/guard/packs/library"
@@ -7328,7 +7328,7 @@ name    = "library"
 version = "0.41.0"
 java    = 25
 description = "Library house rules: locale- and charset-explicit JDK calls, @NullMarked packages, no snapshots, converged versions, a file-size ratchet."
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "server/guard/packs/monorepo"
@@ -7337,7 +7337,7 @@ name    = "monorepo"
 version = "0.41.0"
 java    = 25
 description = "Monorepo house rules: one module per package, converged versions, no snapshots, a Java floor, a file-size ratchet."
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "server/guard/packs/quarkus"
@@ -7346,7 +7346,7 @@ name    = "quarkus"
 version = "0.41.0"
 java    = 25
 description = "Quarkus house rules: one logger, Jakarta EE, test types and libraries in the test scope, java.time, a file-size ratchet."
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "server/guard/packs/spring"
@@ -7355,7 +7355,7 @@ name    = "spring"
 version = "0.41.0"
 java    = 25
 description = "Spring Boot house rules: one logger, Jakarta EE, Lombok as a processor, test libraries in the test scope, java.time, a file-size ratchet."
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "server/io"
@@ -7364,7 +7364,7 @@ name    = "jk-io"
 version = "0.41.0"
 java    = 25
 description = "Engine I/O: HTTP client, CAS, and Maven repository access"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "server/resolver"
@@ -7373,7 +7373,7 @@ name    = "jk-resolver"
 version = "0.41.0"
 java    = 25
 description = "PubGrub dependency resolver"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "server/toolchain"
@@ -7382,7 +7382,7 @@ name    = "jk-toolchain"
 version = "0.41.0"
 java    = 25
 description = "Engine toolchain: tool installs and Maven/Gradle import"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "shared/client-io"
@@ -7391,7 +7391,7 @@ name    = "jk-client-io"
 version = "0.41.0"
 java    = 25
 description = "Client-side HTTP, repository transports, forge auth, credentials, and CAS"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "shared/code-graph"
@@ -7400,7 +7400,7 @@ name    = "jk-code-graph"
 version = "0.41.0"
 java    = 25
 description = "Code graph model: graphify-compatible ids and graph.json, budgeted query, paths, communities and the report"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "shared/core"
@@ -7409,7 +7409,7 @@ name    = "jk-core"
 version = "0.41.0"
 java    = 25
 description = "Core library: config, lockfile, layout, and policy"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "shared/dynamic-surface"
@@ -7418,7 +7418,7 @@ name    = "jk-dynamic-surface"
 version = "0.41.0"
 java    = 25
 description = "Dynamic surface modeling for R8 keep rules and GraalVM metadata"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "shared/guard-api"
@@ -7427,7 +7427,7 @@ name    = "jk-guards-junit"
 version = "0.41.0"
 java    = 17
 description = "Guard-test library: @Guard/@GuardSuite and the injected Facts, Model, Text, Output and Violations views"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "shared/host"
@@ -7436,7 +7436,7 @@ name    = "jk-host"
 version = "0.41.0"
 java    = 17
 description = "Host leaf: JSONL/MiniJson codec, Hashing, PathUtil, Errors, Os, Exit — the JDK-only floor the CLI, the engine and every plugin worker share"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "shared/ide"
@@ -7445,7 +7445,7 @@ name    = "jk-ide"
 version = "0.41.0"
 java    = 25
 description = "IDE project-file generators: IntelliJ IDEA, VS Code, and the BSP connection file"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "shared/jk-api"
@@ -7454,7 +7454,7 @@ name    = "jk-model"
 version = "0.41.0"
 java    = 25
 description = "Domain model: dependencies, build plans, and coordinates"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "shared/plugin-sdk"
@@ -7463,7 +7463,7 @@ name    = "jk-plugin-sdk"
 version = "0.41.0"
 java    = 17
 description = "Plugin SPI; codec and host primitives are jk-host"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "shared/toolchain-jdk"
@@ -7472,7 +7472,7 @@ name    = "jk-toolchain-jdk"
 version = "0.41.0"
 java    = 25
 description = "Client JDK tooling: discovery, install flow, and launchers"
-install.target = "jk"
+install.destination = "jk"
 
 [[module]]
 path    = "shared/wire"
@@ -7481,4 +7481,4 @@ name    = "jk-engine-api"
 version = "0.41.0"
 java    = 25
 description = "Client–engine wire protocol and build DTOs"
-install.target = "jk"
+install.destination = "jk"

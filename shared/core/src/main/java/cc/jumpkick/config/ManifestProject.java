@@ -3,7 +3,7 @@ package cc.jumpkick.config;
 
 import static cc.jumpkick.config.JkBuildParser.*;
 
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.Layout;
 import cc.jumpkick.model.Project;
@@ -184,7 +184,7 @@ public final class ManifestProject {
         }
 
         boolean m2integration = parseM2Integration(root, workspaceRoot, inherits);
-        InstallTarget installTarget = parseInstallTarget(root, workspaceRoot, inherits);
+        InstallDestination installDestination = parseInstallDestination(root, workspaceRoot, inherits);
 
         Layout layout;
         if (isWorkspaceInherit(root, "layout") || (!workspaceRoot && !root.contains("layout"))) {
@@ -216,7 +216,7 @@ public final class ManifestProject {
                 javadocMode,
                 description,
                 m2integration,
-                installTarget,
+                installDestination,
                 layout,
                 inherits,
                 jdkSpec,
@@ -275,25 +275,25 @@ public final class ManifestProject {
     }
 
     /**
-     * {@code [install] target}: {@code "m2"} or {@code "jk"}. Null when unset, which defers to the
+     * {@code [install] destination}: {@code "m2"} or {@code "jk"}. Null when unset, which defers to the
      * machine's {@code config.toml} and then to {@code "m2"}. A member that names none inherits its
      * workspace root's.
      */
-    private static @Nullable InstallTarget parseInstallTarget(
+    private static @Nullable InstallDestination parseInstallDestination(
             TomlTable root, boolean workspaceRoot, java.util.EnumSet<ProjectInherit> inherits) {
         if (root.contains("install") && !root.isTable("install")) {
             throw new JkBuildParseException("`install` must be a table — use [install] with a target key");
         }
         TomlTable install = root.isTable("install") ? root.getTable("install") : null;
-        boolean present = install != null && install.contains(InstallTarget.KEY);
-        if ((install != null && isWorkspaceInherit(install, InstallTarget.KEY)) || (!workspaceRoot && !present)) {
-            inherits.add(ProjectInherit.INSTALL_TARGET);
+        boolean present = install != null && install.contains(InstallDestination.KEY);
+        if ((install != null && isWorkspaceInherit(install, InstallDestination.KEY)) || (!workspaceRoot && !present)) {
+            inherits.add(ProjectInherit.INSTALL_DESTINATION);
             return null;
         }
         if (install == null || !present) return null;
-        String word = install.getString(InstallTarget.KEY);
-        return InstallTarget.parse(word)
-                .orElseThrow(() -> new JkBuildParseException("[install] target must be \"m2\" (the Maven local"
+        String word = install.getString(InstallDestination.KEY);
+        return InstallDestination.parse(word)
+                .orElseThrow(() -> new JkBuildParseException("[install] destination must be \"m2\" (the Maven local"
                         + " repository) or \"jk\" (jk's private repository), not `" + word + "`"));
     }
 

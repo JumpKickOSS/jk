@@ -97,7 +97,7 @@ public final class LockfileModules {
                 p.description(),
                 sources,
                 p.m2integration() ? null : Boolean.FALSE,
-                p.installTarget());
+                p.installDestination());
     }
 
     private static @Nullable String selectorRaw(@Nullable VersionSelector v) {

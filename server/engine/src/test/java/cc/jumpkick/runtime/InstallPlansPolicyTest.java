@@ -7,7 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.Coordinate;
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.repo.M2InstallMemo;
@@ -67,7 +67,7 @@ class InstallPlansPolicyTest {
     }
 
     private ModuleOutcome.Installed install(JkBuild project, BuildLayout layout) throws IOException {
-        return InstallPlans.cacheInstallArtifact(project, layout, cache, m2Dir, InstallTarget.M2);
+        return InstallPlans.cacheInstallArtifact(project, layout, cache, m2Dir, InstallDestination.M2);
     }
 
     private Path slotJar(String version) {
@@ -83,7 +83,7 @@ class InstallPlansPolicyTest {
         ModuleOutcome.Installed out = install(project, layout);
 
         assertThat(out.change()).isEqualTo(Change.NEW);
-        assertThat(out.target()).isEqualTo(InstallTarget.M2);
+        assertThat(out.destination()).isEqualTo(InstallDestination.M2);
         assertThat(Files.readString(slotJar("1.0.0"))).isEqualTo("v1");
         assertThat(slotJar("1.0.0").resolveSibling("money-1.0.0.jar.sha1")).exists();
         assertThat(slotJar("1.0.0").resolveSibling("money-1.0.0.pom")).exists();
@@ -183,7 +183,7 @@ class InstallPlansPolicyTest {
 
         assertThat(InstallPlans.refusedBeforeBuild(project, moduleDir, m2Dir, null))
                 .contains("ex.acme:money:1.0.0 is already installed");
-        assertThat(InstallPlans.refusedBeforeBuild(project, moduleDir, m2Dir, InstallTarget.JK))
+        assertThat(InstallPlans.refusedBeforeBuild(project, moduleDir, m2Dir, InstallDestination.JK))
                 .as("the private repository is not the slot that is taken")
                 .isNull();
         assertThat(InstallPlans.refusedBeforeBuild(project("1.0.0-SNAPSHOT"), moduleDir, m2Dir, null))
@@ -192,19 +192,21 @@ class InstallPlansPolicyTest {
     }
 
     @Test
-    void the_target_is_the_flag_then_the_project_then_the_maven_local_repository() {
+    void the_destination_is_the_flag_then_the_project_then_the_maven_local_repository() {
         Path moduleDir = tmp.resolve("mod");
         JkBuild unset = project("1.0.0");
         JkBuild declared = JkBuild.builder(Project.builder("ex.acme", "money", "1.0.0")
                         .jdkMajor(25)
                         .java(25)
-                        .installTarget(InstallTarget.JK)
+                        .installDestination(InstallDestination.JK)
                         .build())
                 .build();
 
-        assertThat(InstallPlans.targetOf(unset, moduleDir, null)).isEqualTo(InstallTarget.M2);
-        assertThat(InstallPlans.targetOf(declared, moduleDir, null)).isEqualTo(InstallTarget.JK);
-        assertThat(InstallPlans.targetOf(declared, moduleDir, InstallTarget.M2)).isEqualTo(InstallTarget.M2);
-        assertThat(InstallPlans.targetOf(unset, moduleDir, InstallTarget.JK)).isEqualTo(InstallTarget.JK);
+        assertThat(InstallPlans.destinationOf(unset, moduleDir, null)).isEqualTo(InstallDestination.M2);
+        assertThat(InstallPlans.destinationOf(declared, moduleDir, null)).isEqualTo(InstallDestination.JK);
+        assertThat(InstallPlans.destinationOf(declared, moduleDir, InstallDestination.M2))
+                .isEqualTo(InstallDestination.M2);
+        assertThat(InstallPlans.destinationOf(unset, moduleDir, InstallDestination.JK))
+                .isEqualTo(InstallDestination.JK);
     }
 }

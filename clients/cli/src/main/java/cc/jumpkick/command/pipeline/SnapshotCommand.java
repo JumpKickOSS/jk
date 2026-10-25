@@ -7,7 +7,7 @@ import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -43,7 +43,7 @@ public final class SnapshotCommand implements CliCommand {
                 Opt.value(
                         "<m2|jk>",
                         "Where the install goes: m2 (the Maven local repository, default) or jk (jk's private repository)",
-                        "--target"),
+                        "--destination"),
                 Opt.value("<dir>", "Override the tool state directory.", "--state-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the bin directory.", "--bin-dir").hide(),
@@ -66,11 +66,12 @@ public final class SnapshotCommand implements CliCommand {
         }
         flags.installSession();
 
-        String targetWord = in.value(InstallTarget.KEY).orElse(null);
-        InstallTarget target =
-                targetWord == null ? null : InstallTarget.parse(targetWord).orElse(null);
-        if (targetWord != null && target == null) {
-            CommandWedge.printFail("Snapshot", "--target must be m2 or jk, not `" + targetWord + "`");
+        String destinationWord = in.value(InstallDestination.KEY).orElse(null);
+        InstallDestination destination = destinationWord == null
+                ? null
+                : InstallDestination.parse(destinationWord).orElse(null);
+        if (destinationWord != null && destination == null) {
+            CommandWedge.printFail("Snapshot", "--destination must be m2 or jk, not `" + destinationWord + "`");
             return Exit.USAGE;
         }
         Path base = global.workingDir();
@@ -83,7 +84,7 @@ public final class SnapshotCommand implements CliCommand {
         buildOpts.skipTests = flags.skipTests();
         InstallCommand install = new InstallCommand(global, buildOpts);
         install.snapshot = true;
-        install.targetOverride = target;
+        install.destinationOverride = destination;
         install.cacheDirOverride = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         install.stateDirOverride = in.value("state-dir").map(CliPaths::abs).orElse(null);
         install.binDirOverride = in.value("bin-dir").map(CliPaths::abs).orElse(null);

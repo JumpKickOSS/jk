@@ -5,7 +5,7 @@ import static cc.jumpkick.config.JkBuildParserFixtures.PROJECT;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Layout;
 import cc.jumpkick.model.SourcesMode;
@@ -353,7 +353,7 @@ class JkBuildParserApplicationTest {
     @Test
     void m2_table_defaults_true_explicit_false_opts_out() {
         assertThat(JkBuildParser.parse(PROJECT).project().m2integration()).isTrue();
-        assertThat(JkBuildParser.parse(PROJECT).project().installTarget()).isNull();
+        assertThat(JkBuildParser.parse(PROJECT).project().installDestination()).isNull();
         assertThat(JkBuildParser.parse(PROJECT + "\n[m2]\nintegration = true\n")
                         .project()
                         .m2integration())
@@ -366,17 +366,17 @@ class JkBuildParserApplicationTest {
 
     @Test
     void install_target_is_m2_or_jk_and_unset_by_default() {
-        assertThat(JkBuildParser.parse(PROJECT + "\n[install]\ntarget = \"jk\"\n")
+        assertThat(JkBuildParser.parse(PROJECT + "\n[install]\ndestination = \"jk\"\n")
                         .project()
-                        .installTarget())
-                .isEqualTo(InstallTarget.JK);
-        assertThat(JkBuildParser.parse(PROJECT + "\n[install]\ntarget = \"m2\"\n")
+                        .installDestination())
+                .isEqualTo(InstallDestination.JK);
+        assertThat(JkBuildParser.parse(PROJECT + "\n[install]\ndestination = \"m2\"\n")
                         .project()
-                        .installTarget())
-                .isEqualTo(InstallTarget.M2);
-        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "\n[install]\ntarget = \"shelf\"\n"))
+                        .installDestination())
+                .isEqualTo(InstallDestination.M2);
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "\n[install]\ndestination = \"shelf\"\n"))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("[install] target must be \"m2\"");
+                .hasMessageContaining("[install] destination must be \"m2\"");
     }
 
     @Test

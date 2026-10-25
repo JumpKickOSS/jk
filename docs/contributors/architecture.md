@@ -542,7 +542,7 @@ rule a download does. Action-cache restore stays copy-not-link so compilers cann
 outputs. `jk storage nuke` does not delete `~/.m2`.
 
 **Installed slots.** `jk install` writes a project's thin jar and POM to one place:
-`~/.m2/repository` (the default `[install] target = "m2"`) or the store's `repos/jk-local`
+`~/.m2/repository` (the default `[install] destination = "m2"`) or the store's `repos/jk-local`
 (`"jk"`; always for a plugin worker). For `~/.m2`, `M2InstallMemo` records what jk wrote under
 `<store>/m2-installs/<repository id>/<g>/<a>/<v>/install.jk` — three lines: `g:a:v`, the jar sha256,
 the POM sha256 — and never inside the repository. `InstallPlans` decides every install against it: a

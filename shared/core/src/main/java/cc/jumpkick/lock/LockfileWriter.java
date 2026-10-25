@@ -404,9 +404,9 @@ public final class LockfileWriter {
             if (Boolean.FALSE.equals(m.m2integration())) {
                 out.append("m2.integration = false\n");
             }
-            if (m.installTarget() != null) {
-                out.append("install.target = ")
-                        .append(quote(m.installTarget().spelling()))
+            if (m.installDestination() != null) {
+                out.append("install.destination = ")
+                        .append(quote(m.installDestination().spelling()))
                         .append('\n');
             }
         }
