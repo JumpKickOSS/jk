@@ -707,6 +707,14 @@
       },
       "additionalProperties": false
     },
+    "release": {
+      "type": "object",
+      "description": "[release]: how a release is named (docs/user/publish.md). The workspace root's table governs the whole workspace.",
+      "properties": {
+        "tag": { "type": "string", "description": "The git tag of a release; {version} stands for the released version. Default \"v{version}\"." }
+      },
+      "additionalProperties": false
+    },
     "export-dependencies": {
       "type": "object",
       "description": "[export-dependencies]: one dependency per key \u2014 a version string when the key is a catalog short name, a group:artifact[:version] string (versionless = platform-managed), \"managed\" on a catalog short name a platform BOM covers, or { group, name, version, features, ... }. A bare version is an exact pin; ^ ~ ranges and latest are opt-in.",

@@ -24,6 +24,7 @@ import cc.jumpkick.model.Workspace;
 import cc.jumpkick.model.Workspace.WorkspaceDependency;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
+import cc.jumpkick.release.ReleaseTag;
 import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -344,6 +345,27 @@ public final class ManifestTables {
     /** Keys that would hold a secret: refused with where a secret does belong. */
     static final List<String> PUBLISH_SECRET_KEYS =
             List.of("password", "token", "passphrase", "key-passphrase", "user", "username");
+
+    static final List<String> RELEASE_KEYS = List.of("tag");
+
+    /**
+     * {@code [release]} — the tag template a release carries, {@code {version}} standing for the
+     * released version. {@link ReleaseTag#DEFAULT_TEMPLATE} when the table or the key is absent.
+     */
+    static String parseReleaseTag(TomlTable root) {
+        if (root.contains("release") && !root.isTable("release")) {
+            throw new JkBuildParseException("`release` must be a table — use [release] with tag");
+        }
+        TomlTable release = root.getTable("release");
+        if (release == null) return ReleaseTag.DEFAULT_TEMPLATE;
+        rejectUnknownKeys(release, RELEASE_KEYS, "[release]");
+        String tag = stringOrThrow(release, "tag", "release.tag");
+        if (tag == null) return ReleaseTag.DEFAULT_TEMPLATE;
+        if (!tag.contains("{version}")) {
+            throw new JkBuildParseException("[release] tag must contain {version}, such as \"v{version}\"");
+        }
+        return tag;
+    }
 
     static final List<String> PUBLISH_LICENSE_KEYS = List.of("name", "url");
     static final List<String> PUBLISH_DEVELOPER_KEYS = List.of("id", "name", "email");

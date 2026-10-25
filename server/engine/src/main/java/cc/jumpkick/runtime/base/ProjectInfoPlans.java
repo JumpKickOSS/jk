@@ -233,6 +233,11 @@ public final class ProjectInfoPlans {
         return name;
     }
 
+    /** The manifest whose {@code [release]} table governs {@code buildFile}: the workspace root's, else its own. */
+    private static Path rootManifest(Path buildFile, Workspace ws) {
+        return ws.wsRoot() == null ? buildFile : ManifestPaths.manifestIn(ws.wsRoot());
+    }
+
     private static ProjectInfo summary(
             Path dir,
             Path buildFile,
@@ -310,7 +315,8 @@ public final class ProjectInfoPlans {
                 ws.toolchains(),
                 publishRepository(build),
                 build.pomMetadata().sign(),
-                orEmpty(build.pomMetadata().keyFile()));
+                orEmpty(build.pomMetadata().keyFile()),
+                JkBuildParser.releaseTag(rootManifest(buildFile, ws)));
     }
 
     private static String sanitizeIdentity(String value) {

@@ -64,6 +64,27 @@ passphrases are secrets and do not belong in `jk.toml`: a `password`, `token` or
 in `[publish]` is refused, naming where the secret goes (`jk repo login`, `JK_REPO_<ID>_*`,
 `JK_GPG_PASSPHRASE`).
 
+### Publishing from a tag
+
+`[release] tag` is the template of the git tag a release carries, `{version}` standing for the
+released version (default `v{version}`). `jk publish --tag <name>` compares the name with the
+template rendered for the project's version and stops before anything compiles when they differ:
+
+```yaml
+# .github/workflows/publish.yml
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: jk publish --tag "$GITHUB_REF_NAME"
+```
+
+The flag is explicit: jk does not read CI variables to guess a tag.
+
 ### Publishing again
 
 A published file never changes. Publishing a version again uploads only what the repository does

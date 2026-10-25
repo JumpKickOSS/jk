@@ -31,6 +31,7 @@ public final class PublishTail {
                             PublishPlans.PROJECT,
                             PublishPlans.JAR,
                             PublishPlans.FILES,
+                            PublishPlans.EXISTING,
                             PublishPlans.WRITTEN,
                             PublishPlans.BUNDLE,
                             PublishPlans.DEPLOYMENT,
