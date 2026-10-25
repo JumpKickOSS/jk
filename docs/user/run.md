@@ -23,6 +23,8 @@ main     = "com.example.AppKt"
 jvm-args = ["--enable-native-access=ALL-UNNAMED", "-Xmx512m"]
 ```
 
+`java-opts` is a second spelling of the same key, here and in `[test]` and `[profiles.<name>]`; when a table sets both, `jvm-args` wins.
+
 They are separate from `[jvm] args` (jk's worker JVMs) and `[test] jvm-args` (forked test JVMs).
 
 ### Environment
