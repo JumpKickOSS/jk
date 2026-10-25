@@ -194,6 +194,21 @@ public final class ReleaseCommand implements CliCommand {
             }
         }
 
+        return tagAndStart(info, git, dir, manifest, text, version, next, tag, push);
+    }
+
+    /** Tag the release commit, move the manifests to {@code next}, commit that, and push when asked. */
+    private static int tagAndStart(
+            ProjectInfo info,
+            Git git,
+            Path dir,
+            Path manifest,
+            String text,
+            String version,
+            String next,
+            String tag,
+            boolean push)
+            throws IOException {
         String tagFailure = git.run("tag", "-a", tag, "-m", "Release " + version);
         if (tagFailure != null) {
             CommandWedge.printFail(CHIP, "could not tag " + tag + ": " + tagFailure);
