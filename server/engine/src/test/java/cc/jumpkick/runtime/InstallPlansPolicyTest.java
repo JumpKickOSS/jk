@@ -87,6 +87,9 @@ class InstallPlansPolicyTest {
         assertThat(Files.readString(slotJar("1.0.0"))).isEqualTo("v1");
         assertThat(slotJar("1.0.0").resolveSibling("money-1.0.0.jar.sha1")).exists();
         assertThat(slotJar("1.0.0").resolveSibling("money-1.0.0.pom")).exists();
+        assertThat(Files.readAllLines(slotJar("1.0.0").resolveSibling("_remote.repositories")))
+                .as("Maven's own installs name no repository, so a build without one still accepts the files")
+                .contains("money-1.0.0.jar>=", "money-1.0.0.pom>=");
         Path memo = M2InstallMemo.file(
                 tmp.resolve("store"), m2Dir.resolve("repository"), Coordinate.of("ex.acme", "money", "1.0.0"));
         assertThat(M2InstallMemo.read(memo)).isPresent();

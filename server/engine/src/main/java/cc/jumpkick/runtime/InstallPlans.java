@@ -399,12 +399,13 @@ public final class InstallPlans {
         if (change != ModuleOutcome.Installed.Change.UNCHANGED) {
             M2CompatWriter.MavenHashes jarH = M2CompatWriter.copyToM2AndHash(jar, m2Jar);
             M2CompatWriter.writeMavenSidecars(m2Jar, jarH.sha1(), jarH.md5());
-            M2CompatWriter.writeRemoteRepositories(
-                    Objects.requireNonNull(m2Jar.getParent()),
-                    "local",
-                    m2Jar.getFileName().toString());
             M2CompatWriter.MavenHashes pomH = M2CompatWriter.writeBytesToM2(pomBytes, m2Pom);
             M2CompatWriter.writeMavenSidecars(m2Pom, pomH.sha1(), pomH.md5());
+            // Maven marks what its own install wrote with an empty repository id; any other id makes
+            // a build without that repository refuse the file as one it cannot re-verify.
+            Path slot = Objects.requireNonNull(m2Jar.getParent());
+            M2CompatWriter.writeRemoteRepositories(slot, "", m2Jar.getFileName().toString());
+            M2CompatWriter.writeRemoteRepositories(slot, "", m2Pom.getFileName().toString());
         }
         recordOwnership(m2Root, coord, jarSha, pomSha);
         return new ModuleOutcome.Installed(coord.toGav(), jarSha, pomSha, target, change);
