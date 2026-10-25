@@ -91,7 +91,7 @@ class InstallCommandTest {
         Path cache = tempDir.resolve("cache");
         Path m2 = tempDir.resolve("m2");
         int exit = Jk.execute(
-                "install",
+                "snapshot",
                 "-C",
                 tempDir.toString(),
                 "--cache-dir",
@@ -109,9 +109,9 @@ class InstallCommandTest {
         // [install] destination = "jk": repos/jk-local, not ~/.m2.
         assertThat(JkStores.resolve("repos")
                         .resolve("jk-local")
-                        .resolve("com/example/lib-only/0.1.0/lib-only-0.1.0.jar"))
+                        .resolve("com/example/lib-only/0.1.0-SNAPSHOT/lib-only-0.1.0-SNAPSHOT.jar"))
                 .exists();
-        assertThat(m2.resolve("repository/com/example/lib-only/0.1.0/lib-only-0.1.0.jar"))
+        assertThat(m2.resolve("repository/com/example/lib-only/0.1.0-SNAPSHOT/lib-only-0.1.0-SNAPSHOT.jar"))
                 .doesNotExist();
     }
 
@@ -181,6 +181,9 @@ class InstallCommandTest {
                 version   = "0.1.0"
                 jdk       = 25
                 java      = 25
+
+                [application]
+                main      = "com.example.Lib"
                 """);
         Path src = tempDir.resolve("src/main/java/com/example/Lib.java");
         Files.createDirectories(src.getParent());
@@ -219,6 +222,9 @@ class InstallCommandTest {
                 version   = "0.1.0"
                 jdk       = 25
                 java      = 25
+
+                [application]
+                main      = "com.example.Lib"
                 """);
         Path src = tempDir.resolve("src/main/java/com/example/Lib.java");
         Files.createDirectories(src.getParent());
