@@ -90,12 +90,22 @@ public final class WorkspaceBuildVerb implements HostedVerb {
     @Override
     public List<String> jobKinds() {
         return List.of(
-                "build", "assemble", "test", "guard", "compile", "image", "install", "snapshot", "native", "publish");
+                "build",
+                "assemble",
+                "test",
+                "guard",
+                "compile",
+                "image",
+                "install",
+                "snapshot",
+                "native",
+                "publish",
+                "upload");
     }
 
     /**
      * A dashboard or agent job. Image and native jobs deliver an artifact and skip tests; a publish
-     * job is always a dry run, because credentials are resolved client-side and never here.
+     * job is a dry run; an {@code upload} job sends the release to the repository {@code [publish]} names.
      */
     @Override
     public String decodeJob(JobSpec spec) {
@@ -109,7 +119,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     case "image" -> WorkspaceTarget.IMAGE;
                     case "install", "snapshot" -> WorkspaceTarget.INSTALL;
                     case "native" -> WorkspaceTarget.NATIVE;
-                    case "publish" -> WorkspaceTarget.PUBLISH;
+                    case "publish", "upload" -> WorkspaceTarget.PUBLISH;
                     default -> WorkspaceTarget.PACKAGE;
                 };
         Set<Path> selected = null;
@@ -126,21 +136,23 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     case INSTALL -> new TailArgs.Install(null, null);
                     case NATIVE -> new TailArgs.Native(null, List.of());
                     case PUBLISH ->
-                        new TailArgs.Publish(
-                                URI.create("https://publish.invalid/"),
-                                null,
-                                null,
-                                null,
-                                false,
-                                true,
-                                null,
-                                null,
-                                false,
-                                false,
-                                false,
-                                RepoCredential.ANONYMOUS,
-                                false,
-                                null);
+                        "upload".equals(kind)
+                                ? UploadTail.of(entryDir)
+                                : new TailArgs.Publish(
+                                        URI.create("https://publish.invalid/"),
+                                        null,
+                                        null,
+                                        null,
+                                        false,
+                                        true,
+                                        null,
+                                        null,
+                                        false,
+                                        false,
+                                        false,
+                                        RepoCredential.ANONYMOUS,
+                                        false,
+                                        null);
                     default -> null;
                 };
         boolean skipTests = spec.skipTests()

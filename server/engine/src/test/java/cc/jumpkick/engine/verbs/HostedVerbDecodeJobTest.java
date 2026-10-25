@@ -42,7 +42,8 @@ class HostedVerbDecodeJobTest {
                         "install",
                         "snapshot",
                         "native",
-                        "publish");
+                        "publish",
+                        "upload");
 
         String build = verb.decodeJob(JobSpec.of("build", dir.toString()));
         assertThat(EngineProtocol.typeOf(build)).isEqualTo(EngineProtocol.BUILD_REQUEST);
@@ -126,6 +127,41 @@ class HostedVerbDecodeJobTest {
         assertThat(EngineProtocol.typeOf(imp)).isEqualTo(EngineProtocol.IMPORT_REQUEST);
         assertThat(Jsonl.str(imp, "source")).endsWith("pom.xml");
         assertThat(Jsonl.str(imp, "out")).endsWith("jk.toml");
+    }
+
+    @Test
+    void an_upload_job_goes_to_the_repository_publish_names(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "t"
+                name = "app"
+                version = "0.1.0"
+
+                [repositories.releases]
+                url = "http://127.0.0.1:9/repo/"
+                allow-insecure = true
+
+                [publish]
+                repository = "releases"
+                """);
+        WorkspaceBuildVerb verb = new WorkspaceBuildVerb(new InertVerbHost());
+
+        String upload = verb.decodeJob(JobSpec.of("upload", dir.toString()));
+
+        assertThat(Jsonl.str(upload, "workspaceTarget")).isEqualTo("publish");
+        String tail = Jsonl.nested(upload, "tail");
+        assertThat(Jsonl.bool(tail, "dryRun", false)).isFalse();
+        assertThat(Jsonl.str(tail, "repoUrl")).isEqualTo("http://127.0.0.1:9/repo/");
+    }
+
+    @Test
+    void an_upload_job_without_a_publish_target_is_refused_with_the_fix(@TempDir Path dir) throws Exception {
+        project(dir);
+        WorkspaceBuildVerb verb = new WorkspaceBuildVerb(new InertVerbHost());
+
+        assertThatThrownBy(() -> verb.decodeJob(JobSpec.of("upload", dir.toString())))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("[publish]")
+                .hasMessageContaining("repository");
     }
 
     @Test

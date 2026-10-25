@@ -4,6 +4,6 @@ Plugins are tables in `jk.toml` (`[spring-boot]`, `[quarkus]`, and the others), 
 
 `jk format` rewrites Java (Palantir), Kotlin (ktfmt), Groovy and Scala (scalafmt), and turns FQCNs into imports. Run it after source edits. `jk format -c` is the CI gate. MCP: `run(kind=format)`.
 
-Real publish uploads are the CLI: `jk publish`. MCP `publish` and `run(kind=publish)` are always a dry-run.
+MCP `publish` is a dry-run; `publish(upload=true)` uploads to the repository `[publish]` names. Central and ad-hoc URLs: the CLI, `jk publish`.
 
 `jk dev` runs the app with reload. That loop stays on the terminal.

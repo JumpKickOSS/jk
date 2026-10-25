@@ -118,7 +118,7 @@ Catalog prompts include **`fix-failing-build`**. Full tool table: [MCP](mcp.md).
 | Scaffold | `jk new -t …`, or MCP `new` (`preview=true` first; `action=templates` lists ids) |
 | Format after edits | `jk format` — [Format](format.md) |
 | Import Maven/Gradle | `jk import`, or MCP `import` |
-| Publish | **CLI only** for real uploads. MCP `publish` / `run kind=publish` is always a **dry-run** |
+| Publish | MCP `publish` is a **dry-run**; `publish(upload=true)` uploads to the `[publish]` repository. Central and ad-hoc URLs stay on the CLI |
 
 ## Hooks and protected files
 

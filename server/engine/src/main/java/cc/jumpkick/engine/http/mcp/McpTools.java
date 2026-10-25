@@ -183,9 +183,10 @@ public final class McpTools {
                 new RunAliasTool(
                         "publish",
                         "publish",
-                        "Validate the publish bundle — ALWAYS a dry-run (same planner as jk publish; "
-                                + "credentials never enter the engine). Real uploads: jk publish CLI.",
-                        McpSchemas.BOUND_ROOT),
+                        "Dry-run the publish bundle; upload=true sends it to the repository [publish] names "
+                                + "(stored credentials, signing from [publish]). Central stays on the CLI.",
+                        McpSchemas.BOUND_ROOT,
+                        Map.of("upload", McpSchemas.bool("Upload to the [publish] repository (default: dry run)"))),
                 new RunAliasTool(
                         "snapshot",
                         "snapshot",
