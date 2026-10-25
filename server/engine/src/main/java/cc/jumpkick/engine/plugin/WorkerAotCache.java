@@ -53,9 +53,12 @@ public final class WorkerAotCache {
     /** A trainer's temp sibling older than this belongs to a dead engine. */
     private static final long TMP_TTL_MILLIS = 24L * 60 * 60 * 1_000;
 
-    /** {@code <tool>-<jk-version>-<8 hex jdk tag>-<16 hex key>.aot}; the tool may carry hyphens. */
+    /**
+     * {@code <tool>-<jk-version>-<8 hex jdk tag>-<16 hex key>.aot}; the tool may carry hyphens, the
+     * version starts with a digit and may end in {@code -SNAPSHOT}.
+     */
     private static final Pattern NAME = Pattern.compile(
-            "(?<tool>.+)-(?<version>[^-]+(?:-SNAPSHOT)?)-(?<jdk>[0-9a-f]{8})-(?<key>[0-9a-f]{16})\\.aot");
+            "(?<tool>.+?)-(?<version>\\d[^-]*(?:-SNAPSHOT)?)-(?<jdk>[0-9a-f]{8})-(?<key>[0-9a-f]{16})\\.aot");
 
     /** Keys with a trainer running in this process. */
     private static final Set<Path> TRAINING = ConcurrentHashMap.newKeySet();

@@ -63,7 +63,7 @@ class WorkspaceFixturesRestoreE2eTest {
         assertThat(appTest).as("app's tests compile against them").isRegularFile();
 
         wipeTargets(ws);
-        WorkspaceSpec install = WorkspaceSpec.install(Set.of(), Map.of(), tmp.resolve("m2"), null, false);
+        WorkspaceSpec install = WorkspaceSpec.install(Set.of(), Map.of(), tmp.resolve("m2"), null);
         build(ws, cache, true, install, "the install --skip-tests on an empty target/");
         assertThat(lib.mainJar()).as("main outputs come back").isRegularFile();
         assertThat(libFixture).as("--skip-tests produces no test view").doesNotExist();

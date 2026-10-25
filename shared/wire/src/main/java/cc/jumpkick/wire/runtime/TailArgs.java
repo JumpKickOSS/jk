@@ -37,11 +37,9 @@ public sealed interface TailArgs {
 
     /**
      * {@code jk install} and its re-shelve pass: the local Maven repo root (null for {@code ~/.m2})
-     * and the {@code --destination} override (null defers to {@code jk.toml}, then {@code config.toml});
-     * {@code snapshot} is {@code jk snapshot}: every module installs at its version plus {@code -SNAPSHOT}.
+     * and the {@code --destination} override (null defers to {@code jk.toml}, then {@code config.toml}).
      */
-    record Install(@Nullable Path m2Dir, @Nullable InstallDestination destination, boolean snapshot)
-            implements TailArgs {}
+    record Install(@Nullable Path m2Dir, @Nullable InstallDestination destination) implements TailArgs {}
 
     /** {@code jk train}: the profile filter, and whether to retrain an up-to-date surface. */
     record Train(@Nullable String profile, boolean force) implements TailArgs {}

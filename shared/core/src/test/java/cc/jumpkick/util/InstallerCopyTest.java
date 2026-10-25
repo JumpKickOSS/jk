@@ -93,9 +93,7 @@ class InstallerCopyTest {
     @Test
     void installers_embed_the_declared_version_as_the_pointer_floor() throws IOException {
         Path repo = findRepoRoot();
-        String declared = capture(
-                Files.readString(repo.resolve("shared/jk-api/src/main/java/cc/jumpkick/model/JkVersion.java")),
-                "VERSION\\s*=\\s*\"([^\"]+)\"");
+        String declared = capture(Files.readString(repo.resolve("jk.toml")), "(?m)^version\\s*=\\s*\"([^\"]+)\"");
         String shell = Files.readString(repo.resolve("install.sh"));
         String powershell = Files.readString(repo.resolve("install.ps1"));
 

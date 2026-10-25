@@ -51,6 +51,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -122,7 +123,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
         TailArgs tail =
                 switch (target) {
                     case IMAGE -> new TailArgs.Image(null, null, null, null, null);
-                    case INSTALL -> new TailArgs.Install(null, null, "snapshot".equals(kind));
+                    case INSTALL -> new TailArgs.Install(null, null);
                     case NATIVE -> new TailArgs.Native(null, List.of());
                     case PUBLISH ->
                         new TailArgs.Publish(
@@ -182,8 +183,12 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                                 null, // the admission point stamps who asked
                                 null)
                         .encode(),
-                (spec.affected() ? "\"affected\":true" : "")
-                        + (guard ? (spec.affected() ? "," : "") + "\"guard\":true" : ""));
+                Stream.of(
+                                spec.affected() ? "\"affected\":true" : "",
+                                guard ? "\"guard\":true" : "",
+                                "snapshot".equals(kind) ? "\"snapshot\":true" : "")
+                        .filter(field -> !field.isEmpty())
+                        .collect(Collectors.joining(",")));
     }
 
     private static JkBuild parse(Path entryDir) {
@@ -345,10 +350,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
                     .withSpec(new WorkspaceSpec(target, selected, graalByDir, body.tail()));
 
-            Session base = ProtoSession.sessionOf(requestLine, cancelToken);
-            Session session = body.tail() instanceof TailArgs.Install install && install.snapshot()
-                    ? base.withSnapshot(true)
-                    : base;
+            Session session = ProtoSession.sessionOf(requestLine, cancelToken);
             long rid = host.eventRequestId();
             if (rid > 0) host.putProgressRoot(rid, entryDirStr);
             WorkspaceBuildListener listener = host.workspaceListener(writer, entryDirStr);

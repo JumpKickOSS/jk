@@ -6,7 +6,7 @@
 # Usage:
 # scripts/assemble-release-dir.sh [out-dir]
 # Env:
-# JK_VERSION override version (default: JkVersion / project version via git describe or file)
+# JK_VERSION override version (default: the root jk.toml version)
 # Layout written to out-dir (default: target/release/<version>/):
 # jk-<os>-<arch>-<version>.xz (every platform, including Windows — self-update; the engine inflates it)
 # jk-<os>-<arch>-<version>.gz (Linux and macOS — install.sh; gunzip)
@@ -27,7 +27,7 @@ cd "$ROOT"
 
 VERSION="${JK_VERSION:-}"
 if [[ -z "$VERSION" ]]; then
-  VERSION="$(grep -E 'VERSION = "' shared/jk-api/src/main/java/cc/jumpkick/model/JkVersion.java | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+  VERSION="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' jk.toml | head -1)"
 fi
 OUT="${1:-target/release/$VERSION}"
 DIST="${DIST_DIR:-target/dist}"

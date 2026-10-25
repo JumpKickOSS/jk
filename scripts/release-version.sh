@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# The version a release run is allowed to publish: the one JkVersion.java declares.
+# The version a release run is allowed to publish: the one the root jk.toml declares.
 #
 # Usage:
 #   scripts/release-version.sh [requested]
-# Prints the version when <requested> is well-formed and equals JkVersion.VERSION; otherwise
+# Prints the version when <requested> is well-formed and equals the jk.toml version; otherwise
 # says which check failed and exits 1. The release tag is the request; the source is the
 # answer — a run that publishes a tree stamped with one version under another's name is refused
 # here, before anything is built. With no request (a dry run that publishes nothing) the declared
@@ -11,12 +11,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SOURCE="$ROOT/shared/jk-api/src/main/java/cc/jumpkick/model/JkVersion.java"
+SOURCE="$ROOT/jk.toml"
 REQUESTED="${1:-}"
 
-declared="$(grep -E 'VERSION = "' "$SOURCE" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+declared="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$SOURCE" | head -1)"
 if [[ -z "$declared" ]]; then
-  echo "release-version: $SOURCE declares no VERSION = \"…\"" >&2
+  echo "release-version: $SOURCE declares no version = \"…\"" >&2
   exit 1
 fi
 if [[ -z "$REQUESTED" ]]; then
@@ -28,7 +28,7 @@ if [[ ! "$REQUESTED" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9]+)*$ ]]; then
   exit 1
 fi
 if [[ "$REQUESTED" != "$declared" ]]; then
-  echo "release-version: requested $REQUESTED but JkVersion.java declares $declared — bump the source or fix the tag" >&2
+  echo "release-version: requested $REQUESTED but jk.toml declares $declared — bump the manifest or fix the tag" >&2
   exit 1
 fi
 echo "$declared"

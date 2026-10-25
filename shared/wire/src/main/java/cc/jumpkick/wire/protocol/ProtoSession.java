@@ -58,6 +58,7 @@ public final class ProtoSession {
                 .withKeepGoing(Jsonl.bool(request, "keepGoing", false))
                 .withLanesOnly(Jsonl.bool(request, "lanesOnly", false))
                 .withAffected(Jsonl.bool(request, "affected", false))
+                .withSnapshot(Jsonl.bool(request, "snapshot", false))
                 .withVariant(variantOf(request), clientEnvOf(request))
                 .withToolchainSpecs(jdkSpecOf(request), graalSpecOf(request), graalHomeOf(request), javaHomeOf(request))
                 .withAssemblyOverride(assemblyOverrideOf(request));
@@ -226,7 +227,7 @@ public final class ProtoSession {
 
     /**
      * The options every build verb shares — profile, workers, keep-going, parallel tests, the test
-     * selection, the failure mode, skip-node, coverage — onto a request that does not name them
+     * selection, the failure mode, skip-node, coverage, snapshot — onto a request that does not name them
      * itself, so every verb's engine half reads them through {@link #sessionOf} the same way.
      */
     static String withBuildOptions(String request, Session session) {
@@ -250,6 +251,7 @@ public final class ProtoSession {
         }
         if (!Jsonl.has(request, ProtoJobs.COVERAGE)) f.optionalTrue(ProtoJobs.COVERAGE, session.coverage());
         if (!Jsonl.has(request, "lanesOnly")) f.optionalTrue("lanesOnly", session.lanesOnly());
+        if (!Jsonl.has(request, "snapshot")) f.optionalTrue("snapshot", session.snapshot());
         String body = f.body();
         return body.isEmpty() ? request : Jsonl.append(request, body);
     }

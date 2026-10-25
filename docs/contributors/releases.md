@@ -8,15 +8,19 @@ What a release may change in the formats projects depend on: [Compatibility](com
 
 | Line | Meaning |
 |------|---------|
-| **`0.41.0`** | Current product version (no `-SNAPSHOT` on `main`) |
-| Tag **`v0.41.0`** | Next public release cut from that line |
-| Prior | **`0.40.0`** — previous release; **`0.10.1`** first public |
+| **`0.41.1`** | The root `jk.toml` version: the next release, never written with `-SNAPSHOT` |
+| Tag **`v0.41.1`** | Cut from that line when it is released |
+| Prior | **`0.41.0`** — previous release; **`0.10.1`** first public |
 | Later | Semver-ish: `0.30.1`, `0.31.0`, … |
 
-Bump `JkVersion.VERSION`, the workspace `jk.toml` `version` and the installers' pointer floor
-(`RELEASE_FLOOR` in `install.sh`, `$ReleaseFloor` in `install.ps1`, mirrored under
-`hosting/public/`) together — search for the old version string.
-`InstallerCopyTest` fails when the floor and `JkVersion` disagree.
+The root `jk.toml` `version` is the one place the version is written, and it always names the
+next release. `JkVersion.VERSION` is stamped from it by the build (`jk-version.properties` in
+`jk-model`, filtered from `${project.version}`), so a `jk snapshot` of the tree reports
+`<version>-SNAPSHOT` everywhere — `-V`, the wire handshake, worker coordinates, first-party lock
+pins — and `jk install` of the same tree reports `<version>`. Bump the manifest and the installers'
+pointer floor (`RELEASE_FLOOR` in `install.sh`, `$ReleaseFloor` in `install.ps1`, mirrored under
+`hosting/public/`) together — search for the old version string. `InstallerCopyTest` fails when the
+floor and the manifest version disagree. The release scripts read the version from `jk.toml`.
 
 ## Highlights
 

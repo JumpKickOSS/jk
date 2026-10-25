@@ -129,9 +129,6 @@ public final class InstallCommand {
     @Nullable
     public InstallDestination destinationOverride;
 
-    /** {@code jk snapshot}: install every module at its version plus {@code -SNAPSHOT}. */
-    public boolean snapshot;
-
     /** From {@code jk install --jdks-dir}: the JDK root the pre-flight and the engine resolve under. */
     @Nullable
     public Path jdksDir;
@@ -439,7 +436,7 @@ public final class InstallCommand {
                 .withSpec(
                         reshelving
                                 ? WorkspaceSpec.reshelve(selected, m2Dir(), destinationOverride)
-                                : WorkspaceSpec.install(selected, graalByDir, m2Dir(), destinationOverride, snapshot));
+                                : WorkspaceSpec.install(selected, graalByDir, m2Dir(), destinationOverride));
         // The shared workspace renderer, exactly as build/test/native drive it, on the same mode
         // axis they choose on: a live region for a terminal, the append-only block for
         // -O jsonl / --verbose. A hand-rolled listener here is what made a failed workspace

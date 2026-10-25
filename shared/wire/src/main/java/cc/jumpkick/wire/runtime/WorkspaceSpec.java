@@ -61,17 +61,16 @@ public record WorkspaceSpec(
             Set<Path> selected,
             Map<Path, Path> graalByDir,
             @Nullable Path m2Dir,
-            @Nullable InstallDestination destination,
-            boolean snapshot) {
+            @Nullable InstallDestination destination) {
         return new WorkspaceSpec(
-                WorkspaceTarget.INSTALL, selected, graalByDir, new TailArgs.Install(m2Dir, destination, snapshot));
+                WorkspaceTarget.INSTALL, selected, graalByDir, new TailArgs.Install(m2Dir, destination));
     }
 
     /** Install's second pass after the engine jar changes: {@code cache-install} against jars on disk. */
     public static WorkspaceSpec reshelve(
             Set<Path> selected, @Nullable Path m2Dir, @Nullable InstallDestination destination) {
         return new WorkspaceSpec(
-                WorkspaceTarget.RESHELVE, selected, Map.of(), new TailArgs.Install(m2Dir, destination, false));
+                WorkspaceTarget.RESHELVE, selected, Map.of(), new TailArgs.Install(m2Dir, destination));
     }
 
     public static WorkspaceSpec train(
@@ -105,11 +104,6 @@ public record WorkspaceSpec(
     /** Install's {@code --destination} override, or null when none was given and for every other goal. */
     public @Nullable InstallDestination installDestination() {
         return tail instanceof TailArgs.Install install ? install.destination() : null;
-    }
-
-    /** True for {@code jk snapshot}: the install tail puts every module at its version plus {@code -SNAPSHOT}. */
-    public boolean snapshot() {
-        return tail instanceof TailArgs.Install install && install.snapshot();
     }
 
     public WorkspaceTarget effectiveTarget(boolean testOnly) {

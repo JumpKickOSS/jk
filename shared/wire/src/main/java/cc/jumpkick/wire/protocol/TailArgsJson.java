@@ -49,7 +49,6 @@ public final class TailArgsJson {
                         .optionalNonBlankString(
                                 InstallDestination.KEY,
                                 i.destination() == null ? null : i.destination().spelling())
-                        .optionalTrue("snapshot", i.snapshot())
                         .body();
             case TailArgs.Train t ->
                 RequestJson.fields()
@@ -108,8 +107,7 @@ public final class TailArgsJson {
                 new TailArgs.Install(
                         path(Jsonl.str(json, "m2Dir")),
                         InstallDestination.parse(Jsonl.str(json, InstallDestination.KEY))
-                                .orElse(null),
-                        Jsonl.bool(json, "snapshot", false));
+                                .orElse(null));
             case "train" -> new TailArgs.Train(Jsonl.str(json, "profile"), Jsonl.bool(json, "force", false));
             case "publish" ->
                 new TailArgs.Publish(

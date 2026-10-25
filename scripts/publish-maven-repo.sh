@@ -17,7 +17,7 @@
 # JK_MAVEN_STAGE_ONLY=1 JK_MAVEN_STAGE_DIR=target/release/repo scripts/publish-maven-repo.sh
 #
 # Env:
-# JK_VERSION default: from JkVersion.java — the version staged; the store's other versions stay out
+# JK_VERSION default: the root jk.toml version — the version staged; the store's other versions stay out
 # JK_MAVEN_STAGE_ALL=1 — stage every version the store holds instead (a bucket rebuilt from a shelf)
 # JK_STORE_DIR / JK_HOME — artifact store (see JkDirs)
 # JK_MAVEN_BUCKET default: jumpkick
@@ -39,7 +39,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="${JK_VERSION:-}"
 if [[ -z "$VERSION" ]]; then
-  VERSION="$(grep -E 'VERSION = "' "$ROOT/shared/jk-api/src/main/java/cc/jumpkick/model/JkVersion.java" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+  VERSION="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$ROOT/jk.toml" | head -1)"
 fi
 
 STORE="${JK_STORE_DIR:-${JK_HOME:-$HOME/.jk}/store}"

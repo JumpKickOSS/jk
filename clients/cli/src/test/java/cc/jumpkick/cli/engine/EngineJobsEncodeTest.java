@@ -78,14 +78,14 @@ class EngineJobsEncodeTest {
     @Test
     void the_m2_root_rides_the_install_request() {
         Path m2 = Path.of("/tmp/ws/m2");
-        WorkspaceRequest req = request().withSpec(WorkspaceSpec.install(Set.of(), Map.of(), m2, null, false));
+        WorkspaceRequest req = request().withSpec(WorkspaceSpec.install(Set.of(), Map.of(), m2, null));
 
         BuildRequest back = BuildRequest.decode(EngineJobs.encodeWorkspaceRequest(req, Session.defaults()));
 
         assertThat(back.workspaceTarget()).isEqualTo("install");
-        assertThat(back.tail()).as("as the platform renders it").isEqualTo(new TailArgs.Install(m2, null, false));
+        assertThat(back.tail()).as("as the platform renders it").isEqualTo(new TailArgs.Install(m2, null));
         // Default ~/.m2 stays off the wire, so the engine's own fallback still applies.
-        WorkspaceRequest plain = request().withSpec(WorkspaceSpec.install(Set.of(), Map.of(), null, null, false));
+        WorkspaceRequest plain = request().withSpec(WorkspaceSpec.install(Set.of(), Map.of(), null, null));
         assertThat(EngineJobs.encodeWorkspaceRequest(plain, Session.defaults())).doesNotContain("m2Dir");
     }
 
@@ -97,7 +97,7 @@ class EngineJobsEncodeTest {
         BuildRequest back = BuildRequest.decode(EngineJobs.encodeWorkspaceRequest(req, Session.defaults()));
 
         assertThat(back.workspaceTarget()).isEqualTo("reshelve");
-        assertThat(back.tail()).isEqualTo(new TailArgs.Install(m2, null, false));
+        assertThat(back.tail()).isEqualTo(new TailArgs.Install(m2, null));
     }
 
     @Test

@@ -4,8 +4,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-declared="$(grep -E 'VERSION = "' "$ROOT/shared/jk-api/src/main/java/cc/jumpkick/model/JkVersion.java" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
-[[ -n "$declared" ]] || { echo "test-release-version: JkVersion.java declares no VERSION" >&2; exit 1; }
+declared="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$ROOT/jk.toml" | head -1)"
+[[ -n "$declared" ]] || { echo "test-release-version: jk.toml declares no version" >&2; exit 1; }
 
 accepts() {
   local got
