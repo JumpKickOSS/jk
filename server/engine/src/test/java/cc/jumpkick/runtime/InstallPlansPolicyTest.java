@@ -170,6 +170,67 @@ class InstallPlansPolicyTest {
         assertThat(M2InstallMemo.read(memo)).isPresent();
     }
 
+    // ---- the private repository (repos/jk-local) follows the same rules --------------------------
+
+    private ModuleOutcome.Installed installPrivate(JkBuild project, BuildLayout layout) throws IOException {
+        return InstallPlans.cacheInstallArtifact(project, layout, cache, m2Dir, InstallDestination.JK);
+    }
+
+    private Path shelfJar(String version) {
+        return tmp.resolve("store/repos/jk-local")
+                .resolve(MavenLayout.artifactPath(Coordinate.of("ex.acme", "money", version)));
+    }
+
+    @Test
+    void the_private_repository_writes_an_empty_slot_and_leaves_the_maven_repo_alone() throws Exception {
+        JkBuild project = project("1.0.0");
+
+        ModuleOutcome.Installed out = installPrivate(project, built(project, "v1"));
+
+        assertThat(out.change()).isEqualTo(Change.NEW);
+        assertThat(out.destination()).isEqualTo(InstallDestination.JK);
+        assertThat(Files.readString(shelfJar("1.0.0"))).isEqualTo("v1");
+        assertThat(m2Dir.resolve("repository")).doesNotExist();
+    }
+
+    @Test
+    void a_release_in_the_private_repository_is_installed_once() throws Exception {
+        JkBuild project = project("1.0.0");
+        installPrivate(project, built(project, "v1"));
+        BuildLayout rebuilt = built(project, "v2");
+
+        assertThatThrownBy(() -> installPrivate(project, rebuilt))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("ex.acme:money:1.0.0 is already installed")
+                .hasMessageContaining("raise the version in jk.toml");
+        assertThat(Files.readString(shelfJar("1.0.0"))).isEqualTo("v1");
+        assertThat(InstallPlans.refusedBeforeBuild(project, tmp.resolve("mod"), m2Dir, InstallDestination.JK))
+                .contains("ex.acme:money:1.0.0 is already installed");
+    }
+
+    @Test
+    void a_snapshot_jk_wrote_to_the_private_repository_is_replaced() throws Exception {
+        JkBuild project = project("1.0.0-SNAPSHOT");
+        installPrivate(project, built(project, "v1"));
+
+        ModuleOutcome.Installed out = installPrivate(project, built(project, "v2"));
+
+        assertThat(out.change()).isEqualTo(Change.REPLACED);
+        assertThat(Files.readString(shelfJar("1.0.0-SNAPSHOT"))).isEqualTo("v2");
+    }
+
+    @Test
+    void a_file_nobody_recorded_in_the_private_repository_is_never_replaced() throws Exception {
+        JkBuild project = project("1.0.0-SNAPSHOT");
+        Files.createDirectories(shelfJar("1.0.0-SNAPSHOT").getParent());
+        Files.writeString(shelfJar("1.0.0-SNAPSHOT"), "copied in by hand");
+
+        assertThatThrownBy(() -> installPrivate(project, built(project, "v1")))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("jk did not install it");
+        assertThat(Files.readString(shelfJar("1.0.0-SNAPSHOT"))).isEqualTo("copied in by hand");
+    }
+
     @Test
     void a_snapshot_whose_release_is_installed_is_refused_as_invisible() throws Exception {
         JkBuild release = project("1.0.0");

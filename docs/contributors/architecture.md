@@ -548,8 +548,8 @@ outputs. `jk storage nuke` does not delete `~/.m2`.
 the POM sha256 — and never inside the repository. `InstallPlans` decides every install against it: a
 slot holding other bytes is replaced only when the version is a `-SNAPSHOT` and the files still hold
 the memo's bytes; a release version is installed once. `WorkspacePreflightPhase.installRefusals`
-runs the same decision before any build when the forecast says the jar will be rebuilt. The pinned
-shelf (`jk-shelf.toml`) records only `repos/jk-local` installs.
+runs the same decision before any build when the forecast says the jar will be rebuilt. `repos/jk-local` follows the same decision, with the `.jk` memo beside each file (`ArtifactMemo`) as
+the record of what jk wrote. The pinned shelf (`jk-shelf.toml`) records only `repos/jk-local` installs.
 
 The files are written as Maven's own install writes them: the jar and POM, their `.sha1` and `.md5`
 sidecars, and a `_remote.repositories` line per file with an **empty** repository id. A named id
