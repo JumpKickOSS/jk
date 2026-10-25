@@ -79,7 +79,7 @@ class SnapshotCommandTest {
         assertThat(tmp.resolve("jk-lock.toml"))
                 .as("a snapshot never writes the project's version into the lock")
                 .satisfies(lock -> {
-                    if (Files.exists(lock)) assertThat(Files.readString(lock)).doesNotContain("SNAPSHOT");
+                    if (Files.exists(lock)) assertThat(Files.readString(lock)).doesNotContain("1.0.0-SNAPSHOT");
                 });
 
         // The release is installed, so its snapshot would sort below it and never be chosen.

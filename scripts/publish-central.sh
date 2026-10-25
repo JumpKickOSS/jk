@@ -16,7 +16,7 @@
 # after PUBLISHED.
 #
 # Env:
-#   JK_VERSION default: JkVersion.java
+#   JK_VERSION default: the root jk.toml version
 #   JK_CENTRAL_GPG_KEY_FILE    bundle: the release GPG secret key (armored)
 #   JK_GPG_PASSPHRASE          bundle: its passphrase
 #   JK_REPO_CENTRAL_USERNAME   upload: the Portal user token's name
@@ -30,7 +30,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="${JK_VERSION:-}"
 if [[ -z "$VERSION" ]]; then
-  VERSION="$(grep -E 'VERSION = "' "$ROOT/shared/jk-api/src/main/java/cc/jumpkick/model/JkVersion.java" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+  VERSION="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$ROOT/jk.toml" | head -1)"
 fi
 PORTAL="${JK_CENTRAL_PORTAL:-https://central.sonatype.com}"
 PORTAL="${PORTAL%/}"

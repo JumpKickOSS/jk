@@ -15,6 +15,8 @@ import cc.jumpkick.command.ToolTargets;
 import cc.jumpkick.command.pipeline.BuildFlags;
 import cc.jumpkick.command.pipeline.InstallCommand;
 import cc.jumpkick.compat.BuildTool;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
@@ -167,6 +169,17 @@ public final class ToolInstallCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
+        // --snapshot changes the process-wide session: leave it as this run found it.
+        this.global = GlobalOptions.from(in);
+        Session before = SessionContext.current();
+        try {
+            return install(in);
+        } finally {
+            SessionContext.install(before);
+        }
+    }
+
+    private int install(Invocation in) throws IOException, InterruptedException {
         this.binName = in.value("bin").orElse(null);
         this.mainClass = in.value("main").orElse(null);
         this.cacheDirOverride = in.value("cache-dir").map(CliPaths::abs).orElse(null);
@@ -182,6 +195,7 @@ public final class ToolInstallCommand implements CliCommand {
         this.global = GlobalOptions.from(in);
         String destinationWord = in.value(InstallDestination.KEY).orElse(null);
         this.snapshot = in.isSet("snapshot");
+        if (snapshot) SessionContext.install(SessionContext.current().withSnapshot(true));
         this.destinationOverride = destinationWord == null
                 ? null
                 : InstallDestination.parse(destinationWord).orElse(null);
@@ -576,7 +590,6 @@ public final class ToolInstallCommand implements CliCommand {
         delegate.libDirOverride = libDirOverride;
         delegate.m2DirOverride = m2DirOverride;
         delegate.destinationOverride = destinationOverride;
-        delegate.snapshot = snapshot;
         delegate.jdksDir = jdksDir;
         delegate.repoUrl = repoUrl;
         return delegate;

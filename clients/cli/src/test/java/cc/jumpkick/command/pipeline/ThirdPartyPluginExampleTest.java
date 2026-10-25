@@ -193,7 +193,14 @@ class ThirdPartyPluginExampleTest {
                 url    = "%s"
                 groups = ["cc.jumpkick", "cc.jumpkick.*"]
                 """.formatted(name, VERSION, description, deps, repoUrl));
-        assertThat(run("publish", "-C", project.toString(), "--repo-url", repoUrl.toString(), "--skip-tests"))
+        assertThat(run(
+                        "publish",
+                        "-C",
+                        project.toString(),
+                        "--repo-url",
+                        repoUrl.toString(),
+                        "--skip-tests",
+                        "--allow-snapshot"))
                 .isEqualTo(0);
     }
 

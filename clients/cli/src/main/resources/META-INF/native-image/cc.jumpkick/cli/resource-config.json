@@ -20,6 +20,9 @@
         "pattern": "cc/jumpkick/docs/.*"
       },
       {
+        "pattern": "cc/jumpkick/model/jk-version\\.properties"
+      },
+      {
         "pattern": "cc/jumpkick/runtime/JkKtsHost\\.kt"
       }
     ]

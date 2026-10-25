@@ -629,28 +629,28 @@ final class ParityRules {
     @Guard(
             id = "jk-version-parity",
             why =
-                    "the client bakes in JkVersion.VERSION and the build names its jars from the root jk.toml version, so a client built from a tree where they differ refuses the engine jar built beside it",
-            instead = "bump JkVersion.VERSION with the root jk.toml version, in the same change")
+                    "the build stamps JkVersion.VERSION from the root jk.toml version, so a typed literal can only drift from the version the jars are named by, and the client refuses an engine jar built beside it",
+            instead =
+                    "drop the literal: JkVersion reads the version the build stamps, so bumping the root jk.toml version is the whole edit")
     @Fixture("server/guard/fixtures/jk-version-parity")
     void jkVersionParity(Text text, Violations v) {
         String manifest = textOrNull(text, MANIFEST);
-        Matcher tree = manifest == null ? null : TREE_VERSION.matcher(manifest);
         String source = textOrNull(text, JK_VERSION);
-        // A tree without both files is not jk's own and states nothing to compare.
-        if (tree == null || !tree.find() || source == null) {
+        // A tree without JkVersion is not jk's own and states nothing to check.
+        if (manifest == null || source == null) {
             v.population(0);
             return;
         }
         List<String> lines = text.lines(JK_VERSION);
         for (int i = 0; i < lines.size(); i++) {
             Matcher m = JK_VERSION_LITERAL.matcher(lines.get(i));
-            if (m.find() && !m.group(1).equals(tree.group(1)))
+            if (m.find())
                 v.add(
                         new TextSite(JK_VERSION, i + 1, m.group()),
-                        "JkVersion.VERSION is " + m.group(1) + " and " + MANIFEST + " says " + tree.group(1)
-                                + "; the client bakes in the first and the build names its jars from the second");
+                        "JkVersion.VERSION is typed as " + m.group(1) + "; the build stamps it from " + MANIFEST
+                                + ", so a literal can only drift from it");
         }
-        v.population(2);
+        v.population(1);
     }
 
     // ---- G113 --------------------------------------------------------------------------------

@@ -22,10 +22,9 @@ class TailArgsJsonTest {
         List<TailArgs> tails = List.of(
                 new TailArgs.Native("ex.Main", List.of("--no-fallback", "-O2")),
                 new TailArgs.Native(null, List.of()),
-                new TailArgs.Install(Path.of("/home/u/.m2"), null, false),
-                new TailArgs.Install(null, InstallDestination.JK, false),
-                new TailArgs.Install(null, null, false),
-                new TailArgs.Install(null, null, true),
+                new TailArgs.Install(Path.of("/home/u/.m2"), null),
+                new TailArgs.Install(null, InstallDestination.JK),
+                new TailArgs.Install(null, null),
                 new TailArgs.Train("smoke", true),
                 new TailArgs.Train(null, false),
                 publish(new RepoCredential.Basic("u", "p")),

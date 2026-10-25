@@ -195,7 +195,7 @@ class LifecycleParityTest {
                 switch (target) {
                     case NATIVE -> WorkspaceSpec.nativeImage(Set.of(app), Map.of(app, graal), null, List.of());
                     case IMAGE -> WorkspaceSpec.image(Set.of(app), null, null, null, "", null);
-                    case INSTALL -> WorkspaceSpec.install(Set.of(), Map.of(), tmp.resolve("m2"), null, false);
+                    case INSTALL -> WorkspaceSpec.install(Set.of(), Map.of(), tmp.resolve("m2"), null);
                     case TRAIN -> WorkspaceSpec.train(Set.of(app), Map.of(), null, false);
                     case PUBLISH ->
                         WorkspaceSpec.publish(

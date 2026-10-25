@@ -1,7 +1,7 @@
 # The release build for the jumpkick.build layout, run by publishing a GitHub Release.
 #
 # Trigger: a GitHub Release published for tag vX.Y.Z (X.Y.Z must equal JkVersion without the v).
-# The tag is a request; JkVersion.java is the answer, and a request that differs from it fails
+# The tag is a request; the root jk.toml version is the answer, and a request that differs from it fails
 # before anything is built (scripts/release-version.sh). Cutting a release: push the tag, create a
 # draft release for it (`gh release create vX.Y.Z --draft`), attach the linux-aarch64 client from an
 # Apple-silicon Mac (scripts/release-linux-aarch64.sh X.Y.Z), then publish the draft; this workflow

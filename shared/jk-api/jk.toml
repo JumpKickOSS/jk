@@ -4,6 +4,10 @@ description = "Domain model: dependencies, build plans, and coordinates"
 [dependencies]
 jk-host.workspace = true
 
+# JkVersion reads the version the build stamps here: the project version, `-SNAPSHOT` under `jk snapshot`.
+[resources]
+filtered = ["src/main/filtered"]
+
 [processor-dependencies]
 error_prone_core = { group = "com.google.errorprone", version = "2.50.0" }
 nullaway = { group = "com.uber.nullaway", version = "0.14.2" }

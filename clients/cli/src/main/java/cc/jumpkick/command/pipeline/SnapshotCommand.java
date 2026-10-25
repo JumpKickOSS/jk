@@ -6,6 +6,8 @@ import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.command.CliCommand;
@@ -56,6 +58,17 @@ public final class SnapshotCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
+        // The session is process-wide: leave it as this run found it, or a later command in the
+        // same process would install at snapshot versions too.
+        Session before = SessionContext.current();
+        try {
+            return snapshot(in);
+        } finally {
+            SessionContext.install(before);
+        }
+    }
+
+    private int snapshot(Invocation in) throws IOException {
         GlobalOptions global = GlobalOptions.from(in);
         BuildFlags flags;
         try {
@@ -65,6 +78,8 @@ public final class SnapshotCommand implements CliCommand {
             return Exit.CONFIG;
         }
         flags.installSession();
+        // Every request this run sends the engine names the snapshot version, the product install's too.
+        SessionContext.install(SessionContext.current().withSnapshot(true));
 
         String destinationWord = in.value(InstallDestination.KEY).orElse(null);
         InstallDestination destination = destinationWord == null
@@ -83,7 +98,6 @@ public final class SnapshotCommand implements CliCommand {
         BuildOptions buildOpts = new BuildOptions();
         buildOpts.skipTests = flags.skipTests();
         InstallCommand install = new InstallCommand(global, buildOpts);
-        install.snapshot = true;
         install.destinationOverride = destination;
         install.cacheDirOverride = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         install.stateDirOverride = in.value("state-dir").map(CliPaths::abs).orElse(null);
