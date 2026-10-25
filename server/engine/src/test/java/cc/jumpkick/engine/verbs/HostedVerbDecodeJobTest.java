@@ -137,7 +137,7 @@ class HostedVerbDecodeJobTest {
                 version = "0.1.0"
 
                 [repositories.releases]
-                url = "http://127.0.0.1:9/repo/"
+                url = "http://127.0.0.1:18080/repo/"
                 allow-insecure = true
 
                 [publish]
@@ -150,7 +150,7 @@ class HostedVerbDecodeJobTest {
         assertThat(Jsonl.str(upload, "workspaceTarget")).isEqualTo("publish");
         String tail = Jsonl.nested(upload, "tail");
         assertThat(Jsonl.bool(tail, "dryRun", false)).isFalse();
-        assertThat(Jsonl.str(tail, "repoUrl")).isEqualTo("http://127.0.0.1:9/repo/");
+        assertThat(Jsonl.str(tail, "repoUrl")).isEqualTo("http://127.0.0.1:18080/repo/");
     }
 
     @Test
