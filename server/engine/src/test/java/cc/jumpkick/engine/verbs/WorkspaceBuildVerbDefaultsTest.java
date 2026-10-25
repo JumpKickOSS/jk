@@ -35,6 +35,24 @@ class WorkspaceBuildVerbDefaultsTest {
     }
 
     @Test
+    void a_snapshot_job_is_an_install_tail_that_carries_the_snapshot_flag() {
+        WorkspaceBuildVerb verb = new WorkspaceBuildVerb(new InertVerbHost());
+        assertThat(verb.jobKinds()).contains("install", "snapshot");
+
+        String snapshot = verb.decodeJob(job("snapshot"));
+        String install = verb.decodeJob(job("install"));
+
+        assertThat(snapshot).contains("\"snapshot\":true");
+        assertThat(install).doesNotContain("\"snapshot\"");
+        assertThat(Jsonl.nested(snapshot, "tail")).contains("\"kind\":\"install\"");
+    }
+
+    private static JobSpec job(String kind) {
+        return new JobSpec(
+                kind, "/tmp/ws", List.of(), List.of(), List.of(), List.of(), false, false, null, JobOrigin.WEB);
+    }
+
+    @Test
     void non_positive_module_concurrency_resolves_to_effective_jobs() {
         int resolved = WorkspaceBuildVerb.effectiveModuleConcurrency(0);
         assertThat(resolved)

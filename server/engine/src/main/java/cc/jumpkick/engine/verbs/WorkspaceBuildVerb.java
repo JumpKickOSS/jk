@@ -88,7 +88,8 @@ public final class WorkspaceBuildVerb implements HostedVerb {
 
     @Override
     public List<String> jobKinds() {
-        return List.of("build", "assemble", "test", "guard", "compile", "image", "install", "native", "publish");
+        return List.of(
+                "build", "assemble", "test", "guard", "compile", "image", "install", "snapshot", "native", "publish");
     }
 
     /**
@@ -105,7 +106,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     case "test" -> WorkspaceTarget.TEST;
                     case "compile" -> WorkspaceTarget.COMPILE;
                     case "image" -> WorkspaceTarget.IMAGE;
-                    case "install" -> WorkspaceTarget.INSTALL;
+                    case "install", "snapshot" -> WorkspaceTarget.INSTALL;
                     case "native" -> WorkspaceTarget.NATIVE;
                     case "publish" -> WorkspaceTarget.PUBLISH;
                     default -> WorkspaceTarget.PACKAGE;
@@ -121,7 +122,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
         TailArgs tail =
                 switch (target) {
                     case IMAGE -> new TailArgs.Image(null, null, null, null, null);
-                    case INSTALL -> new TailArgs.Install(null, null, false);
+                    case INSTALL -> new TailArgs.Install(null, null, "snapshot".equals(kind));
                     case NATIVE -> new TailArgs.Native(null, List.of());
                     case PUBLISH ->
                         new TailArgs.Publish(

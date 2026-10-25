@@ -26,7 +26,16 @@ class VerbRegistryTest {
         assertThat(build).isInstanceOf(WorkspaceBuildVerb.class);
         assertThat(build.jobKinds())
                 .containsExactlyInAnyOrder(
-                        "build", "assemble", "test", "guard", "compile", "image", "install", "native", "publish");
+                        "build",
+                        "assemble",
+                        "test",
+                        "guard",
+                        "compile",
+                        "image",
+                        "install",
+                        "snapshot",
+                        "native",
+                        "publish");
         assertThat(verb(reg, EngineProtocol.LOCK_REQUEST)).isInstanceOf(LockVerb.class);
         assertThat(verb(reg, EngineProtocol.UPDATE_REQUEST)).isInstanceOf(UpdateVerb.class);
         assertThat(verb(reg, EngineProtocol.SYNC_REQUEST)).isInstanceOf(SyncVerb.class);

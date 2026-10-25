@@ -155,7 +155,7 @@ The whole registry:
 | **`bind`** | Set or switch the connection's project dir; returns a project card. Not on the default list: the first call that carries `dir` binds |
 | **`status`** | Engine vitals (pid, version, heap) and the `jobs` array — every live and queued job as the same row `jk engine status -O jsonl` and `GET /api/status` carry (`jid`, `kind`, `dir`, `state`, `since`, `workers`, `lastEventAt`, `ahead`) |
 | **`project`** | Project card (coord, java, members, last run) |
-| **`run`** | Start a job and, by default, wait. The reply is the verdict (see above). `jid` waits on a job already started instead. `kind` is `test` (default) \| `build` \| `guard` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `import`. Publish is **always a dry-run**. `only` limits modules. `run=<id>` with no `kind` reads an earlier verdict. Optional `modules`/`suites`/`include_tags`/`exclude_tags`/`skip_tests`/`timeout_s` (default 240). `deadline_s` caps the job's wall time; default is the engine's `detached-deadline-ms` (1 hour), `0` = none. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit |
+| **`run`** | Start a job and, by default, wait. The reply is the verdict (see above). `jid` waits on a job already started instead. `kind` is `test` (default) \| `build` \| `guard` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `snapshot` \| `import`. Publish is **always a dry-run**. `only` limits modules. `run=<id>` with no `kind` reads an earlier verdict. Optional `modules`/`suites`/`include_tags`/`exclude_tags`/`skip_tests`/`timeout_s` (default 240). `deadline_s` caps the job's wall time; default is the engine's `detached-deadline-ms` (1 hour), `0` = none. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit |
 | **`build`** / **`test`** / **`lock`** | Async convenience aliases (return `jid` immediately) |
 | **`cancel`** | Cancel by **`jid`**, or every live job for a `dir` |
 | **`history`** | Recent runs as **summaries** (filters: dir, projectId, success, kind, limit, next). Avoid `view=full` |
@@ -176,7 +176,8 @@ The whole registry:
 | **`doctor`** | Host health snapshot |
 | **`new`** | Scaffold; `action=templates` lists ids; `preview=true` does not write |
 | **`publish`** | Validate the publish bundle — **always a dry-run** |
-| **`install`** | Install the project into the local Maven repo; `action=list` shows jkx tools (tool installs stay CLI-side) |
+| **`snapshot`** | The inner-loop install, used as a Maven `-SNAPSHOT` is: the project goes into the local Maven repo as `<version>-SNAPSHOT` and is replaced on each run; a sibling project that must see your edits depends on `g:a:<version>-SNAPSHOT` |
+| **`install`** | Install a release of the project into the local Maven repo (a version is installed once); `action=list` shows jkx tools (tool installs stay CLI-side) |
 | **`import`** | Import Maven/Gradle into `jk.toml` |
 | **`export`** | Write `maven` \| `gradle` \| `bom` files |
 | **`ide`** | Write IDE project files (`kind=idea` \| `vscode` \| `all`) plus `.bsp/jk.json`, same generators as `jk ide`; `preview=true` lists without writing |
