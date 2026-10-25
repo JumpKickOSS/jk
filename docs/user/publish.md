@@ -91,6 +91,36 @@ A published file never changes. Publishing a version again uploads only what the
 not hold yet, so a run that stopped half way finishes on the next try (`16 files, 4 already
 there`); a file the repository holds with other bytes stops the run and says to raise the version.
 
+## Releasing
+
+`jk.toml` declares the **next release**, never a `-SNAPSHOT`. `jk release` cuts it:
+
+```bash
+jk release                  # build + test, install 1.4.7, tag v1.4.7, then start 1.4.8
+jk release --minor          # …then start 1.5.0 (--major: 2.0.0; --patch is the default)
+jk release --publish --push # also upload the release before tagging, and push the tag and branch
+jk release --dry-run        # check everything, change nothing
+```
+
+The segment flag picks what moves **after** the release. In order, `jk release`:
+
+1. refuses unless the git tree is clean, the declared version is `MAJOR.MINOR.PATCH`, the tag
+   (`[release] tag`, default `v{version}`) does not exist, and the `[publish]` repository does not
+   already hold the version (an unreachable repository is no objection);
+2. builds, tests and installs the version into `~/.m2` once;
+3. with `--publish`, runs `jk publish` against the `[publish]` target — a failed upload leaves no
+   tag and no bump, and a re-run finishes what is missing;
+4. tags the commit (annotated), then rewrites the version in `jk.toml` (and in every workspace
+   member that declares the same literal), relocks, and commits it as `Start <next>`;
+5. with `--push`, pushes the branch and the tag; otherwise it prints the push command.
+
+When a later step fails, the message says what was done and the command that finishes the rest.
+A workspace is released from the root; members that inherit its version follow it.
+
+CI usually does the upload: a developer runs `jk release --push`, and the tag triggers a job that
+runs `jk publish --tag "$GITHUB_REF_NAME"` ([above](#publishing-from-a-tag)). Locally, `jk snapshot`
+is the loop; `jk release` is the end of it.
+
 ## Maven Central
 
 `jk publish -c` publishes through the Sonatype Central Portal: one signed bundle — jar,

@@ -32,6 +32,7 @@ import cc.jumpkick.command.pipeline.FormatCommand;
 import cc.jumpkick.command.pipeline.GuardCommand;
 import cc.jumpkick.command.pipeline.JshellCommand;
 import cc.jumpkick.command.pipeline.PublishCommand;
+import cc.jumpkick.command.pipeline.ReleaseCommand;
 import cc.jumpkick.command.pipeline.SelectiveCommand;
 import cc.jumpkick.command.pipeline.SnapshotCommand;
 import cc.jumpkick.command.pipeline.WatchCommand;
@@ -178,6 +179,7 @@ public final class CommandDispatch {
             new ToolRunCommand(),
             new ToolInstallCommand(),
             new SnapshotCommand(),
+            new ReleaseCommand(),
             BuildVerbCommand.compile(),
             new DevCommand(),
             new WatchCommand(),

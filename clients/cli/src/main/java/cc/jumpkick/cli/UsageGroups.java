@@ -36,6 +36,7 @@ public final class UsageGroups {
                             "native",
                             "install",
                             "snapshot",
+                            "release",
                             "publish")),
             new CommandGroup(
                     "Project commands:",
