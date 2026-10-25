@@ -36,6 +36,7 @@ import org.jspecify.annotations.Nullable;
  * <p>{@code publishRepository}, {@code publishSign} and {@code publishKeyFile} are the module's
  * {@code [publish]} target: a repository URL (or {@code central}) when the table's {@code
  * repository} names a declared repository, else the name as written; empty when none is named.
+ * {@code releaseTag} is the workspace root's {@code [release] tag} template.
  */
 public record ProjectInfo(
         @Nullable String error,
@@ -96,7 +97,8 @@ public record ProjectInfo(
         Map<String, String> toolchains,
         String publishRepository,
         boolean publishSign,
-        String publishKeyFile) {
+        String publishKeyFile,
+        String releaseTag) {
 
     /**
      * One module's effective toolchain as {@link ProjectInfo#toolchains} carries it: the resolver
@@ -196,6 +198,7 @@ public record ProjectInfo(
                 Map.of(),
                 "",
                 false,
+                "",
                 "");
     }
 
@@ -259,6 +262,7 @@ public record ProjectInfo(
                 .string("publishRepository", publishRepository)
                 .bool("publishSign", publishSign)
                 .string("publishKeyFile", publishKeyFile)
+                .string("releaseTag", releaseTag)
                 .finish();
     }
 
@@ -323,7 +327,8 @@ public record ProjectInfo(
                 Jsonl.strMap(line, "toolchains"),
                 orEmpty(Jsonl.str(line, "publishRepository")),
                 Jsonl.bool(line, "publishSign", false),
-                orEmpty(Jsonl.str(line, "publishKeyFile")));
+                orEmpty(Jsonl.str(line, "publishKeyFile")),
+                orEmpty(Jsonl.str(line, "releaseTag")));
     }
 
     /** {@code ,"key":true|false} when set; empty string when unset (tri-state). */

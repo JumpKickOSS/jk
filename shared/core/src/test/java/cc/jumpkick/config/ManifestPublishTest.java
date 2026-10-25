@@ -59,6 +59,30 @@ class ManifestPublishTest {
     }
 
     @Test
+    void the_release_tag_defaults_and_can_be_templated() throws Exception {
+        parse("");
+        assertThat(JkBuildParser.releaseTag(tmp.resolve("jk.toml"))).isEqualTo("v{version}");
+
+        parse("""
+                [release]
+                tag = "widget-{version}"
+                """);
+        assertThat(JkBuildParser.releaseTag(tmp.resolve("jk.toml"))).isEqualTo("widget-{version}");
+    }
+
+    @Test
+    void a_release_tag_without_the_version_is_refused() {
+        assertThatThrownBy(() -> {
+                    parse("""
+                            [release]
+                            tag = "latest"
+                            """);
+                    JkBuildParser.releaseTag(tmp.resolve("jk.toml"));
+                })
+                .hasMessageContaining("must contain {version}");
+    }
+
+    @Test
     void a_secret_in_the_table_is_refused_with_where_it_belongs() {
         assertThatThrownBy(() -> parse("""
                 [publish]

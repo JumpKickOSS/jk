@@ -89,6 +89,7 @@ public final class ManifestBuild {
                 "m2",
                 "install",
                 "publish",
+                "release",
                 "guards",
                 ManifestGraph.TABLE,
                 "dokka",

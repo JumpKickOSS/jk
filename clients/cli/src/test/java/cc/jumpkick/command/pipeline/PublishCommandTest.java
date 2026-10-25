@@ -122,6 +122,59 @@ class PublishCommandTest {
     }
 
     @Test
+    void a_tag_that_is_not_the_releases_tag_stops_before_anything_uploads(@TempDir Path tempDir) throws Exception {
+        writeJkBuild(tempDir);
+        writeJar(tempDir.resolve("target/widget-1.0.0.jar"));
+
+        int exit = run("publish", "-C", tempDir.toString(), "--repo-url", base.toString(), "--tag", "v1.0.1");
+
+        assertThat(exit).isEqualTo(2); // CONFIG
+        assertThat(received).isEmpty();
+    }
+
+    @Test
+    void the_tag_the_release_created_publishes(@TempDir Path tempDir) throws Exception {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group    = "com.example"
+                name     = "widget"
+                version  = "1.0.0"
+                jdk      = 25
+
+                [release]
+                tag = "widget-{version}"
+                """);
+        writeJar(tempDir.resolve("target/widget-1.0.0.jar"));
+
+        int exit = run("publish", "-C", tempDir.toString(), "--repo-url", base.toString(), "--tag", "widget-1.0.0");
+
+        assertThat(exit).isEqualTo(0);
+        assertThat(received).containsKey("/repo/com/example/widget/1.0.0/widget-1.0.0.jar");
+    }
+
+    @Test
+    void the_repository_publish_names_is_where_a_bare_publish_goes(@TempDir Path tempDir) throws Exception {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group    = "com.example"
+                name     = "widget"
+                version  = "1.0.0"
+                jdk      = 25
+
+                [repositories.releases]
+                url = "%s"
+                allow-insecure = true
+
+                [publish]
+                repository = "releases"
+                """.formatted(base));
+        writeJar(tempDir.resolve("target/widget-1.0.0.jar"));
+
+        int exit = run("publish", "-C", tempDir.toString());
+
+        assertThat(exit).isEqualTo(0);
+        assertThat(received).containsKey("/repo/com/example/widget/1.0.0/widget-1.0.0.jar");
+    }
+
+    @Test
     void snapshot_version_allowed_with_flag(@TempDir Path tempDir) throws Exception {
         Files.writeString(tempDir.resolve("jk.toml"), """
                 group    = "com.example"

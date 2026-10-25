@@ -154,6 +154,7 @@ class InstallProductBinTest {
                 Map.of(),
                 base.publishRepository(),
                 base.publishSign(),
-                base.publishKeyFile());
+                base.publishKeyFile(),
+                base.releaseTag());
     }
 }

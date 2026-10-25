@@ -28,6 +28,7 @@ class ShortFlagsTest {
             "install --destination",
             "install --snapshot",
             "snapshot --destination",
+            "publish --tag",
             "tool install --with",
             "tool install --ver",
             "tool install --bin",

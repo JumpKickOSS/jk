@@ -21,6 +21,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.release.ReleaseTag;
 import cc.jumpkick.repo.RepoCredentialResolver;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
@@ -80,6 +81,10 @@ public final class PublishCommand implements CliCommand {
                 Opt.flag("Sign with Sigstore keyless OIDC (.sigstore).", "-g", "--sigstore"),
                 Opt.flag("Emit a SLSA v1 in-toto provenance statement.", "-L", "--slsa"),
                 Opt.flag("Emit CycloneDX 1.6 and SPDX 2.3 SBOMs.", "-W", "--sbom"),
+                Opt.value(
+                        "<name>",
+                        "Fail before building unless this is the tag [release] tag names for the version.",
+                        "--tag"),
                 CommonOpts.skipTests()));
         opts.addAll(VariantSelection.options());
         return opts;
@@ -163,6 +168,17 @@ public final class PublishCommand implements CliCommand {
         }
         // [publish] names the target, so the same bare `jk publish` works on a laptop and in CI; a
         // flag overrides what the manifest says.
+        String tag = in.value("tag").orElse(null);
+        if (tag != null) {
+            String expected = ReleaseTag.render(info.releaseTag(), info.version());
+            if (!expected.equals(tag)) {
+                CommandWedge.printFail(
+                        "Publish",
+                        "tag `" + tag + "` is not the tag of version " + info.version() + ": [release] tag expects `"
+                                + expected + "`. Publish from the tag the release created.");
+                return Exit.CONFIG;
+            }
+        }
         int configured = applyPublishTarget(info, projectDir);
         if (configured != 0) return configured;
         int usage = checkOptions();
