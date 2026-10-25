@@ -91,6 +91,7 @@ public final class ToolInstallCommand implements CliCommand {
                         "<m2|jk>",
                         "Where the install goes: m2 (the Maven local repository, default) or jk (jk's private repository)",
                         "--target"),
+                Opt.flag("Install the project at its version plus -SNAPSHOT (same as jk snapshot)", "--snapshot"),
                 Opt.value("<dir>", "Override the local Maven repo root (~/.m2).", "--m2-dir")
                         .hide(),
                 Opt.value("<url>", "Override the Maven repository URL (for tests).", "--repo-url")
@@ -153,6 +154,8 @@ public final class ToolInstallCommand implements CliCommand {
     @Nullable
     InstallTarget targetOverride;
 
+    boolean snapshot;
+
     /** {@code --jdks-dir}: the JDK root the pre-flight and the engine's build resolve under, as on build. */
     @Nullable
     Path jdksDir;
@@ -178,6 +181,7 @@ public final class ToolInstallCommand implements CliCommand {
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.global = GlobalOptions.from(in);
         String targetWord = in.value(InstallTarget.KEY).orElse(null);
+        this.snapshot = in.isSet("snapshot");
         this.targetOverride =
                 targetWord == null ? null : InstallTarget.parse(targetWord).orElse(null);
         if (targetWord != null && targetOverride == null) {
@@ -203,6 +207,10 @@ public final class ToolInstallCommand implements CliCommand {
             CommandWedge.printFail(
                     "Install",
                     "no target specified — pass a coordinate, catalog name, path, or git URL, or run inside a directory with jk.toml");
+            return Exit.USAGE;
+        }
+        if (snapshot) {
+            CommandWedge.printFail("Install", "--snapshot installs the current project: drop the argument");
             return Exit.USAGE;
         }
         this.coord = in.positionals().get(0);
@@ -567,6 +575,7 @@ public final class ToolInstallCommand implements CliCommand {
         delegate.libDirOverride = libDirOverride;
         delegate.m2DirOverride = m2DirOverride;
         delegate.targetOverride = targetOverride;
+        delegate.snapshot = snapshot;
         delegate.jdksDir = jdksDir;
         delegate.repoUrl = repoUrl;
         return delegate;

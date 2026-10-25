@@ -19,8 +19,9 @@ public final class InstallTool implements McpTool {
     public Spec spec() {
         return new Spec(
                 "install",
-                "Install the project app into the local Maven repo (jk install), or "
-                        + "action=list for installed jkx tools. Tool installs stay CLI-side (trust gates).",
+                "Install a RELEASE of the project into the local Maven repo (jk install): a version is installed "
+                        + "once. While iterating use snapshot (version-SNAPSHOT, replaced each run). "
+                        + "action=list shows installed jkx tools; tool installs stay CLI-side (trust gates).",
                 McpSchemas.object(Map.of(
                         "action",
                         McpSchemas.string("install (default) | list"),

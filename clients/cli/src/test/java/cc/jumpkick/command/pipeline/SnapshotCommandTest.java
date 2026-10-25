@@ -125,4 +125,16 @@ class SnapshotCommandTest {
         assertThat(appPom).contains("<artifactId>snap-core</artifactId>").contains("<version>1.0.0-SNAPSHOT</version>");
         assertThat(repo.resolve("snap-core/1.0.0")).doesNotExist();
     }
+
+    @Test
+    void install_with_the_snapshot_flag_is_the_same_verb(@TempDir Path tmp) throws Exception {
+        library(tmp, "snap-flag", "public final class Lib { }");
+        Path m2 = tmp.resolve("m2");
+
+        assertThat(jk(tmp, m2, "install", "--snapshot")).isEqualTo(0);
+
+        Path repo = m2.resolve("repository/com/example/snap-flag");
+        assertThat(repo.resolve("1.0.0-SNAPSHOT/snap-flag-1.0.0-SNAPSHOT.jar")).exists();
+        assertThat(repo.resolve("1.0.0")).doesNotExist();
+    }
 }

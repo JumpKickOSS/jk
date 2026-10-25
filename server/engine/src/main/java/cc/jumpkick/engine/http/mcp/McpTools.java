@@ -104,6 +104,7 @@ public final class McpTools {
                         : "Loop: run(dir=<project>) tests and returns the verdict → edit → run again. ")
                 + "diagnostics is every problem past the cap (file= for one). deps adds, removes, or pins and relocks. "
                 + "why(coord) is the path and the rule that picked the version. "
+                + "A sibling project that must see your edits needs run(kind=snapshot): the local -SNAPSHOT, replaced each run. "
                 + "query_graph answers a question about the code with file:line, instead of grep and reads; "
                 + "read_symbol reads a symbol's source (Type.member, Type.*) instead of whole files; "
                 + "get_neighbors and shortest_path follow a symbol from there. skill is the playbook. "
@@ -183,6 +184,13 @@ public final class McpTools {
                         "publish",
                         "Validate the publish bundle — ALWAYS a dry-run (same planner as jk publish; "
                                 + "credentials never enter the engine). Real uploads: jk publish CLI.",
+                        McpSchemas.BOUND_ROOT),
+                new RunAliasTool(
+                        "snapshot",
+                        "snapshot",
+                        "The inner-loop install (jk snapshot): the project goes into the local Maven repo as "
+                                + "<version>-SNAPSHOT, replaced on each run, for a sibling project to depend on as "
+                                + "g:a:<version>-SNAPSHOT. jk.toml keeps the release version; install is for a release.",
                         McpSchemas.BOUND_ROOT),
                 new InstallTool(),
                 new RunAliasTool(

@@ -8,4 +8,4 @@ Layout is the directory shape, not a manifest key. Traditional: `src/main/java`,
 
 Build outputs live under `target/`. `jk clean` deletes `target/`. The action cache can restore inputs that did not change.
 
-`jk install` is `jk build` plus the install: the same steps and tests (`-S` skips them), then the local repo and the launcher on PATH. Never run `jk build` before it.
+`jk snapshot` is the inner-loop install, used the way a Maven `-SNAPSHOT` is: the project (every workspace member) goes into `~/.m2` as `<version>-SNAPSHOT` and is replaced on each run, with `jk.toml` left at the release version. A sibling Maven, Gradle or jk project that must see your edits depends on `g:a:<version>-SNAPSHOT`. `jk install` is for a release: a version is installed once, and a rebuilt jar at an installed version is refused. Both are `jk build` plus the install: the same steps and tests (`-S` skips them), then the local repo and, for an application, the launcher on PATH. Never run `jk build` before either.

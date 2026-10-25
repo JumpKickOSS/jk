@@ -23,6 +23,8 @@ Run, read the verdict, edit, rerun. The verdict is the whole answer; scrape noth
 | every problem, with lines | `jk results -A` | `diagnostics()` |
 | one skill topic | `jk skill <topic>` | `skill(topic=…)` |
 
+A sibling project that must see your edits to a library gets them through `jk -a snapshot` (MCP `run(kind=snapshot)`): the project is installed to `~/.m2` as `<version>-SNAPSHOT`, replaced each run, like a Maven snapshot; the sibling depends on `g:a:<version>-SNAPSHOT`. `jk install` is for a release, once per version.
+
 A dependency edit relocks in the same call. Registered as `jk mcp`, tools take no `dir`; over HTTP, pass `dir` (the root) on the first call.
 
 ## Verdict
