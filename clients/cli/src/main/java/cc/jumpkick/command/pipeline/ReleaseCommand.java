@@ -80,9 +80,13 @@ public final class ReleaseCommand implements CliCommand {
         opts.addAll(BuildFlags.options(WorkspaceTarget.INSTALL.tests(), BuildFlags.Affected.MODULES));
         Set<String> taken = new HashSet<>();
         taken.add("tag"); // a release names its own tag
-        for (Opt o : opts) taken.add(o.canonicalName());
+        for (Opt o : opts) taken.addAll(o.names());
         for (Opt o : new PublishCommand().options()) {
-            if (taken.add(o.canonicalName())) opts.add(o);
+            // An option sharing any spelling with one already taken is that option, or irrelevant to a release.
+            if (o.names().stream().noneMatch(taken::contains) && taken.add(o.canonicalName())) {
+                taken.addAll(o.names());
+                opts.add(o);
+            }
         }
         return opts;
     }
