@@ -44,6 +44,32 @@ scm = { url = "https://github.com/example/widget",
         developer-connection = "scm:git:ssh://git@github.com/example/widget.git" }
 ```
 
+### Naming the target
+
+The same table says where a release goes, so a bare `jk publish` is the whole command on a
+laptop and in CI:
+
+```toml
+[repositories.releases]
+url = "https://nexus.example.com/repository/maven-releases/"
+
+[publish]
+repository = "releases"             # a [repositories.<name>] entry, or "central"
+sign = true
+key-file = "~/.gnupg/release.asc"   # the passphrase is JK_GPG_PASSPHRASE, never here
+```
+
+`--repo-url`, `--central`, `--sign` and `--key-file` override the table. Credentials and
+passphrases are secrets and do not belong in `jk.toml`: a `password`, `token` or `passphrase` key
+in `[publish]` is refused, naming where the secret goes (`jk repo login`, `JK_REPO_<ID>_*`,
+`JK_GPG_PASSPHRASE`).
+
+### Publishing again
+
+A published file never changes. Publishing a version again uploads only what the repository does
+not hold yet, so a run that stopped half way finishes on the next try (`16 files, 4 already
+there`); a file the repository holds with other bytes stops the run and says to raise the version.
+
 ## Maven Central
 
 `jk publish -c` publishes through the Sonatype Central Portal: one signed bundle — jar,

@@ -338,7 +338,13 @@ public final class ManifestTables {
         return Optional.of(new BuildBlock.War(name, webapp == null ? BuildBlock.War.DEFAULT_WEBAPP : webapp));
     }
 
-    static final List<String> PUBLISH_KEYS = List.of("name", "url", "licenses", "developers", "scm");
+    static final List<String> PUBLISH_KEYS =
+            List.of("name", "url", "licenses", "developers", "scm", "repository", "sign", "key-file");
+
+    /** Keys that would hold a secret: refused with where a secret does belong. */
+    static final List<String> PUBLISH_SECRET_KEYS =
+            List.of("password", "token", "passphrase", "key-passphrase", "user", "username");
+
     static final List<String> PUBLISH_LICENSE_KEYS = List.of("name", "url");
     static final List<String> PUBLISH_DEVELOPER_KEYS = List.of("id", "name", "email");
     static final List<String> PUBLISH_SCM_KEYS = List.of("url", "connection", "developer-connection");
@@ -355,7 +361,20 @@ public final class ManifestTables {
         }
         TomlTable publish = root.getTable("publish");
         if (publish == null) return Optional.empty();
+        for (String secret : PUBLISH_SECRET_KEYS) {
+            if (publish.contains(secret)) {
+                throw new JkBuildParseException("[publish] takes no secrets: `" + secret + "` does not belong in"
+                        + " jk.toml. A repository's credentials come from `jk repo login` or JK_REPO_<ID>_*"
+                        + " (PUBLISH_USER / PUBLISH_PASSWORD on the command line), the key's passphrase from"
+                        + " JK_GPG_PASSPHRASE.");
+            }
+        }
         rejectUnknownKeys(publish, PUBLISH_KEYS, "[publish]");
+        boolean sign = false;
+        if (publish.contains("sign")) {
+            if (!publish.isBoolean("sign")) throw new JkBuildParseException("[publish] sign must be true or false");
+            sign = Boolean.TRUE.equals(publish.getBoolean("sign"));
+        }
         List<PomMetadata.License> licenses = new ArrayList<>();
         for (TomlTable t : tables(publish, "licenses", "publish.licenses")) {
             rejectUnknownKeys(t, PUBLISH_LICENSE_KEYS, "[publish] licenses");
@@ -397,7 +416,10 @@ public final class ManifestTables {
                 stringOrThrow(publish, "url", "publish.url"),
                 licenses,
                 developers,
-                scm));
+                scm,
+                stringOrThrow(publish, "repository", "publish.repository"),
+                sign,
+                stringOrThrow(publish, "key-file", "publish.key-file")));
     }
 
     private static List<TomlTable> tables(TomlTable parent, String key, String displayPath) {

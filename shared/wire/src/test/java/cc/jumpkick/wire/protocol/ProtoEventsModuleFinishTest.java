@@ -7,6 +7,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /** The image terminal, the shelf publish and a stop ride module-finish as additive fields. */
@@ -55,6 +56,17 @@ class ProtoEventsModuleFinishTest {
         ModuleFinishEvent decoded = ModuleFinishEvent.decode(line);
         assertThat(decoded.installed()).isEqualTo(installed);
         assertThat(decoded.image()).isNull();
+    }
+
+    @Test
+    void a_publish_outcome_carries_how_many_artifacts_were_already_there() {
+        ModuleOutcome.Published published = new ModuleOutcome.Published(
+                "https://repo.example/releases/", false, 16, 4, List.of(), List.of(), null, null, List.of());
+
+        String line =
+                ProtoEvents.moduleFinish("/w/app", "g:app", true, 0, 12, true, false, false, null, null, published);
+
+        assertThat(ModuleFinishEvent.decode(line).published()).isEqualTo(published);
     }
 
     @Test

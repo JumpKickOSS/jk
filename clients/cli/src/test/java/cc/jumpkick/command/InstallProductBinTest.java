@@ -151,6 +151,9 @@ class InstallProductBinTest {
                 base.coordinatorOnly(),
                 "",
                 productBin,
-                Map.of());
+                Map.of(),
+                base.publishRepository(),
+                base.publishSign(),
+                base.publishKeyFile());
     }
 }

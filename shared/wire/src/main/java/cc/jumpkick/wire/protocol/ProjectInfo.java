@@ -32,6 +32,10 @@ import org.jspecify.annotations.Nullable;
  * — a member that names no {@code jdk} of its own carries the root's. It is on the wire so the
  * client's JDK pre-flight learns every member's pin from the one summary it already holds instead
  * of asking for each member in turn. Keyed like {@code modules}, by absolute directory.
+ *
+ * <p>{@code publishRepository}, {@code publishSign} and {@code publishKeyFile} are the module's
+ * {@code [publish]} target: a repository URL (or {@code central}) when the table's {@code
+ * repository} names a declared repository, else the name as written; empty when none is named.
  */
 public record ProjectInfo(
         @Nullable String error,
@@ -89,7 +93,10 @@ public record ProjectInfo(
         boolean coordinatorOnly,
         String productLib,
         String productBin,
-        Map<String, String> toolchains) {
+        Map<String, String> toolchains,
+        String publishRepository,
+        boolean publishSign,
+        String publishKeyFile) {
 
     /**
      * One module's effective toolchain as {@link ProjectInfo#toolchains} carries it: the resolver
@@ -186,7 +193,10 @@ public record ProjectInfo(
                 false,
                 "",
                 "",
-                Map.of());
+                Map.of(),
+                "",
+                false,
+                "");
     }
 
     public String encode() {
@@ -246,6 +256,9 @@ public record ProjectInfo(
                 .string("productLib", productLib)
                 .string("productBin", productBin)
                 .map("toolchains", toolchains)
+                .string("publishRepository", publishRepository)
+                .bool("publishSign", publishSign)
+                .string("publishKeyFile", publishKeyFile)
                 .finish();
     }
 
@@ -307,7 +320,10 @@ public record ProjectInfo(
                 Jsonl.bool(line, "coordinatorOnly", false),
                 orEmpty(Jsonl.str(line, "productLib")),
                 orEmpty(Jsonl.str(line, "productBin")),
-                Jsonl.strMap(line, "toolchains"));
+                Jsonl.strMap(line, "toolchains"),
+                orEmpty(Jsonl.str(line, "publishRepository")),
+                Jsonl.bool(line, "publishSign", false),
+                orEmpty(Jsonl.str(line, "publishKeyFile")));
     }
 
     /** {@code ,"key":true|false} when set; empty string when unset (tri-state). */

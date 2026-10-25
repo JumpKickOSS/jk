@@ -152,8 +152,6 @@ public final class PublishCommand implements CliCommand {
             CommandWedge.printFail("Publish", jkBuildPath + " not found.");
             return Exit.NO_INPUT;
         }
-        int usage = checkOptions();
-        if (usage != 0) return usage;
         Path cache = JkDirs.cache();
 
         // Project facts via PROJECT_INFO; inline repo credential is a deliberate client-side
@@ -163,6 +161,12 @@ public final class PublishCommand implements CliCommand {
             CommandWedge.printFail("Publish", info.error());
             return Exit.CONFIG;
         }
+        // [publish] names the target, so the same bare `jk publish` works on a laptop and in CI; a
+        // flag overrides what the manifest says.
+        int configured = applyPublishTarget(info, projectDir);
+        if (configured != 0) return configured;
+        int usage = checkOptions();
+        if (usage != 0) return usage;
 
         // Path deps are consume-only (docs/path-source-deps.md): a published POM would
         // reference a coordinate no consumer can resolve. Refuse before any upload —
@@ -211,6 +215,37 @@ public final class PublishCommand implements CliCommand {
                 new PublishVerb(args, (module, published) -> report(module, published, projectDir)),
                 BuildVerbCommand.forward(in, WorkspaceTarget.PUBLISH.tests(), b -> {}),
                 true);
+    }
+
+    /**
+     * Fill what the command line left unsaid from the manifest's {@code [publish]} table: the
+     * repository (a declared repository's URL, or {@code central}), whether to sign, and the key
+     * file. A flag always wins. {@code 0} when the target is coherent.
+     */
+    private int applyPublishTarget(ProjectInfo info, Path projectDir) {
+        String repository = info.publishRepository();
+        if (!central && repoUrl == null && !repository.isEmpty()) {
+            if (RepositorySpec.CENTRAL.equals(repository)) {
+                central = true;
+            } else if (repository.contains("://")) {
+                repoUrl = URI.create(repository);
+            } else {
+                CommandWedge.printFail(
+                        "Publish",
+                        "[publish] repository `" + repository + "` is not declared under [repositories]"
+                                + " (nor is it `central`).");
+                return Exit.CONFIG;
+            }
+        }
+        if (!sign && info.publishSign()) sign = true;
+        if (keyFile == null && !info.publishKeyFile().isEmpty()) {
+            String configured = info.publishKeyFile();
+            Path home = Path.of(System.getProperty("user.home", "."));
+            keyFile = configured.startsWith("~/")
+                    ? home.resolve(configured.substring(2))
+                    : projectDir.resolve(configured).normalize();
+        }
+        return 0;
     }
 
     /** The flag combinations that cannot publish anywhere, refused with the flag that fixes them; {@code 0} when the set is coherent. */
@@ -271,7 +306,10 @@ public final class PublishCommand implements CliCommand {
         }
         Path workspaceRoot = WorkspaceLocator.findRoot(projectDir).orElse(projectDir);
         if (!global.outputIsJson()) {
-            String summary = published.dryRun() ? "(dry-run)" : "(" + published.files() + " files)";
+            String summary = published.dryRun()
+                    ? "(dry-run)"
+                    : "(" + published.files() + " files"
+                            + (published.existing() > 0 ? ", " + published.existing() + " already there" : "") + ")";
             String where = central ? " to the Central Portal " : " ";
             ProjectInfo info = ProjectInfos.orNull(module.dir());
             String coord = info == null ? module.coord() : Coords.gav(info.group(), info.name(), info.version());

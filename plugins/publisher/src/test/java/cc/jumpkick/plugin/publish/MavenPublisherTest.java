@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +36,12 @@ class MavenPublisherTest {
     private final Map<String, byte[]> received = new HashMap<>();
     private final Map<String, String> authHeaders = new HashMap<>();
     private volatile boolean failNext;
+
+    /** Every PUT the repository took, in order. */
+    private final List<String> putLog = new CopyOnWriteArrayList<>();
+
+    /** Non-zero makes every PUT answer with this status (409: a repository that refuses redeploys). */
+    private volatile int putStatus;
 
     /** Non-zero makes every GET answer with this status instead of the stored body. */
     private volatile int getFailureStatus;
@@ -50,6 +57,13 @@ class MavenPublisherTest {
         server.createContext("/", exchange -> {
             String path = exchange.getRequestURI().getPath();
             if ("PUT".equals(exchange.getRequestMethod())) {
+                putLog.add(path);
+                if (putStatus != 0) {
+                    exchange.getRequestBody().readAllBytes();
+                    exchange.sendResponseHeaders(putStatus, -1);
+                    exchange.close();
+                    return;
+                }
                 received.put(path, exchange.getRequestBody().readAllBytes());
                 String auth = exchange.getRequestHeaders().getFirst("Authorization");
                 if (auth != null) authHeaders.put(path, auth);
@@ -136,6 +150,96 @@ class MavenPublisherTest {
         // Each checksum file is the hex digest of its sibling.
         assertThat(new String(received.get(prefix + ".jar.sha256"), StandardCharsets.US_ASCII))
                 .isEqualTo(Checksums.sha256Hex(jarBytes));
+    }
+
+    @Test
+    void publishing_the_same_bytes_again_uploads_nothing() throws Exception {
+        MavenPublisher publisher = new MavenPublisher(base, null, null);
+        Project project = new Project("com.example", "widget", "1.0.0", 21);
+        List<MavenPublisher.Artifact> artifacts = List.of(
+                new MavenPublisher.Artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8)),
+                new MavenPublisher.Artifact(".pom", "<project/>".getBytes(StandardCharsets.UTF_8)));
+        publisher.publish(project, artifacts);
+        putLog.clear();
+
+        MavenPublisher.Result second = publisher.publish(project, artifacts);
+
+        assertThat(second.alreadyThere())
+                .containsExactlyInAnyOrder(
+                        "com/example/widget/1.0.0/widget-1.0.0.jar", "com/example/widget/1.0.0/widget-1.0.0.pom");
+        assertThat(putLog)
+                .as("only the version list is rewritten, and it is merged, never clobbered")
+                .containsExactly(
+                        "/repo/com/example/widget/maven-metadata.xml",
+                        "/repo/com/example/widget/maven-metadata.xml.md5",
+                        "/repo/com/example/widget/maven-metadata.xml.sha1",
+                        "/repo/com/example/widget/maven-metadata.xml.sha256",
+                        "/repo/com/example/widget/maven-metadata.xml.sha512");
+    }
+
+    @Test
+    void a_version_published_with_other_bytes_is_refused_and_left_alone() throws Exception {
+        MavenPublisher publisher = new MavenPublisher(base, null, null);
+        Project project = new Project("com.example", "widget", "1.0.0", 21);
+        publisher.publish(
+                project, List.of(new MavenPublisher.Artifact(".jar", "first".getBytes(StandardCharsets.UTF_8))));
+        putLog.clear();
+
+        assertThatThrownBy(() -> publisher.publish(
+                        project,
+                        List.of(new MavenPublisher.Artifact(".jar", "second".getBytes(StandardCharsets.UTF_8)))))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("widget-1.0.0.jar is already published with other bytes")
+                .hasMessageContaining("Raise the version in jk.toml");
+        assertThat(putLog).isEmpty();
+        assertThat(received.get("/repo/com/example/widget/1.0.0/widget-1.0.0.jar"))
+                .isEqualTo("first".getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void a_rerun_after_a_partial_publish_uploads_only_what_is_missing() throws Exception {
+        MavenPublisher publisher = new MavenPublisher(base, null, null);
+        Project project = new Project("com.example", "widget", "1.0.0", 21);
+        byte[] jar = "jar".getBytes(StandardCharsets.UTF_8);
+        byte[] pom = "<project/>".getBytes(StandardCharsets.UTF_8);
+        publisher.publish(project, List.of(new MavenPublisher.Artifact(".jar", jar)));
+        putLog.clear();
+
+        MavenPublisher.Result finished = publisher.publish(
+                project, List.of(new MavenPublisher.Artifact(".jar", jar), new MavenPublisher.Artifact(".pom", pom)));
+
+        assertThat(finished.alreadyThere()).containsExactly("com/example/widget/1.0.0/widget-1.0.0.jar");
+        assertThat(putLog)
+                .contains("/repo/com/example/widget/1.0.0/widget-1.0.0.pom")
+                .doesNotContain("/repo/com/example/widget/1.0.0/widget-1.0.0.jar");
+    }
+
+    @Test
+    void a_repository_that_will_not_answer_a_read_is_left_to_the_upload() {
+        MavenPublisher publisher = new MavenPublisher(base, null, null);
+        getFailureStatus = 403;
+
+        // The version list cannot be read either, which stops the publish after the artifacts — so the
+        // jar being PUT at all shows the existence check gave the upload the last word.
+        assertThatThrownBy(() -> publisher.publish(
+                        new Project("com.example", "widget", "1.0.0", 21),
+                        List.of(new MavenPublisher.Artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8)))))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("refusing to replace it");
+        assertThat(putLog).contains("/repo/com/example/widget/1.0.0/widget-1.0.0.jar");
+    }
+
+    @Test
+    void a_409_says_the_repository_does_not_allow_replacing_a_file() {
+        MavenPublisher publisher = new MavenPublisher(base, null, null);
+        putStatus = 409;
+
+        assertThatThrownBy(() -> publisher.publish(
+                        new Project("com.example", "widget", "1.0.0", 21),
+                        List.of(new MavenPublisher.Artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8)))))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("returned 409")
+                .hasMessageContaining("does not allow it to be replaced");
     }
 
     @Test

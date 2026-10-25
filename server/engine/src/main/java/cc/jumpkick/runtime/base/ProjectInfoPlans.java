@@ -223,6 +223,16 @@ public final class ProjectInfoPlans {
         }
     }
 
+    /** The URL of the repository {@code [publish] repository} names, {@code central}, or the name as written; empty when none. */
+    private static String publishRepository(JkBuild build) {
+        String name = build.pomMetadata().repository();
+        if (name == null || name.isBlank()) return "";
+        for (var declared : build.repositories()) {
+            if (declared.name().equals(name)) return declared.url().toString();
+        }
+        return name;
+    }
+
     private static ProjectInfo summary(
             Path dir,
             Path buildFile,
@@ -297,7 +307,10 @@ public final class ProjectInfoPlans {
                 CompileSupport.coordinatorOnly(build, dir),
                 build.installOpt().map(JkBuild.Install::productLib).orElse(""),
                 build.installOpt().map(JkBuild.Install::productBin).orElse(""),
-                ws.toolchains());
+                ws.toolchains(),
+                publishRepository(build),
+                build.pomMetadata().sign(),
+                orEmpty(build.pomMetadata().keyFile()));
     }
 
     private static String sanitizeIdentity(String value) {

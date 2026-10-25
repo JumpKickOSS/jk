@@ -77,7 +77,10 @@ class InstallProductLibTest {
                 base.coordinatorOnly(),
                 productLib,
                 "",
-                Map.of());
+                Map.of(),
+                base.publishRepository(),
+                base.publishSign(),
+                base.publishKeyFile());
     }
 
     @Test
