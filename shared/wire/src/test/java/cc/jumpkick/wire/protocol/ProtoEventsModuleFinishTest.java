@@ -4,7 +4,7 @@ package cc.jumpkick.wire.protocol;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -42,7 +42,11 @@ class ProtoEventsModuleFinishTest {
         assertThat(ModuleFinishEvent.decode(plain).installed()).isNull();
 
         ModuleOutcome.Installed installed = new ModuleOutcome.Installed(
-                "g:app:1.0", "a".repeat(64), "b".repeat(64), InstallTarget.JK, ModuleOutcome.Installed.Change.REPLACED);
+                "g:app:1.0",
+                "a".repeat(64),
+                "b".repeat(64),
+                InstallDestination.JK,
+                ModuleOutcome.Installed.Change.REPLACED);
         String line = ProtoEvents.moduleFinish("/w/app", "g:app", true, 0, 12, true, false, null, installed);
         assertThat(Jsonl.str(line, "installCoord")).isEqualTo("g:app:1.0");
         assertThat(Jsonl.str(line, "installJarSha256")).isEqualTo("a".repeat(64));

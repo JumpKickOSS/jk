@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.runtime;
 
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -55,22 +55,23 @@ public record WorkspaceSpec(
 
     /**
      * {@code jk install}: {@code m2Dir} is the client-resolved local-repo root (null for {@code
-     * ~/.m2}); {@code target} is the {@code --target} override, null when none was given.
+     * ~/.m2}); {@code destination} is the {@code --destination} override, null when none was given.
      */
     public static WorkspaceSpec install(
             Set<Path> selected,
             Map<Path, Path> graalByDir,
             @Nullable Path m2Dir,
-            @Nullable InstallTarget target,
+            @Nullable InstallDestination destination,
             boolean snapshot) {
         return new WorkspaceSpec(
-                WorkspaceTarget.INSTALL, selected, graalByDir, new TailArgs.Install(m2Dir, target, snapshot));
+                WorkspaceTarget.INSTALL, selected, graalByDir, new TailArgs.Install(m2Dir, destination, snapshot));
     }
 
     /** Install's second pass after the engine jar changes: {@code cache-install} against jars on disk. */
-    public static WorkspaceSpec reshelve(Set<Path> selected, @Nullable Path m2Dir, @Nullable InstallTarget target) {
+    public static WorkspaceSpec reshelve(
+            Set<Path> selected, @Nullable Path m2Dir, @Nullable InstallDestination destination) {
         return new WorkspaceSpec(
-                WorkspaceTarget.RESHELVE, selected, Map.of(), new TailArgs.Install(m2Dir, target, false));
+                WorkspaceTarget.RESHELVE, selected, Map.of(), new TailArgs.Install(m2Dir, destination, false));
     }
 
     public static WorkspaceSpec train(
@@ -101,9 +102,9 @@ public record WorkspaceSpec(
         return tail instanceof TailArgs.Install install ? install.m2Dir() : null;
     }
 
-    /** Install's {@code --target} override, or null when none was given and for every other goal. */
-    public @Nullable InstallTarget installTarget() {
-        return tail instanceof TailArgs.Install install ? install.target() : null;
+    /** Install's {@code --destination} override, or null when none was given and for every other goal. */
+    public @Nullable InstallDestination installDestination() {
+        return tail instanceof TailArgs.Install install ? install.destination() : null;
     }
 
     /** True for {@code jk snapshot}: the install tail puts every module at its version plus {@code -SNAPSHOT}. */

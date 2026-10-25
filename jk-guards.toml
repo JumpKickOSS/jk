@@ -245,10 +245,6 @@ in     = "server/engine/src/main/java/cc/jumpkick/engine/http/mcp/tools/CodeGrap
 reason = "shortest_path's target argument, under graphify's MCP parameter names"
 
 [[guards.target-dir.allow]]
-in     = "shared/jk-api/src/main/java/cc/jumpkick/model/InstallTarget.java"
-reason = "the [install] target key: it names where an install goes, not jk's build output directory"
-
-[[guards.target-dir.allow]]
 in     = "shared/code-graph/src/main/java/cc/jumpkick/codegraph/GraphJson.java"
 reason = "graph.json's link field naming an edge's target node, in graphify's node-link format"
 

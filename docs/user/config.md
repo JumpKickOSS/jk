@@ -146,17 +146,17 @@ request before any proxy is consulted.
 
 ## Install target
 
-Where `jk install` puts a project's thin jar and POM when neither `--target` nor the project's own
-`[install] target` names a place:
+Where `jk install` puts a project's thin jar and POM when neither `--destination` nor the project's own
+`[install] destination` names a place:
 
 ```toml
 # ~/.jk/config.toml
 [install]
-target = "jk"      # default "m2": the Maven local repository, ~/.m2/repository
+destination = "jk"      # default "m2": the Maven local repository, ~/.m2/repository
 ```
 
 `"jk"` is jk's private `repos/jk-local`, for a machine that keeps `~/.m2` clean. The first to
-answer: `--target`, the project's `jk.toml`, `JK_INSTALL_TARGET`, this file, then `m2`. An unknown
+answer: `--destination`, the project's `jk.toml`, `JK_INSTALL_DESTINATION`, this file, then `m2`. An unknown
 word is skipped. See [Install](packaging.md#jk-install-project).
 
 ## Tool mirrors

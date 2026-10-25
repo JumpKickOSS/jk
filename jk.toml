@@ -6,7 +6,7 @@ java = 25
 
 # jk's own modules install to jk's private repository: the engine launches its workers from there.
 [install]
-target = "jk"
+destination = "jk"
 
 # The POM metadata every published member carries; Maven Central refuses a POM without it.
 [publish]

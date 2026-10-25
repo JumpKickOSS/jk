@@ -81,7 +81,7 @@ class InstallCommandTest {
                 jdk      = 25
                 java           = 25
                 [install]
-                target = "jk"
+                destination = "jk"
                 """);
         Path src = tempDir.resolve("src/main/java/com/example/Lib.java");
         Files.createDirectories(src.getParent());
@@ -106,7 +106,7 @@ class InstallCommandTest {
                 m2.toString());
         assertThat(exit).isEqualTo(0);
         assertThat(bin.resolve("lib-only")).doesNotExist(); // no launcher
-        // [install] target = "jk": repos/jk-local, not ~/.m2.
+        // [install] destination = "jk": repos/jk-local, not ~/.m2.
         assertThat(JkStores.resolve("repos")
                         .resolve("jk-local")
                         .resolve("com/example/lib-only/0.1.0/lib-only-0.1.0.jar"))
@@ -239,7 +239,7 @@ class InstallCommandTest {
                 tempDir.resolve("lib").toString(),
                 "--m2-dir",
                 m2.toString(),
-                "--target",
+                "--destination",
                 "jk");
         assertThat(exit).isEqualTo(0);
 
@@ -258,7 +258,7 @@ class InstallCommandTest {
                 tempDir.resolve("cache").toString(),
                 "--m2-dir",
                 tempDir.resolve("m2").toString(),
-                "--target",
+                "--destination",
                 "shelf");
         assertThat(exit).isEqualTo(64);
     }

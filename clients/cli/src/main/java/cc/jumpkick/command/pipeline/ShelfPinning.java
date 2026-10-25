@@ -4,7 +4,7 @@ package cc.jumpkick.command.pipeline;
 import cc.jumpkick.cache.ShelfManifest;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.IOException;
@@ -59,7 +59,7 @@ final class ShelfPinning {
         Map<String, String> poms = new LinkedHashMap<>();
         for (ModuleOutcome m : result.modules()) {
             ModuleOutcome.Installed shelf = m.installed();
-            if (!m.success() || shelf == null || shelf.target() != InstallTarget.JK) continue;
+            if (!m.success() || shelf == null || shelf.destination() != InstallDestination.JK) continue;
             jars.put(shelf.coordinate(), shelf.jarSha256());
             poms.put(shelf.coordinate(), shelf.pomSha256());
         }

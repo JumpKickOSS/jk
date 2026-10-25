@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.function.Function;
@@ -10,14 +10,14 @@ import org.jspecify.annotations.Nullable;
 /**
  * Machine-scoped {@code [install]} policy from {@code ~/.jk/config.toml}: where {@code jk install}
  * puts a project's jar and POM when neither the command line nor the project's {@code jk.toml}
- * says. Precedence: JVM system property &gt; {@code JK_INSTALL_TARGET} env &gt; user file &gt;
+ * says. Precedence: JVM system property &gt; {@code JK_INSTALL_DESTINATION} env &gt; user file &gt;
  * {@code m2}, laid out in rank order by {@link MachineConfig}. An unknown word falls through.
  */
-public record JkInstallConfig(InstallTarget target) {
+public record JkInstallConfig(InstallDestination destination) {
 
-    public static final JkInstallConfig DEFAULTS = new JkInstallConfig(InstallTarget.M2);
+    public static final JkInstallConfig DEFAULTS = new JkInstallConfig(InstallDestination.M2);
 
-    private static final MachineConfig<InstallTarget> TARGET = MachineConfig.of(DEFAULTS.target());
+    private static final MachineConfig<InstallDestination> DESTINATION = MachineConfig.of(DEFAULTS.destination());
 
     public static JkInstallConfig resolve() {
         return resolve(JkDirs.userConfigFile(), System::getenv, System::getProperty);
@@ -30,20 +30,20 @@ public record JkInstallConfig(InstallTarget target) {
 
     static JkInstallConfig resolve(
             Path userConfig, Function<String, @Nullable String> env, Function<String, @Nullable String> property) {
-        TomlScan scan = TomlScan.scan(userConfig, "install.target");
-        return new JkInstallConfig(TARGET.layer(
-                word(property.apply("jk.install.target")),
-                word(EnvValues.string(env, "JK_INSTALL_TARGET").orElse(null)),
-                word(scan.get("install.target"))));
+        TomlScan scan = TomlScan.scan(userConfig, "install.destination");
+        return new JkInstallConfig(DESTINATION.layer(
+                word(property.apply("jk.install.destination")),
+                word(EnvValues.string(env, "JK_INSTALL_DESTINATION").orElse(null)),
+                word(scan.get("install.destination"))));
     }
 
     /** The {@code [install]} table of {@code file}; missing or malformed gives {@link #DEFAULTS}. */
     public static JkInstallConfig fromToml(Path file) {
-        return new JkInstallConfig(
-                TARGET.layer(word(TomlScan.scan(file, "install.target").get("install.target"))));
+        return new JkInstallConfig(DESTINATION.layer(
+                word(TomlScan.scan(file, "install.destination").get("install.destination"))));
     }
 
-    private static @Nullable InstallTarget word(@Nullable String raw) {
-        return raw == null ? null : InstallTarget.parse(raw).orElse(null);
+    private static @Nullable InstallDestination word(@Nullable String raw) {
+        return raw == null ? null : InstallDestination.parse(raw).orElse(null);
     }
 }

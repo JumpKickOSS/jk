@@ -168,7 +168,11 @@ public final class EffectiveUserConfig {
     private static void addInstall(List<Row> out, Path file, Function<String, @Nullable String> env) {
         JkInstallConfig d = JkInstallConfig.DEFAULTS;
         JkInstallConfig e = JkInstallConfig.resolve(file, env);
-        add(out, "install.target", d.target().spelling(), e.target().spelling());
+        add(
+                out,
+                "install.destination",
+                d.destination().spelling(),
+                e.destination().spelling());
     }
 
     private static void addTemplates(List<Row> out, Path file) {

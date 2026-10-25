@@ -4,7 +4,7 @@ package cc.jumpkick.runtime.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
@@ -50,7 +50,7 @@ class WorkspacePreflightInstallRefusalTest {
                 new BuildForecasting.Preflight(Set.of(unit.dir()), Set.of(), Map.of(), List.of(module), Map.of()));
     }
 
-    private WorkspaceRequest request(@Nullable InstallTarget target) {
+    private WorkspaceRequest request(@Nullable InstallDestination target) {
         return new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 0, null, true, false, 0, null, true, true)
                 .withSpec(WorkspaceSpec.install(Set.of(), Map.of(), tmp.resolve("m2"), target, false));
     }
@@ -98,7 +98,7 @@ class WorkspacePreflightInstallRefusalTest {
 
         occupy("2.0.0");
         assertThat(WorkspacePreflightPhase.installRefusals(
-                        request(InstallTarget.JK), List.of(release), forecast(release, TaskForecast.Status.RUN)))
+                        request(InstallDestination.JK), List.of(release), forecast(release, TaskForecast.Status.RUN)))
                 .isEmpty();
     }
 

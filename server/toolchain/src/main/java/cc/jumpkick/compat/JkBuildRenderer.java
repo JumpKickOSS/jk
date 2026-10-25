@@ -369,9 +369,9 @@ public final class JkBuildRenderer {
                     .append('\n');
         }
         if (!p.m2integration()) sb.append("\n[m2]\nintegration = false\n");
-        if (p.installTarget() != null) {
-            sb.append("\n[install]\ntarget = ")
-                    .append(quote(p.installTarget().spelling()))
+        if (p.installDestination() != null) {
+            sb.append("\n[install]\ndestination = ")
+                    .append(quote(p.installDestination().spelling()))
                     .append('\n');
         }
     }

@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskStatus;
@@ -305,7 +305,7 @@ class EngineEventDecoderStreamTest {
     @Test
     void a_module_finish_carries_what_the_install_pass_installed() throws Exception {
         ModuleOutcome.Installed installed = new ModuleOutcome.Installed(
-                "g:a:1", "a".repeat(64), "b".repeat(64), InstallTarget.M2, ModuleOutcome.Installed.Change.NEW);
+                "g:a:1", "a".repeat(64), "b".repeat(64), InstallDestination.M2, ModuleOutcome.Installed.Change.NEW);
         WorkspaceResult result = EngineEventDecoder.streamWorkspaceEvents(
                 stream(
                         ProtoLifecycle.jobStart(53, "install", "/w", 1),

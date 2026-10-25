@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.runtime;
 
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
@@ -54,12 +54,12 @@ public record ModuleOutcome(
     /**
      * The repository slot an install pass wrote for a module: its plain {@code group:artifact:version},
      * the sha256 (lower-case hex) of the thin jar and of the POM the engine published — or found
-     * already there at those bytes — the {@code target} it went to, and what the pass changed. The
+     * already there at those bytes — the {@code destination} it went to, and what the pass changed. The
      * client pins the shelf from these, never from a re-read of it, so a concurrent install landing
      * after the pass cannot be mistaken for it.
      */
     public record Installed(
-            String coordinate, String jarSha256, String pomSha256, InstallTarget target, Change change) {
+            String coordinate, String jarSha256, String pomSha256, InstallDestination destination, Change change) {
 
         /** What an install pass did to the slot. */
         public enum Change {

@@ -18,6 +18,6 @@ public enum ProjectInherit {
     JAVADOC,
     DESCRIPTION,
     M2INTEGRATION,
-    INSTALL_TARGET,
+    INSTALL_DESTINATION,
     LAYOUT
 }

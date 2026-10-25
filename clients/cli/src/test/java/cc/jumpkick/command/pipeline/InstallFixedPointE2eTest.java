@@ -105,7 +105,7 @@ class InstallFixedPointE2eTest {
                 integration = false
 
                 [install]
-                target = "jk"
+                destination = "jk"
                 """.formatted(java));
         Files.writeString(root.resolve("lib/jk.toml"), """
                 name = "lib"

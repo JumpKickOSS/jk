@@ -3,7 +3,7 @@ package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.wire.runtime.TailArgs;
 import java.net.URI;
@@ -47,8 +47,8 @@ public final class TailArgsJson {
                         .optionalNonBlankString(
                                 "m2Dir", i.m2Dir() == null ? null : i.m2Dir().toString())
                         .optionalNonBlankString(
-                                InstallTarget.KEY,
-                                i.target() == null ? null : i.target().spelling())
+                                InstallDestination.KEY,
+                                i.destination() == null ? null : i.destination().spelling())
                         .optionalTrue("snapshot", i.snapshot())
                         .body();
             case TailArgs.Train t ->
@@ -107,7 +107,8 @@ public final class TailArgsJson {
             case "install" ->
                 new TailArgs.Install(
                         path(Jsonl.str(json, "m2Dir")),
-                        InstallTarget.parse(Jsonl.str(json, InstallTarget.KEY)).orElse(null),
+                        InstallDestination.parse(Jsonl.str(json, InstallDestination.KEY))
+                                .orElse(null),
                         Jsonl.bool(json, "snapshot", false));
             case "train" -> new TailArgs.Train(Jsonl.str(json, "profile"), Jsonl.bool(json, "force", false));
             case "publish" ->

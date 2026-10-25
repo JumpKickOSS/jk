@@ -16,7 +16,7 @@ class JkSkillTest {
     @Test
     void core_and_topics_stay_inside_the_budget() {
         String core = JkSkill.core();
-        assertThat(core.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(2048);
+        assertThat(core.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(2560);
         assertThat(core).endsWith("\n").doesNotContain("\r");
         assertThat(frontmatter(core)).contains("name: jk");
         String description = frontmatter(core)

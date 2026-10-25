@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.Coordinate;
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.publish.PublishablePom;
@@ -20,11 +20,11 @@ import org.junit.jupiter.api.io.TempDir;
 
 class InstallPlansAlreadyInstalledTest {
 
-    private static JkBuild project(InstallTarget target) {
+    private static JkBuild project(InstallDestination target) {
         return JkBuild.builder(Project.builder("cc.jumpkick", "jk-foo", "1.0")
                         .jdkMajor(25)
                         .java(25)
-                        .installTarget(target)
+                        .installDestination(target)
                         .build())
                 .build();
     }
@@ -35,7 +35,7 @@ class InstallPlansAlreadyInstalledTest {
         Path cache = tmp.resolve("cache");
         Path mod = tmp.resolve("mod");
         Files.createDirectories(mod);
-        JkBuild project = project(InstallTarget.JK);
+        JkBuild project = project(InstallDestination.JK);
         BuildLayout layout = BuildLayout.of(mod, project);
         Files.createDirectories(layout.mainJar().getParent());
         Files.writeString(layout.mainJar(), "jar-bytes");
@@ -59,7 +59,7 @@ class InstallPlansAlreadyInstalledTest {
                             coord.toGav(),
                             Hashing.sha256Hex(layout.mainJar()),
                             Hashing.sha256Hex(pomFile),
-                            InstallTarget.JK,
+                            InstallDestination.JK,
                             ModuleOutcome.Installed.Change.UNCHANGED));
 
             Files.writeString(layout.mainJar(), "jar-bytes-changed");
@@ -83,7 +83,7 @@ class InstallPlansAlreadyInstalledTest {
         Path cache = tmp.resolve("cache");
         Path mod = tmp.resolve("mod");
         Files.createDirectories(mod);
-        JkBuild project = project(InstallTarget.M2);
+        JkBuild project = project(InstallDestination.M2);
         BuildLayout layout = BuildLayout.of(mod, project);
         Files.createDirectories(layout.mainJar().getParent());
         Files.writeString(layout.mainJar(), "jar-bytes");
@@ -127,9 +127,9 @@ class InstallPlansAlreadyInstalledTest {
                             .cached())
                     .as("a jar this build rewrites is reinstalled whatever the repo holds")
                     .isFalse();
-            assertThat(ForecastPackagingTails.cacheInstall(project, layout, cache, m2Dir, InstallTarget.JK, false)
+            assertThat(ForecastPackagingTails.cacheInstall(project, layout, cache, m2Dir, InstallDestination.JK, false)
                             .cached())
-                    .as("--target jk asks the private repo, which holds the bytes too")
+                    .as("--destination jk asks the private repo, which holds the bytes too")
                     .isTrue();
         } finally {
             if (prevStore != null) System.setProperty("jk.env.JK_STORE_DIR", prevStore);
@@ -143,7 +143,7 @@ class InstallPlansAlreadyInstalledTest {
         Path cache = tmp.resolve("cache");
         Path mod = tmp.resolve("mod");
         Files.createDirectories(mod);
-        JkBuild project = project(InstallTarget.JK);
+        JkBuild project = project(InstallDestination.JK);
         BuildLayout layout = BuildLayout.of(mod, project);
         Files.createDirectories(layout.mainJar().getParent());
         Files.writeString(layout.mainJar(), "jar-bytes");

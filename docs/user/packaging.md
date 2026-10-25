@@ -398,7 +398,7 @@ application then also gets a launcher: a native binary in `~/.jk/bin` if one exi
 minified/fat jar under `~/.jk/lib/<name>/` plus a `java -jar` script, else a thin `java -cp` script
 over the repo jars. The settle line names the coordinate and where it went.
 
-`[install] target = "jk"` (or `jk install --target jk`, or the same key in `~/.jk/config.toml`)
+`[install] destination = "jk"` (or `jk install --destination jk`, or the same key in `~/.jk/config.toml`)
 puts the jar and POM in jk's private `repos/jk-local` instead. Plugin workers (`jk-plugin.toml`)
 are always installed there: the engine rebuilds their runtime classpath from the installed POM.
 Outside a project, pass a coordinate (`jkx` mode).

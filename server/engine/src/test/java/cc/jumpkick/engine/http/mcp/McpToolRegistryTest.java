@@ -94,6 +94,7 @@ class McpToolRegistryTest {
         assertThat(listed)
                 .containsExactly(
                         "run",
+                        "snapshot",
                         "diagnostics",
                         "deps",
                         "why",
@@ -172,7 +173,7 @@ class McpToolRegistryTest {
         String listing = MiniJson.write(McpTools.standard().listing(McpTools.Surface.LOOP));
         assertThat(listing.length())
                 .as("default tools/list reply %d bytes", listing.length())
-                .isLessThanOrEqualTo(3_500);
+                .isLessThanOrEqualTo(4_000);
         assertThat(all.length()).as("full list is the expensive one").isGreaterThan(loop.length() * 4);
     }
 

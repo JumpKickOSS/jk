@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.Coordinate;
-import cc.jumpkick.model.InstallTarget;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.Scope;
 import java.time.Instant;
 import java.util.List;
@@ -354,7 +354,7 @@ class LockfileRoundTripTest {
                                 null,
                                 "publish",
                                 false,
-                                InstallTarget.JK)));
+                                InstallDestination.JK)));
 
         String rendered = LockfileWriter.render(original);
         assertThat(rendered)
@@ -367,7 +367,7 @@ class LockfileRoundTripTest {
                 .contains("kotlin  = \"2.4.10\"")
                 .contains("sources = \"publish\"")
                 .contains("m2.integration = false")
-                .contains("install.target = \"jk\"");
+                .contains("install.destination = \"jk\"");
 
         // Whole records, not selected keys: a component the writer forgets to emit is a silent
         // data loss on the next read, and a per-field assertion list never notices the new one.

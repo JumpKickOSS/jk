@@ -97,7 +97,7 @@ class WorkspaceStreamParityTest {
                 nope = { group = "com.example.absent", name = "nothing", version = "9.9.9" }
 
                 [install]
-                target = "jk"
+                destination = "jk"
                 """);
 
         int[] exit = {0};
@@ -130,7 +130,7 @@ class WorkspaceStreamParityTest {
                 main-class = "ex.Main"
 
                 [install]
-                target = "jk"
+                destination = "jk"
                 """);
 
         int[] exit = {-1};
@@ -180,7 +180,7 @@ class WorkspaceStreamParityTest {
                 name = "lib"
 
                 [install]
-                target = "jk"
+                destination = "jk"
                 """);
         Files.writeString(lib.resolve("src/main/java/ex/Lib.java"), "package ex; " + libBody + "\n");
         return tmp.resolve("cache");

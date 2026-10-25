@@ -198,7 +198,7 @@ public final class LocalProjectBuilder {
                 p.javadocMode(),
                 p.description(),
                 p.m2integration(),
-                p.installTarget(),
+                p.installDestination(),
                 p.layout(),
                 Set.of(),
                 p.jdkSpec(),

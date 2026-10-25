@@ -116,7 +116,7 @@ class ThirdPartyPluginTest {
                 integration = false
 
                 [install]
-                target = "jk"
+                destination = "jk"
 
                 # The fixture stands in for the JumpKick repository, so the SDK floor's first-party
                 # coordinates resolve from it too.
@@ -234,7 +234,7 @@ class ThirdPartyPluginTest {
                 integration = false
 
                 [install]
-                target = "jk"
+                destination = "jk"
 
                 [repositories]
                 fixture = "%s"
