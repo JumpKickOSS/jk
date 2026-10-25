@@ -114,7 +114,9 @@ class ThirdPartyPluginTest {
                 # finds a sibling POM next to the jar.
                 [m2]
                 integration = false
-                install = false
+
+                [install]
+                target = "jk"
 
                 # The fixture stands in for the JumpKick repository, so the SDK floor's first-party
                 # coordinates resolve from it too.
@@ -230,7 +232,9 @@ class ThirdPartyPluginTest {
 
                 [m2]
                 integration = false
-                install = false
+
+                [install]
+                target = "jk"
 
                 [repositories]
                 fixture = "%s"
