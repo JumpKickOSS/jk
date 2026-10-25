@@ -176,11 +176,12 @@ public final class WorkspacePreflightPhase {
             WorkspaceRequest request,
             List<BuildGraph.BuildUnit> units,
             Optional<BuildForecasting.Preflight> preflight) {
-        if (request.target() != WorkspaceTarget.INSTALL || preflight.isEmpty()) return List.of();
+        if (request.target() != WorkspaceTarget.INSTALL) return List.of();
         WorkspaceSpec spec = request.spec() == null ? WorkspaceSpec.DEFAULT : request.spec();
         Path m2Dir = spec.m2Dir() != null ? spec.m2Dir() : Path.of(System.getProperty("user.home", "."), ".m2");
         Map<Path, TaskForecast.Module> byDir = new LinkedHashMap<>();
-        for (TaskForecast.Module m : preflight.orElseThrow().modules()) {
+        for (TaskForecast.Module m :
+                preflight.map(BuildForecasting.Preflight::modules).orElse(List.of())) {
             byDir.put(BuildGraph.canonicalPath(m.dir()), m);
         }
         List<String> refused = new ArrayList<>();
@@ -192,8 +193,15 @@ public final class WorkspacePreflightPhase {
                 continue;
             }
             String packaging = ModuleJar.packagingStep(unit.manifest(), unit.dir());
+            if (packaging == null) continue;
+            String hidden =
+                    InstallPlans.shadowedByRelease(unit.manifest(), unit.dir(), m2Dir, spec.installDestination());
+            if (hidden != null) {
+                refused.add(hidden);
+                continue;
+            }
             TaskForecast.Module module = byDir.get(dir);
-            if (packaging == null || module == null) continue;
+            if (module == null) continue;
             boolean jarRebuilds = module.steps().stream().anyMatch(t -> t.name().equals(packaging) && !t.cached());
             if (!jarRebuilds) continue;
             String message =

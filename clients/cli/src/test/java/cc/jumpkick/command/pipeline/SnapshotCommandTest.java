@@ -82,6 +82,9 @@ class SnapshotCommandTest {
                     if (Files.exists(lock)) assertThat(Files.readString(lock)).doesNotContain("SNAPSHOT");
                 });
 
+        // The release is installed, so its snapshot would sort below it and never be chosen.
+        assertThat(jk(tmp, m2, "snapshot")).isNotEqualTo(0);
+
         // Editing the source and installing the release again is refused, with the way out.
         library(tmp, "snap-lib", "public final class Lib { public static int three() { return 3; } }");
         assertThat(jk(tmp, m2, "install")).isNotEqualTo(0);

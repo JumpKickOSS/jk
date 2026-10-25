@@ -430,7 +430,7 @@ between the two, and a snapshot slot sits beside the release one.
 
 In a workspace every member takes the suffix, and so does each member's dependency on a sibling, so
 the POMs it installs name `lib:1.0.0-SNAPSHOT`, not a release that was never installed. A version
-that already ends in `-SNAPSHOT` is installed as written. The snapshot jar is built for its own
+that already ends in `-SNAPSHOT` is installed as written. A snapshot sorts below its release, so `jk snapshot` refuses, before it builds, when the release is already installed where the snapshot would go (`1.0.0` is there, so `1.0.0-SNAPSHOT` would never be chosen): raise the version in `jk.toml` first. The snapshot jar is built for its own
 version, so it is never a release jar renamed; `jk publish` still refuses a `-SNAPSHOT` version.
 
 ## Related
