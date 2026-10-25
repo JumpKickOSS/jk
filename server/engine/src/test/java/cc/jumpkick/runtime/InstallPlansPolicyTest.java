@@ -171,6 +171,27 @@ class InstallPlansPolicyTest {
     }
 
     @Test
+    void a_snapshot_whose_release_is_installed_is_refused_as_invisible() throws Exception {
+        JkBuild release = project("1.0.0");
+        install(release, built(release, "v1"));
+        JkBuild snapshot = project("1.0.0-SNAPSHOT");
+        Path moduleDir = tmp.resolve("mod");
+
+        assertThat(InstallPlans.shadowedByRelease(snapshot, moduleDir, m2Dir, null))
+                .contains("ex.acme:money:1.0.0-SNAPSHOT would be hidden by the release ex.acme:money:1.0.0")
+                .contains("Raise the version in jk.toml");
+        assertThat(InstallPlans.shadowedByRelease(release, moduleDir, m2Dir, null))
+                .as("a release is not shadowed by anything")
+                .isNull();
+        assertThat(InstallPlans.shadowedByRelease(project("2.0.0-SNAPSHOT"), moduleDir, m2Dir, null))
+                .as("no 2.0.0 is installed")
+                .isNull();
+        assertThat(InstallPlans.shadowedByRelease(snapshot, moduleDir, m2Dir, InstallDestination.JK))
+                .as("the release is in the Maven local repository, not the private one")
+                .isNull();
+    }
+
+    @Test
     void a_release_already_installed_is_refused_before_building() throws Exception {
         JkBuild project = project("1.0.0");
         Path moduleDir = tmp.resolve("mod");

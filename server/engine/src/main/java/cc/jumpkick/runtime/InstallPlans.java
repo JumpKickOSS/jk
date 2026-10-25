@@ -210,6 +210,11 @@ public final class InstallPlans {
         BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
         var p = project.project();
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
+        String hidden = shadowedByRelease(coord, destinationOf(project, layout.moduleRoot(), override), m2Dir);
+        if (hidden != null) {
+            ctx.error(TaskNames.CACHE_INSTALL, hidden);
+            throw new RuntimeException(hidden);
+        }
         ModuleOutcome.Installed installed = installedShas(project, layout, cache, m2Dir, override);
         if (installed != null) {
             ctx.label("already in local repo");
@@ -477,6 +482,42 @@ public final class InstallPlans {
         boolean owned = M2InstallMemo.read(M2InstallMemo.file(JkStores.store(), m2Root, coord))
                 .isPresent();
         return owned ? releaseSlot(coord, dir) : foreignSlot(coord, dir);
+    }
+
+    /**
+     * Why a snapshot of {@code manifest} would be invisible, decided before anything is built: the
+     * release it is a snapshot of is already installed where this install goes. A snapshot sorts
+     * below its release, so any resolution that sees both takes the release and the snapshot jar is
+     * never used. Null for a release, or when no such release is installed.
+     */
+    public static @Nullable String shadowedByRelease(
+            JkBuild manifest, Path moduleDir, @Nullable Path m2Dir, @Nullable InstallDestination override) {
+        var p = manifest.project();
+        return shadowedByRelease(
+                Coordinate.of(p.group(), p.name(), p.version()), destinationOf(manifest, moduleDir, override), m2Dir);
+    }
+
+    private static @Nullable String shadowedByRelease(
+            Coordinate snapshot, InstallDestination destination, @Nullable Path m2Dir) {
+        String version = snapshot.version();
+        if (!isSnapshot(version)) return null;
+        String base = version.substring(0, version.length() - SnapshotQualifier.SUFFIX.length());
+        if (base.isBlank()) return null;
+        Coordinate release = Coordinate.of(snapshot.group(), snapshot.artifact(), base);
+        String jarRel = MavenLayout.artifactPath(release);
+        String pomRel = MavenLayout.pomPath(release);
+        boolean installed;
+        if (destination == InstallDestination.JK) {
+            RepoArtifactStore shelf = localShelf();
+            installed = shelf.locate(jarRel).isPresent() || shelf.locate(pomRel).isPresent();
+        } else {
+            Path m2Root = m2Repository(m2Dir);
+            installed = Files.exists(m2Root.resolve(jarRel)) || Files.exists(m2Root.resolve(pomRel));
+        }
+        if (!installed) return null;
+        return snapshot.toGav() + " would be hidden by the release " + release.toGav()
+                + ", which is already installed: a snapshot sorts below its release, so nothing would choose it."
+                + " Raise the version in jk.toml.";
     }
 
     /**
@@ -769,6 +810,10 @@ public final class InstallPlans {
     }
 
     private static RepoArtifactStore localStore(Path cacheDir) {
+        return localShelf();
+    }
+
+    private static RepoArtifactStore localShelf() {
         return RepoArtifactStore.forStoreId(JkStores.store(), RepoArtifactResolver.JK_LOCAL);
     }
 

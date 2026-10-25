@@ -103,6 +103,21 @@ class WorkspacePreflightInstallRefusalTest {
     }
 
     @Test
+    void a_snapshot_hidden_by_its_installed_release_is_refused_without_a_forecast() throws Exception {
+        BuildGraph.BuildUnit snapshot = module("1.0.0-SNAPSHOT");
+        occupy("1.0.0");
+
+        assertThat(WorkspacePreflightPhase.installRefusals(request(null), List.of(snapshot), Optional.empty()))
+                .singleElement()
+                .asString()
+                .contains("would be hidden by the release ex:lib:1.0.0");
+        assertThat(WorkspacePreflightPhase.installRefusals(
+                        request(null), List.of(snapshot), forecast(snapshot, TaskForecast.Status.CACHED)))
+                .as("even a jar the forecast says is current")
+                .hasSize(1);
+    }
+
+    @Test
     void no_forecast_means_no_early_refusal() throws Exception {
         BuildGraph.BuildUnit unit = module("1.0.0");
         occupy("1.0.0");
