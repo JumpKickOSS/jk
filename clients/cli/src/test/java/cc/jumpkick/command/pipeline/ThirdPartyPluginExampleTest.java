@@ -38,7 +38,8 @@ class ThirdPartyPluginExampleTest {
 
     private static final Path ROOT = RepoRoot.find(ThirdPartyPluginExampleTest.class);
     private static final Path EXAMPLE = ROOT.resolve("docs/user/examples/third-party-plugin");
-    private static final String VERSION = JkVersion.VERSION;
+    /** The release the sample targets: the running version without a {@code -SNAPSHOT}, which a snapshot run adds. */
+    private static final String VERSION = JkVersion.VERSION.replaceFirst("-SNAPSHOT$", "");
 
     @Test
     void a_plugin_compiled_against_the_published_sdk_loads_in_a_consumer_build(@TempDir Path dir) throws Exception {
