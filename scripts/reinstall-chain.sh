@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Reinstall jk from this checkout when the installed jk is too old to build it. Tries the plain
-# `jk install --skip-tests` first; when that fails, installs stepping
+# `jk snapshot --skip-tests` (`jk install` on a jk without it) first; when that fails, installs stepping
 # stones from a scratch worktree until the checkout builds:
 #   - a table no installed plugin owns, where the tree's own plugin provides it: the tree at HEAD
 #     without the members that use the table, which installs the plugin;
@@ -159,7 +159,11 @@ while :; do
   [ "$stage" -le "$MAX_STAGES" ] || die "gave up after $MAX_STAGES stages"
   log="$LOGS/$stage-checkout.log"
   say "stage $stage: the checkout"
-  if (cd "$ROOT" && "$JK" install --skip-tests) >"$log" 2>&1; then
+  # The checkout is an unreleased version: a jk that has `snapshot` installs it as a snapshot, so the
+  # install is replaced on every run; an older jk installs it as the release it cannot tell apart.
+  verb=install
+  if "$JK" snapshot --help >/dev/null 2>&1; then verb=snapshot; fi
+  if (cd "$ROOT" && "$JK" "$verb" --skip-tests) >"$log" 2>&1; then
     chain+=("the checkout")
     say "installed in $stage stage(s): $(printf '%s → ' "${chain[@]}" | sed 's/ → $//')"
     rm -rf "$WORK"

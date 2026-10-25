@@ -66,8 +66,8 @@ prepare, schedule). Add a `WorkspaceTarget` + module filter. See
 ```bash
 curl -fsSL https://jumpkick.build/install.sh | bash   # the released jk, once per machine
 export PATH="$HOME/.jk/bin:$PATH"
-jk install -S      # builds every module (native client + engine jar → target/dist/), then
-                   # this checkout's client, engine and workers take over ~/.jk
+jk snapshot -S     # builds every module (native client + engine jar → target/dist/), then
+                   # this checkout's client, engine and workers take over ~/.jk, as <version>-SNAPSHOT
 ```
 
 From then on the engine running your builds is the one you just compiled; the long form is
@@ -209,7 +209,7 @@ A multi-module workspace from [jk-examples](https://github.com/JumpKickOSS/jk-ex
 out beside this repository:
 
 ```bash
-jk install -S
+jk snapshot -S
 
 cd ../jk-examples/01-start/java-workspace
 jk build && jk test -m cli

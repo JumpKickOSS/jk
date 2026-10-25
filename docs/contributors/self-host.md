@@ -168,11 +168,16 @@ Install the released jk and let it build the tree; the tree's own jk then takes 
 curl -fsSL https://jumpkick.build/install.sh | bash   # or JK_VERSION="$(cat .jk/ci-bootstrap-version)" bash
 export PATH="$HOME/.jk/bin:$PATH"
 jk engine status
-jk install -S   # builds the tree; this checkout's client, engine and workers replace the release's
-jk install -S   # once more: the release's client stops after the pass its engine ran
+jk snapshot -S   # builds the tree; this checkout's client, engine and workers replace the release's
+jk snapshot -S   # once more: the release's client stops after the pass its engine ran
 ```
 
-`jk install` is what makes the checkout self-hosting rather than merely built: from then on the
+A released jk that predates `jk snapshot` cannot run those lines, and its `jk install` would write the
+tree's version as a release that a later `jk snapshot` then refuses. Bootstrap it once with the root
+`jk.toml` `version` written `<next>-SNAPSHOT` (do not commit that edit), `jk install -S`, then restore the
+version and continue with `jk snapshot`.
+
+`jk snapshot` is what makes the checkout self-hosting rather than merely built: from then on the
 engine running your builds is the one you just compiled ([Install jk with jk](#install-jk-with-jk)).
 The native client needs a GraalVM-capable JDK on the machine: `jk build` links it with the GraalVM
 `--graal` / `GRAALVM_HOME` names, else an installed one.
@@ -222,9 +227,9 @@ After `jk` is on `PATH`, stay in this checkout:
 
 ```bash
 jk lock
-jk install                       # builds, runs the fast tier, then installs
+jk snapshot                      # builds, runs the fast tier, then installs
 jk test                          # the fast tier, every module
-jk test -p integration           # the push gate
+jk snapshot -p integration       # the push gate
 ```
 
 Workspace members: libraries, `clients/cli`, `clients/cli-terminal`, `clients/web`, `server/engine`
@@ -298,7 +303,7 @@ the fast tier and included by no profile fails the build rather than silently ne
 One command installs everything the tree builds:
 
 ```bash
-jk install            # or -S; install runs the suite like `jk build`
+jk snapshot           # or -S; the snapshot runs the suite like `jk build`
 ```
 
 | Module kind | What `jk install` does with it |
