@@ -96,8 +96,8 @@ class WorkspaceStreamParityTest {
                 [dependencies]
                 nope = { group = "com.example.absent", name = "nothing", version = "9.9.9" }
 
-                [m2]
-                install = false
+                [install]
+                target = "jk"
                 """);
 
         int[] exit = {0};
@@ -129,8 +129,8 @@ class WorkspaceStreamParityTest {
                 name = "lib"
                 main-class = "ex.Main"
 
-                [m2]
-                install = false
+                [install]
+                target = "jk"
                 """);
 
         int[] exit = {-1};
@@ -179,8 +179,8 @@ class WorkspaceStreamParityTest {
         Files.writeString(lib.resolve("jk.toml"), """
                 name = "lib"
 
-                [m2]
-                install = false
+                [install]
+                target = "jk"
                 """);
         Files.writeString(lib.resolve("src/main/java/ex/Lib.java"), "package ex; " + libBody + "\n");
         return tmp.resolve("cache");

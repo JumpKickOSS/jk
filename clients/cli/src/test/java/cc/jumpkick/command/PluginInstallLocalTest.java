@@ -73,18 +73,17 @@ class PluginInstallLocalTest {
                 [workspace]
                 modules = ["plugins/worker"]
                 """);
-        // `[m2] install` defaults ON machine-wide, and that branch copies the jar and POM into the
-        // Maven local repo beside the shelf. This test is about the jk-local store alone, so the
-        // module opts out — and the --m2-dir redirect above means even a policy regression cannot
-        // reach the real ~/.m2.
+        // A project installs to the Maven local repo by default. This test is about the jk-local
+        // store alone, so the module names it as its target — and the --m2-dir redirect above means
+        // even a policy regression cannot reach the real ~/.m2.
         Files.writeString(mod.resolve("jk.toml"), """
                 group = "cc.jumpkick"
                 name = "jk-test-runner"
                 version = "0.12.0"
                 java = 25
 
-                [m2]
-                install = false
+                [install]
+                target = "jk"
                 """);
         Files.writeString(mod.resolve("jk-plugin.toml"), """
                 [plugin]
@@ -105,7 +104,7 @@ class PluginInstallLocalTest {
         assertThat(jar).isRegularFile();
         assertThat(jar.resolveSibling("jk-test-runner-0.12.0.pom")).isRegularFile();
         assertThat(dir.resolve("m2"))
-                .as("[m2] install = false must leave the Maven local repo alone")
+                .as("an install to jk-local must leave the Maven local repo alone")
                 .doesNotExist();
         assertThat(worker.resolve("src/main/java/x/X.java")).isRegularFile();
     }
