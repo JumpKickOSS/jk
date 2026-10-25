@@ -35,7 +35,7 @@ population = { files = 2203 }
 "plugins/quarkus" = { classes = 19, sites = 1340 }
 "plugins/spring-boot" = { classes = 5, sites = 462 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1121, sites = 73055 }
+"server/engine" = { classes = 1369, sites = 93104 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 56, sites = 3311 }
 "server/resolver" = { classes = 111, sites = 6750 }
@@ -229,10 +229,6 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 [[blind-tree-walks.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.engine.runtime.CacheInventoryOps#cacheUsage(Ljava/nio/file/Path;)Lcc/jumpkick/wire/protocol/CacheInventoryAck; -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.runtime.CacheInventoryOps#walkExclusiveAdding(Ljava/nio/file/Path;Ljava/util/Set;Lcc/jumpkick/cache/DiskUsage$SameFileKeys;)Lcc/jumpkick/engine/runtime/CacheInventoryOps$Stat; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "server/engine"

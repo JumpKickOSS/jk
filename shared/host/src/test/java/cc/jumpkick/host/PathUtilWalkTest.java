@@ -52,6 +52,25 @@ class PathUtilWalkTest {
         assertThat(seen).containsExactlyInAnyOrder(root.resolve("top.txt"), locked.resolve("hidden.txt"));
     }
 
+    /** A tally over a tree others keep changing reports what it could read, and does not fail. */
+    @Test
+    void the_readable_walk_leaves_out_a_directory_it_cannot_open(@TempDir Path tmp) throws IOException {
+        assumeTrue(!Os.isWindows(), "POSIX permissions");
+        Path root = Files.createDirectories(tmp.resolve("root"));
+        Files.writeString(root.resolve("top.txt"), "x");
+        Path locked = Files.createDirectories(root.resolve("locked"));
+        Files.writeString(locked.resolve("hidden.txt"), "y");
+        Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("---------"));
+        assumeTrue(!Files.isReadable(locked), "not running as root");
+        List<Path> seen = new ArrayList<>();
+        try {
+            PathUtil.forEachReadableFile(root, (f, a) -> seen.add(f));
+        } finally {
+            Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwxr-xr-x"));
+        }
+        assertThat(seen).containsExactly(root.resolve("top.txt"));
+    }
+
     @Test
     void it_visits_every_regular_file_with_its_attributes(@TempDir Path tmp) throws IOException {
         Files.createDirectories(tmp.resolve("a/b"));
