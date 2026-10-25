@@ -17,6 +17,9 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -240,6 +243,41 @@ class MavenPublisherTest {
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("returned 409")
                 .hasMessageContaining("does not allow it to be replaced");
+    }
+
+    @Test
+    void each_snapshot_publish_adds_a_build_and_the_metadata_names_the_newest() throws Exception {
+        Project project = new Project("com.example", "widget", "1.0.1-SNAPSHOT", 21);
+        List<MavenPublisher.Artifact> artifacts = List.of(
+                new MavenPublisher.Artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8)),
+                new MavenPublisher.Artifact(".pom", "<project/>".getBytes(StandardCharsets.UTF_8)),
+                new MavenPublisher.Artifact("-sources.jar", "src".getBytes(StandardCharsets.UTF_8)));
+        Instant first = Instant.parse("2026-10-25T20:15:00Z");
+
+        new MavenPublisher(base, null, null)
+                .withClock(Clock.fixed(first, ZoneOffset.UTC))
+                .publish(project, artifacts);
+        new MavenPublisher(base, null, null)
+                .withClock(Clock.fixed(first.plusSeconds(90), ZoneOffset.UTC))
+                .publish(project, artifacts);
+
+        String dir = "/repo/com/example/widget/1.0.1-SNAPSHOT/";
+        assertThat(received)
+                .containsKeys(
+                        dir + "widget-1.0.1-20261025.201500-1.jar",
+                        dir + "widget-1.0.1-20261025.201500-1.jar.sha1",
+                        dir + "widget-1.0.1-20261025.201630-2.jar",
+                        dir + "widget-1.0.1-20261025.201630-2.pom",
+                        dir + "widget-1.0.1-20261025.201630-2-sources.jar")
+                .doesNotContainKey(dir + "widget-1.0.1-SNAPSHOT.jar");
+        String metadata = new String(received.get(dir + "maven-metadata.xml"), StandardCharsets.UTF_8);
+        assertThat(metadata)
+                .contains("<timestamp>20261025.201630</timestamp>")
+                .contains("<buildNumber>2</buildNumber>")
+                .contains("<classifier>sources</classifier>")
+                .contains("<value>1.0.1-20261025.201630-2</value>");
+        assertThat(received).containsKey(dir + "maven-metadata.xml.sha1");
+        assertThat(versionsOnServer()).contains("1.0.1-SNAPSHOT");
     }
 
     @Test
