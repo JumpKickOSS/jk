@@ -67,16 +67,14 @@ class JkBuildParserApplicationTest {
                         [application]
                         main      = "com.example.Main"
                         java-opts = ["-Xmx1g"]
-                        """).applicationJvmArgs())
-                .containsExactly("-Xmx1g");
+                        """).applicationJvmArgs()).containsExactly("-Xmx1g");
         assertThat(JkBuildParser.parse(PROJECT + """
 
                         [application]
                         main      = "com.example.Main"
                         java-opts = ["-Xmx1g"]
                         jvm-args  = ["-Xmx2g"]
-                        """).applicationJvmArgs())
-                .containsExactly("-Xmx2g");
+                        """).applicationJvmArgs()).containsExactly("-Xmx2g");
     }
 
     @Test
@@ -91,7 +89,9 @@ class JkBuildParserApplicationTest {
                 jvm-args  = ["-Xss2m"]
                 """);
         assertThat(parsed.build().testJvm().jvmArgs()).containsExactly("-Xmx1g");
-        assertThat(Objects.requireNonNull(parsed.profiles().byName().get("fast")).jvmArgs()).containsExactly("-Xss2m");
+        assertThat(Objects.requireNonNull(parsed.profiles().byName().get("fast"))
+                        .jvmArgs())
+                .containsExactly("-Xss2m");
     }
 
     @Test

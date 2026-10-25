@@ -8,9 +8,9 @@ What a release may change in the formats projects depend on: [Compatibility](com
 
 | Line | Meaning |
 |------|---------|
-| **`0.40.0`** | Current product version (no `-SNAPSHOT` on `main`) |
-| Tag **`v0.40.0`** | Next public release cut from that line |
-| Prior | **`0.20.0`** — previous release; **`0.10.1`** first public |
+| **`0.41.0`** | Current product version (no `-SNAPSHOT` on `main`) |
+| Tag **`v0.41.0`** | Next public release cut from that line |
+| Prior | **`0.40.0`** — previous release; **`0.10.1`** first public |
 | Later | Semver-ish: `0.30.1`, `0.31.0`, … |
 
 Bump `JkVersion.VERSION`, the workspace `jk.toml` `version` and the installers' pointer floor
@@ -25,6 +25,15 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 <version>` puts the entry at the top of the GitHub Release notes, ahead of the commit list since the
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
+
+### 0.41.0
+
+- **`[application] jvm-args`** puts flags on the JVM that `jk run` and `jk dev` start; `java-opts` is accepted as
+  an alias in `[application]`, `[test]` and `[profiles.<name>]`, and `jvm-args` wins when both are set.
+- **Quarkus fast-jar builds** package `quarkus-run.jar` rather than the bootstrap-runner jar under `lib/boot`.
+- **`jk run`** reports a missing main method as the failure on the Run line.
+- **Warm workers** ignore the startup-cache flags in their launch key, so a cold worker and a cache-mapping
+  one are no longer both kept.
 
 ### 0.40.0
 
