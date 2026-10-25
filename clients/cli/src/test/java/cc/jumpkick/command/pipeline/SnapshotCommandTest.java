@@ -29,6 +29,13 @@ class SnapshotCommandTest {
         Files.writeString(dir.resolve("src/main/java/com/example/Lib.java"), "package com.example; " + body + "\n");
     }
 
+    /** An application, the shape {@code jk install} is for; {@code body} is added to {@code Lib}. */
+    private static void application(Path dir, String name, String body) throws IOException {
+        library(dir, name, "public final class Lib { public static void main(String[] args) { } " + body + " }");
+        Files.writeString(
+                dir.resolve("jk.toml"), MANIFEST.formatted(name) + "\n[application]\nmain = \"com.example.Lib\"\n");
+    }
+
     private static int jk(Path dir, Path m2, String... verbAndFlags) {
         String[] common = {
             "-C",
@@ -52,7 +59,7 @@ class SnapshotCommandTest {
 
     @Test
     void a_snapshot_is_installed_replaced_and_kept_beside_the_release(@TempDir Path tmp) throws Exception {
-        library(tmp, "snap-lib", "public final class Lib { }");
+        application(tmp, "snap-lib", "");
         Path m2 = tmp.resolve("m2");
         Path snapshots = m2.resolve("repository/com/example/snap-lib/1.0.0-SNAPSHOT");
         Path release = m2.resolve("repository/com/example/snap-lib/1.0.0");
@@ -66,7 +73,7 @@ class SnapshotCommandTest {
         byte[] first = Files.readAllBytes(snapshots.resolve("snap-lib-1.0.0-SNAPSHOT.jar"));
 
         // The inner loop: change the source, snapshot again, and the slot holds the new jar.
-        library(tmp, "snap-lib", "public final class Lib { public static int two() { return 2; } }");
+        application(tmp, "snap-lib", "public static int two() { return 2; }");
         assertThat(jk(tmp, m2, "snapshot")).isEqualTo(0);
         assertThat(Files.readAllBytes(snapshots.resolve("snap-lib-1.0.0-SNAPSHOT.jar")))
                 .isNotEqualTo(first);
@@ -86,7 +93,7 @@ class SnapshotCommandTest {
         assertThat(jk(tmp, m2, "snapshot")).isNotEqualTo(0);
 
         // Editing the source and installing the release again is refused, with the way out.
-        library(tmp, "snap-lib", "public final class Lib { public static int three() { return 3; } }");
+        application(tmp, "snap-lib", "public static int three() { return 3; }");
         assertThat(jk(tmp, m2, "install")).isNotEqualTo(0);
         assertThat(Files.readString(release.resolve("snap-lib-1.0.0.pom"))).contains("<version>1.0.0</version>");
     }
@@ -130,14 +137,12 @@ class SnapshotCommandTest {
     }
 
     @Test
-    void install_with_the_snapshot_flag_is_the_same_verb(@TempDir Path tmp) throws Exception {
+    void install_is_for_applications_and_names_the_library_verbs(@TempDir Path tmp) throws Exception {
         library(tmp, "snap-flag", "public final class Lib { }");
         Path m2 = tmp.resolve("m2");
 
-        assertThat(jk(tmp, m2, "install", "--snapshot")).isEqualTo(0);
+        assertThat(jk(tmp, m2, "install")).isEqualTo(64);
 
-        Path repo = m2.resolve("repository/com/example/snap-flag");
-        assertThat(repo.resolve("1.0.0-SNAPSHOT/snap-flag-1.0.0-SNAPSHOT.jar")).exists();
-        assertThat(repo.resolve("1.0.0")).doesNotExist();
+        assertThat(m2.resolve("repository/com/example/snap-flag")).doesNotExist();
     }
 }

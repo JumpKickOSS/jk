@@ -42,6 +42,7 @@ import cc.jumpkick.util.GitUrl;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
 import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.HostedEvents;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
@@ -93,7 +94,6 @@ public final class ToolInstallCommand implements CliCommand {
                         "<m2|jk>",
                         "Where the install goes: m2 (the Maven local repository, default) or jk (jk's private repository)",
                         "--destination"),
-                Opt.flag("Install the project at its version plus -SNAPSHOT (same as jk snapshot)", "--snapshot"),
                 Opt.value("<dir>", "Override the local Maven repo root (~/.m2).", "--m2-dir")
                         .hide(),
                 Opt.value("<url>", "Override the Maven repository URL (for tests).", "--repo-url")
@@ -156,8 +156,6 @@ public final class ToolInstallCommand implements CliCommand {
     @Nullable
     InstallDestination destinationOverride;
 
-    boolean snapshot;
-
     /** {@code --jdks-dir}: the JDK root the pre-flight and the engine's build resolve under, as on build. */
     @Nullable
     Path jdksDir;
@@ -194,8 +192,6 @@ public final class ToolInstallCommand implements CliCommand {
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.global = GlobalOptions.from(in);
         String destinationWord = in.value(InstallDestination.KEY).orElse(null);
-        this.snapshot = in.isSet("snapshot");
-        if (snapshot) SessionContext.install(SessionContext.current().withSnapshot(true));
         this.destinationOverride = destinationWord == null
                 ? null
                 : InstallDestination.parse(destinationWord).orElse(null);
@@ -217,15 +213,20 @@ public final class ToolInstallCommand implements CliCommand {
         Path base = global.workingDir();
         if (in.positionals().isEmpty()) {
             if (Files.isRegularFile(ManifestPaths.manifestIn(base))) {
+                String library = libraryName(base);
+                if (library != null) {
+                    CommandWedge.printFail(
+                            "Install",
+                            "`jk install` puts an application or tool on this machine, and " + library
+                                    + " is a library. `jk snapshot` installs it for sibling projects while you edit;"
+                                    + " `jk release` cuts a version.");
+                    return Exit.USAGE;
+                }
                 return appInstallDelegate().runProjectInstallBuildPlan(base);
             }
             CommandWedge.printFail(
                     "Install",
                     "no target specified — pass a coordinate, catalog name, path, or git URL, or run inside a directory with jk.toml");
-            return Exit.USAGE;
-        }
-        if (snapshot) {
-            CommandWedge.printFail("Install", "--snapshot installs the current project: drop the argument");
             return Exit.USAGE;
         }
         this.coord = in.positionals().get(0);
@@ -301,6 +302,25 @@ public final class ToolInstallCommand implements CliCommand {
             CliOutput.out("  export PATH=\"" + binDir + ":$PATH\"");
         }
         return 0;
+    }
+
+    /**
+     * The coordinate of the project in {@code dir} when it is a plain library (no application, no
+     * product install, not a workspace), else {@code null}. A project the engine cannot describe is
+     * left to the install, which reports it.
+     */
+    private static @Nullable String libraryName(Path dir) {
+        ProjectInfo info;
+        try {
+            info = EngineClient.projectInfo(EnginePaths.current(), dir);
+        } catch (IOException e) {
+            return null;
+        }
+        boolean installable = info.workspaceRoot()
+                || info.application()
+                || !info.productLib().isEmpty()
+                || !info.productBin().isEmpty();
+        return info.error() != null || installable ? null : info.coord();
     }
 
     /**
