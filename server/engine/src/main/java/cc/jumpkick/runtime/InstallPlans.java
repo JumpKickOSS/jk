@@ -387,9 +387,7 @@ public final class InstallPlans {
 
         if (destination == InstallDestination.JK) {
             ModuleOutcome.Installed.Change change =
-                    localStore(cacheDir).locate(jarRelPath).isPresent()
-                            ? ModuleOutcome.Installed.Change.REPLACED
-                            : ModuleOutcome.Installed.Change.NEW;
+                    checkShelfSlot(coord, Hashing.sha256Hex(jar), Hashing.sha256Hex(pomBytes));
             String jarSha = writeToLocalStore(cacheDir, jarRelPath, jar);
             String pomSha = writeBytesToLocalStore(cacheDir, pomRelPath, pomBytes);
             if (PluginModule.isWorker(layout.moduleRoot())) stageWorkerClosure(coord, cacheDir, jarRelPath);
@@ -447,6 +445,64 @@ public final class InstallPlans {
                 : ModuleOutcome.Installed.Change.NEW;
     }
 
+    /** The files of one {@code repos/jk-local} slot, as they are on disk now. */
+    private record ShelfSlot(
+            @Nullable Path jar,
+            @Nullable Path pom,
+            @Nullable String jarSha,
+            @Nullable String pomSha,
+            boolean owned) {
+
+        boolean empty() {
+            return jar == null && pom == null;
+        }
+
+        Path dir() {
+            return Objects.requireNonNull((jar != null ? jar : Objects.requireNonNull(pom)).getParent());
+        }
+    }
+
+    /** {@code coord}'s slot in {@code repos/jk-local}; owned when every file still holds the bytes its memo recorded. */
+    private static ShelfSlot shelfSlot(Coordinate coord) throws IOException {
+        Path root = shelfRoot();
+        String jarRel = MavenLayout.artifactPath(coord);
+        String pomRel = MavenLayout.pomPath(coord);
+        Path jar = Files.isRegularFile(root.resolve(jarRel)) ? root.resolve(jarRel) : null;
+        Path pom = Files.isRegularFile(root.resolve(pomRel)) ? root.resolve(pomRel) : null;
+        String jarSha = jar == null ? null : Hashing.sha256Hex(jar);
+        String pomSha = pom == null ? null : Hashing.sha256Hex(pom);
+        boolean owned = recorded(root, jarRel, jarSha) && recorded(root, pomRel, pomSha);
+        return new ShelfSlot(jar, pom, jarSha, pomSha, owned);
+    }
+
+    /** True when {@code sha} is absent (nothing to disown) or the memo beside the file names exactly it. */
+    private static boolean recorded(Path root, String rel, @Nullable String sha) {
+        if (sha == null) return true;
+        return ArtifactMemo.read(ArtifactMemo.jkPath(root, rel))
+                .map(memo -> memo.sha256().equalsIgnoreCase(sha))
+                .orElse(false);
+    }
+
+    /**
+     * The install policy for a {@code repos/jk-local} slot, the same as for the Maven local
+     * repository: other bytes in a slot jk wrote are replaced only for a snapshot, a release is
+     * installed once, and a slot jk did not write is never replaced.
+     */
+    private static ModuleOutcome.Installed.Change checkShelfSlot(Coordinate coord, String jarSha, String pomSha)
+            throws IOException {
+        ShelfSlot slot = shelfSlot(coord);
+        boolean differs = (slot.jarSha() != null && !slot.jarSha().equalsIgnoreCase(jarSha))
+                || (slot.pomSha() != null && !slot.pomSha().equalsIgnoreCase(pomSha));
+        if (differs) {
+            if (!slot.owned()) throw new Refusal(foreignSlot(coord, slot.dir()));
+            if (!isSnapshot(coord.version())) throw new Refusal(releaseSlot(coord, slot.dir()));
+            return ModuleOutcome.Installed.Change.REPLACED;
+        }
+        return slot.jar() != null && slot.pom() != null
+                ? ModuleOutcome.Installed.Change.UNCHANGED
+                : ModuleOutcome.Installed.Change.NEW;
+    }
+
     /** Remember that jk wrote {@code coord}'s files in {@code m2Root} with these bytes. */
     private static void recordOwnership(Path m2Root, Coordinate coord, String jarSha, String pomSha)
             throws IOException {
@@ -465,16 +521,24 @@ public final class InstallPlans {
 
     /**
      * Why installing {@code manifest} would be refused, decided before anything is built: its version
-     * is a release and the Maven-local slot already exists. Null when the install would be allowed or
-     * the destination is not the Maven local repository. Only meaningful for a module whose jar will be
-     * rebuilt; the byte comparison at the install step stays the authoritative check.
+     * is a release and its slot already exists at the destination. Null when the install would be
+     * allowed. Only meaningful for a module whose jar will be rebuilt; the byte comparison at the
+     * install step stays the authoritative check.
      */
     public static @Nullable String refusedBeforeBuild(
             JkBuild manifest, Path moduleDir, @Nullable Path m2Dir, @Nullable InstallDestination override) {
-        if (destinationOf(manifest, moduleDir, override) != InstallDestination.M2) return null;
         var p = manifest.project();
         if (isSnapshot(p.version())) return null;
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
+        if (destinationOf(manifest, moduleDir, override) == InstallDestination.JK) {
+            try {
+                ShelfSlot slot = shelfSlot(coord);
+                if (slot.empty()) return null;
+                return slot.owned() ? releaseSlot(coord, slot.dir()) : foreignSlot(coord, slot.dir());
+            } catch (IOException unreadable) {
+                return null;
+            }
+        }
         Path m2Root = m2Repository(m2Dir);
         Path jar = m2Root.resolve(MavenLayout.artifactPath(coord));
         if (!Files.exists(jar) && !Files.exists(m2Root.resolve(MavenLayout.pomPath(coord)))) return null;
@@ -508,8 +572,8 @@ public final class InstallPlans {
         String pomRel = MavenLayout.pomPath(release);
         boolean installed;
         if (destination == InstallDestination.JK) {
-            RepoArtifactStore shelf = localShelf();
-            installed = shelf.locate(jarRel).isPresent() || shelf.locate(pomRel).isPresent();
+            Path shelf = shelfRoot();
+            installed = Files.exists(shelf.resolve(jarRel)) || Files.exists(shelf.resolve(pomRel));
         } else {
             Path m2Root = m2Repository(m2Dir);
             installed = Files.exists(m2Root.resolve(jarRel)) || Files.exists(m2Root.resolve(pomRel));
@@ -811,6 +875,11 @@ public final class InstallPlans {
 
     private static RepoArtifactStore localStore(Path cacheDir) {
         return localShelf();
+    }
+
+    /** The directory of {@code repos/jk-local}, whatever its memos say about the files in it. */
+    private static Path shelfRoot() {
+        return JkStores.store().resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL);
     }
 
     private static RepoArtifactStore localShelf() {

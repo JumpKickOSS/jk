@@ -405,8 +405,9 @@ Outside a project, pass a coordinate (`jkx` mode).
 
 ### Installing the same version twice
 
-A release version is installed once. jk keeps a record under `~/.jk` of the `~/.m2` slots it
-wrote, and decides each install against that record:
+A release version is installed once, at either destination. For `~/.m2` jk keeps a record under
+`~/.jk` of the slots it wrote; `repos/jk-local` records each file's bytes in a memo beside it. Each
+install is decided against that record:
 
 | The slot holds | A release (`1.0.0`) | A snapshot (`1.0.0-SNAPSHOT`) |
 |---|---|---|
