@@ -9,6 +9,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Feature;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.GitSource;
+import cc.jumpkick.model.InstallTarget;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PomMetadata;
@@ -157,20 +158,20 @@ public final class ManifestTables {
      * {@code [install]} — what installing this module produces besides its jar and POM.
      *
      * <p>Absent for every ordinary target, which is the point: a library, an executable, a native
-     * binary, a script and an external jar are complete shapes already and declare nothing. The one
-     * keys are {@code product-lib} and {@code product-bin}, which are jk installing jk — see
-     * {@link JkBuild.Install}.
+     * binary, a script and an external jar are complete shapes already and declare nothing. {@code
+     * target} is read into the project (see {@link ManifestProject}); the keys here are {@code
+     * product-lib} and {@code product-bin}, which are jk installing jk — see {@link JkBuild.Install}.
      */
     static Optional<JkBuild.Install> parseInstall(TomlTable root) {
         if (root.contains("install") && !root.isTable("install")) {
-            throw new JkBuildParseException("`install` must be a table — use [install] with a product-lib key");
+            throw new JkBuildParseException("`install` must be a table — use [install] with a target key");
         }
         TomlTable install = root.getTable("install");
         if (install == null) return Optional.empty();
         for (String key : install.keySet()) {
-            if (!"product-lib".equals(key) && !"product-bin".equals(key)) {
+            if (!InstallTarget.KEY.equals(key) && !"product-lib".equals(key) && !"product-bin".equals(key)) {
                 throw new JkBuildParseException(
-                        "[install] unknown key `" + key + "` — expected product-lib or product-bin");
+                        "[install] unknown key `" + key + "` — expected target, product-lib or product-bin");
             }
         }
         String productLib = stringOrThrow(install, "product-lib", "install.product-lib");
@@ -823,7 +824,7 @@ public final class ManifestTables {
      * <p>Scalars only. {@code [native]}, {@code [config]} and plugin tables like {@code [assembly]}
      * are legitimate top-level <em>tables</em> with their own meanings; it is the bare
      * {@code key = value} form that can only be a misplacement. Same shape as the {@code [m2]}
-     * guard, which rejects the flattened {@code m2integration} / {@code m2install} by name.
+     * guard, which rejects the flattened {@code m2integration} by name.
      */
     private static void rejectFlattenedApplicationKeys(TomlTable root) {
         for (String key : APPLICATION_KEYS) {

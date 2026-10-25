@@ -392,12 +392,33 @@ Training (`jk train`) is **not** part of `jk build`. See [Dynamic surface](dynam
 `jk install` is `jk build` plus the install steps: the same plan, the same tests (unless `-S`)
 and guard lanes, then the install. Do not run `jk build` first.
 
-The install writes the thin jar and POM to the local repo (`repos/jk-local`), then prefers a native
-binary in `~/.jk/bin` if one exists, else a minified/fat jar under `~/.jk/lib/<name>/`
-plus a `java -jar` script, else a thin `java -cp` script over the repo jars.
+The install writes the thin jar and POM once, to the Maven local repository (`~/.m2/repository`),
+with Maven's checksum sidecars, so Maven and Gradle builds on the machine see the artifact. An
+application then also gets a launcher: a native binary in `~/.jk/bin` if one exists, else a
+minified/fat jar under `~/.jk/lib/<name>/` plus a `java -jar` script, else a thin `java -cp` script
+over the repo jars. The settle line names the coordinate and where it went.
 
-Plugin workers (`jk-plugin.toml`) are those same repo jars — the engine rebuilds their
-runtime classpath from the installed POM. Outside a project, pass a coordinate (`jkx` mode).
+`[install] target = "jk"` (or `jk install --target jk`, or the same key in `~/.jk/config.toml`)
+puts the jar and POM in jk's private `repos/jk-local` instead. Plugin workers (`jk-plugin.toml`)
+are always installed there: the engine rebuilds their runtime classpath from the installed POM.
+Outside a project, pass a coordinate (`jkx` mode).
+
+### Installing the same version twice
+
+A release version is installed once. jk keeps a record under `~/.jk` of the `~/.m2` slots it
+wrote, and decides each install against that record:
+
+| The slot holds | A release (`1.0.0`) | A snapshot (`1.0.0-SNAPSHOT`) |
+|---|---|---|
+| Nothing | installed | installed |
+| These bytes | nothing to do | nothing to do |
+| Other bytes jk wrote | refused: raise the version in `jk.toml` | replaced |
+| Other bytes jk did not write | refused | refused; delete the directory to let jk write it |
+
+When the forecast says a release's jar will be rebuilt and the slot is taken, `jk install` fails
+before it compiles or tests anything; the comparison at the install step still has the last word.
+The record lives in the jk store, never in `~/.m2`: wiping the store makes jk's earlier slots
+foreign, and deleting the slot's directory is the way back.
 
 ## Related
 

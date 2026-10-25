@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.runtime;
 
+import cc.jumpkick.model.InstallTarget;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -52,14 +53,18 @@ public record WorkspaceSpec(
         return new WorkspaceSpec(WorkspaceTarget.COMPILE, selected, Map.of(), null);
     }
 
-    /** {@code jk install}: {@code m2Dir} is the client-resolved local-repo root; null for {@code ~/.m2}. */
-    public static WorkspaceSpec install(Set<Path> selected, Map<Path, Path> graalByDir, @Nullable Path m2Dir) {
-        return new WorkspaceSpec(WorkspaceTarget.INSTALL, selected, graalByDir, new TailArgs.Install(m2Dir));
+    /**
+     * {@code jk install}: {@code m2Dir} is the client-resolved local-repo root (null for {@code
+     * ~/.m2}); {@code target} is the {@code --target} override, null when none was given.
+     */
+    public static WorkspaceSpec install(
+            Set<Path> selected, Map<Path, Path> graalByDir, @Nullable Path m2Dir, @Nullable InstallTarget target) {
+        return new WorkspaceSpec(WorkspaceTarget.INSTALL, selected, graalByDir, new TailArgs.Install(m2Dir, target));
     }
 
     /** Install's second pass after the engine jar changes: {@code cache-install} against jars on disk. */
-    public static WorkspaceSpec reshelve(Set<Path> selected, @Nullable Path m2Dir) {
-        return new WorkspaceSpec(WorkspaceTarget.RESHELVE, selected, Map.of(), new TailArgs.Install(m2Dir));
+    public static WorkspaceSpec reshelve(Set<Path> selected, @Nullable Path m2Dir, @Nullable InstallTarget target) {
+        return new WorkspaceSpec(WorkspaceTarget.RESHELVE, selected, Map.of(), new TailArgs.Install(m2Dir, target));
     }
 
     public static WorkspaceSpec train(
@@ -88,6 +93,11 @@ public record WorkspaceSpec(
     /** Install's local Maven repo root, or null for {@code ~/.m2} and every other goal. */
     public @Nullable Path m2Dir() {
         return tail instanceof TailArgs.Install install ? install.m2Dir() : null;
+    }
+
+    /** Install's {@code --target} override, or null when none was given and for every other goal. */
+    public @Nullable InstallTarget installTarget() {
+        return tail instanceof TailArgs.Install install ? install.target() : null;
     }
 
     public WorkspaceTarget effectiveTarget(boolean testOnly) {

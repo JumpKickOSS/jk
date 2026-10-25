@@ -65,6 +65,7 @@ public final class EffectiveUserConfig {
         addCache(out, userConfig, env, disk);
         addHistory(out, userConfig, env);
         addM2(out, userConfig, env);
+        addInstall(out, userConfig, env);
         addTemplates(out, userConfig);
         return List.copyOf(out);
     }
@@ -160,9 +161,14 @@ public final class EffectiveUserConfig {
         JkM2Config d = JkM2Config.DEFAULTS;
         JkM2Config e = JkM2Config.resolve(file, env);
         add(out, "m2.integration", d.integration(), e.integration());
-        add(out, "m2.install", d.install(), e.install());
         add(out, "m2.auto-clean", d.autoClean(), e.autoClean());
         add(out, "m2.clean-after-days", d.cleanAfterDays(), e.cleanAfterDays());
+    }
+
+    private static void addInstall(List<Row> out, Path file, Function<String, @Nullable String> env) {
+        JkInstallConfig d = JkInstallConfig.DEFAULTS;
+        JkInstallConfig e = JkInstallConfig.resolve(file, env);
+        add(out, "install.target", d.target().spelling(), e.target().spelling());
     }
 
     private static void addTemplates(List<Row> out, Path file) {

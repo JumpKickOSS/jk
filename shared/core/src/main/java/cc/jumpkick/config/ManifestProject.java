@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import static cc.jumpkick.config.JkBuildParser.*;
 
+import cc.jumpkick.model.InstallTarget;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.Layout;
 import cc.jumpkick.model.Project;
@@ -182,9 +183,8 @@ public final class ManifestProject {
             description = root.getString("description");
         }
 
-        M2Flags m2 = parseM2(root, workspaceRoot, inherits);
-        boolean m2integration = m2.integration;
-        boolean m2install = m2.install;
+        boolean m2integration = parseM2Integration(root, workspaceRoot, inherits);
+        InstallTarget installTarget = parseInstallTarget(root, workspaceRoot, inherits);
 
         Layout layout;
         if (isWorkspaceInherit(root, "layout") || (!workspaceRoot && !root.contains("layout"))) {
@@ -216,7 +216,7 @@ public final class ManifestProject {
                 javadocMode,
                 description,
                 m2integration,
-                m2install,
+                installTarget,
                 layout,
                 inherits,
                 jdkSpec,
@@ -233,61 +233,68 @@ public final class ManifestProject {
         return JavadocMode.LENIENT;
     }
 
-    private record M2Flags(boolean integration, boolean install) {}
-
     /**
-     * {@code [m2] integration} / {@code [m2] install} (both default true). A module may inherit
-     * the whole table ({@code [m2] workspace = true}) or either key.
+     * {@code [m2] integration} (default true). A module may inherit the whole table ({@code [m2]
+     * workspace = true}) or the key.
      */
-    private static M2Flags parseM2(TomlTable root, boolean workspaceRoot, java.util.EnumSet<ProjectInherit> inherits) {
-        if (root.contains("m2integration") || root.contains("m2install")) {
-            throw new JkBuildParseException(
-                    "m2integration / m2install moved under [m2] — use `integration` and `install`");
+    private static boolean parseM2Integration(
+            TomlTable root, boolean workspaceRoot, java.util.EnumSet<ProjectInherit> inherits) {
+        if (root.contains("m2integration")) {
+            throw new JkBuildParseException("m2integration moved under [m2] — use `integration`");
         }
         if (root.contains("m2") && !root.isTable("m2")) {
-            throw new JkBuildParseException("`m2` must be a table — use [m2] with integration/install keys");
+            throw new JkBuildParseException("`m2` must be a table — use [m2] with an integration key");
         }
         TomlTable m2 = root.isTable("m2") ? root.getTable("m2") : null;
         if (m2 != null) {
             for (String k : m2.keySet()) {
-                if (!"integration".equals(k) && !"install".equals(k) && !"workspace".equals(k)) {
-                    throw new JkBuildParseException("[m2] unknown key `" + k + "` — expected integration, install");
+                if (!"integration".equals(k) && !"workspace".equals(k)) {
+                    throw new JkBuildParseException("[m2] unknown key `" + k + "` — expected integration");
                 }
             }
         }
         if (m2 != null && m2.contains("workspace") && isWorkspaceInherit(root, "m2")) {
-            if (m2.contains("integration") || m2.contains("install")) {
+            if (m2.contains("integration")) {
                 throw new JkBuildParseException(
-                        "[m2] workspace = true cannot be combined with explicit integration/install" + " — drop one");
+                        "[m2] workspace = true cannot be combined with an explicit integration — drop one");
             }
             inherits.add(ProjectInherit.M2INTEGRATION);
-            inherits.add(ProjectInherit.M2INSTALL);
-            return new M2Flags(true, true);
+            return true;
         }
-        return new M2Flags(
-                parseM2Bool(root, "integration", workspaceRoot, ProjectInherit.M2INTEGRATION, inherits),
-                parseM2Bool(root, "install", workspaceRoot, ProjectInherit.M2INSTALL, inherits));
-    }
-
-    private static boolean parseM2Bool(
-            TomlTable root,
-            String key,
-            boolean workspaceRoot,
-            ProjectInherit inherit,
-            java.util.EnumSet<ProjectInherit> inherits) {
-        // Top-level `m2 = "yes"` must be a clean parse error, not a raw tomlj type exception.
-        TomlTable m2 = root.isTable("m2") ? root.getTable("m2") : null;
-        boolean present = m2 != null && m2.contains(key);
-        if ((m2 != null && isWorkspaceInherit(m2, key)) || (!workspaceRoot && !present)) {
-            inherits.add(inherit);
+        boolean present = m2 != null && m2.contains("integration");
+        if ((m2 != null && isWorkspaceInherit(m2, "integration")) || (!workspaceRoot && !present)) {
+            inherits.add(ProjectInherit.M2INTEGRATION);
             return true;
         }
         if (m2 == null || !present) return true;
-        Boolean value = m2.getBoolean(key);
+        Boolean value = m2.getBoolean("integration");
         if (value == null) {
-            throw new JkBuildParseException("[m2]." + key + " must be true or false");
+            throw new JkBuildParseException("[m2].integration must be true or false");
         }
         return value;
+    }
+
+    /**
+     * {@code [install] target}: {@code "m2"} or {@code "jk"}. Null when unset, which defers to the
+     * machine's {@code config.toml} and then to {@code "m2"}. A member that names none inherits its
+     * workspace root's.
+     */
+    private static @Nullable InstallTarget parseInstallTarget(
+            TomlTable root, boolean workspaceRoot, java.util.EnumSet<ProjectInherit> inherits) {
+        if (root.contains("install") && !root.isTable("install")) {
+            throw new JkBuildParseException("`install` must be a table — use [install] with a target key");
+        }
+        TomlTable install = root.isTable("install") ? root.getTable("install") : null;
+        boolean present = install != null && install.contains(InstallTarget.KEY);
+        if ((install != null && isWorkspaceInherit(install, InstallTarget.KEY)) || (!workspaceRoot && !present)) {
+            inherits.add(ProjectInherit.INSTALL_TARGET);
+            return null;
+        }
+        if (install == null || !present) return null;
+        String word = install.getString(InstallTarget.KEY);
+        return InstallTarget.parse(word)
+                .orElseThrow(() -> new JkBuildParseException("[install] target must be \"m2\" (the Maven local"
+                        + " repository) or \"jk\" (jk's private repository), not `" + word + "`"));
     }
 
     /**

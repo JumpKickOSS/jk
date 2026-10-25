@@ -121,7 +121,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
         TailArgs tail =
                 switch (target) {
                     case IMAGE -> new TailArgs.Image(null, null, null, null, null);
-                    case INSTALL -> new TailArgs.Install(null);
+                    case INSTALL -> new TailArgs.Install(null, null);
                     case NATIVE -> new TailArgs.Native(null, List.of());
                     case PUBLISH ->
                         new TailArgs.Publish(

@@ -111,7 +111,7 @@ public sealed interface EngineEvent {
             boolean cancelled,
             boolean stopped,
             ModuleOutcome.@Nullable Image image,
-            ModuleOutcome.@Nullable Shelved shelved,
+            ModuleOutcome.@Nullable Installed installed,
             ModuleOutcome.@Nullable Published published)
             implements EngineEvent {}
 

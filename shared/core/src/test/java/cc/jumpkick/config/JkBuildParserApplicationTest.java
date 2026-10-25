@@ -5,6 +5,7 @@ import static cc.jumpkick.config.JkBuildParserFixtures.PROJECT;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.model.InstallTarget;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Layout;
 import cc.jumpkick.model.SourcesMode;
@@ -352,7 +353,7 @@ class JkBuildParserApplicationTest {
     @Test
     void m2_table_defaults_true_explicit_false_opts_out() {
         assertThat(JkBuildParser.parse(PROJECT).project().m2integration()).isTrue();
-        assertThat(JkBuildParser.parse(PROJECT).project().m2install()).isTrue();
+        assertThat(JkBuildParser.parse(PROJECT).project().installTarget()).isNull();
         assertThat(JkBuildParser.parse(PROJECT + "\n[m2]\nintegration = true\n")
                         .project()
                         .m2integration())
@@ -361,9 +362,28 @@ class JkBuildParserApplicationTest {
                         .project()
                         .m2integration())
                 .isFalse();
-        JkBuild both = JkBuildParser.parse(PROJECT + "\n[m2]\nintegration = true\ninstall = false\n");
-        assertThat(both.project().m2integration()).isTrue();
-        assertThat(both.project().m2install()).isFalse();
+    }
+
+    @Test
+    void install_target_is_m2_or_jk_and_unset_by_default() {
+        assertThat(JkBuildParser.parse(PROJECT + "\n[install]\ntarget = \"jk\"\n")
+                        .project()
+                        .installTarget())
+                .isEqualTo(InstallTarget.JK);
+        assertThat(JkBuildParser.parse(PROJECT + "\n[install]\ntarget = \"m2\"\n")
+                        .project()
+                        .installTarget())
+                .isEqualTo(InstallTarget.M2);
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "\n[install]\ntarget = \"shelf\"\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[install] target must be \"m2\"");
+    }
+
+    @Test
+    void the_removed_m2_install_key_is_rejected() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "\n[m2]\ninstall = false\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[m2] unknown key `install`");
     }
 
     @Test

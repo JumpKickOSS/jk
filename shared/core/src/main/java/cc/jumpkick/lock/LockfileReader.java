@@ -2,6 +2,7 @@
 package cc.jumpkick.lock;
 
 import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.model.InstallTarget;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.version.Versions;
@@ -217,8 +218,11 @@ public final class LockfileReader {
                 LockToml m2Table = t.getTable("m2");
                 Boolean m2 =
                         m2Table != null && m2Table.contains("integration") ? m2Table.getBoolean("integration") : null;
-                Boolean m2install =
-                        m2Table != null && m2Table.contains("install") ? m2Table.getBoolean("install") : null;
+                LockToml installTable = t.getTable("install");
+                InstallTarget installTarget = installTable == null
+                        ? null
+                        : InstallTarget.parse(installTable.getString(InstallTarget.KEY))
+                                .orElse(null);
                 modules.add(new ModuleEntry(
                         path,
                         group,
@@ -231,7 +235,7 @@ public final class LockfileReader {
                         t.getString("description"),
                         t.getString("sources"),
                         m2,
-                        m2install));
+                        installTarget));
             }
         }
         String manifestsSha = result.getString("manifests-sha256"); // optional, additive v1

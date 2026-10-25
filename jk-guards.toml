@@ -245,6 +245,10 @@ in     = "server/engine/src/main/java/cc/jumpkick/engine/http/mcp/tools/CodeGrap
 reason = "shortest_path's target argument, under graphify's MCP parameter names"
 
 [[guards.target-dir.allow]]
+in     = "shared/jk-api/src/main/java/cc/jumpkick/model/InstallTarget.java"
+reason = "the [install] target key: it names where an install goes, not jk's build output directory"
+
+[[guards.target-dir.allow]]
 in     = "shared/code-graph/src/main/java/cc/jumpkick/codegraph/GraphJson.java"
 reason = "graph.json's link field naming an edge's target node, in graphify's node-link format"
 
@@ -488,7 +492,7 @@ miss     = 'Jsonl.append(object, fields)'
 instead  = "Jsonl.append(object, fields): it validates the object and owns the separator"
 why      = "every hand chop got the separator wrong on an empty object"
 
-# G61. `[m2] install` is on by default, so a test that runs the install verb without --m2-dir
+# G61. `jk install` writes ~/.m2 by default, so a test that runs the install verb without --m2-dir
 # publishes into the developer's real ~/.m2 — outside the checkout, where no assertion looks.
 [guards.install-tests-redirect-m2]
 kind    = "text"

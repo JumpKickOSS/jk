@@ -46,7 +46,6 @@ class InstallPlansLockClosureTest {
         return JkBuild.builder(Project.builder("cc.jumpkick", "jk-foo", "1.0")
                         .jdkMajor(25)
                         .java(25)
-                        .m2install(false)
                         .build())
                 .dependencies(new JkBuild.Dependencies(byScope))
                 .build();

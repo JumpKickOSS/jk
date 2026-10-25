@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.InstallTarget;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskStatus;
@@ -300,10 +301,11 @@ class EngineEventDecoderStreamTest {
         assertThat(rec.stepWaits).containsExactly(Duration.ofMillis(900));
     }
 
-    /** The shelf publish an install pass reports rides the module's outcome to the client. */
+    /** The install an install pass reports rides the module's outcome to the client. */
     @Test
-    void a_module_finish_carries_what_the_install_pass_shelved() throws Exception {
-        ModuleOutcome.Shelved shelved = new ModuleOutcome.Shelved("g:a:1", "a".repeat(64), "b".repeat(64));
+    void a_module_finish_carries_what_the_install_pass_installed() throws Exception {
+        ModuleOutcome.Installed installed = new ModuleOutcome.Installed(
+                "g:a:1", "a".repeat(64), "b".repeat(64), InstallTarget.M2, ModuleOutcome.Installed.Change.NEW);
         WorkspaceResult result = EngineEventDecoder.streamWorkspaceEvents(
                 stream(
                         ProtoLifecycle.jobStart(53, "install", "/w", 1),
@@ -311,7 +313,7 @@ class EngineEventDecoderStreamTest {
                         ProtoEvents.planDone(1),
                         ProtoEvents.moduleStart("/w/a"),
                         ProtoEvents.planFinish("/w/a", true),
-                        ProtoEvents.moduleFinish("/w/a", "g:a:1", true, 0, 12, true, false, null, shelved),
+                        ProtoEvents.moduleFinish("/w/a", "g:a:1", true, 0, 12, true, false, null, installed),
                         ProtoEvents.workspaceFinish(true, 0, List.of(), false),
                         ProtoLifecycle.jobFinish(53)),
                 new Recorder(),
@@ -319,7 +321,7 @@ class EngineEventDecoderStreamTest {
                 null);
 
         assertThat(result.modules()).hasSize(1);
-        assertThat(result.modules().getFirst().shelved()).isEqualTo(shelved);
+        assertThat(result.modules().getFirst().installed()).isEqualTo(installed);
     }
 
     /** A module fail-fast stopped reaches the client as stopped, apart from the one that failed. */

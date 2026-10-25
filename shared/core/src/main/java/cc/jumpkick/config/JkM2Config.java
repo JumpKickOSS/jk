@@ -13,11 +13,6 @@ import org.jspecify.annotations.Nullable;
  * write-through of third-party jars. A project can still set {@code [m2] integration = false} to
  * host those jars only under {@code JK_STORE_DIR}.
  *
- * <p>{@code install} controls whether {@code jk install} writes first-party jars into the Maven
- * local repository. Independent of {@code integration}: {@code [m2] integration = true} with
- * {@code [m2] install = false} still reads third-party jars from {@code ~/.m2} but keeps {@code
- * jk install} under {@code repos/jk-local}.
- *
  * <p>{@code auto-clean} lets the engine's maintenance remove files from the Maven local repository
  * on its own — a build server where the admin wants {@code ~/.m2} bounded. It is off by default and
  * reaches only files jk's own memo proves jk downloaded and that nothing has changed since;
@@ -27,15 +22,12 @@ import org.jspecify.annotations.Nullable;
  * <p>Precedence: JVM system property &gt; {@code JK_*} env &gt; user file &gt; defaults, laid out
  * in rank order by {@link MachineConfig}. Malformed values fall back to defaults.
  */
-public record JkM2Config(boolean integration, boolean install, boolean autoClean, int cleanAfterDays) {
+public record JkM2Config(boolean integration, boolean autoClean, int cleanAfterDays) {
 
-    public static final JkM2Config DEFAULTS = new JkM2Config(true, true, false, 60);
+    public static final JkM2Config DEFAULTS = new JkM2Config(true, false, 60);
 
     /** {@code [m2] integration}: a boolean's decode is its validation, so no range rule. */
     private static final MachineConfig<Boolean> INTEGRATION = MachineConfig.of(DEFAULTS.integration());
-
-    /** {@code [m2] install}. */
-    private static final MachineConfig<Boolean> INSTALL = MachineConfig.of(DEFAULTS.install());
 
     /** {@code [m2] auto-clean}. */
     private static final MachineConfig<Boolean> AUTO_CLEAN = MachineConfig.of(DEFAULTS.autoClean());
@@ -68,10 +60,6 @@ public record JkM2Config(boolean integration, boolean install, boolean autoClean
                         EnvValues.bool(env, "JK_M2_INTEGRATION").orElse(null),
                         EnvValues.bool(env, "JK_M2_LOOKUP").orElse(null),
                         tomlBool(scan, "m2.integration")),
-                INSTALL.layer(
-                        EnvValues.parseBool(property.apply("jk.m2.install")).orElse(null),
-                        EnvValues.bool(env, "JK_M2_INSTALL").orElse(null),
-                        tomlBool(scan, "m2.install")),
                 AUTO_CLEAN.layer(
                         EnvValues.parseBool(property.apply("jk.m2.auto-clean")).orElse(null),
                         EnvValues.bool(env, "JK_M2_AUTO_CLEAN").orElse(null),
@@ -86,13 +74,12 @@ public record JkM2Config(boolean integration, boolean install, boolean autoClean
         TomlScan scan = scan(file);
         return new JkM2Config(
                 INTEGRATION.layer(tomlBool(scan, "m2.integration")),
-                INSTALL.layer(tomlBool(scan, "m2.install")),
                 AUTO_CLEAN.layer(tomlBool(scan, "m2.auto-clean")),
                 CLEAN_AFTER_DAYS.layer(scanInt(scan, "m2.clean-after-days")));
     }
 
     private static TomlScan scan(Path file) {
-        return TomlScan.scan(file, "m2.integration", "m2.install", "m2.auto-clean", "m2.clean-after-days");
+        return TomlScan.scan(file, "m2.integration", "m2.auto-clean", "m2.clean-after-days");
     }
 
     /**

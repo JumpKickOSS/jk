@@ -119,7 +119,7 @@ public final class ModulePipeline {
         Path graal = GraalHomes.lookup(unit.dir(), spec.graalByDir());
         TailArgs args = spec.tail();
         return switch (target) {
-            case INSTALL -> InstallPlans.tail(unit.manifest(), cache, m2Dir(spec));
+            case INSTALL -> InstallPlans.tail(unit.manifest(), cache, m2Dir(spec), spec.installTarget());
             case NATIVE -> {
                 TailArgs.Native a = args instanceof TailArgs.Native n ? n : new TailArgs.Native(null, List.of());
                 yield NativePlans.tail(graal, a.main(), a.extraArgs());
@@ -160,7 +160,7 @@ public final class ModulePipeline {
         if (ModuleJar.packagingStep(unit.manifest(), unit.dir()) == null) {
             return BuildPlan.builder("reshelve-skip").build();
         }
-        return InstallPlans.reshelveBuildPlan(unit.dir(), cache, m2Dir(spec));
+        return InstallPlans.reshelveBuildPlan(unit.dir(), cache, m2Dir(spec), spec.installTarget());
     }
 
     private static boolean selected(WorkspaceSpec spec, Path dir) {

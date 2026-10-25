@@ -29,7 +29,7 @@ public record Project(
         JavadocMode javadocMode,
         @Nullable String description,
         boolean m2integration,
-        boolean m2install,
+        @Nullable InstallTarget installTarget,
         Layout layout,
         Set<ProjectInherit> workspaceInherits,
         ToolchainSpec jdkSpec,
@@ -78,7 +78,7 @@ public record Project(
             SourcesMode sourcesMode,
             @Nullable String description,
             boolean m2integration,
-            boolean m2install,
+            @Nullable InstallTarget installTarget,
             Layout layout,
             Set<ProjectInherit> workspaceInherits) {
         this(
@@ -94,7 +94,7 @@ public record Project(
                 JavadocMode.LENIENT,
                 description,
                 m2integration,
-                m2install,
+                installTarget,
                 layout,
                 workspaceInherits,
                 ToolchainSpec.NONE,
@@ -114,7 +114,7 @@ public record Project(
             SourcesMode sourcesMode,
             @Nullable String description,
             boolean m2integration,
-            boolean m2install,
+            @Nullable InstallTarget installTarget,
             Layout layout,
             Set<ProjectInherit> workspaceInherits,
             ToolchainSpec jdkSpec) {
@@ -131,7 +131,7 @@ public record Project(
                 JavadocMode.LENIENT,
                 description,
                 m2integration,
-                m2install,
+                installTarget,
                 layout,
                 workspaceInherits,
                 jdkSpec,
@@ -164,7 +164,7 @@ public record Project(
                 sourcesMode,
                 description,
                 m2integration,
-                true,
+                null,
                 layout,
                 workspaceInherits);
     }
@@ -194,7 +194,7 @@ public record Project(
                 sourcesMode,
                 description,
                 m2integration,
-                true,
+                null,
                 layout,
                 Set.of());
     }
@@ -223,7 +223,7 @@ public record Project(
                 sourcesMode,
                 description,
                 m2integration,
-                true,
+                null,
                 Layout.AUTO,
                 Set.of());
     }
@@ -266,7 +266,7 @@ public record Project(
         next.remove(ProjectInherit.JAVADOC);
         next.remove(ProjectInherit.DESCRIPTION);
         next.remove(ProjectInherit.M2INTEGRATION);
-        next.remove(ProjectInherit.M2INSTALL);
+        next.remove(ProjectInherit.INSTALL_TARGET);
         next.remove(ProjectInherit.LAYOUT);
         if (next.equals(workspaceInherits)) return this;
         return new Project(
@@ -282,7 +282,7 @@ public record Project(
                 javadocMode,
                 description,
                 m2integration,
-                m2install,
+                installTarget,
                 layout,
                 next,
                 jdkSpec,
@@ -318,7 +318,7 @@ public record Project(
         JavadocMode jd = inherits(ProjectInherit.JAVADOC) ? root.javadocMode() : javadocMode;
         String desc = inherits(ProjectInherit.DESCRIPTION) ? root.description() : description;
         boolean m2 = inherits(ProjectInherit.M2INTEGRATION) ? root.m2integration() : m2integration;
-        boolean inst = inherits(ProjectInherit.M2INSTALL) ? root.m2install() : m2install;
+        InstallTarget inst = inherits(ProjectInherit.INSTALL_TARGET) ? root.installTarget() : installTarget;
         Layout lay = inherits(ProjectInherit.LAYOUT) ? root.layout() : layout;
         ToolchainSpec js = inherits(ProjectInherit.JDK) ? root.jdkSpec() : jdkSpec;
         ToolchainSpec ns = inherits(ProjectInherit.NODE) ? root.nodeSpec() : nodeSpec;
@@ -354,7 +354,7 @@ public record Project(
                 javadocMode,
                 description,
                 m2integration,
-                m2install,
+                installTarget,
                 layout,
                 next,
                 jdkSpec,
@@ -375,7 +375,7 @@ public record Project(
                 SourcesMode.DISABLED,
                 null,
                 true,
-                true,
+                null,
                 Layout.AUTO,
                 Set.of());
     }
@@ -400,7 +400,7 @@ public record Project(
                 javadocMode,
                 description,
                 m2integration,
-                m2install,
+                installTarget,
                 layout,
                 workspaceInherits,
                 jdkSpec,
@@ -428,7 +428,7 @@ public record Project(
         private JavadocMode javadocMode = JavadocMode.LENIENT;
         private @Nullable String description;
         private boolean m2integration = true;
-        private boolean m2install = true;
+        private @Nullable InstallTarget installTarget;
         private Layout layout = Layout.AUTO;
 
         private Builder(String group, String name, String version) {
@@ -490,8 +490,8 @@ public record Project(
             return this;
         }
 
-        public Builder m2install(boolean m2install) {
-            this.m2install = m2install;
+        public Builder installTarget(@Nullable InstallTarget installTarget) {
+            this.installTarget = installTarget;
             return this;
         }
 
@@ -526,7 +526,7 @@ public record Project(
                     javadocMode,
                     description,
                     m2integration,
-                    m2install,
+                    installTarget,
                     layout,
                     Set.of(),
                     jdkSpec,

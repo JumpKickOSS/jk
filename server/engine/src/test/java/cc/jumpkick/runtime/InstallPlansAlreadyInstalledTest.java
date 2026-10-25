@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.InstallTarget;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.publish.PublishablePom;
@@ -19,18 +20,22 @@ import org.junit.jupiter.api.io.TempDir;
 
 class InstallPlansAlreadyInstalledTest {
 
+    private static JkBuild project(InstallTarget target) {
+        return JkBuild.builder(Project.builder("cc.jumpkick", "jk-foo", "1.0")
+                        .jdkMajor(25)
+                        .java(25)
+                        .installTarget(target)
+                        .build())
+                .build();
+    }
+
     @Test
-    void skip_when_jar_and_pom_match(@TempDir Path tmp) throws Exception {
+    void the_private_repository_is_skipped_when_jar_and_pom_match(@TempDir Path tmp) throws Exception {
         Path store = tmp.resolve("store");
         Path cache = tmp.resolve("cache");
         Path mod = tmp.resolve("mod");
         Files.createDirectories(mod);
-        JkBuild project = JkBuild.builder(Project.builder("cc.jumpkick", "jk-foo", "1.0")
-                        .jdkMajor(25)
-                        .java(25)
-                        .m2install(false)
-                        .build())
-                .build();
+        JkBuild project = project(InstallTarget.JK);
         BuildLayout layout = BuildLayout.of(mod, project);
         Files.createDirectories(layout.mainJar().getParent());
         Files.writeString(layout.mainJar(), "jar-bytes");
@@ -38,22 +43,30 @@ class InstallPlansAlreadyInstalledTest {
         String prev = System.getProperty("jk.env.JK_STORE_DIR");
         System.setProperty("jk.env.JK_STORE_DIR", store.toAbsolutePath().toString());
         try {
-            assertThat(InstallPlans.alreadyInstalled(project, layout, cache)).isFalse();
+            assertThat(InstallPlans.alreadyInstalled(project, layout, cache, null, null))
+                    .isFalse();
 
             Coordinate coord = Coordinate.of("cc.jumpkick", "jk-foo", "1.0");
             InstallPlans.writeToLocalStore(cache, MavenLayout.artifactPath(coord), layout.mainJar());
             Path pomFile = tmp.resolve("jk-foo.pom");
             Files.writeString(pomFile, PublishablePom.render(project, null).xml());
             InstallPlans.writeToLocalStore(cache, MavenLayout.pomPath(coord), pomFile);
-            assertThat(InstallPlans.alreadyInstalled(project, layout, cache)).isTrue();
-            // The skipped step still reports the shas the shelf holds, for the client's pins.
-            assertThat(InstallPlans.installedShas(project, layout, cache, null))
-                    .isEqualTo(new ModuleOutcome.Shelved(
-                            coord.toGav(), Hashing.sha256Hex(layout.mainJar()), Hashing.sha256Hex(pomFile)));
+            assertThat(InstallPlans.alreadyInstalled(project, layout, cache, null, null))
+                    .isTrue();
+            // The skipped step still reports the shas the target holds, for the client's pins.
+            assertThat(InstallPlans.installedShas(project, layout, cache, null, null))
+                    .isEqualTo(new ModuleOutcome.Installed(
+                            coord.toGav(),
+                            Hashing.sha256Hex(layout.mainJar()),
+                            Hashing.sha256Hex(pomFile),
+                            InstallTarget.JK,
+                            ModuleOutcome.Installed.Change.UNCHANGED));
 
             Files.writeString(layout.mainJar(), "jar-bytes-changed");
-            assertThat(InstallPlans.alreadyInstalled(project, layout, cache)).isFalse();
-            assertThat(InstallPlans.installedShas(project, layout, cache, null)).isNull();
+            assertThat(InstallPlans.alreadyInstalled(project, layout, cache, null, null))
+                    .isFalse();
+            assertThat(InstallPlans.installedShas(project, layout, cache, null, null))
+                    .isNull();
         } finally {
             if (prev != null) System.setProperty("jk.env.JK_STORE_DIR", prev);
             else System.clearProperty("jk.env.JK_STORE_DIR");
@@ -61,21 +74,16 @@ class InstallPlansAlreadyInstalledTest {
     }
 
     /**
-     * With {@code [m2] install} on, the check looks in the same Maven local repo the install
-     * writes to — the caller-resolved {@code --m2-dir} root, not the machine's.
+     * The Maven local target is checked in the same repo the install writes to — the
+     * caller-resolved {@code --m2-dir} root, not the machine's — and the private shelf is not asked.
      */
     @Test
-    void m2_install_is_checked_under_the_redirected_m2_dir(@TempDir Path tmp) throws Exception {
+    void the_maven_local_target_is_checked_under_the_redirected_m2_dir(@TempDir Path tmp) throws Exception {
         Path store = tmp.resolve("store");
         Path cache = tmp.resolve("cache");
         Path mod = tmp.resolve("mod");
         Files.createDirectories(mod);
-        JkBuild project = JkBuild.builder(Project.builder("cc.jumpkick", "jk-foo", "1.0")
-                        .jdkMajor(25)
-                        .java(25)
-                        .m2install(true)
-                        .build())
-                .build();
+        JkBuild project = project(InstallTarget.M2);
         BuildLayout layout = BuildLayout.of(mod, project);
         Files.createDirectories(layout.mainJar().getParent());
         Files.writeString(layout.mainJar(), "jar-bytes");
@@ -84,16 +92,13 @@ class InstallPlansAlreadyInstalledTest {
         Files.writeString(pomFile, PublishablePom.render(project, null).xml());
 
         String prevStore = System.getProperty("jk.env.JK_STORE_DIR");
-        String prevInstall = System.getProperty("jk.m2.install");
         System.setProperty("jk.env.JK_STORE_DIR", store.toAbsolutePath().toString());
-        System.setProperty("jk.m2.install", "true");
         try {
+            // On the private shelf but not in the redirected repo: the install still has work to do.
             InstallPlans.writeToLocalStore(cache, MavenLayout.artifactPath(coord), layout.mainJar());
             InstallPlans.writeToLocalStore(cache, MavenLayout.pomPath(coord), pomFile);
-
-            // On the shelf but not yet in the redirected repo: the install still has work to do.
             Path m2Dir = tmp.resolve("m2-redirected");
-            assertThat(InstallPlans.alreadyInstalled(project, layout, cache, m2Dir))
+            assertThat(InstallPlans.alreadyInstalled(project, layout, cache, m2Dir, null))
                     .isFalse();
 
             Path repo = m2Dir.resolve("repository");
@@ -103,45 +108,42 @@ class InstallPlansAlreadyInstalledTest {
             Files.createDirectories(m2Pom.getParent());
             Files.copy(layout.mainJar(), m2Jar);
             Files.copy(pomFile, m2Pom);
-            assertThat(InstallPlans.alreadyInstalled(project, layout, cache, m2Dir))
+            assertThat(InstallPlans.alreadyInstalled(project, layout, cache, m2Dir, null))
                     .isTrue();
-            assertThat(InstallPlans.alreadyInstalled(project, layout, cache, tmp.resolve("other-m2")))
+            assertThat(InstallPlans.alreadyInstalled(project, layout, cache, tmp.resolve("other-m2"), null))
                     .as("a different --m2-dir has not been installed to")
                     .isFalse();
 
             // The forecast judges the same step against the same root: explain and build agree.
-            assertThat(ForecastPackagingTails.cacheInstall(project, layout, cache, m2Dir, false)
+            assertThat(ForecastPackagingTails.cacheInstall(project, layout, cache, m2Dir, null, false)
                             .cached())
                     .as("the forecast reads the redirected repo the install wrote to")
                     .isTrue();
-            assertThat(ForecastPackagingTails.cacheInstall(project, layout, cache, tmp.resolve("other-m2"), false)
+            assertThat(ForecastPackagingTails.cacheInstall(project, layout, cache, tmp.resolve("other-m2"), null, false)
                             .cached())
                     .as("the forecast under another --m2-dir predicts the install the build would run")
                     .isFalse();
-            assertThat(ForecastPackagingTails.cacheInstall(project, layout, cache, m2Dir, true)
+            assertThat(ForecastPackagingTails.cacheInstall(project, layout, cache, m2Dir, null, true)
                             .cached())
                     .as("a jar this build rewrites is reinstalled whatever the repo holds")
                     .isFalse();
+            assertThat(ForecastPackagingTails.cacheInstall(project, layout, cache, m2Dir, InstallTarget.JK, false)
+                            .cached())
+                    .as("--target jk asks the private repo, which holds the bytes too")
+                    .isTrue();
         } finally {
             if (prevStore != null) System.setProperty("jk.env.JK_STORE_DIR", prevStore);
             else System.clearProperty("jk.env.JK_STORE_DIR");
-            if (prevInstall != null) System.setProperty("jk.m2.install", prevInstall);
-            else System.clearProperty("jk.m2.install");
         }
     }
 
     @Test
-    void skip_false_when_pom_bytes_differ(@TempDir Path tmp) throws Exception {
+    void the_private_repository_is_not_skipped_when_pom_bytes_differ(@TempDir Path tmp) throws Exception {
         Path store = tmp.resolve("store");
         Path cache = tmp.resolve("cache");
         Path mod = tmp.resolve("mod");
         Files.createDirectories(mod);
-        JkBuild project = JkBuild.builder(Project.builder("cc.jumpkick", "jk-foo", "1.0")
-                        .jdkMajor(25)
-                        .java(25)
-                        .m2install(false)
-                        .build())
-                .build();
+        JkBuild project = project(InstallTarget.JK);
         BuildLayout layout = BuildLayout.of(mod, project);
         Files.createDirectories(layout.mainJar().getParent());
         Files.writeString(layout.mainJar(), "jar-bytes");
@@ -154,7 +156,8 @@ class InstallPlansAlreadyInstalledTest {
             Path pomFile = tmp.resolve("jk-foo.pom");
             Files.write(pomFile, "<project/>".getBytes(StandardCharsets.UTF_8));
             InstallPlans.writeToLocalStore(cache, MavenLayout.pomPath(coord), pomFile);
-            assertThat(InstallPlans.alreadyInstalled(project, layout, cache)).isFalse();
+            assertThat(InstallPlans.alreadyInstalled(project, layout, cache, null, null))
+                    .isFalse();
         } finally {
             if (prev != null) System.setProperty("jk.env.JK_STORE_DIR", prev);
             else System.clearProperty("jk.env.JK_STORE_DIR");
