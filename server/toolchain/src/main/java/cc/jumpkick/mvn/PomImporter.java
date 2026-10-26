@@ -325,6 +325,7 @@ public final class PomImporter {
                         .withMultiRelease(releases)
                         .withWar(packaging.war()))
                 .build();
+        jkBuild = NullnessImport.map(jkBuild, report);
         Map<String, String> manifest = new LinkedHashMap<>(PluginFacts.manifestEntries(em.model()));
         // A [multi-release] jar carries the attribute already.
         if (!releases.isEmpty()) manifest.remove(Attributes.Name.MULTI_RELEASE.toString());

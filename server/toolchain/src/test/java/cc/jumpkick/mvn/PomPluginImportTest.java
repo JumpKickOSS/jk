@@ -10,6 +10,7 @@ import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.NullnessConfig;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.SourcesMode;
 import java.nio.charset.StandardCharsets;
@@ -253,7 +254,7 @@ class PomPluginImportTest {
                     <configuration>
                       <compilerArgs><arg>-parameters</arg></compilerArgs>
                       <annotationProcessorPaths>
-                        <path><groupId>com.uber.nullaway</groupId><artifactId>nullaway</artifactId><version>0.13.0</version></path>
+                        <path><groupId>com.google.errorprone</groupId><artifactId>error_prone_core</artifactId><version>2.50.0</version></path>
                       </annotationProcessorPaths>
                     </configuration>
                     <executions>
@@ -263,7 +264,7 @@ class PomPluginImportTest {
                         <configuration>
                           <compilerArgs>
                             <arg>-XDcompilePolicy=simple</arg>
-                            <arg>-Xplugin:ErrorProne -Xep:NullAway:ERROR</arg>
+                            <arg>-Xplugin:ErrorProne -Xep:MissingOverride:ERROR</arg>
                           </compilerArgs>
                         </configuration>
                       </execution>
@@ -285,13 +286,14 @@ class PomPluginImportTest {
 
         assertThat(build.build().javac().args())
                 .as("the plugin's own configuration and the compile goal's execution")
-                .containsExactly("-parameters", "-XDcompilePolicy=simple", "-Xplugin:ErrorProne -Xep:NullAway:ERROR");
+                .containsExactly(
+                        "-parameters", "-XDcompilePolicy=simple", "-Xplugin:ErrorProne -Xep:MissingOverride:ERROR");
         assertThat(build.build().javac().forTests().args())
                 .as("the plugin's own configuration and the testCompile goal's execution")
                 .containsExactly("-parameters", "-Xlint:none");
         assertThat(versions(build.dependencies().of(Scope.PROCESSOR)))
                 .as("the plugin's own paths serve both compiles")
-                .containsExactly("com.uber.nullaway:nullaway=0.13.0");
+                .containsExactly("com.google.errorprone:error_prone_core=2.50.0");
         assertThat(versions(build.dependencies().of(Scope.TEST_PROCESSOR)))
                 .as("a testCompile execution's paths run over the test sources alone")
                 .containsExactly("org.mapstruct:mapstruct-processor=1.6.3");
@@ -310,7 +312,7 @@ class PomPluginImportTest {
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered)
                 .contains("[javac]\nargs = [\"-parameters\", \"-XDcompilePolicy=simple\","
-                        + " \"-Xplugin:ErrorProne -Xep:NullAway:ERROR\"]")
+                        + " \"-Xplugin:ErrorProne -Xep:MissingOverride:ERROR\"]")
                 .contains("[javac.test]\nargs = [\"-parameters\", \"-Xlint:none\"]")
                 .contains("[test-processor-dependencies]\nmapstruct-processor = ");
         JkBuild reparsed = JkBuildParser.parse(rendered);
@@ -440,6 +442,98 @@ class PomPluginImportTest {
         assertThat(below.jkBuild().project().java()).isEqualTo(17);
         assertThat(messages(below)).anyMatch(m -> m.startsWith("toolchain pin `8` is below jk's floor of 17"));
         assertThat(messages(below)).anyMatch(m -> m.startsWith("`<target>` declared 8; jk's floor is 17"));
+    }
+
+    @Test
+    void nullaway_through_error_prone_becomes_the_nullness_table(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0.0</version>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.14.0</version>
+                    <configuration>
+                      <compilerArgs>
+                        <arg>-parameters</arg>
+                        <arg>-XDcompilePolicy=simple</arg>
+                        <arg>--should-stop=ifError=FLOW</arg>
+                        <arg>-Xplugin:ErrorProne -XepDisableAllChecks -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=com.ex -XepOpt:NullAway:KnownInitializers=com.ex.App.init</arg>
+                      </compilerArgs>
+                      <annotationProcessorPaths>
+                        <path><groupId>com.google.errorprone</groupId><artifactId>error_prone_core</artifactId><version>2.50.0</version></path>
+                        <path><groupId>com.uber.nullaway</groupId><artifactId>nullaway</artifactId><version>0.14.2</version></path>
+                        <path><groupId>org.mapstruct</groupId><artifactId>mapstruct-processor</artifactId><version>1.6.3</version></path>
+                      </annotationProcessorPaths>
+                    </configuration>
+                  </plugin></plugins></build>
+                </project>
+                """);
+        JkBuild build = result.jkBuild();
+
+        assertThat(build.build().nullness())
+                .as("the group is the default package; plugin-level args reach testCompile too")
+                .isEqualTo(new NullnessConfig(
+                        null,
+                        NullnessConfig.Severity.ERROR,
+                        List.of("-XepOpt:NullAway:KnownInitializers=com.ex.App.init"),
+                        true));
+        assertThat(build.build().javac().args()).containsExactly("-parameters");
+        assertThat(build.build().javac().plugins()).isEmpty();
+        assertThat(versions(build.dependencies().of(Scope.PROCESSOR)))
+                .as("the table brings Error Prone and NullAway")
+                .containsExactly("org.mapstruct:mapstruct-processor=1.6.3");
+        assertThat(messages(result)).anySatisfy(m -> assertThat(m).contains("writes `[nullness]`"));
+
+        String rendered = JkBuildRenderer.render(build);
+        assertThat(rendered)
+                .contains("[javac]\nargs = [\"-parameters\"]\n")
+                .contains(
+                        "[nullness]\noptions = [\"-XepOpt:NullAway:KnownInitializers=com.ex.App.init\"]\ntests = true\n")
+                .doesNotContain("nullaway")
+                .doesNotContain("ErrorProne");
+        JkBuild reparsed = JkBuildParser.parse(rendered);
+        assertThat(reparsed.build().nullness()).isEqualTo(build.build().nullness());
+        assertThat(reparsed.javac().plugins().get("ErrorProne"))
+                .contains("-Xep:NullAway:ERROR", "-XepOpt:NullAway:AnnotatedPackages=com.ex");
+    }
+
+    @Test
+    void error_prone_running_other_checks_keeps_its_wiring(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0.0</version>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.14.0</version>
+                    <configuration>
+                      <compilerArgs>
+                        <arg>-XDcompilePolicy=simple</arg>
+                        <arg>-Xplugin:ErrorProne -Xep:NullAway:ERROR -Xep:MissingOverride:ERROR</arg>
+                      </compilerArgs>
+                      <annotationProcessorPaths>
+                        <path><groupId>com.google.errorprone</groupId><artifactId>error_prone_core</artifactId><version>2.50.0</version></path>
+                        <path><groupId>com.uber.nullaway</groupId><artifactId>nullaway</artifactId><version>0.14.2</version></path>
+                      </annotationProcessorPaths>
+                    </configuration>
+                  </plugin></plugins></build>
+                </project>
+                """);
+        JkBuild build = result.jkBuild();
+
+        assertThat(build.build().nullness()).isNull();
+        assertThat(build.build().javac().args())
+                .containsExactly(
+                        "-XDcompilePolicy=simple",
+                        "-Xplugin:ErrorProne -Xep:NullAway:ERROR -Xep:MissingOverride:ERROR");
+        assertThat(build.dependencies().of(Scope.PROCESSOR)).hasSize(2);
     }
 
     private static PomImporter.Result importFixture(Path tempDir, String dir, String file) throws Exception {

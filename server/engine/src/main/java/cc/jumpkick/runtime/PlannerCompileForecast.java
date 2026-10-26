@@ -81,7 +81,7 @@ final class PlannerCompileForecast {
                 out,
                 release,
                 prepared.javacArgs(),
-                s.project.build().javac(),
+                s.project.javac(),
                 prepared.javaHome(),
                 prepared.mixedKotlin(),
                 prepared.mixedGroovy(),

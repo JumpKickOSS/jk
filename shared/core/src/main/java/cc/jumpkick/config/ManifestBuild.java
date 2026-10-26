@@ -92,6 +92,7 @@ public final class ManifestBuild {
                 "release",
                 "guards",
                 ManifestGraph.TABLE,
+                ManifestNullness.TABLE,
                 "dokka",
                 ManifestTables.MULTI_RELEASE,
                 ManifestTables.WAR,
@@ -344,7 +345,8 @@ public final class ManifestBuild {
                     List.of(),
                     null,
                     null,
-                    BuildBlock.Resources.EMPTY);
+                    BuildBlock.Resources.EMPTY,
+                    null);
         }
         ManifestBuildTable.Settings s = ManifestBuildTable.read(build, test);
         JkBuildParser.TestTomlTags tags = ManifestTables.parseTestTags(root);
@@ -387,7 +389,8 @@ public final class ManifestBuild {
                 List.of(),
                 null,
                 null,
-                BuildBlock.Resources.EMPTY);
+                BuildBlock.Resources.EMPTY,
+                null);
     }
 
     /** The keys {@code [resolve]} may carry; the schema names exactly these. */

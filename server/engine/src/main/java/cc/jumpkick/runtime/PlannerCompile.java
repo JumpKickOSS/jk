@@ -445,7 +445,7 @@ public final class PlannerCompile {
                 javaOut,
                 ctx.require(RELEASE),
                 javacArgs,
-                ctx.require(PROJECT).build().javac(),
+                ctx.require(PROJECT).javac(),
                 ctx.require(JAVA_HOME),
                 cx.mixed(),
                 cx.mixedGroovy(),

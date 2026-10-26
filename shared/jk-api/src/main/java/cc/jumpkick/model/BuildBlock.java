@@ -180,7 +180,9 @@ public record BuildBlock(
         /** {@code [node]} as written; {@code null} when the table is absent. */
         @Nullable NodeTable node,
         /** {@code [resources]}: extra and filtered resource roots; {@link Resources#EMPTY} when absent. */
-        Resources resources) {
+        Resources resources,
+        /** {@code [nullness]} as written; {@code null} when the table is absent. */
+        @Nullable NullnessConfig nullness) {
 
     /** Default {@code [test] fixtures = true} root — {@code src/fixtures/java}. */
     public static final String DEFAULT_FIXTURES = "src/fixtures/java";
@@ -224,7 +226,8 @@ public record BuildBlock(
             List.of(),
             null,
             null,
-            Resources.EMPTY);
+            Resources.EMPTY,
+            null);
 
     public BuildBlock {
         resources = resources == null ? Resources.EMPTY : resources;
@@ -405,6 +408,11 @@ public record BuildBlock(
     /** The same block with the {@code [node]} table set. */
     public BuildBlock withNode(@Nullable NodeTable node) {
         return with(f -> f.node = node);
+    }
+
+    /** The same block with the {@code [nullness]} table set. */
+    public BuildBlock withNullness(@Nullable NullnessConfig nullness) {
+        return with(f -> f.nullness = nullness);
     }
 
     /** The same block with the {@code [resources]} table set. */

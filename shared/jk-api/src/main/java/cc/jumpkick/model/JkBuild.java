@@ -485,6 +485,15 @@ public record JkBuild(
     }
 
     /**
+     * The {@code [javac]} the compiles run: the table as written, with {@code [nullness]} folded in
+     * at the module's group.
+     */
+    public JavacConfig javac() {
+        NullnessConfig nullness = build.nullness();
+        return nullness == null ? build.javac() : nullness.fold(build.javac(), project.group());
+    }
+
+    /**
      * Same build with a replacement {@link Project} (e.g. after resolving {@code version.workspace =
      * true} from the workspace root).
      */

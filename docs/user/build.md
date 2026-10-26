@@ -158,10 +158,50 @@ Zinc unchanged: its analysis tracks classes, not modules, and a descriptor chang
 module like any other source. javac's own module diagnostics (`module not found`, `package is not
 visible`) land in the results as compile errors.
 
+## Null checking (`[nullness]`)
+
+One table turns on compile-time null checking: [NullAway](https://github.com/uber/NullAway),
+running inside [Error Prone](https://errorprone.info), over [JSpecify](https://jspecify.dev)
+annotations.
+
+```toml
+[nullness]
+```
+
+That is the whole setup. The table brings `org.jspecify:jspecify` onto the compile classpath and
+Error Prone and NullAway onto the processor path, at versions jk tests together, and `jk lock`
+pins them like any other dependency. A jar the module declares itself (JSpecify in any scope,
+either tool in `[processor-dependencies]`) keeps its declared version. The table folds NullAway's
+plugin options and Error Prone's two companion flags into the module's `[javac]`.
+
+NullAway treats the module's group, sub-packages included, as annotated code: an unannotated
+type there is non-null, and `@Nullable` marks the exceptions. A planted dereference fails the
+compile with NullAway's diagnostic in `target/jk-results.md`, like any compile error:
+
+```
+Widget.java:7: error: [NullAway] dereferenced expression 'label' is @Nullable
+```
+
+| Key | Meaning | Default |
+|-----|---------|---------|
+| `packages` | The packages checked as annotated. `[]` checks only code under `@NullMarked`, for a codebase that marks its packages one at a time | the module's group |
+| `severity` | `"error"` fails the compile; `"warn"` reports the finding and goes on | `"error"` |
+| `options` | Further Error Prone flags, after the table's own: `-XepOpt:NullAway:KnownInitializers=…`, `-XepOpt:NullAway:ExcludedClassAnnotations=…` | `[]` |
+| `tests` | Check `compile-test` too. Tests hand `null` to code on purpose, so they are left out unless asked | `false` |
+
+A module that runs Error Prone for its own checks keeps them. When `[javac]` names an
+`ErrorProne` plugin, the table appends NullAway's options to that plugin's. Otherwise it adds
+an `ErrorProne` plugin that runs NullAway alone (`-XepDisableAllChecks` first). With
+`tests = true` the options also reach `[javac.test]` when one is declared. Every option is part
+of the compile action key, so changing `severity` recompiles. `jk explain -v` shows the plugin
+a compile step invokes. `jk import` writes `[nullness]` for a POM that runs NullAway through
+Error Prone and nothing else through it, and drops the plugin argument, its companion flags and
+the two processor paths. A POM that runs other Error Prone checks keeps its wiring as written.
+
 ## javac plugins
 
-A javac **plugin** (Error Prone, NullAway, Checker Framework, Manifold) is a jar on the
-processor path that javac invokes by name with `-Xplugin:<Name> <options…>`. Declare the jar in
+A javac **plugin** (Error Prone, Checker Framework, Manifold) is a jar on the processor path
+that javac invokes by name with `-Xplugin:<Name> <options…>`. Declare the jar in
 `[processor-dependencies]` and name the plugin in `[javac]`:
 
 ```toml
@@ -169,10 +209,9 @@ java = 25                      # the release; [javac] is the compiler table
 
 [processor-dependencies]
 error_prone_core = "com.google.errorprone:error_prone_core:latest"   # opt-in float; a number pins
-nullaway         = "com.uber.nullaway:nullaway:latest"
 
 [javac]
-plugins = { ErrorProne = { options = ["-Xep:NullAway:ERROR", "-XepOpt:NullAway:AnnotatedPackages=com.example"] } }
+plugins = { ErrorProne = { options = ["-Xep:MissingOverride:ERROR"] } }
 args    = ["-XDcompilePolicy=simple", "--should-stop=ifError=FLOW"]
 ```
 
@@ -216,18 +255,12 @@ java = 17                      # the library's level; main classes are 61.0
 release = 21                   # the suite may use a JDK 21 API; test classes are 65.0
 ```
 
-**Error Prone's companions.** Error Prone documents two javac flags it needs beside the plugin,
-and jk does not add them silently: `-XDcompilePolicy=simple` (the default by-todo policy is not
-supported) and `--should-stop=ifError=FLOW` (so its checks still run after an ordinary compile
-error). Put both in `args`, as above. NullAway also needs `-XepOpt:NullAway:AnnotatedPackages=…`
-or it refuses to run. The worker JVM already opens `jdk.compiler`'s internals, which Error Prone
+**Error Prone's companions.** Error Prone documents two javac flags it needs beside the plugin:
+`-XDcompilePolicy=simple` (the default by-todo policy is not supported) and
+`--should-stop=ifError=FLOW` (so its checks still run after an ordinary compile error). A
+`[javac]` plugin gets them only from `args`, as above; [`[nullness]`](#null-checking-nullness)
+adds them itself. The worker JVM already opens `jdk.compiler`'s internals, which Error Prone
 requires on JDK 16+; nothing to configure.
-
-A planted dereference then fails the build with NullAway's diagnostic in `target/jk-results.md`:
-
-```
-Widget.java:7: error: [NullAway] dereferenced expression 'label' is @Nullable
-```
 
 Kotlin compiler plugins are `[[kotlin-plugins]]`, [below](#kotlin-compiler-plugins-kotlin-plugins).
 

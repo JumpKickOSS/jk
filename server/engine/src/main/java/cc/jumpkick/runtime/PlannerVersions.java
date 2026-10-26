@@ -249,7 +249,7 @@ public final class PlannerVersions {
                     out,
                     compileRelease(entry, prepared.release()),
                     prepared.javacArgs(),
-                    project.build().javac(),
+                    project.javac(),
                     prepared.javaHome(),
                     layout.classesDir());
             var pred = JavaCompile.predict(
@@ -338,7 +338,7 @@ public final class PlannerVersions {
                 out,
                 compileRelease(entry, ctx.require(RELEASE)),
                 ctx.require(JAVAC_ARGS),
-                project.build().javac(),
+                project.javac(),
                 ctx.require(JAVA_HOME),
                 mainClasses);
         String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_VERSIONS, out);

@@ -127,7 +127,7 @@ feature matrix.
 | Sources and javadoc jars | both from `jk package`; javadoc for Java, Dokka (`[dokka]`) for a Kotlin or mixed module | done |
 | Central Portal publish | `jk publish -c`: signed bundle, Portal upload, status poll, Publish block in results | done |
 | Code generation | `[generate]`, protobuf, annotation processors, KSP, OpenAPI, jOOQ, Avro, ANTLR, JAXB | done |
-| Lint as a cached step | Checkstyle, PMD, SpotBugs and detekt as cached steps, findings in results; Error Prone and NullAway via `[javac]` | done |
+| Lint as a cached step | Checkstyle, PMD, SpotBugs and detekt as cached steps, findings in results; Error Prone via `[javac]`, null checking via `[nullness]` | done |
 | TestNG | `testng-engine` on the JUnit Platform launcher | done |
 | Database migrations | Flyway and Liquibase as a `jk tool` recipe ([Database](../user/database.md)), not a build step | done |
 

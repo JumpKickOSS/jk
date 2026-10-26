@@ -94,8 +94,7 @@ final class ForecastPackagingTails {
         List<String> options = JavadocTool.options(
                 project.project().javadocMode(),
                 prepared.release(),
-                PlannerCompile.javacOptions(
-                        prepared.javacArgs(), project.build().javac()));
+                PlannerCompile.javacOptions(prepared.javacArgs(), project.javac()));
         // Kotlin sources make it a Dokka run; an exact [dokka] version (the default) needs no catalog.
         String dokkaVersion = prepared.ktSrc().isEmpty()
                 ? null

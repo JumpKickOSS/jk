@@ -73,6 +73,9 @@ final class BuildFields {
 
     BuildBlock.Resources resources;
 
+    @Nullable
+    NullnessConfig nullness;
+
     private BuildFields(BuildBlock b) {
         orderAfter = b.orderAfter();
         testPluginJars = b.testPluginJars();
@@ -113,6 +116,7 @@ final class BuildFields {
         war = b.war();
         node = b.node();
         resources = b.resources();
+        nullness = b.nullness();
     }
 
     BuildBlock build() {
@@ -155,6 +159,7 @@ final class BuildFields {
                 multiRelease,
                 war,
                 node,
-                resources);
+                resources,
+                nullness);
     }
 }

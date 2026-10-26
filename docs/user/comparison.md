@@ -24,7 +24,7 @@ the pitch in [Why JumpKick](why.md).
    ([Engine](engine.md)); the measured numbers are in [Speed and memory](#speed-and-memory).
 4. **The human can watch the agent.** The web dashboard shows every run's trigger, session,
    failure and change since the previous attempt, from the same facts as the CLI and MCP.
-5. **The daily batteries ship in the binary.** Format, lint, guards, code generation, audit and
+5. **The daily batteries ship in the binary.** Format, null checking, lint, guards, code generation, audit and
    deny, CycloneDX and SPDX, signing, OCI images, GraalVM native-image, release and `jkx` are
    commands, not plugins a project has to discover.
 6. **The manifest is data and the lockfile is law.** `jk.toml` is TOML; plugins add tables, not
@@ -116,6 +116,7 @@ wiring.
 | | JumpKick | Maven and Gradle |
 |---|---|---|
 | Format | `jk format` | Spotless, or a formatter plugin |
+| Null checking | `[nullness]`: JSpecify and NullAway, wired | Error Prone and NullAway on the processor path, their flags by hand |
 | Audit / deny | `jk audit`, `jk deny` | A plugin (OWASP, dependency-check, enforcer bans, …) |
 | SBOM, signing, provenance | `jk publish` with CycloneDX, SPDX, GPG, Sigstore, SLSA | A plugin each |
 | OCI image | `jk image` | Jib or a Dockerfile task |

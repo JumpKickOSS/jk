@@ -109,7 +109,7 @@ No plugin hunt for the things every project needs:
 | | Built in |
 |---|---|
 | **Toolchains** | JDK and Node.js install, pin and discovery; `jk activate` shell hooks; `java = 17` cross-compiles on the host JDK |
-| **Code quality** | `jk format` (Java, Kotlin, Groovy, Scala); Checkstyle, PMD, SpotBugs and detekt as cached steps; [guards](docs/user/guards.md) — house rules as data the build enforces |
+| **Code quality** | `jk format` (Java, Kotlin, Groovy, Scala); [null checking](docs/user/build.md#null-checking-nullness) with one `[nullness]` table (JSpecify + NullAway); Checkstyle, PMD, SpotBugs and detekt as cached steps; [guards](docs/user/guards.md) — house rules as data the build enforces |
 | **Code generation** | OpenAPI, jOOQ, Avro, ANTLR, JAXB, protobuf, or any `main`, as cached steps |
 | **Packaging** | Fat and R8-minified jars, GraalVM native images, daemonless OCI images, AOT cache training |
 | **Supply chain** | CycloneDX and SPDX SBOMs, `jk audit`, `jk deny`, GPG, Sigstore and SLSA provenance, `jk verify` |
