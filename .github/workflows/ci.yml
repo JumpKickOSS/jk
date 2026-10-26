@@ -1,16 +1,15 @@
-# The build, the tests and the house-rule gate of a release: they run when a release tag is pushed,
-# and nowhere else. A release is cut by `jk release` (the Cut release workflow runs it, or a
-# developer does with --push): it builds and tests the declared version, tags the commit and moves
-# jk.toml to the next version, and the tag it pushes is what starts this workflow. Day-to-day pushes
-# and pull requests start nothing; the merge gate (jk format, jk guard, jk snapshot) and the push
-# gate (jk snapshot -p integration) run on the developer's machine. A workflow_dispatch re-runs the
-# gate on any ref.
+# The build, the tests and the house-rule gate of a release. release.yml calls this workflow first
+# thing when a release tag is pushed, and nothing builds until it is green. A release is cut by
+# `jk release` (the Cut release workflow runs it, or a developer does with --push): it builds and
+# tests the declared version, tags the commit and moves jk.toml to the next version, and the tag it
+# pushes starts release.yml. Day-to-day pushes and pull requests start nothing; the merge gate
+# (jk format, jk guard, jk snapshot) and the push gate (jk snapshot -p integration) run on the
+# developer's machine. A workflow_dispatch re-runs the gate on any ref.
 
 name: CI
 
 on:
-  push:
-    tags: ["v[0-9]*"]
+  workflow_call:
   workflow_dispatch:
 
 # Every job runs the GITHUB_TOKEN read-only. A job that has to write says so itself, under its own
@@ -99,6 +98,9 @@ jobs:
 
       - name: GitHub Release attach fixtures
         run: bash scripts/test-publish-github-release.sh
+
+      - name: Release environment fixtures
+        run: bash scripts/test-release-environment.sh
 
       - name: Example lock-drift fixtures
         run: bash scripts/test-examples-lock-drift.sh
