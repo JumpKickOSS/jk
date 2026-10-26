@@ -1,16 +1,16 @@
 # Cuts a release with `jk release`, the same verb a developer runs by hand: it builds and tests the
 # version jk.toml declares, installs it, tags the commit (the tag template is `[release] tag`) and
 # moves jk.toml, the lock and the workspace members to the next version in a commit of its own, then
-# pushes the branch and the tag. The tag is what starts the Release workflow: verify the tagged
-# commit, build every platform, then (after the `release` environment's reviewer approves) sign and
-# publish to jumpkick.build.
+# pushes the branch and the tag. The tests run once, in CI, on the tag: this job skips them. A green
+# CI run on the tag starts the Release workflow (build every platform, then, after the `release`
+# environment's reviewer approves, sign and publish to jumpkick.build); a red one ends the release.
 #
 # Run it from the Actions tab on the branch to release; `next` picks the version segment that moves
 # AFTER the release (patch by default). A dirty tree, an existing tag, a -SNAPSHOT version or a
 # version the publish repository already holds is refused before anything is built.
 #
-# A push made with the job's GITHUB_TOKEN starts no workflow, so the last step dispatches the
-# Release workflow on the new tag explicitly, with publish=true.
+# A push made with the job's GITHUB_TOKEN starts no workflow, so the last step dispatches CI on the
+# new tag explicitly.
 
 name: Cut release
 
@@ -40,7 +40,7 @@ jobs:
     timeout-minutes: 150
     permissions:
       contents: write   # push the bump commit and the tag
-      actions: write    # start the Release workflow on the tag
+      actions: write    # start CI on the tag
     env:
       JK_HOME: ${{ github.workspace }}/../jk-home
     steps:
@@ -70,14 +70,14 @@ jobs:
       - name: jk release
         env:
           NEXT: ${{ inputs.next }}
-        run: jk release "--${NEXT}" --push --no-ansi
+        run: jk release "--${NEXT}" --skip-tests --push --no-ansi
 
       # The version just released is the tag on the commit before the bump.
-      - name: Start the Release workflow on the tag
+      - name: Start CI on the release tag
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^)"
           echo "released $tag"
-          gh workflow run release.yml --ref "$tag" -f publish=true
+          gh workflow run ci.yml --ref "$tag"
