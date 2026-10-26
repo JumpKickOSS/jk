@@ -735,6 +735,6 @@ public final class CacheInventoryOps {
      */
     private static Object identityKey(Path path, BasicFileAttributes attrs, DiskUsage.SameFileKeys sameFile) {
         Object key = attrs.fileKey();
-        return key != null ? key : sameFile.identity(path, attrs.size());
+        return key != null ? key : sameFile.identity(path, attrs.size(), attrs.lastModifiedTime());
     }
 }
