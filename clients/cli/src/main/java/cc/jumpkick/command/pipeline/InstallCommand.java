@@ -129,6 +129,9 @@ public final class InstallCommand {
     @Nullable
     public InstallDestination destinationOverride;
 
+    /** The verb that runs this pass, named in what a handover tells the next client to run. */
+    public String verb = "install";
+
     /** From {@code jk install --jdks-dir}: the JDK root the pre-flight and the engine resolve under. */
     @Nullable
     public Path jdksDir;
@@ -454,7 +457,7 @@ public final class InstallCommand {
             // engine of another version than this client's, no request from here can reach it, so
             // the re-shelving pass is the tree's own client's to run: the install is complete as
             // far as this client can take it, and says what runs the rest.
-            String handover = handoverNotice(JkVersion.VERSION, liveEngineVersion(), installedClient);
+            String handover = handoverNotice(JkVersion.VERSION, liveEngineVersion(), installedClient, verb);
             if (handover != null) {
                 if (!json) CommandWedge.printOk("Install", handover);
                 return Exit.SUCCESS;
@@ -732,10 +735,10 @@ public final class InstallCommand {
      * served by the new engine and runs the pass itself — or when the home names no engine.
      */
     public static @Nullable String handoverNotice(
-            String clientVersion, Optional<String> engineVersion, @Nullable Path client) {
+            String clientVersion, Optional<String> engineVersion, @Nullable Path client, String verb) {
         if (engineVersion.isEmpty() || engineVersion.get().equals(clientVersion)) return null;
         String tree = engineVersion.get();
-        String next = client != null ? "`" + client + " install`" : "`jk install` as jk " + tree;
+        String next = client != null ? "`" + client + " " + verb + "`" : "`jk " + verb + "` as jk " + tree;
         return "the home names jk " + tree + "'s engine now, which serves jk " + tree + " clients; this one is jk "
                 + clientVersion + ", so the re-shelving pass runs on the tree's own client — run " + next
                 + " once more";

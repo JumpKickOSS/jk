@@ -99,6 +99,7 @@ public final class SnapshotCommand implements CliCommand {
         buildOpts.skipTests = flags.skipTests();
         InstallCommand install = new InstallCommand(global, buildOpts);
         install.destinationOverride = destination;
+        install.verb = flags.skipTests() ? "snapshot -S" : "snapshot";
         install.cacheDirOverride = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         install.stateDirOverride = in.value("state-dir").map(CliPaths::abs).orElse(null);
         install.binDirOverride = in.value("bin-dir").map(CliPaths::abs).orElse(null);
