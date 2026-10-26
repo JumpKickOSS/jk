@@ -3,6 +3,7 @@ package cc.jumpkick.compat;
 
 import cc.jumpkick.gradle.GradleBuildImport;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
@@ -121,7 +122,11 @@ public final class ProjectImport {
                 for (Map.Entry<Path, JkBuild> e : manifests.entrySet()) {
                     Path dir = e.getKey().getParent();
                     if (dir != null) Files.createDirectories(dir);
-                    Files.writeString(e.getKey(), JkBuildRenderer.render(e.getValue()), StandardCharsets.UTF_8);
+                    // Spell handles by the catalog the parse of this file reads, downloaded and project
+                    // layers included, so a shortened entry names the same coordinate.
+                    LibraryCatalog catalog = LibraryCatalog.forProject(dir != null ? dir : effectiveBaseDir);
+                    Files.writeString(
+                            e.getKey(), JkBuildRenderer.render(e.getValue(), catalog), StandardCharsets.UTF_8);
                     wrote.add(e.getKey());
                 }
                 for (Map.Entry<Path, String> e : frontend.rewrites().entrySet()) {
