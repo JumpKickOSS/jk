@@ -34,7 +34,7 @@ Outside a project `jk mcp` still serves, and the tools take `dir` as over HTTP.
 | Session | `initialize` answers with an `Mcp-Session-Id` header; echo it on every later request. One id is one **session**: the runs it starts journal as `trigger: mcp · session: <clientInfo.name> <id>`. `DELETE /mcp` with the header ends it |
 | Protocol | Advertised `protocolVersion` `2024-11-05` (Streamable-HTTP) |
 | Server name | `jk-engine` |
-| Tool list | `tools/list` answers ten tools (`run`, `snapshot`, `diagnostics`, `deps`, `why`, `query_graph`, `read_symbol`, `get_neighbors`, `shortest_path`, `skill`). `{"extended": true}` on that call, or `[mcp] tools = "all"` (`JK_MCP_TOOLS=all`), lists every card. Every tool is callable by name either way |
+| Tool list | `tools/list` answers ten tools (`run`, `snapshot`, `diagnostics`, `deps`, `why`, `query_graph`, `read_symbol`, `get_neighbors`, `find_symbols`, `skill`). `{"extended": true}` on that call, or `[mcp] tools = "all"` (`JK_MCP_TOOLS=all`), lists every card. Every tool is callable by name either way |
 | CLI | `jk engine status` shows **MCP**; JSON includes `mcpUrl` |
 
 Token: `jk engine status` / `jk web` URL fragment, or the file under the state directory

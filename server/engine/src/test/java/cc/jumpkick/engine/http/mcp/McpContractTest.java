@@ -181,7 +181,7 @@ class McpContractTest {
                         "\"why\"",
                         "\"query_graph\"",
                         "\"get_neighbors\"",
-                        "\"shortest_path\"",
+                        "\"find_symbols\"",
                         "\"skill\"");
         assertThat(body).doesNotContain("\"history\"", "\"bind\"", "\"manifest\"", "\"jdk\"", "\"god_nodes\"");
 

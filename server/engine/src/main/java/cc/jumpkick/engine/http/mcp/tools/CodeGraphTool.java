@@ -66,19 +66,15 @@ public final class CodeGraphTool implements McpTool {
                 new CodeGraphTool(
                         spec(
                                 "find_symbols",
-                                "Declarations that pass every filter: kind (class, interface, method, ... type, member), "
-                                        + "visibility, extends, implements (transitive, library types too), annotated, "
-                                        + "and a name glob (*Service). Each takes a comma list. libraries=true searches "
-                                        + "the locked jars' types by name and kind instead.",
+                                "Declarations by kind, visibility, extends, implements, annotated, name glob; each "
+                                        + "a comma list.",
                                 scoped(Map.of(
                                         "name", McpSchemas.string(),
                                         "kind", McpSchemas.string(),
                                         "visibility", McpSchemas.string(),
                                         "extends", McpSchemas.string(),
                                         "implements", McpSchemas.string(),
-                                        "annotated", McpSchemas.string(),
-                                        "libraries", McpSchemas.bool(),
-                                        "token_budget", McpSchemas.integer())),
+                                        "annotated", McpSchemas.string())),
                                 List.of()),
                         "find",
                         in -> {

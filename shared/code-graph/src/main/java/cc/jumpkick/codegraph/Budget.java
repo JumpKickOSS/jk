@@ -29,12 +29,14 @@ public final class Budget {
         long shown = kept.lines().filter(l -> l.startsWith("NODE ")).count();
         long cut = total - shown;
         if (cut == 0) {
+            // Every node fits: the edges after them are cut at the budget too, nearest the question first.
             long edges = lines.stream().filter(l -> l.startsWith("EDGE ")).count();
-            return "[i] Complete answer over budget: all " + total + " nodes and " + edges + " edges shown (~"
-                    + output.length() / CHARS_PER_TOKEN + " tokens vs the requested ~" + budget
-                    + "-token budget). Edges are never dropped once every node fits, so this is already the full"
-                    + " answer. Narrow with context_filter=['call'] or use get_node for a specific symbol.\n\n"
-                    + output;
+            long shownEdges = kept.lines().filter(l -> l.startsWith("EDGE ")).count();
+            int full = (output.length() + 2) / CHARS_PER_TOKEN;
+            return "[i] All " + total + " nodes; " + shownEdges + " of " + edges + " edges shown (~" + budget
+                    + " tokens), those nearest the question first. Every edge takes ~" + full + ": --budget " + full
+                    + " (MCP token_budget), or narrow with context_filter or get_neighbors.\n\n" + kept + "\n... "
+                    + (edges - shownEdges) + " more edges cut";
         }
         int nodeChars = lines.stream()
                 .filter(l -> l.startsWith("NODE "))

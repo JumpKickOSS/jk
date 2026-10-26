@@ -105,6 +105,20 @@ class GraphQueryTest {
     }
 
     @Test
+    void edgesPastTheBudgetAreCutOnceEveryNodeFits() {
+        List<String> lines = new ArrayList<>();
+        for (int i = 0; i < 5; i++) lines.add("NODE n" + i + " [src=x.java loc=L" + i + " community=0]");
+        for (int i = 0; i < 100; i++) lines.add("EDGE n0 --calls [EXTRACTED]--> n" + (i % 5) + " at=x.java:L" + i);
+        String out = Budget.cut(lines, 1, 300);
+        assertThat(out)
+                .startsWith("[i] All 5 nodes; ")
+                .contains(" of 100 edges shown")
+                .endsWith(" more edges cut");
+        assertThat(out).contains("NODE n4 ").contains("at=x.java:L0").doesNotContain("at=x.java:L99");
+        assertThat(out.length()).isLessThan(300 * Budget.CHARS_PER_TOKEN + 300);
+    }
+
+    @Test
     void pathFollowsDirectionAndExplainListsConnections() throws IOException {
         GraphTools tools = new GraphTools(GraphJsonTest.shop());
         assertThat(tools.shortestPath("OrderService", "BaseService", 8, false))
