@@ -246,4 +246,36 @@ Output+reasoning, uncached input, and cache-read are medians over the tool's run
 the sum of `cost_usd` on green runs divided by the number of green runs. `reasoning_tokens` is 0
 when the API reports reasoning only inside `output_tokens`.
 
+## Change tasks
+
+The scenarios above are build-fix loops on small repositories, where no code graph can help. The
+day-to-day work is different: add a field through the layers, rename a method and its callers,
+implement a method across a hierarchy, find a bug from its symptom. `change-tasks` measures that.
+
+```bash
+bench/agent-loop/change-tasks --list
+bench/agent-loop/change-tasks --task commons-lang-rename-indexof --arm jk --arm jk-nograph --runs 5
+bench/agent-loop/change-tasks --render
+```
+
+Tasks are in [`tasks.toml`](tasks.toml), on the repositories of the graph-retrieval corpus
+(`bench/graph-retrieval/bench setup`). A sandbox is the corpus tree's tracked files at its commit
+(jk's arms with `jk.toml` and the lock and no Maven or Gradle build; Maven's with its own POM), a
+planted defect when the task has one, committed as the baseline. The agent gets the task as its
+prompt, file tools only (`Read`, `Edit`, `Write`, `Glob`, `Grep`; no shell) and its tool's MCP
+server. When it stops, the task's hidden acceptance tests (`tasks/<task>/`) are copied in, any
+`restore` directory is put back as shipped, and the full test run decides: **green** passes, **red**
+does not, **claimed** is a DONE the tests refute.
+
+| Arm | Build tool | MCP | What it isolates |
+|---|---|---|---|
+| `jk` | jk | `jk mcp`, graph tools on the default list | the product as installed |
+| `jk-nograph` | jk | `jk mcp` with `query_graph`, `read_symbol`, `get_neighbors` and `find_symbols` disallowed | the graph, everything else equal |
+| `mvn` | Maven | `wrappers/results-mcp` | the null hypothesis, as above |
+| `mvn-graphify` | Maven | the wrapper plus graphify's MCP server, over a `graphify update .` index | a code graph added by hand |
+
+Each row records tokens (input, output, cache read and write), turns, wall time, the outcome, and
+how the agent navigated: graph calls, `Grep`/`Glob`/`Read` calls, and the graph's share of the two.
+`results/<date>-change-tasks/TABLE.md` is the medians per task and arm.
+
 `bench/jar-size/` is the neighbouring bench; this one measures the loop, that one the artefact.
