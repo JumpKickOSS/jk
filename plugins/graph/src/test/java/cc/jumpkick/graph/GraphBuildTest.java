@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
@@ -123,18 +124,22 @@ class GraphBuildTest {
     }
 
     /** The engine's half: the root module's facts index, brought current from target/classes. */
-    private static List<GraphBuild.ClassIndex> indexes(Path root) throws IOException {
+    private static List<GraphBuild.ClassIndex> indexes(Path root, Set<String> stale) throws IOException {
         Path classes = root.resolve("target/classes");
         FactsIndexing.Ensured e =
                 FactsIndexing.ensure(classes, FactsIndexing.indexPath(root.resolve("target"), "main"));
-        return List.of(new GraphBuild.ClassIndex(e.index(), "", e.bodyDigest(), e.classes()));
+        return List.of(new GraphBuild.ClassIndex(e.index(), "", e.bodyDigest(), e.classes(), stale));
     }
 
     private static GraphBuild.Result refresh(Path root, boolean rebuild) throws IOException {
+        return refresh(root, rebuild, Set.of());
+    }
+
+    private static GraphBuild.Result refresh(Path root, boolean rebuild, Set<String> stale) throws IOException {
         return GraphBuild.refresh(
                 root,
                 root.resolve("target/graph"),
-                indexes(root),
+                indexes(root, stale),
                 Modules.NONE,
                 NO_NODE,
                 rebuild,
@@ -173,6 +178,26 @@ class GraphBuildTest {
         String json = Files.readString(r.dir().resolve("graph.json"));
         assertThat(GraphJson.read(json).size()).isEqualTo(g.size());
         assertThat(r.dir().resolve("GRAPH_REPORT.md")).exists();
+    }
+
+    @Test
+    void aStaleSourceLosesOnlyItsOwnCompiledFacts(@TempDir Path dir) throws IOException {
+        Path root = workspace(dir);
+        CodeGraph calc = refresh(root, false, Set.of("src/main/java/com/acme/shop/PriceCalculator.java"))
+                .graph();
+        assertThat(edge(calc, "orderservice_total", "pricecalculator_sum", "calls"))
+                .as("OrderService's classes still hold its call into the edited file")
+                .isTrue();
+        assertThat(edge(calc, "orderservice_audit", "baseservice_log", "calls")).isTrue();
+
+        CodeGraph svc = refresh(root, false, Set.of("src/main/java/com/acme/shop/OrderService.java"))
+                .graph();
+        assertThat(edge(svc, "orderservice_total", "pricecalculator_sum", "calls"))
+                .as("the edited file's own compiled calls are not read")
+                .isFalse();
+        assertThat(svc.node("src_main_java_com_acme_shop_orderservice_orderservice_total"))
+                .as("its declarations still come from the source")
+                .isNotNull();
     }
 
     @Test
@@ -374,7 +399,7 @@ class GraphBuildTest {
         return new GraphService.Workspace(
                 root,
                 root.resolve("target/graph"),
-                indexes(root),
+                indexes(root, Set.of()),
                 Modules.NONE,
                 NO_NODE,
                 graphify,

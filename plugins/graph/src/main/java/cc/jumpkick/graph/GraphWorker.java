@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -94,12 +95,17 @@ public final class GraphWorker implements Plugin {
         return out;
     }
 
-    /** {@code index \t modulePrefix \t digest \t classes}, one per class set. */
+    /**
+     * {@code index \t modulePrefix \t digest \t classes \t stale}, one per class set; {@code stale}
+     * is the workspace-relative sources edited since the build, joined by {@code U+001F}.
+     */
     static List<GraphBuild.ClassIndex> indexes(PluginConfig c) {
         List<GraphBuild.ClassIndex> out = new ArrayList<>();
         for (String row : c.stringList("classIndexes")) {
             String[] f = row.split("\t", -1);
-            if (f.length == 4) out.add(new GraphBuild.ClassIndex(Path.of(f[0]), f[1], f[2], Integer.parseInt(f[3])));
+            if (f.length != 5) continue;
+            Set<String> stale = f[4].isEmpty() ? Set.of() : Set.of(f[4].split("\u001f"));
+            out.add(new GraphBuild.ClassIndex(Path.of(f[0]), f[1], f[2], Integer.parseInt(f[3]), stale));
         }
         return out;
     }

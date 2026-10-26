@@ -48,6 +48,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
@@ -102,7 +103,7 @@ public final class GraphRunner {
             GraphScripts.Tools scripts = req.noRefresh() ? null : GraphScripts.of(root);
             Path spec = spec(root, req, indexes.rows(), modules, prefixes, scripts);
             try {
-                return withNote(forkWithHeap(root, spec, progress), indexes.leftOut());
+                return withNote(forkWithHeap(root, spec, progress), indexes.leftOut(), indexes.edited());
             } finally {
                 Files.deleteIfExists(spec);
             }
@@ -322,25 +323,31 @@ public final class GraphRunner {
     }
 
     /**
-     * The facts-index rows the graph reads ({@code index \t modulePrefix \t digest \t classes},
-     * one per module's main and test classes) and the modules whose classes it does not read, each
-     * with why.
+     * The facts-index rows the graph reads ({@code index \t modulePrefix \t digest \t classes \t
+     * stale}, one per module's main and test classes, {@code stale} the workspace-relative sources
+     * edited since the build, joined by {@link #STALE_SEPARATOR}), the modules whose classes it does
+     * not read, and the edited sources whose own classes it skips.
      */
-    record ClassIndexes(List<String> rows, List<String> leftOut) {
-        static final ClassIndexes NONE = new ClassIndexes(List.of(), List.of());
+    record ClassIndexes(List<String> rows, List<String> leftOut, List<String> edited) {
+        static final ClassIndexes NONE = new ClassIndexes(List.of(), List.of(), List.of());
     }
 
+    /** Between the paths of a row's stale field: a character no source path holds. */
+    static final String STALE_SEPARATOR = "\u001f";
+
     /**
-     * The class facts of every module whose classes were compiled from its sources as they stand
-     * ({@link ModuleInputProvenance#classesCurrent}), each index brought up to date first and the
-     * module checked again after, so a build writing the classes meanwhile leaves the module out
-     * rather than half in. A module left out contributes what its sources say, and the answer
-     * names it: a call, an override or a line number read off classes older than the source would
-     * be a false answer.
+     * The class facts of every module whose classes its last build wrote, each index brought up to
+     * date first and the module checked again after, so a build writing the classes meanwhile
+     * leaves the module out rather than half in. A source edited since that build
+     * ({@link ModuleInputProvenance#staleSources}) contributes what it says; every other class of
+     * the module keeps its compiled facts, so one edit does not take its neighbours' calls with it.
+     * A call, an override or a line read off a class older than its own source would be a false
+     * answer, so the answer names what it skipped.
      */
     static ClassIndexes classIndexes(Path root) {
         List<String> out = new ArrayList<>();
         List<String> leftOut = new ArrayList<>();
+        List<String> edited = new ArrayList<>();
         for (Map.Entry<Path, JkBuild> module : modules(root).entrySet()) {
             BuildLayout layout = BuildLayout.of(root, module.getKey(), module.getValue());
             String rel = root.relativize(module.getKey()).toString().replace('\\', '/');
@@ -348,10 +355,13 @@ public final class GraphRunner {
             String name = rel.isEmpty() ? String.valueOf(module.getKey().getFileName()) : rel;
             boolean compiled = Files.isDirectory(layout.classesDir()) || Files.isDirectory(layout.testClassesDir());
             if (!compiled) continue;
-            if (!ModuleInputProvenance.classesCurrent(root, module.getKey(), module.getValue())) {
+            Set<String> stale = ModuleInputProvenance.staleSources(root, module.getKey(), module.getValue());
+            if (stale == null) {
                 leftOut.add(name);
                 continue;
             }
+            List<String> staleRel = stale.stream().map(s -> prefix + s).toList();
+            String staleField = String.join(STALE_SEPARATOR, staleRel);
             List<String> rows = new ArrayList<>();
             try {
                 for (String set : List.of("main", "test")) {
@@ -359,27 +369,40 @@ public final class GraphRunner {
                     if (!Files.isDirectory(classes)) continue;
                     FactsIndexing.Ensured e =
                             FactsIndexing.ensure(classes, FactsIndexing.indexPath(layout.buildDir(), set));
-                    rows.add(e.index() + "\t" + prefix + "\t" + e.bodyDigest() + "\t" + e.classes());
+                    rows.add(
+                            e.index() + "\t" + prefix + "\t" + e.bodyDigest() + "\t" + e.classes() + "\t" + staleField);
                 }
             } catch (IOException | RuntimeException unreadable) {
                 leftOut.add(name);
                 continue;
             }
-            if (!ModuleInputProvenance.classesCurrent(root, module.getKey(), module.getValue())) {
+            if (!stale.equals(ModuleInputProvenance.staleSources(root, module.getKey(), module.getValue()))) {
                 leftOut.add(name);
                 continue;
             }
             out.addAll(rows);
+            edited.addAll(staleRel);
         }
-        return new ClassIndexes(out, leftOut);
+        return new ClassIndexes(out, leftOut, edited);
     }
 
-    /** {@code ack} with the modules whose compiled facts were left out named in its note. */
-    static GraphAck withNote(GraphAck ack, List<String> leftOut) {
-        if (!ack.ok() || leftOut.isEmpty()) return ack;
-        String line = "compiled facts left out for " + String.join(", ", leftOut)
-                + " (classes older than the sources, or being built): calls, overrides and lines there come from"
-                + " the sources alone; jk build brings them back";
+    /** {@code ack} with the modules and edited sources whose compiled facts were left out named in its note. */
+    static GraphAck withNote(GraphAck ack, List<String> leftOut, List<String> edited) {
+        if (!ack.ok() || (leftOut.isEmpty() && edited.isEmpty())) return ack;
+        List<String> lines = new ArrayList<>();
+        if (!leftOut.isEmpty()) {
+            lines.add("compiled facts left out for " + String.join(", ", leftOut)
+                    + " (classes older than the sources, or being built): calls, overrides and lines there come from"
+                    + " the sources alone; jk build brings them back");
+        }
+        if (!edited.isEmpty()) {
+            List<String> shown = edited.subList(0, Math.min(edited.size(), 5));
+            lines.add(edited.size() + (edited.size() == 1 ? " source edited" : " sources edited")
+                    + " since the build (" + String.join(", ", shown) + (edited.size() > shown.size() ? ", …" : "")
+                    + "): their own calls and lines come from the sources; every other file keeps its compiled"
+                    + " facts; jk build brings them back");
+        }
+        String line = String.join("\n", lines);
         String note = ack.note() == null ? line : ack.note() + "\n" + line;
         return new GraphAck(
                 null,

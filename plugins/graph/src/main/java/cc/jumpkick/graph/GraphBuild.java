@@ -32,6 +32,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
@@ -67,7 +68,16 @@ public final class GraphBuild {
      * directory of its module ({@code ""} for the root, else ending in {@code /}), its body digest
      * and its class count.
      */
-    public record ClassIndex(Path index, String modulePrefix, String digest, int classes) {}
+    /**
+     * One module's class set: its facts index, the module's path prefix, the index's digest and
+     * class count, and the workspace-relative sources edited since those classes were built, whose
+     * own classes are skipped (their source scan answers for them).
+     */
+    public record ClassIndex(Path index, String modulePrefix, String digest, int classes, Set<String> stale) {
+        public ClassIndex {
+            stale = Set.copyOf(stale);
+        }
+    }
 
     /** What one refresh did; {@code changed} false when the stored snapshot was the answer. */
     public record Result(
@@ -296,7 +306,10 @@ public final class GraphBuild {
             try {
                 var index = FactsFormat.read(c.index());
                 classes += index.classes().size();
-                all.add(JvmFacts.map(index, (pkg, file) -> find(byName, c.modulePrefix(), pkg, file)));
+                all.add(JvmFacts.map(index, (pkg, file) -> {
+                    String rel = find(byName, c.modulePrefix(), pkg, file);
+                    return rel == null || c.stale().contains(rel) ? null : rel;
+                }));
             } catch (IOException | RuntimeException unreadable) {
                 Log.debug("graph: class facts unreadable at " + c.index(), unreadable);
             }
@@ -312,7 +325,8 @@ public final class GraphBuild {
     private static String classDigest(List<ClassIndex> indexes, Modules modules) {
         List<String> parts = new ArrayList<>();
         for (ClassIndex c : indexes)
-            parts.add(c.modulePrefix() + "\t" + c.index().getFileName() + "\t" + c.digest());
+            parts.add(c.modulePrefix() + "\t" + c.index().getFileName() + "\t" + c.digest() + "\t"
+                    + String.join(",", new TreeSet<>(c.stale())));
         for (Modules.Module m : modules.list()) parts.add("module\t" + m.prefix() + "\t" + m.compact());
         parts.sort(null);
         return Hashing.sha256Hex(String.join("\n", parts));
