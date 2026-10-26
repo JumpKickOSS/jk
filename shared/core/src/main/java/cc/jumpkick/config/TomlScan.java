@@ -204,7 +204,10 @@ public final class TomlScan {
                     // Inside a multi-line string array: collect quoted elements until the
                     // `]` outside quotes that closes it (IPv6-style values carry `]` inside).
                     List<String> open = arrays.computeIfAbsent(arrayKey, k -> new ArrayList<>());
-                    if (collectArrayLine(line, open)) arrayKey = null;
+                    if (collectArrayLine(line, open)) {
+                        arrayKey = null;
+                        if (values.size() + arrays.size() == wanted.size()) break;
+                    }
                     continue;
                 }
                 if (line.startsWith("[")) {
@@ -233,12 +236,16 @@ public final class TomlScan {
                     if (arrays.containsKey(qualified)) continue;
                     List<String> elements = new ArrayList<>();
                     arrays.put(qualified, elements);
-                    if (!collectArrayLine(rest.substring(1), elements)) arrayKey = qualified;
+                    if (collectArrayLine(rest.substring(1), elements)) {
+                        if (values.size() + arrays.size() == wanted.size()) break;
+                    } else {
+                        arrayKey = qualified;
+                    }
                     continue;
                 }
                 if (values.containsKey(qualified)) continue;
                 values.put(qualified, scalar(rest));
-                if (values.size() == wanted.size()) break; // all found — stop reading
+                if (values.size() + arrays.size() == wanted.size()) break; // all found — stop reading
             }
         }
         return new TomlScan(values, arrays, sections);
@@ -246,11 +253,26 @@ public final class TomlScan {
 
     /** Collect quoted elements from one array line; true when the closing {@code ]} was seen. */
     private static boolean collectArrayLine(String line, List<String> elements) {
-        int close = line.indexOf(']', line.lastIndexOf('"') + 1);
+        int close = -1;
+        boolean inQuotes = false;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (inQuotes) {
+                if (c == '\\') i++;
+                else if (c == '"') inQuotes = false;
+            } else if (c == '"') {
+                inQuotes = true;
+            } else if (c == ']') {
+                close = i;
+                break;
+            } else if (c == '#') {
+                break;
+            }
+        }
         String body = close >= 0 ? line.substring(0, close) : line;
         Matcher m = QUOTED.matcher(body);
         while (m.find()) {
-            elements.add(m.group(1).replace("\\\"", "\"").replace("\\\\", "\\"));
+            elements.add(MinimalToml.unquote("\"" + m.group(1) + "\""));
         }
         return close >= 0;
     }

@@ -125,7 +125,7 @@ $ReleaseRsaExponent = "AQAB"
 # The release this installer ships with. A signed latest-release pointer naming anything older is
 # a rollback — a bucket writer or a mirror re-serving an old, validly signed release — and is
 # refused; JK_VERSION remains the deliberate way to install a specific release.
-$ReleaseFloor = "0.41.2"
+$ReleaseFloor = "0.49.0"
 
 # irm|iex cannot pass positional args; allow JK_LOCAL_PATH as the local-dist seam.
 if (-not $LocalPath -and $env:JK_LOCAL_PATH) {
@@ -358,7 +358,7 @@ function Get-ReleasePointerVersion {
     } finally {
         Remove-Item -LiteralPath $signatureFile -Force -ErrorAction SilentlyContinue
     }
-    if ([version]($version -replace '-.*', '') -lt [version]($Floor -replace '-.*', '')) {
+    if ([version]($version -replace '^([0-9]+\.[0-9]+\.[0-9]+).*', '$1') -lt [version]($Floor -replace '^([0-9]+\.[0-9]+\.[0-9]+).*', '$1')) {
         throw "latest-release pointer names $version, older than the $Floor this installer ships with; refusing a rolled-back pointer (set JK_VERSION to install a specific release)"
     }
     return $version
@@ -804,12 +804,19 @@ try {
         $jkJar = Join-Path $jkLib "jk-$jarVersion.jar"
         try {
             Copy-Item -LiteralPath $ArchiveFile -Destination "$jkJar.tmp" -Force
-            Move-Item -LiteralPath "$jkJar.tmp" -Destination $jkJar -Force
+            try {
+                Move-Item -LiteralPath "$jkJar.tmp" -Destination $jkJar -Force
+            } catch {
+                Park-IfPresent $jkJar
+                Move-Item -LiteralPath "$jkJar.tmp" -Destination $jkJar -Force
+            }
         } catch {
             Die "failed to install ${jkJar}: $($_.Exception.Message)"
         }
         # One client jar: a launcher names exactly one. A jar a running client still maps cannot
         # be deleted; it is parked and swept by the next install.
+        Get-ChildItem -Path $jkLib -Filter "jk-*.jar.old" -File -ErrorAction SilentlyContinue |
+            ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
         Get-ChildItem -Path $jkLib -Filter "jk-*.jar" -File -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -ne $jkJar } |
             ForEach-Object {

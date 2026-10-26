@@ -33,6 +33,29 @@ final class Keys {
                 if (c >= 0x21 && c <= 0x7E) {
                     yield new Key.Char((char) c);
                 }
+                if (c >= 0xC2 && c <= 0xDF) {
+                    int b1 = feed.read(CSI_PEEK);
+                    if ((b1 & 0xC0) == 0x80) {
+                        int cp = ((c & 0x1F) << 6) | (b1 & 0x3F);
+                        yield new Key.Char((char) cp);
+                    }
+                    if (b1 >= 0) feed.unread(b1);
+                } else if (c >= 0xE0 && c <= 0xEF) {
+                    int b1 = feed.read(CSI_PEEK);
+                    if ((b1 & 0xC0) == 0x80) {
+                        int b2 = feed.read(CSI_PEEK);
+                        if ((b2 & 0xC0) == 0x80) {
+                            int cp = ((c & 0x0F) << 12) | ((b1 & 0x3F) << 6) | (b2 & 0x3F);
+                            if (cp >= 0x800 && !(cp >= 0xD800 && cp <= 0xDFFF)) {
+                                yield new Key.Char((char) cp);
+                            }
+                        } else if (b2 >= 0) {
+                            feed.unread(b2);
+                        }
+                    } else if (b1 >= 0) {
+                        feed.unread(b1);
+                    }
+                }
                 yield new Key.Unknown(c);
             }
         };

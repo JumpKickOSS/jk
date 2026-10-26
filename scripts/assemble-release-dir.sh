@@ -58,7 +58,7 @@ esac
 # jk.exe first: bash on Windows answers `-f jk` with yes when only jk.exe exists, so the Unix
 # branch would name a file that is not there.
 if [[ -f "$DIST/jk.exe" ]]; then
-  name="jk-windows-x86_64-${VERSION}"
+  name="jk-windows-${arch}-${VERSION}"
   src="$DIST/jk.exe"
 elif [[ -f "$DIST/jk" ]]; then
   name="jk-${os}-${arch}-${VERSION}"

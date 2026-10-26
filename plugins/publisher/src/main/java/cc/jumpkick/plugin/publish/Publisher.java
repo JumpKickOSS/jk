@@ -288,7 +288,11 @@ public final class Publisher implements Plugin, PublishExtension {
             boolean compact = SourceLayout.isSimpleLayout(project.project(), projectDir);
             List<Path> sourceRoots = compact
                     ? List.of(projectDir.resolve("src"))
-                    : List.of(projectDir.resolve("src/main/java"), projectDir.resolve("src/main/kotlin"));
+                    : List.of(
+                            projectDir.resolve("src/main/java"),
+                            projectDir.resolve("src/main/kotlin"),
+                            projectDir.resolve("src/main/groovy"),
+                            projectDir.resolve("src/main/scala"));
             artifacts.add(new MavenPublisher.Artifact("-sources.jar", SourcesJar.build(sourceRoots)));
             ctx.label("artifact " + project.project().name() + "-"
                     + project.project().version() + "-sources.jar");

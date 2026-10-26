@@ -84,7 +84,7 @@ public final class FactsExtractor {
         @Override
         public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
             refType(desc);
-            return new AnnotationCollector(desc, visible, annotations::add);
+            return new AnnotationCollector(desc, visible, annotations::add, this::refType);
         }
 
         @Override
@@ -97,7 +97,7 @@ public final class FactsExtractor {
                 @Override
                 public AnnotationVisitor visitAnnotation(String adesc, boolean visible) {
                     refType(adesc);
-                    return new AnnotationCollector(adesc, visible, fann::add);
+                    return new AnnotationCollector(adesc, visible, fann::add, Collector.this::refType);
                 }
 
                 @Override
@@ -170,15 +170,18 @@ public final class FactsExtractor {
             @Override
             public AnnotationVisitor visitAnnotation(String adesc, boolean visible) {
                 refType(adesc);
-                return new AnnotationCollector(adesc, visible, mann::add);
+                return new AnnotationCollector(adesc, visible, mann::add, Collector.this::refType);
             }
 
             @Override
             public AnnotationVisitor visitParameterAnnotation(int parameter, String adesc, boolean visible) {
                 refType(adesc);
                 return new AnnotationCollector(
-                        adesc, visible, a -> pann.computeIfAbsent(parameter, k -> new ArrayList<>())
-                                .add(a));
+                        adesc,
+                        visible,
+                        a -> pann.computeIfAbsent(parameter, k -> new ArrayList<>())
+                                .add(a),
+                        Collector.this::refType);
             }
 
             @Override
@@ -334,22 +337,26 @@ public final class FactsExtractor {
         private final String desc;
         private final boolean visible;
         private final Consumer<AnnotationFacts> sink;
+        private final Consumer<String> refType;
         private final Map<String, List<String>> values = new LinkedHashMap<>();
 
-        AnnotationCollector(String desc, boolean visible, Consumer<AnnotationFacts> sink) {
+        AnnotationCollector(String desc, boolean visible, Consumer<AnnotationFacts> sink, Consumer<String> refType) {
             super(Opcodes.ASM9);
             this.desc = desc;
             this.visible = visible;
             this.sink = sink;
+            this.refType = refType;
         }
 
         @Override
         public void visit(@Nullable String name, Object value) {
+            if (value instanceof Type t) refType.accept(t.getDescriptor());
             add(name, value instanceof Type t ? t.getInternalName() : String.valueOf(value));
         }
 
         @Override
         public void visitEnum(@Nullable String name, String edesc, String value) {
+            refType.accept(edesc);
             add(name, value);
         }
 
@@ -359,25 +366,29 @@ public final class FactsExtractor {
             return new AnnotationVisitor(Opcodes.ASM9) {
                 @Override
                 public void visit(@Nullable String n, Object value) {
+                    if (value instanceof Type t) refType.accept(t.getDescriptor());
                     add(key, value instanceof Type t ? t.getInternalName() : String.valueOf(value));
                 }
 
                 @Override
                 public void visitEnum(@Nullable String n, String edesc, String value) {
+                    refType.accept(edesc);
                     add(key, value);
                 }
 
                 @Override
                 public AnnotationVisitor visitAnnotation(@Nullable String n, String ndesc) {
+                    refType.accept(ndesc);
                     // A repeatable's container: each nested annotation is a fact on the element too.
-                    return new AnnotationCollector(ndesc, visible, sink);
+                    return new AnnotationCollector(ndesc, visible, sink, refType);
                 }
             };
         }
 
         @Override
         public AnnotationVisitor visitAnnotation(@Nullable String name, String ndesc) {
-            return new AnnotationCollector(ndesc, visible, sink);
+            refType.accept(ndesc);
+            return new AnnotationCollector(ndesc, visible, sink, refType);
         }
 
         @Override

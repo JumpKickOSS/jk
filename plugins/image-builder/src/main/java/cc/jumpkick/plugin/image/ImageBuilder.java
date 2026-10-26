@@ -274,6 +274,7 @@ public final class ImageBuilder {
     static List<String> appTreeEntrypoint(Plan plan, boolean aotCache) {
         List<String> entry = new ArrayList<>();
         entry.add("java");
+        entry.addAll(javaOpts(plan.config()));
         if (aotCache) entry.add("-XX:AOTCache=" + AotCacheTrainer.CACHE_FILE);
         entry.add("-jar");
         entry.add(plan.appTreeJar());

@@ -364,7 +364,11 @@ public final class MiniJson {
         if (peek() == '-') pos++;
         while (pos < src.length() && "0123456789.eE+-".indexOf(src.charAt(pos)) >= 0) pos++;
         if (pos == start) throw new IllegalArgumentException("unexpected character at offset " + pos);
-        return Double.parseDouble(src.substring(start, pos));
+        try {
+            return Double.parseDouble(src.substring(start, pos));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("bad number at offset " + start, e);
+        }
     }
 
     /**

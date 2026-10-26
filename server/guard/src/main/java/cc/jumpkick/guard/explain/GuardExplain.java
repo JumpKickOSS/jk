@@ -13,6 +13,7 @@ import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.SchemaText;
 import cc.jumpkick.guard.validate.EngineValidations;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.GuardsConfig;
 import java.io.IOException;
@@ -111,7 +112,15 @@ public final class GuardExplain {
 
     /** {@code --schema <kind>}: the kind's keys and one example; {@code guard-test}: the skeleton. */
     public static Result schema(String what) {
-        if (what.equals("guard-test")) return new Result(null, GUARD_TEST_SKELETON, Jsonl.quote(GUARD_TEST_SKELETON));
+        if (what.equals("guard-test")) {
+            return new Result(
+                    null,
+                    GUARD_TEST_SKELETON,
+                    JsonFields.object()
+                            .string("kind", "guard-test")
+                            .string("schema", GUARD_TEST_SKELETON)
+                            .finish());
+        }
         var kind = Kind.byId(what);
         if (kind.isEmpty()) {
             List<String> ids = new ArrayList<>();
@@ -119,7 +128,10 @@ public final class GuardExplain {
             return Result.error("unknown kind `" + what + "`; kinds are " + String.join(", ", ids) + ", guard-test");
         }
         String text = SchemaText.render(kind.get());
-        return new Result(null, text, "{\"kind\":" + Jsonl.quote(what) + ",\"schema\":" + Jsonl.quote(text) + "}");
+        return new Result(
+                null,
+                text,
+                JsonFields.object().string("kind", what).string("schema", text).finish());
     }
 
     static Card card(Rule r, Baseline baseline, List<RuleSummaries.Summary> summaries) {

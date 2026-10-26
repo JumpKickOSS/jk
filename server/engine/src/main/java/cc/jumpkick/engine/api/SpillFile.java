@@ -30,6 +30,7 @@ final class SpillFile implements AutoCloseable {
     private final Path path;
     private final BufferedWriter out;
     private @Nullable BufferedReader in;
+    private boolean closed;
 
     private SpillFile(Path path) throws IOException {
         this.path = path;
@@ -46,6 +47,7 @@ final class SpillFile implements AutoCloseable {
 
     /** Append one line; it is on disk, readable by {@link #next}, when this returns. */
     synchronized void append(String line) throws IOException {
+        if (closed) throw new IOException("spill file " + path + " is closed");
         out.write(line);
         out.write('\n');
         out.flush();
@@ -53,6 +55,7 @@ final class SpillFile implements AutoCloseable {
 
     /** The next line appended and not read yet. The caller knows one is there. */
     synchronized String next() throws IOException {
+        if (closed) throw new IOException("spill file " + path + " is closed");
         BufferedReader reader = in;
         if (reader == null) in = reader = Files.newBufferedReader(path, StandardCharsets.UTF_8);
         String line = reader.readLine();
@@ -67,12 +70,14 @@ final class SpillFile implements AutoCloseable {
     /** Close and delete the file. */
     @Override
     public synchronized void close() {
+        closed = true;
         try {
             out.close();
         } catch (IOException ignored) {
             // deleted below either way
         }
         BufferedReader reader = in;
+        in = null;
         if (reader != null) {
             try {
                 reader.close();

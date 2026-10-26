@@ -79,7 +79,7 @@ public final class DiskUsage {
         if (root == null || !Files.isDirectory(root)) return out;
         SeenLinks seen = new SeenLinks();
         PathUtil.forEachRegularFile(root, (p, attrs) -> {
-            long size = regularSize(p, seen);
+            long size = regularSize(p, attrs, seen);
             if (size < 0) return;
             out[0]++;
             out[1] += size;
@@ -94,7 +94,7 @@ public final class DiskUsage {
      * {@code p}'s bytes when it is a regular file whose inode this walk has not met, 0 when it has,
      * and -1 when it is not a regular file or will not read.
      */
-    private static long regularSize(Path p, SeenLinks seen) {
+    private static long regularSize(Path p, BasicFileAttributes attrs, SeenLinks seen) {
         if (seen.unixSupported) {
             try {
                 Map<String, Object> u = Files.readAttributes(p, "unix:isRegularFile,nlink,size,dev,ino");
@@ -106,12 +106,6 @@ public final class DiskUsage {
             } catch (IOException unreadable) {
                 return -1;
             }
-        }
-        BasicFileAttributes attrs;
-        try {
-            attrs = Files.readAttributes(p, BasicFileAttributes.class);
-        } catch (IOException unreadable) {
-            return -1;
         }
         if (!attrs.isRegularFile()) return -1;
         Object key = attrs.fileKey();
@@ -141,45 +135,15 @@ public final class DiskUsage {
         if (dir == null || !Files.isDirectory(dir)) {
             return new Stats(0, 0);
         }
-        long files = 0;
-        long bytes = 0;
-        try (var stream = Files.walk(dir)) {
-            for (Path p : (Iterable<Path>) stream::iterator) {
-                if (seen.unixSupported) {
-                    Map<String, Object> u = null;
-                    try {
-                        u = Files.readAttributes(p, "unix:isRegularFile,nlink,size,dev,ino");
-                    } catch (UnsupportedOperationException | IllegalArgumentException e) {
-                        seen.unixSupported = false; // fall through to the fileKey path for this file
-                    } catch (IOException unreadable) {
-                        continue;
-                    }
-                    if (u != null) {
-                        if (!Boolean.TRUE.equals(u.get("isRegularFile"))) continue;
-                        files++;
-                        long nlink = attr(u, "nlink");
-                        // A single-link file cannot be met again on any tree — skip the set entirely.
-                        if (nlink <= 1 || seen.addInode(attr(u, "dev"), attr(u, "ino"))) {
-                            bytes += attr(u, "size");
-                        }
-                        continue;
-                    }
-                }
-                BasicFileAttributes attrs;
-                try {
-                    attrs = Files.readAttributes(p, BasicFileAttributes.class);
-                } catch (IOException unreadable) {
-                    continue;
-                }
-                if (!attrs.isRegularFile()) continue;
-                files++;
-                Object key = attrs.fileKey();
-                // Windows often returns a null fileKey; isSameFile still detects hard links.
-                if (key == null) key = seen.sameFileIdentity(p, attrs.size(), attrs.lastModifiedTime());
-                if (seen.addObject(key)) bytes += attrs.size();
+        long[] totals = {0, 0};
+        PathUtil.forEachRegularFile(dir, (p, attrs) -> {
+            long size = regularSize(p, attrs, seen);
+            if (size >= 0) {
+                totals[0]++;
+                totals[1] += size;
             }
-        }
-        return new Stats(files, bytes);
+        });
+        return new Stats(totals[0], totals[1]);
     }
 
     /**

@@ -397,8 +397,8 @@ public final class PathUtil {
      * stamp and forced a full KSP round on every single build. Ten of the twelve copies could do that.
      *
      * <p>Symbolic links are not followed and not recreated. {@code walkFileTree}'s default is
-     * no-follow, so a link arrives here as a non-regular file and is skipped — deliberately, for the
-     * reason G37 gives about deletes: a copy that follows a link writes into somebody else's tree.
+     * no-follow, so a link arrives here as a non-regular file and is skipped — a copy that follows
+     * a link writes into somebody else's tree.
      *
      * <p>Returns how many files it wrote; an unchanged tree is 0.
      */

@@ -15,26 +15,14 @@ import org.jspecify.annotations.Nullable;
  * {@code :host} leaf because every process that forks a JVM builds one — the native client, the
  * engine, and the plugin workers, none of which share a richer module.
  *
- * <p>Round 3 counted eleven private joiner <em>methods</em>; widening the search from
- * {@code File.pathSeparator} to the property spelling found fourteen more inline copies, twenty-five
- * sites in all. They agreed on the separator and disagreed on everything else, which is the
- * interesting part, so all three decisions are written down here:
+ * <p>Three decisions govern how a classpath is formatted:
  *
  * <ul>
- *   <li><b>Separator</b> — {@link File#pathSeparator}. The copies spelled it three ways
- *       ({@code File.pathSeparator}, {@code System.getProperty("path.separator")}, and
- *       {@code isWindows() ? ";" : ":"}) and all three produce the same character, so this is a
- *       spelling choice, not a behaviour one.
- *   <li><b>Absolutising</b> — every entry is made absolute. Seventeen copies did and eight did not,
- *       and the seventeen are right: a {@code -cp} is read by a <em>child</em> JVM, whose working
- *       directory is jk's choice and frequently not the parent's. A relative entry that happens to
- *       work is working by accident. Absolutising an already-absolute path is identity, and all
- *       eight of the others were fed CAS or build-output paths, which are absolute — so converging
- *       on the majority changed no output.
- *   <li><b>Duplicates</b> — kept, in order. All twenty-five agreed, and they were right to: the
- *       JVM resolves a duplicated class from the <em>first</em> entry that carries it, so dropping
- *       a later duplicate is safe but dropping an earlier one silently changes which class loads.
- *       A caller that wants a deduplicated classpath must decide which copy wins and say so.
+ *   <li><b>Separator</b> — {@link File#pathSeparator}.
+ *   <li><b>Absolutising</b> — every entry is made absolute, because a {@code -cp} is read by a
+ *       child JVM whose working directory may differ from the parent's.
+ *   <li><b>Duplicates</b> — kept, in order, because the JVM resolves a duplicated class from the
+ *       first entry that carries it.
  * </ul>
  *
  * <p>One caller keeps a rule of its own and is right to: {@code MicronautPlugin.joinCp} throws when

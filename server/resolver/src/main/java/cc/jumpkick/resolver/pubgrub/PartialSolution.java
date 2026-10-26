@@ -556,18 +556,18 @@ public final class PartialSolution {
             int unsatisfiedCount = 0;
             for (Term term : inco.terms()) {
                 if (contradicts(term)) {
-                    return new Relation(IncompatibilityRelation.INCONCLUSIVE, null);
+                    return Relation.INCONCLUSIVE;
                 }
                 if (!satisfies(term)) {
                     unsatisfied = term;
                     unsatisfiedCount++;
                     if (unsatisfiedCount > 1) {
-                        return new Relation(IncompatibilityRelation.INCONCLUSIVE, null);
+                        return Relation.INCONCLUSIVE;
                     }
                 }
             }
             if (unsatisfied == null) {
-                return new Relation(IncompatibilityRelation.SATISFIED, null);
+                return Relation.SATISFIED;
             }
             return new Relation(IncompatibilityRelation.ALMOST_SATISFIED, unsatisfied);
         } finally {
@@ -584,5 +584,8 @@ public final class PartialSolution {
     }
 
     public record Relation(
-            IncompatibilityRelation kind, @Nullable Term unsatisfied) {}
+            IncompatibilityRelation kind, @Nullable Term unsatisfied) {
+        public static final Relation SATISFIED = new Relation(IncompatibilityRelation.SATISFIED, null);
+        public static final Relation INCONCLUSIVE = new Relation(IncompatibilityRelation.INCONCLUSIVE, null);
+    }
 }

@@ -324,7 +324,7 @@ export const cardMethods = {
     if (c.dir == null || c.dir === '') {
       return { group: null, name: c.coord || 'project' };
     }
-    const parts = String(c.dir).split('/').filter(Boolean);
+    const parts = String(c.dir).split(/[\\/]/).filter(Boolean);
     return { group: null, name: parts.length ? parts[parts.length - 1] : String(c.dir) };
   },
   elapsed(card) {

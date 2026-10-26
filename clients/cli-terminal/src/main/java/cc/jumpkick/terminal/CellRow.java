@@ -163,7 +163,7 @@ final class CellRow {
         if (sep < 0 || sep >= end) return null;
         int stop = end;
         if (s.charAt(end - 1) == Ansi.BEL) stop = end - 1;
-        else if (s.charAt(end - 1) == '\\') stop = end - 2;
+        else if (end - 2 >= start && s.charAt(end - 2) == Ansi.ESC && s.charAt(end - 1) == '\\') stop = end - 2;
         String uri = s.substring(sep + 1, Math.max(sep + 1, stop));
         return uri.isEmpty() ? null : uri;
     }

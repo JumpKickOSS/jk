@@ -2,6 +2,7 @@
 package cc.jumpkick.cache;
 
 import cc.jumpkick.host.DeterministicZip;
+import cc.jumpkick.host.PathUtil;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -12,7 +13,6 @@ import java.util.List;
 import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
-import java.util.stream.Stream;
 
 /**
  * Builds a Maven-style {@code <artifact>-<version>-sources.jar} by zipping the project's source
@@ -49,9 +49,7 @@ public final class SourcesJar {
 
     private static void appendTree(JarOutputStream jos, Path root) throws IOException {
         List<Path> entries = new ArrayList<>();
-        try (Stream<Path> stream = Files.walk(root)) {
-            stream.filter(Files::isRegularFile).forEach(entries::add);
-        }
+        PathUtil.forEachRegularFile(root, (file, attrs) -> entries.add(file));
         Collections.sort(entries);
         for (Path file : entries) {
             ZIP.writeEntry(jos, root.relativize(file).toString().replace('\\', '/'), file);

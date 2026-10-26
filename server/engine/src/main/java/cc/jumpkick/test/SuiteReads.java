@@ -95,7 +95,13 @@ public final class SuiteReads {
         Files.createDirectories(dir);
         Path settings = dir.resolve("reads.jfc");
         Files.writeString(settings, SETTINGS, StandardCharsets.UTF_8);
-        return "-XX:StartFlightRecording=settings=" + settings + ",filename=" + dir + ",dumponexit=true";
+        return "-XX:StartFlightRecording=settings=" + jfrPath(settings) + ",filename=" + jfrPath(dir)
+                + ",dumponexit=true";
+    }
+
+    private static String jfrPath(Path path) {
+        String s = path.toString();
+        return s.indexOf(' ') >= 0 || s.indexOf(',') >= 0 ? "\"" + s + "\"" : s;
     }
 
     /**

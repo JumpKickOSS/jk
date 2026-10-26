@@ -553,11 +553,11 @@ export const appOptions = {
       }
     },
     shortDir(dir) {
-      const parts = dir.split('/').filter(Boolean);
+      const parts = String(dir).split(/[\\/]/).filter(Boolean);
       return parts.length > 2 ? '…/' + parts.slice(-2).join('/') : dir;
     },
     lastSegment(dir) {
-      const parts = dir.split('/').filter(Boolean);
+      const parts = String(dir).split(/[\\/]/).filter(Boolean);
       return parts.length ? parts[parts.length - 1] : dir;
     },
     connectionLabel() {

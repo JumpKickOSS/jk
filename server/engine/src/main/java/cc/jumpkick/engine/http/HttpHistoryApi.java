@@ -155,14 +155,37 @@ final class HttpHistoryApi {
         int j = i + name.length() + 2;
         while (j < raw.length() && (raw.charAt(j) == ':' || Character.isWhitespace(raw.charAt(j)))) j++;
         if (j >= raw.length() || raw.charAt(j) != '"') return null;
-        int end = j + 1;
-        while (end < raw.length()) {
-            char c = raw.charAt(end);
-            if (c == '\\') end += 2;
-            else if (c == '"') break;
-            else end++;
+        StringBuilder value = new StringBuilder();
+        int at = j + 1;
+        while (at < raw.length()) {
+            char c = raw.charAt(at);
+            if (c == '"') return value.toString();
+            if (c != '\\' || at + 1 >= raw.length()) {
+                value.append(c);
+                at++;
+                continue;
+            }
+            char e = raw.charAt(at + 1);
+            if (e == 'u' && at + 6 <= raw.length()) {
+                try {
+                    value.append((char) Integer.parseInt(raw.substring(at + 2, at + 6), 16));
+                    at += 6;
+                    continue;
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            value.append(
+                    switch (e) {
+                        case 'n' -> '\n';
+                        case 't' -> '\t';
+                        case 'r' -> '\r';
+                        case 'b' -> '\b';
+                        case 'f' -> '\f';
+                        default -> e;
+                    });
+            at += 2;
         }
-        return end < raw.length() ? raw.substring(j + 1, end) : null;
+        return null;
     }
 
     /** True when any {@code "name"} key is lexically followed by {@code true} (never misses the top-level one). */

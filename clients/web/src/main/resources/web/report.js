@@ -60,6 +60,7 @@ export const FailReport = {
       if (!this.canOpen) return undefined;
       return buildProjectHash({
         projectId: this.projectId,
+        dir: this.checkoutDir,
         files: true,
         path: this.codePath,
         line: this.rep.line || 0,
@@ -91,6 +92,7 @@ export const FailReport = {
   watch: {
     codePath: { immediate: true, handler() { this.loadSource(); } },
     projectId() { this.loadSource(); },
+    checkoutDir() { this.loadSource(); },
   },
   methods: {
     failLabelSegs(label) {
@@ -102,7 +104,7 @@ export const FailReport = {
         return;
       }
       const gen = (this._srcGen = (this._srcGen || 0) + 1);
-      const lines = await loadProjectFileLines(this.projectId, this.codePath);
+      const lines = await loadProjectFileLines(this.projectId, this.checkoutDir, this.codePath);
       if (gen !== this._srcGen) return;
       this.fetchedLines = lines;
     },
@@ -193,18 +195,24 @@ const MAX_SOURCE_CACHE = 64;
 if (typeof window !== 'undefined') {
   window.addEventListener('jk:file-saved', (e) => {
     const d = (e && e.detail) || {};
-    SOURCE_CACHE.delete(String(d.project) + '\0' + String(d.path));
+    const prefix = String(d.project) + '\0';
+    const suffix = '\0' + String(d.path);
+    for (const k of Array.from(SOURCE_CACHE.keys())) {
+      if (k.startsWith(prefix) && k.endsWith(suffix)) SOURCE_CACHE.delete(k);
+    }
   });
 }
 
-/** Workspace file as lines, memoized per {@code projectId + path}. Failed reads are not cached. */
-function loadProjectFileLines(projectId, path) {
-  const key = String(projectId) + '\0' + String(path);
+/** Workspace file as lines, memoized per {@code projectId + checkoutDir + path}. Failed reads are not cached. */
+function loadProjectFileLines(projectId, checkoutDir, path) {
+  const dirPart = checkoutDir ? String(checkoutDir) : '';
+  const key = String(projectId) + '\0' + dirPart + '\0' + String(path);
   if (SOURCE_CACHE.has(key)) return SOURCE_CACHE.get(key);
   // Clear-on-overflow bound: one entry per distinct failing file ever viewed.
   if (SOURCE_CACHE.size >= MAX_SOURCE_CACHE) SOURCE_CACHE.clear();
+  const dirQuery = dirPart ? '&dir=' + encodeURIComponent(dirPart) : '';
   const p = get(
-    '/api/project/file?project=' + encodeURIComponent(projectId) + '&path=' + encodeURIComponent(path),
+    '/api/project/file?project=' + encodeURIComponent(projectId) + dirQuery + '&path=' + encodeURIComponent(path),
   )
     .then((data) => {
       const content = data && typeof data.content === 'string' ? data.content : '';

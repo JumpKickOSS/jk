@@ -22,6 +22,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
@@ -558,15 +559,28 @@ public final class PomRuntimeClasspath {
         return pins;
     }
 
+    private static final Pattern PROPERTY_REF = Pattern.compile("\\$\\{([^}]+)}");
+
     private static String substitute(String raw, Map<String, String> props) {
         String current = raw;
         for (int pass = 0; pass < 4 && current.contains("${"); pass++) {
-            String next = current;
-            for (Map.Entry<String, String> e : props.entrySet()) {
-                next = next.replace("${" + e.getKey() + "}", e.getValue());
+            Matcher m = PROPERTY_REF.matcher(current);
+            if (!m.find()) return current;
+            m.reset();
+            StringBuilder sb = new StringBuilder();
+            boolean changed = false;
+            while (m.find()) {
+                String val = props.get(m.group(1));
+                if (val != null && !val.equals(m.group())) {
+                    m.appendReplacement(sb, Matcher.quoteReplacement(val));
+                    changed = true;
+                } else {
+                    m.appendReplacement(sb, Matcher.quoteReplacement(m.group()));
+                }
             }
-            if (next.equals(current)) break;
-            current = next;
+            if (!changed) return current;
+            m.appendTail(sb);
+            current = sb.toString();
         }
         return current;
     }

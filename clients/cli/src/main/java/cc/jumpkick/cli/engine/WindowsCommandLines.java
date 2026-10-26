@@ -95,17 +95,27 @@ final class WindowsCommandLines {
         Process p = null;
         try {
             p = new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", SCRIPT)
-                    .redirectErrorStream(false)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
                     .start();
             p.getOutputStream().close();
-            String out;
-            try (InputStream in = p.getInputStream()) {
-                out = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            }
+            Process proc = p;
+            StringBuilder out = new StringBuilder();
+            Thread drainer = new Thread(
+                    () -> {
+                        try (InputStream in = proc.getInputStream()) {
+                            out.append(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+                        } catch (IOException ignored) {
+                        }
+                    },
+                    "jk-win-cmdlines");
+            drainer.setDaemon(true);
+            drainer.start();
             if (!p.waitFor(QUERY_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                p.destroyForcibly();
                 return Map.of();
             }
-            return p.exitValue() == 0 ? parse(out) : Map.of();
+            drainer.join(500);
+            return p.exitValue() == 0 ? parse(out.toString()) : Map.of();
         } catch (IOException e) {
             return Map.of(); // no PowerShell, or policy refused it
         } catch (InterruptedException e) {

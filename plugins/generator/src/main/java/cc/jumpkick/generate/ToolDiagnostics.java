@@ -32,6 +32,7 @@ final class ToolDiagnostics {
         if (!m.matches()) return Optional.empty();
         String file = m.group(1);
         if (file.contains("://") || file.endsWith(":")) return Optional.empty(); // a URL, or `label: 12`
+        if (file.chars().allMatch(Character::isDigit)) return Optional.empty(); // a timestamp, e.g. `14:23:05`
         String message = m.group(4);
         String severity = null;
         Matcher sev = SEVERITY.matcher(message);

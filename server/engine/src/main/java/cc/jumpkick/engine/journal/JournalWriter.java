@@ -530,8 +530,9 @@ public final class JournalWriter {
         if (head.known()) return head.commit();
         Process p = null;
         try {
-            p = JobWorkers.start(new ProcessBuilder("git", "-C", dir, "rev-parse", "--short", "HEAD")
+            p = JobWorkers.startDetached(new ProcessBuilder("git", "-C", dir, "rev-parse", "--short", "HEAD")
                     .redirectError(ProcessBuilder.Redirect.DISCARD));
+            p.getOutputStream().close();
             Process proc = p;
             StringBuilder sb = new StringBuilder();
             // Byte pump for the git probe's output; reads no session.
@@ -555,9 +556,10 @@ public final class JournalWriter {
         } catch (IOException | InterruptedException | RuntimeException e) {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
-                if (p != null) p.destroyForcibly();
             }
             return null;
+        } finally {
+            if (p != null && p.isAlive()) p.destroyForcibly();
         }
     }
 }
