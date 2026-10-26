@@ -13,7 +13,13 @@ Who runs which verb, and how a release travels from a laptop to a repository.
 
 ## Tag-triggered CI (recommended)
 
-The developer cuts and pushes the release; the tag starts the upload.
+The developer cuts and pushes the release; the tag starts the build and the upload. CI builds a
+release tag and nothing else: a push to a branch or a pull request starts no run.
+
+A repository can also cut the release from its Actions tab: a workflow that runs
+`jk release --patch --push` (jk's own is `cut-release.yml`) tests and tags the version, commits the
+next one and pushes both. A push made with the job's `GITHUB_TOKEN` starts no workflow, so the job
+ends by starting the tag's workflow itself (`gh workflow run ci.yml --ref "$tag"`).
 
 ```bash
 jk release --push           # build + test, tag v1.4.7, commit "Start 1.4.8", push both

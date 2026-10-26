@@ -32,7 +32,7 @@ guard, G100, under `jk guard`; skipped on Windows) and `actionlint .github/workf
 
 ## CI
 
-**The self-host job is the merge authority.** Every pull request installs the hosted release
+**The self-host job is the release authority.** Every release tag installs the hosted release
 `.jk/ci-bootstrap-version` pins the way a user installs it
 (`curl -fsSL https://jumpkick.build/install.sh | JK_VERSION=<pin> bash`) into an isolated
 `JK_HOME`, builds the checkout with it, then hands the home to the checkout's own jk
