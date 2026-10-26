@@ -5,6 +5,7 @@ import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.FreshnessStamp;
@@ -14,12 +15,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -62,7 +65,28 @@ public final class ModuleInputProvenance {
             String inputs,
             @Nullable String sources,
             Map<String, Set<String>> keysByTree,
-            Map<String, String> digests) {}
+            Map<String, String> digests,
+            Map<String, String> jvmSources) {}
+
+    /** The source files class facts are compiled from: what {@link #staleSources} compares one by one. */
+    private static boolean jvmSource(Path file) {
+        String name = file.getFileName().toString();
+        return name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".groovy");
+    }
+
+    /** Each JVM source under the module's source roots, module-relative path to digest. */
+    private static Map<String, String> jvmSources(Path moduleDir) throws IOException {
+        Map<String, String> out = new TreeMap<>();
+        for (Path root : ModuleLayoutPlugins.fingerprintRoots(moduleDir, false)) {
+            if (!Files.isDirectory(root)) continue;
+            PathUtil.forEachRegularFile(root, (file, attrs) -> {
+                if (!jvmSource(file)) return;
+                Path abs = file.toAbsolutePath().normalize();
+                out.put(rel(moduleDir, abs), FileHashMemo.contentHash(abs, attrs));
+            });
+        }
+        return out;
+    }
 
     /** The trees and jars a record covers, relative to the module's target dir. */
     private static List<Path> trees(BuildLayout layout) {
@@ -119,18 +143,18 @@ public final class ModuleInputProvenance {
     }
 
     /**
-     * Whether the classes in this module's target dir were compiled from its sources as they stand:
-     * the record names the module's current {@linkplain PreflightMemo#sourceFingerprint source
-     * fingerprint}, and every class-tree file it vouches for is still there with its digest, with
-     * no class it does not name. False with no record. The graph reads class facts only from a
-     * module this answers true for.
+     * The module's JVM sources edited since the build whose classes sit in its target dir, as
+     * module-relative paths (edited, added or gone); empty when the classes are the ones its
+     * sources compile to. {@code null} when the classes cannot be vouched for at all: no record,
+     * a record without per-file digests, or a class file the record does not name. A class whose
+     * source is not in the set was compiled from that source as it stands, so its facts hold even
+     * while another file of the module is mid-edit. The graph reads class facts on that basis.
      */
-    public static boolean classesCurrent(Path workspaceRoot, Path moduleDir, JkBuild build) {
+    public static @Nullable Set<String> staleSources(Path workspaceRoot, Path moduleDir, JkBuild build) {
         BuildLayout layout = BuildLayout.of(workspaceRoot, moduleDir, build);
         Path target = norm(layout.moduleTargetDir());
         Record record = read(target);
-        if (record == null || record.sources() == null) return false;
-        if (!record.sources().equals(PreflightMemo.sourceFingerprint(moduleDir))) return false;
+        if (record == null || record.sources() == null || record.jvmSources().isEmpty()) return null;
         try {
             for (Path tree : trees(layout)) {
                 if (!tree.startsWith(target) || !Files.isDirectory(tree)) continue;
@@ -144,11 +168,20 @@ public final class ModuleInputProvenance {
                         foreign[0] = true;
                     }
                 });
-                if (foreign[0]) return false;
+                if (foreign[0]) return null;
             }
-            return true;
+            if (record.sources().equals(PreflightMemo.sourceFingerprint(moduleDir))) return Set.of();
+            Map<String, String> now = jvmSources(norm(moduleDir));
+            Set<String> stale = new TreeSet<>();
+            now.forEach((rel, sha) -> {
+                if (!sha.equals(record.jvmSources().get(rel))) stale.add(rel);
+            });
+            for (String rel : record.jvmSources().keySet()) {
+                if (!now.containsKey(rel)) stale.add(rel);
+            }
+            return Collections.unmodifiableSet(stale);
         } catch (IOException | RuntimeException unreadable) {
-            return false;
+            return null;
         }
     }
 
@@ -203,6 +236,11 @@ public final class ModuleInputProvenance {
                 StringBuilder sb = new StringBuilder("inputs ").append(fp).append('\n');
                 String sources = PreflightMemo.sourceFingerprint(dir, saltByRoot);
                 if (sources != null) sb.append("sources ").append(sources).append('\n');
+                jvmSources(dir).forEach((rel, sha) -> sb.append("src ")
+                        .append(sha)
+                        .append(' ')
+                        .append(rel)
+                        .append('\n'));
                 Map<String, String> digests = new TreeMap<>();
                 for (Path tree : trees(layout)) {
                     if (!tree.startsWith(target) || !Files.isDirectory(tree)) continue;
@@ -249,6 +287,7 @@ public final class ModuleInputProvenance {
             String sources = null;
             Map<String, Set<String>> keys = new LinkedHashMap<>();
             Map<String, String> digests = new LinkedHashMap<>();
+            Map<String, String> jvmSources = new LinkedHashMap<>();
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (line.startsWith("inputs ")) {
                     inputs = line.substring("inputs ".length()).strip();
@@ -262,11 +301,15 @@ public final class ModuleInputProvenance {
                     String[] p = line.substring("out ".length()).split(" ", 2);
                     if (p.length != 2 || !FileHashMemo.isSha256(p[0])) return null;
                     digests.put(p[1], p[0]);
+                } else if (line.startsWith("src ")) {
+                    String[] p = line.substring("src ".length()).split(" ", 2);
+                    if (p.length != 2 || !FileHashMemo.isSha256(p[0])) return null;
+                    jvmSources.put(p[1], p[0]);
                 } else if (!line.isBlank()) {
                     return null;
                 }
             }
-            return inputs == null || inputs.isEmpty() ? null : new Record(inputs, sources, keys, digests);
+            return inputs == null || inputs.isEmpty() ? null : new Record(inputs, sources, keys, digests, jvmSources);
         } catch (IOException | RuntimeException unreadable) {
             return null;
         }

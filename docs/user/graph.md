@@ -53,10 +53,13 @@ then by content hash; only changed files are read again, and a file that will no
 nothing, its earlier facts included. A refresh that fails leaves the previous graph and its state
 as they were.
 
-A module's compiled facts (calls, overrides, exact lines) are read only while its classes are the
-ones its sources compile to, as the module's last successful build recorded. A module edited since,
-or being built while the graph refreshes, contributes what its sources declare, and the answer says
-which modules those are; `jk build` brings their compiled facts back. An unchanged tree answers from
+A class's compiled facts (calls, overrides, exact lines) are read only while its source is the one
+the module's last successful build compiled. A source edited since contributes what its text
+declares, and every other file of the module keeps its compiled facts, so the callers of the method
+being changed are still there mid-edit; the answer names the edited files. A module whose class
+files the build did not write, or that is being built while the graph refreshes, contributes what
+its sources declare, and the answer says which modules those are. `jk build` brings the compiled
+facts back. An unchanged tree answers from
 the graph already in memory, or from a stored snapshot. `-r` extracts every file again. `-n`
 answers from the last graph written without refreshing, and is an error when none has been.
 
