@@ -64,11 +64,11 @@ class JkBuildParserNullnessTest {
     }
 
     @Test
-    void the_keys_name_packages_severity_extra_options_and_the_tests() {
+    void the_keys_name_the_packages_severity_extra_options_and_the_tests() {
         JkBuild b = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
 
                 [nullness]
-                packages = []
+                include  = []
                 severity = "warn"
                 options  = ["-XepOpt:NullAway:KnownInitializers=com.example.Cli.run"]
                 tests    = true
@@ -88,10 +88,30 @@ class JkBuildParserNullnessTest {
         JkBuild named = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
 
                 [nullness]
-                packages = ["com.example.core", "org.acme"]
+                include = ["com.example.core", "org.acme"]
                 """);
         assertThat(named.javac().plugins().get("ErrorProne"))
                 .contains("-XepOpt:NullAway:AnnotatedPackages=com.example.core,org.acme");
+    }
+
+    @Test
+    void exclude_leaves_packages_unchecked_and_explicit_requires_every_class_to_choose() {
+        JkBuild b = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+
+                [nullness]
+                exclude  = ["com.example.generated", "com.example.legacy"]
+                explicit = true
+                severity = "warn"
+                """);
+
+        assertThat(b.javac().plugins().get("ErrorProne"))
+                .containsExactly(
+                        "-XepDisableAllChecks",
+                        "-Xep:NullAway:WARN",
+                        "-XepOpt:NullAway:JSpecifyMode=true",
+                        "-XepOpt:NullAway:AnnotatedPackages=com.example",
+                        "-XepOpt:NullAway:UnannotatedSubPackages=com.example.generated,com.example.legacy",
+                        "-Xep:RequireExplicitNullMarking:WARN");
     }
 
     @Test
@@ -134,23 +154,25 @@ class JkBuildParserNullnessTest {
     }
 
     @Test
-    void a_module_with_no_group_names_its_packages() {
+    void a_module_with_no_group_names_what_to_check() {
         assertThatThrownBy(() -> NullnessConfig.DEFAULT.fold(JavacConfig.EMPTY, ""))
                 .hasMessageContaining("[nullness] checks the module's group by default")
-                .hasMessageContaining("packages = []");
+                .hasMessageContaining("include = []");
     }
 
     @Test
     void unknown_keys_and_bad_values_fail_the_parse() {
-        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[nullness]\npackage = []\n"))
-                .hasMessageContaining("[nullness] unknown key `package`")
-                .hasMessageContaining("packages, severity, options, tests");
+        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[nullness]\npackages = []\n"))
+                .hasMessageContaining("[nullness] unknown key `packages`")
+                .hasMessageContaining("include, exclude, explicit, severity, options, tests");
         assertThatThrownBy(
                         () -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[nullness]\nseverity = \"off\"\n"))
                 .hasMessageContaining("\"error\" or \"warn\"");
         assertThatThrownBy(() ->
-                        JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[nullness]\npackages = [\"a,b\"]\n"))
-                .hasMessageContaining("one package per entry");
+                        JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[nullness]\nexclude = [\"a,b\"]\n"))
+                .hasMessageContaining("[nullness].exclude lists one package per entry");
+        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[nullness]\nexplicit = 1\n"))
+                .hasMessageContaining("[nullness].explicit must be true or false");
         assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[nullness]\ntests = \"yes\"\n"))
                 .hasMessageContaining("[nullness].tests must be true or false");
     }

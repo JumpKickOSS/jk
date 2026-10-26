@@ -25,7 +25,9 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * {@code [nullness]} alone is the whole setup: the table brings JSpecify, Error Prone and NullAway
  * through the lock, checks the module's group, and fails the build on a planted dereference of a
- * {@code @Nullable} field. The same sources compile once the table is gone.
+ * {@code @Nullable} field. The same sources compile once the table is gone. {@code exclude} and the
+ * JSpecify markings in {@code package-info.java} move the checked set; {@code explicit} makes every
+ * class choose.
  *
  * <p>Network tier: the three jars and their closures come from Central at lock time.
  */
@@ -76,6 +78,77 @@ class NullnessE2eTest {
         assertThat(bare.success())
                 .as("without [nullness] nothing checks; diagnostics:%n%s", String.join("\n", diagnostics))
                 .isTrue();
+    }
+
+    @Test
+    void exclude_and_package_markings_move_the_checked_set_and_explicit_makes_every_class_choose(@TempDir Path tmp)
+            throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("nullness"));
+        Path src = project.resolve("src/main/java");
+        dereferencing(src, "com.example.legacy", "Old", "oldLabel");
+        dereferencing(src, "com.example.loose", "Loose", "looseLabel");
+        Files.writeString(src.resolve("com/example/loose/package-info.java"), """
+                @NullUnmarked
+                package com.example.loose;
+
+                import org.jspecify.annotations.NullUnmarked;
+                """);
+        String excluded = IDENTITY + "\n[nullness]\nexclude = [\"com.example.legacy\"]\n";
+        Files.writeString(project.resolve("jk.toml"), excluded);
+        List<String> diagnostics = new ArrayList<>();
+        WorkspaceResult unchecked = build(project, diagnostics);
+        assertThat(unchecked.success())
+                .as(
+                        "an excluded package and an @NullUnmarked one go unchecked; diagnostics:%n%s",
+                        String.join("\n", diagnostics))
+                .isTrue();
+
+        Path other = dereferencing(src, "org.other", "Strict", "strictLabel");
+        Files.writeString(other.resolve("package-info.java"), """
+                @NullMarked
+                package org.other;
+
+                import org.jspecify.annotations.NullMarked;
+                """);
+        diagnostics.clear();
+        WorkspaceResult marked = build(project, diagnostics);
+        assertThat(marked.success())
+                .as("@NullMarked checks a package outside the group")
+                .isFalse();
+        assertThat(String.join("\n", diagnostics))
+                .contains("dereferenced expression 'strictLabel' is @Nullable")
+                .doesNotContain("oldLabel")
+                .doesNotContain("looseLabel");
+
+        Files.delete(other.resolve("Strict.java"));
+        Files.writeString(project.resolve("jk.toml"), excluded + "explicit = true\n");
+        diagnostics.clear();
+        WorkspaceResult explicit = build(project, diagnostics);
+        assertThat(explicit.success())
+                .as("explicit fails the class no marking covers")
+                .isFalse();
+        assertThat(String.join("\n", diagnostics))
+                .contains("[RequireExplicitNullMarking]")
+                .doesNotContain("dereferenced expression");
+    }
+
+    /** A class in {@code pkg} that dereferences its {@code @Nullable} field {@code field}; returns its directory. */
+    private static Path dereferencing(Path src, String pkg, String name, String field) throws IOException {
+        Path dir = Files.createDirectories(src.resolve(pkg.replace('.', '/')));
+        Files.writeString(dir.resolve(name + ".java"), """
+                package %s;
+
+                import org.jspecify.annotations.Nullable;
+
+                public class %s {
+                    @Nullable String %s;
+
+                    int size() {
+                        return %s.length();
+                    }
+                }
+                """.formatted(pkg, name, field, field));
+        return dir;
     }
 
     private static WorkspaceResult build(Path project, List<String> diagnostics) throws IOException {

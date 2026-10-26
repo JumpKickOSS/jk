@@ -609,7 +609,9 @@
       "type": "object",
       "description": "[nullness]: null checking by NullAway over JSpecify annotations (docs/user/build.md). The table brings JSpecify, Error Prone and NullAway and folds the flags they need into [javac]; a jar the module declares itself keeps its version. A compile input.",
       "properties": {
-        "packages": { "type": "array", "items": { "type": "string" }, "description": "The packages checked as annotated, sub-packages included. Default: the module's group. [] checks only code under @NullMarked." },
+        "include": { "type": "array", "items": { "type": "string" }, "description": "The packages checked, sub-packages included. Default: the module's group. [] checks only code under @NullMarked. @NullMarked and @NullUnmarked in package-info.java or on a class still apply." },
+        "exclude": { "type": "array", "items": { "type": "string" }, "description": "Packages left unchecked, sub-packages included, even inside include. Default []." },
+        "explicit": { "type": "boolean", "description": "Every top-level class must sit under @NullMarked or @NullUnmarked, at the table's severity. Default false." },
         "severity": { "enum": ["error", "warn"], "description": "What a finding is: \"error\" (default) fails the compile; \"warn\" reports it." },
         "options": { "type": "array", "items": { "type": "string" }, "description": "Further Error Prone flags, after the table's own: -XepOpt:NullAway:KnownInitializers=…, -XepOpt:NullAway:ExcludedClassAnnotations=…" },
         "tests": { "type": "boolean", "description": "Check compile-test too. Default false: a suite hands null to code on purpose." }

@@ -278,8 +278,11 @@ public final class JkBuildRenderer {
     private static void renderNullness(StringBuilder sb, @Nullable NullnessConfig nullness) {
         if (nullness == null) return;
         sb.append("\n[nullness]\n");
-        List<String> packages = nullness.packages();
-        if (packages != null) sb.append("packages = ").append(list(packages)).append('\n');
+        List<String> include = nullness.include();
+        if (include != null) sb.append("include = ").append(list(include)).append('\n');
+        if (!nullness.exclude().isEmpty())
+            sb.append("exclude = ").append(list(nullness.exclude())).append('\n');
+        if (nullness.explicit()) sb.append("explicit = true\n");
         if (nullness.severity() != NullnessConfig.Severity.ERROR)
             sb.append("severity = \"").append(nullness.severity().toml()).append("\"\n");
         if (!nullness.options().isEmpty())
