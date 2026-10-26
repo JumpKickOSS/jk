@@ -87,12 +87,19 @@ public record SymbolFinder(
             if (!visibilities.isEmpty() && (vis == null || !visibilities.contains(vis))) continue;
             if (!annotated.isEmpty() && Decl.annotations(n).stream().noneMatch(a -> named(a, annotated))) continue;
             if (glob != null && !glob.matcher(plain(n.label())).matches()) continue;
-            if (!extendsType.isEmpty() && !supertypes(n, types, false).stream().anyMatch(s -> named(s, extendsType))) {
-                continue;
-            }
-            if (!implementsType.isEmpty()
-                    && !supertypes(n, types, true).stream().anyMatch(s -> named(s, implementsType))) {
-                continue;
+            // A member query filters a member by its type's supertypes: `total -t method -I Shop` is
+            // every override. Any other query keeps supertype filters to types.
+            if (!extendsType.isEmpty() || !implementsType.isEmpty()) {
+                GraphNode holder = Decl.isType(n) ? n : memberQuery() ? owner(graph, n) : null;
+                if (holder == null) continue;
+                if (!extendsType.isEmpty()
+                        && !supertypes(holder, types, false).stream().anyMatch(s -> named(s, extendsType))) {
+                    continue;
+                }
+                if (!implementsType.isEmpty()
+                        && !supertypes(holder, types, true).stream().anyMatch(s -> named(s, implementsType))) {
+                    continue;
+                }
             }
             hits.add(n);
         }
@@ -107,6 +114,11 @@ public record SymbolFinder(
                     + ":" + Decl.line(n) + (Decl.end(n) > 0 ? "-" + Decl.end(n) : ""));
         }
         return Budget.lines(lines, budget, "Narrow with scope or another filter");
+    }
+
+    /** Whether the kinds asked for are members only ({@code method}, {@code member}, …). */
+    private boolean memberQuery() {
+        return !kinds.isEmpty() && kinds.stream().allMatch(k -> k.equals("member") || MEMBER_KINDS.contains(k));
     }
 
     private boolean kindMatches(String kind) {
@@ -151,6 +163,18 @@ public record SymbolFinder(
             if (!q.contains(".") && w.endsWith("." + q)) return true;
         }
         return false;
+    }
+
+    /** The type that declares member {@code n}, by its {@code method} or {@code contains} edge. */
+    private static @Nullable GraphNode owner(CodeGraph graph, GraphNode n) {
+        for (GraphEdge e : graph.incident(n.id())) {
+            if (e.target().equals(n.id())
+                    && (e.relation().equals(Relations.METHOD) || e.relation().equals(Relations.CONTAINS))) {
+                GraphNode o = graph.node(e.source());
+                if (o != null && Decl.isType(o)) return o;
+            }
+        }
+        return null;
     }
 
     private static String display(CodeGraph graph, GraphNode n) {

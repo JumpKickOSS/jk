@@ -149,8 +149,13 @@ kind, visibility, name and span. Each filter takes a comma list.
 | `-A`, `--annotated` | An annotation on the declaration (`Transactional` or `@Transactional`) |
 | `-l`, `--libraries` | Search the locked jars' types instead, by name glob and kind |
 
+`-E` and `-I` filter types, or, when `-t` asks only for members, the type that declares each member:
+`find total -t method -I OrderService` lists every override of `OrderService.total`. A nested type
+can be named by its outer one, `-I Preflight.Main`.
+
 ```bash
 jk graph find -A RestController
+jk graph find total -t method -I OrderService   # every override
 jk graph find -t member -p public -m server/engine 'get*'
 jk graph find -l '*Mapper' -t class
 ```
