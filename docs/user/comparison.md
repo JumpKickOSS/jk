@@ -15,7 +15,8 @@ These are true of JumpKick by default and not of stock Maven or stock Gradle, in
 the pitch in [Why JumpKick](why.md).
 
 1. **An agent gets a file and a tool, not a log.** `target/jk-results.md`, MCP, `jk skill` and
-   `jk graph` are first-party. `jk mvn` and `jk gradle` run the real tool and, for Maven, fold its
+   `jk graph` are first-party. The code graph needs nothing installed beside jk and stays current
+   with the build, so an agent can rely on it in every project. `jk mvn` and `jk gradle` run the real tool and, for Maven, fold its
    events into that same report.
 2. **The action cache is on, and shared across checkouts.** Keys name content and a
    project-relative output, so a second worktree or agent at one commit restores the first one's
@@ -79,6 +80,7 @@ Details: [Install](install.md), [JDK](jdk.md), [Cache](cache.md), [Repositories]
 |---|---|---|---|
 | **Failure output** | `target/jk-results.md`: modules, steps, tests, diagnostics with file and line. `jk results` reprints it. | The log. Surefire XML on disk. | The log. Reports and build scans (Develocity) after the fact. |
 | **Driving the tool** | MCP on the engine's loopback HTTP listener: run, results, diagnostics, manifest edits. `jk skill` is the playbook. | No first-party agent surface. | Tooling API for IDEs. No first-party MCP server. |
+| **Code graph** | `jk graph` and its MCP tools, built in. Calls, overrides and type references come from the compiled classes; every build refreshes the graph. Writes graphify's `graph.json` format. | None first-party. Add a third-party tool: [graphify](https://github.com/Graphify-Labs/graphify) is a Python 3.10+ package (`pip`, `uv` or `pipx install graphifyy`) that parses source with tree-sitter and matches calls by name and declared type; it stays current through `graphify update`, a file watcher or git hooks; [RepoQL](https://repoql.com) is a separate binary and agent plugin with a free local engine and paid cloud plans. | Same as Maven. |
 | **Watching an agent** | The web dashboard shows the run, the failure, and the change between attempts. Same facts as the CLI. | — | Build scans, when a scan server is in play. |
 | **Before the rewrite** | `jk mvn` / `jk gradle` run the real build, wrapper-aware. `jk mvn` writes the same results file from Maven's events, Surefire and Failsafe XML, and compiler diagnostics. `jk build` can run an unmodified `pom.xml` from the effective POM. | — | — |
 | **Import** | `jk import` writes `jk.toml` and a fidelity report graded per plugin. Common compiler, jar, Surefire, Boot, shade, and Kotlin mappings land. The report names what did not. | — | — |

@@ -53,7 +53,9 @@ day. Every surface is built for that loop:
 - **`jk skill`** — the playbook for a tool models were not trained on; jk keeps its section of
   your `AGENTS.md` current.
 - **`jk graph`** — a code knowledge graph that answers "where is it, what calls it" within a
-  token budget and cites `file:line`, instead of grep-and-read turns.
+  token budget and cites `file:line`, instead of grep-and-read turns. It is built in: no Python
+  toolchain, no separate indexer, no add-on to buy. Call and override edges come from the
+  compiler, and every build keeps the graph current, so an agent can count on it in every project.
 - **Named test rungs** — `jk test` is the cheap unit suite, `--guard` the bar before sharing,
   `--all` the nightly; the report says what was not run.
 
