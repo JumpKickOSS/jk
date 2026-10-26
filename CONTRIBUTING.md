@@ -164,10 +164,13 @@ paths.
 
 | Lane | When | What |
 |---|---|---|
-| **Push / PR** (`ci.yml`) | Every push to `main` and every PR | Commit-authorship scan; the shell fixtures (on Linux and macOS); the self-host job: `jk build`, `jk install`, `jk guard`, `jk test`, the curated integration lane, the lock diff |
+| **Release tag** (`ci.yml`) | A pushed release tag `vX.Y.Z` (made by `jk release`, or the **Cut release** workflow) + manual `workflow_dispatch` | The tag matches `jk.toml`; commit-authorship scan since the previous tag; the shell fixtures (on Linux and macOS); the self-host job: `jk build`, `jk install`, `jk guard`, `jk test`, the curated integration lane, the lock diff |
 | **Nightly** (`ci-nightly.yml`) | Daily cron + manual `workflow_dispatch` | `jk test -p integration`, `slow`, `network`, `bench`; the coverage ratchet (`jk test --coverage`, `jk guard`); heap guard; doc examples. macOS: product smoke (`scripts/ci-product-smoke.sh`). |
 
-Native multi-OS **images** stay on the **release** matrix (`release.yml`). Coverage is a
+Pushes to `main` and pull requests start no workflow: the merge gate and the push gate run on the
+developer's machine ([AGENTS.md](AGENTS.md)). **Cut release** (`cut-release.yml`, manual) runs
+`jk release --push`, which tests and tags the declared version and starts the next one; its tag push
+starts the release-tag lane. Native multi-OS **images** stay on the **release** matrix (`release.yml`). Coverage is a
 per-module ratchet (`jk test --coverage`, then `jk guard`; G91) with no percentage target, and the
 JaCoCo agent stays off unless asked for, so the fast tier does not pay for it.
 

@@ -478,6 +478,17 @@ binary, writing, or executing downloaded bytes. Local file installs remain an ex
 development path. `scripts/test-wrapper-bootstrap.sh` drives the POSIX wrapper through that whole
 path, network-free, against a fixture release signed with a throwaway key.
 
+## Cutting a release
+
+A release starts with `jk release`, by hand (`jk release --push`) or from the **Cut release**
+workflow (`cut-release.yml`, run from the Actions tab; `next` picks the segment that moves after the
+release). It builds and tests the version `jk.toml` declares, installs it, tags the commit with the
+`[release] tag` template, and commits the next version to `jk.toml`, the lock and the workspace
+members before pushing the branch and the tag. The pushed tag starts `ci.yml` (the release-tag lane:
+the tag matches `jk.toml`, the house-rule gate, the fast tier, the curated integration lane, the
+audit); a push made with a workflow's `GITHUB_TOKEN` starts nothing, so the Cut release workflow
+starts CI on the tag itself. `ci.yml` runs on no other push and on no pull request.
+
 ## CI release (run by publishing a GitHub Release)
 
 Workflow: [`.github/workflows/release.yml`](../../.github/workflows/release.yml)

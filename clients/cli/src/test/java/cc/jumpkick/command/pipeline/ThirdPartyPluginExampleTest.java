@@ -10,12 +10,15 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.testing.SysProps;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.jar.JarFile;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -69,12 +72,21 @@ class ThirdPartyPluginExampleTest {
         // 2. The sample, as committed, locked against that repository alone and built.
         Path plugin = dir.resolve("hello-plugin");
         copyTree(EXAMPLE, plugin);
-        assertThat(Files.readString(plugin.resolve("jk.toml")))
-                .as("the sample depends on the SDK coordinate at the running jk's version")
-                .contains("jk-plugin-sdk = \"cc.jumpkick:jk-plugin-sdk:" + VERSION + "\"");
-        assertThat(Files.readString(plugin.resolve("src/main/resources/jk-plugin.toml")))
+        // The sample pins the last released SDK; the test compiles it against the SDK it just built.
+        Path manifest = plugin.resolve("jk.toml");
+        Path pluginToml = plugin.resolve("src/main/resources/jk-plugin.toml");
+        Matcher pinned = Pattern.compile("jk-plugin-sdk:(\\d+\\.\\d+\\.\\d+)\"").matcher(Files.readString(manifest));
+        assertThat(pinned.find()).as("the sample pins a jk-plugin-sdk release").isTrue();
+        String pin = pinned.group(1);
+        assertThat(Files.readString(pluginToml))
                 .as("the manifest names the same SDK release the code compiles against")
-                .contains("sdk       = \"" + VERSION + "\"");
+                .contains("sdk       = \"" + pin + "\"");
+        assertThat(Versions.compare(pin, VERSION))
+                .as("the sample pins a release the running jk has reached, never a later one")
+                .isLessThanOrEqualTo(0);
+        Files.writeString(
+                manifest, Files.readString(manifest).replace("jk-plugin-sdk:" + pin, "jk-plugin-sdk:" + VERSION));
+        Files.writeString(pluginToml, Files.readString(pluginToml).replace("\"" + pin + "\"", "\"" + VERSION + "\""));
         // The SDK comes from the repository the release step wrote. cc.jumpkick resolves from the
         // jumpkick repository alone, so that repository stands in for it; the test launcher jk adds
         // to every test graph still comes from Central.

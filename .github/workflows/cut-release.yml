@@ -1,0 +1,82 @@
+# Cuts a release with `jk release`, the same verb a developer runs by hand: it builds and tests the
+# version jk.toml declares, installs it, tags the commit (the tag template is `[release] tag`) and
+# moves jk.toml, the lock and the workspace members to the next version in a commit of its own, then
+# pushes the branch and the tag. The tag is what starts the CI workflow, which judges the tagged
+# commit; publishing to jumpkick.build stays the Release workflow's job.
+#
+# Run it from the Actions tab on the branch to release; `next` picks the version segment that moves
+# AFTER the release (patch by default). A dirty tree, an existing tag, a -SNAPSHOT version or a
+# version the publish repository already holds is refused before anything is built.
+#
+# A push made with the job's GITHUB_TOKEN starts no workflow, so the last step starts CI on the new
+# tag explicitly.
+
+name: Cut release
+
+on:
+  workflow_dispatch:
+    inputs:
+      next:
+        description: 'The version segment that moves after the release'
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+
+env:
+  TERM: xterm-256color
+
+jobs:
+  release:
+    name: Tag the declared version and start the next
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    permissions:
+      contents: write   # push the bump commit and the tag
+      actions: write    # start CI on the tag
+    env:
+      JK_HOME: ${{ github.workspace }}/../jk-home
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: graalvm/setup-graalvm@27b360dbb857524eaf0b4c4cef364d38e5b4f173 # v1.6.7
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bootstrap jk from the hosted release
+        shell: bash
+        run: bash scripts/ci-bootstrap.sh
+
+      # The tag and the bump commit are made by whoever started the run.
+      - name: Commit identity
+        env:
+          ACTOR: ${{ github.actor }}
+          ACTOR_ID: ${{ github.actor_id }}
+        run: |
+          git config user.name "$ACTOR"
+          git config user.email "${ACTOR_ID}+${ACTOR}@users.noreply.github.com"
+
+      - name: jk release
+        env:
+          NEXT: ${{ inputs.next }}
+        run: jk release "--${NEXT}" --push --no-ansi
+
+      # The version just released is the tag on the commit before the bump.
+      - name: Start CI on the release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^)"
+          echo "released $tag"
+          gh workflow run ci.yml --ref "$tag"

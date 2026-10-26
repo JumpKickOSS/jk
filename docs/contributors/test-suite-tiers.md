@@ -68,7 +68,7 @@ its classpath, an API edit misses its consumer, and the first checkout keeps hit
 `ActionKeyTest` keys every family (javac, kotlinc, groovyc, artifact bags, the run-tests stamp)
 from two roots through the production task id. A key factory that hashes a location fails both.
 
-## The curated integration lane (every pull request)
+## The curated integration lane (every release tag)
 
 The fast tier runs no integration class, and the full profile is too slow to gate on, so a wire,
 spawn, worker, workspace, install or lock regression could merge with a deterministic integration

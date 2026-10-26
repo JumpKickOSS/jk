@@ -1,9 +1,17 @@
+# The build, the tests and the house-rule gate of a release: they run when a release tag is pushed,
+# and nowhere else. A release is cut by `jk release` (the Cut release workflow runs it, or a
+# developer does with --push): it builds and tests the declared version, tags the commit and moves
+# jk.toml to the next version, and the tag it pushes is what starts this workflow. Day-to-day pushes
+# and pull requests start nothing; the merge gate (jk format, jk guard, jk snapshot) and the push
+# gate (jk snapshot -p integration) run on the developer's machine. A workflow_dispatch re-runs the
+# gate on any ref.
+
 name: CI
 
 on:
   push:
-    branches: [main]
-  pull_request:
+    tags: ["v[0-9]*"]
+  workflow_dispatch:
 
 # Every job runs the GITHUB_TOKEN read-only. A job that has to write says so itself, under its own
 # `permissions:`, naming the one scope it needs.
@@ -20,6 +28,19 @@ env:
   TERM: xterm-256color
 
 jobs:
+  # The tag names the version jk.toml declares. `jk release` tags the commit that declares it, so a
+  # tag that disagrees was made by hand on the wrong commit; nothing is built for it.
+  tag:
+    name: Release tag matches jk.toml
+    if: ${{ github.ref_type == 'tag' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The tag is the declared version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: bash scripts/release-version.sh "${TAG#v}"
+
   # Guard: commit messages must not carry agent/tool attribution trailers.
   authorship:
     name: Commit authorship
@@ -28,24 +49,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      # The commits this push or pull request brings, not the whole history: history is fixed once
-      # pushed, and a trailer that landed before this check existed would fail every run forever.
+      # The commits this release brings: those since the previous release tag. History is fixed
+      # once pushed, and a trailer that landed before this check existed would fail every run
+      # forever. A run that is not on a tag scans the commit it was started on.
       - name: Scan commit messages
         env:
-          BEFORE: ${{ github.event.before }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          zero=0000000000000000000000000000000000000000
-          if [[ -n "$BASE" ]]; then
-            range="$BASE..$HEAD_SHA"
-          elif [[ -n "$BEFORE" && "$BEFORE" != "$zero" ]] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
-            range="$BEFORE..$HEAD_SHA"
-          elif git rev-parse -q --verify origin/main >/dev/null && ! git merge-base --is-ancestor "$HEAD_SHA" origin/main; then
-            range="origin/main..$HEAD_SHA"   # a new branch: what it adds to main
+          previous="$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$HEAD_SHA^" 2>/dev/null || true)"
+          if [[ -n "$previous" ]]; then
+            range="$previous..$HEAD_SHA"
           else
-            range="$HEAD_SHA^!"              # a forced push whose old head is gone: the pushed commit
+            range="$HEAD_SHA^!"
           fi
           echo "scanning $range"
           bash scripts/check-no-agent-attribution.sh "$range"
