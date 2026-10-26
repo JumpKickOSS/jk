@@ -151,7 +151,7 @@ public final class WorkspacePreflightPhase {
                         + ")",
                 forecastStart);
 
-        List<String> refused = installRefusals(request, units, forecast.preflight());
+        List<String> refused = installRefusals(request, units);
         if (!refused.isEmpty()) return completed(false, Exit.FAILURE, refused);
 
         return new Ready(new Context(
@@ -167,23 +167,15 @@ public final class WorkspacePreflightPhase {
     }
 
     /**
-     * What an install would refuse, said before anything builds: a selected module whose release
-     * version is already installed and whose jar the forecast says this build rewrites. Empty when
-     * the goal is not an install or the forecast did not price the jar step (a dirty hint, or a
-     * memo hit that carries no per-step verdicts): the install step's own check still applies.
+     * What an install would refuse, said before anything builds: a snapshot whose release is
+     * already installed where the snapshot would go, so the snapshot could never be chosen. A
+     * release rebuilt to other bytes is left to the install step, which compares the bytes: a
+     * rebuild after an engine change reproduces them, and only the comparison can tell.
      */
-    static List<String> installRefusals(
-            WorkspaceRequest request,
-            List<BuildGraph.BuildUnit> units,
-            Optional<BuildForecasting.Preflight> preflight) {
+    static List<String> installRefusals(WorkspaceRequest request, List<BuildGraph.BuildUnit> units) {
         if (request.target() != WorkspaceTarget.INSTALL) return List.of();
         WorkspaceSpec spec = request.spec() == null ? WorkspaceSpec.DEFAULT : request.spec();
         Path m2Dir = spec.m2Dir() != null ? spec.m2Dir() : Path.of(System.getProperty("user.home", "."), ".m2");
-        Map<Path, TaskForecast.Module> byDir = new LinkedHashMap<>();
-        for (TaskForecast.Module m :
-                preflight.map(BuildForecasting.Preflight::modules).orElse(List.of())) {
-            byDir.put(BuildGraph.canonicalPath(m.dir()), m);
-        }
         List<String> refused = new ArrayList<>();
         for (BuildGraph.BuildUnit unit : units) {
             Path dir = BuildGraph.canonicalPath(unit.dir());
@@ -192,21 +184,10 @@ public final class WorkspacePreflightPhase {
                             .noneMatch(sel -> BuildGraph.canonicalPath(sel).equals(dir))) {
                 continue;
             }
-            String packaging = ModuleJar.packagingStep(unit.manifest(), unit.dir());
-            if (packaging == null) continue;
+            if (ModuleJar.packagingStep(unit.manifest(), unit.dir()) == null) continue;
             String hidden =
                     InstallPlans.shadowedByRelease(unit.manifest(), unit.dir(), m2Dir, spec.installDestination());
-            if (hidden != null) {
-                refused.add(hidden);
-                continue;
-            }
-            TaskForecast.Module module = byDir.get(dir);
-            if (module == null) continue;
-            boolean jarRebuilds = module.steps().stream().anyMatch(t -> t.name().equals(packaging) && !t.cached());
-            if (!jarRebuilds) continue;
-            String message =
-                    InstallPlans.refusedBeforeBuild(unit.manifest(), unit.dir(), m2Dir, spec.installDestination());
-            if (message != null) refused.add(message);
+            if (hidden != null) refused.add(hidden);
         }
         return refused;
     }

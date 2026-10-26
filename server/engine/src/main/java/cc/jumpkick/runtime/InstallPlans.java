@@ -520,35 +520,6 @@ public final class InstallPlans {
     }
 
     /**
-     * Why installing {@code manifest} would be refused, decided before anything is built: its version
-     * is a release and its slot already exists at the destination. Null when the install would be
-     * allowed. Only meaningful for a module whose jar will be rebuilt; the byte comparison at the
-     * install step stays the authoritative check.
-     */
-    public static @Nullable String refusedBeforeBuild(
-            JkBuild manifest, Path moduleDir, @Nullable Path m2Dir, @Nullable InstallDestination override) {
-        var p = manifest.project();
-        if (isSnapshot(p.version())) return null;
-        Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
-        if (destinationOf(manifest, moduleDir, override) == InstallDestination.JK) {
-            try {
-                ShelfSlot slot = shelfSlot(coord);
-                if (slot.empty()) return null;
-                return slot.owned() ? releaseSlot(coord, slot.dir()) : foreignSlot(coord, slot.dir());
-            } catch (IOException unreadable) {
-                return null;
-            }
-        }
-        Path m2Root = m2Repository(m2Dir);
-        Path jar = m2Root.resolve(MavenLayout.artifactPath(coord));
-        if (!Files.exists(jar) && !Files.exists(m2Root.resolve(MavenLayout.pomPath(coord)))) return null;
-        Path dir = Objects.requireNonNull(jar.getParent());
-        boolean owned = M2InstallMemo.read(M2InstallMemo.file(JkStores.store(), m2Root, coord))
-                .isPresent();
-        return owned ? releaseSlot(coord, dir) : foreignSlot(coord, dir);
-    }
-
-    /**
      * Why a snapshot of {@code manifest} would be invisible, decided before anything is built: the
      * release it is a snapshot of is already installed where this install goes. A snapshot sorts
      * below its release, so any resolution that sees both takes the release and the snapshot jar is

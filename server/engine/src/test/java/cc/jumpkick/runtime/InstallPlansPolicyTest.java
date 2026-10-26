@@ -204,8 +204,6 @@ class InstallPlansPolicyTest {
                 .hasMessageContaining("ex.acme:money:1.0.0 is already installed")
                 .hasMessageContaining("raise the version in jk.toml");
         assertThat(Files.readString(shelfJar("1.0.0"))).isEqualTo("v1");
-        assertThat(InstallPlans.refusedBeforeBuild(project, tmp.resolve("mod"), m2Dir, InstallDestination.JK))
-                .contains("ex.acme:money:1.0.0 is already installed");
     }
 
     @Test
@@ -249,27 +247,6 @@ class InstallPlansPolicyTest {
                 .isNull();
         assertThat(InstallPlans.shadowedByRelease(snapshot, moduleDir, m2Dir, InstallDestination.JK))
                 .as("the release is in the Maven local repository, not the private one")
-                .isNull();
-    }
-
-    @Test
-    void a_release_already_installed_is_refused_before_building() throws Exception {
-        JkBuild project = project("1.0.0");
-        Path moduleDir = tmp.resolve("mod");
-        Files.createDirectories(moduleDir);
-        assertThat(InstallPlans.refusedBeforeBuild(project, moduleDir, m2Dir, null))
-                .as("an empty slot installs")
-                .isNull();
-
-        install(project, built(project, "v1"));
-
-        assertThat(InstallPlans.refusedBeforeBuild(project, moduleDir, m2Dir, null))
-                .contains("ex.acme:money:1.0.0 is already installed");
-        assertThat(InstallPlans.refusedBeforeBuild(project, moduleDir, m2Dir, InstallDestination.JK))
-                .as("the private repository is not the slot that is taken")
-                .isNull();
-        assertThat(InstallPlans.refusedBeforeBuild(project("1.0.0-SNAPSHOT"), moduleDir, m2Dir, null))
-                .as("a snapshot is meant to be reinstalled")
                 .isNull();
     }
 
