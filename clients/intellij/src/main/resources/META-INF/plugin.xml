@@ -33,7 +33,7 @@
   </extensions>
 
   <actions>
-    <group id="JumpKick.Menu" text="JumpKick" description="JumpKick build tool" popup="true">
+    <group id="JumpKick.Menu" text="JumpKick" description="JumpKick build system" popup="true">
       <add-to-group group-id="ToolsMenu" anchor="last"/>
       <action id="JumpKick.Sync"
               class="cc.jumpkick.idea.JkCliAction$Sync"

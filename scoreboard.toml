@@ -24,6 +24,20 @@ commit = "92335d1c6"
 host-id = "1a8c211a203d"
 
 [[row]]
+dim = "calibration"
+subject = "javac.fixed-tree"
+project = "generated"
+tool = "javac"
+kind = "absolute-wall"
+value = 1.731
+unit = "s"
+band = 0.1
+runs = 2
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+
+[[row]]
 dim = "cli"
 subject = "cli.latency.deps.p50"
 project = "spring-petclinic"
@@ -2152,6 +2166,31 @@ tool-version = "Gradle 9.5.1 (the repository's wrapper)"
 dim = "wall"
 subject = "wall.clean"
 project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 2.69
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 10.02
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean"
+project = "spring-petclinic"
 tool = "jk"
 kind = "absolute-wall"
 value = 0.39
@@ -2191,6 +2230,31 @@ conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, ot
 host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
 p90-s = 1.26
 tool-version = "jk 0.13.7"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 0.37
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "jk build --skip-tests --no-ansi -r"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 3.37
+tool-version = "jk 0.41.1"
 
 [[row]]
 dim = "wall"
@@ -2238,6 +2302,31 @@ tool-version = "Maven 3.9.16 via jk mvn"
 
 [[row]]
 dim = "wall"
+subject = "wall.clean"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 3.16
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 3.23
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
 subject = "wall.clean.peak-rss"
 project = "spring-petclinic"
 tool = "gradle"
@@ -2282,6 +2371,30 @@ tool-version = "Gradle 9.5.1 (the repository's wrapper)"
 dim = "wall"
 subject = "wall.clean.peak-rss"
 project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1535115264
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean.peak-rss"
+project = "spring-petclinic"
 tool = "jk"
 kind = "absolute-wall"
 value = 1101004800
@@ -2313,6 +2426,30 @@ command = "jk build --skip-tests --no-ansi -r"
 conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
 host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
 tool-version = "jk 0.13.7"
+
+[[row]]
+dim = "wall"
+subject = "wall.clean.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 621805568
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "jk build --skip-tests --no-ansi -r"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "jk 0.41.1"
 
 [[row]]
 dim = "wall"
@@ -2358,6 +2495,30 @@ tool-version = "Maven 3.9.16 via jk mvn"
 
 [[row]]
 dim = "wall"
+subject = "wall.clean.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 572522496
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
 subject = "wall.edit"
 project = "spring-petclinic"
 tool = "gradle"
@@ -2399,6 +2560,31 @@ conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, ot
 host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
 p90-s = 0.59
 tool-version = "Gradle 9.5.1 (the repository's wrapper)"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 0.61
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 0.65
+tool-version = "Gradle 9.8.2"
 
 [[row]]
 dim = "wall"
@@ -2449,6 +2635,32 @@ tool-version = "jk 0.13.7"
 dim = "wall"
 subject = "wall.edit"
 project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 0.13
+unit = "s"
+band = 0.15
+target = 0.3
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "jk build --skip-tests --no-ansi"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 0.21
+tool-version = "jk 0.41.1"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit"
+project = "spring-petclinic"
 tool = "maven"
 kind = "absolute-wall"
 value = 3.32
@@ -2488,6 +2700,31 @@ conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, ot
 host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
 p90-s = 2.3
 tool-version = "Maven 3.9.16 via jk mvn"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 3.14
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 3.23
+tool-version = "Maven 3.10.0"
 
 [[row]]
 dim = "wall"
@@ -2535,6 +2772,30 @@ tool-version = "Gradle 9.5.1 (the repository's wrapper)"
 dim = "wall"
 subject = "wall.edit.peak-rss"
 project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1689255936
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit.peak-rss"
+project = "spring-petclinic"
 tool = "jk"
 kind = "absolute-wall"
 value = 660602880
@@ -2566,6 +2827,30 @@ command = "jk build --skip-tests --no-ansi"
 conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
 host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
 tool-version = "jk 0.13.7"
+
+[[row]]
+dim = "wall"
+subject = "wall.edit.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 650117120
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "jk build --skip-tests --no-ansi"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "jk 0.41.1"
 
 [[row]]
 dim = "wall"
@@ -2611,6 +2896,108 @@ tool-version = "Maven 3.9.16 via jk mvn"
 
 [[row]]
 dim = "wall"
+subject = "wall.edit.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 560988160
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
+subject = "wall.idle-rss"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1818230784
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "gradle test --rerun --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+root-rss = 1188036608
+settle-s = 60
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.idle-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 904921088
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "jk test -r --no-ansi"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+root-rss = 179306496
+settle-s = 60
+tool-version = "jk 0.41.1"
+
+[[row]]
+dim = "wall"
+subject = "wall.idle-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 0
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip test"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+root-rss = 0
+settle-s = 60
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
 subject = "wall.noop"
 project = "spring-petclinic"
 tool = "gradle"
@@ -2652,6 +3039,31 @@ conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, ot
 host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
 p90-s = 1.05
 tool-version = "Gradle 9.5.1 (the repository's wrapper)"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop"
+project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 0.53
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 0.56
+tool-version = "Gradle 9.8.2"
 
 [[row]]
 dim = "wall"
@@ -2702,6 +3114,32 @@ tool-version = "jk 0.13.7"
 dim = "wall"
 subject = "wall.noop"
 project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 0.05
+unit = "s"
+band = 0.15
+target = 0.1
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "jk build --skip-tests --no-ansi"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 0.05
+tool-version = "jk 0.41.1"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop"
+project = "spring-petclinic"
 tool = "maven"
 kind = "absolute-wall"
 value = 2.51
@@ -2741,6 +3179,31 @@ conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, ot
 host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
 p90-s = 1.92
 tool-version = "Maven 3.9.16 via jk mvn"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 2.37
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 2.42
+tool-version = "Maven 3.10.0"
 
 [[row]]
 dim = "wall"
@@ -2788,6 +3251,30 @@ tool-version = "Gradle 9.5.1 (the repository's wrapper)"
 dim = "wall"
 subject = "wall.noop.peak-rss"
 project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1600126976
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop.peak-rss"
+project = "spring-petclinic"
 tool = "jk"
 kind = "absolute-wall"
 value = 575668224
@@ -2819,6 +3306,30 @@ command = "jk build --skip-tests --no-ansi"
 conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
 host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
 tool-version = "jk 0.13.7"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 600834048
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "jk build --skip-tests --no-ansi"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "jk 0.41.1"
 
 [[row]]
 dim = "wall"
@@ -2861,6 +3372,30 @@ command = "jk mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.sk
 conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
 host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
 tool-version = "Maven 3.9.16 via jk mvn"
+
+[[row]]
+dim = "wall"
+subject = "wall.noop.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 473956352
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Maven 3.10.0"
 
 [[row]]
 dim = "wall"
@@ -2910,6 +3445,31 @@ tool-version = "Gradle 9.5.1 (the repository's wrapper)"
 dim = "wall"
 subject = "wall.rebuild"
 project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 0.57
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 0.6
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild"
+project = "spring-petclinic"
 tool = "jk"
 kind = "absolute-wall"
 value = 0.1
@@ -2949,6 +3509,31 @@ conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, ot
 host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
 p90-s = 0.1
 tool-version = "jk 0.13.7"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 0.09
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "jk build --skip-tests --no-ansi"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 0.12
+tool-version = "jk 0.41.1"
 
 [[row]]
 dim = "wall"
@@ -2996,6 +3581,31 @@ tool-version = "Maven 3.9.16 via jk mvn"
 
 [[row]]
 dim = "wall"
+subject = "wall.rebuild"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 3.16
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 3.2
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
 subject = "wall.rebuild.peak-rss"
 project = "spring-petclinic"
 tool = "gradle"
@@ -3040,6 +3650,30 @@ tool-version = "Gradle 9.5.1 (the repository's wrapper)"
 dim = "wall"
 subject = "wall.rebuild.peak-rss"
 project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1594884096
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "gradle classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild.peak-rss"
+project = "spring-petclinic"
 tool = "jk"
 kind = "absolute-wall"
 value = 562036736
@@ -3071,6 +3705,30 @@ command = "jk build --skip-tests --no-ansi"
 conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
 host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
 tool-version = "jk 0.13.7"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 570425344
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "jk build --skip-tests --no-ansi"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "jk 0.41.1"
 
 [[row]]
 dim = "wall"
@@ -3113,6 +3771,30 @@ command = "jk mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.sk
 conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
 host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
 tool-version = "Maven 3.9.16 via jk mvn"
+
+[[row]]
+dim = "wall"
+subject = "wall.rebuild.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 566231040
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Maven 3.10.0"
 
 [[row]]
 dim = "wall"
@@ -3162,6 +3844,31 @@ tool-version = "Gradle 9.5.1 (the repository's wrapper)"
 dim = "wall"
 subject = "wall.test"
 project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 9.97
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "gradle test --rerun --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 18.27
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.test"
+project = "spring-petclinic"
 tool = "jk"
 kind = "absolute-wall"
 value = 28.33
@@ -3195,6 +3902,31 @@ conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, ot
 host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
 p90-s = 35.66
 tool-version = "jk 0.13.7"
+
+[[row]]
+dim = "wall"
+subject = "wall.test"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 8.54
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "jk test -r --no-ansi"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 8.84
+tool-version = "jk 0.41.1"
 
 [[row]]
 dim = "wall"
@@ -3242,6 +3974,31 @@ tool-version = "Maven 3.9.16 via jk mvn"
 
 [[row]]
 dim = "wall"
+subject = "wall.test"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 10.1
+unit = "s"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip test"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+p90-s = 11.42
+tool-version = "Maven 3.10.0"
+
+[[row]]
+dim = "wall"
 subject = "wall.test.peak-rss"
 project = "spring-petclinic"
 tool = "gradle"
@@ -3286,6 +4043,30 @@ tool-version = "Gradle 9.5.1 (the repository's wrapper)"
 dim = "wall"
 subject = "wall.test.peak-rss"
 project = "spring-petclinic"
+tool = "gradle"
+kind = "absolute-wall"
+value = 1936719872
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "gradle test --rerun --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Gradle 9.8.2"
+
+[[row]]
+dim = "wall"
+subject = "wall.test.peak-rss"
+project = "spring-petclinic"
 tool = "jk"
 kind = "absolute-wall"
 value = 1990197248
@@ -3317,6 +4098,30 @@ command = "jk test -r --no-ansi"
 conditions = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
 host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
 tool-version = "jk 0.13.7"
+
+[[row]]
+dim = "wall"
+subject = "wall.test.peak-rss"
+project = "spring-petclinic"
+tool = "jk"
+kind = "absolute-wall"
+value = 2089811968
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "jk test -r --no-ansi"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "jk 0.41.1"
 
 [[row]]
 dim = "wall"
@@ -3359,3 +4164,27 @@ command = "jk mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.sk
 conditions = "loadavg 0.4 at start, engine live jobs 0"
 host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
 tool-version = "Maven 3.9.16 via jk mvn"
+
+[[row]]
+dim = "wall"
+subject = "wall.test.peak-rss"
+project = "spring-petclinic"
+tool = "maven"
+kind = "absolute-wall"
+value = 1246756864
+unit = "bytes"
+band = 0.15
+runs = 5
+date = "2026-10-26"
+commit = "1880fb554"
+host-id = "c9ab742f7b18"
+calibration-s = "1.731/1.764"
+command = "mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip test"
+conditions = "loadavg 1.4 at start, engine live jobs ?"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+host = "12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL"
+load-end = 1.43
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+tool-version = "Maven 3.10.0"

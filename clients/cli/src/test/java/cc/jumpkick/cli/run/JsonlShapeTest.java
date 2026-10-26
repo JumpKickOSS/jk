@@ -20,7 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** Machine JSONL shape + output mode aliases (docs/machine-output.md). */
+/** Machine JSONL shape + output mode aliases (docs/user/machine-output.md). */
 class JsonlShapeTest {
 
     @BeforeEach

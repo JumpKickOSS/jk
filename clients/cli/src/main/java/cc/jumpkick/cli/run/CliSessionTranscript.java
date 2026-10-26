@@ -50,7 +50,7 @@ public final class CliSessionTranscript {
 
     /**
      * Stay on {@code 1} until jk <strong>1.0</strong> — no pre-release schema churn (see
-     * {@code docs/architecture.md} schema freeze). Additive fields only.
+     * {@code docs/contributors/architecture.md} schema freeze). Additive fields only.
      */
     public static final int SCHEMA = 1;
 

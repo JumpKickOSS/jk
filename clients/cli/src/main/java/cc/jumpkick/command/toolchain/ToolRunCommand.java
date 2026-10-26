@@ -67,7 +67,7 @@ public final class ToolRunCommand implements CliCommand {
     @Override
     public List<String> aliases() {
         // `jk tool exec` — dotnet-tool muscle memory. Hidden per the
-        // hidden-surface policy; documented in docs/aliases.md.
+        // hidden-surface policy; documented in docs/user/aliases.md.
         return List.of("exec");
     }
 

@@ -1,7 +1,7 @@
 {
   "name": "jumpkick",
   "displayName": "JumpKick",
-  "description": "JumpKick build tool for Java and Kotlin — BSP install, tasks, and status (wire-only; no engine on the extension classpath).",
+  "description": "JumpKick, the JVM build system built for coding agents — BSP install, tasks, and status (wire-only; no engine on the extension classpath).",
   "version": "0.10.0",
   "publisher": "jumpkick",
   "license": "Apache-2.0",

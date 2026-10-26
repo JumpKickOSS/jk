@@ -274,7 +274,7 @@ public final class EngineProbe {
     }
 
     /**
-     * Connect, ping, and get {@code pong} back — the engine-existence check per {@code docs/architecture.md}
+     * Connect, ping, and get {@code pong} back — the engine-existence check per {@code docs/contributors/architecture.md}
      * (never trust a pidfile alone). {@code false} for anything from "nothing is listening" to "it
      * answered something unexpected."
      */

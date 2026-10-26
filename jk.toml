@@ -3,7 +3,7 @@ name = "jk"
 # The installers' floors (install.sh, install.ps1 and their hosting copies) are bumped by hand with this
 # version until the bootstrap pin reads `[release] files`; then jk.toml declares them.
 version = "0.41.2"
-description = "JumpKick: The best damn build system for the JVM"
+description = "JumpKick: the JVM build system built for coding agents"
 java = 25
 
 # jk's own modules install to jk's private repository: the engine launches its workers from there.

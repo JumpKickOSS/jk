@@ -2,7 +2,7 @@
 
 JumpKick is opinionated about **when** to run tests, not only how. Write a pyramid
 (many unit, fewer integration, few e2e). Run a ladder: climb only as high as this
-turn requires. Product bet: [Why JumpKick](why.md#test-rungs-the-execute-moat).
+turn requires. Product bet: [Why JumpKick](why.md#test-rungs).
 
 ```bash
 jk test                              # unit rung — default suite only. Inner loop.

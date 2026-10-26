@@ -95,7 +95,7 @@ class HttpStaticContentTest extends HttpEngineServerHarness {
                 .contains("image/webp");
         HttpResponse<String> css = get("/style.css");
         assertThat(css.headers().firstValue("Content-Type")).contains("text/css; charset=utf-8");
-        // Vue rides the CDN, version-pinned and integrity-locked (docs/webclient.md) — the shell
+        // Vue rides the CDN, version-pinned and integrity-locked (docs/contributors/webclient.md) — the shell
         // must carry the pin + SRI, and the CSP must allow exactly that one external origin.
         // (Read from the classpath: this test's web-root shadows /index.html with its own.)
         String shell;

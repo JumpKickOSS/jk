@@ -17,7 +17,7 @@ outrank anything here.
 
 | Area | Now |
 |---|---|
-| Agent loop | Measured: 165 scenarios, one LLM driver, every tool green; jk leads Maven and Gradle on turns, first correct edit, input and output tokens, wall and cost ([why.md](../user/why.md#making-the-north-star-true)). A second driver and more project kinds are open. |
+| Agent loop | Measured: 165 scenarios, one LLM driver, every tool green; jk leads or ties Maven on every column, and Gradle on turns, input tokens and wall on the Gradle guides; output tokens and Gradle-built Kotlin repos are not yet a win ([why.md](../user/why.md#agents-reach-green)). A second driver and more project kinds are open. |
 | Maven projects | Effective-POM import, profiles, plugin mapping, `jk mvn` results, and coexistence have landed. Of the top-20 corpus, 13 build and 2 pass their tests (run 16). |
 | IDE | The IntelliJ external system (live model, gutter, debug) and Scala over BSP have landed. Marketplace listings have not. |
 | Batteries | Coverage beyond XML, the generators, lint, TestNG, the database-migration recipe, and a publishable SDK have landed. The SDK is not on Maven Central. |
@@ -85,7 +85,7 @@ product and epic 1 absorbs it.
   Kotlin repos; `--subset beyond-guides` runs them. Rejects and why:
   [CANDIDATES.md](../../bench/agent-loop/CANDIDATES.md).
 - **Published table:** five agents from three vendors over the matrix
-  ([Why JumpKick](../user/why.md#making-the-north-star-true); rows under
+  ([Why JumpKick](../user/why.md#agents-reach-green); rows under
   `bench/agent-loop/results/2026-09-2{8,9}-*`), refreshed each release. `scripted` stays the
   plumbing proof.
 

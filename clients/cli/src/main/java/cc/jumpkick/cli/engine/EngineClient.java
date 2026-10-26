@@ -58,7 +58,7 @@ public final class EngineClient {
      * reachable at {@code paths.socket} when this returns normally. Spawns lazily if none is
      * running; kills and replaces a stale (version-mismatched) engine transparently. Throws with a
      * message pointing at the engine's log file if it still can't be reached after a fresh spawn
-     * per {@code docs/architecture.md}, the engine is load-bearing and this is not silently swallowed.
+     * per {@code docs/contributors/architecture.md}, the engine is load-bearing and this is not silently swallowed.
      */
     public static EngineProbe.Handshake ensureRunning(EnginePaths.Paths paths, String clientVersion)
             throws IOException {
@@ -80,7 +80,7 @@ public final class EngineClient {
      * equivalent of the engine's {@code BuildService.buildWorkspace}, driving the exact same {@code listener}.
      * Ensures a live, version-matched engine first (spawning/replacing as needed), then streams the
      * build over a fresh connection. Throws with a clear message on any failure; per {@code
-     * docs/architecture.md} there is no in-process fallback.
+     * docs/contributors/architecture.md} there is no in-process fallback.
      */
     public static WorkspaceResult buildWorkspace(
             EnginePaths.Paths paths, WorkspaceRequest req, WorkspaceBuildListener listener) throws IOException {

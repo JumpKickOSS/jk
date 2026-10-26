@@ -4,7 +4,7 @@ Guidance for anyone (human or agent) working in this repository.
 
 ## What this is
 
-**JumpKick** (CLI / shorthand: **`jk`**) is a modern, lockfile-first build tool for **Java, Kotlin, and Groovy**: a slim native CLI, a memory-capped resident JVM engine, PubGrub dependency resolution, a content-addressed action cache, and Maven Central–compatible coordinates. Think Cargo/uv ergonomics on the JVM without inventing a new package ecosystem.
+**JumpKick** (CLI / shorthand: **`jk`**) is the JVM build system built for coding agents, for **Java, Kotlin, and Groovy**: a slim native CLI, a memory-capped resident JVM engine, PubGrub dependency resolution, a content-addressed action cache, and Maven Central–compatible coordinates. Think Cargo/uv ergonomics on the JVM without inventing a new package ecosystem.
 
 Product docs: [README.md](README.md), [docs/user/](docs/user/README.md) (end users + coding agents), [docs/contributors/](docs/contributors/README.md) (this codebase). Build/layout: [CONTRIBUTING.md](CONTRIBUTING.md). Internal design records live in [kanartist](https://github.com/JumpKickOSS/kanartist) `projects/jk/docs/`, not here.
 

@@ -1,6 +1,6 @@
 # Agent-loop scenario corpus
 
-The fixed inputs behind the metric in [docs/user/why.md](../../docs/user/why.md#making-the-north-star-true):
+The fixed inputs behind the metric in [docs/user/why.md](../../docs/user/why.md#agents-reach-green):
 median agent turns, tokens and wall time to green on a set of "agent breaks the build"
 scenarios, jk against Maven and Gradle. This directory holds the corpus (public repositories
 pinned by commit, each with injected failures), the one command that replays a scenario, the

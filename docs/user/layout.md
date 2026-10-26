@@ -46,7 +46,7 @@ Canonical extra suite names — use these unless you have a reason not to:
 
 Other names (`contract`, `mutation`, …) are discovered the same way. Do not put
 Playwright or compose stacks in `src/test`. Cost (`slow`, `network`) is a JUnit
-tag, not a fourth canonical directory. [Test](test.md) · [Why](why.md#test-rungs-the-execute-moat).
+tag, not a fourth canonical directory. [Test](test.md) · [Why](why.md#test-rungs).
 
 A symbolic link to a file in any of these trees is read through: the target's bytes are compiled,
 keyed and packaged, and an edit to the target rebuilds the module. A link to a directory is not

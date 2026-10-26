@@ -65,7 +65,7 @@ public final class JdkEnsure {
      * explicit install permission. {@code allowInstall = false} is the resident engine's mode
      * ({@code jk sync} hosting): a JDK download must never happen silently inside the engine —
      * installs stay client-side ({@code jk jdk install}, or the sync command's pre-flight ensure),
-     * per {@code docs/architecture.md} — so a resolution that would install instead fails with an
+     * per {@code docs/contributors/architecture.md} — so a resolution that would install instead fails with an
      * actionable message naming the client-side fix.
      */
     public static Outcome ensure(

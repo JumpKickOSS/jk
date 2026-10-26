@@ -89,7 +89,7 @@ public final class SyncCommand implements CliCommand {
         if (lockCode != 0) return lockCode;
 
         // Pre-flight the JDK ensure client-side: a missing pinned JDK is downloaded HERE, before
-        // the request — never silently inside the engine (docs/architecture.md keeps installs, and any
+        // the request — never silently inside the engine (docs/contributors/architecture.md keeps installs, and any
         // interactive consent, client-side). The engine's own ensure-jdk step then only resolves
         // the already-installed JDK (JdkEnsure with allowInstall=false). Thin client: the three
         // values JdkEnsure needs (project jdk spec, java floor, lock pin) ride the ProjectInfo

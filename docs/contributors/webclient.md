@@ -207,7 +207,7 @@ tab bar: [ file-name-pill ]   [ Copy ] [ Preview ] [ Save ]
   raw-file API as `blob:` URLs; remote `http(s)` stay as direct `<img src>` with
   `referrerpolicy=no-referrer` and **no** `crossorigin` (setting CORS mode broke GitHub
   user-attachments and badges). Images are **inline** (badge rows stay on one line). Relative
-  markdown links (`[Status](docs/architecture.md)`) rewrite to `#project/…/files/…` so they open
+  markdown links (`[Status](docs/contributors/architecture.md)`) rewrite to `#project/…/files/…` so they open
   in the files pane; external links open in a new tab. D2 is WASM-heavy and may fail under CSP —
   the pane shows the error rather than shipping a binary.
 

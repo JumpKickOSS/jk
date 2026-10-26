@@ -76,7 +76,7 @@ Climb on purpose:
 
 Cost that does not change *scope* is a JUnit tag (`slow`, `network`, `bench`), not
 a fourth directory. The named share-the-commit bar is `--guard`.
-[Test](test.md) · [Why](why.md#test-rungs-the-execute-moat).
+[Test](test.md) · [Why](why.md#test-rungs).
 
 ## Cache, don’t recompute
 

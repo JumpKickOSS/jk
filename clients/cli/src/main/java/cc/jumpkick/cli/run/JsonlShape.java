@@ -48,7 +48,7 @@ import org.jspecify.annotations.Nullable;
  * JsonlListener} (stdout for {@code -O jsonl}) and {@link CliSessionTranscript}
  * ({@code details.jsonl}). Every line is a record in {@link cc.jumpkick.cli.run.jsonl}; the methods
  * here stamp the clock and hand over. Centralising the shape means agents, CI, and future MCP tools
- * share one schema — see {@code docs/machine-output.md}.
+ * share one schema — see {@code docs/user/machine-output.md}.
  *
  * <p>Every object includes {@code schema} ({@link #SCHEMA}), {@code ts} (epoch ms), and {@code type}.
  * Most lines also carry an additive {@code progress} rider (0–100 aggregate % — via
@@ -58,7 +58,7 @@ public final class JsonlShape {
 
     /**
      * Stay on {@code 1} until jk <strong>1.0</strong> — no pre-release version churn (see
-     * {@code docs/architecture.md} schema freeze). Additive fields only.
+     * {@code docs/contributors/architecture.md} schema freeze). Additive fields only.
      */
     public static final int SCHEMA = JsonlEnvelope.SCHEMA;
 

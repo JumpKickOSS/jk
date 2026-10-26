@@ -847,33 +847,45 @@ final class ParityRules {
 
     // ---- G111 --------------------------------------------------------------------------------
 
-    private static final List<String> CLAIM_DOCS = List.of("README.md", "docs/user/why.md", "docs/user/comparison.md");
+    private static final List<String> CLAIM_DOCS =
+            List.of("README.md", "docs/user/why.md", "docs/user/comparison.md", "hosting/public/index.html");
 
-    /** A link to the measured tables, or the banked table itself. */
-    private static final Pattern EVIDENCE =
-            Pattern.compile("performance\\.md|making-the-north-star-true|wall-table:|\\| jk peak RSS \\|");
+    /** The blocks {@code bench/scoreboard --render} writes from the banked rows. */
+    private static final Pattern GENERATED = Pattern.compile("<!-- wall-(?:table|claims|strip):(begin|end) -->");
 
-    /** Faster, slower, peak RSS, a MiB/GiB figure, a multiple, or a percentage against another tool. */
-    private static final Pattern CLAIM = Pattern.compile(
-            "(?i:\\b(?:faster|slower|quicker|speed-?ups?|wall[- ]clock|cold start|peak RSS|whole-tree RSS"
+    /** The agent-loop table, banked by hand from {@code bench/agent-loop}, not by the scoreboard. */
+    private static final Pattern AGENT_TABLE = Pattern.compile("agents-reach-green");
+
+    /** A direction against another tool: faster, slower, less memory, a multiple, a percentage. */
+    private static final Pattern COMPARISON =
+            Pattern.compile("(?i:\\b(?:faster|slower|quicker|speed-?ups?|peak RSS|whole-tree RSS"
                     + "|(?:less|more|lower|higher) memory|(?:competitive|parity) with)\\b)"
-                    + "|\\b\\d[\\d,.]*\\s?[KMG]i?B\\b"
                     + "|\\d\\s?×"
                     + "|\\d\\s?%\\s+(?i:less|more|lower|higher|fewer|smaller|faster|slower)\\b"
                     + "|(?i:\\bbeats?\\b)[^\\n]{0,40}\\d\\s?%");
 
+    /** A measured figure: a MiB/GiB size, a wall-clock or cold-start statement. */
+    private static final Pattern FIGURE =
+            Pattern.compile("(?i:\\b(?:wall[- ]clock|cold start)\\b)|\\b\\d[\\d,.]*\\s?[KMG]i?B\\b");
+
+    /** What a figure may cite: the measured table, or the engine page that documents a default. */
+    private static final Pattern FIGURE_SOURCE =
+            Pattern.compile("performance(?:\\.md)?\\b|engine\\.md|agents-reach-green");
+
     @Guard(
-            id = "speed-claims-cite-the-table",
-            why = "a speed or memory sentence without the table behind it drifts from the numbers the harness banks",
+            id = "speed-claims-are-generated",
+            why =
+                    "a hand-written speed or memory comparison drifts from the numbers the harness banks, even when it links the table",
             instead =
-                    "link docs/user/performance.md (the wall and RSS table) or why.md#making-the-north-star-true in the same paragraph or table, and say what that table shows")
-    @Fixture("server/guard/fixtures/speed-claims-cite-the-table")
-    void speedClaimsCiteTheTable(Text text, Violations v) {
+                    "say it inside a wall-claims block that bench/scoreboard --render writes from scoreboard.toml, or drop the direction; a bare figure (a heap cap, a MiB size) links performance.md or engine.md in its paragraph")
+    @Fixture("server/guard/fixtures/speed-claims-are-generated")
+    void speedClaimsAreGenerated(Text text, Violations v) {
         int population = 0;
         for (String doc : CLAIM_DOCS) {
             String body = textOrNull(text, doc);
             if (body == null) continue;
             List<String> lines = List.of(body.split("\n", -1));
+            boolean generated = false;
             int start = 0;
             while (start < lines.size()) {
                 if (lines.get(start).isBlank()) {
@@ -884,15 +896,32 @@ final class ParityRules {
                 while (end < lines.size() && !lines.get(end).isBlank()) end++;
                 population++;
                 List<String> paragraph = lines.subList(start, end);
-                if (paragraph.stream().noneMatch(l -> EVIDENCE.matcher(l).find())) {
-                    for (int i = 0; i < paragraph.size(); i++) {
-                        Matcher m = CLAIM.matcher(paragraph.get(i));
-                        if (!m.find()) continue;
+                boolean agentTable =
+                        paragraph.stream().anyMatch(l -> AGENT_TABLE.matcher(l).find());
+                boolean sourced = paragraph.stream()
+                        .anyMatch(l -> FIGURE_SOURCE.matcher(l).find());
+                for (int i = 0; i < paragraph.size(); i++) {
+                    String line = paragraph.get(i);
+                    Matcher marker = GENERATED.matcher(line);
+                    if (marker.find()) {
+                        generated = marker.group(1).equals("begin");
+                        continue;
+                    }
+                    if (generated) continue;
+                    Matcher m = COMPARISON.matcher(line);
+                    if (m.find() && !agentTable) {
                         v.add(
                                 new TextSite(doc, start + i + 1, m.group()),
-                                doc + ":" + (start + i + 1) + " claims `" + m.group()
-                                        + "` in a paragraph that cites no measured table");
-                        break;
+                                doc + ":" + (start + i + 1) + " compares `" + m.group()
+                                        + "` by hand, outside a block the scoreboard renders");
+                        continue;
+                    }
+                    Matcher f = FIGURE.matcher(line);
+                    if (f.find() && !sourced && !agentTable) {
+                        v.add(
+                                new TextSite(doc, start + i + 1, f.group()),
+                                doc + ":" + (start + i + 1) + " states `" + f.group()
+                                        + "` in a paragraph that cites neither the measured table nor the engine page");
                     }
                 }
                 start = end;
