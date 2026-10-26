@@ -2,8 +2,9 @@
 # Fixtures for scripts/publish-github-release.sh against a stub gh that records every call and
 # answers `release view` from a marker: a release for the tag gets every asset uploaded (replacing
 # same-named ones), its notes edited and, unless it is a pre-release, the latest mark; no release
-# for the tag is refused; a missing asset, an empty notes file and a malformed version are refused
-# before gh is asked anything.
+# for the tag has one created with the assets and the notes (a version with a qualifier as a
+# pre-release); a missing asset, an empty notes file and a malformed version are refused before
+# gh is asked anything.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -65,7 +66,7 @@ reset release
 "$SCRIPT" 1.2.3 "$WORK/notes.md" "${ASSETS[@]}" >"$WORK/out.txt"
 logged "gh release upload v1.2.3 --repo owner/repo --clobber ${ASSETS[*]}" "the assets"
 logged "gh release edit v1.2.3 --repo owner/repo --title jk 1.2.3 --notes-file $WORK/notes.md --latest" "the notes and the latest mark"
-not_logged "gh release create" "the script never creates a release"
+not_logged "gh release create" "a release that exists is updated, not created"
 grep -q 'v1.2.3 holds 3 asset(s)' "$WORK/out.txt" || { cat "$WORK/out.txt"; echo "test-publish-github-release: wrong summary" >&2; exit 1; }
 
 # A pre-release is not marked latest.
@@ -75,11 +76,19 @@ logged "gh release upload v1.2.3 --repo owner/repo --clobber" "a pre-release sti
 logged "gh release edit v1.2.3 --repo owner/repo --title jk 1.2.3 --notes-file $WORK/notes.md" "a pre-release still receives the notes"
 not_logged "--latest" "a pre-release is never latest"
 
-# No release for the tag: refused, and gh is asked nothing but the state.
+# No release for the tag: created with the notes and every asset, and marked latest.
 reset absent
-refuses "no GitHub Release exists for v1.2.3" 1.2.3 "$WORK/notes.md" "${ASSETS[@]}"
-not_logged "gh release upload" "nothing is uploaded without a release"
-not_logged "gh release edit" "nothing is edited without a release"
+"$SCRIPT" 1.2.3 "$WORK/notes.md" "${ASSETS[@]}" >"$WORK/out.txt"
+logged "gh release create v1.2.3 --repo owner/repo --verify-tag --title jk 1.2.3 --notes-file $WORK/notes.md --latest ${ASSETS[*]}" "the release, its notes and its assets"
+not_logged "gh release upload" "a created release already holds its assets"
+not_logged "gh release edit" "a created release already holds its notes"
+grep -q 'v1.2.3 created with 3 asset(s)' "$WORK/out.txt" || { cat "$WORK/out.txt"; echo "test-publish-github-release: wrong summary" >&2; exit 1; }
+
+# A version with a qualifier is created as a pre-release, never latest.
+reset absent
+"$SCRIPT" 1.2.3-rc.1 "$WORK/notes.md" "${ASSETS[@]}" >/dev/null
+logged "gh release create v1.2.3-rc.1 --repo owner/repo --verify-tag --title jk 1.2.3-rc.1 --notes-file $WORK/notes.md --prerelease" "a qualified version is a pre-release"
+not_logged "--latest" "a pre-release is never latest"
 
 # Refused before gh is asked anything.
 reset release

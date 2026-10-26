@@ -1,24 +1,33 @@
-# The release build for the jumpkick.build layout, run by publishing a GitHub Release.
+# The release build for the jumpkick.build layout, started by the release tag.
 #
-# Trigger: a GitHub Release published for tag vX.Y.Z (X.Y.Z must equal JkVersion without the v).
-# The tag is a request; the root jk.toml version is the answer, and a request that differs from it fails
-# before anything is built (scripts/release-version.sh). Cutting a release: push the tag, create a
-# draft release for it (`gh release create vX.Y.Z --draft`), attach the linux-aarch64 client from an
-# Apple-silicon Mac (scripts/release-linux-aarch64.sh X.Y.Z), then publish the draft; this workflow
-# builds every platform, signs the tree, uploads it to GCS, redeploys the installers and attaches
-# the artifacts, the SBOM and the notes to that release. A workflow_dispatch is the dry run: it
-# builds, flattens and signs, and stops with the tree as a workflow artifact; nothing is published.
+# Trigger: a pushed tag vX.Y.Z (X.Y.Z must equal the version the root jk.toml declares), which is what
+# `jk release --push` pushes. The tag is a request; the root jk.toml version is the answer, and a
+# request that differs from it fails before anything is built (scripts/release-version.sh). One chain:
 #
-# Secrets:
-#   JK_RELEASE_RSA_SIGNING_KEY — base64 PKCS#8 DER RSA-3072 private key; only the publish job
-#                                sees it, since only the combined SHA256SUMS is signed
+#   verify  — ci.yml: the tag matches jk.toml, the house-rule gate, the fast tier, the curated
+#             integration lane, the audit. A red verify stops the release before anything is built.
+#   build   — the native client and engine of every platform, built by jk.
+#   merge   — one version tree from the platforms, the SBOM and the notes. No secrets.
+#   publish — signs the tree, uploads it to GCS, redeploys the installers, releases the plugin SDK to
+#             Central, and creates the GitHub Release with the tree, the SBOM and the notes. The
+#             only job that names the `release` environment, so the only one that holds the secrets,
+#             and it waits there for a reviewer's approval.
+#
+# A push made with a workflow's GITHUB_TOKEN starts no workflow, so the Cut release workflow
+# dispatches this one on the tag with publish=true. A workflow_dispatch from a branch, or from a tag
+# with publish=false, is the dry run: it builds and flattens the tree and stops with it (unsigned)
+# as a workflow artifact; nothing is published.
+#
+# Secrets, all environment secrets of the `release` environment (scripts/release-environment.sh
+# creates it and loads them):
+#   JK_RELEASE_RSA_SIGNING_KEY — base64 PKCS#8 DER RSA-3072 private key; signs the combined SHA256SUMS
 #   JK_RELEASE_GCS_BUCKET      — GCS bucket name (no gs://), e.g. jumpkick
 #   JK_RELEASE_GCS_SA_JSON     — GCP service-account JSON (storage.objectAdmin on the bucket,
 #                                firebasehosting.admin on the hosting project)
 #   JK_CENTRAL_GPG_KEY         — armored release GPG secret key; signs the plugin SDK's Central
-#                                bundles on the linux-x86_64 build (public key on keyserver.ubuntu.com)
+#                                bundles (public key on keyserver.ubuntu.com)
 #   JK_CENTRAL_GPG_PASSPHRASE  — its passphrase
-#   JK_REPO_CENTRAL_USERNAME   — Central Portal user token name; only the publish job sees it
+#   JK_REPO_CENTRAL_USERNAME   — Central Portal user token name
 #   JK_REPO_CENTRAL_PASSWORD   — Central Portal user token password
 #   GITHUB_TOKEN (automatic)   — read-only everywhere but the publish job, which writes the
 #                                GitHub Release (contents) and its provenance attestations
@@ -41,34 +50,53 @@
 name: Release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["v[0-9]*"]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the tag this run was started on (false is the dry run)'
+        type: boolean
+        default: false
 
 # Every job runs the GITHUB_TOKEN read-only. A job that has to write says so itself, under its own
 # `permissions:`, naming the one scope it needs.
 permissions:
   contents: read
 
+# One release at a time, and a started release is never cancelled half-published.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 env:
   TERM: xterm-256color
-  # Empty on a dispatch: scripts/release-version.sh then answers with the declared version.
-  RELEASE_TAG: ${{ github.event.release.tag_name }}
+  # Empty when the run is not on a tag: scripts/release-version.sh then answers with the declared version.
+  RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
 
 jobs:
+  verify:
+    name: Verify
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
   build:
     name: ${{ matrix.arch_label }}
+    needs: verify
     strategy:
       fail-fast: false
       matrix:
         # One row per platform jumpkick.build serves a native client for at the release
         # .jk/ci-bootstrap-version pins. jk is installed the way a user installs it, the same
         # bootstrap as ci.yml's self-host job, and builds this commit's dist.
-        # linux-aarch64 has no runner here: scripts/release-linux-aarch64.sh builds it on a Mac and
-        # the publish job takes it from the release. macOS on Intel has no client.
+        # macOS on Intel has no client.
         include:
           - os: ubuntu-latest
             arch_label: linux-x86_64
+          # The arm runner of a public repository.
+          - os: ubuntu-24.04-arm
+            arch_label: linux-aarch64
           - os: macos-14
             arch_label: macos-aarch64
           # Visual Studio 2022: the one native-image locates on its own, which the hosted
@@ -182,30 +210,6 @@ jobs:
           path: target/release/repo
           if-no-files-found: error
 
-      # Signed here, where the modules were built; the publish job uploads the bundles once the
-      # release is live on jumpkick.build. A dispatch signs too, so a broken key fails the dry run.
-      - name: Sign the plugin SDK's Central bundles
-        if: matrix.arch_label == 'linux-x86_64'
-        shell: bash
-        env:
-          JK_CENTRAL_GPG_KEY: ${{ secrets.JK_CENTRAL_GPG_KEY }}
-          JK_GPG_PASSPHRASE: ${{ secrets.JK_CENTRAL_GPG_PASSPHRASE }}
-        run: |
-          set -euo pipefail
-          [[ -n "${JK_CENTRAL_GPG_KEY:-}" ]] || { echo "::error::JK_CENTRAL_GPG_KEY missing — Central refuses unsigned bundles"; exit 1; }
-          key="$RUNNER_TEMP/central-gpg.asc"
-          (umask 077 && printf '%s\n' "$JK_CENTRAL_GPG_KEY" > "$key")
-          JK_CENTRAL_GPG_KEY_FILE="$key" scripts/publish-central.sh bundle target/release/central
-          rm -f "$key"
-
-      - name: Upload the Central bundles (artifact)
-        if: matrix.arch_label == 'linux-x86_64'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: central-bundles-${{ env.JK_VERSION }}
-          path: target/release/central
-          if-no-files-found: error
-
       # Unsigned: the per-platform SHA256SUMS is discarded when the trees are merged, and the
       # signing key stays with the one job whose signature ships.
       - name: Assemble release dir
@@ -226,39 +230,18 @@ jobs:
           path: target/release/${{ env.JK_VERSION }}-${{ matrix.arch_label }}/
           if-no-files-found: error
 
-  publish:
-    name: Merge + publish
+  # One version tree from the platforms. Nothing here signs or publishes, so it holds no secret and
+  # a dry run ends here with the unsigned tree as a workflow artifact.
+  merge:
+    name: Merge
     needs: build
     runs-on: ubuntu-latest
-    # Runs once the matrix has finished, whatever its outcome, so a missing platform is reported
-    # here by name instead of the job being skipped; the flatten step refuses a partial tree.
-    if: ${{ always() && !cancelled() }}
-    # The one job that writes: the GitHub Release (contents) and the provenance attestations
-    # (id-token for the OIDC identity, attestations for the store). GCS and Firebase are reached
-    # with the service-account secret, never with this token.
-    permissions:
-      contents: write
-      id-token: write
-      attestations: write
-    env:
-      # The platforms the flatten requires: every row of the build matrix and, on a release,
-      # linux-aarch64, which the release carries in from scripts/release-linux-aarch64.sh. A tree
-      # short of one of these is refused, never published. A dispatch has no release to read it from.
-      JK_RELEASE_PLATFORMS: ${{ github.event_name == 'release' && 'linux-x86_64 linux-aarch64 macos-aarch64 windows-x86_64' || 'linux-x86_64 macos-aarch64 windows-x86_64' }}
     steps:
       # The whole history and every tag: the notes list the commits since the previous release.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
-
-      # firebase-tools below runs on the Node.js the pinned jk provisions (`jk node exec`).
-      - name: Bootstrap jk from the hosted release
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "JK_HOME=$RUNNER_TEMP/jk-home" >> "$GITHUB_ENV"
-          JK_HOME="$RUNNER_TEMP/jk-home" bash scripts/ci-bootstrap.sh
 
       - name: Resolve version
         shell: bash
@@ -269,13 +252,14 @@ jobs:
 
       # A precondition, before anything is downloaded: the version's highlights entry in
       # docs/contributors/releases.md, then the commits since the previous tag. A version with no
-      # entry is refused here, with nothing published yet.
+      # entry is refused here, with nothing published yet. The notes travel with the tree.
       - name: Release notes
         shell: bash
         run: |
           set -euo pipefail
-          scripts/release-notes.sh "$JK_VERSION" > "$RUNNER_TEMP/RELEASE_NOTES.md"
-          cat "$RUNNER_TEMP/RELEASE_NOTES.md"
+          mkdir -p out
+          scripts/release-notes.sh "$JK_VERSION" > out/RELEASE_NOTES.md
+          cat out/RELEASE_NOTES.md
 
       - name: Download platform artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -284,65 +268,19 @@ jobs:
           pattern: release-*
           merge-multiple: false
 
-      - name: Download the Maven repository
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          path: target/release/repo
-          pattern: maven-repo-*
-          merge-multiple: true
-
-      - name: Download the Central bundles
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          path: target/release/central
-          pattern: central-bundles-*
-          merge-multiple: true
-
-      # No runner builds linux-aarch64: scripts/release-linux-aarch64.sh builds it on an
-      # Apple-silicon Mac and attaches the two archives to the draft before it is published. They
-      # join the staging as that platform's tree; the flatten refuses a release without them.
-      - name: Download the linux-aarch64 client from the release
-        if: github.event_name == 'release'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          dir="staging/release-${JK_VERSION}-linux-aarch64"
-          mkdir -p "$dir"
-          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$dir" \
-            --pattern "jk-linux-aarch64-${JK_VERSION}.gz" --pattern "jk-linux-aarch64-${JK_VERSION}.xz" || {
-            echo "::error::$RELEASE_TAG carries no jk-linux-aarch64-${JK_VERSION} archives: attach them to the draft with scripts/release-linux-aarch64.sh ${JK_VERSION} before publishing"
-            exit 1
-          }
-          ls -la "$dir"
-
       # One tree from the matrix: each platform's client, and the platform-neutral jars from
       # linux-x86_64 alone. The refusals (a missing platform, an engine jar whose bytes differ, two
       # trees carrying one name) live in the script, which scripts/test-flatten-release.sh
       # exercises in the gate.
       - name: Flatten into version directory
         shell: bash
-        run: scripts/flatten-release.sh staging "out/${JK_VERSION}" "$JK_VERSION"
-
-      - name: Re-sign combined SHA256SUMS
-        shell: bash
         env:
-          JK_RELEASE_RSA_SIGNING_KEY: ${{ secrets.JK_RELEASE_RSA_SIGNING_KEY }}
-          JK_RELEASE_REQUIRE_TRUSTED_KEY: "1"
-        run: |
-          set -euo pipefail
-          if [[ -z "${JK_RELEASE_RSA_SIGNING_KEY:-}" ]]; then
-            echo "JK_RELEASE_RSA_SIGNING_KEY missing — combined sums unsigned"
-            exit 1
-          fi
-          chmod +x scripts/sign-release.sh
-          scripts/sign-release.sh "out/${JK_VERSION}/SHA256SUMS"
-          ls -la "out/${JK_VERSION}/SHA256SUMS"*
+          JK_RELEASE_PLATFORMS: linux-x86_64 linux-aarch64 macos-aarch64 windows-x86_64
+        run: scripts/flatten-release.sh staging "out/${JK_VERSION}" "$JK_VERSION"
 
       # The SBOM the linux-x86_64 build job wrote of the engine (`jk publish --sbom --dry-run`),
       # beside the tree, not in it: the signed SHA256SUMS the installers verify stays byte for
-      # byte what this job signs.
+      # byte what the publish job signs.
       - name: Download the SBOM
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -363,28 +301,117 @@ jobs:
         with:
           name: merged-release-${{ env.JK_VERSION }}
           path: out/
+          if-no-files-found: error
 
-      # Everything below publishes. A dispatch is the dry run and ends here, with the signed tree
-      # in the artifact above.
+  # Everything that signs or publishes, and the only job with the secrets: they belong to the
+  # `release` environment, whose required reviewer approves the run before this job starts. A dry
+  # run has no job here.
+  publish:
+    name: Sign + publish
+    needs: merge
+    if: ${{ github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish) }}
+    runs-on: ubuntu-latest
+    environment:
+      name: release
+      url: https://jumpkick.build
+    # The one job that writes: the GitHub Release (contents) and the provenance attestations
+    # (id-token for the OIDC identity, attestations for the store). GCS and Firebase are reached
+    # with the service-account secret, never with this token.
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      # A tree signed with any other key than the one the installers trust is refused, never published.
+      JK_RELEASE_REQUIRE_TRUSTED_KEY: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VER="$(scripts/release-version.sh "${RELEASE_TAG#v}")"
+          echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
+
+      - name: Download the merged release tree
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: out
+          name: merged-release-${{ env.JK_VERSION }}
+
+      - name: Download the Maven repository
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: target/release/repo
+          pattern: maven-repo-*
+          merge-multiple: true
+
+      - name: Sign the combined SHA256SUMS
+        shell: bash
+        env:
+          JK_RELEASE_RSA_SIGNING_KEY: ${{ secrets.JK_RELEASE_RSA_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${JK_RELEASE_RSA_SIGNING_KEY:-}" ]]; then
+            echo "::error::JK_RELEASE_RSA_SIGNING_KEY is not set in the release environment — scripts/release-environment.sh loads it"
+            exit 1
+          fi
+          chmod +x scripts/sign-release.sh
+          scripts/sign-release.sh "out/${JK_VERSION}/SHA256SUMS"
+          ls -la "out/${JK_VERSION}/SHA256SUMS"*
+
+      # jk runs firebase-tools below (`jk node exec`) and builds the two SDK modules the Central
+      # bundles come from: the pinned release, then this commit's own jk, as the build job does.
+      - name: Bootstrap jk from the hosted release
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "JK_HOME=$RUNNER_TEMP/jk-home" >> "$GITHUB_ENV"
+          JK_HOME="$RUNNER_TEMP/jk-home" bash scripts/ci-bootstrap.sh
+
+      - uses: graalvm/setup-graalvm@27b360dbb857524eaf0b4c4cef364d38e5b4f173 # v1.6.7
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # The plugin SDK's Central bundles, signed with the release GPG key. Built here, from the
+      # same commit and with the same jk as the staged repository, because the key lives only in
+      # this job's environment.
+      - name: Sign the plugin SDK's Central bundles
+        shell: bash
+        env:
+          JK_CENTRAL_GPG_KEY: ${{ secrets.JK_CENTRAL_GPG_KEY }}
+          JK_GPG_PASSPHRASE: ${{ secrets.JK_CENTRAL_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          [[ -n "${JK_CENTRAL_GPG_KEY:-}" ]] || { echo "::error::JK_CENTRAL_GPG_KEY is not set in the release environment — Central refuses unsigned bundles"; exit 1; }
+          bash scripts/ci-takeover.sh --install-only
+          jk build --skip-tests --no-ansi -m shared/host -m shared/plugin-sdk
+          key="$RUNNER_TEMP/central-gpg.asc"
+          (umask 077 && printf '%s\n' "$JK_CENTRAL_GPG_KEY" > "$key")
+          JK_CENTRAL_GPG_KEY_FILE="$key" scripts/publish-central.sh bundle target/release/central
+          rm -f "$key"
+
       - name: Authenticate to Google Cloud
-        if: github.event_name == 'release'
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           credentials_json: ${{ secrets.JK_RELEASE_GCS_SA_JSON }}
 
       - name: Set up Cloud SDK
-        if: github.event_name == 'release'
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
       # Preconditions first, then the version tree and the Maven repository, and the latest pointer
       # as the very last object: an installer that reads it finds everything it names already there.
       # The pointer is one signed object (scripts/sign-latest-pointer.sh), so its publish is one copy.
       - name: Upload to GCS
-        if: github.event_name == 'release'
         env:
           BUCKET: ${{ secrets.JK_RELEASE_GCS_BUCKET }}
           JK_RELEASE_RSA_SIGNING_KEY: ${{ secrets.JK_RELEASE_RSA_SIGNING_KEY }}
-          JK_RELEASE_REQUIRE_TRUSTED_KEY: "1"
         shell: bash
         run: |
           set -euo pipefail
@@ -420,7 +447,6 @@ jobs:
       # A plugin pins jk-plugin-sdk at the release it targets, so the release is not out until the
       # SDK and its one dependency answer at that version where jk resolves cc.jumpkick from.
       - name: The plugin SDK answers on jumpkick.build
-        if: github.event_name == 'release'
         shell: bash
         run: |
           set -euo pipefail
@@ -434,7 +460,6 @@ jobs:
       # After jumpkick.build holds the same bytes. Released, not parked for a click: a re-run skips
       # a version the Portal already lists as published.
       - name: Publish the plugin SDK to Maven Central
-        if: github.event_name == 'release'
         shell: bash
         env:
           JK_REPO_CENTRAL_USERNAME: ${{ secrets.JK_REPO_CENTRAL_USERNAME }}
@@ -445,7 +470,6 @@ jobs:
       # live after the pointer, so a freshly served install.sh never refuses the pointer it reads.
       # firebase-tools reads the service-account file the auth step exported.
       - name: Deploy the installers to jumpkick.build
-        if: github.event_name == 'release'
         shell: bash
         run: jk node exec --node "$(tr -d '[:space:]' < .nvmrc)" -- npx --yes firebase-tools@15.30.2 deploy --only hosting --non-interactive
 
@@ -453,28 +477,26 @@ jobs:
       # signed with this run's OIDC identity and stored with the repository, verifiable with
       # `gh attestation verify <file> --repo <owner>/<repo>`.
       - name: Attest build provenance
-        if: github.event_name == 'release'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
             out/${{ env.JK_VERSION }}/jk-*
             out/sbom/jk-${{ env.JK_VERSION }}.cdx.json
 
-      # Last: the release that triggered the run receives the tree, the SBOM and the notes, and
-      # becomes latest. A re-run replaces the assets, as the rsync above replaced the tree.
-      - name: Attach the tree to the GitHub Release
-        if: github.event_name == 'release'
+      # Last: the GitHub Release for the tag is created (or, on a re-run, updated) with the tree,
+      # the SBOM and the notes, and becomes latest. A re-run replaces the assets, as the rsync
+      # above replaced the tree.
+      - name: Create the GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          scripts/publish-github-release.sh "$JK_VERSION" "$RUNNER_TEMP/RELEASE_NOTES.md" \
+          scripts/publish-github-release.sh "$JK_VERSION" out/RELEASE_NOTES.md \
             out/"${JK_VERSION}"/* out/sbom/jk-"${JK_VERSION}".cdx.json
 
       # Very last, since Central syncs to repo1 minutes to an hour after it publishes: the run is
       # green only once a Maven or Gradle build can resolve the SDK at this version.
       - name: The plugin SDK resolves from repo1
-        if: github.event_name == 'release'
         shell: bash
         run: scripts/publish-central.sh await "$JK_VERSION"

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Attach one version's artifacts to the GitHub Release that exists for its tag.
+# Create the GitHub Release of one version, or bring the one that exists up to date.
 #
 # Usage:
 #   scripts/publish-github-release.sh <version> <notes.md> <asset>...
-# The release for tag v<version> must already exist — publishing it is what starts the release
-# workflow, and this script never creates one. Every asset is uploaded (replacing a same-named
-# asset from an earlier run, as the GCS rsync replaced the tree), the notes become the body, and
-# a release that is not a pre-release is marked latest. Everything goes through the gh CLI,
-# which reads GH_TOKEN and GITHUB_REPOSITORY.
+# The tag v<version> must already be pushed. A release for it is created with every asset and the
+# notes as its body; a release that exists (a re-run) has every asset uploaded over any
+# same-named one, as the GCS rsync replaced the tree, and its notes replaced. A version with a
+# qualifier (1.2.3-rc.1) is a pre-release; any other release is marked latest. Everything goes
+# through the gh CLI, which reads GH_TOKEN and GITHUB_REPOSITORY.
 set -euo pipefail
 
 USAGE="usage: publish-github-release.sh <version> <notes.md> <asset>..."
@@ -30,8 +30,11 @@ REPO_ARGS=()
 [[ -n "${GITHUB_REPOSITORY:-}" ]] && REPO_ARGS=(--repo "$GITHUB_REPOSITORY")
 
 if ! prerelease="$(gh release view "$TAG" ${REPO_ARGS[@]+"${REPO_ARGS[@]}"} --json isPrerelease --jq '.isPrerelease' 2>/dev/null)"; then
-  echo "publish-github-release: no GitHub Release exists for $TAG — publish one for the tag; that is what runs the release" >&2
-  exit 1
+  mark=(--prerelease)
+  [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && mark=(--latest)
+  gh release create "$TAG" ${REPO_ARGS[@]+"${REPO_ARGS[@]}"} --verify-tag --title "jk $VERSION" --notes-file "$NOTES" "${mark[@]}" "$@"
+  echo "publish-github-release: $TAG created with $# asset(s)"
+  exit 0
 fi
 
 gh release upload "$TAG" ${REPO_ARGS[@]+"${REPO_ARGS[@]}"} --clobber "$@"
