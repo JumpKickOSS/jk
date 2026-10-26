@@ -200,8 +200,9 @@ public final class GraphQuery {
 
     private String edgeLine(GraphEdge e) {
         String context = e.context() == null ? "" : " context=" + clean(e.context());
-        String at =
-                e.sourceLocation().isEmpty() ? "" : " at=" + clean(e.sourceFile()) + ":" + clean(e.sourceLocation());
+        String at = e.sourceLocation().isEmpty()
+                ? ""
+                : " at=" + clean(e.sourceFile()) + ":" + clean(String.join(",", e.sites()));
         return "EDGE " + clean(label(e.source())) + " --" + clean(e.relation()) + " [" + e.confidence() + context
                 + "]--> " + clean(label(e.target())) + at;
     }

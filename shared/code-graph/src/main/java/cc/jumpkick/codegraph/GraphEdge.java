@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.codegraph;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -61,5 +64,53 @@ public record GraphEdge(
     public GraphEdge withScore(double score) {
         return new GraphEdge(
                 source, target, relation, confidence, score, sourceFile, sourceLocation, weight, context, extra);
+    }
+
+    /** The {@code extra} key listing the further {@code L<line>} sites of one edge, in line order. */
+    public static final String SITES = "sites";
+
+    /**
+     * Every {@code L<line>} this edge was found at in its source file, its own location first: two
+     * calls from one method (or from overloads, which share a node) to one target are one edge.
+     */
+    public List<String> sites() {
+        List<String> out = new ArrayList<>();
+        if (!sourceLocation.isEmpty()) out.add(sourceLocation);
+        if (extra.get(SITES) instanceof List<?> l) l.forEach(o -> out.add(String.valueOf(o)));
+        return out;
+    }
+
+    /** This edge with {@code other}'s sites added when it was found in the same file. */
+    public GraphEdge withSitesOf(GraphEdge other) {
+        if (!other.sourceFile.equals(sourceFile)) return this;
+        TreeSet<Integer> lines = new TreeSet<>();
+        for (String s : sites()) lines.add(lineOf(s));
+        boolean added = false;
+        for (String s : other.sites()) added |= lines.add(lineOf(s));
+        if (!added) return this;
+        lines.remove(lineOf(sourceLocation));
+        List<String> more =
+                lines.stream().filter(l -> l > 0).map(GraphNode::location).toList();
+        Map<String, Object> next = new TreeMap<>(extra);
+        next.put(SITES, more);
+        return new GraphEdge(
+                source,
+                target,
+                relation,
+                confidence,
+                confidenceScore,
+                sourceFile,
+                sourceLocation,
+                weight,
+                context,
+                next);
+    }
+
+    private static int lineOf(String location) {
+        try {
+            return location.startsWith("L") ? Integer.parseInt(location.substring(1)) : 0;
+        } catch (NumberFormatException notALine) {
+            return 0;
+        }
     }
 }

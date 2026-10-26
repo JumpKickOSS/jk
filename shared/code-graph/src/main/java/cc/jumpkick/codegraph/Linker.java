@@ -124,7 +124,10 @@ public final class Linker {
                 }
                 for (GraphEdge e : resolved) {
                     if (!e.source().equals(e.target())) {
-                        edges.putIfAbsent(e.source() + '\u0000' + e.target() + '\u0000' + e.relation(), e);
+                        edges.merge(
+                                e.source() + '\u0000' + e.target() + '\u0000' + e.relation(),
+                                e,
+                                GraphEdge::withSitesOf);
                     }
                 }
             }
