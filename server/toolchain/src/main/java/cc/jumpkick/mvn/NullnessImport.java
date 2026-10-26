@@ -39,7 +39,8 @@ final class NullnessImport {
         JavacConfig declaredTest = javac.test();
         boolean tests = declaredTest == null
                 || parse(declaredTest.args(), build.project().group()) != null;
-        NullnessConfig nullness = new NullnessConfig(main.packages(), main.severity(), main.options(), tests);
+        NullnessConfig nullness = new NullnessConfig(
+                main.include(), main.exclude(), main.explicit(), main.severity(), main.options(), tests);
 
         JavacConfig test = declaredTest == null
                 ? null
@@ -69,7 +70,9 @@ final class NullnessImport {
             if (arg.equals(PLUGIN_ARG) || arg.startsWith(PLUGIN_ARG + " ")) plugin = arg;
         }
         if (plugin == null) return null;
-        List<String> packages = null;
+        List<String> include = null;
+        List<String> exclude = List.of();
+        String marking = null;
         NullnessConfig.Severity severity = null;
         List<String> options = new ArrayList<>();
         for (String token :
@@ -84,11 +87,16 @@ final class NullnessImport {
                     default -> null;
                 };
                 if (severity == null) return null;
+            } else if (token.startsWith("-Xep:RequireExplicitNullMarking")) {
+                marking = token;
             } else if (token.startsWith(OPTION + "AnnotatedPackages=")) {
-                packages = List.of(token.substring((OPTION + "AnnotatedPackages=").length())
+                include = List.of(token.substring((OPTION + "AnnotatedPackages=").length())
+                        .split(","));
+            } else if (token.startsWith(OPTION + "UnannotatedSubPackages=")) {
+                exclude = List.of(token.substring((OPTION + "UnannotatedSubPackages=").length())
                         .split(","));
             } else if (token.equals(OPTION + "OnlyNullMarked=true")) {
-                packages = List.of();
+                include = List.of();
             } else if (token.equals(OPTION + "JSpecifyMode=true")) {
                 continue;
             } else if (token.startsWith(OPTION)) {
@@ -98,8 +106,11 @@ final class NullnessImport {
             }
         }
         if (severity == null) return null;
-        if (packages != null && packages.equals(List.of(group))) packages = null;
-        return new NullnessConfig(packages, severity, options, false);
+        if (include != null && include.equals(List.of(group))) include = null;
+        // The marking check at NullAway's own severity is `explicit`; at any other it stays an option.
+        boolean explicit = ("-Xep:RequireExplicitNullMarking:" + severity.name()).equals(marking);
+        if (marking != null && !explicit) options.add(marking);
+        return new NullnessConfig(include, exclude, explicit, severity, options, false);
     }
 
     private static List<String> withoutWiring(List<String> args) {

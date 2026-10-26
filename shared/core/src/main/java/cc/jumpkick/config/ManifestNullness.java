@@ -30,7 +30,7 @@ public final class ManifestNullness {
     public static final String TABLE = "nullness";
 
     /** The keys {@code [nullness]} may carry; the schema names exactly these. */
-    public static final List<String> KEYS = List.of("packages", "severity", "options", "tests");
+    public static final List<String> KEYS = List.of("include", "exclude", "explicit", "severity", "options", "tests");
 
     /** The annotations the checked code writes, on the compile classpath. */
     public static final String JSPECIFY = "org.jspecify:jspecify:1.0.1";
@@ -46,7 +46,7 @@ public final class ManifestNullness {
         Object raw = root.get(List.of(TABLE));
         if (raw == null) return Optional.empty();
         if (!(raw instanceof TomlTable table)) {
-            throw new JkBuildParseException("[nullness] must be a table: [nullness] packages = [\"com.example\"]");
+            throw new JkBuildParseException("[nullness] must be a table: [nullness] include = [\"com.example\"]");
         }
         for (String key : table.keySet()) {
             if (!KEYS.contains(key)) {
@@ -54,15 +54,9 @@ public final class ManifestNullness {
                         "[nullness] unknown key `" + key + "` — expected one of: " + String.join(", ", KEYS));
             }
         }
-        List<String> packages = table.contains("packages") ? strings(table.get(List.of("packages")), "packages") : null;
-        if (packages != null) {
-            for (String p : packages) {
-                if (p.isBlank() || p.contains(",")) {
-                    throw new JkBuildParseException(
-                            "[nullness].packages lists one package per entry: packages = [\"com.example\", \"org.acme\"]");
-                }
-            }
-        }
+        List<String> include = table.contains("include") ? packages(table, "include") : null;
+        List<String> exclude = packages(table, "exclude");
+        boolean explicit = bool(table, "explicit");
         NullnessConfig.Severity severity = NullnessConfig.Severity.ERROR;
         Object rawSeverity = table.get(List.of("severity"));
         if (rawSeverity != null) {
@@ -78,14 +72,8 @@ public final class ManifestNullness {
             };
         }
         List<String> options = strings(table.get(List.of("options")), "options");
-        boolean tests = false;
-        Object rawTests = table.get(List.of("tests"));
-        if (rawTests != null) {
-            if (!(rawTests instanceof Boolean b))
-                throw new JkBuildParseException("[nullness].tests must be true or false");
-            tests = b;
-        }
-        return Optional.of(new NullnessConfig(packages, severity, options, tests));
+        boolean tests = bool(table, "tests");
+        return Optional.of(new NullnessConfig(include, exclude, explicit, severity, options, tests));
     }
 
     /**
@@ -116,6 +104,26 @@ public final class ManifestNullness {
     /** {@code group:artifact} of a {@code group:artifact:version} coordinate. */
     private static String moduleOf(String coordinate) {
         return coordinate.substring(0, coordinate.lastIndexOf(':'));
+    }
+
+    /** A list of package names, one per entry. */
+    private static List<String> packages(TomlTable table, String key) {
+        List<String> packages = strings(table.get(List.of(key)), key);
+        for (String p : packages) {
+            if (p.isBlank() || p.contains(",")) {
+                throw new JkBuildParseException("[nullness]." + key + " lists one package per entry: " + key
+                        + " = [\"com.example\", \"org.acme\"]");
+            }
+        }
+        return packages;
+    }
+
+    private static boolean bool(TomlTable table, String key) {
+        Object raw = table.get(List.of(key));
+        if (raw == null) return false;
+        if (!(raw instanceof Boolean b))
+            throw new JkBuildParseException("[nullness]." + key + " must be true or false");
+        return b;
     }
 
     private static List<String> strings(@Nullable Object raw, String key) {

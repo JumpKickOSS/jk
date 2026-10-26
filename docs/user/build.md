@@ -174,17 +174,47 @@ pins them like any other dependency. A jar the module declares itself (JSpecify 
 either tool in `[processor-dependencies]`) keeps its declared version. The table folds NullAway's
 plugin options and Error Prone's two companion flags into the module's `[javac]`.
 
-NullAway treats the module's group, sub-packages included, as annotated code: an unannotated
-type there is non-null, and `@Nullable` marks the exceptions. A planted dereference fails the
+Every package under the module's group is checked, sub-packages included: an unannotated type
+there is non-null, and `@Nullable` marks the exceptions. A planted dereference fails the
 compile with NullAway's diagnostic in `target/jk-results.md`, like any compile error:
 
 ```
 Widget.java:7: error: [NullAway] dereferenced expression 'label' is @Nullable
 ```
 
+Checking is on for the module's own code, and you opt packages out. List them in `exclude`, or
+mark one in its `package-info.java`; the JSpecify markings always apply:
+
+```java
+@NullUnmarked                   // this package is not checked, whatever the table says
+package com.example.legacy;
+
+import org.jspecify.annotations.NullUnmarked;
+```
+
+`@NullMarked` on a package or class checks it even outside `include`, and a class marked
+`@NullMarked` is checked even inside an excluded package. `@NullUnmarked` on a package, class or
+method leaves that code unchecked. The default stops at the group because the checked set also
+decides how NullAway reads compiled code: a library in a checked package is trusted to never
+return `null` unless it says so. Checking every package would trust every jar on the classpath.
+Code that lives outside the group goes in `include`.
+
+For a codebase that wants every package to state its choice, `explicit = true` fails any
+top-level class that is not under `@NullMarked` or `@NullUnmarked`, at the table's `severity`.
+That check covers excluded packages too, so with it on, opt out with `@NullUnmarked` in their
+`package-info.java` instead of `exclude`.
+
+```toml
+[nullness]
+exclude  = ["com.example.generated"]   # unchecked; everything else under the group is
+explicit = true                        # every class sits under @NullMarked or @NullUnmarked
+```
+
 | Key | Meaning | Default |
 |-----|---------|---------|
-| `packages` | The packages checked as annotated. `[]` checks only code under `@NullMarked`, for a codebase that marks its packages one at a time | the module's group |
+| `include` | The packages checked, sub-packages included. `[]` checks only code under `@NullMarked`, for a codebase that marks its packages one at a time | the module's group |
+| `exclude` | Packages left unchecked, sub-packages included, even inside `include` | `[]` |
+| `explicit` | Every top-level class must sit under `@NullMarked` or `@NullUnmarked` | `false` |
 | `severity` | `"error"` fails the compile; `"warn"` reports the finding and goes on | `"error"` |
 | `options` | Further Error Prone flags, after the table's own: `-XepOpt:NullAway:KnownInitializers=…`, `-XepOpt:NullAway:ExcludedClassAnnotations=…` | `[]` |
 | `tests` | Check `compile-test` too. Tests hand `null` to code on purpose, so they are left out unless asked | `false` |

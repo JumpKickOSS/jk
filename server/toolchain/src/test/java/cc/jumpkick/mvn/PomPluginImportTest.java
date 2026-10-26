@@ -461,7 +461,7 @@ class PomPluginImportTest {
                         <arg>-parameters</arg>
                         <arg>-XDcompilePolicy=simple</arg>
                         <arg>--should-stop=ifError=FLOW</arg>
-                        <arg>-Xplugin:ErrorProne -XepDisableAllChecks -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=com.ex -XepOpt:NullAway:KnownInitializers=com.ex.App.init</arg>
+                        <arg>-Xplugin:ErrorProne -XepDisableAllChecks -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=com.ex -XepOpt:NullAway:UnannotatedSubPackages=com.ex.gen -Xep:RequireExplicitNullMarking:ERROR -XepOpt:NullAway:KnownInitializers=com.ex.App.init</arg>
                       </compilerArgs>
                       <annotationProcessorPaths>
                         <path><groupId>com.google.errorprone</groupId><artifactId>error_prone_core</artifactId><version>2.50.0</version></path>
@@ -478,6 +478,8 @@ class PomPluginImportTest {
                 .as("the group is the default package; plugin-level args reach testCompile too")
                 .isEqualTo(new NullnessConfig(
                         null,
+                        List.of("com.ex.gen"),
+                        true,
                         NullnessConfig.Severity.ERROR,
                         List.of("-XepOpt:NullAway:KnownInitializers=com.ex.App.init"),
                         true));
@@ -491,14 +493,18 @@ class PomPluginImportTest {
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered)
                 .contains("[javac]\nargs = [\"-parameters\"]\n")
-                .contains(
-                        "[nullness]\noptions = [\"-XepOpt:NullAway:KnownInitializers=com.ex.App.init\"]\ntests = true\n")
+                .contains("[nullness]\nexclude = [\"com.ex.gen\"]\nexplicit = true\n"
+                        + "options = [\"-XepOpt:NullAway:KnownInitializers=com.ex.App.init\"]\ntests = true\n")
                 .doesNotContain("nullaway")
                 .doesNotContain("ErrorProne");
         JkBuild reparsed = JkBuildParser.parse(rendered);
         assertThat(reparsed.build().nullness()).isEqualTo(build.build().nullness());
         assertThat(reparsed.javac().plugins().get("ErrorProne"))
-                .contains("-Xep:NullAway:ERROR", "-XepOpt:NullAway:AnnotatedPackages=com.ex");
+                .contains(
+                        "-Xep:NullAway:ERROR",
+                        "-XepOpt:NullAway:AnnotatedPackages=com.ex",
+                        "-XepOpt:NullAway:UnannotatedSubPackages=com.ex.gen",
+                        "-Xep:RequireExplicitNullMarking:ERROR");
     }
 
     @Test

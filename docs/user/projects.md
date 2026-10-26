@@ -129,8 +129,8 @@ steps run it and the compile key hashes it — [Build](build.md#javac-plugins).
 [nullness]                      # JSpecify + NullAway over the module's group
 ```
 
-The table brings its jars and folds its flags into `[javac]`; `packages`, `severity`, `options`
-and `tests` tune it — [Build](build.md#null-checking-nullness).
+The table brings its jars and folds its flags into `[javac]`. `exclude` and `@NullUnmarked`
+opt packages out; `include`, `explicit`, `severity`, `options` and `tests` tune it — [Build](build.md#null-checking-nullness).
 
 ## Audit ignores
 
