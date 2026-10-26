@@ -166,13 +166,25 @@ public final class GraphQuery {
                 .forEach(ordered::add);
         List<String> lines = new ArrayList<>();
         for (String id : ordered) lines.add(nodeLine(id));
+        Map<String, Integer> rank = new HashMap<>();
+        for (int i = 0; i < ordered.size(); i++) rank.put(ordered.get(i), i);
         Set<String> drawn = new HashSet<>();
+        List<GraphEdge> drawnEdges = new ArrayList<>();
         for (String[] uv : walk.edges()) {
             if (!drawn.add(pairKey(uv[0], uv[1]))) continue;
             for (GraphEdge e : graph.between(uv[0], uv[1])) {
-                if (filters.isEmpty() || filters.contains(e.context())) lines.add(edgeLine(e));
+                if (filters.isEmpty() || filters.contains(e.context())) drawnEdges.add(e);
             }
         }
+        // An edge ranks by its nearer end, so a budget cut keeps the seeds' own connections.
+        drawnEdges.stream()
+                .sorted(Comparator.comparingInt((GraphEdge e) -> Math.min(
+                                rank.getOrDefault(e.source(), Integer.MAX_VALUE),
+                                rank.getOrDefault(e.target(), Integer.MAX_VALUE)))
+                        .thenComparingInt(e -> Math.max(
+                                rank.getOrDefault(e.source(), Integer.MAX_VALUE),
+                                rank.getOrDefault(e.target(), Integer.MAX_VALUE))))
+                .forEach(e -> lines.add(edgeLine(e)));
         return Budget.cut(lines, seedHits.size(), budget);
     }
 

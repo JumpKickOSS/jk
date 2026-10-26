@@ -12,11 +12,16 @@ jk graph read OrderService.total           # that method's source, not the whole
 jk graph read OrderService -w structure    # the type's declarations without bodies
 jk graph find -t interface -I Repository   # declarations by kind, supertype, annotation, name
 jk graph explain OrderService              # one node and its connections
+jk graph neighbors OrderService.total -R calls   # who calls it, every overload
 jk graph path OrderService PriceCalculator -U
 jk graph rules src/main/java/com/acme/shop/OrderService.java
 jk graph god-nodes                         # the most-connected entities
 jk graph report                            # GRAPH_REPORT.md: god nodes, surprises, communities
 ```
+
+A name is a node id, a label, or `Type.member` (qualify the type, `shop.OrderService.total`, when
+two packages declare it). `neighbors` answers for every overload a `Type.member` names; the commands
+that need one node list the overloads' ids instead.
 
 ## What is in it
 
@@ -76,8 +81,9 @@ dependencies on the same word, and tests start an answer only when the question 
 (the walk still reaches them). A few words map to what code calls them (`endpoint` and `route` to
 controllers and mappings). The graph is walked `-d` hops (default 3) and the result is cut to `-b`
 tokens (default 2000): the starting nodes first, then the nodes the question's words match, best
-match first, then the rest nearest first — so a cut drops what the question did not ask about. A
-cut answer says how large a budget would show everything. A question that matches nothing lists
+match first, then the rest nearest first, then the edges, those touching the nearest nodes first —
+so a cut drops what the question did not ask about, and the budget holds even when every node
+fits. A cut answer says how large a budget would show everything. A question that matches nothing lists
 the closest names.
 
 | Option | Meaning |
@@ -196,6 +202,6 @@ no LLM pass: documents are read for their structure, links and code mentions onl
 The graph operations are MCP tools. graphify's names keep graphify's arguments: `query_graph`,
 `get_node`, `get_neighbors`, `get_community`, `god_nodes`, `graph_stats` and `shortest_path`;
 `query_graph` and `god_nodes` also take `scope`, `modules` and `source_set`. jk adds `read_symbol`,
-`find_symbols` and `rules_for`. `query_graph`, `read_symbol`, `get_neighbors` and `shortest_path` are
+`find_symbols` and `rules_for`. `query_graph`, `read_symbol`, `get_neighbors` and `find_symbols` are
 on the default `tools/list`; the rest are on the extended one, and `skill(topic=graph)` introduces
 them all. See [MCP](mcp.md).

@@ -449,8 +449,10 @@ public final class SymbolReader {
         String kind = Decl.kind(n);
         String vis = Decl.vis(n);
         String facts = kind == null ? "" : " [" + kind + (vis == null ? "" : " " + vis) + "]";
-        String doc = Decl.doc(n);
-        out.add(qualified(n) + facts + "  " + n.sourceFile() + ":" + Decl.line(n) + "-" + end(n)
+        // Overloads share one node: each span prints at its own lines, and the doc is the first one's.
+        int line = Math.max(Decl.line(n), 1);
+        String doc = s.from() <= line && line <= s.to() ? Decl.doc(n) : null;
+        out.add(qualified(n) + facts + "  " + n.sourceFile() + ":" + s.from() + "-" + s.to()
                 + (doc == null ? "" : "  " + doc));
     }
 

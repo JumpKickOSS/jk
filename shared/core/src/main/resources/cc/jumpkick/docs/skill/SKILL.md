@@ -20,7 +20,8 @@ Run, read the verdict, edit, rerun. The verdict is the whole answer; scrape noth
 | why this version | `jk why g:a` | `why(coord=g:a)` |
 | find code | `jk graph query "…"` | `query_graph(question=…)` |
 | read a symbol | `jk graph read T.m` | `read_symbol(address=…)` |
-| links, A to B | `jk graph neighbors X`, `jk graph path A B` | `get_neighbors(label=X)`, `shortest_path(source=A, target=B)` |
+| who calls it, what it touches | `jk graph neighbors T.m -R calls` | `get_neighbors(label=T.m, relation_filter=calls)` |
+| what implements, overrides, is annotated | `jk graph find -I T` | `find_symbols(implements=T)` |
 | every problem, with lines | `jk results -A` | `diagnostics()` |
 | one skill topic | `jk skill <topic>` | `skill(topic=…)` |
 

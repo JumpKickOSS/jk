@@ -101,7 +101,7 @@ class McpToolRegistryTest {
                         "query_graph",
                         "read_symbol",
                         "get_neighbors",
-                        "shortest_path",
+                        "find_symbols",
                         "skill");
         assertThat(listed).isEqualTo(tools.loopNames());
         assertThat(listed).doesNotContain("bind", "history", "manifest", "god_nodes", "graph_stats");

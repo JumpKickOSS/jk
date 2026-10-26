@@ -65,6 +65,17 @@ public final class GraphTools {
             }
             return new Resolved(null, String.join("\n", lines));
         }
+        List<String> members = members(wanted);
+        if (members.size() == 1) return new Resolved(members.getFirst(), null);
+        if (members.size() > 1) {
+            List<String> lines = new ArrayList<>();
+            lines.add("'" + wanted + "' names " + members.size() + " members; pass one id:");
+            for (String id : members.subList(0, Math.min(members.size(), 10))) {
+                GraphNode n = graph.node(id);
+                lines.add("  " + id + (n == null ? "" : "  [" + n.sourceFile() + " " + n.sourceLocation() + "]"));
+            }
+            return new Resolved(null, String.join("\n", lines));
+        }
         List<String> ranked = new GraphSearch(graph, scope).rank(wanted);
         if (ranked.isEmpty() && !scope.all()) ranked = new GraphSearch(graph).rank(wanted);
         if (ranked.isEmpty()) {
@@ -104,12 +115,55 @@ public final class GraphTools {
     }
 
     public String neighbors(String name, String relationFilter, int budget) {
-        Resolved r = resolve(name);
-        if (r.id() == null) return String.valueOf(r.error());
+        // Every overload of a Type.member address answers at once: who calls a method rarely means one signature.
+        List<String> overloads = members(name.strip());
+        List<String> ids;
+        if (overloads.size() > 1) {
+            ids = overloads;
+        } else {
+            Resolved r = resolve(name);
+            if (r.id() == null) return String.valueOf(r.error());
+            ids = List.of(r.id());
+        }
         List<String> lines = new ArrayList<>();
-        lines.add("Neighbors of " + GraphQuery.clean(label(r.id())) + ":");
-        lines.addAll(edgeLines(r.id(), relationFilter.toLowerCase(Locale.ROOT), Integer.MAX_VALUE));
+        for (String id : ids) {
+            GraphNode n = graph.node(id);
+            String at = n == null || ids.size() == 1 ? "" : " [" + n.sourceFile() + ":" + Decl.line(n) + "]";
+            lines.add("Neighbors of " + GraphQuery.clean(label(id)) + at + ":");
+            lines.addAll(edgeLines(id, relationFilter.toLowerCase(Locale.ROOT), Integer.MAX_VALUE));
+        }
         return Budget.lines(lines, budget, "Narrow with relation_filter or use get_node for a specific symbol");
+    }
+
+    /**
+     * The member nodes a {@code Type.member} address names: the {@code method} edges of every type
+     * whose label is the address's last type segment (qualifiers before it must match the end of
+     * the type's source path), to a node labelled {@code member}. Empty when the address has no dot.
+     */
+    List<String> members(String address) {
+        String wanted = address.endsWith("()") ? address.substring(0, address.length() - 2) : address;
+        int dot = wanted.lastIndexOf('.');
+        if (dot <= 0 || dot == wanted.length() - 1) return List.of();
+        String owner = wanted.substring(0, dot);
+        String member = GraphText.fold(wanted.substring(dot + 1));
+        String typeName = GraphText.fold(owner.substring(owner.lastIndexOf('.') + 1));
+        String qualifier =
+                owner.contains(".") ? owner.substring(0, owner.lastIndexOf('.')).replace('.', '/') : "";
+        List<String> out = new ArrayList<>();
+        for (GraphNode type : graph.nodes()) {
+            if (type.label().startsWith(".") || !bare(type.normLabel()).equals(typeName)) continue;
+            if (!qualifier.isEmpty() && !type.sourceFile().replace('\\', '/').contains(qualifier)) continue;
+            for (GraphEdge e : graph.incident(type.id())) {
+                if (!e.source().equals(type.id()) || !e.relation().equals(Relations.METHOD)) continue;
+                GraphNode m = graph.node(e.target());
+                if (m != null && bare(m.normLabel()).equals(member)) out.add(m.id());
+            }
+        }
+        List<String> scoped = out.stream()
+                .filter(id -> scope.contains(graph.node(id)))
+                .sorted()
+                .toList();
+        return scoped.isEmpty() ? out.stream().sorted().toList() : scoped;
     }
 
     public String explain(String name, boolean all) {

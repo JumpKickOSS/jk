@@ -115,6 +115,30 @@ class SymbolReaderTest {
     }
 
     @Test
+    void eachOverloadHeadlinesAtItsOwnLines() {
+        String src = """
+                package a;
+                public class Owner {
+                    /** By name. */
+                    public String pet(String name) {
+                        return name;
+                    }
+
+                    public String pet(Integer id) {
+                        return "" + id;
+                    }
+                }
+                """;
+        CodeGraph g = Linker.link(List.of(Objects.requireNonNull(Extractors.forPath("src/main/java/a/Owner.java"))
+                .extract("src/main/java/a/Owner.java", src)));
+        String out = new SymbolReader(g, Scope.ALL, rel -> src).read("Owner.pet", View.HEADLINE, 2000);
+        assertThat(out)
+                .contains("Owner.pet [method public]  src/main/java/a/Owner.java:4-6  By name.")
+                .contains("Owner.pet [method public]  src/main/java/a/Owner.java:8-10");
+        assertThat(out.lines().filter(l -> l.endsWith("By name."))).hasSize(1);
+    }
+
+    @Test
     void anOverloadedOrUnknownNameIsAnsweredPlainly() {
         assertThat(read("total", null, 2000)).startsWith("== OrderService.total");
         assertThat(read("NoSuchThing", null, 2000)).isEqualTo("No symbol 'NoSuchThing'.");

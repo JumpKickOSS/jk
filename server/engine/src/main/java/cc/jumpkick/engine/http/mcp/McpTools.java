@@ -72,7 +72,7 @@ public final class McpTools {
             "query_graph",
             "read_symbol",
             "get_neighbors",
-            "shortest_path",
+            "find_symbols",
             "skill");
 
     /** Which rows {@code tools/list} answers. */
@@ -108,7 +108,8 @@ public final class McpTools {
                 + "snapshot installs the project as <version>-SNAPSHOT, replaced each run, for a sibling project that must see your edits. "
                 + "query_graph answers a question about the code with file:line, instead of grep and reads; "
                 + "read_symbol reads a symbol's source (Type.member, Type.*) instead of whole files; "
-                + "get_neighbors and shortest_path follow a symbol from there. skill is the playbook. "
+                + "get_neighbors(Type.member, relation_filter=calls) lists its callers; "
+                + "find_symbols(implements=T) its implementations and overrides. skill is the playbook. "
                 + (pinned ? "" : "The first call that carries dir binds the connection. ")
                 + "Other tools: tools/list with extended=true.";
     }
