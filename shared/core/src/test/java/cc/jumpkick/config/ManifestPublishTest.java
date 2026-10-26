@@ -11,6 +11,7 @@ import cc.jumpkick.publish.PublishablePom;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -61,13 +62,36 @@ class ManifestPublishTest {
     @Test
     void the_release_tag_defaults_and_can_be_templated() throws Exception {
         parse("");
-        assertThat(JkBuildParser.releaseTag(tmp.resolve("jk.toml"))).isEqualTo("v{version}");
+        assertThat(JkBuildParser.releaseTable(tmp.resolve("jk.toml")).tag()).isEqualTo("v{version}");
 
         parse("""
                 [release]
                 tag = "widget-{version}"
                 """);
-        assertThat(JkBuildParser.releaseTag(tmp.resolve("jk.toml"))).isEqualTo("widget-{version}");
+        assertThat(JkBuildParser.releaseTable(tmp.resolve("jk.toml")).tag()).isEqualTo("widget-{version}");
+    }
+
+    @Test
+    void the_release_files_are_read_with_their_patterns() throws Exception {
+        parse("""
+                [release]
+                files = [{ path = "install.sh", pattern = 'FLOOR="([^"]+)"' }]
+                """);
+
+        assertThat(JkBuildParser.releaseTable(tmp.resolve("jk.toml")).files())
+                .containsExactly(Map.entry("install.sh", "FLOOR=\"([^\"]+)\""));
+    }
+
+    @Test
+    void a_release_file_pattern_needs_exactly_one_group() {
+        assertThatThrownBy(() -> {
+                    parse("""
+                            [release]
+                            files = [{ path = "install.sh", pattern = 'FLOOR=.+' }]
+                            """);
+                    JkBuildParser.releaseTable(tmp.resolve("jk.toml"));
+                })
+                .hasMessageContaining("exactly one group");
     }
 
     @Test
@@ -77,7 +101,7 @@ class ManifestPublishTest {
                             [release]
                             tag = "latest"
                             """);
-                    JkBuildParser.releaseTag(tmp.resolve("jk.toml"));
+                    JkBuildParser.releaseTable(tmp.resolve("jk.toml")).tag();
                 })
                 .hasMessageContaining("must contain {version}");
     }

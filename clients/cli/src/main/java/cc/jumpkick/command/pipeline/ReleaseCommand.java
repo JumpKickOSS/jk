@@ -8,6 +8,8 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.config.ReleaseVersion;
+import cc.jumpkick.config.ReleaseVersion.Segment;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
@@ -19,8 +21,6 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.release.ReleaseTag;
-import cc.jumpkick.release.ReleaseVersion;
-import cc.jumpkick.release.ReleaseVersion.Segment;
 import cc.jumpkick.repo.RemoteClaim;
 import cc.jumpkick.repo.RepoTransports;
 import cc.jumpkick.run.BuildPlanListener;
@@ -324,6 +324,19 @@ public final class ReleaseCommand implements CliCommand {
             throws IOException {
         Files.writeString(manifest, ReleaseVersion.rewrite(text, next));
         bumped.add(manifest);
+        Path base = info.workspaceRootDir().isEmpty() ? dir : Path.of(info.workspaceRootDir());
+        for (var file : info.releaseFiles().entrySet()) {
+            Path path = base.resolve(file.getKey());
+            try {
+                Files.writeString(
+                        path,
+                        ReleaseVersion.rewriteGroup(
+                                Files.readString(path, StandardCharsets.UTF_8), file.getValue(), next));
+            } catch (IllegalArgumentException e) {
+                throw new IllegalStateException(file.getKey() + ": " + e.getMessage());
+            }
+            bumped.add(path);
+        }
         if (!info.workspaceRoot()) return;
         for (String moduleDir : info.moduleDirs()) {
             Path memberManifest = ManifestPaths.manifestIn(Path.of(moduleDir));

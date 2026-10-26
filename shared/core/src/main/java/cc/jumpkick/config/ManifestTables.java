@@ -24,6 +24,7 @@ import cc.jumpkick.model.Workspace;
 import cc.jumpkick.model.Workspace.WorkspaceDependency;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
+import cc.jumpkick.release.ReleaseTable;
 import cc.jumpkick.release.ReleaseTag;
 import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
@@ -37,6 +38,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
@@ -346,25 +349,48 @@ public final class ManifestTables {
     static final List<String> PUBLISH_SECRET_KEYS =
             List.of("password", "token", "passphrase", "key-passphrase", "user", "username");
 
-    static final List<String> RELEASE_KEYS = List.of("tag");
+    static final List<String> RELEASE_KEYS = List.of("tag", "files");
+    static final List<String> RELEASE_FILE_KEYS = List.of("path", "pattern");
 
     /**
-     * {@code [release]} — the tag template a release carries, {@code {version}} standing for the
-     * released version. {@link ReleaseTag#DEFAULT_TEMPLATE} when the table or the key is absent.
+     * {@code [release]} — the tag template a release carries ({@code {version}} standing for the
+     * released version; {@link ReleaseTag#DEFAULT_TEMPLATE} when absent) and the files that carry
+     * the declared version besides {@code jk.toml}: {@code files = [{ path, pattern }]}, the
+     * pattern's one group being the version.
      */
-    static String parseReleaseTag(TomlTable root) {
+    static ReleaseTable parseRelease(TomlTable root) {
         if (root.contains("release") && !root.isTable("release")) {
             throw new JkBuildParseException("`release` must be a table — use [release] with tag");
         }
         TomlTable release = root.getTable("release");
-        if (release == null) return ReleaseTag.DEFAULT_TEMPLATE;
+        if (release == null) return ReleaseTable.DEFAULT;
         rejectUnknownKeys(release, RELEASE_KEYS, "[release]");
         String tag = stringOrThrow(release, "tag", "release.tag");
-        if (tag == null) return ReleaseTag.DEFAULT_TEMPLATE;
-        if (!tag.contains("{version}")) {
+        if (tag == null) {
+            tag = ReleaseTag.DEFAULT_TEMPLATE;
+        } else if (!tag.contains("{version}")) {
             throw new JkBuildParseException("[release] tag must contain {version}, such as \"v{version}\"");
         }
-        return tag;
+        Map<String, String> files = new LinkedHashMap<>();
+        for (TomlTable t : tables(release, "files", "release.files")) {
+            rejectUnknownKeys(t, RELEASE_FILE_KEYS, "[release] files");
+            String path = stringOrThrow(t, "path", "release.files.path");
+            String pattern = stringOrThrow(t, "pattern", "release.files.pattern");
+            if (path == null || path.isBlank() || pattern == null) {
+                throw new JkBuildParseException("[release] files: every entry needs a path and a pattern");
+            }
+            try {
+                if (Pattern.compile(pattern).matcher("").groupCount() != 1) {
+                    throw new JkBuildParseException(
+                            "[release] files: the pattern for " + path + " must have exactly one group, the version");
+                }
+            } catch (PatternSyntaxException e) {
+                throw new JkBuildParseException("[release] files: the pattern for " + path + " is not a regular"
+                        + " expression: " + e.getDescription());
+            }
+            files.put(path, pattern);
+        }
+        return new ReleaseTable(tag, files);
     }
 
     static final List<String> PUBLISH_LICENSE_KEYS = List.of("name", "url");

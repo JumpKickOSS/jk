@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.release;
+package cc.jumpkick.config;
 
-import cc.jumpkick.config.JkBuildEditor;
 import cc.jumpkick.util.MinimalToml;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -25,6 +24,27 @@ public final class ReleaseVersion {
     private static final Pattern DECLARED = Pattern.compile("^version[ \t]*=[ \t]*\"([^\"]*)\"", Pattern.MULTILINE);
 
     private ReleaseVersion() {}
+
+    /**
+     * {@code content} with the one group of every match of {@code pattern} replaced by
+     * {@code version}.
+     *
+     * @throws IllegalArgumentException when the pattern matches nothing: a file that no longer
+     *     carries the version would otherwise be skipped in silence
+     */
+    public static String rewriteGroup(String content, String pattern, String version) {
+        Matcher m = Pattern.compile(pattern).matcher(content);
+        StringBuilder out = new StringBuilder();
+        int from = 0;
+        boolean found = false;
+        while (m.find()) {
+            found = true;
+            out.append(content, from, m.start(1)).append(version);
+            from = m.end(1);
+        }
+        if (!found) throw new IllegalArgumentException("pattern `" + pattern + "` matches nothing");
+        return out.append(content, from, content.length()).toString();
+    }
 
     /** The version literal a manifest declares at its root; empty when it inherits the version or has none. */
     public static Optional<String> declared(String manifest) {

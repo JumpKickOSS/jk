@@ -31,7 +31,7 @@ import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
-import cc.jumpkick.release.ReleaseTag;
+import cc.jumpkick.release.ReleaseTable;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -648,10 +648,10 @@ public final class JkBuildParser {
         return root == null ? TestTomlTags.EMPTY : ManifestTables.parseTestTags(root);
     }
 
-    /** {@code [release] tag} — the release tag template; {@code v{version}} when the file or key is absent. */
-    public static String releaseTag(Path file) {
+    /** {@code [release]} — the tag template and the version-carrying files; defaults when the file or table is absent. */
+    public static ReleaseTable releaseTable(Path file) {
         TomlParseResult root = documentIfPresent(file);
-        return root == null ? ReleaseTag.DEFAULT_TEMPLATE : ManifestTables.parseReleaseTag(root);
+        return root == null ? ReleaseTable.DEFAULT : ManifestTables.parseRelease(root);
     }
 
     /** {@code [deny]} — the dependency policy block. Permissive when the file/table is absent. */

@@ -253,6 +253,7 @@ public final class ProjectInfoPlans {
         var format = build.format();
         var boot = build.pluginConfig(JkBuild.SPRING_BOOT_ID).orElse(null);
         var testTags = JkBuildParser.parseTestTags(buildFile);
+        var release = JkBuildParser.releaseTable(rootManifest(buildFile, ws));
         return new ProjectInfo(
                 null,
                 sanitizeIdentity(build.project().group()),
@@ -316,7 +317,8 @@ public final class ProjectInfoPlans {
                 publishRepository(build),
                 build.pomMetadata().sign(),
                 orEmpty(build.pomMetadata().keyFile()),
-                JkBuildParser.releaseTag(rootManifest(buildFile, ws)));
+                release.tag(),
+                release.files());
     }
 
     private static String sanitizeIdentity(String value) {
