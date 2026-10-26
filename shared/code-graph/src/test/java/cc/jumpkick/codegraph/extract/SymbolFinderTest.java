@@ -70,6 +70,24 @@ class SymbolFinderTest {
     }
 
     @Test
+    void aNestedSupertypeMatchesByItsOuterQualifiedName() {
+        String rel = "src/main/java/a/Preflight.java";
+        String text = """
+                package a;
+                public final class Preflight {
+                    sealed interface Main permits Unique, None {}
+                    record Unique(String cls) implements Main {}
+                    record None() implements Main {}
+                }
+                """;
+        CodeGraph g = Linker.link(
+                List.of(Objects.requireNonNull(Extractors.forPath(rel)).extract(rel, text)));
+        assertThat(names(find(g, Map.of("implements", "Preflight.Main"), null)))
+                .containsExactlyInAnyOrder("a.Preflight.None", "a.Preflight.Unique");
+        assertThat(names(find(g, Map.of("implements", "Other.Main"), null))).isEmpty();
+    }
+
+    @Test
     void anEmptyFilterIsRefused() throws IOException {
         CodeGraph shop = ExtractorsTest.shop();
         assertThatThrownBy(() -> find(shop, Map.of(), null)).hasMessageContaining("needs a filter");
