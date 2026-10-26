@@ -31,6 +31,21 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
 
+### 0.41.1
+
+- **`jk snapshot`** installs a project (every workspace member, siblings pointed at each other) into `~/.m2` as
+  `<version>-SNAPSHOT`, replaced each run, so Maven and Gradle builds on the machine see your edits; it is the
+  inner loop and is reachable from MCP and the skill.
+- **`jk release`** builds, tests and installs the declared version once, optionally publishes it, tags the commit
+  and starts the next version in a commit of its own; `--major`, `--minor` and `--patch` pick what moves.
+  `jk install` is now for applications and tools.
+- **`jk install` writes one destination**, `~/.m2` by default (`[install] destination`, `--destination`,
+  `JK_INSTALL_DESTINATION`); a release version is installed once and a different build of it is refused.
+- **`jk publish`** reads its target from `[publish]` (`repository`, `sign`, `key-file`), is idempotent on a re-run,
+  checks `--tag` against `[release] tag`, and publishes a snapshot in Maven's timestamped form. MCP `publish`
+  uploads with `upload=true`.
+- **`jk storage usage`** takes seconds, not minutes, on Windows.
+
 ### 0.41.0
 
 - **`[application] jvm-args`** puts flags on the JVM that `jk run` and `jk dev` start; `java-opts` is accepted as
