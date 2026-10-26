@@ -4,6 +4,16 @@ version = "0.41.2"
 description = "JumpKick: The best damn build system for the JVM"
 java = 25
 
+# The installers refuse a pointer older than their floor, so the floor is the version being released:
+# `jk release` moves these with jk.toml.
+[release]
+files = [
+    { path = "install.sh", pattern = 'RELEASE_FLOOR="([^"]+)"' },
+    { path = "hosting/public/install.sh", pattern = 'RELEASE_FLOOR="([^"]+)"' },
+    { path = "install.ps1", pattern = '\$ReleaseFloor = "([^"]+)"' },
+    { path = "hosting/public/install.ps1", pattern = '\$ReleaseFloor = "([^"]+)"' },
+]
+
 # jk's own modules install to jk's private repository: the engine launches its workers from there.
 [install]
 destination = "jk"

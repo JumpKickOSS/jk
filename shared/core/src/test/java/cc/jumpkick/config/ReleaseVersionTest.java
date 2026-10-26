@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.release;
+package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.release.ReleaseVersion.Segment;
+import cc.jumpkick.config.ReleaseVersion.Segment;
+import cc.jumpkick.release.ReleaseTag;
 import org.junit.jupiter.api.Test;
 
 class ReleaseVersionTest {
@@ -52,6 +53,16 @@ class ReleaseVersionTest {
         assertThat(ReleaseVersion.rewrite(manifest, "1.4.8"))
                 .isEqualTo(manifest.replace(
                         "version = \"1.4.7\"   # next release", "version = \"1.4.8\"   # next release"));
+    }
+
+    @Test
+    void the_one_group_of_every_match_is_rewritten() {
+        String file = "A=\"1.0.0\"\nB=\"1.0.0\" # keep\n";
+
+        assertThat(ReleaseVersion.rewriteGroup(file, "(?m)^[AB]=\"([^\"]+)\"", "1.0.1"))
+                .isEqualTo("A=\"1.0.1\"\nB=\"1.0.1\" # keep\n");
+        assertThatThrownBy(() -> ReleaseVersion.rewriteGroup(file, "Z=\"([^\"]+)\"", "1.0.1"))
+                .hasMessageContaining("matches nothing");
     }
 
     @Test

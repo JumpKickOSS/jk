@@ -104,6 +104,27 @@ class ReleaseCommandTest {
     }
 
     @Test
+    void files_listed_under_release_move_with_the_version(@TempDir Path tmp) throws Exception {
+        Path m2 = repository(tmp, "1.4.7");
+        Files.writeString(tmp.resolve("jk.toml"), Files.readString(tmp.resolve("jk.toml")) + """
+
+                [release]
+                files = [{ path = "FLOOR.txt", pattern = 'floor="([^"]+)"' }]
+                """);
+        Files.writeString(tmp.resolve("FLOOR.txt"), "floor=\"1.4.7\"\n");
+        git(tmp, "add", "-A");
+        git(tmp, "commit", "-q", "-m", "Pin the floor");
+
+        assertThat(jk(tmp, m2, "release")).isZero();
+
+        assertThat(Files.readString(tmp.resolve("FLOOR.txt"))).isEqualTo("floor=\"1.4.8\"\n");
+        assertThat(git(tmp, "status", "--porcelain"))
+                .as("the pinned file is in the bump commit")
+                .isEmpty();
+        assertThat(git(tmp, "show", "--stat", "--format=%s", "HEAD")).contains("FLOOR.txt");
+    }
+
+    @Test
     void the_segment_flag_picks_what_moves_after_the_release(@TempDir Path tmp) throws Exception {
         Path m2 = repository(tmp, "1.4.7");
 

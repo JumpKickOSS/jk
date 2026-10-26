@@ -711,7 +711,20 @@
       "type": "object",
       "description": "[release]: how a release is named (docs/user/publish.md). The workspace root's table governs the whole workspace.",
       "properties": {
-        "tag": { "type": "string", "description": "The git tag of a release; {version} stands for the released version. Default \"v{version}\"." }
+        "tag": { "type": "string", "description": "The git tag of a release; {version} stands for the released version. Default \"v{version}\"." },
+        "files": {
+          "type": "array",
+          "description": "Files besides jk.toml that carry the declared version. `jk release` rewrites the pattern's one group in each to the next version, in the commit that starts it.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": { "type": "string", "description": "Relative to the workspace root." },
+              "pattern": { "type": "string", "description": "A regular expression with exactly one group: the version." }
+            },
+            "required": ["path", "pattern"],
+            "additionalProperties": false
+          }
+        }
       },
       "additionalProperties": false
     },

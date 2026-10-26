@@ -81,7 +81,8 @@ class InstallProductLibTest {
                 base.publishRepository(),
                 base.publishSign(),
                 base.publishKeyFile(),
-                base.releaseTag());
+                base.releaseTag(),
+                base.releaseFiles());
     }
 
     @Test

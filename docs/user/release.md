@@ -60,6 +60,20 @@ key-file = ".github/release.asc"     # decrypted into the job by an earlier step
 (default `v{version}`) names for the version in `jk.toml`. A push made with a job's default token
 does not trigger other workflows; push the tag from a developer machine or with a personal token.
 
+## Files that carry the version
+
+Some files name the declared version besides `jk.toml`: an installer's floor, a README's pin. List
+them under `[release]` and `jk release` moves them with the version, in the commit that starts the
+next one:
+
+```toml
+[release]
+files = [{ path = "install.sh", pattern = 'RELEASE_FLOOR="([^"]+)"' }]
+```
+
+The pattern's one group is the version. A pattern that matches nothing stops the release after the
+tag, naming the file.
+
 ## One command, no CI
 
 ```bash
