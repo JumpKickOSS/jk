@@ -473,7 +473,10 @@ public final class JobWorkers {
         release(requestId);
         // Tombstone FIRST so a register racing us kills its process on arrival, and drop any
         // lease still queued for this job so a fork blocked in launch does not outlive the cancel.
-        if (TOMBSTONES.size() >= MAX_TOMBSTONES) TOMBSTONES.clear();
+        if (TOMBSTONES.size() >= MAX_TOMBSTONES) {
+            long window = MAX_TOMBSTONES / 2;
+            TOMBSTONES.removeIf(id -> (requestId >= 0) == (id >= 0) && Math.abs(requestId - id) > window);
+        }
         TOMBSTONES.add(requestId);
         WorkerLeases.engine().cancelRequest(requestId);
         Set<Process> set = BY_REQUEST.remove(requestId);

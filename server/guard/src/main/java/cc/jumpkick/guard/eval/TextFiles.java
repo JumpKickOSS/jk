@@ -161,10 +161,19 @@ final class TextFiles {
      */
     static @Nullable String read(Path file) throws IOException {
         READS.increment();
+        byte[] bytes;
         try (InputStream in = Files.newInputStream(file)) {
-            if (!sniff(in.readNBytes(SNIFF_BYTES))) return null;
+            byte[] head = in.readNBytes(SNIFF_BYTES);
+            if (!sniff(head)) return null;
+            byte[] rest = in.readAllBytes();
+            if (rest.length == 0) {
+                bytes = head;
+            } else {
+                bytes = new byte[head.length + rest.length];
+                System.arraycopy(head, 0, bytes, 0, head.length);
+                System.arraycopy(rest, 0, bytes, head.length, rest.length);
+            }
         }
-        byte[] bytes = Files.readAllBytes(file);
         try {
             return StandardCharsets.UTF_8
                     .newDecoder()

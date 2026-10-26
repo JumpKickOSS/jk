@@ -306,7 +306,11 @@ final class VocabularyEvaluator implements BatchEvaluator {
                 && rel.indexOf('/', 4) < 0) return true; // simple layout: src/<File>
         if (rel.startsWith("src/") && rel.split("/").length > 1 && !rel.startsWith("src/test/") && !isSuiteRoot(rel))
             return true;
-        return all && (rel.startsWith("src/test/") || rel.startsWith("test/"));
+        return all
+                && (rel.startsWith("src/test/")
+                        || rel.startsWith("test/")
+                        || (rel.startsWith("src/") && isSuiteRoot(rel))
+                        || rel.contains("/src/"));
     }
 
     private static boolean isSuiteRoot(String rel) {

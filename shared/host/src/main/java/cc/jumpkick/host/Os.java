@@ -9,25 +9,21 @@ import org.jspecify.annotations.Nullable;
  * client, the engine and every plugin worker answer "which OS is this?" the same way — a worker
  * cannot reach {@code cc.jumpkick.jdk.HostPlatform}, which is what made the copies multiply.
  *
- * <p>This is the one place production code reads {@code os.name} (guard G16). Each predicate comes
+ * <p>This is the one place production code reads {@code os.name}. Each predicate comes
  * in two forms: the no-arg one asks about the running host, and the {@code String} one classifies a
  * name a caller already holds — a test seam, or {@code HostPlatform}'s feed-vocabulary mapping. Both
  * forms share the test, so a host cannot be Windows to one and not the other.
  *
  * <p>The tests are lower-cased {@code contains}, not {@code startsWith}, and they are deliberately
  * asymmetric in length: {@code "windows"} rather than {@code "win"}, because {@code "win"} is a
- * substring of {@code Darwin} and a shortened test silently classifies macOS as Windows. Round 3
- * found that exact defect shipping in {@code BuildTool.binaryName()}, which handed a caller
- * {@code mvn.cmd} on any JVM reporting {@code os.name=Darwin}.
+ * substring of {@code Darwin} and a shortened test silently classifies macOS as Windows.
  */
 public final class Os {
     private Os() {}
 
     /**
-     * The system property the host is read from. Guard G20 reads the ban list out of this class:
-     * every {@code *_PROPERTY} constant here is banned as a {@code System.getProperty} argument
-     * everywhere else in production, so a second property this class starts owning is enforced the
-     * same minute it is declared.
+     * The system property the host is read from. Every {@code *_PROPERTY} constant here is banned
+     * as a {@code System.getProperty} argument everywhere else in production.
      */
     public static final String NAME_PROPERTY = "os.name";
 

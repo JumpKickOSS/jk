@@ -54,11 +54,13 @@ final class NodeProcess {
     /** Run {@code argv} in {@code dir} under {@code env}; output goes to {@code ctx}. */
     static Result run(TaskContext ctx, List<String> argv, Path dir, Map<String, String> env)
             throws IOException, InterruptedException {
+        Process proc = null;
         try {
             ProcessBuilder pb = new ProcessBuilder(argv).directory(dir.toFile()).redirectErrorStream(true);
             pb.environment().clear();
             pb.environment().putAll(env);
-            Process proc = JobWorkers.start(pb);
+            proc = JobWorkers.start(pb);
+            proc.getOutputStream().close();
             Deque<String> tail = new ArrayDeque<>();
             List<Diagnostic> diagnostics = new ArrayList<>();
             try (BufferedReader out =
@@ -72,11 +74,18 @@ final class NodeProcess {
                     if (d != null) diagnostics.add(d);
                 }
             } catch (IOException e) {
-                proc.destroyForcibly();
+                JobWorkers.destroyTree(proc);
                 throw e;
             }
             return new Result(proc.waitFor(), List.copyOf(tail), diagnostics);
         } finally {
+            if (proc != null) {
+                try {
+                    if (proc.isAlive()) JobWorkers.destroyTree(proc);
+                } finally {
+                    JobWorkers.unregister(proc);
+                }
+            }
             NodeNetwork.discard(env);
         }
     }

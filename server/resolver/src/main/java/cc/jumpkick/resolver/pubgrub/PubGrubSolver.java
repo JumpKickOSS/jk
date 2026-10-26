@@ -207,12 +207,12 @@ public class PubGrubSolver {
         return usedCompactUniverse;
     }
 
-    /** Progress hook for live graph ticks during solve (LockOrchestrator /. */
     /** The root package {@link #solve} named; every learned clause about it is spelled against this. */
     private String root() {
         return Objects.requireNonNull(rootPkg, "solve() names the root before anything reads it");
     }
 
+    /** Progress hook for live graph ticks during solve. */
     public PubGrubSolver withOnDecision(BiConsumer<String, String> onDecision) {
         this.onDecision = onDecision;
         return this;
@@ -350,9 +350,9 @@ public class PubGrubSolver {
         // decisionByPackage is a TreeMap — iteration is sorted by package key.
         for (Map.Entry<String, String> e : solution.decisionsUnsorted().entrySet()) {
             h = fnv1a(h, e.getKey());
-            h = fnv1a(h, "\0");
+            h = (h ^ 0) * 0x100000001b3L;
             h = fnv1a(h, e.getValue());
-            h = fnv1a(h, "\n");
+            h = (h ^ '\n') * 0x100000001b3L;
         }
         return h;
     }

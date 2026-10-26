@@ -230,7 +230,12 @@ final class DownloadLeg {
             boolean requirePublished)
             throws IOException, InterruptedException {
         ChecksumSidecars sidecars = ChecksumSidecars.start(transport, credential, uri);
-        Optional<ChecksumSidecars.Published> published = sidecars.strongest();
+        Optional<ChecksumSidecars.Published> published;
+        try {
+            published = sidecars.strongest();
+        } finally {
+            sidecars.cancel();
+        }
         if (published.isEmpty()) {
             // A file nobody here has verified, found in the Maven local repository, has only the
             // repository's word to stand on: none published, nothing vouches, even under allow-unverified.

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.ide;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.util.MinimalXml;
@@ -448,10 +449,13 @@ public final class IntellijIdeGenerator implements IdeGenerator {
 
     /** Convert a repo JAR path to IntelliJ's {@code jar://...!/} URL format ({@code $USER_HOME$}-relative). */
     private static String repoJarUrl(Path jar) {
-        String absStr = jar.toAbsolutePath().normalize().toString().replace('\\', '/');
-        String home = System.getProperty("user.home", "").replace('\\', '/');
-        if (!home.isBlank() && absStr.startsWith(home + "/")) {
-            absStr = "$USER_HOME$/" + absStr.substring(home.length() + 1);
+        Path abs = jar.toAbsolutePath().normalize();
+        Path home = PathUtil.userHome().toAbsolutePath().normalize();
+        String absStr;
+        if (abs.startsWith(home)) {
+            absStr = "$USER_HOME$/" + home.relativize(abs).toString().replace('\\', '/');
+        } else {
+            absStr = abs.toString().replace('\\', '/');
         }
         return "jar://" + absStr + "!/";
     }

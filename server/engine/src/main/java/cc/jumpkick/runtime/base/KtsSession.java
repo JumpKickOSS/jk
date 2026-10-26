@@ -444,21 +444,25 @@ final class KtsSession {
         AtomicReference<@Nullable KtsSession> started = new AtomicReference<>();
         Process p = JobWorkers.startResident(
                 hostProcess(), new WorkerLeases.Resident(LEASE_NAME, () -> yieldLease(started)));
-        registerShutdownHook();
-        HostPressure.register(LEASE_NAME, KtsSession::shedIdle);
-        KtsSession session = new KtsSession(p);
-        started.set(session);
-        String ready = session.replies.poll(START_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
-        if (!"READY".equals(ready)) {
+        try {
+            registerShutdownHook();
+            HostPressure.register(LEASE_NAME, KtsSession::shedIdle);
+            KtsSession session = new KtsSession(p);
+            started.set(session);
+            String ready = session.replies.poll(START_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            if (!"READY".equals(ready)) {
+                String said = ready == null
+                        ? " within " + START_TIMEOUT.toSeconds() + " s"
+                        : EOF.equals(ready) ? "" : " (said: " + ready + ")";
+                throw new IllegalStateException("[build] logic: the .kts host did not start" + said);
+            }
+            // Idle reaper of the shared .kts host; reads no session.
+            session.reaper = Thread.ofVirtual().name("jk-kts-host-reaper").start(() -> reap(session));
+            return session;
+        } catch (Throwable t) {
             p.destroyForcibly();
-            String said = ready == null
-                    ? " within " + START_TIMEOUT.toSeconds() + " s"
-                    : EOF.equals(ready) ? "" : " (said: " + ready + ")";
-            throw new IllegalStateException("[build] logic: the .kts host did not start" + said);
+            throw t;
         }
-        // Idle reaper of the shared .kts host; reads no session.
-        session.reaper = Thread.ofVirtual().name("jk-kts-host-reaper").start(() -> reap(session));
-        return session;
     }
 
     /**

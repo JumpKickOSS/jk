@@ -79,8 +79,8 @@ public final class KmpRedirects {
     }
 
     /**
-     * Every non-selected platform sibling of every redirected root seen this resolve (A5f
-     * finding 20). A platform artifact's own POM can name a SIBLING concretely
+     * Every non-selected platform sibling of every redirected root seen this resolve. A platform
+     * artifact's own POM can name a SIBLING concretely
      * (datastore-core-okio-jvm → datastore-core-jvm) — an edge that is variant-aware in GMM
      * space but bypasses the root's selection in POM space and double-defines every class at
      * dex. The lock excludes these globally; the selected sibling supplies the classes.

@@ -99,24 +99,23 @@ public final class InFlightBuilds {
 
     /** Update journal id after begin() persists an entry. */
     public void bindJournalId(long requestId, String journalId) {
-        byRequestId.computeIfPresent(
-                requestId,
-                (id, h) -> new Hold(
-                        h.requestId(),
-                        h.buildNumber(),
-                        h.fingerprint(),
-                        h.kind(),
-                        h.dir(),
-                        h.coord(),
-                        h.startedAt(),
-                        journalId,
-                        h.trigger(),
-                        h.session()));
-        Hold updated = byRequestId.get(requestId);
-        if (updated != null
-                && updated.fingerprint() != null
-                && !updated.fingerprint().isEmpty()) {
-            byFingerprint.put(updated.fingerprint(), updated);
-        }
+        byRequestId.computeIfPresent(requestId, (id, h) -> {
+            Hold updated = new Hold(
+                    h.requestId(),
+                    h.buildNumber(),
+                    h.fingerprint(),
+                    h.kind(),
+                    h.dir(),
+                    h.coord(),
+                    h.startedAt(),
+                    journalId,
+                    h.trigger(),
+                    h.session());
+            if (updated.fingerprint() != null && !updated.fingerprint().isEmpty()) {
+                byFingerprint.computeIfPresent(
+                        updated.fingerprint(), (fp, cur) -> cur.requestId() == requestId ? updated : cur);
+            }
+            return updated;
+        });
     }
 }

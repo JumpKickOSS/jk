@@ -10,8 +10,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -87,6 +89,9 @@ final class StatIndex {
 
     /** Writes the stats of {@code live} only, so deleted files leave the index. */
     void save(Path graphDir, List<GraphSources.Source> live) throws IOException {
+        Set<String> keep = new HashSet<>(live.size());
+        for (GraphSources.Source s : live) keep.add(s.rel());
+        stats.keySet().retainAll(keep);
         List<String> lines = new ArrayList<>();
         lines.add(header());
         for (GraphSources.Source s : live) {

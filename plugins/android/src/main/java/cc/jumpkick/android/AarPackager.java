@@ -36,6 +36,7 @@ final class AarPackager {
         Path classesJar = aar.resolveSibling(aarName.substring(0, aarName.length() - ".aar".length()) + ".jar");
         io.label("classes.jar");
         writeClassesJar(io.classesDir(), classesJar);
+        io.produced(classesJar);
 
         io.label(aarName);
         try (ZipOutputStream zip = new ZipOutputStream(DeterministicZip.archiveStream(aar))) {

@@ -268,14 +268,15 @@ export function codePathForFailure({ checkoutDir, moduleDir, file } = {}) {
     if (rel == null || rel.split('/').includes('..')) return null;
     return rel;
   }
-  if (!file.includes('/')) return null;
-  if (file.split('/').includes('..')) return null;
+  const norm = String(file).replace(/\\/g, '/');
+  if (!norm.includes('/')) return null;
+  if (norm.split('/').includes('..')) return null;
   // Empty moduleDir: single-plan live key — file is already workspace/checkout-relative.
-  if (!moduleDir) return file;
+  if (!moduleDir) return norm;
   if (!checkoutDir) return null;
   const moduleRel = relativizeUnder(checkoutDir, moduleDir);
   if (moduleRel == null) return null;
-  const joined = posixJoin(moduleRel, file);
+  const joined = posixJoin(moduleRel, norm);
   if (!joined || joined.split('/').includes('..')) return null;
   return joined;
 }

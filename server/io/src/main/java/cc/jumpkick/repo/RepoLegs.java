@@ -61,35 +61,42 @@ final class RepoLegs {
         var session = SessionContext.current();
         List<Leg<T>> out = new ArrayList<>(repos.size());
         boolean[] submitted = new boolean[repos.size()];
-        for (int i = 0; i < repos.size(); i++) {
-            out.add(Leg.finished(new CompletableFuture<>()));
-            MavenRepo repo = repos.get(i);
-            String host = hostOf(repo);
-            if (DownloadSlots.tryAcquireLeg(host)) {
-                out.set(
-                        i,
-                        trackedLeg(JkThreads.io(), host, () -> SessionContext.where(session, () -> work.fetch(repo))));
-                submitted[i] = true;
-            }
-        }
-        int waiting = repos.size();
-        for (boolean b : submitted) if (b) waiting--;
-        // Rotate over the legs still waiting rather than block on the first: a host whose queue frees
-        // next gets its leg submitted whatever its place in repository order.
-        while (waiting > 0) {
+        try {
             for (int i = 0; i < repos.size(); i++) {
-                if (submitted[i]) continue;
+                out.add(Leg.finished(new CompletableFuture<>()));
                 MavenRepo repo = repos.get(i);
                 String host = hostOf(repo);
-                if (!DownloadSlots.tryAcquireLeg(host, LEG_SLOT_POLL_MS)) continue;
-                out.set(
-                        i,
-                        trackedLeg(JkThreads.io(), host, () -> SessionContext.where(session, () -> work.fetch(repo))));
-                submitted[i] = true;
-                waiting--;
+                if (DownloadSlots.tryAcquireLeg(host)) {
+                    out.set(
+                            i,
+                            trackedLeg(
+                                    JkThreads.io(), host, () -> SessionContext.where(session, () -> work.fetch(repo))));
+                    submitted[i] = true;
+                }
             }
+            int waiting = repos.size();
+            for (boolean b : submitted) if (b) waiting--;
+            // Rotate over the legs still waiting rather than block on the first: a host whose queue frees
+            // next gets its leg submitted whatever its place in repository order.
+            while (waiting > 0) {
+                for (int i = 0; i < repos.size(); i++) {
+                    if (submitted[i]) continue;
+                    MavenRepo repo = repos.get(i);
+                    String host = hostOf(repo);
+                    if (!DownloadSlots.tryAcquireLeg(host, LEG_SLOT_POLL_MS)) continue;
+                    out.set(
+                            i,
+                            trackedLeg(
+                                    JkThreads.io(), host, () -> SessionContext.where(session, () -> work.fetch(repo))));
+                    submitted[i] = true;
+                    waiting--;
+                }
+            }
+            return out;
+        } catch (Throwable t) {
+            settle(out);
+            throw t;
         }
-        return out;
     }
 
     /** How long a fan-out waits on one host's queue before looking at the next host's. */

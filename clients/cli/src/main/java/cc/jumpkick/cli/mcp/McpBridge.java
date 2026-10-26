@@ -112,30 +112,34 @@ public final class McpBridge {
         };
         Semaphore room = new Semaphore(MAX_IN_FLIGHT);
         BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
-        try (ExecutorService calls = Executors.newVirtualThreadPerTaskExecutor()) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.isBlank()) continue;
-                Message m = Message.of(line);
-                if (m.method().equals("initialize")) {
-                    write(lines, forward(line));
-                    continue;
-                }
-                if (m.method().equals("notifications/cancelled")) {
-                    write(lines, forward(cancellation(m, line)));
-                    continue;
-                }
-                room.acquireUninterruptibly();
-                // Recorded here, on the reading thread, so a cancel on the next line finds the call.
-                Call call = Call.of(this, m, line);
-                calls.execute(() -> {
-                    try {
-                        write(lines, call.send(this, lines));
-                    } finally {
-                        room.release();
+        try {
+            try (ExecutorService calls = Executors.newVirtualThreadPerTaskExecutor()) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.isBlank()) continue;
+                    Message m = Message.of(line);
+                    if (m.method().equals("initialize")) {
+                        write(lines, forward(line));
+                        continue;
                     }
-                });
+                    if (m.method().equals("notifications/cancelled")) {
+                        write(lines, forward(cancellation(m, line)));
+                        continue;
+                    }
+                    room.acquireUninterruptibly();
+                    // Recorded here, on the reading thread, so a cancel on the next line finds the call.
+                    Call call = Call.of(this, m, line);
+                    calls.execute(() -> {
+                        try {
+                            write(lines, call.send(this, lines));
+                        } finally {
+                            room.release();
+                        }
+                    });
+                }
             }
+        } finally {
+            http.close();
         }
     }
 

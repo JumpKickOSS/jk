@@ -4,6 +4,7 @@ package cc.jumpkick.layout;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.GraalLauncher;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -11,7 +12,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -129,10 +129,10 @@ public final class NativePreflight {
             if (root.kind() != ModuleLayout.Kind.SOURCE) continue;
             Path dir = moduleDir.resolve(root.relative());
             if (!Files.isDirectory(dir)) continue;
-            try (Stream<Path> walk = Files.walk(dir)) {
-                for (Path file : walk.filter(Files::isRegularFile).toList()) {
+            try {
+                PathUtil.forEachRegularFile(dir, (file, attrs) -> {
                     if (sourceHasMain(file)) found.add(file.toString());
-                }
+                });
             } catch (IOException ignored) {
             }
         }

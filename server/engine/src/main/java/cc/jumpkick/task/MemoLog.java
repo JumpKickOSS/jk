@@ -54,16 +54,22 @@ final class MemoLog {
      */
     void load(Consumer<String> decode) throws IOException {
         if (!Files.isRegularFile(file)) return;
-        String text = Files.readString(file, StandardCharsets.UTF_8);
-        int start = 0;
-        for (int nl = text.indexOf('\n'); nl >= 0; nl = text.indexOf('\n', start)) {
-            if (nl > start) {
-                linesOnDisk++;
-                decode.accept(text.substring(start, nl));
+        try (var reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            StringBuilder line = new StringBuilder(256);
+            int ch;
+            while ((ch = reader.read()) >= 0) {
+                if (ch == '\n') {
+                    if (line.length() > 0) {
+                        linesOnDisk++;
+                        decode.accept(line.toString());
+                        line.setLength(0);
+                    }
+                } else {
+                    line.append((char) ch);
+                }
             }
-            start = nl + 1;
+            if (line.length() > 0) compact = true;
         }
-        if (start < text.length()) compact = true;
     }
 
     /** {@code key}'s entry changed: the next flush writes it. */
@@ -84,9 +90,9 @@ final class MemoLog {
     synchronized <V> void flush(Map<String, V> entries, BiFunction<String, V, @Nullable String> encode)
             throws IOException {
         List<String> changed = new ArrayList<>(pending);
-        pending.removeAll(changed);
         try {
             if (compact || !Files.isRegularFile(file) || linesOnDisk > 2L * entries.size() + COMPACT_SLACK) {
+                pending.clear();
                 rewrite(entries, encode);
             } else {
                 append(changed, entries, encode);
@@ -117,6 +123,7 @@ final class MemoLog {
         StringBuilder sb = new StringBuilder(keys.size() * 128);
         long lines = 0;
         for (String key : keys) {
+            pending.remove(key);
             V v = entries.get(key);
             String line = v == null ? null : encode.apply(key, v);
             if (line == null) continue;

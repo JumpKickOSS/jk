@@ -506,7 +506,7 @@ public final class PlannerCompile {
         // The stamp's instant: before the first source is hashed, so an edit landing while the
         // compile runs is stale on the next build instead of vouched for by a later stamp.
         ctx.put(JAVA_STAMP_CLOCK, FreshnessStamp.clockNow(javaOut));
-        if (!rerun) reweightForActionCache(ctx, cx.actionCache(), taskId, request, sources.size());
+        if (!rerun) reweightForActionCache(ctx, cx.actionCache(), taskId, request, stampTokens, sources.size());
         Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations");
         Files.createDirectories(genDir);
         Path workerJar = PluginJar.JAVA_COMPILER.locate(cas);
@@ -589,10 +589,15 @@ public final class PlannerCompile {
      * reconstruction divergence.
      */
     private static void reweightForActionCache(
-            TaskContext ctx, ActionCache actionCache, String taskId, CompileRequest request, int sources) {
+            TaskContext ctx,
+            ActionCache actionCache,
+            String taskId,
+            CompileRequest request,
+            List<String> stampTokens,
+            int sources) {
         try {
             boolean restores = actionCache
-                    .lookup(ActionKey.forJavac(taskId, request, BuildIdentity.cacheKeyVersion()))
+                    .lookup(ActionKey.forJavac(taskId, request, BuildIdentity.cacheKeyVersion(), stampTokens))
                     .isPresent();
             ctx.reweight(restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources));
         } catch (Exception e) {

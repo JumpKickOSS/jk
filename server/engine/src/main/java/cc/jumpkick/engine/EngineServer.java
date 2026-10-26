@@ -155,12 +155,20 @@ public final class EngineServer implements AutoCloseable {
      * trigger the idle-housekeeping that a real plan completion does.
      */
     private void abandonBuildPlanSlot() {
-        activeBuildPlans.decrementAndGet();
+        if (activeBuildPlans.decrementAndGet() == 0 && draining) {
+            synchronized (lifecycleLock) {
+                lifecycleLock.notifyAll();
+            }
+        }
     }
 
     /** Release a plan slot after work finished — call <em>before</em> publishing {@code request-finish}. */
     private void noteBuildPlanFinished() {
-        activeBuildPlans.decrementAndGet();
+        if (activeBuildPlans.decrementAndGet() == 0 && draining) {
+            synchronized (lifecycleLock) {
+                lifecycleLock.notifyAll();
+            }
+        }
     }
 
     /** Dashboard SSE fan-out; non-null only when {@link #httpConfig} is set. */

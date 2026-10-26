@@ -13,7 +13,6 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
@@ -55,12 +54,13 @@ public final class LearnedHeaps {
     private final Supplier<Path> stateDir;
     private final @Nullable Long forcedBytes;
     private final boolean projectIds;
-    private final ConcurrentHashMap<Path, Object> locks = new ConcurrentHashMap<>();
+    private final Object[] locks = new Object[64];
 
     private LearnedHeaps(Supplier<Path> stateDir, @Nullable Long forcedBytes, boolean projectIds) {
         this.stateDir = stateDir;
         this.forcedBytes = forcedBytes;
         this.projectIds = projectIds;
+        for (int i = 0; i < locks.length; i++) locks[i] = new Object();
     }
 
     /** The store this process records into. Its directory follows {@link JkDirs#state()}. */
@@ -233,7 +233,7 @@ public final class LearnedHeaps {
     }
 
     private Object lock(Path file) {
-        return locks.computeIfAbsent(file, p -> new Object());
+        return locks[Math.floorMod(file.hashCode(), locks.length)];
     }
 
     private String id(Path project) {

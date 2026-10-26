@@ -20,11 +20,16 @@ final class JkCliLines {
         return "stderr".equalsIgnoreCase(outputType) || outputType.contains("STDERR");
     }
 
-    /** Append to a transcript buffer, trimming to the retained tail on the streaming path. */
+    /** Append to a transcript buffer, keeping the first error lines and the retained tail on the streaming path. */
     static void append(StringBuilder sb, String text, boolean capped) {
         sb.append(text);
         if (capped && sb.length() > STREAM_RETAIN_CHARS * 2) {
-            sb.delete(0, sb.length() - STREAM_RETAIN_CHARS);
+            int headEnd = sb.indexOf("\n", Math.min(1024, STREAM_RETAIN_CHARS / 4));
+            int keepHead = headEnd >= 0 && headEnd < STREAM_RETAIN_CHARS / 2 ? headEnd + 1 : 0;
+            int cutFrom = sb.length() - (STREAM_RETAIN_CHARS - keepHead);
+            int nextNl = sb.indexOf("\n", cutFrom);
+            if (nextNl >= 0 && nextNl < sb.length()) cutFrom = nextNl + 1;
+            if (cutFrom > keepHead) sb.delete(keepHead, cutFrom);
         }
     }
 

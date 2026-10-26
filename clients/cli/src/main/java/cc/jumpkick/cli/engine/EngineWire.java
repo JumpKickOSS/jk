@@ -244,16 +244,32 @@ public final class EngineWire {
             }
             String token = Files.readString(EnginePaths.tokenFor(socket)).trim();
             SocketChannel ch = SocketChannel.open(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
-            BufferedWriter authWriter =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            authWriter.write(ProtoLifecycle.auth(token));
-            authWriter.write('\n');
-            authWriter.flush();
-            return ch;
+            try {
+                BufferedWriter authWriter = new BufferedWriter(
+                        new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
+                authWriter.write(ProtoLifecycle.auth(token));
+                authWriter.write('\n');
+                authWriter.flush();
+                return ch;
+            } catch (Throwable t) {
+                try {
+                    ch.close();
+                } catch (IOException ignored) {
+                }
+                throw t;
+            }
         }
         SocketChannel ch = SocketChannel.open(StandardProtocolFamily.UNIX);
-        ch.connect(UnixDomainSocketAddress.of(socket));
-        return ch;
+        try {
+            ch.connect(UnixDomainSocketAddress.of(socket));
+            return ch;
+        } catch (Throwable t) {
+            try {
+                ch.close();
+            } catch (IOException ignored) {
+            }
+            throw t;
+        }
     }
 
     /**

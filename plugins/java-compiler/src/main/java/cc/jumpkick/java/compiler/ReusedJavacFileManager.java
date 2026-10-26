@@ -185,6 +185,9 @@ final class ReusedJavacFileManager {
      * run of either kind.
      */
     private boolean staleLocation(StandardJavaFileManager held, Set<StandardLocation> declared) {
+        if (carried.contains(StandardLocation.PATCH_MODULE_PATH)) {
+            return true;
+        }
         for (StandardLocation location : carried) {
             if (!declared.contains(location)) return true;
         }

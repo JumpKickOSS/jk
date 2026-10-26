@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.build;
 
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.PluginConfig;
 import java.io.BufferedReader;
@@ -13,6 +14,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -222,6 +224,8 @@ public interface TaskExec {
             return start(ProcessBuilder.Redirect.PIPE);
         }
 
+        private static final int ARG_FILE_THRESHOLD = 28_000;
+
         /**
          * As {@link #start()}, with the child's combined output sent to {@code output} instead of
          * a pipe: a file ({@link ProcessBuilder.Redirect#appendTo}) for a child that keeps writing
@@ -229,11 +233,49 @@ public interface TaskExec {
          * the child's whole life and break its next write when that reader went away.
          */
         public Process start(ProcessBuilder.Redirect output) throws IOException {
+            List<String> cmd = command();
+            if (needsArgFile(cmd)) {
+                Path argFile = Files.createTempFile("jk-tool-args-", ".txt");
+                argFile.toFile().deleteOnExit();
+                cmd = writeArgFile(cmd, argFile);
+            }
             ProcessBuilder pb =
-                    new ProcessBuilder(command()).redirectErrorStream(true).redirectOutput(output);
+                    new ProcessBuilder(cmd).redirectErrorStream(true).redirectOutput(output);
             if (cwd != null) pb.directory(cwd.toFile());
             pb.environment().putAll(env);
             return pb.start();
+        }
+
+        private static boolean needsArgFile(List<String> cmd) {
+            if (!Os.isWindows() || cmd.size() <= 1) return false;
+            String exe = Path.of(cmd.get(0)).getFileName().toString().toLowerCase(Locale.ROOT);
+            if (!exe.equals("java") && !exe.equals("java.exe") && !exe.equals("javac") && !exe.equals("javac.exe")) {
+                return false;
+            }
+            int chars = 0;
+            for (String a : cmd) chars += a.length() + 3;
+            return chars > ARG_FILE_THRESHOLD;
+        }
+
+        private static List<String> writeArgFile(List<String> cmd, Path argFile) throws IOException {
+            StringBuilder body = new StringBuilder();
+            for (int i = 1; i < cmd.size(); i++) {
+                String a = cmd.get(i);
+                if (a.isEmpty()
+                        || a.indexOf(' ') >= 0
+                        || a.indexOf('\t') >= 0
+                        || a.indexOf('"') >= 0
+                        || a.indexOf('\\') >= 0) {
+                    body.append('"')
+                            .append(a.replace("\\", "\\\\").replace("\"", "\\\""))
+                            .append('"');
+                } else {
+                    body.append(a);
+                }
+                body.append('\n');
+            }
+            Files.writeString(argFile, body.toString(), StandardCharsets.UTF_8);
+            return List.of(cmd.get(0), "@" + argFile.toAbsolutePath());
         }
 
         /** Fork and drain: exit code + combined stdout/stderr. */
@@ -250,12 +292,16 @@ public interface TaskExec {
          */
         public int stream(Consumer<String> sink) throws IOException, InterruptedException {
             Process process = start();
-            try (BufferedReader reader =
-                    new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                @Nullable String line;
-                while ((line = reader.readLine()) != null) sink.accept(line);
+            try {
+                try (BufferedReader reader =
+                        new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                    @Nullable String line;
+                    while ((line = reader.readLine()) != null) sink.accept(line);
+                }
+                return process.waitFor();
+            } finally {
+                if (process.isAlive()) process.destroyForcibly();
             }
-            return process.waitFor();
         }
 
         public record Result(int exit, String output) {}
