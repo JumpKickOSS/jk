@@ -36,21 +36,24 @@ class InstallCommandHandoffTest {
     @Test
     void a_client_of_another_version_than_the_engine_it_installed_hands_the_pass_to_the_tree_s_client() {
         Path client = Path.of("/home/u/.jk/bin/jk");
-        String notice = InstallCommand.handoverNotice("0.13.5", Optional.of("0.13.6"), client);
+        String notice = InstallCommand.handoverNotice("0.13.5", Optional.of("0.13.6"), client, "install");
         assertThat(notice)
                 .contains("jk 0.13.6")
                 .contains("this one is jk 0.13.5")
                 .contains("run `" + client + " install` once more");
-        assertThat(InstallCommand.handoverNotice("0.13.5", Optional.of("0.13.6"), null))
+        assertThat(InstallCommand.handoverNotice("0.13.5", Optional.of("0.13.6"), null, "install"))
                 .as("no PATH client installed: the pass still belongs to a client of the tree's version")
                 .contains("run `jk install` as jk 0.13.6 once more");
+        assertThat(InstallCommand.handoverNotice("0.13.5", Optional.of("0.13.6"), client, "snapshot -S"))
+                .as("a snapshot hands over a snapshot: `install` in jk's tree would install a release")
+                .contains("run `" + client + " snapshot -S` once more");
     }
 
     @Test
     void the_tree_s_own_client_runs_the_re_shelving_pass_itself() {
-        assertThat(InstallCommand.handoverNotice("0.13.6", Optional.of("0.13.6"), Path.of("/h/bin/jk")))
+        assertThat(InstallCommand.handoverNotice("0.13.6", Optional.of("0.13.6"), Path.of("/h/bin/jk"), "install"))
                 .isNull();
-        assertThat(InstallCommand.handoverNotice("0.13.6", Optional.empty(), null))
+        assertThat(InstallCommand.handoverNotice("0.13.6", Optional.empty(), null, "install"))
                 .as("a home naming no engine leaves nothing to hand over")
                 .isNull();
     }
