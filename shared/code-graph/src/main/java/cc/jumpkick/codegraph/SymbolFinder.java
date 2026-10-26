@@ -110,8 +110,11 @@ public record SymbolFinder(
         lines.add(hits.size() == 1 ? "1 match" : hits.size() + " matches");
         for (GraphNode n : hits) {
             String vis = Decl.vis(n);
-            lines.add(Decl.kind(n) + (vis == null ? "" : " " + vis) + "  " + display(graph, n) + "  " + n.sourceFile()
-                    + ":" + Decl.line(n) + (Decl.end(n) > 0 ? "-" + Decl.end(n) : ""));
+            String head = Decl.kind(n) + (vis == null ? "" : " " + vis) + "  " + display(graph, n) + "  "
+                    + n.sourceFile() + ":";
+            lines.add(head + Decl.line(n) + (Decl.end(n) > 0 ? "-" + Decl.end(n) : ""));
+            // Overloads share one node; each is listed at its own lines.
+            for (int[] more : Decl.more(n)) lines.add(head + more[0] + "-" + more[1]);
         }
         return Budget.lines(lines, budget, "Narrow with scope or another filter");
     }

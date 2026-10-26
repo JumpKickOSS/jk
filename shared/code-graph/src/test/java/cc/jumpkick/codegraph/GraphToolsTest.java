@@ -56,6 +56,21 @@ class GraphToolsTest {
     }
 
     @Test
+    void one_edge_keeps_every_call_site_it_was_found_at() {
+        GraphNode a = new GraphNode("split", ".split()", "code", "src/S.java", "L5");
+        GraphNode b = new GraphNode("worker", ".worker()", "code", "src/S.java", "L40");
+        CodeGraph g = CodeGraph.merge(List.of(new Fragment(
+                List.of(a, b),
+                List.of(
+                        GraphEdge.of("split", "worker", Relations.CALLS, Confidence.EXTRACTED, "src/S.java", 21),
+                        GraphEdge.of("split", "worker", Relations.CALLS, Confidence.EXTRACTED, "src/S.java", 9),
+                        GraphEdge.of("split", "worker", Relations.CALLS, Confidence.EXTRACTED, "src/S.java", 21)))));
+        assertThat(g.edges()).hasSize(1);
+        assertThat(new GraphTools(g).neighbors("worker", "calls", 2000))
+                .contains("<-- .split() [calls] [EXTRACTED] at=src/S.java:L21,L9");
+    }
+
+    @Test
     void neighbors_of_an_overloaded_member_lists_every_overload() {
         String out = new GraphTools(shop()).neighbors("OrderService.total", "calls", 2000);
         assertThat(out)

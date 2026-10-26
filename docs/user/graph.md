@@ -76,6 +76,9 @@ NODE OrderService [src=src/main/java/com/acme/shop/OrderService.java loc=L6 comm
 EDGE OrderService --inherits [EXTRACTED]--> BaseService at=src/main/java/com/acme/shop/OrderService.java:L6
 ```
 
+An edge found at several lines of its file (two calls from one method, or from overloads, which
+share a node) names them all: `at=…/StringUtils.java:L7206,L7235`.
+
 The question's words pick the starting nodes: an exact name beats a prefix, which beats a whole
 camel-case word inside a name (`errors` finds `ApiErrors`), which beats a substring; plurals, past
 tenses and a long shared stem count as the word (`available` meets `availability`); rare words

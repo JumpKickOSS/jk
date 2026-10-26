@@ -320,7 +320,7 @@ public final class GraphTools {
         List<String> lines = new ArrayList<>();
         for (GraphEdge e : edges.subList(0, Math.min(limit, edges.size()))) {
             String arrow = e.source().equals(id) ? "-->" : "<--";
-            String at = e.sourceLocation().isEmpty() ? "" : " at=" + e.sourceFile() + ":" + e.sourceLocation();
+            String at = e.sourceLocation().isEmpty() ? "" : " at=" + e.sourceFile() + ":" + String.join(",", e.sites());
             lines.add("  " + arrow + " " + GraphQuery.clean(label(other(e, id))) + " [" + e.relation() + "] ["
                     + e.confidence() + "]" + at);
         }

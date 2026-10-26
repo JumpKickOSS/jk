@@ -59,7 +59,7 @@ public final class CodeGraph {
         for (Fragment f : fragments) {
             for (GraphEdge e : f.edges()) {
                 if (!nodes.containsKey(e.source()) || !nodes.containsKey(e.target())) continue;
-                edges.putIfAbsent(e.source() + '\u0000' + e.target() + '\u0000' + e.relation(), e);
+                edges.merge(e.source() + '\u0000' + e.target() + '\u0000' + e.relation(), e, GraphEdge::withSitesOf);
             }
         }
         return new CodeGraph(nodes, new ArrayList<>(edges.values()));
