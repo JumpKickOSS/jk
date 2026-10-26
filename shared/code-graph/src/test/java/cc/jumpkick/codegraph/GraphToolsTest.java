@@ -50,6 +50,9 @@ class GraphToolsTest {
         assertThat(tools.resolve("cart.Cart.total()").id()).isEqualTo("cart_total");
         assertThat(tools.resolve("OrderService.total").error())
                 .startsWith("'OrderService.total' names 2 members; pass one id:");
+        assertThat(tools.resolve("Cart.price").error())
+                .as("a missing member is said so, not answered with the type's connections")
+                .isEqualTo("'Cart' (src/cart/Cart.java) declares no member 'price'; its members: total");
     }
 
     @Test

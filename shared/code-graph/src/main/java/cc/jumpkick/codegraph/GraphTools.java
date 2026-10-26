@@ -76,6 +76,8 @@ public final class GraphTools {
             }
             return new Resolved(null, String.join("\n", lines));
         }
+        String missing = missingMember(wanted);
+        if (missing != null) return new Resolved(null, missing);
         List<String> ranked = new GraphSearch(graph, scope).rank(wanted);
         if (ranked.isEmpty() && !scope.all()) ranked = new GraphSearch(graph).rank(wanted);
         if (ranked.isEmpty()) {
@@ -133,6 +135,30 @@ public final class GraphTools {
             lines.addAll(edgeLines(id, relationFilter.toLowerCase(Locale.ROOT), Integer.MAX_VALUE));
         }
         return Budget.lines(lines, budget, "Narrow with relation_filter or use get_node for a specific symbol");
+    }
+
+    /**
+     * For a {@code Type.member} address whose type the graph has but whose member it does not: the
+     * answer saying so, with the type's members; {@code null} otherwise. A search hit on the type
+     * would answer a question about the member with the type's connections.
+     */
+    private @Nullable String missingMember(String address) {
+        String wanted = address.endsWith("()") ? address.substring(0, address.length() - 2) : address;
+        int dot = wanted.lastIndexOf('.');
+        if (dot <= 0 || dot == wanted.length() - 1) return null;
+        String owner = wanted.substring(0, dot);
+        String typeName = GraphText.fold(owner.substring(owner.lastIndexOf('.') + 1));
+        for (GraphNode type : graph.nodes()) {
+            if (type.label().startsWith(".") || !bare(type.normLabel()).equals(typeName)) continue;
+            TreeSet<String> names = new TreeSet<>();
+            for (GraphEdge e : graph.incident(type.id())) {
+                if (e.source().equals(type.id()) && e.relation().equals(Relations.METHOD))
+                    names.add(bare(label(e.target())));
+            }
+            return "'" + owner + "' (" + type.sourceFile() + ") declares no member '" + wanted.substring(dot + 1) + "'"
+                    + (names.isEmpty() ? "." : "; its members: " + String.join(", ", names));
+        }
+        return null;
     }
 
     /**

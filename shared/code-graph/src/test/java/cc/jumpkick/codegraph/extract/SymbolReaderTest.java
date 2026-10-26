@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.codegraph.CodeGraph;
+import cc.jumpkick.codegraph.GraphTools;
 import cc.jumpkick.codegraph.Linker;
 import cc.jumpkick.codegraph.Scope;
 import cc.jumpkick.codegraph.SymbolReader;
@@ -136,6 +137,26 @@ class SymbolReaderTest {
                 .contains("Owner.pet [method public]  src/main/java/a/Owner.java:4-6  By name.")
                 .contains("Owner.pet [method public]  src/main/java/a/Owner.java:8-10");
         assertThat(out.lines().filter(l -> l.endsWith("By name."))).hasSize(1);
+    }
+
+    @Test
+    void aRecordComponentIsItsAccessor() {
+        String src = """
+                package a;
+                public record Point(
+                        @Deprecated int x,
+                        java.util.Map<String, Integer> tags) {
+                    int sum() { return x() + tags().size(); }
+                }
+                """;
+        CodeGraph g = Linker.link(List.of(Objects.requireNonNull(Extractors.forPath("src/main/java/a/Point.java"))
+                .extract("src/main/java/a/Point.java", src)));
+        SymbolReader reader = new SymbolReader(g, Scope.ALL, rel -> src);
+        assertThat(reader.read("Point.x", View.HEADLINE, 2000))
+                .startsWith("Point.x [method public]  src/main/java/a/Point.java:3-3");
+        assertThat(reader.read("Point.tags", View.HEADLINE, 2000))
+                .startsWith("Point.tags [method public]  src/main/java/a/Point.java:4-4");
+        assertThat(new GraphTools(g).neighbors("Point.tags", "", 2000)).startsWith("Neighbors of .tags():");
     }
 
     @Test

@@ -18,7 +18,6 @@ import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.facts.FieldFacts;
 import cc.jumpkick.guard.facts.MethodFacts;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -140,13 +139,13 @@ final class JvmFacts {
         return new Fragment(List.copyOf(nodes.values()), edges, mentions);
     }
 
-    /** The method names the compiler wrote for {@code c}: a record's accessors and object methods, an enum's lookups. */
+    /**
+     * The method names the compiler wrote for {@code c} that are not the author's API: a record's
+     * object methods, an enum's lookups. A record's accessors are its API, so they stay nodes and
+     * calls to them stay edges.
+     */
     private static Set<String> generated(ClassFacts c) {
-        if ("java/lang/Record".equals(c.superName())) {
-            Set<String> out = new HashSet<>(RECORD_GENERATED);
-            for (FieldFacts f : c.fields()) out.add(f.name());
-            return out;
-        }
+        if ("java/lang/Record".equals(c.superName())) return RECORD_GENERATED;
         return "java/lang/Enum".equals(c.superName()) ? ENUM_GENERATED : Set.of();
     }
 

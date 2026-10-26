@@ -138,11 +138,19 @@ public record SymbolFinder(
         return out;
     }
 
-    /** Whether {@code qualified} is one of {@code wanted}, by its whole or its simple name. */
+    /**
+     * Whether {@code qualified} is one of {@code wanted}: by its whole name, its simple name, or a
+     * dotted tail ({@code Outer.Inner} for a nested type); a name written unqualified in source
+     * matches a wanted name that ends in it.
+     */
     private static boolean named(String qualified, List<String> wanted) {
         String q = dotted(qualified).toLowerCase(Locale.ROOT);
         String simple = q.substring(q.lastIndexOf('.') + 1);
-        return wanted.contains(q) || wanted.contains(simple);
+        for (String w : wanted) {
+            if (w.equals(q) || w.equals(simple) || q.endsWith("." + w)) return true;
+            if (!q.contains(".") && w.endsWith("." + q)) return true;
+        }
+        return false;
     }
 
     private static String display(CodeGraph graph, GraphNode n) {

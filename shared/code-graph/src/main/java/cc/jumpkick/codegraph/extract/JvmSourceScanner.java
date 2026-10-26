@@ -60,6 +60,7 @@ final class JvmSourceScanner {
         Matcher pkg = PACKAGE.matcher(code);
         String packageName = pkg.find() ? pkg.group(1) : "";
         Map<String, String> imported = imports(b, code, lines);
+        Map<String, String> local = declaredTypes(code, packageName, depth, close);
         List<Open> open = new ArrayList<>();
         Matcher type = TYPE.matcher(code);
         while (type.find()) {
@@ -84,12 +85,24 @@ final class JvmSourceScanner {
                     pre.annotations()));
             b.edge(parent == null ? b.fileId() : parent.id, id, Relations.CONTAINS, Confidence.EXTRACTED, line);
             Supers supers = new Supers(new ArrayList<>(), new ArrayList<>());
-            supertypes(b, code, type.end(), kotlin, kind.equals("interface"), id, line, packageName, imported, supers);
+            supertypes(
+                    b,
+                    code,
+                    type.end(),
+                    kotlin,
+                    kind.equals("interface"),
+                    id,
+                    line,
+                    packageName,
+                    imported,
+                    local,
+                    supers);
             if (!supers.ext().isEmpty()) facts.put(Decl.EXT, List.copyOf(supers.ext()));
             if (!supers.impl().isEmpty()) facts.put(Decl.IMPL, List.copyOf(supers.impl()));
             String doc = DeclScan.docSummary(text, code, pre.start(), at);
             if (doc != null) facts.put(Decl.DOC, doc);
             b.declare(id, line, facts);
+            if (java && kind.equals("record")) components(b, code, lines, type.end(), id);
             if (body) {
                 boolean implicitPublic = java && (kind.equals("interface") || kind.equals("annotation"));
                 open.add(new Open(id, qualified, depth[brace] + 1, brace, close[brace], implicitPublic));
@@ -114,6 +127,61 @@ final class JvmSourceScanner {
             }
         }
         return b.build();
+    }
+
+    /**
+     * A record's components as its accessors: one public method node each, at the component's line,
+     * on the ids the compiled accessors use. {@code from} is just past the record's name.
+     */
+    private static void components(FragmentBuilder b, String code, Lines lines, int from, String owner) {
+        int paren = code.indexOf('(', from);
+        if (paren < 0 || code.substring(from, paren).contains("{")) return;
+        int depth = 0;
+        int start = paren + 1;
+        for (int i = paren + 1; i < code.length(); i++) {
+            char ch = code.charAt(i);
+            if (ch == '(' || ch == '<') depth++;
+            if ((ch == ')' || ch == '>') && depth > 0) {
+                depth--;
+                continue;
+            }
+            if ((ch == ',' && depth == 0) || ch == ')') {
+                component(b, code, lines, start, i, owner);
+                if (ch == ')') return;
+                start = i + 1;
+            }
+        }
+    }
+
+    private static final Pattern COMPONENT_NAME = Pattern.compile("([A-Za-z_$][A-Za-z0-9_$]*)\\s*$");
+
+    private static void component(FragmentBuilder b, String code, Lines lines, int start, int end, String owner) {
+        Matcher name = COMPONENT_NAME.matcher(code.substring(start, end));
+        if (!name.find()) return;
+        int line = lines.at(start + name.start(1));
+        String id = b.node(GraphIds.member(owner, name.group(1)), "." + name.group(1) + "()", "code", line, Map.of());
+        b.declare(id, line, DeclScan.facts("method", "public", line, List.of()));
+        b.edge(owner, id, Relations.METHOD, Confidence.EXTRACTED, line);
+    }
+
+    /** Every type {@code code} declares: simple name to qualified name, a nested one joined by {@code $}. */
+    private static Map<String, String> declaredTypes(String code, String packageName, int[] depth, int[] close) {
+        Map<String, String> out = new HashMap<>();
+        List<Open> open = new ArrayList<>();
+        Matcher type = TYPE.matcher(code);
+        while (type.find()) {
+            String name = type.group(2);
+            Open parent = enclosing(open, type.start());
+            String qualified = parent == null
+                    ? (packageName.isEmpty() ? name : packageName + "." + name)
+                    : parent.qualified + "$" + name;
+            out.putIfAbsent(name, qualified);
+            int brace = code.indexOf('{', type.end());
+            if (brace >= 0 && code.substring(type.end(), brace).indexOf(';') < 0) {
+                open.add(new Open("", qualified, depth[brace] + 1, brace, close[brace], false));
+            }
+        }
+        return out;
     }
 
     /** A type whose body runs from {@code brace} to {@code close} at brace depth {@code depth}. */
@@ -179,6 +247,7 @@ final class JvmSourceScanner {
             int line,
             String packageName,
             Map<String, String> imported,
+            Map<String, String> local,
             Supers supers) {
         if (kotlin) {
             Matcher k = KOTLIN_SUPERS.matcher(code).region(from, code.length());
@@ -192,7 +261,8 @@ final class JvmSourceScanner {
                         line,
                         superclass ? Relations.INHERITS : Relations.IMPLEMENTS,
                         packageName,
-                        imported);
+                        imported,
+                        local);
                 if (q != null) (superclass ? supers.ext() : supers.impl()).add(q);
             }
             return;
@@ -201,13 +271,13 @@ final class JvmSourceScanner {
         if (!s.lookingAt()) return;
         if (s.group(1) != null) {
             for (String name : splitTypes(s.group(1))) {
-                String q = superMention(b, id, name, line, Relations.INHERITS, packageName, imported);
+                String q = superMention(b, id, name, line, Relations.INHERITS, packageName, imported, local);
                 if (q != null) (iface ? supers.impl() : supers.ext()).add(q);
             }
         }
         if (s.group(2) != null) {
             for (String name : splitTypes(s.group(2))) {
-                String q = superMention(b, id, name, line, Relations.IMPLEMENTS, packageName, imported);
+                String q = superMention(b, id, name, line, Relations.IMPLEMENTS, packageName, imported, local);
                 if (q != null) supers.impl().add(q);
             }
         }
@@ -221,12 +291,16 @@ final class JvmSourceScanner {
             int line,
             String relation,
             String packageName,
-            Map<String, String> imported) {
+            Map<String, String> imported,
+            Map<String, String> local) {
         String simple = name.replaceAll("<.*", "").strip();
         if (simple.isEmpty() || !Character.isUpperCase(simple.charAt(simple.lastIndexOf('.') + 1))) return null;
+        // A type this file declares shadows an import of the same simple name, as Java scoping does.
         String qualified = simple.contains(".")
                 ? simple
-                : imported.getOrDefault(simple, packageName.isEmpty() ? simple : packageName + "." + simple);
+                : local.getOrDefault(
+                        simple,
+                        imported.getOrDefault(simple, packageName.isEmpty() ? simple : packageName + "." + simple));
         b.mention(id, Mention.Kind.CLASS, qualified, line, relation);
         return qualified;
     }
