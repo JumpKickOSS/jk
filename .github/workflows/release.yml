@@ -1,22 +1,22 @@
-# The release build for the jumpkick.build layout, started by the release tag.
+# CD: build, sign and publish a release that CI has already passed. It re-runs no test.
 #
-# Trigger: a pushed tag vX.Y.Z (X.Y.Z must equal the version the root jk.toml declares), which is what
-# `jk release --push` pushes. The tag is a request; the root jk.toml version is the answer, and a
-# request that differs from it fails before anything is built (scripts/release-version.sh). One chain:
+# Trigger: the CI workflow (ci.yml) finishing green on a release tag vX.Y.Z, whether the tag push
+# started it or a dispatch on the tag did (the Cut release workflow dispatches it, since a push made
+# with GITHUB_TOKEN starts no workflow). A red CI run starts nothing. The tag is a request; the root
+# jk.toml version at the tagged commit is the answer, and a request that differs from it fails before
+# anything is built (scripts/release-version.sh). The chain:
 #
-#   verify  — ci.yml: the tag matches jk.toml, the house-rule gate, the fast tier, the curated
-#             integration lane, the audit. A red verify stops the release before anything is built.
-#   build   — the native client and engine of every platform, built by jk.
+#   gate    — the CI run was green and its ref is a tag on the commit it tested.
+#   build   — the native client and engine of every platform, built by jk (tests skipped: CI ran them).
 #   merge   — one version tree from the platforms, the SBOM and the notes. No secrets.
 #   publish — signs the tree, uploads it to GCS, redeploys the installers, releases the plugin SDK to
 #             Central, and creates the GitHub Release with the tree, the SBOM and the notes. The
 #             only job that names the `release` environment, so the only one that holds the secrets,
 #             and it waits there for a reviewer's approval.
 #
-# A push made with a workflow's GITHUB_TOKEN starts no workflow, so the Cut release workflow
-# dispatches this one on the tag with publish=true. A workflow_dispatch from a branch, or from a tag
-# with publish=false, is the dry run: it builds and flattens the tree and stops with it (unsigned)
-# as a workflow artifact; nothing is published.
+# A workflow_dispatch is the dry run: it builds and merges the tree of the ref it is started on
+# (unsigned) and stops with it as a workflow artifact; it never publishes, so the only way to a
+# published release is a green CI run.
 #
 # Secrets, all environment secrets of the `release` environment (scripts/release-environment.sh
 # creates it and loads them):
@@ -36,7 +36,7 @@
 # Hosting: objects in GCS behind the Firebase CDN at https://jumpkick.build. Path:
 #   gs://$JK_RELEASE_GCS_BUCKET/releases/<ver>/… and …/releases/latest/LATEST (one signed object)
 #
-# The GitHub Release that triggered the run receives the same version tree (clients, engine jar,
+# The GitHub Release the run creates for the tag receives the same version tree (clients, engine jar,
 # SHA256SUMS and its signature), the CycloneDX SBOM jk wrote of its engine (`jk publish --sbom
 # --dry-run`, the document the engine jar embeds), notes from scripts/release-notes.sh (the
 # version's highlights in docs/contributors/releases.md, then the commits since the previous tag)
@@ -50,14 +50,10 @@
 name: Release
 
 on:
-  push:
-    tags: ["v[0-9]*"]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   workflow_dispatch:
-    inputs:
-      publish:
-        description: 'Publish the tag this run was started on (false is the dry run)'
-        type: boolean
-        default: false
 
 # Every job runs the GITHUB_TOKEN read-only. A job that has to write says so itself, under its own
 # `permissions:`, naming the one scope it needs.
@@ -71,19 +67,53 @@ concurrency:
 
 env:
   TERM: xterm-256color
-  # Empty when the run is not on a tag: scripts/release-version.sh then answers with the declared version.
-  RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+  # The tag a CI run was on; empty on a dispatch, where scripts/release-version.sh answers with the
+  # declared version.
+  RELEASE_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || '' }}
+  # The commit that was tested, and so the commit that is built.
+  RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
-  verify:
-    name: Verify
-    permissions:
-      contents: read
-    uses: ./.github/workflows/ci.yml
+  # CI's verdict, read and not repeated. A workflow_run fires for every run of CI, red ones and
+  # dispatches on branches included: only a green run on a tag that names the tested commit goes on.
+  gate:
+    name: CI passed on a release tag
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.gate.outputs.release }}
+    steps:
+      - id: gate
+        env:
+          EVENT: ${{ github.event_name }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" != workflow_run ]]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"   # a dispatch is the dry run
+            exit 0
+          fi
+          if [[ "$CONCLUSION" != success ]]; then
+            echo "CI finished $CONCLUSION: nothing to release"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9] ]]; then
+            echo "CI ran on '$RELEASE_TAG', not a release tag: nothing to release"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tagged="$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$RELEASE_TAG" --jq .sha 2>/dev/null || true)"
+          if [[ "$tagged" != "$RELEASE_SHA" ]]; then
+            echo "::error::$RELEASE_TAG is at '${tagged:-nothing}', not $RELEASE_SHA, the commit CI tested"
+            exit 1
+          fi
+          echo "release=true" >> "$GITHUB_OUTPUT"
 
   build:
     name: ${{ matrix.arch_label }}
-    needs: verify
+    needs: gate
+    if: ${{ needs.gate.outputs.release == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -107,6 +137,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_SHA }}
 
       # The home sits outside the checkout: the guard lanes of `jk build` read the whole workspace,
       # and on Windows a read of the engine's byte-range-locked files under the home fails.
@@ -240,6 +272,7 @@ jobs:
       # The whole history and every tag: the notes list the commits since the previous release.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 0
           fetch-tags: true
 
@@ -304,12 +337,12 @@ jobs:
           if-no-files-found: error
 
   # Everything that signs or publishes, and the only job with the secrets: they belong to the
-  # `release` environment, whose required reviewer approves the run before this job starts. A dry
-  # run has no job here.
+  # `release` environment, whose required reviewer approves the run before this job starts. Only a
+  # green CI run on a tag gets here; a dry run has no job here.
   publish:
     name: Sign + publish
     needs: merge
-    if: ${{ github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish) }}
+    if: ${{ github.event_name == 'workflow_run' }}
     runs-on: ubuntu-latest
     environment:
       name: release
@@ -327,6 +360,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 0
           fetch-tags: true
 
@@ -365,7 +399,8 @@ jobs:
           ls -la "out/${JK_VERSION}/SHA256SUMS"*
 
       # jk runs firebase-tools below (`jk node exec`) and builds the two SDK modules the Central
-      # bundles come from: the pinned release, then this commit's own jk, as the build job does.
+      # bundles come from. The pinned release builds them: they are platform-neutral jars, and the
+      # next step refuses a build whose jars differ from the staged repository's.
       - name: Bootstrap jk from the hosted release
         shell: bash
         run: |
@@ -373,15 +408,8 @@ jobs:
           echo "JK_HOME=$RUNNER_TEMP/jk-home" >> "$GITHUB_ENV"
           JK_HOME="$RUNNER_TEMP/jk-home" bash scripts/ci-bootstrap.sh
 
-      - uses: graalvm/setup-graalvm@27b360dbb857524eaf0b4c4cef364d38e5b4f173 # v1.6.7
-        with:
-          java-version: '25'
-          distribution: 'graalvm'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
       # The plugin SDK's Central bundles, signed with the release GPG key. Built here, from the
-      # same commit and with the same jk as the staged repository, because the key lives only in
-      # this job's environment.
+      # same commit, because the key lives only in this job's environment.
       - name: Sign the plugin SDK's Central bundles
         shell: bash
         env:
@@ -390,8 +418,12 @@ jobs:
         run: |
           set -euo pipefail
           [[ -n "${JK_CENTRAL_GPG_KEY:-}" ]] || { echo "::error::JK_CENTRAL_GPG_KEY is not set in the release environment — Central refuses unsigned bundles"; exit 1; }
-          bash scripts/ci-takeover.sh --install-only
           jk build --skip-tests --no-ansi -m shared/host -m shared/plugin-sdk
+          # The jar Central gets is the jar jumpkick.build serves, byte for byte.
+          for module in host:jk-host plugin-sdk:jk-plugin-sdk; do
+            dir="${module%%:*}"; art="${module##*:}"
+            cmp "shared/${dir}/target/${art}-${JK_VERSION}.jar"               "target/release/repo/cc/jumpkick/${art}/${JK_VERSION}/${art}-${JK_VERSION}.jar"
+          done
           key="$RUNNER_TEMP/central-gpg.asc"
           (umask 077 && printf '%s\n' "$JK_CENTRAL_GPG_KEY" > "$key")
           JK_CENTRAL_GPG_KEY_FILE="$key" scripts/publish-central.sh bundle target/release/central

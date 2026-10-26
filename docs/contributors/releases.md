@@ -487,36 +487,43 @@ release). It builds and tests the version `jk.toml` declares, installs it, tags 
 members before pushing the branch and the tag. Local development then continues on the next
 version; `jk snapshot` is the inner loop for it.
 
-The pushed tag starts `release.yml`, one chain: verify (`ci.yml`, called as a reusable workflow),
-build, merge, then publish. A push made with a workflow's `GITHUB_TOKEN` starts nothing, so the Cut
-release workflow dispatches `release.yml` on the new tag with `publish=true` itself.
+CI and CD are two workflows. The pushed tag starts **CI** (`ci.yml`), which runs every test and
+gate once and fails fast: a red run is the end of that release. A green CI run on a release tag
+starts **CD** (`release.yml`), which builds, signs and publishes and re-runs none of the tests. A
+push made with a workflow's `GITHUB_TOKEN` starts nothing, so the Cut release workflow (which skips
+the tests: CI owns them) dispatches CI on the new tag itself. CI runs on no push to a branch and on
+no pull request.
 
 The `jk release` that Cut release runs is the pinned bootstrap release
 ([self-host](self-host.md#the-bootstrap-pin)), so a `jk release` feature, and a `jk.toml` key that
-only a newer jk reads, takes effect for CI one release after it ships. `ci.yml` runs
-on no push and no pull request of its own.
+only a newer jk reads, takes effect for CI one release after it ships.
 
-## CI release (started by the release tag)
+## CI and CD (started by the release tag)
 
-Workflow: [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
+Workflows: [`ci.yml`](../../.github/workflows/ci.yml) (CI) and
+[`release.yml`](../../.github/workflows/release.yml) (CD).
 
 Nothing reaches the bucket, the pointer, the installers or the release page from a developer
-machine. The chain:
+machine.
 
 ```bash
 jk release --patch --push        # tests, tags vX.Y.Z, commits "Start X.Y.Z+1", pushes both
-gh run watch                     # verify, build, merge, then the publish job waits for approval
+gh run watch                     # CI, then CD: build, merge, and publish waiting for approval
 ```
 
-1. **verify** — `ci.yml` as a reusable workflow: the tag equals the version `jk.toml` declares
-   (`scripts/release-version.sh` refuses any other tag before anything is built), the commit
-   authorship scan, the shell fixtures, the self-host job, the curated integration lane and the
-   audit. A red verify stops the release before anything is built or signed.
+**CI** (`ci.yml`, started by the tag push or a dispatch on the tag): the tag equals the version
+`jk.toml` declares (`scripts/release-version.sh`), the commit authorship scan, the shell fixtures,
+the self-host job, the curated integration lane and the audit. This is the only place the tests
+run in the cloud, and a red run stops the release.
+
+**CD** (`release.yml`, started by CI finishing green on a release tag; a `workflow_dispatch` is the
+dry run and never publishes):
+
+1. **gate** — the CI run was green and its tag names the commit it tested.
 2. **build** — one row per platform: linux-x86_64, linux-aarch64 (the arm runner of a public
-   repository), macos-aarch64 and windows-x86_64. No secret reaches these jobs.
-3. **merge** — the version tree, the SBOM and the notes, with no secret. A `workflow_dispatch` from
-   a branch, or from a tag with `publish` off, is the dry run: it ends here with the unsigned tree
-   as a workflow artifact and publishes nothing.
+   repository), macos-aarch64 and windows-x86_64, each skipping tests. No secret reaches these jobs.
+3. **merge** — the version tree, the SBOM and the notes, with no secret. The dry run ends here with
+   the unsigned tree as a workflow artifact.
 4. **publish** — the one job that names the `release` environment ([below](#the-release-environment)),
    so the one that holds the secrets, and it starts only once a required reviewer approves the run.
 
@@ -527,7 +534,7 @@ that holds the signing key would be a signed release someone else cut. The
 under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow-lint job, and
 `.github/dependabot.yml` moves the pins weekly.
 
-1. Push the tag `v0.14.0` (`jk release --push`). The version must equal what `jk.toml` declares;
+1. CI is green on the tag `v0.14.0` (`jk release --push`). The version must equal what `jk.toml` declares;
    `scripts/release-version.sh` refuses any other tag before anything is built.
 2. Matrix builds native client + engine jar per OS/arch — with jk itself (`jk build`, the layout
    under `target/dist`). The jk that builds is the hosted release `.jk/ci-bootstrap-version` pins,

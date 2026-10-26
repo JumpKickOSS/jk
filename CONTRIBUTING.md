@@ -164,14 +164,14 @@ paths.
 
 | Lane | When | What |
 |---|---|---|
-| **Release verify** (`ci.yml`) | Called first by `release.yml` when a release tag `vX.Y.Z` is pushed (made by `jk release`, or the **Cut release** workflow) + manual `workflow_dispatch` | The tag matches `jk.toml`; commit-authorship scan since the previous tag; the shell fixtures (on Linux and macOS); the self-host job: `jk build`, `jk install`, `jk guard`, `jk test`, the curated integration lane, the lock diff |
+| **Release CI** (`ci.yml`) | A pushed release tag `vX.Y.Z` (made by `jk release`, or the **Cut release** workflow, which dispatches it) + manual `workflow_dispatch` | The tag matches `jk.toml`; commit-authorship scan since the previous tag; the shell fixtures (on Linux and macOS); the self-host job: `jk build`, `jk install`, `jk guard`, `jk test`, the curated integration lane, the lock diff |
 | **Nightly** (`ci-nightly.yml`) | Daily cron + manual `workflow_dispatch` | `jk test -p integration`, `slow`, `network`, `bench`; the coverage ratchet (`jk test --coverage`, `jk guard`); heap guard; doc examples. macOS: product smoke (`scripts/ci-product-smoke.sh`). |
 
 Pushes to `main` and pull requests start no workflow: the merge gate and the push gate run on the
 developer's machine ([AGENTS.md](AGENTS.md)). **Cut release** (`cut-release.yml`, manual) runs
 `jk release --push`, which tests and tags the declared version and starts the next one; its tag push
-starts **release** (`release.yml`): the verify lane above, the multi-OS build, then signing and
-publishing behind the `release` environment's approval. Coverage is a
+starts the lane above; when it is green, **release** (`release.yml`, CD) builds every platform
+without re-running a test, then signs and publishes behind the `release` environment's approval. Coverage is a
 per-module ratchet (`jk test --coverage`, then `jk guard`; G91) with no percentage target, and the
 JaCoCo agent stays off unless asked for, so the fast tier does not pay for it.
 
