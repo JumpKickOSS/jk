@@ -417,8 +417,8 @@ install is decided against that record:
 | Other bytes jk wrote | refused: raise the version in `jk.toml` | replaced |
 | Other bytes jk did not write | refused | refused; delete the directory to let jk write it |
 
-When the forecast says a release's jar will be rebuilt and the slot is taken, `jk install` fails
-before it compiles or tests anything; the comparison at the install step still has the last word.
+The comparison happens at the install step, after the build: a rebuild that reproduces the bytes (a new
+engine over unchanged sources) is a no-op, and only other bytes are refused.
 The record lives in the jk store, never in `~/.m2`: wiping the store makes jk's earlier slots
 foreign, and deleting the slot's directory is the way back.
 
