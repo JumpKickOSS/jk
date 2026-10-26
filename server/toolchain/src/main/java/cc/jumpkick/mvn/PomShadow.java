@@ -3,6 +3,7 @@ package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.JkBuildRenderer;
+import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -63,7 +64,8 @@ public final class PomShadow {
     }
 
     private static Shadow shadow(Path moduleDir, JkBuild build, List<String> tier3, Collection<Path> inputs) {
-        return new Shadow(moduleDir, ShadowStamp.header(moduleDir, inputs) + JkBuildRenderer.render(build), tier3);
+        String toml = JkBuildRenderer.render(build, LibraryCatalog.forProject(moduleDir));
+        return new Shadow(moduleDir, ShadowStamp.header(moduleDir, inputs) + toml, tier3);
     }
 
     /**

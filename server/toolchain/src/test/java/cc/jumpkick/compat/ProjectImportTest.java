@@ -114,6 +114,51 @@ class ProjectImportTest {
         assertThat(Files.readString(root.resolve("jk.toml"))).contains("[workspace]");
     }
 
+    /**
+     * A handle is shortened only when the catalog the parse will read maps it to the same
+     * coordinate: here the project's {@code jk-libs.toml} maps a bundled handle elsewhere, as a stale
+     * downloaded registry can.
+     */
+    @Test
+    void a_handle_another_catalog_layer_maps_elsewhere_keeps_its_coordinate(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk-libs.toml"), """
+                [libraries]
+                testcontainers-mysql = "org.testcontainers:mysql"
+                """);
+        Files.writeString(root.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.example</groupId>
+                  <artifactId>solo</artifactId>
+                  <version>1.0.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.testcontainers</groupId>
+                      <artifactId>testcontainers-mysql</artifactId>
+                      <version>2.0.2</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        ProjectImport.Outcome outcome = ProjectImport.run(
+                TestImporters.offline(root.resolve("importer")),
+                GradleBuildImport.scannerOnly(),
+                root.resolve("pom.xml"),
+                root.resolve("jk.toml"),
+                root,
+                null,
+                false,
+                false,
+                root.resolve("report.md"),
+                note -> {},
+                ProjectImport.PinRaise.NONE);
+
+        assertThat(outcome.exit()).isZero();
+        assertThat(Files.readString(root.resolve("jk.toml")))
+                .contains("testcontainers-mysql = \"org.testcontainers:testcontainers-mysql:2.0.2\"");
+    }
+
     private static void writeReactor(Path root) throws Exception {
         Files.writeString(root.resolve("pom.xml"), """
                 <project>
