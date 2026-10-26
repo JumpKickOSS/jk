@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>JumpKick — the best damn build tool for the JVM</title>
-  <meta name="description" content="JumpKick (jk) is a lockfile-first build tool for Java, Kotlin, and Groovy — Cargo/uv ergonomics on the JVM." />
+  <title>JumpKick — the JVM build system built for coding agents</title>
+  <meta name="description" content="JumpKick (jk) is the JVM build system built for coding agents and the humans supervising them: Java, Kotlin, and Groovy on Maven Central, with MCP, a results file, a code graph, a shared action cache, and batteries included." />
   <link rel="icon" href="jk-logo.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -198,46 +198,144 @@
       box-shadow: 0 0 28px rgba(var(--cn-rgb), 0.5);
     }
 
-    /* ---- feature trio ---- */
-    .features {
+    .hero-sub {
+      margin: -0.55rem auto 1.1rem;
+      font-size: 0.88rem;
+      color: var(--dim);
+    }
+    .hero-actions {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+    }
+    .btn-ghost {
+      color: var(--cn);
+      border-color: rgba(var(--cn-rgb), 0.35);
+      background: transparent;
+    }
+    .btn-ghost:hover {
+      color: #7ff9ff;
+      border-color: rgba(var(--cn-rgb), 0.6);
+      background: rgba(var(--cn-rgb), 0.06);
+    }
+
+    /* ---- section headings ---- */
+    .section-head {
       max-width: var(--max);
       margin: 0 auto;
-      padding: 0.65rem 1.25rem 1.35rem;
+      padding: 1.6rem 1.25rem 0.75rem;
+      text-align: center;
+    }
+    .section-head h2 {
+      margin: 0 0 0.3rem;
+      font: 700 1.35rem var(--mono);
+      color: var(--bright);
+    }
+    .section-head p {
+      margin: 0 auto;
+      max-width: 44rem;
+      font-size: 0.88rem;
+      color: var(--mu);
+    }
+
+    /* ---- proof strip (written by bench/scoreboard --render) ---- */
+    .proof {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 0.4rem 1.25rem 0.6rem;
+    }
+    .proof-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.85rem;
+    }
+    .proof-tile {
+      background: var(--s1);
+      border: 1px solid rgba(var(--cn-rgb), 0.12);
+      border-radius: var(--r-xl);
+      padding: 0.85rem 1rem 0.95rem;
+      text-align: center;
+    }
+    .proof-label {
+      font: 600 11px var(--mono);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--mu);
+    }
+    .proof-value {
+      margin: 0.2rem 0 0.15rem;
+      font: 700 1.75rem/1.2 var(--mono);
+      color: var(--cn);
+      text-shadow: 0 0 18px rgba(var(--cn-rgb), 0.3);
+    }
+    .proof-vs { font-size: 0.8rem; color: var(--dim); }
+    .proof-lead { margin-top: 0.3rem; font: 600 0.8rem var(--mono); color: var(--bright); }
+    .proof-note {
+      margin: 0.65rem 0 0;
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--dim);
+    }
+
+    /* ---- the seven pillars ---- */
+    .pillars {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 0.25rem 1.25rem 1.35rem;
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 0.85rem;
     }
-    .feature {
+    .pillar {
       background: var(--s1);
       border: 1px solid rgba(var(--cn-rgb), 0.12);
       border-radius: var(--r-xl);
       padding: 0.95rem 1.05rem 1.05rem;
       box-shadow: 0 12px 32px -20px rgba(0, 0, 0, 0.9);
-    }
-    .feature-title {
       display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin: 0 0 0.4rem;
+      flex-direction: column;
     }
-    .feature h2 {
+    .pillar-lead {
+      grid-column: 1 / -1;
+      border-color: rgba(var(--cn-rgb), 0.3);
+      background:
+        radial-gradient(ellipse at 15% 0%, rgba(var(--cn-rgb), 0.08), transparent 55%),
+        var(--s1);
+    }
+    .pillar-title {
+      display: flex;
+      align-items: baseline;
+      gap: 0.55rem;
+      margin: 0 0 0.45rem;
+    }
+    .pillar-num {
+      font: 700 12px var(--mono);
+      color: var(--cn);
+      flex: none;
+    }
+    .pillar h3 {
       margin: 0;
-      font: 700 14px var(--mono);
+      font: 700 14.5px var(--mono);
       color: var(--bright);
     }
-    .feature p {
+    .pillar p, .pillar li {
       margin: 0;
       font-size: 0.86rem;
       color: var(--mu);
       line-height: 1.45;
     }
-    .feature-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--cn);
-      box-shadow: 0 0 10px rgba(var(--cn-rgb), 0.7);
-      flex: none;
+    .pillar ul {
+      margin: 0.1rem 0 0;
+      padding-left: 1.1rem;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.3rem 1.5rem;
+    }
+    .pillar-more {
+      margin-top: auto;
+      padding-top: 0.6rem;
+      font: 600 12px var(--mono);
     }
 
     /* ---- demo video placeholder ---- */
@@ -486,7 +584,8 @@
     .copy-btn.copied .icon-check { display: block; }
 
     @media (max-width: 800px) {
-      .features { grid-template-columns: 1fr; }
+      .pillars, .pillar ul { grid-template-columns: 1fr; }
+      .proof-strip { grid-template-columns: repeat(2, 1fr); }
       .hero { padding: 1.35rem 1.25rem 1rem; }
       .hero-logo { width: min(240px, 54vw); }
       .hero-tagline { max-width: 36rem; }
@@ -506,7 +605,7 @@
         <span>JumpKick</span>
       </a>
       <span class="nav-spacer"></span>
-      <a class="nav-link" href="https://github.com/JumpKickOSS/jk/tree/main/docs" target="_blank" rel="noopener noreferrer">Documentation</a>
+      <a class="nav-link" href="https://github.com/JumpKickOSS/jk/blob/main/docs/user/README.md" target="_blank" rel="noopener noreferrer">Documentation</a>
       <a class="nav-github" href="https://github.com/JumpKickOSS/jk" target="_blank" rel="noopener noreferrer" aria-label="JumpKick on GitHub">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"/>
@@ -519,38 +618,94 @@
     <img class="hero-logo" src="jumpkick-logo.webp" alt="JumpKick" width="200" height="200" />
     <h1 class="hero-name">JumpKick</h1>
     <p class="hero-tagline">
-      The best damn build tool for the JVM — modern, fast, and fluent for Java, Kotlin, and Groovy.
+      The JVM build system built for coding agents — and the humans supervising them.
     </p>
-    <a class="btn btn-brand" href="#quick-install">Get Started →</a>
+    <p class="hero-sub">Java, Kotlin, and Groovy on Maven Central. One TOML file. Batteries included.</p>
+    <div class="hero-actions">
+      <a class="btn btn-brand" href="#quick-install">Get Started →</a>
+      <a class="btn btn-ghost" href="https://github.com/JumpKickOSS/jk/blob/main/docs/user/why.md" target="_blank" rel="noopener noreferrer">Why JumpKick</a>
+    </div>
   </section>
 
-  <section class="features" aria-label="Highlights">
-    <article class="feature">
-      <div class="feature-title">
-        <div class="feature-dot" aria-hidden="true"></div>
-        <h2>Lockfile-first</h2>
-      </div>
-      <p>
-        <code>jk-lock.toml</code> is law. Reproducible builds by default — CI doesn’t re-resolve unless you say so.
-      </p>
+  <section class="proof" aria-label="Measured against Gradle and Maven">
+    <!-- wall-strip:begin -->
+<div class="proof-strip">
+  <div class="proof-tile">
+    <div class="proof-label">No-op</div>
+    <div class="proof-value">0.05 s</div>
+    <div class="proof-vs">Gradle 0.53 s · Maven 2.37 s</div>
+    <div class="proof-lead">11× faster than Gradle</div>
+  </div>
+  <div class="proof-tile">
+    <div class="proof-label">One-file edit</div>
+    <div class="proof-value">0.13 s</div>
+    <div class="proof-vs">Gradle 0.61 s · Maven 3.14 s</div>
+    <div class="proof-lead">5× faster than Gradle</div>
+  </div>
+  <div class="proof-tile">
+    <div class="proof-label">Warm rebuild</div>
+    <div class="proof-value">0.09 s</div>
+    <div class="proof-vs">Gradle 0.57 s · Maven 3.16 s</div>
+    <div class="proof-lead">6× faster than Gradle</div>
+  </div>
+  <div class="proof-tile">
+    <div class="proof-label">Resident between builds</div>
+    <div class="proof-value">863 MiB</div>
+    <div class="proof-vs">Gradle 1,734 MiB, its daemon up 3 hours · Maven none: a cold JVM every build</div>
+    <div class="proof-lead">one engine for every project, heap capped at 256 MiB</div>
+  </div>
+</div>
+<p class="proof-note">spring-petclinic, the same work for every tool; Gradle 9.8.2; Maven 3.10.0; jk 0.41.1. <a href="https://github.com/JumpKickOSS/jk/blob/main/docs/user/performance.md" target="_blank" rel="noopener noreferrer">How it is measured, and where jk loses →</a></p>
+<!-- wall-strip:end -->
+  </section>
+
+  <div class="section-head">
+    <h2>Seven reasons to switch</h2>
+    <p>Every claim links what backs it, and the linked pages say where JumpKick still loses.</p>
+  </div>
+
+  <section class="pillars" aria-label="Seven reasons to switch">
+    <article class="pillar pillar-lead">
+      <div class="pillar-title"><span class="pillar-num">01</span><h3>Agent-first</h3></div>
+      <ul>
+        <li><code>target/jk-results.md</code>: one token-cheap report per run, each failure at its <code>file:line</code> with a fix hint, and what was skipped.</li>
+        <li>MCP built into the engine: <code>run</code> returns a verdict, <code>deps</code> and <code>manifest</code> edit the project and relock.</li>
+        <li><code>jk skill</code>, the playbook for a tool models were not trained on, kept current in your <code>AGENTS.md</code>.</li>
+        <li><code>jk graph</code>: a code knowledge graph that answers within a token budget, in place of grep-and-read turns.</li>
+        <li>Named test rungs: the cheap unit suite by default, <code>--guard</code> before you share, <code>--all</code> nightly.</li>
+        <li>Measured on 165 broken builds: agents reach green in as few or fewer turns than on Maven or Gradle.</li>
+      </ul>
+      <a class="pillar-more" href="https://github.com/JumpKickOSS/jk/blob/main/docs/user/why.md#agents-reach-green" target="_blank" rel="noopener noreferrer">The agent-loop table, gaps included →</a>
     </article>
-    <article class="feature">
-      <div class="feature-title">
-        <div class="feature-dot" aria-hidden="true"></div>
-        <h2>Native-fast CLI</h2>
-      </div>
-      <p>
-        Slim native client, memory-capped engine, and a content-addressed cache that skips work it can prove is done.
-      </p>
+    <article class="pillar">
+      <div class="pillar-title"><span class="pillar-num">02</span><h3>Never type <code>clean</code> again</h3></div>
+      <p>Every step is keyed by the content of its inputs and restored from a content-addressed store. A second worktree, another agent, or CI at the same commit restores the first one's work, and <code>jk explain</code> forecasts it before it runs.</p>
+      <a class="pillar-more" href="https://github.com/JumpKickOSS/jk/blob/main/bench/oracle/README.md" target="_blank" rel="noopener noreferrer">The clean-build oracle →</a>
     </article>
-    <article class="feature">
-      <div class="feature-title">
-        <div class="feature-dot" aria-hidden="true"></div>
-        <h2>Maven Central native</h2>
-      </div>
-      <p>
-        Same coordinates, BOMs, and ecosystem you already use — modern ergonomics without a new package universe.
-      </p>
+    <article class="pillar">
+      <div class="pillar-title"><span class="pillar-num">03</span><h3>Fast and frugal</h3></div>
+      <p>A native client and one resident engine for every project on the machine, its heap capped and trimmed back after every job. Compilers and test JVMs lease memory from one budget and learn what they really use.</p>
+      <a class="pillar-more" href="https://github.com/JumpKickOSS/jk/blob/main/docs/user/performance.md" target="_blank" rel="noopener noreferrer">The measured table →</a>
+    </article>
+    <article class="pillar">
+      <div class="pillar-title"><span class="pillar-num">04</span><h3>See what your agent is doing</h3></div>
+      <p><code>jk web</code> is the supervisor's view: every run with who asked, what changed since the last attempt, why it failed, and how long it took. The terminal shows the same facts with an honest ETA.</p>
+      <a class="pillar-more" href="https://github.com/JumpKickOSS/jk/blob/main/docs/user/web.md" target="_blank" rel="noopener noreferrer">The dashboard →</a>
+    </article>
+    <article class="pillar">
+      <div class="pillar-title"><span class="pillar-num">05</span><h3>Batteries Included™</h3></div>
+      <p>JDK and Node.js toolchains, format, lint, house-rule guards, code generation, fat and minified jars, native images, OCI images, AOT training, SBOMs and audit, signing, release and publish. No plugin hunt.</p>
+      <a class="pillar-more" href="https://github.com/JumpKickOSS/jk/blob/main/docs/user/why.md#5-batteries-included" target="_blank" rel="noopener noreferrer">What ships in the binary →</a>
+    </article>
+    <article class="pillar">
+      <div class="pillar-title"><span class="pillar-num">06</span><h3>A modern, declarative core</h3></div>
+      <p><code>jk.toml</code> is data, never a program. <code>jk-lock.toml</code> is law. PubGrub explains conflicts in prose. Git dependencies, workspaces with one lockfile, and the newest stable versions by default.</p>
+      <a class="pillar-more" href="https://github.com/JumpKickOSS/jk/blob/main/docs/user/concepts.md" target="_blank" rel="noopener noreferrer">Concepts →</a>
+    </article>
+    <article class="pillar">
+      <div class="pillar-title"><span class="pillar-num">07</span><h3>Switch without a rewrite</h3></div>
+      <p><code>jk test</code> runs on an unmodified <code>pom.xml</code>, and <code>jk mvn</code> runs your real Maven build with the same results file. <code>jk import</code> when you are ready. Your <code>~/.m2</code> and IntelliJ JDKs are shared, not duplicated.</p>
+      <a class="pillar-more" href="https://github.com/JumpKickOSS/jk/blob/main/docs/user/migration.md" target="_blank" rel="noopener noreferrer">Migration →</a>
     </article>
   </section>
 
@@ -560,7 +715,7 @@
         <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
       </div>
       <div class="demo-label">Demo video</div>
-      <p class="demo-hint">Placeholder — a recording of JumpKick in action will land here.</p>
+      <p class="demo-hint">Coming soon: an agent fixing a broken build through MCP while the dashboard follows each attempt.</p>
     </div>
   </section>
 
@@ -611,6 +766,35 @@
           <svg class="icon-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
         </button>
       </div>
+    </div>
+
+    <div class="install-block">
+      <h3>First build</h3>
+      <p>A new project, or <code>cd</code> into an existing Maven one and start at <code>jk test</code>:</p>
+      <div class="code-block">
+        <div class="code-chrome" aria-hidden="true">
+          <div class="code-chrome-orbs">
+            <span class="code-chrome-orb close"></span>
+            <span class="code-chrome-orb min"></span>
+            <span class="code-chrome-orb max"></span>
+          </div>
+          <div class="code-chrome-title">Terminal</div>
+          <div class="code-chrome-win">
+            <span class="win-min"><svg viewBox="0 0 10 10"><path d="M1 5h8"/></svg></span>
+            <span class="win-max"><svg viewBox="0 0 10 10"><rect x="1.25" y="1.25" width="7.5" height="7.5"/></svg></span>
+            <span class="win-close"><svg viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6"/></svg></span>
+          </div>
+        </div>
+        <pre><code>jk new my-app &amp;&amp; cd my-app
+jk add jackson3-databind
+jk test
+jk web</code></pre>
+        <button type="button" class="copy-btn" aria-label="Copy to clipboard" title="Copy">
+          <svg class="icon-copy" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <svg class="icon-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+        </button>
+      </div>
+      <p>Point your agent at it: <code>jk skill</code> prints the playbook, and <code>jk mcp</code> is the MCP server.</p>
     </div>
 
   </section>

@@ -1,10 +1,10 @@
 version = 1
 generated-by = "jk 0.41.2-SNAPSHOT"
-generated-by-build = "cfbada3c67a0"
-generated-by-build-time = "2026-10-26T01:43:11Z"
+generated-by-build = "f888dbac4b54"
+generated-by-build-time = "2026-10-26T14:46:18Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "3b482008c94318700418cb5bce5f6983ef723d49c4edad33d38ac7037b3a2038"
+manifests-sha256 = "05a1900bb130cf99403608f88c7a05e69cd7c99fb773c9382db53f3f44d31599"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -6985,7 +6985,7 @@ group   = "cc.jumpkick"
 name    = "jk"
 version = "0.41.2"
 java    = 25
-description = "JumpKick: The best damn build system for the JVM"
+description = "JumpKick: the JVM build system built for coding agents"
 install.destination = "jk"
 
 [[module]]

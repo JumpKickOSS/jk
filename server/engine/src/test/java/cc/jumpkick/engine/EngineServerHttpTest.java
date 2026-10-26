@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
- * The engine's embedded HTTP server (docs/http.md) as the socket sees it: the URL file and token
+ * The engine's embedded HTTP server (docs/contributors/http.md) as the socket sees it: the URL file and token
  * it writes, an advisory bind failure, and a build triggered over REST streaming its lifecycle
  * back over SSE. A real-HTTP contract test — the fixture lives in {@link EngineServerHarness}.
  */
@@ -77,7 +77,7 @@ class EngineServerHttpTest extends EngineServerHarness {
         assertThat(serverThread.isAlive()).isFalse();
         assertThat(Files.exists(p.http())).isFalse(); // cleaned up with the other engine files
         // The token deliberately survives shutdown so an open dashboard tab stays valid across a
-        // restart (docs/http.md); only `jk engine rotate-token` removes it.
+        // restart (docs/contributors/http.md); only `jk engine rotate-token` removes it.
         assertThat(Files.exists(p.httpToken())).isTrue();
     }
 

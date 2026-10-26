@@ -39,9 +39,6 @@ When these pages are published, keep the markdown filenames as slugs:
 `jk skill` prints the core; `jk skill <topic>` prints one page. [user/skill.md](user/skill.md)
 is the same entry on the website. Longer topic pages stay under `docs/user/`.
 
-Old paths under `docs/*.md` (for example `docs/guide.md`) are **stubs** that point here, so
-existing `jk://docs/…` ticket links and in-code `docs/architecture.md` citations still resolve.
-
 ## What does *not* live here
 
 Internal design records, PRDs, benches, and ticket-linked decision essays live in the

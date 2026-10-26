@@ -5,7 +5,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.GroupCommand;
 import java.util.List;
 
-/** {@code jk engine} parent — manual control over the resident build engine (see {@code docs/architecture.md}). */
+/** {@code jk engine} parent — manual control over the resident build engine (see {@code docs/contributors/architecture.md}). */
 public final class EngineCommand extends GroupCommand {
 
     @Override

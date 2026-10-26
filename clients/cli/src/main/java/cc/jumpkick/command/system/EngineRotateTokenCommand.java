@@ -15,7 +15,7 @@ import java.util.List;
 
 /**
  * {@code jk engine rotate-token} — invalidate the embedded HTTP server's bearer token
- * ({@code docs/http.md}). The token is otherwise persisted and stable across restarts so open
+ * ({@code docs/contributors/http.md}). The token is otherwise persisted and stable across restarts so open
  * dashboard tabs keep working; rotation is the explicit escape hatch for when you actually want to
  * revoke it (say, you shared a tokenized URL and want to lock it out).
  *

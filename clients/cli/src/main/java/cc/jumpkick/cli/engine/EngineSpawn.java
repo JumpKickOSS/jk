@@ -459,7 +459,7 @@ public final class EngineSpawn {
      * The JDK that hosts the engine JVM, pinned by vendor+major. Honours {@code [toolchain].jdk}
      * (or {@code JK_ENGINE_JDK}); defaults to the LTS Temurin at the engine's floor release. Prefers
      * an already-installed match (no network), else installs exactly the pin. A HotSpot JDK is what
-     * {@code docs/architecture.md} wants (HotSpot's JIT + SHA-256 intrinsics).
+     * {@code docs/contributors/architecture.md} wants (HotSpot's JIT + SHA-256 intrinsics).
      */
     /**
      * {@code java} of the JDK that hosts the engine (installs the pin if none matches). Used by

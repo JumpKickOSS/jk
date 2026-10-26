@@ -504,7 +504,7 @@ main() {
     || note "an engine from the superseded install location could not be stopped"
 
   # The engine ships as a single fat jar, jk-engine-<version>.jar (see
-  # docs/architecture.md "Ship layout" / client+engine split; the engine is a JVM app,
+  # docs/contributors/architecture.md "Ship layout" / client+engine split; the engine is a JVM app,
   # not a second native binary). The live copy is <home>/lib/jk-engine/ — materialized below for
   # local dists and JVM installs; native download installs self-fetch it on first engine spawn.
   # A local dist is the ship layout `jk build` writes: <dist>/jk, <dist>/lib/ and <dist>/repos/
@@ -517,7 +517,7 @@ main() {
     SRC_REPOS="$SRC_DIST/repos"
   fi
 
-  # ---- product-lib engine (docs/architecture.md "Versioning") ----------------
+  # ---- product-lib engine (docs/contributors/architecture.md "Versioning") ----------------
   #
   # Local dist installs (binary + engine jar together) also install
   # the engine jar under the product lib — through the client itself

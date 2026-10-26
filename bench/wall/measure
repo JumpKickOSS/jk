@@ -29,6 +29,9 @@ Scenarios (tests are skipped in every wall row; `test` is its own row):
   edit     one leaf source file really edited (a unique comment line; jk keys on content, so a
            touch would measure a no-op), restored after each run
   test     the whole suite, forced to run: `jk test -r`, `gradle test --rerun`, `mvn test`
+  idle     memory between builds: one untimed test run, IDLE_SETTLE_S with no command running, then
+           the tool's residents sampled once a second — jk's engine and its warm workers, Gradle's
+           daemon and its workers, nothing for Maven, which keeps no process between builds
 
 Every timed run samples /proc every 200 ms and sums the RSS of the tool's process tree: the
 command's descendants plus, for jk, the resident engine and its workers, and for Gradle the daemon
@@ -88,8 +91,10 @@ PROJECT = {
 }
 
 TOOLS = ("jk", "gradle", "maven")
-SCENARIOS = ("clean", "rebuild", "noop", "edit", "test")
+SCENARIOS = ("clean", "rebuild", "noop", "edit", "test", "idle")
 INTERVAL_S = 0.2
+# Past the engine's thirty-second idle trim, well inside Gradle's three-hour daemon idle timeout.
+IDLE_SETTLE_S = 60
 EDIT_MARK = "// wall harness edit"
 WALL_MARK = "# The three-tool table behind docs/user/performance.md, banked by bench/wall/measure --bank:"
 
@@ -477,6 +482,31 @@ def measure(tool: str, scenario: str, work: Path, runs: int, log: Path) -> dict:
     return row
 
 
+def measure_idle(tool: str, work: Path, runs: int, log: Path) -> dict:
+    """One row: the median resident RSS of the tool's residents IDLE_SETTLE_S after a test run."""
+    cmd = test_cmd(tool)
+    _, rc, _, _ = timed(tool, cmd, work, log)
+    row = {"tool": tool, "scenario": "idle", "runs": 0, "failures": 0 if rc == 0 else 1,
+           "command": " ".join(as_typed(c) for c in cmd), "walls_s": [], "settle_s": IDLE_SETTLE_S}
+    if rc != 0:
+        return row
+    time.sleep(IDLE_SETTLE_S)
+    trees, roots = [], []
+    for _ in range(runs):
+        procs = scan_procs()
+        residents = resident_roots(tool, procs)
+        trees.append(tree_rss(residents, procs))
+        roots.append(sum(procs[pid][1] for pid in residents if pid in procs))
+        time.sleep(1)
+    row["runs"] = runs
+    # The whole tree, and the engine or daemon alone: the rest is warm workers it keeps beside it.
+    row["idle_rss_mb"] = int(statistics.median(trees)) >> 20
+    row["idle_root_rss_mb"] = int(statistics.median(roots)) >> 20
+    print(f"  {tool:<7}idle     {IDLE_SETTLE_S} s after a test run: resident rss {row['idle_rss_mb']:5d} MiB, "
+          f"{row['idle_root_rss_mb']} MiB of it the engine or daemon", file=sys.stderr)
+    return row
+
+
 def as_typed(part: str) -> str:
     """The command as a reader types it: binaries and the init script by name, not by path."""
     if part == JK:
@@ -512,7 +542,8 @@ def main() -> int:
 
     global PINNED, MVN, GRADLE
     tools = args.tool or list(TOOLS)
-    scenarios = args.scenario or list(SCENARIOS)
+    # idle settles after the other rows: it reads what the heaviest work left resident.
+    scenarios = sorted(set(args.scenario or SCENARIOS), key=SCENARIOS.index)
     if not Path(JK).is_file():
         raise SystemExit(f"refusing to run: jk binary not found at {JK}")
     PINNED = benchtools.resolve(allow_stale=args.allow_stale_tools, offline=args.offline_tools)
@@ -578,7 +609,11 @@ def main() -> int:
             # A fresh daemon, as jk gets a fresh engine: one left from an earlier run carries its heap.
             sh([GRADLE, "--stop", "-q"], cwd=works[tool], check=False)
         for scenario in scenarios:
-            row = measure(tool, scenario, works[tool], args.runs, out_dir / f"{tool}-{scenario}.log")
+            log_file = out_dir / f"{tool}-{scenario}.log"
+            if scenario == "idle":
+                row = measure_idle(tool, works[tool], args.runs, log_file)
+            else:
+                row = measure(tool, scenario, works[tool], args.runs, log_file)
             row["tool_version"] = versions[tool]
             row["load"] = load
             write_row(row)
@@ -586,7 +621,9 @@ def main() -> int:
 
     print(f"\n{'tool':<8}{'scenario':<9}{'median':>8}{'p90':>8}{'peak rss':>10}  runs", file=sys.stderr)
     for row in rows:
-        if "median_s" in row:
+        if "idle_rss_mb" in row:
+            print(f"{row['tool']:<8}{'idle':<9}{'':>16}{row['idle_rss_mb']:>7,} MiB  {row['runs']} samples", file=sys.stderr)
+        elif "median_s" in row:
             print(f"{row['tool']:<8}{row['scenario']:<9}{row['median_s']:>7.2f}s{row['p90_s']:>7.2f}s{row['peak_rss_mb']:>7,} MiB  {row['runs']}", file=sys.stderr)
         else:
             print(f"{row['tool']:<8}{row['scenario']:<9}   every run failed; see {out_dir}", file=sys.stderr)

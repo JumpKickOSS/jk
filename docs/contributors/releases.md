@@ -357,7 +357,7 @@ bench/agent-loop/scenario --baseline && bench/agent-loop/scenario --verify --job
 bench/agent-loop/harness --driver <llm driver> --results bench/agent-loop/results/<date>-<version>
 ```
 
-Then update the turns-to-green table in [Why JumpKick](../user/why.md#making-the-north-star-true)
+Then update the turns-to-green table in [Why JumpKick](../user/why.md#agents-reach-green)
 with the commit, the tool versions and the host, and the headline numbers in the README and
 [Comparison](../user/comparison.md). A release whose table regresses says so in its highlights.
 

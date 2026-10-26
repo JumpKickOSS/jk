@@ -26,7 +26,7 @@ import org.jspecify.annotations.Nullable;
  * The engine's job-shaped build verbs: encode a request, send it, and replay the event stream the
  * engine writes back through {@link EngineEventDecoder}. Every method here is the engine-hosted
  * twin of something {@code BuildService} would otherwise run in-process, and drives the caller's
- * listener exactly as the in-process path would — per {@code docs/architecture.md} there is no
+ * listener exactly as the in-process path would — per {@code docs/contributors/architecture.md} there is no
  * in-process fallback, so a failure here is a thrown error with the engine's message, never a
  * quiet degradation.
  *

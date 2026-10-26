@@ -39,7 +39,7 @@ import org.jspecify.annotations.Nullable;
  * Engine-backed session for IDE hosts (IntelliJ / VS Code plugins and agents). Prefer this over
  * shelling out to the {@code jk} CLI when you need structured progress and project model data.
  *
- * <p><b>Integration sequence</b> (see also {@code docs/architecture.md}):
+ * <p><b>Integration sequence</b> (see also {@code docs/contributors/architecture.md}):
  *
  * <ol>
  * <li>{@link #open(Path)} — project root containing {@code jk.toml}

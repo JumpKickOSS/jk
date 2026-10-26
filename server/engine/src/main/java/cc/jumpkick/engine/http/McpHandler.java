@@ -36,7 +36,7 @@ import org.jspecify.annotations.Nullable;
  * metadata, history). Live progress: {@code GET /mcp} with {@code Accept: text/event-stream}
  * (MCP {@code notifications/jk/event}); filter with {@code ?jid=} or {@code
  * ?progressToken=} (bound from tools/call {@code _meta.progressToken}). See {@code
- * docs/machine-output.md}.
+ * docs/user/machine-output.md}.
  *
  * <p>This class is the method table and nothing else. Framing is {@link McpRpc}, the tool set is
  * {@link McpTools#standard()}, and every collaborator a tool reaches hangs off {@link McpContext}.

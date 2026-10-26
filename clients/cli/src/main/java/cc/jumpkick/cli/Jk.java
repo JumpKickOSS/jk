@@ -32,7 +32,7 @@ public final class Jk {
     public static final String VERSION = JkVersion.VERSION;
 
     /** Top-line blurb on bare {@code jk} and {@code jk --help}. */
-    static final String HELP_TAGLINE = "JumpKick - The best damn build system for the JVM";
+    static final String HELP_TAGLINE = "JumpKick - the JVM build system built for coding agents";
 
     /**
      * Hidden command aliases for ergonomic migration from other build tools. Documented in {@code

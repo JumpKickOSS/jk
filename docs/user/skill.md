@@ -1,6 +1,6 @@
 # JumpKick skill
 
-The live playbook is **`jk skill`**. It prints a short core (the loop, the five default MCP tools,
+The live playbook is **`jk skill`**. It prints a short core (the loop, the default MCP tools,
 the verdict shape). **`jk skill <topic>`** prints one page. **`jk skill -l`** prints the topic
 names.
 

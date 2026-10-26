@@ -67,7 +67,7 @@ Write new tests in the lowest suite that can fail for the reason you care about
 replay the **same** selection; do not escalate to `--all` until this rung is green.
 
 The named share-the-commit bar (`--guard`) is the product name
-for “unit + integration + optional house-rule scripts.” [Why](why.md#test-rungs-the-execute-moat) ·
+for “unit + integration + optional house-rule scripts.” [Why](why.md#test-rungs) ·
 [Test](test.md).
 
 ## Channels

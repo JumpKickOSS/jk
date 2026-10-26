@@ -36,7 +36,7 @@ import org.jspecify.annotations.Nullable;
  * agents need them for correctness. {@code progress}/{@code tickUpdate}/{@code label} are sampled
  * (latest wins). {@code output} is <em>queued</em>, not sampled: every line is delivered, batched
  * per cadence tick, because JSONL {@code output} is contractually "printed lines"
- * (docs/machine-output.md) — a test-failure report or native-image log emitted as a synchronous
+ * (docs/user/machine-output.md) — a test-failure report or native-image log emitted as a synchronous
  * burst must arrive complete. The queue is bounded ({@value #MAX_PENDING_OUTPUT_LINES}
  * lines); a pathological storm drops the oldest lines and announces the gap with a marker line.
  *

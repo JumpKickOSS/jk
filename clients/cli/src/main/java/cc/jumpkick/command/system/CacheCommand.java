@@ -460,7 +460,7 @@ public final class CacheCommand extends GroupCommand {
 
         /**
          * Pre-rename / pre-split spellings ({@code jk cache storage}, {@code jk cache info}) — see
-         * docs/aliases.md.
+         * docs/user/aliases.md.
          */
         @Override
         public List<String> aliases() {
@@ -704,7 +704,7 @@ public final class CacheCommand extends GroupCommand {
 
     /**
      * Hidden post-split redirect stub: {@code jk cache search} forwards to {@code jk repo search}
-     * (see docs/aliases.md). A one-line stderr note points at the canonical command; stdout stays
+     * (see docs/user/aliases.md). A one-line stderr note points at the canonical command; stdout stays
      * identical to {@code jk repo search}, so piped scripts keep working.
      */
     public static final class CacheSearchRedirect implements CliCommand {

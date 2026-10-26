@@ -98,8 +98,12 @@ batch is the batch's own builds, so interference during it shows as calibration 
 
 After the measurements, the commands in [`bench/night-queue`](../../bench/night-queue) run one after
 another (an integration tier, a corpus re-run), never beside the measurements. The run then banks,
-renders `docs/user/performance.md` and `why.md` from the `wall` rows between their
-`wall-table` markers (every number names its commit and conditions), and writes the morning report
+renders the `wall` rows into three kinds of generated block — the tables (`wall-table`, in
+`docs/user/performance.md` and `why.md`), the comparison sentences (`wall-claims`, in the README,
+`why.md`, `comparison.md` and `performance.md`) and the website's proof strip (`wall-strip`, in
+`hosting/public/index.html`) — each from every tool's latest measurement, never jk's ratcheted best;
+every number names its commit and conditions. Speed and memory comparisons appear nowhere else
+(guard `speed-claims-are-generated`). It then writes the morning report
 to `$JK_BENCH_HOME/scoreboard/night/<date>.md`: regressions with commit ranges, banked and recorded
 rows, noisy and skipped rows, queue results and the top five gaps.
 

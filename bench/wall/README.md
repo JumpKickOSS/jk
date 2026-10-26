@@ -72,7 +72,7 @@ plugins jk has no counterpart for.
 
 | Tool | Build command | Test command |
 |---|---|---|
-| jk 0.13.7 | `jk build -S` (`-r` in the clean row) | `jk test -r` |
+| jk, the installed release | `jk build -S` (`-r` in the clean row) | `jk test -r` |
 | Gradle, `bench/tools.toml` | `gradle classes jar --configuration-cache --build-cache -I bench/wall/wall.init.gradle` | `gradle test --rerun` with the same flags |
 | Maven, `bench/tools.toml` | `mvn -q -o -Dmaven.test.skip -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip package` | the same properties minus `maven.test.skip`, goal `test` |
 
@@ -80,8 +80,9 @@ Gradle runs with the configuration cache and the build cache on, in a user home 
 own (`$WALL_HOME/gradle-home`) so its daemon is the only daemon on the memory bill; the init script
 points the local build cache at `$WALL_HOME/gradle-build-cache` so the clean row can empty it.
 The `gradle` binary is the pinned distribution, not `./gradlew`. Maven has no daemon here (mvnd is
-not used) and no output cache. jk's engine is the developer's
-resident engine, shared with everything else the machine builds with jk.
+not used) and no output cache. Under the scoreboard jk gets a private engine of its own
+(`JK_STATE_DIR`), started fresh at the default heap (`JK_ENGINE_MAX_HEAP_MB` set to
+`JkEngineConfig.DEFAULT_MAX_HEAP_MB`, `CI` unset) whatever the host's `~/.jk/config.toml` says.
 
 ## Scenarios
 
@@ -95,6 +96,7 @@ timed.
 | noop | nothing changed | the repeated cycle |
 | edit | one line appended to `system/WelcomeController.java`, a class nothing else imports; restored after each run | the inner loop. jk keys its cache on content, so a `touch` would measure a no-op |
 | test | nothing changed; the run is forced (`jk test -r`, `gradle test --rerun`, Maven always runs) | the whole suite: 74 tests, Testcontainers MySQL included when Docker or podman answers |
+| idle | one untimed test run, then 60 s with no command running | what the tool keeps resident between builds: jk's engine and warm workers, Gradle's daemon and its workers, nothing for Maven |
 
 Each cell is `--runs` timed runs (default five) after one untimed priming run where the row needs
 a built tree; the table shows the median and the p90 (nearest rank).
@@ -108,6 +110,11 @@ between JVMs once per JVM, so the column is an upper bound, the same upper bound
 Each row also records the resident RSS at the start (`resident_rss_mb` in `rows.jsonl`): for jk
 that is the engine before the command, which on a developer machine carries whatever it built
 earlier.
+
+The idle row samples no command: 60 s after a test run (past the engine's thirty-second idle trim,
+inside Gradle's three-hour daemon timeout) it sums the residents' RSS once a second for `--runs`
+samples and keeps the median (`idle_rss_mb`). Maven's is zero by construction: it starts a JVM per
+build and pays for that on every row above.
 
 ## Reading the numbers honestly
 

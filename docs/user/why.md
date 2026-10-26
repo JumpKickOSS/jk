@@ -1,31 +1,16 @@
 # Why JumpKick
 
-How to *use* JumpKick: [skill](skill.md) · [getting started](getting-started.md) ·
-[agents](agents.md). This page is the product bet, not a command reference. The work that
-makes the bet true before 1.0 is ordered in [the 1.0 plan](../contributors/plan-1.0.md).
+> **JumpKick is the JVM build system built for coding agents — and for the humans supervising
+> them.**
 
-**Audience:** Maven or Gradle users evaluating a switch, and anyone building JVM software
-with coding agents.
+**Audience:** Maven or Gradle users evaluating a switch, and anyone building JVM software with
+coding agents. How to *use* JumpKick: [skill](skill.md) · [getting started](getting-started.md) ·
+[agents](agents.md).
 
----
-
-## North star
-
-> **JumpKick is the JVM build tool that coding agents can actually drive — and that humans
-> enjoy enough to keep.**
-
-Wall clock against a tuned Gradle 9.x build is hygiene, not the conversion claim. The measured
-table is in this file, after the feature ranking, and in [Performance](performance.md):
-spring-petclinic, jk 0.14.0 against Gradle 9.8.0 and Maven 3.9.16, on the machine named under the
-table. Clean, warm and no-op builds are faster than both; a one-file edit is slower than Gradle's.
-
-The reason to abandon Maven or Gradle is that the **edit → build → diagnose → fix →
-rebuild** loop gets shorter for agents and for humans who work with agents. That is the
-**inner loop** of a developer's day, and it outranks CI lanes, nightly profiles and release
-automation in every priority call before 1.0.
-
-That loop is the product. Features matter insofar as they shorten a step, reduce retries,
-or remove a tool-switch.
+The reason to leave Maven or Gradle is that the **edit → build → diagnose → fix → rebuild**
+loop gets shorter. An agent runs that loop hundreds of times a day, and the human watching it
+needs to see what happened on every pass. Each feature below either shortens a step of that
+loop, removes a retry, or removes a tool you would otherwise install.
 
 ```text
   intent ──► mutate project ──► build/test ──► observe ──► repair ──► repeat
@@ -36,118 +21,124 @@ or remove a tool-switch.
                toolchain         lockfile law
 ```
 
-| Loop step | What “winning” looks like |
-|-----------|---------------------------|
-| **Observe & repair** | Structured, token-cheap failures — not Gradle/Maven log archaeology |
-| **Mutate without fear** | Small declarative surface agents and humans edit the same way |
-| **Execute cheaply** | The *Nth* rebuild in a session feels free (cache + warm engine). Whole-tree RSS is in [Performance](performance.md) |
-| **Run the right tests** | Inner loop is unit; the named **`--guard`** rung before share; `--all` is nightly; the report discloses what was skipped |
-| **Stabilize the environment** | No turns burned on `JAVA_HOME`, wrappers, or bootstrap scripts |
-| **Enter the ecosystem** | Import/export so migration time counts in cycle time |
-| **Shared reality** | One build model; TTY, web UI, and MCP show the same facts |
-| **Supervise the agent** | The human watching an agent sees what it ran, why it failed, what changed between attempts — the web dashboard's job |
-| **Try it on the real project** | An existing `pom.xml` gets the loop before any manifest migration |
-
-**Human cycle time** is that loop with better aesthetics and less ceremony.
-**Agent cycle time** is the same loop with structured I/O and safe mutation.
-Selling only to humans undersells the moat. Selling only “AI features” undersells that
-humans must love the daily driver.
-
 ---
 
-## Feature ranking (what converts abandoners)
+## The seven reasons to switch
 
-Think in **layers of the switch decision**, not a flat checklist.
+Every claim links what backs it. Where JumpKick loses, the linked page says so.
 
-### Tier 0 — The promise (lead with these)
+### 1. Agent-first
 
-| Rank | Feature | Why it converts |
-|------|---------|-----------------|
-| **1** | **Agent-native results + MCP** (`jk-results.md`, diagnostics, `jk skill`, MCP tools) | Agents stop scraping logs. Failures become structured, token-cheap, re-enterable. This is the unique moat vs Maven *and* Gradle. |
-| **2** | **Declarative TOML + surgical edits** (`jk.toml`, `jk add`/`remove`, MCP `deps` / `manifest`) | Agents and humans share one small surface. Mutation is cheap and reviewable. |
-| **3** | **Lockfile-as-law + PubGrub diagnostics** (`jk-lock.toml`, `why`, readable conflicts) | Removes overnight CI drift and “agent guessed a version.” Predictability is what Maven users actually loved. |
-| **4** | **Works on the Maven project you already have** (`jk mvn` with structured results; effective-POM import; a jk loop over an unmodified `pom.xml`) | Two thirds of the market is Maven. The loop has to arrive before the migration, or the evaluation ends at the fidelity report. |
-| **5** | **Named test rungs** (unit inner loop · `--guard` before share · `--all` nightly) | Agents stop running Playwright on every assertion fix *and* stop shipping wiring bugs the default suite never saw. Results disclose what was skipped. |
+| Surface | What it does for the agent | Reference |
+|---|---|---|
+| `target/jk-results.md` | One token-cheap report per invocation: what ran, each failure at its `file:line` with a fix hint, what was skipped, what to run next | [Machine output](machine-output.md) |
+| MCP in the engine | `run` returns a verdict; `diagnostics`, `deps`, `manifest` and four code-graph calls on the default list of ten. Two agents on one engine each keep their own project bind | [MCP](mcp.md) |
+| `jk skill` | The system prompt for a tool models were not trained on; jk keeps its section of `AGENTS.md` current on every build | [Skill](skill.md) · [Agents](agents.md) |
+| `jk graph` | A knowledge graph of code, config and docs that answers within a token budget and cites `file:line`, in place of grep-and-read turns | [Code graph](graph.md) |
+| Named test rungs | The cheap unit suite by default, `--guard` before sharing, `--all` nightly; the report discloses what did not run | [Test rungs](#test-rungs) |
+| Guards and hooks | House rules as data: each violation names the rule, the sanctioned alternative and why, so the fix is mechanical; git hooks refuse banned commit trailers and hand-edited guard files | [Guards](guards.md) · [Agents](agents.md#hooks-and-protected-files) |
 
-Alone, each is nice. Together they make the agent loop *possible* — and keep the execute step from destroying it.
-The **turns-to-green** table measures that loop against Maven and Gradle —
-[Making the north star true](#making-the-north-star-true).
+The measure is turns, tokens and wall time to green on broken builds, against Maven and Gradle
+given the same agent tooling: [Agents reach green](#agents-reach-green).
 
-### Tier 1 — Prove it in the first ten minutes
+### 2. Never type `clean` again
 
-| Rank | Feature | Role |
-|------|---------|------|
-| **6** | **IntelliJ that just works** (live project model, gutter through jk, Marketplace listing) | The first ten seconds of every human evaluation. Generated project files are not this. |
-| **7** | **Web dashboard as the supervisor's view** | The human watching an agent sees trigger, session, per-attempt change set, failure and time. Neither incumbent nor the agent harness shows this. |
-| **8** | **Action cache + CAS + warm engine** | Shorter *repeated* cycles. Walls and whole-tree RSS are in [Performance](performance.md) — not “we beat Gradle by 8%.” |
-| **9** | **Beautiful CLI + accurate ETA** | Human trust on long runs; progress/ETA also exist as machine facts. |
-| **10** | **Built-in format** | Closes the agent edit loop without a second toolchain. |
-| **11** | **Templates / `jk new`** | Time-to-first-success for humans and agents scaffolding greenfield work. |
+An incremental build produces exactly what a build from nothing produces, and the next build
+runs nothing — or it is a bug.
 
-### Tier 2 — Remove the reason to stay
+- Every step is keyed by the content of its inputs, and outputs live in a content-addressed
+  store. A key names content and a project-relative path, never the checkout, so a second
+  worktree, another agent, or a CI runner at the same commit restores what the first one built
+  ([Cache](cache.md)).
+- `jk explain` forecasts each step's hit or miss and the ETA before the build spends the time
+  ([Explain](explain.md)).
+- The [clean-build oracle](../../bench/oracle/README.md) holds that claim on every platform:
+  each class of edit — body, signature, constants, rename, case-only rename, package move,
+  resources, CRLF, a test that starts reading an undeclared file, a branch switch, a stash, an
+  edit landing mid-build — is built incrementally, rebuilt to prove nothing runs, and compared
+  byte for byte against a fresh build in a fresh cache. `jk verify` does the same for a
+  project's artifacts.
 
-| Rank | Feature | Role |
-|------|---------|------|
-| **12** | **Daily-loop batteries** (coverage in results, sources + javadoc jars, Central Portal publish, code generation, lint as a cached step, TestNG) | Batteries-included is the strategy; the next battery is the step most services touch every day, not the most impressive one. |
-| **13** | **Plugin SDK on Maven Central** | Batteries without an open socket is Maven without plugins. |
-| **14** | **Gradle import (Tooling API) + `jk gradle`** | Escape hatch so migration is not all-or-nothing. |
-| **15** | **Integrated JDK / shell activation** | Agents and humans stop fighting `JAVA_HOME`. |
-| **16** | **`jk update` / outdated** | Stay current by design; upgrades are a real resolve step. |
-| **17** | **`jkx` / tool run** | One surface for ephemeral JVM tools (npx/uvx/JBang-shaped). |
+### 3. Fast and frugal
 
-### Tier 3 — Seal the deal after they have felt the loop
+<!-- wall-claims:begin -->
+On [spring-petclinic](performance.md), jk is faster than Gradle on every row: clean build (0.37 s against 2.69 s), warm rebuild (0.09 s against 0.57 s), no-op (0.05 s against 0.53 s), one-file edit (0.13 s against 0.61 s) and test run (8.54 s against 9.97 s). It is faster than Maven on every row: clean build (0.37 s against 3.16 s), warm rebuild (0.09 s against 3.16 s), no-op (0.05 s against 2.37 s), one-file edit (0.13 s against 3.14 s) and test run (8.54 s against 10.10 s).
 
-These impress on a feature matrix and retain power users; they rarely *cause* the switch:
+Between builds jk keeps 863 MiB resident: 171 MiB for the engine, whose heap is capped at 256 MiB and trimmed back after every job, and the rest for warm compilers that exit after 30 idle minutes or as soon as the host runs short of memory. One engine serves every project on the machine. Gradle keeps 1,734 MiB, 2.0× as much: its daemon, which idles for three hours by default, and its workers. Maven keeps nothing resident and starts a fresh JVM for every build instead (2.37 s for a no-op). Peak whole-tree RSS during a run is lower than Gradle's on clean build, warm rebuild, no-op and one-file edit and higher on test run; it is higher than Maven's on every row.
+<!-- wall-claims:end -->
 
-| Rank | Feature | Notes |
-|------|---------|-------|
-| **18** | Supply chain / SBOM / audit / CVE | Strong “enterprise yes,” weak “try tonight.” |
-| **19** | OCI images | Ship path; not day-one abandon reason. |
-| **20** | Git-as-dependency / git modules | Power-user depth after trust is earned. |
-| **21** | Native-image / deep framework support | Keep them; do not lead with them. |
-| **22** | Contrib batteries: Android, Grails, Scala 3 in mixed modules | Best-effort by label. Android is not AGP parity; Scala compiles through Zinc and is described exactly that way. |
-
-**Raw speed vs Gradle** is a **credibility footnote** beside this list: faster on clean, warm
-and no-op builds, slower on a one-file edit; the win is fewer failed cycles and less agent
-thrash. The footnote's table, jk, Gradle and Maven on
-[spring-petclinic](https://github.com/spring-projects/spring-petclinic) doing the same work,
-peak RSS included — how it was measured and what "warm" means per tool is in
-[Performance](performance.md):
+The table behind those sentences — jk, Gradle and Maven on
+[spring-petclinic](https://github.com/spring-projects/spring-petclinic) doing the same work —
+with how it was measured and what "warm" means per tool, is in [Performance](performance.md):
 
 <!-- wall-table:begin -->
 | Scenario | jk median / p90 | Gradle median / p90 | Maven median / p90 |
 |---|---:|---:|---:|
-| Clean build | 0.39 s / 4.06 s | 2.81 s / 10.83 s | 3.36 s / 3.44 s |
-| Warm rebuild | 0.10 s / 0.10 s | 0.59 s / 0.61 s | 3.31 s / 3.38 s |
-| No-op | 0.05 s / 0.33 s | 0.55 s / 0.57 s | 2.51 s / 2.72 s |
-| One-file edit | 0.14 s / 0.29 s | 0.65 s / 0.67 s | 3.32 s / 3.39 s |
-| Test run | 28.33 s / 28.79 s | 36.38 s / 45.76 s | 30.39 s / 31.03 s |
+| Clean build | 0.37 s / 3.37 s | 2.69 s / 10.02 s | 3.16 s / 3.23 s |
+| Warm rebuild | 0.09 s / 0.12 s | 0.57 s / 0.60 s | 3.16 s / 3.20 s |
+| No-op | 0.05 s / 0.05 s | 0.53 s / 0.56 s | 2.37 s / 2.42 s |
+| One-file edit | 0.13 s / 0.21 s | 0.61 s / 0.65 s | 3.14 s / 3.23 s |
+| Test run | 8.54 s / 8.84 s | 9.97 s / 18.27 s | 10.10 s / 11.42 s |
 
 | Scenario | jk peak RSS | Gradle peak RSS | Maven peak RSS |
 |---|---:|---:|---:|
-| Clean build | 1,050 MiB | 1,652 MiB | 569 MiB |
-| Warm rebuild | 536 MiB | 1,411 MiB | 564 MiB |
-| No-op | 549 MiB | 1,414 MiB | 451 MiB |
-| One-file edit | 630 MiB | 1,525 MiB | 574 MiB |
-| Test run | 1,898 MiB | 1,767 MiB | 1,257 MiB |
+| Clean build | 593 MiB | 1,464 MiB | 546 MiB |
+| Warm rebuild | 544 MiB | 1,521 MiB | 540 MiB |
+| No-op | 573 MiB | 1,526 MiB | 452 MiB |
+| One-file edit | 620 MiB | 1,611 MiB | 535 MiB |
+| Test run | 1,993 MiB | 1,847 MiB | 1,189 MiB |
+| Idle, a minute after the test run | 863 MiB | 1,734 MiB | 0 MiB |
 
-Measured on 12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 16 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL (host `1a8c211a203d`); project spring-projects/spring-petclinic; Gradle 9.8.2; Maven 3.10.0; jk 0.14.0; jk 0.15.3; 5 timed runs per cell. Banked 2026-09-28 at jk tree 21a8fc0ac (jk); 2026-10-20 at jk tree 0f4bf5ea2 (Maven); 2026-10-20 at jk tree 4fd583742 (jk); 2026-10-20 at jk tree 92335d1c6 (Gradle); 2026-10-20 at jk tree fc56a8bc4 (jk). Conditions: jk loadavg 1.7 at start, engine live jobs 0; Gradle loadavg 1.7 at start, engine live jobs ?; Maven loadavg 1.0 at start, engine live jobs ?.
+Measured on 12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL (host `c9ab742f7b18`); project spring-projects/spring-petclinic; Gradle 9.8.2; Maven 3.10.0; jk 0.41.1; 5 timed runs per cell. Banked 2026-10-26 at jk tree 1880fb554. Conditions: jk loadavg 1.4 at start, engine live jobs ?; Gradle loadavg 1.4 at start, engine live jobs ?; Maven loadavg 1.4 at start, engine live jobs ?.
 <!-- wall-table:end -->
 
----
+Agents in several worktrees share that engine and its action cache ([Engine](engine.md)).
+Compilers and test JVMs are forked workers that lease memory from one budget, learn the heap
+each one really uses, and shard a suite only as wide as its measured class times make useful.
 
-## Pitch shape (one page)
+### 4. See what your agent is doing
 
-1. **Hero:** the JVM build tool coding agents can drive.  
-2. **Proof:** `jk new` → `jk add` → `jk test` → open `target/jk-results.md` (or MCP).  
-3. **Why leave Maven:** same declarative philosophy, modern surface, real lockfile, agent-readable outcomes.  
-4. **Why leave Gradle:** warm/incremental ambition without “build is a second app.”  
-5. **Tests (the execute moat):** default `jk test` is the cheap unit rung; `--guard` is the named share-the-commit bar; `--all` is nightly — not a habit. The report says what was *not* run.  
-6. **Speed (humble):** faster than Gradle 9.8 on clean, warm and no-op builds, slower on a one-file edit ([Performance](performance.md)); designed so *repeated* local/agent cycles stay small.  
-7. **Batteries (one line):** toolchain, format, audit/SBOM, images, git deps, web UI — delete five side tools.  
-8. **Adoption:** import Maven today; keep `~/.m2`; escape hatches for Gradle.
+Most of the builds on a developer's machine are now started by an agent, and the human has no
+terminal of their own to read. The [web dashboard](web.md) is the supervisor's view: every run
+with its trigger and session (`MCP · claude-code 3f9a`, a shell, the IDE), what changed since
+the previous attempt, why it failed and how long it took, following the newest run live.
 
-Feature dumps belong under “what’s included.” Conversion happens in tiers 0–1.
+The terminal shows the same facts: live progress with an honest ETA, terminal hyperlinks, a
+desktop notification when a long build finishes ([Config](config.md)). One build model, three
+views — terminal, browser, MCP.
+
+### 5. Batteries Included
+
+The daily tools ship in the binary, not as plugins a project has to discover:
+
+| Area | Built in | Reference |
+|---|---|---|
+| Toolchains | JDK and Node.js install, pin and discovery; `jk activate` shell hooks; `java = 17` cross-compiles on the host JDK | [JDK](jdk.md) · [Node.js](node.md) |
+| Code quality | `jk format`; Checkstyle, PMD, SpotBugs and detekt as cached steps; house rules as data | [Format](format.md) · [Lint](lint.md) · [Guards](guards.md) |
+| Code generation | OpenAPI, jOOQ, Avro, ANTLR, JAXB, protobuf, any `main` | [Generate](generate.md) |
+| Packaging | Fat and R8-minified jars, GraalVM native images, daemonless OCI images, AOT cache training | [Packaging](packaging.md) · [Native](native.md) · [Images](images.md) |
+| Supply chain | CycloneDX and SPDX, `jk audit`, `jk deny`, GPG, Sigstore, SLSA, `jk verify` | [Security](security.md) · [Publish](publish.md) |
+| Ship | `jk release`, `jk publish` to the Central Portal or any Maven repository | [Release](release.md) |
+| Frameworks | Spring Boot, Quarkus, Micronaut; Android, Grails, Scala 3 as contrib batteries | [Frameworks](frameworks.md) · [Plugins](plugins.md) |
+| Tools | `jkx` for any JVM tool or JBang script; Flyway and Liquibase | [Tools](tools.md) · [Database](database.md) |
+
+### 6. A modern, declarative core
+
+`jk.toml` is TOML: plugins add tables, never a language ([Projects](projects.md)).
+`jk-lock.toml` records every version and checksum, and `jk build` never re-resolves a valid lock
+([Lockfile](lockfile.md)). PubGrub resolves highest-wins, enforces a BOM as a platform, and
+explains a conflict in prose ([Dependencies](dependencies.md)). Git and path dependencies are
+SHA-pinned in the lock; a workspace has one root lockfile ([Workspaces](workspaces.md)).
+`jk add` and `jk new` write today's newest stable, and `jk outdated` / `jk update` keep it there.
+
+### 7. Switch without a rewrite
+
+`jk mvn` runs the real Maven build and writes the same `jk-results.md`; `jk build` and
+`jk test` work in a directory with a `pom.xml` and no `jk.toml`. `jk import` reads the effective
+POM — parents, profiles, plugin mapping — and writes a fidelity report; `jk export` goes back.
+`jk gradle` and Gradle import cover the other side ([Migration](migration.md)). jk shares
+`~/.m2`, installs JDKs where IntelliJ already looks, and honours `settings.xml`
+([Comparison](comparison.md#sharing-the-machine)).
 
 ---
 
@@ -203,7 +194,7 @@ Agents thrash on DSL folklore; humans maintain a second product forever.
 
 1. **More approachable than Maven** — no XML tax; modern config and CLI  
 2. **More constrained than Gradle** — a finite build model, not an open language  
-3. **Reproducible by default, and faster on repeat builds** — lockfile as law; cache what you can prove ([Performance](performance.md))  
+3. **Reproducible by default, and repeat builds that skip proven work** — lockfile as law; cache what you can prove  
 4. **Still on Maven Central** — same coordinates and gravity  
 5. **Closed-loop for coding agents** — structured observe/repair, not log scraping  
 6. **A named, cheap default test rung** — so agents neither run the world every turn nor skip the wiring tests that catch real bugs  
@@ -248,7 +239,7 @@ That is the upgrade path people meant when they said “there has to be somethin
 than a POM” — **without** answering “so write Kotlin to compile Java,” and **with** a
 surface coding agents can drive.
 
-### Test rungs (the execute moat)
+## Test rungs
 
 Maven and Gradle can *run* tests. They cannot *tell an agent which tests to run this
 turn.* Surefire vs Failsafe is folklore. Gradle `sourceSets` is a comment in a
@@ -303,18 +294,10 @@ aims at all four.
 
 ---
 
-## Making the north star true
+## Agents reach green
 
-Pitch order is not build order. Engineering priority should maximize **agent loop latency
-and success rate**.
-
-**Private metric that matters:**
-
-> For a fixed set of “agent breaks the build” scenarios: **median agent turns / tokens /
-> wall time to green** on JumpKick vs Maven vs Gradle.
-
-If that number does not win, polish the Tier 0 surfaces until it does. Feature count will
-not save it.
+The metric the agent-first pillar answers to: for a fixed set of "an agent broke the build"
+scenarios, the median turns, tokens and wall time to green on JumpKick, Maven and Gradle.
 
 Measured 2026-09-28/29 with jk at `3f03d9180` (0.14.0 plus the agent report and the five-tool
 MCP surface), Maven 3.9.16 and Gradle 9.8.0: 165 scenarios over 19 Spring guides and the JUnit
@@ -356,7 +339,7 @@ share (15 each), same date, commit and budget:
 | Vendor B, budget | Gradle | 13 / 14 | 7 / 7 | 56k / 63k | 2.1k / 1.4k | 28 / 34 s |
 
 Against Maven jk wins or ties every column on every agent. Against Gradle on the Kotlin repos jk
-is faster ([the second table](#making-the-north-star-true)) but not yet cheaper: Vendor A's
+is faster ([the second table](#agents-reach-green)) but not yet cheaper: Vendor A's
 agents take a turn or two more and more tokens, most of it in one scenario where the agent
 guessed a dependency's group from its Kotlin package and jk's replies did not steer it to the
 real coordinate.
@@ -364,56 +347,45 @@ real coordinate.
 On jk 0.14.0, before the agent report, the same matrix fixed 65% within 8 turns at 85k input
 tokens. The table is re-run each release ([Releases](../contributors/releases.md#benchmarks-each-release)).
 
-Honesty today: the loop's surfaces are real — `jk skill`, results, MCP, TOML edits, the
-lockfile, the cache, directory suites, `--guard` / `--scripts-only` / `--no-scripts`,
-effective-POM import with profiles and plugin mapping, `jk mvn` writing
-`target/jk-results.md`, a build over an unmodified `pom.xml`, and the IntelliJ
-external-system model. What is still open, in [the 1.0 plan](../contributors/plan-1.0.md):
+## What is still open
 
-- **Turns-to-green is one host.** On Kotlin repos built with Gradle, jk is faster but its agents
-  spend more turns and tokens than Gradle's ([the second table](#making-the-north-star-true)).
+The loop's surfaces are real: `jk skill`, results, MCP, TOML edits, the lockfile, the cache,
+directory suites, `--guard` / `--scripts-only` / `--no-scripts`, effective-POM import with
+profiles and plugin mapping, `jk mvn` writing `target/jk-results.md`, a build over an unmodified
+`pom.xml`, and the IntelliJ external-system model. What is not, in
+[the 1.0 plan](../contributors/plan-1.0.md):
+
+- **Turns-to-green is one host.** On Kotlin repos built with Gradle, jk's agents spend more
+  turns and tokens than Gradle's ([the second table](#agents-reach-green)).
+- **The cache claim has no comparison yet.** The oracle proves jk against a fresh build; the
+  same edit classes against Gradle and Maven, and the hit rate across checkouts, are not
+  measured.
 - **IntelliJ and VS Code are not on their marketplaces.** The IntelliJ plugin is an external
   system packaged from this repository.
-- **The plugin SDK is not on Maven Central.** `jk publish -c` can publish it; a release
-  has not put the coordinate there.
+- **The plugin SDK is not on Maven Central.** `jk publish -c` can publish it; a release has not
+  put the coordinate there.
 - **Maven top-20 corpus:** 13 of 20 build and 2 of 20 pass their tests (run 16, main
   `30c21270b`, 2026-09-18). The table is in
   [Migration](migration.md#where-import-stands-on-real-repositories).
-- **Memory is measured on one project and one host.** On [the table](performance.md) jk's whole tree is
-  about a third of Gradle's on a build and in Maven's range, and on the test run under Gradle's
-  and above Maven's (1.5 GiB against 1.7 and 1.2).
-
-The north star is true when turns-to-green keeps beating the wrapped incumbents across more
-agents and projects, more of
-that top-20 corpus passes its tests, the IDE plugins are on their marketplaces, and the SDK
-is on Central — not when this page says so.
+- **Speed and memory are measured on one single-module project and one host**
+  ([Performance](performance.md)).
 
 ---
 
 ## Sources
 
-- JetBrains, [*The State of Java 2025*](https://lp.jetbrains.com/the-state-of-java-2025/)  
-- JetBrains, [*State of Developer Ecosystem 2022 — Java*](https://www.jetbrains.com/lp/devecosystem-2022/java/)  
-- Day-to-day product surface: [skill](skill.md), [agents](agents.md), [MCP](mcp.md),
-  [machine output](machine-output.md)
+- JetBrains, [*The State of Java 2025*](https://lp.jetbrains.com/the-state-of-java-2025/)
+- JetBrains, [*State of Developer Ecosystem 2022 — Java*](https://www.jetbrains.com/lp/devecosystem-2022/java/)
 
-Survey percentages are self-reported and multi-select; treat them as **order-of-magnitude
-market signal**. The signal is consistent: **declarative still wins headcount; Gradle did
-not become the universal Maven replacement.** The new wedge is **agent-closed loops**.
-
-House rules are data too: `jk-guards.toml` states what a project bans and requires, the
-build enforces it, and an agent reads the rule instead of a reviewer re-typing it —
-[Guards](guards.md).
+Survey percentages are self-reported and multi-select; treat them as order-of-magnitude market
+signal. The signal is consistent: declarative still wins headcount, and Gradle did not become
+the universal Maven replacement.
 
 ## Related
 
-- [Comparison](comparison.md) — feature matrix against Maven and Gradle
-- [The 1.0 plan](../contributors/plan-1.0.md) — the inner-loop priorities this page depends on
-- [Skill](skill.md)
-- [Getting started](getting-started.md)
-- [Agents](agents.md)
-- [MCP](mcp.md)
-- [Test](test.md)
-- [Guards](guards.md)
-- [Concepts](concepts.md)
-- [README](../../README.md) — hero pitch
+- [Comparison](comparison.md) — the feature matrix against Maven and Gradle, losses included
+- [Performance](performance.md) — the measured table and how it is run
+- [The 1.0 plan](../contributors/plan-1.0.md)
+- [Getting started](getting-started.md) · [Skill](skill.md) · [Agents](agents.md) · [MCP](mcp.md)
+- [Test](test.md) · [Guards](guards.md) · [Concepts](concepts.md)
+- [README](../../README.md)

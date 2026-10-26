@@ -27,7 +27,7 @@ import java.util.Set;
  *
  * <p>Keying off the state dir (rather than a fixed machine-wide name) means a different {@code
  * JK_HOME}/{@code JK_STATE_DIR} naturally gets its own engine, and every invocation that resolves the
- * same state dir naturally shares one — see {@code docs/architecture.md}.
+ * same state dir naturally shares one — see {@code docs/contributors/architecture.md}.
  *
  * <p>The artifact store ({@code JK_STORE_DIR}) is part of the identity for the same reason. Without it,
  * an invocation asking for a different store silently reused an engine already bound to another one and
@@ -48,7 +48,7 @@ public final class EnginePaths {
      * (Windows) — on the Unix-domain-socket path it's simply never created. {@code http} holds the
      * embedded HTTP server's actual bound URL and {@code httpToken} its bearer token (owner-only
      * permissions); both exist only while an engine with an enabled {@code [http]} table is serving
-     * (see {@code docs/http.md}).
+     * (see {@code docs/contributors/http.md}).
      */
     public record Paths(
             String key, Path dir, Path socket, Path lock, Path pid, Path log, Path token, Path http, Path httpToken) {}

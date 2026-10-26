@@ -499,7 +499,7 @@ public final class EngineStatusCommand implements CliCommand {
     }
 
     /**
-     * The embedded HTTP server's state — serving URL, bind error, or disabled ({@code docs/http.md}).
+     * The embedded HTTP server's state — serving URL, bind error, or disabled ({@code docs/contributors/http.md}).
      * The serving URL carries the bearer token as a fragment ({@code #t=…}) when the engine's
      * owner-only token file is readable: fragments never leave the browser, and this line is how
      * the dashboard SPA bootstraps its token — click/open the printed URL and it's authenticated.

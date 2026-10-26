@@ -105,6 +105,9 @@ def _toml_value(v) -> str:
 ORDER = KEY + ("value", "unit", "band", "target", "runs", "date", "commit", "host-id")
 # Measurement fields that stay in rows.json and never reach scoreboard.toml.
 UNBANKED = ("samples", "baseline-samples", "slack", "unstable", "noisy", "value", "unit", "band", "target", "runs")
+# Fields of an absolute-wall measurement the ratchet keeps as `latest-<field>` beside the banked best:
+# the docs publish what jk does today against what the other tools do today, never a best-ever.
+LATEST = ("value", "p90-s", "root-rss", "runs", "date", "commit", "tool-version", "conditions")
 
 
 def render_board(rows: list[dict]) -> str:
@@ -161,6 +164,9 @@ def judge(board: list[dict], measured: list[dict], host: str, today: str, commit
             continue
         banked = old["value"]
         limit = banked * (1 + band) + slack
+        if kind == "absolute-wall":
+            by_key[k] = {x: v for x, v in by_key[k].items() if not x.startswith("latest-")}
+            by_key[k].update({f"latest-{x}": fresh[x] for x in LATEST if x in fresh})
         if value > limit:
             failures.append(f"REGRESSED {m['subject']} [{m['tool']}]: {fmt(value, m['unit'])}, banked "
                             f"{fmt(banked, m['unit'])} (band {band:.0%}); commits since: {old.get('commit', '?')}..HEAD")
@@ -205,7 +211,13 @@ def selftest() -> int:
     b, f, n = judge(base, m(900), host, today, "def")
     assert not f and b[0]["value"] == 900 and b[0]["commit"] == "def", (b, n)
     b, f, n = judge(base, m(990), host, today, "def")
-    assert b[0]["value"] == 1000, b
+    assert b[0]["value"] == 1000 and "latest-value" not in b[0], b
+    wbase = [{**base[0], "kind": "absolute-wall", "unit": "s", "band": 0.15, "value": 1.0}]
+    wm = lambda v: [{**m(v)[0], "kind": "absolute-wall", "unit": "s", "tool-version": "jk 2"}]
+    b, f, n = judge(wbase, wm(1.1), host, today, "def")
+    assert not f and b[0]["value"] == 1.0 and b[0]["latest-value"] == 1.1 and b[0]["latest-tool-version"] == "jk 2", b
+    b, f, n = judge(b, wm(0.5), host, today, "ghi")
+    assert b[0]["value"] == 0.5 and not any(x.startswith("latest-") for x in b[0]), b
     b, f, n = judge(base, m(5000, unstable=True, samples=[1, 9000]), host, today, "def")
     assert not f and b[0]["value"] == 1000 and "unstable" in n[0], n
     b, f, n = judge(base, [{**m(7)[0], "subject": "new"}], host, today, "def")

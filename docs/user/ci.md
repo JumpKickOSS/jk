@@ -114,7 +114,7 @@ jk test -m 'api,worker'
 Do **not** make the PR job `jk test -A`. That is the nightly / release job.
 Do **not** clear `[test] exclude-tags` on CI just because `CI` is set — that pulls
 `slow` / `network` / `bench` into a gate that should stay cheap and deterministic.
-[Test](test.md) · [Why](why.md#test-rungs-the-execute-moat).
+[Test](test.md) · [Why](why.md#test-rungs).
 
 Nightly:
 

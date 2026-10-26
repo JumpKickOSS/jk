@@ -85,7 +85,7 @@ public final class GlobalOptions {
      * True when the user asked for machine-readable <strong>live JSONL</strong> on stdout: {@code
      * -O}/{@code --output json}, {@code jsonl}, or env {@code JK_OUTPUT=json|jsonl}. Both format
      * names mean the same stream (one JSON object per line, flushed live) — see {@code
-     * docs/machine-output.md}. Commands should suppress human wedge/summary lines so the stream
+     * docs/user/machine-output.md}. Commands should suppress human wedge/summary lines so the stream
      * stays parseable.
      */
     public boolean outputIsJson() {

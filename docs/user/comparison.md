@@ -11,16 +11,30 @@ product bet or an explicit non-goal, and is not waiting on a fix.
 
 ## Where JumpKick wins
 
-These are the rows that are true of JumpKick by default and not of stock Maven or stock Gradle.
+These are true of JumpKick by default and not of stock Maven or stock Gradle, in the order of
+the pitch in [Why JumpKick](why.md).
 
-1. **The machine already has a Maven repository and an IntelliJ JDK directory, and JumpKick uses both.** Fetched jars are written through to `~/.m2/repository`. JDKs JumpKick installs go in IntelliJ's shared root (`~/.jdks`, or `~/Library/Java/JavaVirtualMachines` on macOS). A download happens only after the probes below have missed, and they cover what Gradle's auto-detection, Maven's `toolchains.xml`, and Mill's Coursier JVM cache would find.
-2. **`java = 17` does not download a JDK 17.** The host JDK cross-compiles with `--release`. A `jdk =` pin is the rare case that selects an install.
-3. **The lockfile is law.** `jk build` does not re-resolve a valid `jk-lock.toml`. Every row carries a checksum.
-4. **The manifest is data.** `jk.toml` is TOML. Plugins add tables. They do not add a programming language to the build file.
-5. **Tests have named rungs.** `jk test` is the unit suite. `--guard` is the share-the-commit bar. `--all` is nightly. The report says what was not run.
-6. **An agent gets a file, not a log.** `target/jk-results.md`, MCP, and the web dashboard are the same model. `jk mvn` and `jk gradle` run the real tool and, for Maven, fold its events into that same report.
-7. **The action cache is on.** Content-addressed, shared across checkouts of one commit, and not an opt-in.
-8. **The daily batteries ship in the binary.** Format, audit and deny, CycloneDX and SPDX, signing, OCI images, GraalVM native-image, and `jkx` are commands, not plugins a project has to discover.
+1. **An agent gets a file and a tool, not a log.** `target/jk-results.md`, MCP, `jk skill` and
+   `jk graph` are first-party. `jk mvn` and `jk gradle` run the real tool and, for Maven, fold its
+   events into that same report.
+2. **The action cache is on, and shared across checkouts.** Keys name content and a
+   project-relative output, so a second worktree or agent at one commit restores the first one's
+   work. `jk explain` forecasts it.
+3. **One capped engine between builds.** One resident engine serves every project on the machine
+   ([Engine](engine.md)); the measured numbers are in [Speed and memory](#speed-and-memory).
+4. **The human can watch the agent.** The web dashboard shows every run's trigger, session,
+   failure and change since the previous attempt, from the same facts as the CLI and MCP.
+5. **The daily batteries ship in the binary.** Format, lint, guards, code generation, audit and
+   deny, CycloneDX and SPDX, signing, OCI images, GraalVM native-image, release and `jkx` are
+   commands, not plugins a project has to discover.
+6. **The manifest is data and the lockfile is law.** `jk.toml` is TOML; plugins add tables, not
+   a language. `jk build` does not re-resolve a valid `jk-lock.toml`, and every row carries a
+   checksum. Tests have named rungs, and the report says what was not run.
+7. **The machine's Maven repository and IntelliJ JDK directory are shared, not duplicated.**
+   Fetched jars are written through to `~/.m2/repository`. JDKs JumpKick installs go in
+   IntelliJ's shared root (`~/.jdks`, or `~/Library/Java/JavaVirtualMachines` on macOS), after
+   probes that cover what Gradle's auto-detection, Maven's `toolchains.xml`, and Mill's Coursier
+   JVM cache would find. `java = 17` does not download a JDK 17.
 
 The matrices below keep the ties and the losses. Open losses are the [scoreboard](#scoreboard).
 
@@ -72,32 +86,26 @@ Details: [Install](install.md), [JDK](jdk.md), [Cache](cache.md), [Repositories]
 The agent loop is measured: over 165 broken-build scenarios, five coding agents from three
 vendors, the same prompt and budget for each tool. On the four agents that fix every scenario jk
 takes 5–6 turns against 5–8, 23–46k input tokens against 25–69k, and 11–19 s against 14–32 s
-(medians; one host, Gradle single-module guides — [the table](why.md#making-the-north-star-true)).
+(medians; one host, Gradle single-module guides — [the table](why.md#agents-reach-green)).
 See [Why JumpKick](why.md) and [Agents](agents.md).
 
 ## Speed and memory
 
-On [spring-petclinic](https://github.com/spring-projects/spring-petclinic), one module, measured
-2026-09-28 (Gradle 9.8.0, Maven 3.9.16). Figures, machine, and what each row actually runs: [Performance](performance.md).
-Gradle was run with the configuration cache and the build cache on. Maven has neither in stock
-form, and the row says so.
+The sentences below are generated from the banked table in [Performance](performance.md), which
+says what each row runs: Gradle with the configuration cache and the build cache on, Maven
+without either because it has neither in stock form.
 
-| [Measured](performance.md) | Against Gradle | Against Maven |
-|---|---|---|
-| Clean build | Faster (1.29 s vs 2.75 s median) | Faster (vs 3.21 s) |
-| Warm rebuild | Faster (0.21 s vs 0.60 s) | Faster (vs 3.18 s). Maven recompiles. |
-| No-op | Faster (0.19 s vs 0.52 s) | Faster (vs 2.42 s) |
-| One-file edit | Slower (0.93 s vs 0.62 s) | Faster (vs 3.15 s) |
-| Test run | Close, slightly faster (28.33 s vs 30.64 s) | Close, slightly faster (vs 29.60 s) |
-| Peak RSS, build | Lower (about 0.3–0.6 GiB vs 1.3–1.5 GiB) | Close (vs about 0.4 GiB) |
-| Peak RSS, test | Lower (about 1.5 GiB vs 1.7 GiB) | Higher (vs about 1.2 GiB) |
+<!-- wall-claims:begin -->
+On [spring-petclinic](performance.md), jk is faster than Gradle on every row: clean build (0.37 s against 2.69 s), warm rebuild (0.09 s against 0.57 s), no-op (0.05 s against 0.53 s), one-file edit (0.13 s against 0.61 s) and test run (8.54 s against 9.97 s). It is faster than Maven on every row: clean build (0.37 s against 3.16 s), warm rebuild (0.09 s against 3.16 s), no-op (0.05 s against 2.37 s), one-file edit (0.13 s against 3.14 s) and test run (8.54 s against 10.10 s).
 
-The engine's own heap defaults to **256 MiB** (512 MiB when `CI=1`); the RSS column is the whole
-tree: client, engine, and every compiler and test worker. Workers lease their heap from one
-engine memory budget, test JVMs are sharded only as wide as the measured class times make useful,
-and heaps are learned from what each worker really used ([Engine](engine.md)). On
-[the table](performance.md) jk uses less memory than Gradle on every row. Against Maven it is
-lower on the warm rebuild and no-op, higher on the clean build, one-file edit and test run.
+Between builds jk keeps 863 MiB resident: 171 MiB for the engine, whose heap is capped at 256 MiB and trimmed back after every job, and the rest for warm compilers that exit after 30 idle minutes or as soon as the host runs short of memory. One engine serves every project on the machine. Gradle keeps 1,734 MiB, 2.0× as much: its daemon, which idles for three hours by default, and its workers. Maven keeps nothing resident and starts a fresh JVM for every build instead (2.37 s for a no-op). Peak whole-tree RSS during a run is lower than Gradle's on clean build, warm rebuild, no-op and one-file edit and higher on test run; it is higher than Maven's on every row.
+<!-- wall-claims:end -->
+
+The engine's own heap defaults to **256 MiB** (512 MiB when `CI=1`), and it hands memory back to
+the operating system after each job ([Engine](engine.md#memory-after-a-build)). The RSS columns
+are the whole tree: client, engine, and every compiler and test worker. Workers lease their heap
+from one engine memory budget, test JVMs are sharded only as wide as the measured class times
+make useful, and heaps are learned from what each worker really used.
 
 ## Batteries
 
@@ -132,8 +140,7 @@ When a row is won, change its score here and the matching cell above in the same
 | **Open the project in an IDE** | Maven and Gradle | Opening a `jk.toml` workspace in IntelliJ or VS Code needs no generated project files and no install-from-disk step. Today the plugin is an external system (live model, gutter run and debug) packaged from this repository. Without it, `jk ide` writes files. |
 | **Plugin ecosystem** | Maven and Gradle | A third-party plugin is as ordinary to add as a dependency. The SDK is publishable with `jk publish -c` and is not on Central yet; a plugin is a pinned jar. There is no marketplace. The common server-side batteries are already first-party. |
 | **Remote cache** | Gradle, and Maven's Build Cache Extension | A second machine restores an action-cache hit. Local keys are already shaped for that. The remote layer is not a product yet. |
-| **Memory of a test run** | Maven | Peak RSS of the whole process tree on the [petclinic](performance.md) test run at or under Maven's (JumpKick is about 1.5 GiB against 1.2 GiB; builds are already in Maven's range and about a third of Gradle's). |
-| **One-file edit** | Gradle | Median at or under Gradle's 0.62 s on that run (JumpKick is 0.93 s). |
+| **Memory during a run** | Maven, and Gradle on the test run | The whole process tree's peak on every [petclinic](performance.md) row at or under both tools'. [Speed and memory](#speed-and-memory) says where it stands today. |
 | **Import fidelity** | — | An imported Maven or Gradle build builds the same artifact without a fidelity-report row for the common plugins. Today an arbitrary exec, the release plugin, `war`, Tycho, OSGi, and a non-standard filtered resource directory are reports. |
 | **Measured agent loop** | jk ahead on five agents, one host; ahead of Maven on Maven-first repos | jk ahead of Gradle on Kotlin repos in turns and tokens, not only wall. Results, MCP, `jk mvn` and the agent report are already real. |
 
@@ -166,7 +173,7 @@ waste.
 
 ## Related
 
-- [Why JumpKick](why.md) — the bet and the feature ranking
+- [Why JumpKick](why.md) — the pitch, with the evidence behind each claim
 - [Performance](performance.md) — the wall and RSS table
 - [Migration](migration.md) — `jk mvn`, `jk gradle`, import grades
 - [Concepts](concepts.md) — `java =` versus `jdk =`, lockfile, cache
