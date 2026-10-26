@@ -12,6 +12,7 @@ import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.NullnessConfig;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Profile;
@@ -77,6 +78,7 @@ public final class JkBuildRenderer {
         renderDokka(sb, jkBuild.build().dokka());
         renderResolve(sb, jkBuild.build());
         renderJavac(sb, jkBuild.build().javac());
+        renderNullness(sb, jkBuild.build().nullness());
         renderMultiRelease(sb, jkBuild.build().multiRelease());
         renderProfiles(sb, jkBuild);
         renderFeatures(sb, jkBuild);
@@ -270,6 +272,19 @@ public final class JkBuildRenderer {
             renderJavacPlugins(sb, "[javac.test.plugins.", test.plugins());
         }
         renderJavacPlugins(sb, "[javac.plugins.", javac.plugins());
+    }
+
+    /** {@code [nullness]}, each key only when it is not the default. */
+    private static void renderNullness(StringBuilder sb, @Nullable NullnessConfig nullness) {
+        if (nullness == null) return;
+        sb.append("\n[nullness]\n");
+        List<String> packages = nullness.packages();
+        if (packages != null) sb.append("packages = ").append(list(packages)).append('\n');
+        if (nullness.severity() != NullnessConfig.Severity.ERROR)
+            sb.append("severity = \"").append(nullness.severity().toml()).append("\"\n");
+        if (!nullness.options().isEmpty())
+            sb.append("options = ").append(list(nullness.options())).append('\n');
+        if (nullness.tests()) sb.append("tests = true\n");
     }
 
     private static void renderJavacPlugins(StringBuilder sb, String prefix, Map<String, List<String>> plugins) {
@@ -635,8 +650,11 @@ public final class JkBuildRenderer {
             Scope.PROCESSOR,
             Scope.TEST_PROCESSOR
         }) {
-            List<Dependency> deps = byScope.get(scope);
-            if (deps == null || deps.isEmpty()) continue;
+            // An edge a table implies is the table's to write, not the scope's.
+            List<Dependency> deps = byScope.getOrDefault(scope, List.of()).stream()
+                    .filter(d -> d.impliedBy() == null)
+                    .toList();
+            if (deps.isEmpty()) continue;
             sb.append('\n');
             sb.append('[').append(scope.tomlSection()).append("]\n");
             for (Dependency d : ordered(scope, deps)) {

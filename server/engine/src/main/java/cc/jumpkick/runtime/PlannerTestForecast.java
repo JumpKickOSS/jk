@@ -66,9 +66,9 @@ final class PlannerTestForecast {
                     baseCp,
                     prepared.testProcessorCp(),
                     testOut,
-                    s.project.build().javac().testRelease(release),
+                    s.project.javac().testRelease(release),
                     prepared.javacArgs(),
-                    s.project.build().javac().forTests(),
+                    s.project.javac().forTests(),
                     prepared.javaHome(),
                     testScala,
                     layout.classesDir()));

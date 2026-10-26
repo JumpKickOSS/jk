@@ -116,12 +116,21 @@ Git, path, workspace, optional features: [Dependencies](dependencies.md).
 
 ```toml
 [javac]
-plugins = { ErrorProne = { options = ["-Xep:NullAway:ERROR"] } }
+plugins = { ErrorProne = { options = ["-Xep:MissingOverride:ERROR"] } }
 args    = ["-Xlint:all"]        # verbatim javac args, appended last
 ```
 
 The plugin's jar is a `[processor-dependencies]` entry; the key is its javac name. Both compile
 steps run it and the compile key hashes it — [Build](build.md#javac-plugins).
+
+## Null checking
+
+```toml
+[nullness]                      # JSpecify + NullAway over the module's group
+```
+
+The table brings its jars and folds its flags into `[javac]`; `packages`, `severity`, `options`
+and `tests` tune it — [Build](build.md#null-checking-nullness).
 
 ## Audit ignores
 

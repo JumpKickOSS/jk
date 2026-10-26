@@ -16,6 +16,7 @@ import cc.jumpkick.model.Features;
 import cc.jumpkick.model.GuardsConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.NodeTable;
+import cc.jumpkick.model.NullnessConfig;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.PomMetadata;
@@ -424,6 +425,13 @@ public final class JkBuildParser {
         if (!kotlinPlugins.isEmpty()) build = build.withKotlinPlugins(kotlinPlugins);
         // [javac] is a compile input: compile-main and compile-test both lower it into javac's argv.
         build = build.withJavac(ManifestBuild.parseJavac(result));
+        // [nullness] folds into that [javac] at compile time, once the group is inherited; its jars
+        // are dependencies like any other, so the lock pins them.
+        Optional<NullnessConfig> nullness = ManifestNullness.parse(result);
+        if (nullness.isPresent()) {
+            build = build.withNullness(nullness.get());
+            deps = ManifestNullness.withImplied(deps);
+        }
         // [test] is its own top-level table (test settings are not build inputs), but it folds into
         // the Build block, which already carries the other test-scoped setting, test-plugin-jars.
         List<EnvDecl> testEnv = ManifestBuild.parseTestEnv(result);

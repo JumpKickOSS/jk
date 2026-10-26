@@ -97,8 +97,7 @@ final class PlannerJavadoc {
         int release = ctx.require(RELEASE);
         // The module graph javac compiled under: the plugin-contributed and profile args, then the
         // module's own [javac] table, as the compile step assembles them.
-        List<String> javacArgs = PlannerCompile.javacOptions(
-                ctx.require(JAVAC_ARGS), project.build().javac());
+        List<String> javacArgs = PlannerCompile.javacOptions(ctx.require(JAVAC_ARGS), project.javac());
         List<String> options = JavadocTool.options(mode, release, javacArgs);
         // Kotlin sources make it a Dokka run; the release documents with is part of the key.
         RepoGroup repos = kotlinSources.isEmpty() ? null : RepoGroupBuilder.buildFor(project, null, cas);

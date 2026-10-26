@@ -112,6 +112,16 @@ class JkTomlSchemaTest {
     }
 
     @Test
+    void nullness_properties_are_exactly_the_parser_s_nullness_keys() throws Exception {
+        String schema = Files.readString(SCHEMA);
+        String nullness = table(table(schema, "properties"), "nullness");
+        assertThat(keysOf(table(nullness, "properties"))).containsExactlyInAnyOrderElementsOf(ManifestNullness.KEYS);
+        assertThat(Jsonl.bool(nullness, "additionalProperties", true))
+                .as("an unknown key under [nullness] is what an editor should flag")
+                .isFalse();
+    }
+
+    @Test
     void audit_properties_are_exactly_the_parser_s_audit_keys() throws Exception {
         String schema = Files.readString(SCHEMA);
         String audit = table(table(schema, "properties"), "audit");

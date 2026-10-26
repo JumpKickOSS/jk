@@ -114,7 +114,7 @@ The daily tools ship in the binary, not as plugins a project has to discover:
 | Area | Built in | Reference |
 |---|---|---|
 | Toolchains | JDK and Node.js install, pin and discovery; `jk activate` shell hooks; `java = 17` cross-compiles on the host JDK | [JDK](jdk.md) · [Node.js](node.md) |
-| Code quality | `jk format`; Checkstyle, PMD, SpotBugs and detekt as cached steps; house rules as data | [Format](format.md) · [Lint](lint.md) · [Guards](guards.md) |
+| Code quality | `jk format`; null checking with one `[nullness]` table (JSpecify + NullAway); Checkstyle, PMD, SpotBugs and detekt as cached steps; house rules as data | [Format](format.md) · [Null checking](build.md#null-checking-nullness) · [Lint](lint.md) · [Guards](guards.md) |
 | Code generation | OpenAPI, jOOQ, Avro, ANTLR, JAXB, protobuf, any `main` | [Generate](generate.md) |
 | Packaging | Fat and R8-minified jars, GraalVM native images, daemonless OCI images, AOT cache training | [Packaging](packaging.md) · [Native](native.md) · [Images](images.md) |
 | Supply chain | CycloneDX and SPDX, `jk audit`, `jk deny`, GPG, Sigstore, SLSA, `jk verify` | [Security](security.md) · [Publish](publish.md) |

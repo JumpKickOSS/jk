@@ -151,7 +151,7 @@ public final class PlannerFixtures {
                 layout.testFixturesClassesDir(),
                 release,
                 javacArgs,
-                project.build().javac(),
+                project.javac(),
                 javaHome);
         String fxTaskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_FIXTURES, layout.testFixturesClassesDir());
         Path fxState = ActionKey.stateDir(
@@ -223,7 +223,7 @@ public final class PlannerFixtures {
                             out,
                             ctx.require(RELEASE),
                             javacArgs,
-                            project.build().javac(),
+                            project.javac(),
                             ctx.require(JAVA_HOME));
                     String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_FIXTURES, out);
                     Path stateDir = ActionKey.stateDir(
