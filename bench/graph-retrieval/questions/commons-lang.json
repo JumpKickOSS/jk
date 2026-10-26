@@ -1,0 +1,2144 @@
+{
+ "repo": "commons-lang",
+ "commit": "155db038d73fe0ea49612d42ae70f6e48ee3ebb9",
+ "loc": 188332,
+ "classes": 394,
+ "lint_dropped": false,
+ "javadoc_dropped": false,
+ "questions": [
+  {
+   "id": "callers-0",
+   "kind": "callers",
+   "question": "Who calls StopWatch.stopSet?",
+   "subject": {
+    "label": "StopWatch.stopSet",
+    "path": "src/main/java/org/apache/commons/lang3/time/StopWatch.java",
+    "lines": [
+     765,
+     774
+    ]
+   },
+   "truth": [
+    {
+     "label": "StopWatch.split",
+     "lines": [
+      683,
+      696
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/StopWatch.java"
+    },
+    {
+     "label": "StopWatch.split",
+     "lines": [
+      704,
+      717
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/StopWatch.java"
+    },
+    {
+     "label": "StopWatch.stop",
+     "lines": [
+      755,
+      769
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/StopWatch.java"
+    },
+    {
+     "label": "StopWatch.suspend",
+     "lines": [
+      779,
+      791
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/StopWatch.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-1",
+   "kind": "callers",
+   "question": "Who calls StringUtils.splitByWholeSeparatorWorker?",
+   "subject": {
+    "label": "StringUtils.splitByWholeSeparatorWorker",
+    "path": "src/main/java/org/apache/commons/lang3/StringUtils.java",
+    "lines": [
+     7496,
+     7559
+    ]
+   },
+   "truth": [
+    {
+     "label": "StringUtils.splitByWholeSeparator",
+     "lines": [
+      7389,
+      7396
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/StringUtils.java"
+    },
+    {
+     "label": "StringUtils.splitByWholeSeparator",
+     "lines": [
+      7419,
+      7426
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/StringUtils.java"
+    },
+    {
+     "label": "StringUtils.splitByWholeSeparatorPreserveAllTokens",
+     "lines": [
+      7449,
+      7456
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/StringUtils.java"
+    },
+    {
+     "label": "StringUtils.splitByWholeSeparatorPreserveAllTokens",
+     "lines": [
+      7481,
+      7488
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/StringUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-2",
+   "kind": "callers",
+   "question": "Who calls StringUtils.splitWorker?",
+   "subject": {
+    "label": "StringUtils.splitWorker",
+    "path": "src/main/java/org/apache/commons/lang3/StringUtils.java",
+    "lines": [
+     7767,
+     7852
+    ]
+   },
+   "truth": [
+    {
+     "label": "StringUtils.split",
+     "lines": [
+      7229,
+      7236
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/StringUtils.java"
+    },
+    {
+     "label": "StringUtils.split",
+     "lines": [
+      7263,
+      7270
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/StringUtils.java"
+    },
+    {
+     "label": "StringUtils.splitByWholeSeparatorWorker",
+     "lines": [
+      7496,
+      7559
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/StringUtils.java"
+    },
+    {
+     "label": "StringUtils.splitPreserveAllTokens",
+     "lines": [
+      7581,
+      7588
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/StringUtils.java"
+    },
+    {
+     "label": "StringUtils.splitPreserveAllTokens",
+     "lines": [
+      7655,
+      7662
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/StringUtils.java"
+    },
+    {
+     "label": "StringUtils.splitPreserveAllTokens",
+     "lines": [
+      7695,
+      7702
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/StringUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-3",
+   "kind": "callers",
+   "question": "Who calls ClassUtils.getAllSuperclasses?",
+   "subject": {
+    "label": "ClassUtils.getAllSuperclasses",
+    "path": "src/main/java/org/apache/commons/lang3/ClassUtils.java",
+    "lines": [
+     408,
+     424
+    ]
+   },
+   "truth": [
+    {
+     "label": "ClassUtils.getPublicMethod",
+     "lines": [
+      972,
+      999
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/ClassUtils.java"
+    },
+    {
+     "label": "MethodUtils.getAllSuperclassesAndInterfaces",
+     "lines": [
+      228,
+      252
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/reflect/MethodUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-4",
+   "kind": "callers",
+   "question": "Who calls ExtendedMessageFormat.containsElements?",
+   "subject": {
+    "label": "ExtendedMessageFormat.containsElements",
+    "path": "src/main/java/org/apache/commons/lang3/text/ExtendedMessageFormat.java",
+    "lines": [
+     254,
+     264
+    ]
+   },
+   "truth": [
+    {
+     "label": "ExtendedMessageFormat.applyPattern",
+     "lines": [
+      182,
+      252
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/text/ExtendedMessageFormat.java"
+    },
+    {
+     "label": "ExtendedMessageFormat.insertFormats",
+     "lines": [
+      320,
+      361
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/text/ExtendedMessageFormat.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-5",
+   "kind": "callers",
+   "question": "Who calls ThreadUtils.findThreadById?",
+   "subject": {
+    "label": "ThreadUtils.findThreadById",
+    "path": "src/main/java/org/apache/commons/lang3/ThreadUtils.java",
+    "lines": [
+     180,
+     191
+    ]
+   },
+   "truth": [
+    {
+     "label": "ThreadUtils.findThreadById",
+     "lines": [
+      200,
+      212
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/ThreadUtils.java"
+    },
+    {
+     "label": "ThreadUtils.findThreadById",
+     "lines": [
+      221,
+      233
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/ThreadUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-6",
+   "kind": "callers",
+   "question": "Who calls JavaUnicodeEscaper.outsideOf?",
+   "subject": {
+    "label": "JavaUnicodeEscaper.outsideOf",
+    "path": "src/main/java/org/apache/commons/lang3/text/translate/JavaUnicodeEscaper.java",
+    "lines": [
+     69,
+     76
+    ]
+   },
+   "truth": [
+    {
+     "label": "JavaUnicodeEscaper.above",
+     "lines": [
+      32,
+      39
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/text/translate/JavaUnicodeEscaper.java"
+    },
+    {
+     "label": "JavaUnicodeEscaper.below",
+     "lines": [
+      43,
+      50
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/text/translate/JavaUnicodeEscaper.java"
+    },
+    {
+     "label": "StringEscapeUtils.<clinit>",
+     "lines": [
+      105,
+      413
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/StringEscapeUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-7",
+   "kind": "callers",
+   "question": "Who calls ThreadUtils.getSystemThreadGroup?",
+   "subject": {
+    "label": "ThreadUtils.getSystemThreadGroup",
+    "path": "src/main/java/org/apache/commons/lang3/ThreadUtils.java",
+    "lines": [
+     459,
+     470
+    ]
+   },
+   "truth": [
+    {
+     "label": "ThreadUtils.findThreadGroups",
+     "lines": [
+      240,
+      247
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/ThreadUtils.java"
+    },
+    {
+     "label": "ThreadUtils.findThreadGroups",
+     "lines": [
+      295,
+      302
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/ThreadUtils.java"
+    },
+    {
+     "label": "ThreadUtils.findThreads",
+     "lines": [
+      323,
+      330
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/ThreadUtils.java"
+    },
+    {
+     "label": "ThreadUtils.findThreads",
+     "lines": [
+      378,
+      385
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/ThreadUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-8",
+   "kind": "callers",
+   "question": "Who calls ToStringStyle.appendDetail?",
+   "subject": {
+    "label": "ToStringStyle.appendDetail",
+    "path": "src/main/java/org/apache/commons/lang3/builder/ToStringStyle.java",
+    "lines": [
+     1320,
+     1335
+    ]
+   },
+   "truth": [
+    {
+     "label": "ToStringStyle.JsonToStringStyle.appendDetail",
+     "lines": [
+      207,
+      224
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/ToStringStyle.java"
+    },
+    {
+     "label": "ToStringStyle.appendDetail",
+     "lines": [
+      1423,
+      1435
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/ToStringStyle.java"
+    },
+    {
+     "label": "ToStringStyle.reflectionAppendArrayDetail",
+     "lines": [
+      2084,
+      2097
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/ToStringStyle.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-9",
+   "kind": "callers",
+   "question": "Who calls FastDateParser.PatternStrategy.createPattern?",
+   "subject": {
+    "label": "FastDateParser.PatternStrategy.createPattern",
+    "path": "src/main/java/org/apache/commons/lang3/time/FastDateParser.java",
+    "lines": [
+     351,
+     359
+    ]
+   },
+   "truth": [
+    {
+     "label": "FastDateParser.CaseInsensitiveTextStrategy.<init>",
+     "lines": [
+      100,
+      116
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDateParser.java"
+    },
+    {
+     "label": "FastDateParser.TimeZoneStrategy.<init>",
+     "lines": [
+      551,
+      619
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDateParser.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-10",
+   "kind": "callers",
+   "question": "Who calls Range.contains?",
+   "subject": {
+    "label": "Range.contains",
+    "path": "src/main/java/org/apache/commons/lang3/Range.java",
+    "lines": [
+     307,
+     317
+    ]
+   },
+   "truth": [
+    {
+     "label": "Range.containsRange",
+     "lines": [
+      325,
+      336
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/Range.java"
+    },
+    {
+     "label": "Range.isOverlappedBy",
+     "lines": [
+      586,
+      598
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/Range.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-11",
+   "kind": "callers",
+   "question": "Who calls StrBuilder.append?",
+   "subject": {
+    "label": "StrBuilder.append",
+    "path": "src/main/java/org/apache/commons/lang3/text/StrBuilder.java",
+    "lines": [
+     644,
+     666
+    ]
+   },
+   "truth": [
+    {
+     "label": "StrBuilder.StrBuilderWriter.write",
+     "lines": [
+      254,
+      262
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/text/StrBuilder.java"
+    },
+    {
+     "label": "StrBuilder.append",
+     "lines": [
+      440,
+      465
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/text/StrBuilder.java"
+    },
+    {
+     "label": "StrBuilder.append",
+     "lines": [
+      501,
+      511
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/text/StrBuilder.java"
+    },
+    {
+     "label": "StrBuilder.appendln",
+     "lines": [
+      1076,
+      1083
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/text/StrBuilder.java"
+    },
+    {
+     "label": "StrSubstitutor.replace",
+     "lines": [
+      702,
+      716
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/text/StrSubstitutor.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-12",
+   "kind": "callers",
+   "question": "Who calls TypeUtils.toReferenceString?",
+   "subject": {
+    "label": "TypeUtils.toReferenceString",
+    "path": "src/main/java/org/apache/commons/lang3/reflect/TypeUtils.java",
+    "lines": [
+     1576,
+     1586
+    ]
+   },
+   "truth": [
+    {
+     "label": "TypeUtils.genericArrayTypeToString",
+     "lines": [
+      578,
+      585
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/reflect/TypeUtils.java"
+    },
+    {
+     "label": "TypeUtils.lambda$static$0",
+     "lines": [
+      288,
+      295
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/reflect/TypeUtils.java"
+    },
+    {
+     "label": "TypeUtils.lambda$static$2",
+     "lines": [
+      322,
+      329
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/reflect/TypeUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-13",
+   "kind": "callers",
+   "question": "Who calls ReflectionDiffBuilder.isRegistered?",
+   "subject": {
+    "label": "ReflectionDiffBuilder.isRegistered",
+    "path": "src/main/java/org/apache/commons/lang3/builder/ReflectionDiffBuilder.java",
+    "lines": [
+     173,
+     180
+    ]
+   },
+   "truth": [
+    {
+     "label": "DiffBuilder.<init>",
+     "lines": [
+      260,
+      288
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/DiffBuilder.java"
+    },
+    {
+     "label": "ReflectionDiffBuilder.build",
+     "lines": [
+      295,
+      311
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/ReflectionDiffBuilder.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-14",
+   "kind": "callers",
+   "question": "Who calls ToStringStyle.append?",
+   "subject": {
+    "label": "ToStringStyle.append",
+    "path": "src/main/java/org/apache/commons/lang3/builder/ToStringStyle.java",
+    "lines": [
+     1020,
+     1034
+    ]
+   },
+   "truth": [
+    {
+     "label": "ToStringBuilder.append",
+     "lines": [
+      535,
+      543
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/ToStringBuilder.java"
+    },
+    {
+     "label": "ToStringBuilder.append",
+     "lines": [
+      919,
+      927
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/ToStringBuilder.java"
+    },
+    {
+     "label": "ToStringBuilder.append",
+     "lines": [
+      934,
+      942
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/ToStringBuilder.java"
+    },
+    {
+     "label": "ToStringStyle.JsonToStringStyle.append",
+     "lines": [
+      184,
+      193
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/ToStringStyle.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-15",
+   "kind": "callers",
+   "question": "Who calls Pair.getKey?",
+   "subject": {
+    "label": "Pair.getKey",
+    "path": "src/main/java/org/apache/commons/lang3/tuple/Pair.java",
+    "lines": [
+     190,
+     197
+    ]
+   },
+   "truth": [
+    {
+     "label": "DefaultExceptionContext.getContextValues",
+     "lines": [
+      81,
+      88
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/exception/DefaultExceptionContext.java"
+    },
+    {
+     "label": "DefaultExceptionContext.getFirstContextValue",
+     "lines": [
+      89,
+      96
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/exception/DefaultExceptionContext.java"
+    },
+    {
+     "label": "DefaultExceptionContext.getFormattedExceptionMessage",
+     "lines": [
+      100,
+      134
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/exception/DefaultExceptionContext.java"
+    },
+    {
+     "label": "DefaultExceptionContext.setContextValue",
+     "lines": [
+      135,
+      144
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/exception/DefaultExceptionContext.java"
+    },
+    {
+     "label": "Pair.accept",
+     "lines": [
+      125,
+      133
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/tuple/Pair.java"
+    },
+    {
+     "label": "Pair.apply",
+     "lines": [
+      139,
+      146
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/tuple/Pair.java"
+    },
+    {
+     "label": "Pair.equals",
+     "lines": [
+      167,
+      182
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/tuple/Pair.java"
+    },
+    {
+     "label": "Pair.hashCode",
+     "lines": [
+      241,
+      248
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/tuple/Pair.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-16",
+   "kind": "callers",
+   "question": "Who calls Pair.getLeft?",
+   "subject": {
+    "label": "Pair.getLeft",
+    "path": "src/main/java/org/apache/commons/lang3/tuple/Pair.java",
+    "lines": [
+     157,
+     160
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractReflection.isRegistered",
+     "lines": [
+      111,
+      120
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/AbstractReflection.java"
+    },
+    {
+     "label": "Diff.toString",
+     "lines": [
+      100,
+      107
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/Diff.java"
+    },
+    {
+     "label": "DiffBuilder.append",
+     "lines": [
+      298,
+      305
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/DiffBuilder.java"
+    },
+    {
+     "label": "DiffResult.toString",
+     "lines": [
+      162,
+      169
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/DiffResult.java"
+    },
+    {
+     "label": "Pair.compareTo",
+     "lines": [
+      152,
+      162
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/tuple/Pair.java"
+    },
+    {
+     "label": "Pair.getKey",
+     "lines": [
+      190,
+      197
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/tuple/Pair.java"
+    },
+    {
+     "label": "Pair.toString",
+     "lines": [
+      251,
+      258
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/tuple/Pair.java"
+    },
+    {
+     "label": "Pair.toString",
+     "lines": [
+      267,
+      274
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/tuple/Pair.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-17",
+   "kind": "callers",
+   "question": "Who calls ExceptionContext.getContextEntries?",
+   "subject": {
+    "label": "ExceptionContext.getContextEntries",
+    "path": "src/main/java/org/apache/commons/lang3/exception/ExceptionContext.java",
+    "lines": [
+     54,
+     57
+    ]
+   },
+   "truth": [
+    {
+     "label": "ContextedException.getContextEntries",
+     "lines": [
+      175,
+      182
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/exception/ContextedException.java"
+    },
+    {
+     "label": "ContextedRuntimeException.getContextEntries",
+     "lines": [
+      175,
+      182
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/exception/ContextedRuntimeException.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-18",
+   "kind": "callers",
+   "question": "Who calls Fraction.getFraction?",
+   "subject": {
+    "label": "Fraction.getFraction",
+    "path": "src/main/java/org/apache/commons/lang3/math/Fraction.java",
+    "lines": [
+     190,
+     205
+    ]
+   },
+   "truth": [
+    {
+     "label": "Fraction.getFraction",
+     "lines": [
+      260,
+      308
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/math/Fraction.java"
+    },
+    {
+     "label": "Fraction.reduce",
+     "lines": [
+      885,
+      899
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/math/Fraction.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-19",
+   "kind": "callers",
+   "question": "Who calls ConstantInitializer.getObject?",
+   "subject": {
+    "label": "ConstantInitializer.getObject",
+    "path": "src/main/java/org/apache/commons/lang3/concurrent/ConstantInitializer.java",
+    "lines": [
+     94,
+     101
+    ]
+   },
+   "truth": [
+    {
+     "label": "ConstantInitializer.equals",
+     "lines": [
+      65,
+      80
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/ConstantInitializer.java"
+    },
+    {
+     "label": "ConstantInitializer.get",
+     "lines": [
+      85,
+      92
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/ConstantInitializer.java"
+    },
+    {
+     "label": "ConstantInitializer.toString",
+     "lines": [
+      127,
+      134
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/ConstantInitializer.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-20",
+   "kind": "implementers",
+   "question": "What extends NumberRange?",
+   "subject": {
+    "label": "NumberRange",
+    "path": "src/main/java/org/apache/commons/lang3/NumberRange.java",
+    "lines": [
+     31,
+     47
+    ]
+   },
+   "truth": [
+    {
+     "label": "DoubleRange",
+     "lines": [
+      29,
+      109
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/DoubleRange.java"
+    },
+    {
+     "label": "IntegerRange",
+     "lines": [
+      31,
+      119
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/IntegerRange.java"
+    },
+    {
+     "label": "LongRange",
+     "lines": [
+      31,
+      119
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/LongRange.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-21",
+   "kind": "implementers",
+   "question": "What implements FailableSupplier?",
+   "subject": {
+    "label": "FailableSupplier",
+    "path": "src/main/java/org/apache/commons/lang3/function/FailableSupplier.java",
+    "lines": [
+     30,
+     56
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractConcurrentInitializer",
+     "lines": [
+      34,
+      191
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/AbstractConcurrentInitializer.java"
+    },
+    {
+     "label": "AbstractConcurrentInitializer.AbstractBuilder",
+     "lines": [
+      44,
+      101
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/AbstractConcurrentInitializer.java"
+    },
+    {
+     "label": "AbstractSupplier",
+     "lines": [
+      30,
+      52
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/AbstractSupplier.java"
+    },
+    {
+     "label": "AtomicInitializer",
+     "lines": [
+      68,
+      169
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/AtomicInitializer.java"
+    },
+    {
+     "label": "AtomicInitializer.Builder",
+     "lines": [
+      77,
+      89
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/AtomicInitializer.java"
+    },
+    {
+     "label": "AtomicSafeInitializer",
+     "lines": [
+      59,
+      171
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/AtomicSafeInitializer.java"
+    },
+    {
+     "label": "AtomicSafeInitializer.Builder",
+     "lines": [
+      68,
+      80
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/AtomicSafeInitializer.java"
+    },
+    {
+     "label": "BackgroundInitializer",
+     "lines": [
+      88,
+      409
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/BackgroundInitializer.java"
+    },
+    {
+     "label": "BackgroundInitializer.Builder",
+     "lines": [
+      97,
+      126
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/BackgroundInitializer.java"
+    },
+    {
+     "label": "CallableBackgroundInitializer",
+     "lines": [
+      67,
+      125
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/CallableBackgroundInitializer.java"
+    },
+    {
+     "label": "ConcurrentInitializer",
+     "lines": [
+      43,
+      43
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/ConcurrentInitializer.java"
+    },
+    {
+     "label": "ConstantInitializer",
+     "lines": [
+      39,
+      133
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/ConstantInitializer.java"
+    },
+    {
+     "label": "LazyInitializer",
+     "lines": [
+      72,
+      173
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/LazyInitializer.java"
+    },
+    {
+     "label": "LazyInitializer.Builder",
+     "lines": [
+      81,
+      93
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/LazyInitializer.java"
+    },
+    {
+     "label": "LockingVisitors.LockVisitor.LVBuilder",
+     "lines": [
+      156,
+      241
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/locks/LockingVisitors.java"
+    },
+    {
+     "label": "LockingVisitors.ReadWriteLockVisitor.Builder",
+     "lines": [
+      427,
+      445
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/locks/LockingVisitors.java"
+    },
+    {
+     "label": "LockingVisitors.ReentrantLockVisitor.Builder",
+     "lines": [
+      427,
+      519
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/locks/LockingVisitors.java"
+    },
+    {
+     "label": "LockingVisitors.StampedLockVisitor.Builder",
+     "lines": [
+      427,
+      595
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/locks/LockingVisitors.java"
+    },
+    {
+     "label": "MultiBackgroundInitializer",
+     "lines": [
+      96,
+      360
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/MultiBackgroundInitializer.java"
+    },
+    {
+     "label": "Strings.Builder",
+     "lines": [
+      37,
+      83
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/Strings.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-22",
+   "kind": "implementers",
+   "question": "What extends Pair?",
+   "subject": {
+    "label": "Pair",
+    "path": "src/main/java/org/apache/commons/lang3/tuple/Pair.java",
+    "lines": [
+     46,
+     273
+    ]
+   },
+   "truth": [
+    {
+     "label": "Diff",
+     "lines": [
+      36,
+      106
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/Diff.java"
+    },
+    {
+     "label": "DiffBuilder.SDiff",
+     "lines": [
+      167,
+      186
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/DiffBuilder.java"
+    },
+    {
+     "label": "ImmutablePair",
+     "lines": [
+      39,
+      200
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/tuple/ImmutablePair.java"
+    },
+    {
+     "label": "MutablePair",
+     "lines": [
+      33,
+      192
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/tuple/MutablePair.java"
+    },
+    {
+     "label": "StopWatch.Split",
+     "lines": [
+      81,
+      118
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/StopWatch.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-23",
+   "kind": "implementers",
+   "question": "What implements FastDatePrinter.Rule?",
+   "subject": {
+    "label": "FastDatePrinter.Rule",
+    "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java",
+    "lines": [
+     324,
+     324
+    ]
+   },
+   "truth": [
+    {
+     "label": "FastDatePrinter.CharacterLiteral",
+     "lines": [
+      114,
+      140
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    },
+    {
+     "label": "FastDatePrinter.DayInWeekField",
+     "lines": [
+      147,
+      167
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    },
+    {
+     "label": "FastDatePrinter.Iso8601_Rule",
+     "lines": [
+      175,
+      253
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    },
+    {
+     "label": "FastDatePrinter.NumberRule",
+     "lines": [
+      260,
+      260
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    },
+    {
+     "label": "FastDatePrinter.PaddedNumberField",
+     "lines": [
+      275,
+      317
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    },
+    {
+     "label": "FastDatePrinter.StringLiteral",
+     "lines": [
+      346,
+      372
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    },
+    {
+     "label": "FastDatePrinter.TextField",
+     "lines": [
+      379,
+      415
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    },
+    {
+     "label": "FastDatePrinter.TimeZoneNameRule",
+     "lines": [
+      476,
+      514
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    },
+    {
+     "label": "FastDatePrinter.TimeZoneNumberRule",
+     "lines": [
+      522,
+      568
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    },
+    {
+     "label": "FastDatePrinter.TwelveHourField",
+     "lines": [
+      575,
+      613
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    },
+    {
+     "label": "FastDatePrinter.TwentyFourHourField",
+     "lines": [
+      620,
+      658
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    },
+    {
+     "label": "FastDatePrinter.TwoDigitMonthField",
+     "lines": [
+      665,
+      695
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    },
+    {
+     "label": "FastDatePrinter.TwoDigitNumberField",
+     "lines": [
+      702,
+      739
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    },
+    {
+     "label": "FastDatePrinter.TwoDigitYearField",
+     "lines": [
+      746,
+      776
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    },
+    {
+     "label": "FastDatePrinter.UnpaddedMonthField",
+     "lines": [
+      783,
+      817
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    },
+    {
+     "label": "FastDatePrinter.UnpaddedNumberField",
+     "lines": [
+      824,
+      863
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    },
+    {
+     "label": "FastDatePrinter.WeekYear",
+     "lines": [
+      870,
+      896
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-24",
+   "kind": "implementers",
+   "question": "What extends FastDateParser.Strategy?",
+   "subject": {
+    "label": "FastDateParser.Strategy",
+    "path": "src/main/java/org/apache/commons/lang3/time/FastDateParser.java",
+    "lines": [
+     408,
+     416
+    ]
+   },
+   "truth": [
+    {
+     "label": "FastDateParser.CaseInsensitiveTextStrategy",
+     "lines": [
+      93,
+      157
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDateParser.java"
+    },
+    {
+     "label": "FastDateParser.CopyQuotedStrategy",
+     "lines": [
+      164,
+      205
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDateParser.java"
+    },
+    {
+     "label": "FastDateParser.ISO8601TimeZoneStrategy",
+     "lines": [
+      209,
+      253
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDateParser.java"
+    },
+    {
+     "label": "FastDateParser.NumberStrategy",
+     "lines": [
+      259,
+      341
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDateParser.java"
+    },
+    {
+     "label": "FastDateParser.PatternStrategy",
+     "lines": [
+      348,
+      400
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDateParser.java"
+    },
+    {
+     "label": "FastDateParser.TimeZoneStrategy",
+     "lines": [
+      509,
+      653
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDateParser.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-25",
+   "kind": "implementers",
+   "question": "What implements ConcurrentInitializer?",
+   "subject": {
+    "label": "ConcurrentInitializer",
+    "path": "src/main/java/org/apache/commons/lang3/concurrent/ConcurrentInitializer.java",
+    "lines": [
+     43,
+     43
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractConcurrentInitializer",
+     "lines": [
+      34,
+      191
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/AbstractConcurrentInitializer.java"
+    },
+    {
+     "label": "AtomicInitializer",
+     "lines": [
+      68,
+      169
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/AtomicInitializer.java"
+    },
+    {
+     "label": "AtomicSafeInitializer",
+     "lines": [
+      59,
+      171
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/AtomicSafeInitializer.java"
+    },
+    {
+     "label": "BackgroundInitializer",
+     "lines": [
+      88,
+      409
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/BackgroundInitializer.java"
+    },
+    {
+     "label": "CallableBackgroundInitializer",
+     "lines": [
+      67,
+      125
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/CallableBackgroundInitializer.java"
+    },
+    {
+     "label": "ConstantInitializer",
+     "lines": [
+      39,
+      133
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/ConstantInitializer.java"
+    },
+    {
+     "label": "LazyInitializer",
+     "lines": [
+      72,
+      173
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/LazyInitializer.java"
+    },
+    {
+     "label": "MultiBackgroundInitializer",
+     "lines": [
+      96,
+      360
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/MultiBackgroundInitializer.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-26",
+   "kind": "implementers",
+   "question": "What implements ThreadUtils.ThreadPredicate?",
+   "subject": {
+    "label": "ThreadUtils.ThreadPredicate",
+    "path": "src/main/java/org/apache/commons/lang3/ThreadUtils.java",
+    "lines": [
+     157,
+     157
+    ]
+   },
+   "truth": [
+    {
+     "label": "ThreadUtils.AlwaysTruePredicate",
+     "lines": [
+      50,
+      62
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/ThreadUtils.java"
+    },
+    {
+     "label": "ThreadUtils.NamePredicate",
+     "lines": [
+      75,
+      97
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/ThreadUtils.java"
+    },
+    {
+     "label": "ThreadUtils.ThreadIdPredicate",
+     "lines": [
+      126,
+      145
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/ThreadUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-27",
+   "kind": "implementers",
+   "question": "What extends CodePointTranslator?",
+   "subject": {
+    "label": "CodePointTranslator",
+    "path": "src/main/java/org/apache/commons/lang3/text/translate/CodePointTranslator.java",
+    "lines": [
+     32,
+     49
+    ]
+   },
+   "truth": [
+    {
+     "label": "JavaUnicodeEscaper",
+     "lines": [
+      28,
+      104
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/text/translate/JavaUnicodeEscaper.java"
+    },
+    {
+     "label": "NumericEntityEscaper",
+     "lines": [
+      31,
+      120
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/text/translate/NumericEntityEscaper.java"
+    },
+    {
+     "label": "UnicodeEscaper",
+     "lines": [
+      31,
+      144
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/text/translate/UnicodeEscaper.java"
+    },
+    {
+     "label": "UnicodeUnpairedSurrogateRemover",
+     "lines": [
+      30,
+      46
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/text/translate/UnicodeUnpairedSurrogateRemover.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-28",
+   "kind": "implementers",
+   "question": "What extends EventCountCircuitBreaker.AbstractStateStrategy?",
+   "subject": {
+    "label": "EventCountCircuitBreaker.AbstractStateStrategy",
+    "path": "src/main/java/org/apache/commons/lang3/concurrent/EventCountCircuitBreaker.java",
+    "lines": [
+     146,
+     167
+    ]
+   },
+   "truth": [
+    {
+     "label": "EventCountCircuitBreaker.StateStrategyClosed",
+     "lines": [
+      242,
+      258
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/EventCountCircuitBreaker.java"
+    },
+    {
+     "label": "EventCountCircuitBreaker.StateStrategyOpen",
+     "lines": [
+      265,
+      283
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/concurrent/EventCountCircuitBreaker.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-29",
+   "kind": "implementers",
+   "question": "What implements ThreadUtils.ThreadGroupPredicate?",
+   "subject": {
+    "label": "ThreadUtils.ThreadGroupPredicate",
+    "path": "src/main/java/org/apache/commons/lang3/ThreadUtils.java",
+    "lines": [
+     109,
+     109
+    ]
+   },
+   "truth": [
+    {
+     "label": "ThreadUtils.AlwaysTruePredicate",
+     "lines": [
+      50,
+      62
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/ThreadUtils.java"
+    },
+    {
+     "label": "ThreadUtils.NamePredicate",
+     "lines": [
+      75,
+      97
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/ThreadUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-30",
+   "kind": "overrides",
+   "question": "What overrides StrLookup.lookup?",
+   "subject": {
+    "label": "StrLookup.lookup",
+    "path": "src/main/java/org/apache/commons/lang3/text/StrLookup.java",
+    "lines": [
+     77,
+     80
+    ]
+   },
+   "truth": [
+    {
+     "label": "StrLookup.MapStrLookup.lookup",
+     "lines": [
+      74,
+      84
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/text/StrLookup.java"
+    },
+    {
+     "label": "StrLookup.SystemPropertiesStrLookup.lookup",
+     "lines": [
+      91,
+      98
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/text/StrLookup.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-31",
+   "kind": "overrides",
+   "question": "What overrides ToStringStyle.appendDetail?",
+   "subject": {
+    "label": "ToStringStyle.appendDetail",
+    "path": "src/main/java/org/apache/commons/lang3/builder/ToStringStyle.java",
+    "lines": [
+     1225,
+     1246
+    ]
+   },
+   "truth": [
+    {
+     "label": "RecursiveToStringStyle.appendDetail",
+     "lines": [
+      168,
+      178
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/RecursiveToStringStyle.java"
+    },
+    {
+     "label": "ToStringStyle.JsonToStringStyle.appendDetail",
+     "lines": [
+      207,
+      224
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/ToStringStyle.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-32",
+   "kind": "overrides",
+   "question": "What overrides DateParser.getPattern?",
+   "subject": {
+    "label": "DateParser.getPattern",
+    "path": "src/main/java/org/apache/commons/lang3/time/DateParser.java",
+    "lines": [
+     49,
+     52
+    ]
+   },
+   "truth": [
+    {
+     "label": "FastDateFormat.getPattern",
+     "lines": [
+      578,
+      585
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDateFormat.java"
+    },
+    {
+     "label": "FastDateParser.getPattern",
+     "lines": [
+      1021,
+      1028
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDateParser.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-33",
+   "kind": "overrides",
+   "question": "What overrides ExceptionContext.getFormattedExceptionMessage?",
+   "subject": {
+    "label": "ExceptionContext.getFormattedExceptionMessage",
+    "path": "src/main/java/org/apache/commons/lang3/exception/ExceptionContext.java",
+    "lines": [
+     86,
+     89
+    ]
+   },
+   "truth": [
+    {
+     "label": "ContextedException.getFormattedExceptionMessage",
+     "lines": [
+      207,
+      214
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/exception/ContextedException.java"
+    },
+    {
+     "label": "ContextedRuntimeException.getFormattedExceptionMessage",
+     "lines": [
+      207,
+      214
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/exception/ContextedRuntimeException.java"
+    },
+    {
+     "label": "DefaultExceptionContext.getFormattedExceptionMessage",
+     "lines": [
+      100,
+      134
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/exception/DefaultExceptionContext.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-34",
+   "kind": "overrides",
+   "question": "What overrides DatePrinter.format?",
+   "subject": {
+    "label": "DatePrinter.format",
+    "path": "src/main/java/org/apache/commons/lang3/time/DatePrinter.java",
+    "lines": [
+     45,
+     48
+    ]
+   },
+   "truth": [
+    {
+     "label": "FastDateFormat.format",
+     "lines": [
+      477,
+      484
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDateFormat.java"
+    },
+    {
+     "label": "FastDatePrinter.format",
+     "lines": [
+      1191,
+      1200
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-35",
+   "kind": "overrides",
+   "question": "What overrides DatePrinter.format?",
+   "subject": {
+    "label": "DatePrinter.format",
+    "path": "src/main/java/org/apache/commons/lang3/time/DatePrinter.java",
+    "lines": [
+     45,
+     48
+    ]
+   },
+   "truth": [
+    {
+     "label": "FastDateFormat.format",
+     "lines": [
+      531,
+      538
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDateFormat.java"
+    },
+    {
+     "label": "FastDatePrinter.format",
+     "lines": [
+      1231,
+      1240
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-36",
+   "kind": "overrides",
+   "question": "What overrides ToStringStyle.appendDetail?",
+   "subject": {
+    "label": "ToStringStyle.appendDetail",
+    "path": "src/main/java/org/apache/commons/lang3/builder/ToStringStyle.java",
+    "lines": [
+     1412,
+     1420
+    ]
+   },
+   "truth": [
+    {
+     "label": "MultilineRecursiveToStringStyle.appendDetail",
+     "lines": [
+      148,
+      165
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/MultilineRecursiveToStringStyle.java"
+    },
+    {
+     "label": "RecursiveToStringStyle.appendDetail",
+     "lines": [
+      175,
+      187
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/RecursiveToStringStyle.java"
+    },
+    {
+     "label": "ToStringStyle.JsonToStringStyle.appendDetail",
+     "lines": [
+      249,
+      274
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/ToStringStyle.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-37",
+   "kind": "overrides",
+   "question": "What overrides DateParser.getLocale?",
+   "subject": {
+    "label": "DateParser.getLocale",
+    "path": "src/main/java/org/apache/commons/lang3/time/DateParser.java",
+    "lines": [
+     42,
+     45
+    ]
+   },
+   "truth": [
+    {
+     "label": "FastDateFormat.getLocale",
+     "lines": [
+      555,
+      562
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDateFormat.java"
+    },
+    {
+     "label": "FastDateParser.getLocale",
+     "lines": [
+      999,
+      1006
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDateParser.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-38",
+   "kind": "overrides",
+   "question": "What overrides DateParser.parseObject?",
+   "subject": {
+    "label": "DateParser.parseObject",
+    "path": "src/main/java/org/apache/commons/lang3/time/DateParser.java",
+    "lines": [
+     110,
+     113
+    ]
+   },
+   "truth": [
+    {
+     "label": "FastDateFormat.parseObject",
+     "lines": [
+      642,
+      649
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDateFormat.java"
+    },
+    {
+     "label": "FastDateParser.parseObject",
+     "lines": [
+      1228,
+      1235
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDateParser.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-39",
+   "kind": "overrides",
+   "question": "What overrides DatePrinter.getLocale?",
+   "subject": {
+    "label": "DatePrinter.getLocale",
+    "path": "src/main/java/org/apache/commons/lang3/time/DatePrinter.java",
+    "lines": [
+     157,
+     160
+    ]
+   },
+   "truth": [
+    {
+     "label": "FastDateFormat.getLocale",
+     "lines": [
+      555,
+      562
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDateFormat.java"
+    },
+    {
+     "label": "FastDatePrinter.getLocale",
+     "lines": [
+      1287,
+      1294
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-40",
+   "kind": "definition",
+   "question": "Where is StrBuilder.charAt defined?",
+   "subject": {
+    "label": "StrBuilder.charAt",
+    "path": "src/main/java/org/apache/commons/lang3/text/StrBuilder.java",
+    "lines": [
+     1594,
+     1604
+    ]
+   },
+   "truth": [
+    {
+     "label": "StrBuilder.charAt",
+     "lines": [
+      1594,
+      1604
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/text/StrBuilder.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-41",
+   "kind": "definition",
+   "question": "Where is FastDatePrinter.TwentyFourHourField.appendTo defined?",
+   "subject": {
+    "label": "FastDatePrinter.TwentyFourHourField.appendTo",
+    "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java",
+    "lines": [
+     632,
+     644
+    ]
+   },
+   "truth": [
+    {
+     "label": "FastDatePrinter.TwentyFourHourField.appendTo",
+     "lines": [
+      632,
+      644
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/time/FastDatePrinter.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-42",
+   "kind": "definition",
+   "question": "Where is FailableLongToDoubleFunction.applyAsDouble defined?",
+   "subject": {
+    "label": "FailableLongToDoubleFunction.applyAsDouble",
+    "path": "src/main/java/org/apache/commons/lang3/function/FailableLongToDoubleFunction.java",
+    "lines": [
+     51,
+     54
+    ]
+   },
+   "truth": [
+    {
+     "label": "FailableLongToDoubleFunction.applyAsDouble",
+     "lines": [
+      51,
+      54
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/function/FailableLongToDoubleFunction.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-43",
+   "kind": "definition",
+   "question": "Where is TypeUtils.getArrayComponentType defined?",
+   "subject": {
+    "label": "TypeUtils.getArrayComponentType",
+    "path": "src/main/java/org/apache/commons/lang3/reflect/TypeUtils.java",
+    "lines": [
+     588,
+     602
+    ]
+   },
+   "truth": [
+    {
+     "label": "TypeUtils.getArrayComponentType",
+     "lines": [
+      588,
+      602
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/reflect/TypeUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-44",
+   "kind": "definition",
+   "question": "Where is ToStringStyle.appendDetail defined?",
+   "subject": {
+    "label": "ToStringStyle.appendDetail",
+    "path": "src/main/java/org/apache/commons/lang3/builder/ToStringStyle.java",
+    "lines": [
+     1356,
+     1364
+    ]
+   },
+   "truth": [
+    {
+     "label": "ToStringStyle.appendDetail",
+     "lines": [
+      1356,
+      1364
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/ToStringStyle.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-45",
+   "kind": "definition",
+   "question": "Where is TypeUtils.unrollVariables defined?",
+   "subject": {
+    "label": "TypeUtils.unrollVariables",
+    "path": "src/main/java/org/apache/commons/lang3/reflect/TypeUtils.java",
+    "lines": [
+     1711,
+     1721
+    ]
+   },
+   "truth": [
+    {
+     "label": "TypeUtils.unrollVariables",
+     "lines": [
+      1711,
+      1721
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/reflect/TypeUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-46",
+   "kind": "definition",
+   "question": "Where is CompareToBuilder.append defined?",
+   "subject": {
+    "label": "CompareToBuilder.append",
+    "path": "src/main/java/org/apache/commons/lang3/builder/CompareToBuilder.java",
+    "lines": [
+     596,
+     621
+    ]
+   },
+   "truth": [
+    {
+     "label": "CompareToBuilder.append",
+     "lines": [
+      596,
+      621
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/CompareToBuilder.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-47",
+   "kind": "definition",
+   "question": "Where is ReflectionDiffBuilder.getLeft defined?",
+   "subject": {
+    "label": "ReflectionDiffBuilder.getLeft",
+    "path": "src/main/java/org/apache/commons/lang3/builder/ReflectionDiffBuilder.java",
+    "lines": [
+     318,
+     325
+    ]
+   },
+   "truth": [
+    {
+     "label": "ReflectionDiffBuilder.getLeft",
+     "lines": [
+      318,
+      325
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/ReflectionDiffBuilder.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-48",
+   "kind": "definition",
+   "question": "Where is DiffResult.getRight defined?",
+   "subject": {
+    "label": "DiffResult.getRight",
+    "path": "src/main/java/org/apache/commons/lang3/builder/DiffResult.java",
+    "lines": [
+     109,
+     116
+    ]
+   },
+   "truth": [
+    {
+     "label": "DiffResult.getRight",
+     "lines": [
+      109,
+      116
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/builder/DiffResult.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-49",
+   "kind": "definition",
+   "question": "Where is FormattableUtils.append defined?",
+   "subject": {
+    "label": "FormattableUtils.append",
+    "path": "src/main/java/org/apache/commons/lang3/text/FormattableUtils.java",
+    "lines": [
+     57,
+     64
+    ]
+   },
+   "truth": [
+    {
+     "label": "FormattableUtils.append",
+     "lines": [
+      57,
+      64
+     ],
+     "path": "src/main/java/org/apache/commons/lang3/text/FormattableUtils.java"
+    }
+   ]
+  }
+ ]
+}

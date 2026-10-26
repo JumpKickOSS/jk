@@ -1,0 +1,64 @@
+# Change tasks for bench/agent-loop/change-tasks: what developers do all day (add, rename,
+# implement, fix from a symptom) on repositories big enough for navigation to cost something.
+# `repo` names a graph-retrieval corpus repository; `tools` the build tools the task runs under.
+# `inject` plants a defect before the baseline commit (`from` must occur exactly once), and
+# `baseline = "red"` says the tests fail before the agent starts. tasks/<task>/<tool>/ (or
+# tasks/<task>/all/) is copied over the sandbox after the agent stops, `restore` directories are put
+# back from the corpus as shipped, and the tool's full test run then decides.
+
+[tasks.petclinic-owner-email]
+repo   = "spring-petclinic"
+kind   = "add-field"
+tools  = ["jk", "mvn"]
+prompt = """
+Owners need an optional email address. Add an `email` property to `Owner` (getter `getEmail()`,
+setter `setEmail(String)`), stored in a new `email` column of the owners table in every database's
+schema, validated as an email address when present, editable in the owner form, and shown on the
+owner details page.
+"""
+
+[tasks.petclinic-rename-addvisit]
+repo   = "spring-petclinic"
+kind   = "rename"
+tools  = ["jk", "mvn"]
+prompt = """
+Rename `Owner.addVisit` to `recordVisit`, keeping its parameters and behaviour, and update every
+caller, tests included.
+"""
+
+[tasks.commons-lang-rename-indexof]
+repo   = "commons-lang"
+kind   = "rename"
+tools  = ["jk", "mvn"]
+prompt = """
+Rename both `CharSequenceUtils.indexOf` overloads (the `CharSequence` search and the `int` character
+search) to `find`, keeping their parameters and behaviour, and update every caller, tests included.
+Other classes' `indexOf` methods stay as they are.
+"""
+
+[tasks.commons-lang-tostringstyle-name]
+repo   = "commons-lang"
+kind   = "implement"
+tools  = ["jk", "mvn"]
+prompt = """
+Add `public String getName()` to `ToStringStyle`. Each built-in style returns the name of the
+`ToStringStyle` constant that holds it (`ToStringStyle.DEFAULT_STYLE.getName()` is
+"DEFAULT_STYLE", and so on for every constant). Every other `ToStringStyle` subclass in the library
+returns its own simple class name (`new StandardToStringStyle().getName()` is
+"StandardToStringStyle").
+"""
+
+[tasks.commons-lang-ignorecase-symptom]
+repo     = "commons-lang"
+kind     = "symptom"
+tools    = ["jk", "mvn"]
+baseline = "red"
+restore  = ["src/test"]
+inject   = [
+  { file = "src/main/java/org/apache/commons/lang3/CharSequenceUtils.java", from = "((String) cs).regionMatches(ignoreCase, thisStart, (String) substring, start, length)", to = "((String) cs).regionMatches(false, thisStart, (String) substring, start, length)" },
+]
+prompt = """
+`StringUtils.endsWithIgnoreCase("ABCDEF", "def")` returns false, and so does
+`StringUtils.containsIgnoreCase("ABC", "b")`; both should be true. Find the cause and fix it. Do
+not change the tests.
+"""

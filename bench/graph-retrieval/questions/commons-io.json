@@ -1,0 +1,1823 @@
+{
+ "repo": "commons-io",
+ "commit": "c14acc16f73e44a75b2062b17aacb26c4feda746",
+ "loc": 105209,
+ "classes": 371,
+ "lint_dropped": true,
+ "questions": [
+  {
+   "id": "callers-0",
+   "kind": "callers",
+   "question": "Who calls IOStreams.forAll?",
+   "subject": {
+    "label": "IOStreams.forAll",
+    "path": "src/main/java/org/apache/commons/io/function/IOStreams.java",
+    "lines": [
+     36,
+     44
+    ]
+   },
+   "truth": [
+    {
+     "label": "IOConsumer.forAll",
+     "lines": [
+      62,
+      70
+     ],
+     "path": "src/main/java/org/apache/commons/io/function/IOConsumer.java"
+    },
+    {
+     "label": "IOStreams.forAll",
+     "lines": [
+      30,
+      38
+     ],
+     "path": "src/main/java/org/apache/commons/io/function/IOStreams.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-1",
+   "kind": "callers",
+   "question": "Who calls IOUtils.write?",
+   "subject": {
+    "label": "IOUtils.write",
+    "path": "src/main/java/org/apache/commons/io/IOUtils.java",
+    "lines": [
+     3728,
+     3741
+    ]
+   },
+   "truth": [
+    {
+     "label": "FileUtils.writeStringToFile",
+     "lines": [
+      3552,
+      3562
+     ],
+     "path": "src/main/java/org/apache/commons/io/FileUtils.java"
+    },
+    {
+     "label": "IOUtils.write",
+     "lines": [
+      3580,
+      3590
+     ],
+     "path": "src/main/java/org/apache/commons/io/IOUtils.java"
+    },
+    {
+     "label": "IOUtils.write",
+     "lines": [
+      3654,
+      3664
+     ],
+     "path": "src/main/java/org/apache/commons/io/IOUtils.java"
+    },
+    {
+     "label": "IOUtils.write",
+     "lines": [
+      3710,
+      3718
+     ],
+     "path": "src/main/java/org/apache/commons/io/IOUtils.java"
+    },
+    {
+     "label": "IOUtils.write",
+     "lines": [
+      3754,
+      3762
+     ],
+     "path": "src/main/java/org/apache/commons/io/IOUtils.java"
+    },
+    {
+     "label": "IOUtils.write",
+     "lines": [
+      3812,
+      3822
+     ],
+     "path": "src/main/java/org/apache/commons/io/IOUtils.java"
+    },
+    {
+     "label": "IOUtils.writeLines",
+     "lines": [
+      3914,
+      3938
+     ],
+     "path": "src/main/java/org/apache/commons/io/IOUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-2",
+   "kind": "callers",
+   "question": "Who calls Input.toInterruptedIOException?",
+   "subject": {
+    "label": "Input.toInterruptedIOException",
+    "path": "src/main/java/org/apache/commons/io/input/Input.java",
+    "lines": [
+     47,
+     56
+    ]
+   },
+   "truth": [
+    {
+     "label": "ReadAheadInputStream.close",
+     "lines": [
+      273,
+      311
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/ReadAheadInputStream.java"
+    },
+    {
+     "label": "ReadAheadInputStream.waitForAsyncReadComplete",
+     "lines": [
+      547,
+      573
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/ReadAheadInputStream.java"
+    },
+    {
+     "label": "ThrottledInputStream.throttle",
+     "lines": [
+      279,
+      296
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/ThrottledInputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-3",
+   "kind": "callers",
+   "question": "Who calls UnsynchronizedBufferedInputStream.fillBuffer?",
+   "subject": {
+    "label": "UnsynchronizedBufferedInputStream.fillBuffer",
+    "path": "src/main/java/org/apache/commons/io/input/UnsynchronizedBufferedInputStream.java",
+    "lines": [
+     190,
+     226
+    ]
+   },
+   "truth": [
+    {
+     "label": "UnsynchronizedBufferedInputStream.read",
+     "lines": [
+      263,
+      292
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/UnsynchronizedBufferedInputStream.java"
+    },
+    {
+     "label": "UnsynchronizedBufferedInputStream.read",
+     "lines": [
+      303,
+      374
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/UnsynchronizedBufferedInputStream.java"
+    },
+    {
+     "label": "UnsynchronizedBufferedInputStream.skip",
+     "lines": [
+      399,
+      442
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/UnsynchronizedBufferedInputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-4",
+   "kind": "callers",
+   "question": "Who calls CharSequenceInputStream.Builder.setCharset?",
+   "subject": {
+    "label": "CharSequenceInputStream.Builder.setCharset",
+    "path": "src/main/java/org/apache/commons/io/input/CharSequenceInputStream.java",
+    "lines": [
+     117,
+     126
+    ]
+   },
+   "truth": [
+    {
+     "label": "CharSequenceInputStream.<init>",
+     "lines": [
+      206,
+      214
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/CharSequenceInputStream.java"
+    },
+    {
+     "label": "CharSequenceInputStream.Builder.setCharset",
+     "lines": [
+      77,
+      84
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/CharSequenceInputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-5",
+   "kind": "callers",
+   "question": "Who calls PathUtils.visitFileTree?",
+   "subject": {
+    "label": "PathUtils.visitFileTree",
+    "path": "src/main/java/org/apache/commons/io/file/PathUtils.java",
+    "lines": [
+     1873,
+     1881
+    ]
+   },
+   "truth": [
+    {
+     "label": "PathUtils.cleanDirectory",
+     "lines": [
+      304,
+      311
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/PathUtils.java"
+    },
+    {
+     "label": "PathUtils.copyDirectory",
+     "lines": [
+      385,
+      394
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/PathUtils.java"
+    },
+    {
+     "label": "PathUtils.countDirectory",
+     "lines": [
+      446,
+      453
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/PathUtils.java"
+    },
+    {
+     "label": "PathUtils.countDirectoryAsBigInteger",
+     "lines": [
+      458,
+      465
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/PathUtils.java"
+    },
+    {
+     "label": "PathUtils.deleteDirectory",
+     "lines": [
+      582,
+      589
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/PathUtils.java"
+    },
+    {
+     "label": "PathUtils.deleteDirectory",
+     "lines": [
+      612,
+      619
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/PathUtils.java"
+    },
+    {
+     "label": "PathUtils.visitFileTree",
+     "lines": [
+      1909,
+      1916
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/PathUtils.java"
+    },
+    {
+     "label": "PathUtils.visitFileTree",
+     "lines": [
+      1924,
+      1931
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/PathUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-6",
+   "kind": "callers",
+   "question": "Who calls AbstractByteArrayOutputStream.toByteArrayImpl?",
+   "subject": {
+    "label": "AbstractByteArrayOutputStream.toByteArrayImpl",
+    "path": "src/main/java/org/apache/commons/io/output/AbstractByteArrayOutputStream.java",
+    "lines": [
+     208,
+     230
+    ]
+   },
+   "truth": [
+    {
+     "label": "ByteArrayOutputStream.toByteArray",
+     "lines": [
+      123,
+      130
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/ByteArrayOutputStream.java"
+    },
+    {
+     "label": "UnsynchronizedByteArrayOutputStream.toByteArray",
+     "lines": [
+      200,
+      207
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/UnsynchronizedByteArrayOutputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-7",
+   "kind": "callers",
+   "question": "Who calls IOUtils.ScratchChars.array?",
+   "subject": {
+    "label": "IOUtils.ScratchChars.array",
+    "path": "src/main/java/org/apache/commons/io/IOUtils.java",
+    "lines": [
+     240,
+     247
+    ]
+   },
+   "truth": [
+    {
+     "label": "CopyUtils.copy",
+     "lines": [
+      278,
+      294
+     ],
+     "path": "src/main/java/org/apache/commons/io/CopyUtils.java"
+    },
+    {
+     "label": "IOUtils.contentEquals",
+     "lines": [
+      1265,
+      1312
+     ],
+     "path": "src/main/java/org/apache/commons/io/IOUtils.java"
+    },
+    {
+     "label": "IOUtils.copyLarge",
+     "lines": [
+      1824,
+      1833
+     ],
+     "path": "src/main/java/org/apache/commons/io/IOUtils.java"
+    },
+    {
+     "label": "IOUtils.copyLarge",
+     "lines": [
+      1872,
+      1881
+     ],
+     "path": "src/main/java/org/apache/commons/io/IOUtils.java"
+    },
+    {
+     "label": "IOUtils.skip",
+     "lines": [
+      2638,
+      2660
+     ],
+     "path": "src/main/java/org/apache/commons/io/IOUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-8",
+   "kind": "callers",
+   "question": "Who calls HexDump.dump?",
+   "subject": {
+    "label": "HexDump.dump",
+    "path": "src/main/java/org/apache/commons/io/HexDump.java",
+    "lines": [
+     102,
+     152
+    ]
+   },
+   "truth": [
+    {
+     "label": "HexDump.dump",
+     "lines": [
+      184,
+      196
+     ],
+     "path": "src/main/java/org/apache/commons/io/HexDump.java"
+    },
+    {
+     "label": "HexDump.dump",
+     "lines": [
+      68,
+      76
+     ],
+     "path": "src/main/java/org/apache/commons/io/HexDump.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-9",
+   "kind": "callers",
+   "question": "Who calls FilterCollectionWriter.append?",
+   "subject": {
+    "label": "FilterCollectionWriter.append",
+    "path": "src/main/java/org/apache/commons/io/output/FilterCollectionWriter.java",
+    "lines": [
+     78,
+     85
+    ]
+   },
+   "truth": [
+    {
+     "label": "FilterCollectionWriter.append",
+     "lines": [
+      41,
+      48
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/FilterCollectionWriter.java"
+    },
+    {
+     "label": "ProxyCollectionWriter.append",
+     "lines": [
+      96,
+      110
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/ProxyCollectionWriter.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-10",
+   "kind": "callers",
+   "question": "Who calls ByteArrayOutputStream.toBufferedInputStream?",
+   "subject": {
+    "label": "ByteArrayOutputStream.toBufferedInputStream",
+    "path": "src/main/java/org/apache/commons/io/output/ByteArrayOutputStream.java",
+    "lines": [
+     78,
+     88
+    ]
+   },
+   "truth": [
+    {
+     "label": "ByteArrayOutputStream.toBufferedInputStream",
+     "lines": [
+      50,
+      57
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/ByteArrayOutputStream.java"
+    },
+    {
+     "label": "IOUtils.toBufferedInputStream",
+     "lines": [
+      2809,
+      2816
+     ],
+     "path": "src/main/java/org/apache/commons/io/IOUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-11",
+   "kind": "callers",
+   "question": "Who calls PathUtils.getParent?",
+   "subject": {
+    "label": "PathUtils.getParent",
+    "path": "src/main/java/org/apache/commons/io/file/PathUtils.java",
+    "lines": [
+     1111,
+     1118
+    ]
+   },
+   "truth": [
+    {
+     "label": "PathUtils.createParentDirectories",
+     "lines": [
+      491,
+      504
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/PathUtils.java"
+    },
+    {
+     "label": "PathUtils.deleteDirectory",
+     "lines": [
+      595,
+      604
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/PathUtils.java"
+    },
+    {
+     "label": "PathUtils.deleteFile",
+     "lines": [
+      658,
+      699
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/PathUtils.java"
+    },
+    {
+     "label": "PathUtils.setReadOnly",
+     "lines": [
+      1722,
+      1750
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/PathUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-12",
+   "kind": "callers",
+   "question": "Who calls IOUtils.toByteArray?",
+   "subject": {
+    "label": "IOUtils.toByteArray",
+    "path": "src/main/java/org/apache/commons/io/IOUtils.java",
+    "lines": [
+     2877,
+     2884
+    ]
+   },
+   "truth": [
+    {
+     "label": "IOUtils.readFully",
+     "lines": [
+      2256,
+      2263
+     ],
+     "path": "src/main/java/org/apache/commons/io/IOUtils.java"
+    },
+    {
+     "label": "IOUtils.toByteArray",
+     "lines": [
+      2935,
+      2945
+     ],
+     "path": "src/main/java/org/apache/commons/io/IOUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-13",
+   "kind": "callers",
+   "question": "Who calls ByteArraySeekableByteChannel.checkOpen?",
+   "subject": {
+    "label": "ByteArraySeekableByteChannel.checkOpen",
+    "path": "src/main/java/org/apache/commons/io/channels/ByteArraySeekableByteChannel.java",
+    "lines": [
+     184,
+     194
+    ]
+   },
+   "truth": [
+    {
+     "label": "ByteArraySeekableByteChannel.position",
+     "lines": [
+      222,
+      235
+     ],
+     "path": "src/main/java/org/apache/commons/io/channels/ByteArraySeekableByteChannel.java"
+    },
+    {
+     "label": "ByteArraySeekableByteChannel.position",
+     "lines": [
+      233,
+      248
+     ],
+     "path": "src/main/java/org/apache/commons/io/channels/ByteArraySeekableByteChannel.java"
+    },
+    {
+     "label": "ByteArraySeekableByteChannel.read",
+     "lines": [
+      246,
+      272
+     ],
+     "path": "src/main/java/org/apache/commons/io/channels/ByteArraySeekableByteChannel.java"
+    },
+    {
+     "label": "ByteArraySeekableByteChannel.size",
+     "lines": [
+      285,
+      298
+     ],
+     "path": "src/main/java/org/apache/commons/io/channels/ByteArraySeekableByteChannel.java"
+    },
+    {
+     "label": "ByteArraySeekableByteChannel.truncate",
+     "lines": [
+      308,
+      329
+     ],
+     "path": "src/main/java/org/apache/commons/io/channels/ByteArraySeekableByteChannel.java"
+    },
+    {
+     "label": "ByteArraySeekableByteChannel.write",
+     "lines": [
+      327,
+      363
+     ],
+     "path": "src/main/java/org/apache/commons/io/channels/ByteArraySeekableByteChannel.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-14",
+   "kind": "callers",
+   "question": "Who calls FileUtils.lastModifiedFileTime?",
+   "subject": {
+    "label": "FileUtils.lastModifiedFileTime",
+    "path": "src/main/java/org/apache/commons/io/FileUtils.java",
+    "lines": [
+     2200,
+     2207
+    ]
+   },
+   "truth": [
+    {
+     "label": "FileEntry.refresh",
+     "lines": [
+      227,
+      251
+     ],
+     "path": "src/main/java/org/apache/commons/io/monitor/FileEntry.java"
+    },
+    {
+     "label": "FileUtils.lastModified",
+     "lines": [
+      2179,
+      2186
+     ],
+     "path": "src/main/java/org/apache/commons/io/FileUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-15",
+   "kind": "callers",
+   "question": "Who calls ObjectStreamClassPredicate.reject?",
+   "subject": {
+    "label": "ObjectStreamClassPredicate.reject",
+    "path": "src/main/java/org/apache/commons/io/serialization/ObjectStreamClassPredicate.java",
+    "lines": [
+     127,
+     135
+    ]
+   },
+   "truth": [
+    {
+     "label": "ValidatingObjectInputStream.Builder.reject",
+     "lines": [
+      257,
+      265
+     ],
+     "path": "src/main/java/org/apache/commons/io/serialization/ValidatingObjectInputStream.java"
+    },
+    {
+     "label": "ValidatingObjectInputStream.reject",
+     "lines": [
+      465,
+      473
+     ],
+     "path": "src/main/java/org/apache/commons/io/serialization/ValidatingObjectInputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-16",
+   "kind": "callers",
+   "question": "Who calls AbstractByteArrayOutputStream.toByteArray?",
+   "subject": {
+    "label": "AbstractByteArrayOutputStream.toByteArray",
+    "path": "src/main/java/org/apache/commons/io/output/AbstractByteArrayOutputStream.java",
+    "lines": [
+     200,
+     203
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractByteArrayOutputStream.toString",
+     "lines": [
+      284,
+      291
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/AbstractByteArrayOutputStream.java"
+    },
+    {
+     "label": "AbstractByteArrayOutputStream.toString",
+     "lines": [
+      297,
+      304
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/AbstractByteArrayOutputStream.java"
+    },
+    {
+     "label": "AbstractByteArrayOutputStream.toString",
+     "lines": [
+      310,
+      317
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/AbstractByteArrayOutputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-17",
+   "kind": "callers",
+   "question": "Who calls PathUtils.resolve?",
+   "subject": {
+    "label": "PathUtils.resolve",
+    "path": "src/main/java/org/apache/commons/io/file/PathUtils.java",
+    "lines": [
+     1589,
+     1604
+    ]
+   },
+   "truth": [
+    {
+     "label": "CopyDirectoryVisitor.resolveRelativeAsString",
+     "lines": [
+      162,
+      169
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/CopyDirectoryVisitor.java"
+    },
+    {
+     "label": "PathUtils.copyFileToDirectory",
+     "lines": [
+      417,
+      426
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/PathUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-18",
+   "kind": "callers",
+   "question": "Who calls BrokenOutputStream.rethrow?",
+   "subject": {
+    "label": "BrokenOutputStream.rethrow",
+    "path": "src/main/java/org/apache/commons/io/output/BrokenOutputStream.java",
+    "lines": [
+     122,
+     129
+    ]
+   },
+   "truth": [
+    {
+     "label": "BrokenOutputStream.close",
+     "lines": [
+      102,
+      109
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/BrokenOutputStream.java"
+    },
+    {
+     "label": "BrokenOutputStream.flush",
+     "lines": [
+      112,
+      119
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/BrokenOutputStream.java"
+    },
+    {
+     "label": "BrokenOutputStream.write",
+     "lines": [
+      133,
+      140
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/BrokenOutputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-19",
+   "kind": "callers",
+   "question": "Who calls ProxyOutputStream.write?",
+   "subject": {
+    "label": "ProxyOutputStream.write",
+    "path": "src/main/java/org/apache/commons/io/output/ProxyOutputStream.java",
+    "lines": [
+     213,
+     226
+    ]
+   },
+   "truth": [
+    {
+     "label": "ProxyOutputStream.writeRepeat",
+     "lines": [
+      249,
+      260
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/ProxyOutputStream.java"
+    },
+    {
+     "label": "TeeOutputStream.write",
+     "lines": [
+      95,
+      104
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/TeeOutputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-20",
+   "kind": "implementers",
+   "question": "What extends AbstractInputStream?",
+   "subject": {
+    "label": "AbstractInputStream",
+    "path": "src/main/java/org/apache/commons/io/input/AbstractInputStream.java",
+    "lines": [
+     28,
+     73
+    ]
+   },
+   "truth": [
+    {
+     "label": "CircularInputStream",
+     "lines": [
+      35,
+      93
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/CircularInputStream.java"
+    },
+    {
+     "label": "InfiniteCircularInputStream",
+     "lines": [
+      32,
+      42
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/InfiniteCircularInputStream.java"
+    },
+    {
+     "label": "MemoryMappedFileInputStream",
+     "lines": [
+      73,
+      250
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/MemoryMappedFileInputStream.java"
+    },
+    {
+     "label": "NullInputStream",
+     "lines": [
+      65,
+      362
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/NullInputStream.java"
+    },
+    {
+     "label": "RandomAccessFileInputStream",
+     "lines": [
+      39,
+      259
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/RandomAccessFileInputStream.java"
+    },
+    {
+     "label": "ReaderInputStream",
+     "lines": [
+      87,
+      474
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/ReaderInputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-21",
+   "kind": "implementers",
+   "question": "What implements ClassNameMatcher?",
+   "subject": {
+    "label": "ClassNameMatcher",
+    "path": "src/main/java/org/apache/commons/io/serialization/ClassNameMatcher.java",
+    "lines": [
+     25,
+     25
+    ]
+   },
+   "truth": [
+    {
+     "label": "FullClassNameMatcher",
+     "lines": [
+      31,
+      46
+     ],
+     "path": "src/main/java/org/apache/commons/io/serialization/FullClassNameMatcher.java"
+    },
+    {
+     "label": "RegexpClassNameMatcher",
+     "lines": [
+      30,
+      55
+     ],
+     "path": "src/main/java/org/apache/commons/io/serialization/RegexpClassNameMatcher.java"
+    },
+    {
+     "label": "WildcardClassNameMatcher",
+     "lines": [
+      30,
+      45
+     ],
+     "path": "src/main/java/org/apache/commons/io/serialization/WildcardClassNameMatcher.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-22",
+   "kind": "implementers",
+   "question": "What extends FilterChannel?",
+   "subject": {
+    "label": "FilterChannel",
+    "path": "src/main/java/org/apache/commons/io/channels/FilterChannel.java",
+    "lines": [
+     56,
+     144
+    ]
+   },
+   "truth": [
+    {
+     "label": "FilterByteChannel",
+     "lines": [
+      56,
+      123
+     ],
+     "path": "src/main/java/org/apache/commons/io/channels/FilterByteChannel.java"
+    },
+    {
+     "label": "FilterReadableByteChannel",
+     "lines": [
+      56,
+      118
+     ],
+     "path": "src/main/java/org/apache/commons/io/channels/FilterReadableByteChannel.java"
+    },
+    {
+     "label": "FilterSeekableByteChannel",
+     "lines": [
+      55,
+      132
+     ],
+     "path": "src/main/java/org/apache/commons/io/channels/FilterSeekableByteChannel.java"
+    },
+    {
+     "label": "FilterWritableByteChannel",
+     "lines": [
+      56,
+      118
+     ],
+     "path": "src/main/java/org/apache/commons/io/channels/FilterWritableByteChannel.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-23",
+   "kind": "implementers",
+   "question": "What extends ObservableInputStream?",
+   "subject": {
+    "label": "ObservableInputStream",
+    "path": "src/main/java/org/apache/commons/io/input/ObservableInputStream.java",
+    "lines": [
+     44,
+     375
+    ]
+   },
+   "truth": [
+    {
+     "label": "MessageDigestCalculatingInputStream",
+     "lines": [
+      44,
+      268
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/MessageDigestCalculatingInputStream.java"
+    },
+    {
+     "label": "MessageDigestInputStream",
+     "lines": [
+      46,
+      211
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/MessageDigestInputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-24",
+   "kind": "implementers",
+   "question": "What implements IOBaseStream?",
+   "subject": {
+    "label": "IOBaseStream",
+    "path": "src/main/java/org/apache/commons/io/function/IOBaseStream.java",
+    "lines": [
+     34,
+     133
+    ]
+   },
+   "truth": [
+    {
+     "label": "IOBaseStreamAdapter",
+     "lines": [
+      31,
+      49
+     ],
+     "path": "src/main/java/org/apache/commons/io/function/IOBaseStreamAdapter.java"
+    },
+    {
+     "label": "IOStream",
+     "lines": [
+      53,
+      599
+     ],
+     "path": "src/main/java/org/apache/commons/io/function/IOStream.java"
+    },
+    {
+     "label": "IOStreamAdapter",
+     "lines": [
+      29,
+      41
+     ],
+     "path": "src/main/java/org/apache/commons/io/function/IOStreamAdapter.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-25",
+   "kind": "implementers",
+   "question": "What implements ConditionalFileFilter?",
+   "subject": {
+    "label": "ConditionalFileFilter",
+    "path": "src/main/java/org/apache/commons/io/filefilter/ConditionalFileFilter.java",
+    "lines": [
+     26,
+     26
+    ]
+   },
+   "truth": [
+    {
+     "label": "AndFileFilter",
+     "lines": [
+      44,
+      199
+     ],
+     "path": "src/main/java/org/apache/commons/io/filefilter/AndFileFilter.java"
+    },
+    {
+     "label": "OrFileFilter",
+     "lines": [
+      43,
+      190
+     ],
+     "path": "src/main/java/org/apache/commons/io/filefilter/OrFileFilter.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-26",
+   "kind": "implementers",
+   "question": "What implements ByteBufferCleaner.Cleaner?",
+   "subject": {
+    "label": "ByteBufferCleaner.Cleaner",
+    "path": "src/main/java/org/apache/commons/io/input/ByteBufferCleaner.java",
+    "lines": [
+     37,
+     37
+    ]
+   },
+   "truth": [
+    {
+     "label": "ByteBufferCleaner.Java8Cleaner",
+     "lines": [
+      41,
+      57
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/ByteBufferCleaner.java"
+    },
+    {
+     "label": "ByteBufferCleaner.Java9Cleaner",
+     "lines": [
+      60,
+      76
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/ByteBufferCleaner.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-27",
+   "kind": "implementers",
+   "question": "What extends SimplePathVisitor.AbstractBuilder?",
+   "subject": {
+    "label": "SimplePathVisitor.AbstractBuilder",
+    "path": "src/main/java/org/apache/commons/io/file/SimplePathVisitor.java",
+    "lines": [
+     43,
+     69
+    ]
+   },
+   "truth": [
+    {
+     "label": "AccumulatorPathVisitor.Builder",
+     "lines": [
+      68,
+      79
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/AccumulatorPathVisitor.java"
+    },
+    {
+     "label": "CountingPathVisitor.AbstractBuilder",
+     "lines": [
+      48,
+      119
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/CountingPathVisitor.java"
+    },
+    {
+     "label": "CountingPathVisitor.Builder",
+     "lines": [
+      128,
+      139
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/CountingPathVisitor.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-28",
+   "kind": "implementers",
+   "question": "What extends AbstractByteArrayOutputStream?",
+   "subject": {
+    "label": "AbstractByteArrayOutputStream",
+    "path": "src/main/java/org/apache/commons/io/output/AbstractByteArrayOutputStream.java",
+    "lines": [
+     62,
+     451
+    ]
+   },
+   "truth": [
+    {
+     "label": "ByteArrayOutputStream",
+     "lines": [
+      30,
+      161
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/ByteArrayOutputStream.java"
+    },
+    {
+     "label": "UnsynchronizedByteArrayOutputStream",
+     "lines": [
+      40,
+      243
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/UnsynchronizedByteArrayOutputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-29",
+   "kind": "implementers",
+   "question": "What extends AbstractFileComparator?",
+   "subject": {
+    "label": "AbstractFileComparator",
+    "path": "src/main/java/org/apache/commons/io/comparator/AbstractFileComparator.java",
+    "lines": [
+     29,
+     72
+    ]
+   },
+   "truth": [
+    {
+     "label": "CompositeFileComparator",
+     "lines": [
+      48,
+      103
+     ],
+     "path": "src/main/java/org/apache/commons/io/comparator/CompositeFileComparator.java"
+    },
+    {
+     "label": "DefaultFileComparator",
+     "lines": [
+      52,
+      79
+     ],
+     "path": "src/main/java/org/apache/commons/io/comparator/DefaultFileComparator.java"
+    },
+    {
+     "label": "DirectoryFileComparator",
+     "lines": [
+      52,
+      92
+     ],
+     "path": "src/main/java/org/apache/commons/io/comparator/DirectoryFileComparator.java"
+    },
+    {
+     "label": "ExtensionFileComparator",
+     "lines": [
+      59,
+      126
+     ],
+     "path": "src/main/java/org/apache/commons/io/comparator/ExtensionFileComparator.java"
+    },
+    {
+     "label": "LastModifiedFileComparator",
+     "lines": [
+      55,
+      90
+     ],
+     "path": "src/main/java/org/apache/commons/io/comparator/LastModifiedFileComparator.java"
+    },
+    {
+     "label": "NameFileComparator",
+     "lines": [
+      57,
+      120
+     ],
+     "path": "src/main/java/org/apache/commons/io/comparator/NameFileComparator.java"
+    },
+    {
+     "label": "PathFileComparator",
+     "lines": [
+      57,
+      120
+     ],
+     "path": "src/main/java/org/apache/commons/io/comparator/PathFileComparator.java"
+    },
+    {
+     "label": "ReverseFileComparator",
+     "lines": [
+      33,
+      67
+     ],
+     "path": "src/main/java/org/apache/commons/io/comparator/ReverseFileComparator.java"
+    },
+    {
+     "label": "SizeFileComparator",
+     "lines": [
+      59,
+      148
+     ],
+     "path": "src/main/java/org/apache/commons/io/comparator/SizeFileComparator.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-30",
+   "kind": "overrides",
+   "question": "What overrides ConditionalFileFilter.getFileFilters?",
+   "subject": {
+    "label": "ConditionalFileFilter.getFileFilters",
+    "path": "src/main/java/org/apache/commons/io/filefilter/ConditionalFileFilter.java",
+    "lines": [
+     41,
+     44
+    ]
+   },
+   "truth": [
+    {
+     "label": "AndFileFilter.getFileFilters",
+     "lines": [
+      157,
+      164
+     ],
+     "path": "src/main/java/org/apache/commons/io/filefilter/AndFileFilter.java"
+    },
+    {
+     "label": "OrFileFilter.getFileFilters",
+     "lines": [
+      152,
+      159
+     ],
+     "path": "src/main/java/org/apache/commons/io/filefilter/OrFileFilter.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-31",
+   "kind": "overrides",
+   "question": "What overrides AbstractByteArrayOutputStream.write?",
+   "subject": {
+    "label": "AbstractByteArrayOutputStream.write",
+    "path": "src/main/java/org/apache/commons/io/output/AbstractByteArrayOutputStream.java",
+    "lines": [
+     318,
+     321
+    ]
+   },
+   "truth": [
+    {
+     "label": "ByteArrayOutputStream.write",
+     "lines": [
+      133,
+      147
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/ByteArrayOutputStream.java"
+    },
+    {
+     "label": "UnsynchronizedByteArrayOutputStream.write",
+     "lines": [
+      217,
+      229
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/UnsynchronizedByteArrayOutputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-32",
+   "kind": "overrides",
+   "question": "What overrides ProxyInputStream.reset?",
+   "subject": {
+    "label": "ProxyInputStream.reset",
+    "path": "src/main/java/org/apache/commons/io/input/ProxyInputStream.java",
+    "lines": [
+     348,
+     359
+    ]
+   },
+   "truth": [
+    {
+     "label": "BOMInputStream.reset",
+     "lines": [
+      490,
+      502
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/BOMInputStream.java"
+    },
+    {
+     "label": "BoundedInputStream.reset",
+     "lines": [
+      541,
+      550
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/BoundedInputStream.java"
+    },
+    {
+     "label": "MarkShieldInputStream.reset",
+     "lines": [
+      57,
+      64
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/MarkShieldInputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-33",
+   "kind": "overrides",
+   "question": "What overrides ProxyInputStream.markSupported?",
+   "subject": {
+    "label": "ProxyInputStream.markSupported",
+    "path": "src/main/java/org/apache/commons/io/input/ProxyInputStream.java",
+    "lines": [
+     266,
+     273
+    ]
+   },
+   "truth": [
+    {
+     "label": "BoundedInputStream.markSupported",
+     "lines": [
+      469,
+      476
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/BoundedInputStream.java"
+    },
+    {
+     "label": "MarkShieldInputStream.markSupported",
+     "lines": [
+      51,
+      58
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/MarkShieldInputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-34",
+   "kind": "overrides",
+   "question": "What overrides ProxyOutputStream.flush?",
+   "subject": {
+    "label": "ProxyOutputStream.flush",
+    "path": "src/main/java/org/apache/commons/io/output/ProxyOutputStream.java",
+    "lines": [
+     136,
+     147
+    ]
+   },
+   "truth": [
+    {
+     "label": "FlushShieldOutputStream.flush",
+     "lines": [
+      112,
+      119
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/FlushShieldOutputStream.java"
+    },
+    {
+     "label": "TeeOutputStream.flush",
+     "lines": [
+      69,
+      78
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/TeeOutputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-35",
+   "kind": "overrides",
+   "question": "What overrides ProxyInputStream.skip?",
+   "subject": {
+    "label": "ProxyInputStream.skip",
+    "path": "src/main/java/org/apache/commons/io/input/ProxyInputStream.java",
+    "lines": [
+     379,
+     389
+    ]
+   },
+   "truth": [
+    {
+     "label": "BOMInputStream.skip",
+     "lines": [
+      506,
+      517
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/BOMInputStream.java"
+    },
+    {
+     "label": "BoundedInputStream.skip",
+     "lines": [
+      566,
+      575
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/BoundedInputStream.java"
+    },
+    {
+     "label": "CountingInputStream.skip",
+     "lines": [
+      151,
+      160
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/CountingInputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-36",
+   "kind": "overrides",
+   "question": "What overrides AbstractByteArrayOutputStream.toByteArray?",
+   "subject": {
+    "label": "AbstractByteArrayOutputStream.toByteArray",
+    "path": "src/main/java/org/apache/commons/io/output/AbstractByteArrayOutputStream.java",
+    "lines": [
+     200,
+     203
+    ]
+   },
+   "truth": [
+    {
+     "label": "ByteArrayOutputStream.toByteArray",
+     "lines": [
+      123,
+      130
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/ByteArrayOutputStream.java"
+    },
+    {
+     "label": "UnsynchronizedByteArrayOutputStream.toByteArray",
+     "lines": [
+      200,
+      207
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/UnsynchronizedByteArrayOutputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-37",
+   "kind": "overrides",
+   "question": "What overrides ConditionalFileFilter.setFileFilters?",
+   "subject": {
+    "label": "ConditionalFileFilter.setFileFilters",
+    "path": "src/main/java/org/apache/commons/io/filefilter/ConditionalFileFilter.java",
+    "lines": [
+     60,
+     63
+    ]
+   },
+   "truth": [
+    {
+     "label": "AndFileFilter.setFileFilters",
+     "lines": [
+      177,
+      186
+     ],
+     "path": "src/main/java/org/apache/commons/io/filefilter/AndFileFilter.java"
+    },
+    {
+     "label": "OrFileFilter.setFileFilters",
+     "lines": [
+      168,
+      177
+     ],
+     "path": "src/main/java/org/apache/commons/io/filefilter/OrFileFilter.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-38",
+   "kind": "overrides",
+   "question": "What overrides ObservableInputStream.Observer.data?",
+   "subject": {
+    "label": "ObservableInputStream.Observer.data",
+    "path": "src/main/java/org/apache/commons/io/input/ObservableInputStream.java",
+    "lines": [
+     123,
+     130
+    ]
+   },
+   "truth": [
+    {
+     "label": "MessageDigestCalculatingInputStream.MessageDigestMaintainingObserver.data",
+     "lines": [
+      154,
+      162
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/MessageDigestCalculatingInputStream.java"
+    },
+    {
+     "label": "MessageDigestInputStream.MessageDigestMaintainingObserver.data",
+     "lines": [
+      158,
+      166
+     ],
+     "path": "src/main/java/org/apache/commons/io/input/MessageDigestInputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-39",
+   "kind": "overrides",
+   "question": "What overrides Counters.Counter.getBigInteger?",
+   "subject": {
+    "label": "Counters.Counter.getBigInteger",
+    "path": "src/main/java/org/apache/commons/io/file/Counters.java",
+    "lines": [
+     203,
+     206
+    ]
+   },
+   "truth": [
+    {
+     "label": "Counters.BigIntegerCounter.getBigInteger",
+     "lines": [
+      132,
+      139
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/Counters.java"
+    },
+    {
+     "label": "Counters.LongCounter.getBigInteger",
+     "lines": [
+      254,
+      261
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/Counters.java"
+    },
+    {
+     "label": "Counters.NoopCounter.getBigInteger",
+     "lines": [
+      316,
+      323
+     ],
+     "path": "src/main/java/org/apache/commons/io/file/Counters.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-40",
+   "kind": "definition",
+   "question": "Where is IOCase.isCaseSensitive defined?",
+   "subject": {
+    "label": "IOCase.isCaseSensitive",
+    "path": "src/main/java/org/apache/commons/io/IOCase.java",
+    "lines": [
+     245,
+     252
+    ]
+   },
+   "truth": [
+    {
+     "label": "IOCase.isCaseSensitive",
+     "lines": [
+      245,
+      252
+     ],
+     "path": "src/main/java/org/apache/commons/io/IOCase.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-41",
+   "kind": "definition",
+   "question": "Where is FilenameUtils.isEmpty defined?",
+   "subject": {
+    "label": "FilenameUtils.isEmpty",
+    "path": "src/main/java/org/apache/commons/io/FilenameUtils.java",
+    "lines": [
+     999,
+     1006
+    ]
+   },
+   "truth": [
+    {
+     "label": "FilenameUtils.isEmpty",
+     "lines": [
+      999,
+      1006
+     ],
+     "path": "src/main/java/org/apache/commons/io/FilenameUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-42",
+   "kind": "definition",
+   "question": "Where is IOIteratorAdapter.next defined?",
+   "subject": {
+    "label": "IOIteratorAdapter.next",
+    "path": "src/main/java/org/apache/commons/io/function/IOIteratorAdapter.java",
+    "lines": [
+     42,
+     49
+    ]
+   },
+   "truth": [
+    {
+     "label": "IOIteratorAdapter.next",
+     "lines": [
+      42,
+      49
+     ],
+     "path": "src/main/java/org/apache/commons/io/function/IOIteratorAdapter.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-43",
+   "kind": "definition",
+   "question": "Where is EndianUtils.readSwappedUnsignedShort defined?",
+   "subject": {
+    "label": "EndianUtils.readSwappedUnsignedShort",
+    "path": "src/main/java/org/apache/commons/io/EndianUtils.java",
+    "lines": [
+     249,
+     257
+    ]
+   },
+   "truth": [
+    {
+     "label": "EndianUtils.readSwappedUnsignedShort",
+     "lines": [
+      249,
+      257
+     ],
+     "path": "src/main/java/org/apache/commons/io/EndianUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-44",
+   "kind": "definition",
+   "question": "Where is ByteArrayOutputStream.write defined?",
+   "subject": {
+    "label": "ByteArrayOutputStream.write",
+    "path": "src/main/java/org/apache/commons/io/output/ByteArrayOutputStream.java",
+    "lines": [
+     144,
+     151
+    ]
+   },
+   "truth": [
+    {
+     "label": "ByteArrayOutputStream.write",
+     "lines": [
+      144,
+      151
+     ],
+     "path": "src/main/java/org/apache/commons/io/output/ByteArrayOutputStream.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-45",
+   "kind": "definition",
+   "question": "Where is IORunnable.asRunnable defined?",
+   "subject": {
+    "label": "IORunnable.asRunnable",
+    "path": "src/main/java/org/apache/commons/io/function/IORunnable.java",
+    "lines": [
+     41,
+     48
+    ]
+   },
+   "truth": [
+    {
+     "label": "IORunnable.asRunnable",
+     "lines": [
+      41,
+      48
+     ],
+     "path": "src/main/java/org/apache/commons/io/function/IORunnable.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-46",
+   "kind": "definition",
+   "question": "Where is FilenameUtils.getFullPathNoEndSeparator defined?",
+   "subject": {
+    "label": "FilenameUtils.getFullPathNoEndSeparator",
+    "path": "src/main/java/org/apache/commons/io/FilenameUtils.java",
+    "lines": [
+     697,
+     704
+    ]
+   },
+   "truth": [
+    {
+     "label": "FilenameUtils.getFullPathNoEndSeparator",
+     "lines": [
+      697,
+      704
+     ],
+     "path": "src/main/java/org/apache/commons/io/FilenameUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-47",
+   "kind": "definition",
+   "question": "Where is FileAlterationObserver.getComparator defined?",
+   "subject": {
+    "label": "FileAlterationObserver.getComparator",
+    "path": "src/main/java/org/apache/commons/io/monitor/FileAlterationObserver.java",
+    "lines": [
+     473,
+     480
+    ]
+   },
+   "truth": [
+    {
+     "label": "FileAlterationObserver.getComparator",
+     "lines": [
+      473,
+      480
+     ],
+     "path": "src/main/java/org/apache/commons/io/monitor/FileAlterationObserver.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-48",
+   "kind": "definition",
+   "question": "Where is FileUtils.directoryContains defined?",
+   "subject": {
+    "label": "FileUtils.directoryContains",
+    "path": "src/main/java/org/apache/commons/io/FileUtils.java",
+    "lines": [
+     1336,
+     1350
+    ]
+   },
+   "truth": [
+    {
+     "label": "FileUtils.directoryContains",
+     "lines": [
+      1336,
+      1350
+     ],
+     "path": "src/main/java/org/apache/commons/io/FileUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-49",
+   "kind": "definition",
+   "question": "Where is ByteOrderMark.getCharsetName defined?",
+   "subject": {
+    "label": "ByteOrderMark.getCharsetName",
+    "path": "src/main/java/org/apache/commons/io/ByteOrderMark.java",
+    "lines": [
+     196,
+     203
+    ]
+   },
+   "truth": [
+    {
+     "label": "ByteOrderMark.getCharsetName",
+     "lines": [
+      196,
+      203
+     ],
+     "path": "src/main/java/org/apache/commons/io/ByteOrderMark.java"
+    }
+   ]
+  }
+ ]
+}

@@ -847,11 +847,19 @@ final class ParityRules {
 
     // ---- G111 --------------------------------------------------------------------------------
 
-    private static final List<String> CLAIM_DOCS =
-            List.of("README.md", "docs/user/why.md", "docs/user/comparison.md", "hosting/public/index.html");
+    private static final List<String> CLAIM_DOCS = List.of(
+            "README.md",
+            "docs/user/why.md",
+            "docs/user/comparison.md",
+            "docs/user/graph.md",
+            "hosting/public/index.html");
 
-    /** The blocks {@code bench/scoreboard --render} writes from the banked rows. */
-    private static final Pattern GENERATED = Pattern.compile("<!-- wall-(?:table|claims|strip):(begin|end) -->");
+    /**
+     * The blocks {@code bench/scoreboard --render} writes: from the banked rows ({@code wall-}) and
+     * from the checked-in graph retrieval results ({@code graph-}).
+     */
+    private static final Pattern GENERATED =
+            Pattern.compile("<!-- (?:wall-(?:table|claims|strip)|graph-(?:table|claims)):(begin|end) -->");
 
     /** The agent-loop table, banked by hand from {@code bench/agent-loop}, not by the scoreboard. */
     private static final Pattern AGENT_TABLE = Pattern.compile("agents-reach-green");
@@ -861,6 +869,7 @@ final class ParityRules {
             Pattern.compile("(?i:\\b(?:faster|slower|quicker|speed-?ups?|peak RSS|whole-tree RSS"
                     + "|(?:less|more|lower|higher) memory|(?:competitive|parity) with)\\b)"
                     + "|\\d\\s?×"
+                    + "|\\d\\s?x\\s+(?i:fewer|less|smaller|faster|cheaper)\\b"
                     + "|\\d\\s?%\\s+(?i:less|more|lower|higher|fewer|smaller|faster|slower)\\b"
                     + "|(?i:\\bbeats?\\b)[^\\n]{0,40}\\d\\s?%");
 

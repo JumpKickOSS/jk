@@ -1,0 +1,1077 @@
+{
+ "repo": "spring-petclinic",
+ "commit": "f3c74834e31079f69855e9c9eddb34fceb40a8d9",
+ "loc": 3635,
+ "classes": 25,
+ "lint_dropped": false,
+ "questions": [
+  {
+   "id": "callers-0",
+   "kind": "callers",
+   "question": "Who calls Pet.addVisit?",
+   "subject": {
+    "label": "Pet.addVisit",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/Pet.java",
+    "lines": [
+     76,
+     84
+    ]
+   },
+   "truth": [
+    {
+     "label": "Owner.addVisit",
+     "lines": [
+      172,
+      187
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    },
+    {
+     "label": "VisitController.loadPetWithVisit",
+     "lines": [
+      60,
+      81
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/VisitController.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-1",
+   "kind": "callers",
+   "question": "Who calls NamedEntity.getName?",
+   "subject": {
+    "label": "NamedEntity.getName",
+    "path": "src/main/java/org/springframework/samples/petclinic/model/NamedEntity.java",
+    "lines": [
+     32,
+     39
+    ]
+   },
+   "truth": [
+    {
+     "label": "NamedEntity.toString",
+     "lines": [
+      41,
+      49
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/model/NamedEntity.java"
+    },
+    {
+     "label": "Owner.getPet",
+     "lines": [
+      142,
+      157
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    },
+    {
+     "label": "PetController.processCreationForm",
+     "lines": [
+      105,
+      137
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    },
+    {
+     "label": "PetController.processUpdateForm",
+     "lines": [
+      142,
+      179
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    },
+    {
+     "label": "PetController.updatePetDetails",
+     "lines": [
+      181,
+      201
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    },
+    {
+     "label": "PetTypeFormatter.parse",
+     "lines": [
+      47,
+      60
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetTypeFormatter.java"
+    },
+    {
+     "label": "PetTypeFormatter.print",
+     "lines": [
+      41,
+      49
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetTypeFormatter.java"
+    },
+    {
+     "label": "PetValidator.validate",
+     "lines": [
+      34,
+      60
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetValidator.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-2",
+   "kind": "callers",
+   "question": "Who calls Person.getLastName?",
+   "subject": {
+    "label": "Person.getLastName",
+    "path": "src/main/java/org/springframework/samples/petclinic/model/Person.java",
+    "lines": [
+     44,
+     51
+    ]
+   },
+   "truth": [
+    {
+     "label": "Owner.toString",
+     "lines": [
+      155,
+      169
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    },
+    {
+     "label": "OwnerController.processFindForm",
+     "lines": [
+      92,
+      122
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-3",
+   "kind": "callers",
+   "question": "Who calls Pet.getType?",
+   "subject": {
+    "label": "Pet.getType",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/Pet.java",
+    "lines": [
+     64,
+     71
+    ]
+   },
+   "truth": [
+    {
+     "label": "PetController.updatePetDetails",
+     "lines": [
+      181,
+      201
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    },
+    {
+     "label": "PetValidator.validate",
+     "lines": [
+      34,
+      60
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetValidator.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-4",
+   "kind": "callers",
+   "question": "Who calls BaseEntity.getId?",
+   "subject": {
+    "label": "BaseEntity.getId",
+    "path": "src/main/java/org/springframework/samples/petclinic/model/BaseEntity.java",
+    "lines": [
+     34,
+     41
+    ]
+   },
+   "truth": [
+    {
+     "label": "Owner.addPet",
+     "lines": [
+      95,
+      114
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    },
+    {
+     "label": "Owner.getPet",
+     "lines": [
+      124,
+      139
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    },
+    {
+     "label": "Owner.toString",
+     "lines": [
+      155,
+      169
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    },
+    {
+     "label": "OwnerController.processCreationForm",
+     "lines": [
+      73,
+      87
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java"
+    },
+    {
+     "label": "OwnerController.processFindForm",
+     "lines": [
+      92,
+      122
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java"
+    },
+    {
+     "label": "OwnerController.processUpdateOwnerForm",
+     "lines": [
+      141,
+      162
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java"
+    },
+    {
+     "label": "PetController.processUpdateForm",
+     "lines": [
+      142,
+      179
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    },
+    {
+     "label": "PetController.updatePetDetails",
+     "lines": [
+      181,
+      201
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-5",
+   "kind": "callers",
+   "question": "Who calls BaseEntity.isNew?",
+   "subject": {
+    "label": "BaseEntity.isNew",
+    "path": "src/main/java/org/springframework/samples/petclinic/model/BaseEntity.java",
+    "lines": [
+     42,
+     49
+    ]
+   },
+   "truth": [
+    {
+     "label": "Owner.addPet",
+     "lines": [
+      95,
+      114
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    },
+    {
+     "label": "Owner.getPet",
+     "lines": [
+      124,
+      139
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    },
+    {
+     "label": "Owner.getPet",
+     "lines": [
+      142,
+      157
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    },
+    {
+     "label": "Owner.toString",
+     "lines": [
+      155,
+      169
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    },
+    {
+     "label": "PetController.processCreationForm",
+     "lines": [
+      105,
+      137
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    },
+    {
+     "label": "PetValidator.validate",
+     "lines": [
+      34,
+      60
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetValidator.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-6",
+   "kind": "callers",
+   "question": "Who calls Owner.getPets?",
+   "subject": {
+    "label": "Owner.getPets",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java",
+    "lines": [
+     91,
+     98
+    ]
+   },
+   "truth": [
+    {
+     "label": "Owner.addPet",
+     "lines": [
+      95,
+      114
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    },
+    {
+     "label": "Owner.getPet",
+     "lines": [
+      124,
+      139
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    },
+    {
+     "label": "Owner.getPet",
+     "lines": [
+      142,
+      157
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-7",
+   "kind": "callers",
+   "question": "Who calls PetTypeRepository.findPetTypes?",
+   "subject": {
+    "label": "PetTypeRepository.findPetTypes",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/PetTypeRepository.java",
+    "lines": [
+     35,
+     38
+    ]
+   },
+   "truth": [
+    {
+     "label": "PetController.populatePetTypes",
+     "lines": [
+      58,
+      65
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    },
+    {
+     "label": "PetTypeFormatter.parse",
+     "lines": [
+      47,
+      60
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetTypeFormatter.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-8",
+   "kind": "callers",
+   "question": "Who calls Pet.getBirthDate?",
+   "subject": {
+    "label": "Pet.getBirthDate",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/Pet.java",
+    "lines": [
+     60,
+     67
+    ]
+   },
+   "truth": [
+    {
+     "label": "PetController.processCreationForm",
+     "lines": [
+      105,
+      137
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    },
+    {
+     "label": "PetController.processUpdateForm",
+     "lines": [
+      142,
+      179
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    },
+    {
+     "label": "PetController.updatePetDetails",
+     "lines": [
+      181,
+      201
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    },
+    {
+     "label": "PetValidator.validate",
+     "lines": [
+      34,
+      60
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetValidator.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-9",
+   "kind": "callers",
+   "question": "Who calls OwnerRepository.findById?",
+   "subject": {
+    "label": "OwnerRepository.findById",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/OwnerRepository.java",
+    "lines": [
+     58,
+     61
+    ]
+   },
+   "truth": [
+    {
+     "label": "OwnerController.findOwner",
+     "lines": [
+      60,
+      69
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java"
+    },
+    {
+     "label": "OwnerController.showOwner",
+     "lines": [
+      165,
+      177
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java"
+    },
+    {
+     "label": "OwnerRepository.findById",
+     "lines": [
+      30,
+      37
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/OwnerRepository.java"
+    },
+    {
+     "label": "PetController.findOwner",
+     "lines": [
+      63,
+      73
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    },
+    {
+     "label": "PetController.findPet",
+     "lines": [
+      73,
+      87
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    },
+    {
+     "label": "VisitController.loadPetWithVisit",
+     "lines": [
+      60,
+      81
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/VisitController.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-10",
+   "kind": "callers",
+   "question": "Who calls Owner.addPet?",
+   "subject": {
+    "label": "Owner.addPet",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java",
+    "lines": [
+     95,
+     114
+    ]
+   },
+   "truth": [
+    {
+     "label": "PetController.initCreationForm",
+     "lines": [
+      96,
+      105
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    },
+    {
+     "label": "PetController.processCreationForm",
+     "lines": [
+      105,
+      137
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    },
+    {
+     "label": "PetController.updatePetDetails",
+     "lines": [
+      181,
+      201
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-11",
+   "kind": "callers",
+   "question": "Who calls Vet.getSpecialtiesInternal?",
+   "subject": {
+    "label": "Vet.getSpecialtiesInternal",
+    "path": "src/main/java/org/springframework/samples/petclinic/vet/Vet.java",
+    "lines": [
+     47,
+     57
+    ]
+   },
+   "truth": [
+    {
+     "label": "Vet.addSpecialty",
+     "lines": [
+      65,
+      73
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/vet/Vet.java"
+    },
+    {
+     "label": "Vet.getNrOfSpecialties",
+     "lines": [
+      61,
+      68
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/vet/Vet.java"
+    },
+    {
+     "label": "Vet.getSpecialties",
+     "lines": [
+      55,
+      64
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/vet/Vet.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-12",
+   "kind": "callers",
+   "question": "Who calls Owner.getPet?",
+   "subject": {
+    "label": "Owner.getPet",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java",
+    "lines": [
+     124,
+     139
+    ]
+   },
+   "truth": [
+    {
+     "label": "Owner.addVisit",
+     "lines": [
+      172,
+      187
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    },
+    {
+     "label": "PetController.findPet",
+     "lines": [
+      73,
+      87
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    },
+    {
+     "label": "PetController.updatePetDetails",
+     "lines": [
+      181,
+      201
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    },
+    {
+     "label": "VisitController.loadPetWithVisit",
+     "lines": [
+      60,
+      81
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/VisitController.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-13",
+   "kind": "callers",
+   "question": "Who calls PetController.isDuplicatePetNameViolation?",
+   "subject": {
+    "label": "PetController.isDuplicatePetNameViolation",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java",
+    "lines": [
+     197,
+     205
+    ]
+   },
+   "truth": [
+    {
+     "label": "PetController.processCreationForm",
+     "lines": [
+      105,
+      137
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    },
+    {
+     "label": "PetController.processUpdateForm",
+     "lines": [
+      142,
+      179
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-14",
+   "kind": "callers",
+   "question": "Who calls Owner.getPet?",
+   "subject": {
+    "label": "Owner.getPet",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java",
+    "lines": [
+     142,
+     157
+    ]
+   },
+   "truth": [
+    {
+     "label": "Owner.getPet",
+     "lines": [
+      115,
+      122
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    },
+    {
+     "label": "PetController.processCreationForm",
+     "lines": [
+      105,
+      137
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    },
+    {
+     "label": "PetController.processUpdateForm",
+     "lines": [
+      142,
+      179
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-15",
+   "kind": "implementers",
+   "question": "What extends Person?",
+   "subject": {
+    "label": "Person",
+    "path": "src/main/java/org/springframework/samples/petclinic/model/Person.java",
+    "lines": [
+     29,
+     55
+    ]
+   },
+   "truth": [
+    {
+     "label": "Owner",
+     "lines": [
+      50,
+      186
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    },
+    {
+     "label": "Vet",
+     "lines": [
+      45,
+      72
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/vet/Vet.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-16",
+   "kind": "implementers",
+   "question": "What extends BaseEntity?",
+   "subject": {
+    "label": "BaseEntity",
+    "path": "src/main/java/org/springframework/samples/petclinic/model/BaseEntity.java",
+    "lines": [
+     33,
+     48
+    ]
+   },
+   "truth": [
+    {
+     "label": "NamedEntity",
+     "lines": [
+      31,
+      48
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/model/NamedEntity.java"
+    },
+    {
+     "label": "Owner",
+     "lines": [
+      50,
+      186
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    },
+    {
+     "label": "Person",
+     "lines": [
+      29,
+      55
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/model/Person.java"
+    },
+    {
+     "label": "Pet",
+     "lines": [
+      46,
+      83
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Pet.java"
+    },
+    {
+     "label": "PetType",
+     "lines": [
+      28,
+      28
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetType.java"
+    },
+    {
+     "label": "Specialty",
+     "lines": [
+      30,
+      30
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/vet/Specialty.java"
+    },
+    {
+     "label": "Vet",
+     "lines": [
+      45,
+      72
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/vet/Vet.java"
+    },
+    {
+     "label": "Visit",
+     "lines": [
+      37,
+      68
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Visit.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-17",
+   "kind": "implementers",
+   "question": "What extends NamedEntity?",
+   "subject": {
+    "label": "NamedEntity",
+    "path": "src/main/java/org/springframework/samples/petclinic/model/NamedEntity.java",
+    "lines": [
+     31,
+     48
+    ]
+   },
+   "truth": [
+    {
+     "label": "Pet",
+     "lines": [
+      46,
+      83
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Pet.java"
+    },
+    {
+     "label": "PetType",
+     "lines": [
+      28,
+      28
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetType.java"
+    },
+    {
+     "label": "Specialty",
+     "lines": [
+      30,
+      30
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/vet/Specialty.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-18",
+   "kind": "definition",
+   "question": "Where is PetTypeRepository.findPetTypes defined?",
+   "subject": {
+    "label": "PetTypeRepository.findPetTypes",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/PetTypeRepository.java",
+    "lines": [
+     35,
+     38
+    ]
+   },
+   "truth": [
+    {
+     "label": "PetTypeRepository.findPetTypes",
+     "lines": [
+      35,
+      38
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetTypeRepository.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-19",
+   "kind": "definition",
+   "question": "Where is BaseEntity.isNew defined?",
+   "subject": {
+    "label": "BaseEntity.isNew",
+    "path": "src/main/java/org/springframework/samples/petclinic/model/BaseEntity.java",
+    "lines": [
+     42,
+     49
+    ]
+   },
+   "truth": [
+    {
+     "label": "BaseEntity.isNew",
+     "lines": [
+      42,
+      49
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/model/BaseEntity.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-20",
+   "kind": "definition",
+   "question": "Where is OwnerController.findPaginatedForOwnersLastName defined?",
+   "subject": {
+    "label": "OwnerController.findPaginatedForOwnersLastName",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java",
+    "lines": [
+     128,
+     137
+    ]
+   },
+   "truth": [
+    {
+     "label": "OwnerController.findPaginatedForOwnersLastName",
+     "lines": [
+      128,
+      137
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-21",
+   "kind": "definition",
+   "question": "Where is PetValidator.validate defined?",
+   "subject": {
+    "label": "PetValidator.validate",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/PetValidator.java",
+    "lines": [
+     34,
+     60
+    ]
+   },
+   "truth": [
+    {
+     "label": "PetValidator.validate",
+     "lines": [
+      34,
+      60
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetValidator.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-22",
+   "kind": "definition",
+   "question": "Where is Owner.setTelephone defined?",
+   "subject": {
+    "label": "Owner.setTelephone",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java",
+    "lines": [
+     87,
+     95
+    ]
+   },
+   "truth": [
+    {
+     "label": "Owner.setTelephone",
+     "lines": [
+      87,
+      95
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-23",
+   "kind": "definition",
+   "question": "Where is OwnerController.initFindForm defined?",
+   "subject": {
+    "label": "OwnerController.initFindForm",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java",
+    "lines": [
+     85,
+     92
+    ]
+   },
+   "truth": [
+    {
+     "label": "OwnerController.initFindForm",
+     "lines": [
+      85,
+      92
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-24",
+   "kind": "definition",
+   "question": "Where is Owner.setAddress defined?",
+   "subject": {
+    "label": "Owner.setAddress",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java",
+    "lines": [
+     71,
+     79
+    ]
+   },
+   "truth": [
+    {
+     "label": "Owner.setAddress",
+     "lines": [
+      71,
+      79
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-25",
+   "kind": "definition",
+   "question": "Where is Visit.getDescription defined?",
+   "subject": {
+    "label": "Visit.getDescription",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/Visit.java",
+    "lines": [
+     57,
+     64
+    ]
+   },
+   "truth": [
+    {
+     "label": "Visit.getDescription",
+     "lines": [
+      57,
+      64
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Visit.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-26",
+   "kind": "definition",
+   "question": "Where is PetController.initPetBinder defined?",
+   "subject": {
+    "label": "PetController.initPetBinder",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java",
+    "lines": [
+     90,
+     99
+    ]
+   },
+   "truth": [
+    {
+     "label": "PetController.initPetBinder",
+     "lines": [
+      90,
+      99
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-27",
+   "kind": "definition",
+   "question": "Where is Owner.getPet defined?",
+   "subject": {
+    "label": "Owner.getPet",
+    "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java",
+    "lines": [
+     124,
+     139
+    ]
+   },
+   "truth": [
+    {
+     "label": "Owner.getPet",
+     "lines": [
+      124,
+      139
+     ],
+     "path": "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+    }
+   ]
+  }
+ ]
+}

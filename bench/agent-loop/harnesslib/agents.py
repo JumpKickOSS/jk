@@ -39,7 +39,31 @@ PRICES = {
 }
 
 
+@dataclass
+class Task:
+    """A change task instead of the build-fix scenario: its prompts and its MCP servers (name to a
+    stdio `command`/`args` entry). Set `TASK` and every driver uses them; `None` is the scenario."""
+    system: str
+    user: str
+    servers: dict
+
+
+TASK: Task | None = None
+
+
+def user_prompt() -> str:
+    return TASK.user if TASK else USER_PROMPT
+
+
+def servers(tool: str, sandbox: Path) -> tuple[str, dict]:
+    """The build tool's server name and every server a run registers."""
+    server = "jk" if tool == "jk" else "results"
+    return server, (TASK.servers if TASK else {server: mcp_server_config(tool, sandbox)})
+
+
 def system_prompt(tool: str, sandbox: Path, server: str) -> str:
+    if TASK:
+        return TASK.system
     names = TOOL_NAMES[tool]
     return SYSTEM_PROMPT.format(tool_label=TOOL_LABEL[tool], sandbox=sandbox, server=server,
                                 results_tool=f"{server}: {names['results']}" + (" (run=latest)" if tool == "jk" else ""), run_tool=f"{server}: {names['run']}")
@@ -197,11 +221,10 @@ def claude_code(tool: str, sandbox: Path, model: str, max_turns: int, max_second
     """
     if not shutil.which("claude"):
         raise RuntimeError("the `claude` CLI is not on PATH")
-    server = "jk" if tool == "jk" else "results"
-    cfg = mcp_server_config(tool, sandbox)
-    mcp_config = {"mcpServers": {server: cfg}}
+    server, registered = servers(tool, sandbox)
+    mcp_config = {"mcpServers": registered}
     cmd = [
-        "claude", "-p", USER_PROMPT,
+        "claude", "-p", user_prompt(),
         # Project sources only: the sandbox has none, so the user's hooks, plugins and skills stay out
         # while their login (not a setting) still works. --bare would refuse a subscription login.
         "--setting-sources", "project", "--disable-slash-commands",
@@ -274,8 +297,8 @@ def _toml_basic(value: str) -> str:
 
 def _write_grok_config(home: Path, tool: str, sandbox: Path) -> str:
     """User-scope MCP config for this run. `home` is a throwaway GROK_HOME, not `~/.grok`."""
-    server = "jk" if tool == "jk" else "results"
-    cfg = mcp_server_config(tool, sandbox)
+    server, registered = servers(tool, sandbox)
+    cfg = registered[server]
     lines = [
         "[cli]",
         "auto_update = false",
@@ -339,6 +362,12 @@ def _write_grok_config(home: Path, tool: str, sandbox: Path) -> str:
             f"args = [{args}]",
             "enabled = true",
         ]
+    for name, extra in registered.items():
+        if name == server:
+            continue
+        args = ", ".join(_toml_basic(a) for a in extra["args"])
+        lines += ["", f"[mcp_servers.{name}]", f"command = {_toml_basic(extra['command'])}", f"args = [{args}]",
+                  "enabled = true"]
     path = home / "config.toml"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     path.chmod(0o600)
@@ -513,7 +542,7 @@ def grok(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int,
         env = _grok_env(home)
         socket = home / "leader.sock"
         cmd = [
-            "grok", "-p", USER_PROMPT,
+            "grok", "-p", user_prompt(),
             "--verbatim",
             "--output-format", "streaming-messages-json",
             "--model", model,
@@ -703,16 +732,17 @@ def _write_agy_home(home: Path, tool: str, sandbox: Path) -> str:
     dest = cli / "antigravity-oauth-token"
     shutil.copy2(token, dest)
     dest.chmod(0o600)
-    server = "jk" if tool == "jk" else "results"
-    cfg = mcp_server_config(tool, sandbox)
-    if cfg["type"] == "http":
-        entry = {"disabled": False, "serverUrl": cfg["url"], "headers": cfg["headers"]}
-    else:
-        entry = {"disabled": False, "command": cfg["command"], "args": cfg["args"]}
+    server, registered = servers(tool, sandbox)
+    entries = {}
+    for name, cfg in registered.items():
+        if cfg.get("type") == "http":
+            entries[name] = {"disabled": False, "serverUrl": cfg["url"], "headers": cfg["headers"]}
+        else:
+            entries[name] = {"disabled": False, "command": cfg["command"], "args": cfg["args"]}
     config_dir = home / ".gemini" / "config"
     config_dir.mkdir(parents=True)
     mcp_path = config_dir / "mcp_config.json"
-    mcp_path.write_text(json.dumps({"mcpServers": {server: entry}}, indent=2) + "\n", encoding="utf-8")
+    mcp_path.write_text(json.dumps({"mcpServers": entries}, indent=2) + "\n", encoding="utf-8")
     mcp_path.chmod(0o600)
     settings = {
         "toolPermission": "always-proceed",
@@ -830,7 +860,7 @@ def agy(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int, 
             return None
 
         cmd = [
-            "agy", "-p", USER_PROMPT,
+            "agy", "-p", user_prompt(),
             "--output-format", "stream-json",
             "--model", model,
             "--effort", effort,

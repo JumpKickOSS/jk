@@ -1,0 +1,1548 @@
+{
+ "repo": "commons-cli",
+ "commit": "340b50c30ef3774403518e4210c17bbf61572635",
+ "loc": 17862,
+ "classes": 47,
+ "lint_dropped": true,
+ "questions": [
+  {
+   "id": "callers-0",
+   "kind": "callers",
+   "question": "Who calls CommandLine.resolveOption?",
+   "subject": {
+    "label": "CommandLine.resolveOption",
+    "path": "src/main/java/org/apache/commons/cli/CommandLine.java",
+    "lines": [
+     1030,
+     1043
+    ]
+   },
+   "truth": [
+    {
+     "label": "CommandLine.getOptionCount",
+     "lines": [
+      258,
+      265
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.getOptionValue",
+     "lines": [
+      452,
+      459
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.getOptionValue",
+     "lines": [
+      463,
+      470
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.getOptionValue",
+     "lines": [
+      475,
+      482
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.getOptionValues",
+     "lines": [
+      532,
+      539
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.getParsedOptionValue",
+     "lines": [
+      693,
+      700
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.getParsedOptionValue",
+     "lines": [
+      708,
+      715
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.getParsedOptionValue",
+     "lines": [
+      723,
+      730
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.getParsedOptionValues",
+     "lines": [
+      889,
+      896
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.getParsedOptionValues",
+     "lines": [
+      904,
+      911
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.getParsedOptionValues",
+     "lines": [
+      919,
+      926
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.hasOption",
+     "lines": [
+      997,
+      1004
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-1",
+   "kind": "callers",
+   "question": "Who calls DefaultParser.getLongPrefix?",
+   "subject": {
+    "label": "DefaultParser.getLongPrefix",
+    "path": "src/main/java/org/apache/commons/cli/DefaultParser.java",
+    "lines": [
+     340,
+     357
+    ]
+   },
+   "truth": [
+    {
+     "label": "DefaultParser.handleShortAndLongOption",
+     "lines": [
+      528,
+      593
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "DefaultParser.isLongOption",
+     "lines": [
+      663,
+      683
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-2",
+   "kind": "callers",
+   "question": "Who calls Option.getOpt?",
+   "subject": {
+    "label": "Option.getOpt",
+    "path": "src/main/java/org/apache/commons/cli/Option.java",
+    "lines": [
+     665,
+     672
+    ]
+   },
+   "truth": [
+    {
+     "label": "CommandLine.getOptionProperties",
+     "lines": [
+      302,
+      315
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.resolveOption",
+     "lines": [
+      1030,
+      1043
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "HelpFormatter.appendOption",
+     "lines": [
+      358,
+      382
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    },
+    {
+     "label": "HelpFormatter.appendOptions",
+     "lines": [
+      418,
+      494
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    },
+    {
+     "label": "OptionFormatter.getOpt",
+     "lines": [
+      422,
+      429
+     ],
+     "path": "src/main/java/org/apache/commons/cli/help/OptionFormatter.java"
+    },
+    {
+     "label": "OptionGroup.toString",
+     "lines": [
+      150,
+      178
+     ],
+     "path": "src/main/java/org/apache/commons/cli/OptionGroup.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-3",
+   "kind": "callers",
+   "question": "Who calls DefaultParser.indexOfEqual?",
+   "subject": {
+    "label": "DefaultParser.indexOfEqual",
+    "path": "src/main/java/org/apache/commons/cli/DefaultParser.java",
+    "lines": [
+     184,
+     191
+    ]
+   },
+   "truth": [
+    {
+     "label": "DefaultParser.handleLongOption",
+     "lines": [
+      413,
+      425
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "DefaultParser.handleLongOptionWithEqual",
+     "lines": [
+      430,
+      456
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "DefaultParser.handleShortAndLongOption",
+     "lines": [
+      528,
+      593
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "DefaultParser.isLongOption",
+     "lines": [
+      663,
+      683
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "DefaultParser.isShortOption",
+     "lines": [
+      709,
+      726
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "GnuParser.flatten",
+     "lines": [
+      51,
+      97
+     ],
+     "path": "src/main/java/org/apache/commons/cli/GnuParser.java"
+    },
+    {
+     "label": "PosixParser.flatten",
+     "lines": [
+      132,
+      188
+     ],
+     "path": "src/main/java/org/apache/commons/cli/PosixParser.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-4",
+   "kind": "callers",
+   "question": "Who calls HelpFormatter.getSyntaxPrefix?",
+   "subject": {
+    "label": "HelpFormatter.getSyntaxPrefix",
+    "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java",
+    "lines": [
+     671,
+     678
+    ]
+   },
+   "truth": [
+    {
+     "label": "HelpFormatter.printUsage",
+     "lines": [
+      843,
+      852
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    },
+    {
+     "label": "HelpFormatter.printUsage",
+     "lines": [
+      857,
+      900
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-5",
+   "kind": "callers",
+   "question": "Who calls Option.getSince?",
+   "subject": {
+    "label": "Option.getSince",
+    "path": "src/main/java/org/apache/commons/cli/Option.java",
+    "lines": [
+     674,
+     681
+    ]
+   },
+   "truth": [
+    {
+     "label": "HelpFormatter.appendOptions",
+     "lines": [
+      418,
+      494
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    },
+    {
+     "label": "HelpFormatter.determineMaxSinceLength",
+     "lines": [
+      546,
+      555
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    },
+    {
+     "label": "OptionFormatter.getSince",
+     "lines": [
+      431,
+      438
+     ],
+     "path": "src/main/java/org/apache/commons/cli/help/OptionFormatter.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-6",
+   "kind": "callers",
+   "question": "Who calls OptionFormatter.builder?",
+   "subject": {
+    "label": "OptionFormatter.builder",
+    "path": "src/main/java/org/apache/commons/cli/help/OptionFormatter.java",
+    "lines": [
+     296,
+     303
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractHelpFormatter.Builder.<init>",
+     "lines": [
+      48,
+      74
+     ],
+     "path": "src/main/java/org/apache/commons/cli/help/AbstractHelpFormatter.java"
+    },
+    {
+     "label": "AbstractHelpFormatter.Builder.setOptionFormatBuilder",
+     "lines": [
+      144,
+      152
+     ],
+     "path": "src/main/java/org/apache/commons/cli/help/AbstractHelpFormatter.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-7",
+   "kind": "callers",
+   "question": "Who calls CommandLine.getParsedOptionValues?",
+   "subject": {
+    "label": "CommandLine.getParsedOptionValues",
+    "path": "src/main/java/org/apache/commons/cli/CommandLine.java",
+    "lines": [
+     904,
+     911
+    ]
+   },
+   "truth": [
+    {
+     "label": "CommandLine.getParsedOptionValues",
+     "lines": [
+      752,
+      759
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.getParsedOptionValues",
+     "lines": [
+      857,
+      867
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-8",
+   "kind": "callers",
+   "question": "Who calls CommandLine.getOptionValue?",
+   "subject": {
+    "label": "CommandLine.getOptionValue",
+    "path": "src/main/java/org/apache/commons/cli/CommandLine.java",
+    "lines": [
+     381,
+     388
+    ]
+   },
+   "truth": [
+    {
+     "label": "CommandLine.getOptionValue",
+     "lines": [
+      405,
+      413
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.getOptionValue",
+     "lines": [
+      452,
+      459
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.getParsedOptionValue",
+     "lines": [
+      606,
+      623
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-9",
+   "kind": "callers",
+   "question": "Who calls Option.hasArg?",
+   "subject": {
+    "label": "Option.hasArg",
+    "path": "src/main/java/org/apache/commons/cli/Option.java",
+    "lines": [
+     750,
+     757
+    ]
+   },
+   "truth": [
+    {
+     "label": "DefaultParser.handleOption",
+     "lines": [
+      474,
+      486
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "DefaultParser.handleProperties",
+     "lines": [
+      487,
+      521
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "HelpFormatter.appendOption",
+     "lines": [
+      358,
+      382
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    },
+    {
+     "label": "HelpFormatter.appendOptions",
+     "lines": [
+      418,
+      494
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    },
+    {
+     "label": "HelpFormatter.getTableDefinition",
+     "lines": [
+      159,
+      208
+     ],
+     "path": "src/main/java/org/apache/commons/cli/help/HelpFormatter.java"
+    },
+    {
+     "label": "Option.acceptsArg",
+     "lines": [
+      502,
+      509
+     ],
+     "path": "src/main/java/org/apache/commons/cli/Option.java"
+    },
+    {
+     "label": "Option.toString",
+     "lines": [
+      1001,
+      1029
+     ],
+     "path": "src/main/java/org/apache/commons/cli/Option.java"
+    },
+    {
+     "label": "OptionFormatter.getArgName",
+     "lines": [
+      379,
+      386
+     ],
+     "path": "src/main/java/org/apache/commons/cli/help/OptionFormatter.java"
+    },
+    {
+     "label": "Parser.processOption",
+     "lines": [
+      242,
+      264
+     ],
+     "path": "src/main/java/org/apache/commons/cli/Parser.java"
+    },
+    {
+     "label": "Parser.processProperties",
+     "lines": [
+      266,
+      305
+     ],
+     "path": "src/main/java/org/apache/commons/cli/Parser.java"
+    },
+    {
+     "label": "PosixParser.burstToken",
+     "lines": [
+      81,
+      105
+     ],
+     "path": "src/main/java/org/apache/commons/cli/PosixParser.java"
+    },
+    {
+     "label": "PosixParser.processNonOptionToken",
+     "lines": [
+      200,
+      212
+     ],
+     "path": "src/main/java/org/apache/commons/cli/PosixParser.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-10",
+   "kind": "callers",
+   "question": "Who calls HelpFormatter.printHelp?",
+   "subject": {
+    "label": "HelpFormatter.printHelp",
+    "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java",
+    "lines": [
+     710,
+     720
+    ]
+   },
+   "truth": [
+    {
+     "label": "HelpFormatter.printHelp",
+     "lines": [
+      694,
+      702
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    },
+    {
+     "label": "HelpFormatter.printHelp",
+     "lines": [
+      774,
+      782
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    },
+    {
+     "label": "HelpFormatter.printHelp",
+     "lines": [
+      786,
+      794
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    },
+    {
+     "label": "HelpFormatter.printHelp",
+     "lines": [
+      813,
+      821
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-11",
+   "kind": "callers",
+   "question": "Who calls CommandLine.getParsedOptionValue?",
+   "subject": {
+    "label": "CommandLine.getParsedOptionValue",
+    "path": "src/main/java/org/apache/commons/cli/CommandLine.java",
+    "lines": [
+     661,
+     671
+    ]
+   },
+   "truth": [
+    {
+     "label": "CommandLine.getParsedOptionValue",
+     "lines": [
+      646,
+      653
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.getParsedOptionValue",
+     "lines": [
+      679,
+      686
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-12",
+   "kind": "callers",
+   "question": "Who calls Parser.parse?",
+   "subject": {
+    "label": "Parser.parse",
+    "path": "src/main/java/org/apache/commons/cli/Parser.java",
+    "lines": [
+     147,
+     207
+    ]
+   },
+   "truth": [
+    {
+     "label": "Parser.parse",
+     "lines": [
+      114,
+      121
+     ],
+     "path": "src/main/java/org/apache/commons/cli/Parser.java"
+    },
+    {
+     "label": "Parser.parse",
+     "lines": [
+      128,
+      135
+     ],
+     "path": "src/main/java/org/apache/commons/cli/Parser.java"
+    },
+    {
+     "label": "Parser.parse",
+     "lines": [
+      98,
+      105
+     ],
+     "path": "src/main/java/org/apache/commons/cli/Parser.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-13",
+   "kind": "callers",
+   "question": "Who calls Util.indexOfNonWhitespace?",
+   "subject": {
+    "label": "Util.indexOfNonWhitespace",
+    "path": "src/main/java/org/apache/commons/cli/help/Util.java",
+    "lines": [
+     46,
+     62
+    ]
+   },
+   "truth": [
+    {
+     "label": "TextHelpAppendable.makeColumnQueue",
+     "lines": [
+      305,
+      326
+     ],
+     "path": "src/main/java/org/apache/commons/cli/help/TextHelpAppendable.java"
+    },
+    {
+     "label": "Util.ltrim",
+     "lines": [
+      84,
+      92
+     ],
+     "path": "src/main/java/org/apache/commons/cli/help/Util.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-14",
+   "kind": "callers",
+   "question": "Who calls Option.isDeprecated?",
+   "subject": {
+    "label": "Option.isDeprecated",
+    "path": "src/main/java/org/apache/commons/cli/Option.java",
+    "lines": [
+     811,
+     818
+    ]
+   },
+   "truth": [
+    {
+     "label": "CommandLine.getOptionValues",
+     "lines": [
+      485,
+      492
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.hasOption",
+     "lines": [
+      969,
+      980
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "HelpFormatter.appendOptions",
+     "lines": [
+      418,
+      494
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    },
+    {
+     "label": "Option.toDeprecatedString",
+     "lines": [
+      978,
+      998
+     ],
+     "path": "src/main/java/org/apache/commons/cli/Option.java"
+    },
+    {
+     "label": "Option.toString",
+     "lines": [
+      1001,
+      1029
+     ],
+     "path": "src/main/java/org/apache/commons/cli/Option.java"
+    },
+    {
+     "label": "OptionFormatter.getDescription",
+     "lines": [
+      404,
+      411
+     ],
+     "path": "src/main/java/org/apache/commons/cli/help/OptionFormatter.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-15",
+   "kind": "callers",
+   "question": "Who calls Option.getLongOpt?",
+   "subject": {
+    "label": "Option.getLongOpt",
+    "path": "src/main/java/org/apache/commons/cli/Option.java",
+    "lines": [
+     653,
+     660
+    ]
+   },
+   "truth": [
+    {
+     "label": "CommandLine.getOptionProperties",
+     "lines": [
+      302,
+      315
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.resolveOption",
+     "lines": [
+      1030,
+      1043
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "DefaultParser.getMatchingLongOptions",
+     "lines": [
+      360,
+      374
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "HelpFormatter.appendOption",
+     "lines": [
+      358,
+      382
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    },
+    {
+     "label": "HelpFormatter.appendOptions",
+     "lines": [
+      418,
+      494
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    },
+    {
+     "label": "OptionFormatter.getLongOpt",
+     "lines": [
+      413,
+      420
+     ],
+     "path": "src/main/java/org/apache/commons/cli/help/OptionFormatter.java"
+    },
+    {
+     "label": "OptionGroup.toString",
+     "lines": [
+      150,
+      178
+     ],
+     "path": "src/main/java/org/apache/commons/cli/OptionGroup.java"
+    },
+    {
+     "label": "Options.addOption",
+     "lines": [
+      69,
+      89
+     ],
+     "path": "src/main/java/org/apache/commons/cli/Options.java"
+    },
+    {
+     "label": "PosixParser.flatten",
+     "lines": [
+      132,
+      188
+     ],
+     "path": "src/main/java/org/apache/commons/cli/PosixParser.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-16",
+   "kind": "callers",
+   "question": "Who calls DefaultParser.handleOption?",
+   "subject": {
+    "label": "DefaultParser.handleOption",
+    "path": "src/main/java/org/apache/commons/cli/DefaultParser.java",
+    "lines": [
+     474,
+     486
+    ]
+   },
+   "truth": [
+    {
+     "label": "DefaultParser.handleConcatenatedOptions",
+     "lines": [
+      388,
+      408
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "DefaultParser.handleLongOptionWithEqual",
+     "lines": [
+      430,
+      456
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "DefaultParser.handleLongOptionWithoutEqual",
+     "lines": [
+      461,
+      477
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "DefaultParser.handleProperties",
+     "lines": [
+      487,
+      521
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "DefaultParser.handleShortAndLongOption",
+     "lines": [
+      528,
+      593
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-17",
+   "kind": "callers",
+   "question": "Who calls DefaultParser.stripLeadingAndTrailingQuotesDefaultOff?",
+   "subject": {
+    "label": "DefaultParser.stripLeadingAndTrailingQuotesDefaultOff",
+    "path": "src/main/java/org/apache/commons/cli/DefaultParser.java",
+    "lines": [
+     816,
+     826
+    ]
+   },
+   "truth": [
+    {
+     "label": "DefaultParser.handleConcatenatedOptions",
+     "lines": [
+      388,
+      408
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "DefaultParser.handleLongOptionWithEqual",
+     "lines": [
+      430,
+      456
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "DefaultParser.handleProperties",
+     "lines": [
+      487,
+      521
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "DefaultParser.handleShortAndLongOption",
+     "lines": [
+      528,
+      593
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-18",
+   "kind": "callers",
+   "question": "Who calls HelpFormatter.printWrapped?",
+   "subject": {
+    "label": "HelpFormatter.printWrapped",
+    "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java",
+    "lines": [
+     904,
+     912
+    ]
+   },
+   "truth": [
+    {
+     "label": "HelpFormatter.printUsage",
+     "lines": [
+      843,
+      852
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    },
+    {
+     "label": "HelpFormatter.printUsage",
+     "lines": [
+      857,
+      900
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    },
+    {
+     "label": "HelpFormatter.printWrapped",
+     "lines": [
+      915,
+      923
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-19",
+   "kind": "callers",
+   "question": "Who calls CommandLine.getParsedOptionValue?",
+   "subject": {
+    "label": "CommandLine.getParsedOptionValue",
+    "path": "src/main/java/org/apache/commons/cli/CommandLine.java",
+    "lines": [
+     693,
+     700
+    ]
+   },
+   "truth": [
+    {
+     "label": "CommandLine.getOptionObject",
+     "lines": [
+      283,
+      293
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    },
+    {
+     "label": "CommandLine.getParsedOptionValue",
+     "lines": [
+      546,
+      553
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-20",
+   "kind": "implementers",
+   "question": "What implements CommandLineParser?",
+   "subject": {
+    "label": "CommandLineParser",
+    "path": "src/main/java/org/apache/commons/cli/CommandLineParser.java",
+    "lines": [
+     24,
+     24
+    ]
+   },
+   "truth": [
+    {
+     "label": "BasicParser",
+     "lines": [
+      21,
+      55
+     ],
+     "path": "src/main/java/org/apache/commons/cli/BasicParser.java"
+    },
+    {
+     "label": "DefaultParser",
+     "lines": [
+      35,
+      858
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "GnuParser",
+     "lines": [
+      26,
+      96
+     ],
+     "path": "src/main/java/org/apache/commons/cli/GnuParser.java"
+    },
+    {
+     "label": "Parser",
+     "lines": [
+      35,
+      336
+     ],
+     "path": "src/main/java/org/apache/commons/cli/Parser.java"
+    },
+    {
+     "label": "PosixParser",
+     "lines": [
+      28,
+      234
+     ],
+     "path": "src/main/java/org/apache/commons/cli/PosixParser.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-21",
+   "kind": "implementers",
+   "question": "What implements HelpAppendable?",
+   "subject": {
+    "label": "HelpAppendable",
+    "path": "src/main/java/org/apache/commons/cli/help/HelpAppendable.java",
+    "lines": [
+     37,
+     104
+    ]
+   },
+   "truth": [
+    {
+     "label": "FilterHelpAppendable",
+     "lines": [
+      38,
+      70
+     ],
+     "path": "src/main/java/org/apache/commons/cli/help/FilterHelpAppendable.java"
+    },
+    {
+     "label": "TextHelpAppendable",
+     "lines": [
+      35,
+      464
+     ],
+     "path": "src/main/java/org/apache/commons/cli/help/TextHelpAppendable.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-22",
+   "kind": "implementers",
+   "question": "What extends ParseException?",
+   "subject": {
+    "label": "ParseException",
+    "path": "src/main/java/org/apache/commons/cli/ParseException.java",
+    "lines": [
+     23,
+     69
+    ]
+   },
+   "truth": [
+    {
+     "label": "AlreadySelectedException",
+     "lines": [
+      23,
+      80
+     ],
+     "path": "src/main/java/org/apache/commons/cli/AlreadySelectedException.java"
+    },
+    {
+     "label": "AmbiguousOptionException",
+     "lines": [
+      28,
+      79
+     ],
+     "path": "src/main/java/org/apache/commons/cli/AmbiguousOptionException.java"
+    },
+    {
+     "label": "MissingArgumentException",
+     "lines": [
+      23,
+      60
+     ],
+     "path": "src/main/java/org/apache/commons/cli/MissingArgumentException.java"
+    },
+    {
+     "label": "MissingOptionException",
+     "lines": [
+      25,
+      73
+     ],
+     "path": "src/main/java/org/apache/commons/cli/MissingOptionException.java"
+    },
+    {
+     "label": "UnrecognizedOptionException",
+     "lines": [
+      23,
+      61
+     ],
+     "path": "src/main/java/org/apache/commons/cli/UnrecognizedOptionException.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-23",
+   "kind": "implementers",
+   "question": "What extends Parser?",
+   "subject": {
+    "label": "Parser",
+    "path": "src/main/java/org/apache/commons/cli/Parser.java",
+    "lines": [
+     35,
+     336
+    ]
+   },
+   "truth": [
+    {
+     "label": "BasicParser",
+     "lines": [
+      21,
+      55
+     ],
+     "path": "src/main/java/org/apache/commons/cli/BasicParser.java"
+    },
+    {
+     "label": "GnuParser",
+     "lines": [
+      26,
+      96
+     ],
+     "path": "src/main/java/org/apache/commons/cli/GnuParser.java"
+    },
+    {
+     "label": "PosixParser",
+     "lines": [
+      28,
+      234
+     ],
+     "path": "src/main/java/org/apache/commons/cli/PosixParser.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-24",
+   "kind": "overrides",
+   "question": "What overrides CommandLineParser.parse?",
+   "subject": {
+    "label": "CommandLineParser.parse",
+    "path": "src/main/java/org/apache/commons/cli/CommandLineParser.java",
+    "lines": [
+     32,
+     35
+    ]
+   },
+   "truth": [
+    {
+     "label": "DefaultParser.parse",
+     "lines": [
+      760,
+      767
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "Parser.parse",
+     "lines": [
+      98,
+      105
+     ],
+     "path": "src/main/java/org/apache/commons/cli/Parser.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-25",
+   "kind": "overrides",
+   "question": "What overrides CommandLineParser.parse?",
+   "subject": {
+    "label": "CommandLineParser.parse",
+    "path": "src/main/java/org/apache/commons/cli/CommandLineParser.java",
+    "lines": [
+     32,
+     35
+    ]
+   },
+   "truth": [
+    {
+     "label": "DefaultParser.parse",
+     "lines": [
+      776,
+      783
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    },
+    {
+     "label": "Parser.parse",
+     "lines": [
+      114,
+      121
+     ],
+     "path": "src/main/java/org/apache/commons/cli/Parser.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-26",
+   "kind": "overrides",
+   "question": "What overrides Parser.flatten?",
+   "subject": {
+    "label": "Parser.flatten",
+    "path": "src/main/java/org/apache/commons/cli/Parser.java",
+    "lines": [
+     72,
+     75
+    ]
+   },
+   "truth": [
+    {
+     "label": "BasicParser.flatten",
+     "lines": [
+      49,
+      56
+     ],
+     "path": "src/main/java/org/apache/commons/cli/BasicParser.java"
+    },
+    {
+     "label": "GnuParser.flatten",
+     "lines": [
+      51,
+      97
+     ],
+     "path": "src/main/java/org/apache/commons/cli/GnuParser.java"
+    },
+    {
+     "label": "PosixParser.flatten",
+     "lines": [
+      132,
+      188
+     ],
+     "path": "src/main/java/org/apache/commons/cli/PosixParser.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-27",
+   "kind": "definition",
+   "question": "Where is OptionGroup.addOption defined?",
+   "subject": {
+    "label": "OptionGroup.addOption",
+    "path": "src/main/java/org/apache/commons/cli/OptionGroup.java",
+    "lines": [
+     55,
+     63
+    ]
+   },
+   "truth": [
+    {
+     "label": "OptionGroup.addOption",
+     "lines": [
+      55,
+      63
+     ],
+     "path": "src/main/java/org/apache/commons/cli/OptionGroup.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-28",
+   "kind": "definition",
+   "question": "Where is AbstractHelpFormatter.toArgName defined?",
+   "subject": {
+    "label": "AbstractHelpFormatter.toArgName",
+    "path": "src/main/java/org/apache/commons/cli/help/AbstractHelpFormatter.java",
+    "lines": [
+     411,
+     418
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractHelpFormatter.toArgName",
+     "lines": [
+      411,
+      418
+     ],
+     "path": "src/main/java/org/apache/commons/cli/help/AbstractHelpFormatter.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-29",
+   "kind": "definition",
+   "question": "Where is Parser.processProperties defined?",
+   "subject": {
+    "label": "Parser.processProperties",
+    "path": "src/main/java/org/apache/commons/cli/Parser.java",
+    "lines": [
+     266,
+     305
+    ]
+   },
+   "truth": [
+    {
+     "label": "Parser.processProperties",
+     "lines": [
+      266,
+      305
+     ],
+     "path": "src/main/java/org/apache/commons/cli/Parser.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-30",
+   "kind": "definition",
+   "question": "Where is TextStyle.Builder.setMaxWidth defined?",
+   "subject": {
+    "label": "TextStyle.Builder.setMaxWidth",
+    "path": "src/main/java/org/apache/commons/cli/help/TextStyle.java",
+    "lines": [
+     178,
+     186
+    ]
+   },
+   "truth": [
+    {
+     "label": "TextStyle.Builder.setMaxWidth",
+     "lines": [
+      178,
+      186
+     ],
+     "path": "src/main/java/org/apache/commons/cli/help/TextStyle.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-31",
+   "kind": "definition",
+   "question": "Where is HelpFormatter.getLongOptSeparator defined?",
+   "subject": {
+    "label": "HelpFormatter.getLongOptSeparator",
+    "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java",
+    "lines": [
+     633,
+     640
+    ]
+   },
+   "truth": [
+    {
+     "label": "HelpFormatter.getLongOptSeparator",
+     "lines": [
+      633,
+      640
+     ],
+     "path": "src/main/java/org/apache/commons/cli/HelpFormatter.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-32",
+   "kind": "definition",
+   "question": "Where is DeprecatedAttributes.Builder.setForRemoval defined?",
+   "subject": {
+    "label": "DeprecatedAttributes.Builder.setForRemoval",
+    "path": "src/main/java/org/apache/commons/cli/DeprecatedAttributes.java",
+    "lines": [
+     86,
+     94
+    ]
+   },
+   "truth": [
+    {
+     "label": "DeprecatedAttributes.Builder.setForRemoval",
+     "lines": [
+      86,
+      94
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DeprecatedAttributes.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-33",
+   "kind": "definition",
+   "question": "Where is AbstractHelpFormatter.Builder.setOptionGroupSeparator defined?",
+   "subject": {
+    "label": "AbstractHelpFormatter.Builder.setOptionGroupSeparator",
+    "path": "src/main/java/org/apache/commons/cli/help/AbstractHelpFormatter.java",
+    "lines": [
+     155,
+     163
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractHelpFormatter.Builder.setOptionGroupSeparator",
+     "lines": [
+      155,
+      163
+     ],
+     "path": "src/main/java/org/apache/commons/cli/help/AbstractHelpFormatter.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-34",
+   "kind": "definition",
+   "question": "Where is DefaultParser.checkRequiredArgs defined?",
+   "subject": {
+    "label": "DefaultParser.checkRequiredArgs",
+    "path": "src/main/java/org/apache/commons/cli/DefaultParser.java",
+    "lines": [
+     314,
+     327
+    ]
+   },
+   "truth": [
+    {
+     "label": "DefaultParser.checkRequiredArgs",
+     "lines": [
+      314,
+      327
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-35",
+   "kind": "definition",
+   "question": "Where is DefaultParser.isArgument defined?",
+   "subject": {
+    "label": "DefaultParser.isArgument",
+    "path": "src/main/java/org/apache/commons/cli/DefaultParser.java",
+    "lines": [
+     643,
+     650
+    ]
+   },
+   "truth": [
+    {
+     "label": "DefaultParser.isArgument",
+     "lines": [
+      643,
+      650
+     ],
+     "path": "src/main/java/org/apache/commons/cli/DefaultParser.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-36",
+   "kind": "definition",
+   "question": "Where is CommandLine.getOptionCount defined?",
+   "subject": {
+    "label": "CommandLine.getOptionCount",
+    "path": "src/main/java/org/apache/commons/cli/CommandLine.java",
+    "lines": [
+     247,
+     254
+    ]
+   },
+   "truth": [
+    {
+     "label": "CommandLine.getOptionCount",
+     "lines": [
+      247,
+      254
+     ],
+     "path": "src/main/java/org/apache/commons/cli/CommandLine.java"
+    }
+   ]
+  }
+ ]
+}
