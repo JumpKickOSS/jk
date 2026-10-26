@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -114,7 +115,7 @@ public final class DiskUsage {
         }
         if (!attrs.isRegularFile()) return -1;
         Object key = attrs.fileKey();
-        if (key == null) key = seen.sameFileIdentity(p, attrs.size());
+        if (key == null) key = seen.sameFileIdentity(p, attrs.size(), attrs.lastModifiedTime());
         return seen.addObject(key) ? attrs.size() : 0;
     }
 
@@ -174,7 +175,7 @@ public final class DiskUsage {
                 files++;
                 Object key = attrs.fileKey();
                 // Windows often returns a null fileKey; isSameFile still detects hard links.
-                if (key == null) key = seen.sameFileIdentity(p, attrs.size());
+                if (key == null) key = seen.sameFileIdentity(p, attrs.size(), attrs.lastModifiedTime());
                 if (seen.addObject(key)) bytes += attrs.size();
             }
         }
@@ -198,13 +199,17 @@ public final class DiskUsage {
          */
         static final int MAX_LINK_CANDIDATES = 64;
 
-        private final Map<Long, List<Path>> bySize = new HashMap<>();
+        private final Map<List<Object>, List<Path>> byShape = new HashMap<>();
 
-        /** Identity of {@code path}: the first same-size path it is a hard link of, else itself. */
-        public Object identity(Path path, long size) {
+        /**
+         * Identity of {@code path}: the first path of the same size and modification time it is a
+         * hard link of, else itself. Links are one file, so they share both; bucketing on the pair
+         * keeps a store full of same-size files from being compared pairwise.
+         */
+        public Object identity(Path path, long size, FileTime modified) {
             // An empty file shares no blob, so dedupe would buy nothing for the comparisons it costs.
             if (size == 0) return path;
-            List<Path> candidates = bySize.computeIfAbsent(size, k -> new ArrayList<>(2));
+            List<Path> candidates = byShape.computeIfAbsent(List.of(size, modified), k -> new ArrayList<>(2));
             for (Path candidate : candidates) {
                 try {
                     if (Files.isSameFile(path, candidate)) return candidate;
@@ -263,10 +268,10 @@ public final class DiskUsage {
             return set.add(key);
         }
 
-        Object sameFileIdentity(Path path, long size) {
+        Object sameFileIdentity(Path path, long size, FileTime modified) {
             SameFileKeys keys = sameFile;
             if (keys == null) sameFile = keys = new SameFileKeys();
-            return keys.identity(path, size);
+            return keys.identity(path, size, modified);
         }
 
         private void grow() {
