@@ -64,6 +64,8 @@ class SymbolFinderTest {
                 .containsExactly("a.Impl", "a.ImplTest");
         assertThat(names(find(g, Map.of("extends", "Base"), null))).containsExactly("a.Impl", "a.ImplTest");
         assertThat(names(find(g, Map.of("extends", "Port"), null))).isEmpty();
+        assertThat(names(find(g, Map.of("kind", "type", "implements", "Port"), null)))
+                .containsExactly("a.Base", "a.Impl", "a.ImplTest");
         Scope main = Scope.of(null, List.of(), "main", Modules.NONE);
         assertThat(SymbolFinder.of(Map.of("extends", "Base"), null).find(g, main, 2000))
                 .doesNotContain("ImplTest");
@@ -85,6 +87,27 @@ class SymbolFinderTest {
         assertThat(names(find(g, Map.of("implements", "Preflight.Main"), null)))
                 .containsExactlyInAnyOrder("a.Preflight.None", "a.Preflight.Unique");
         assertThat(names(find(g, Map.of("implements", "Other.Main"), null))).isEmpty();
+    }
+
+    @Test
+    void aMemberFiltersByItsTypesSupertypesSoOverridesAreOneCall() {
+        Map<String, String> files = Map.of(
+                "src/main/java/a/Shape.java", body("public abstract class Shape {", "    abstract double area();"),
+                "src/main/java/a/Square.java", body("public class Square extends Shape {", "    double area() {"),
+                "src/main/java/a/Circle.java", body("public class Circle extends Shape {", "    double area() {"),
+                "src/main/java/a/Room.java", body("public class Room {", "    double area() {"));
+        List<Fragment> fragments = new ArrayList<>();
+        files.forEach((rel, text) ->
+                fragments.add(Objects.requireNonNull(Extractors.forPath(rel)).extract(rel, text)));
+        CodeGraph g = Linker.link(fragments);
+        assertThat(names(find(g, Map.of("kind", "method", "extends", "Shape"), "area")))
+                .containsExactlyInAnyOrder("Circle.area", "Square.area");
+    }
+
+    /** A one-member class in package {@code a}: its header, then the member, closed. */
+    private static String body(String header, String member) {
+        String close = member.endsWith("{") ? "        return 1;%n    }%n".formatted() : "";
+        return "package a;%n%s%n%s%n%s}%n".formatted(header, member, close);
     }
 
     @Test
