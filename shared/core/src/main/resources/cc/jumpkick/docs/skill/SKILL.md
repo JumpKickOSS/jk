@@ -18,12 +18,10 @@ Run, read the verdict, edit, rerun. The verdict is the whole answer; scrape noth
 | install for a sibling project | `jk -a snapshot` | `snapshot()` |
 | add / remove a dep | `jk add g:a`, `jk remove g:a` | `deps(action=add, coords=["g:a"])` |
 | why this version | `jk why g:a` | `why(coord=g:a)` |
-| find code | `jk graph query "…"` | `query_graph(question=…)` |
-| read a symbol | `jk graph read T.m` | `read_symbol(address=…)` |
-| who calls it, what it touches | `jk graph neighbors T.m -R calls` | `get_neighbors(label=T.m, relation_filter=calls)` |
-| what implements, overrides, is annotated | `jk graph find -I T` | `find_symbols(implements=T)` |
 | every problem, with lines | `jk results -A` | `diagnostics()` |
 | one skill topic | `jk skill <topic>` | `skill(topic=…)` |
+
+The code graph finds code without grep: `jk graph neighbors T.m -R calls` lists every caller with each call's line, `jk graph read T.m` reads one symbol, `jk graph find -I T` lists implementations and overrides, `jk graph query "…"` answers a question with `file:line`. Over MCP they are `get_neighbors`, `read_symbol`, `find_symbols` and `query_graph`, on the extended `tools/list`.
 
 A sibling project that must see your edits to a library gets them through `jk -a snapshot`: the project is installed to `~/.m2` as `<version>-SNAPSHOT`, replaced each run, like a Maven snapshot; the sibling depends on `g:a:<version>-SNAPSHOT`. `jk install` is for apps; `jk release` cuts a library.
 

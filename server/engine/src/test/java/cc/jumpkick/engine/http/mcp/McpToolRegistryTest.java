@@ -88,23 +88,14 @@ class McpToolRegistryTest {
     }
 
     @Test
-    void the_default_list_is_the_loop_and_the_code_graph_navigation_tools() {
+    void the_default_list_is_the_loop() {
         McpTools tools = McpTools.standard();
         List<String> listed = names(tools.listing(McpTools.Surface.LOOP));
-        assertThat(listed)
-                .containsExactly(
-                        "run",
-                        "snapshot",
-                        "diagnostics",
-                        "deps",
-                        "why",
-                        "query_graph",
-                        "read_symbol",
-                        "get_neighbors",
-                        "find_symbols",
-                        "skill");
+        assertThat(listed).containsExactly("run", "snapshot", "diagnostics", "deps", "why", "skill");
         assertThat(listed).isEqualTo(tools.loopNames());
-        assertThat(listed).doesNotContain("bind", "history", "manifest", "god_nodes", "graph_stats");
+        assertThat(listed)
+                .doesNotContain(
+                        "bind", "history", "manifest", "god_nodes", "graph_stats", "query_graph", "get_neighbors");
     }
 
     @Test
@@ -160,9 +151,7 @@ class McpToolRegistryTest {
      * serves three tools over a Maven or Gradle results file, captured in
      * {@code src/test/resources/mcp/wrapper-tools-list.json}. Both are re-serialized by MiniJson
      * so the bytes compare serializer-for-serializer. The cards are paid on every turn, so the
-     * ceiling holds the loop to lean cards; it also carries the code graph's navigation and
-     * symbol-read cards, because one budgeted graph answer or one symbol read replaces grep-and-read
-     * turns that cost far more.
+     * ceiling holds the loop to lean cards.
      */
     @Test
     void the_default_list_is_within_the_wrapper_budget() throws IOException {
@@ -173,7 +162,7 @@ class McpToolRegistryTest {
         String listing = MiniJson.write(McpTools.standard().listing(McpTools.Surface.LOOP));
         assertThat(listing.length())
                 .as("default tools/list reply %d bytes", listing.length())
-                .isLessThanOrEqualTo(4_000);
+                .isLessThanOrEqualTo(2_500);
         assertThat(all.length()).as("full list is the expensive one").isGreaterThan(loop.length() * 4);
     }
 

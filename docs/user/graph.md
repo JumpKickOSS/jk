@@ -213,6 +213,6 @@ no LLM pass: documents are read for their structure, links and code mentions onl
 The graph operations are MCP tools. graphify's names keep graphify's arguments: `query_graph`,
 `get_node`, `get_neighbors`, `get_community`, `god_nodes`, `graph_stats` and `shortest_path`;
 `query_graph` and `god_nodes` also take `scope`, `modules` and `source_set`. jk adds `read_symbol`,
-`find_symbols` and `rules_for`. `query_graph`, `read_symbol`, `get_neighbors` and `find_symbols` are
-on the default `tools/list`; the rest are on the extended one, and `skill(topic=graph)` introduces
-them all. See [MCP](mcp.md).
+`find_symbols` and `rules_for`. All of them are on the extended `tools/list`, not the default one:
+every card on the default list is paid on every turn, and agents seldom call graph tools unprompted.
+`skill(topic=graph)` introduces them all. See [MCP](mcp.md).
