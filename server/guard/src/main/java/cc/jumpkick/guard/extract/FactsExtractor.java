@@ -7,7 +7,15 @@ import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FieldFacts;
 import cc.jumpkick.guard.facts.FieldRef;
 import cc.jumpkick.guard.facts.MethodFacts;
+import cc.jumpkick.host.Hashing;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +45,36 @@ public final class FactsExtractor {
         Collector c = new Collector();
         new ClassReader(classBytes).accept(c, ClassReader.SKIP_FRAMES);
         return c.finish();
+    }
+
+    /**
+     * A digest of this extractor's own class files, every nest member included. A cached index
+     * records it, so an index another extractor wrote reads as stale instead of silently lacking
+     * what this one finds.
+     */
+    public static String identity() {
+        return Identity.DIGEST;
+    }
+
+    private static final class Identity {
+        static final String DIGEST = digest();
+
+        private static String digest() {
+            Class<?>[] nest = FactsExtractor.class.getNestMembers();
+            Arrays.sort(nest, Comparator.comparing(Class::getName));
+            MessageDigest md = Hashing.newSha256();
+            for (Class<?> c : nest) {
+                String resource = c.getName().replace('.', '/') + ".class";
+                try (InputStream in = c.getClassLoader().getResourceAsStream(resource)) {
+                    if (in == null) throw new IllegalStateException("no class file for " + c.getName());
+                    md.update(c.getName().getBytes(StandardCharsets.UTF_8));
+                    md.update(in.readAllBytes());
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            }
+            return Hashing.hex(md.digest());
+        }
     }
 
     private static final class Collector extends ClassVisitor {
