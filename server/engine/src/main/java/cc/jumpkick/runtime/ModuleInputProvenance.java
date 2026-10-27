@@ -65,8 +65,21 @@ public final class ModuleInputProvenance {
             String inputs,
             @Nullable String sources,
             Map<String, Set<String>> keysByTree,
-            Map<String, String> digests,
-            Map<String, String> jvmSources) {}
+            Map<String, String> digests) {}
+
+    /**
+     * {@code target/<module>/.jk/classes}: what the graph checks before it reads a module's class
+     * facts. Written after every run that left the module's classes current ({@code jk test} as much
+     * as {@code jk build}), apart from {@code inputs}, which vouches for jars a test run never
+     * rebuilds. Lines {@code src <sha> <module-relative source>} and {@code out <sha> <target-relative
+     * class file>}.
+     */
+    private static Path classesFile(Path targetDir) {
+        return targetDir.resolve(".jk").resolve("classes");
+    }
+
+    /** What {@link #classesFile} holds: each JVM source's digest, and each class-tree file's. */
+    private record Classes(Map<String, String> sources, Map<String, String> outputs) {}
 
     /** The source files class facts are compiled from: what {@link #staleSources} compares one by one. */
     private static boolean jvmSource(Path file) {
@@ -153,15 +166,15 @@ public final class ModuleInputProvenance {
     public static @Nullable Set<String> staleSources(Path workspaceRoot, Path moduleDir, JkBuild build) {
         BuildLayout layout = BuildLayout.of(workspaceRoot, moduleDir, build);
         Path target = norm(layout.moduleTargetDir());
-        Record record = read(target);
-        if (record == null || record.sources() == null || record.jvmSources().isEmpty()) return null;
+        Classes record = readClasses(target);
+        if (record == null || record.sources().isEmpty()) return null;
         try {
             for (Path tree : trees(layout)) {
                 if (!tree.startsWith(target) || !Files.isDirectory(tree)) continue;
                 boolean[] foreign = {false};
                 PathUtil.forEachRegularFile(tree, (file, attrs) -> {
                     if (BuildStamps.isStampFile(file.getFileName().toString())) return;
-                    String want = record.digests().get(rel(target, file));
+                    String want = record.outputs().get(rel(target, file));
                     if (want == null
                             || !want.equals(FileHashMemo.contentHash(
                                     file.toAbsolutePath().normalize(), attrs))) {
@@ -170,16 +183,80 @@ public final class ModuleInputProvenance {
                 });
                 if (foreign[0]) return null;
             }
-            if (record.sources().equals(PreflightMemo.sourceFingerprint(moduleDir))) return Set.of();
             Map<String, String> now = jvmSources(norm(moduleDir));
             Set<String> stale = new TreeSet<>();
             now.forEach((rel, sha) -> {
-                if (!sha.equals(record.jvmSources().get(rel))) stale.add(rel);
+                if (!sha.equals(record.sources().get(rel))) stale.add(rel);
             });
-            for (String rel : record.jvmSources().keySet()) {
+            for (String rel : record.sources().keySet()) {
                 if (!now.containsKey(rel)) stale.add(rel);
             }
             return Collections.unmodifiableSet(stale);
+        } catch (IOException | RuntimeException unreadable) {
+            return null;
+        }
+    }
+
+    /**
+     * Record, for each module in {@code built}, its JVM sources and its class trees as they stand
+     * after a run that succeeded. Only modules the run built or found current: a module it never
+     * touched may hold classes older than its sources, and recording them now would vouch for them.
+     * Best-effort: never fails a build.
+     */
+    public static void recordClasses(Path workspaceRoot, BuildGraph.Result graph, Set<Path> built) {
+        if (graph == null || built.isEmpty()) return;
+        for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
+            Path dir = unit.dir().toAbsolutePath().normalize();
+            if (!built.contains(dir)) continue;
+            try {
+                BuildLayout layout = BuildLayout.of(workspaceRoot, dir, unit.manifest());
+                Path target = norm(layout.moduleTargetDir());
+                StringBuilder sb = new StringBuilder();
+                jvmSources(dir).forEach((rel, sha) -> sb.append("src ")
+                        .append(sha)
+                        .append(' ')
+                        .append(rel)
+                        .append('\n'));
+                Map<String, String> digests = new TreeMap<>();
+                for (Path tree : trees(layout)) {
+                    if (!tree.startsWith(target) || !Files.isDirectory(tree)) continue;
+                    PathUtil.forEachRegularFile(tree, (file, attrs) -> {
+                        if (BuildStamps.isStampFile(file.getFileName().toString())) return;
+                        digests.put(
+                                rel(target, file),
+                                FileHashMemo.contentHash(file.toAbsolutePath().normalize(), attrs));
+                    });
+                }
+                digests.forEach((rel, sha) ->
+                        sb.append("out ").append(sha).append(' ').append(rel).append('\n'));
+                Path file = classesFile(target);
+                Path parent = file.getParent();
+                if (parent != null) Files.createDirectories(parent);
+                AtomicWrites.replaceIfChanged(file, sb.toString());
+            } catch (IOException | RuntimeException unwritable) {
+                // The graph finds no record and reads the module's sources alone.
+                Log.debug("provenance: classes not recorded", "module", dir, "cause", unwritable);
+            }
+        }
+    }
+
+    private static @Nullable Classes readClasses(Path target) {
+        Path file = classesFile(target);
+        try {
+            if (!Files.isRegularFile(file)) return null;
+            Map<String, String> sources = new LinkedHashMap<>();
+            Map<String, String> outputs = new LinkedHashMap<>();
+            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                Map<String, String> into = line.startsWith("src ") ? sources : line.startsWith("out ") ? outputs : null;
+                if (into == null) {
+                    if (line.isBlank()) continue;
+                    return null;
+                }
+                String[] p = line.substring(4).split(" ", 2);
+                if (p.length != 2 || !FileHashMemo.isSha256(p[0])) return null;
+                into.put(p[1], p[0]);
+            }
+            return new Classes(sources, outputs);
         } catch (IOException | RuntimeException unreadable) {
             return null;
         }
@@ -236,11 +313,6 @@ public final class ModuleInputProvenance {
                 StringBuilder sb = new StringBuilder("inputs ").append(fp).append('\n');
                 String sources = PreflightMemo.sourceFingerprint(dir, saltByRoot);
                 if (sources != null) sb.append("sources ").append(sources).append('\n');
-                jvmSources(dir).forEach((rel, sha) -> sb.append("src ")
-                        .append(sha)
-                        .append(' ')
-                        .append(rel)
-                        .append('\n'));
                 Map<String, String> digests = new TreeMap<>();
                 for (Path tree : trees(layout)) {
                     if (!tree.startsWith(target) || !Files.isDirectory(tree)) continue;
@@ -287,7 +359,6 @@ public final class ModuleInputProvenance {
             String sources = null;
             Map<String, Set<String>> keys = new LinkedHashMap<>();
             Map<String, String> digests = new LinkedHashMap<>();
-            Map<String, String> jvmSources = new LinkedHashMap<>();
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (line.startsWith("inputs ")) {
                     inputs = line.substring("inputs ".length()).strip();
@@ -301,15 +372,11 @@ public final class ModuleInputProvenance {
                     String[] p = line.substring("out ".length()).split(" ", 2);
                     if (p.length != 2 || !FileHashMemo.isSha256(p[0])) return null;
                     digests.put(p[1], p[0]);
-                } else if (line.startsWith("src ")) {
-                    String[] p = line.substring("src ".length()).split(" ", 2);
-                    if (p.length != 2 || !FileHashMemo.isSha256(p[0])) return null;
-                    jvmSources.put(p[1], p[0]);
                 } else if (!line.isBlank()) {
                     return null;
                 }
             }
-            return inputs == null || inputs.isEmpty() ? null : new Record(inputs, sources, keys, digests, jvmSources);
+            return inputs == null || inputs.isEmpty() ? null : new Record(inputs, sources, keys, digests);
         } catch (IOException | RuntimeException unreadable) {
             return null;
         }

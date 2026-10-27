@@ -21,6 +21,7 @@ import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -135,6 +136,13 @@ final class WorkspaceFinalPhase {
                     request.profile(),
                     resources.preflight().forecast());
         }
+        // Any run that left a module's classes current vouches for them to the graph, a test run too:
+        // an agent's loop is `run` (tests), and a graph that waited for a full build had no calls.
+        Set<Path> built = new HashSet<>();
+        for (ModuleOutcome o : run.outcomes()) {
+            if (o.success()) built.add(o.dir().toAbsolutePath().normalize());
+        }
+        ModuleInputProvenance.recordClasses(request.entryDir(), graph, built);
     }
 
     /**

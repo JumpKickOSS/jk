@@ -7,11 +7,11 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.ModuleInputProvenance;
-import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.wire.protocol.GraphAck;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -44,8 +44,13 @@ class GraphClassFactsCurrencyTest {
         assertThat(ToolProvider.getSystemJavaCompiler()
                         .run(null, null, null, "-d", classes.toString(), app.toString(), util.toString()))
                 .isZero();
-        ModuleInputProvenance.record(
-                tmp, graph, PreflightMemo.snapshotFingerprints(graph, false).fingerprints());
+        ModuleInputProvenance.recordClasses(tmp, graph, Set.of());
+        assertThat(GraphRunner.classIndexes(tmp).leftOut())
+                .as("a module the run did not build is not vouched for")
+                .containsExactly(String.valueOf(tmp.getFileName()));
+        // What any successful run records, a test run as much as a build.
+        ModuleInputProvenance.recordClasses(
+                tmp, graph, Set.of(tmp.toAbsolutePath().normalize()));
 
         GraphRunner.ClassIndexes built = GraphRunner.classIndexes(tmp);
         assertThat(built.rows()).hasSize(1).allSatisfy(row -> assertThat(row).endsWith("\t"));
