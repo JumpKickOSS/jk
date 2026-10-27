@@ -23,8 +23,11 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
@@ -36,7 +39,7 @@ import org.junit.jupiter.api.io.TempDir;
 class CacheSyncTest {
 
     @RegisterExtension
-    final LoopbackHttp http = new LoopbackHttp();
+    final LoopbackHttp http = new LoopbackHttp().concurrent();
 
     @Test
     void fetches_missing_artifact(@TempDir Path tempDir) throws Exception {
@@ -284,6 +287,78 @@ class CacheSyncTest {
                 .as("fetch tasks running at once")
                 .isLessThan(2 * DownloadSlots.width())
                 .isGreaterThan(1);
+    }
+
+    /**
+     * An interrupted sync stops the fan-out and waits for the downloads already running: it returns
+     * only once they are done, and no further download starts, so nothing keeps writing to the cache
+     * or holding a download slot after the sync has failed.
+     */
+    @Test
+    void an_interrupted_sync_waits_for_running_fetches_and_starts_no_more(@TempDir Path tempDir) throws Exception {
+        int rows = DownloadSlots.width() * 3;
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger started = new AtomicInteger();
+        http.beforeServe(path -> {
+            if (!path.endsWith(".jar")) return;
+            started.incrementAndGet();
+            try {
+                release.await(30, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        List<Lockfile.Artifact> pkgs = new ArrayList<>();
+        for (int i = 0; i < rows; i++) {
+            byte[] jar = ("held-" + i).getBytes(StandardCharsets.UTF_8);
+            registerJar("com.foo", "held" + i, "1.0", jar);
+            pkgs.add(pkg("com.foo:held" + i, "1.0", "sha256:" + Hashing.sha256Hex(jar)));
+        }
+        Lockfile lock = lockOf(pkgs.toArray(Lockfile.Artifact[]::new));
+        AtomicReference<Throwable> outcome = new AtomicReference<>();
+        Thread syncer = new Thread(() -> {
+            try {
+                newSync(tempDir).sync(lock);
+            } catch (Throwable t) {
+                outcome.set(t);
+            }
+        });
+        syncer.start();
+        try {
+            awaitSteady(started);
+            int atInterrupt = started.get();
+            assertThat(atInterrupt).isPositive().isLessThan(rows);
+
+            syncer.interrupt();
+            syncer.join(300);
+            assertThat(syncer.isAlive())
+                    .as("sync returned while its downloads were still running")
+                    .isTrue();
+
+            release.countDown();
+            syncer.join(30_000);
+            assertThat(syncer.isAlive()).isFalse();
+            assertThat(outcome.get()).isInstanceOf(InterruptedException.class);
+            assertThat(started.get())
+                    .as("downloads started after the interrupt")
+                    .isEqualTo(atInterrupt);
+        } finally {
+            release.countDown();
+            syncer.join(30_000);
+        }
+    }
+
+    /** Wait until {@code count} is positive and has held still for a while. */
+    private static void awaitSteady(AtomicInteger count) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        int last = -1;
+        int stableFor = 0;
+        while (System.nanoTime() < deadline && stableFor < 4) {
+            Thread.sleep(50);
+            int now = count.get();
+            stableFor = now > 0 && now == last ? stableFor + 1 : 0;
+            last = now;
+        }
     }
 
     @Test
