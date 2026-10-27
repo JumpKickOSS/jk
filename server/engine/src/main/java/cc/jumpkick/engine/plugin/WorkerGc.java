@@ -72,8 +72,7 @@ public final class WorkerGc {
     }
 
     public static String flag(Path log) {
-        String p = log.toAbsolutePath().toString();
-        return FLAG_PREFIX + (p.indexOf(':') >= 0 ? "\"" + p + "\"" : p);
+        return FLAG_PREFIX + log.toAbsolutePath();
     }
 
     static boolean logged(List<String> command) {

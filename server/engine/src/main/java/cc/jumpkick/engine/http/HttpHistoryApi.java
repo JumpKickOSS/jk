@@ -146,8 +146,8 @@ final class HttpHistoryApi {
      * The first {@code "name"} key's string value, scanned without parsing, or {@code null} when
      * the key is absent or its value is not a string. Journal records write these keys top-level
      * ahead of any free-text payload (see {@code journal.Json}), so the first occurrence is the
-     * real key in both compact and pretty output. Escapes are left as-is — callers only read
-     * machine-written identifier-shaped values.
+     * real key in both compact and pretty output. JSON escapes are decoded, so a Windows
+     * {@code "dir"} comes back with single backslashes.
      */
     private static @Nullable String scanStringField(String raw, String name) {
         int i = raw.indexOf('"' + name + '"');

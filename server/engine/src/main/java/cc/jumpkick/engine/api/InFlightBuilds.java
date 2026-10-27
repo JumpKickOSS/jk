@@ -99,23 +99,26 @@ public final class InFlightBuilds {
 
     /** Update journal id after begin() persists an entry. */
     public void bindJournalId(long requestId, String journalId) {
-        byRequestId.computeIfPresent(requestId, (id, h) -> {
-            Hold updated = new Hold(
-                    h.requestId(),
-                    h.buildNumber(),
-                    h.fingerprint(),
-                    h.kind(),
-                    h.dir(),
-                    h.coord(),
-                    h.startedAt(),
-                    journalId,
-                    h.trigger(),
-                    h.session());
-            if (updated.fingerprint() != null && !updated.fingerprint().isEmpty()) {
-                byFingerprint.computeIfPresent(
-                        updated.fingerprint(), (fp, cur) -> cur.requestId() == requestId ? updated : cur);
-            }
-            return updated;
-        });
+        Hold updated = byRequestId.computeIfPresent(
+                requestId,
+                (id, h) -> new Hold(
+                        h.requestId(),
+                        h.buildNumber(),
+                        h.fingerprint(),
+                        h.kind(),
+                        h.dir(),
+                        h.coord(),
+                        h.startedAt(),
+                        journalId,
+                        h.trigger(),
+                        h.session()));
+        // Outside byRequestId's lock: tryAcquire takes byFingerprint first, so nesting here would invert
+        // the order. The requestId check makes a write that loses to release() a no-op.
+        if (updated != null
+                && updated.fingerprint() != null
+                && !updated.fingerprint().isEmpty()) {
+            byFingerprint.computeIfPresent(
+                    updated.fingerprint(), (fp, cur) -> cur.requestId() == requestId ? updated : cur);
+        }
     }
 }

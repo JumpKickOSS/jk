@@ -57,4 +57,11 @@ class SuiteReadsTest {
         assertThat(d.covers(Set.of(), Set.of("git status"), false)).isFalse();
         assertThat(d.covers(Set.of(), Set.of(), true)).isFalse();
     }
+
+    @Test
+    void only_a_comma_quotes_a_recording_path() {
+        // A quoted space would split the argument on Windows, where the launcher wraps it in quotes again.
+        assertThat(SuiteReads.jfrPath(Path.of("/a b/reads.jfc"))).isEqualTo("/a b/reads.jfc");
+        assertThat(SuiteReads.jfrPath(Path.of("/a,b/reads.jfc"))).isEqualTo("\"/a,b/reads.jfc\"");
+    }
 }

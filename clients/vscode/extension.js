@@ -125,13 +125,15 @@ function runJk(args) {
   output.appendLine(`  cwd: ${cwd}`);
 
   return new Promise((resolve) => {
-    const isWinBat = process.platform === "win32" && /\.(bat|cmd)$/i.test(bin);
-    const child = spawn(bin, args, {
+    // Windows only starts .exe/.com without a shell; cmd.exe resolves a bare `jk` or a jk.bat through
+    // PATHEXT. With a shell the command line is joined unquoted, so the binary path is quoted.
+    const viaShell = process.platform === "win32" && !/\.(exe|com)$/i.test(bin);
+    const child = spawn(viaShell ? `"${bin}"` : bin, args, {
       cwd,
       // The OutputChannel is a parser/pane, not a terminal: jk keeps ANSI on pipes, so ask for
       // plain text (same rationale as the IntelliJ client's NO_COLOR line).
       env: { ...process.env, NO_COLOR: "1" },
-      shell: isWinBat,
+      shell: viaShell,
     });
     child.stdout.on("data", (buf) => output.append(buf.toString()));
     child.stderr.on("data", (buf) => output.append(buf.toString()));

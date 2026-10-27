@@ -777,7 +777,7 @@ public final class EngineServer implements AutoCloseable {
         }
     }
 
-    /** How often the drain supervisor re-reads the plan count; a released slot does not notify. */
+    /** How often the drain supervisor re-reads the plan count; the last released slot also notifies. */
     private static final long DRAIN_POLL_MS = 250;
 
     /** Test seam: hold a plan slot so drain cannot exit until {@link #releasePlanSlotForTests}. */

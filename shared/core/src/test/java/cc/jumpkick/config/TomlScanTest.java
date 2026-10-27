@@ -100,4 +100,23 @@ class TomlScanTest {
         assertThat(scan.get("jdk")).isNull();
         assertThat(scan.getInt("jdk", 7)).isEqualTo(7);
     }
+
+    @Test
+    void array_lines_read_literal_strings_and_skip_trailing_comments(@TempDir Path tmp) throws Exception {
+        Path toml = tmp.resolve("jk.toml");
+        Files.writeString(toml, """
+                modules = ['a#b', "c\\"d"]  # was ["old"]
+                multi = [
+                  "x",  # not "y"
+                  'z',
+                ]
+
+                [native]
+                graal = "yes"
+                """);
+        TomlScan scan = TomlScan.scan(toml, "modules", "multi", "native.graal");
+        assertThat(scan.stringArray("modules")).containsExactly("a#b", "c\"d");
+        assertThat(scan.stringArray("multi")).containsExactly("x", "z");
+        assertThat(scan.get("native.graal")).isEqualTo("yes");
+    }
 }

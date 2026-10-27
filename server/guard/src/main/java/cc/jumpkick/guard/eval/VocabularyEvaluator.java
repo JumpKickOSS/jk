@@ -309,8 +309,7 @@ final class VocabularyEvaluator implements BatchEvaluator {
         return all
                 && (rel.startsWith("src/test/")
                         || rel.startsWith("test/")
-                        || (rel.startsWith("src/") && isSuiteRoot(rel))
-                        || rel.contains("/src/"));
+                        || (rel.startsWith("src/") && isSuiteRoot(rel)));
     }
 
     private static boolean isSuiteRoot(String rel) {
