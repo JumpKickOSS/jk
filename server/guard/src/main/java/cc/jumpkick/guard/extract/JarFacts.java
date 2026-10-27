@@ -18,7 +18,8 @@ import java.util.zip.ZipFile;
 
 /**
  * A facts index for a jar — the "before" side of an API comparison — extracted once and kept
- * beside the guard output keyed by the jar's content hash, so a published release is read once
+ * beside the guard output keyed by the jar's content hash and the {@link FactsExtractor#identity()
+ * extractor} that read it, so a published release is read once
  * per engine home, not once per build.
  */
 public final class JarFacts {
@@ -27,7 +28,7 @@ public final class JarFacts {
 
     public static FactsIndex of(Path jar, Path cacheDir) throws IOException {
         String sha = Hashing.sha256Hex(jar);
-        Path cached = cacheDir.resolve(sha + ".idx");
+        Path cached = cacheDir.resolve(sha + "-" + FactsExtractor.identity().substring(0, 16) + ".idx");
         if (Files.isRegularFile(cached)) return FactsFormat.read(cached);
         Map<String, ClassFacts> classes = new LinkedHashMap<>();
         try (ZipFile zip = new ZipFile(jar.toFile())) {
