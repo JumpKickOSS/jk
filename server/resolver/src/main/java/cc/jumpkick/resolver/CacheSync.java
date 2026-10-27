@@ -23,10 +23,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -153,12 +156,13 @@ public final class CacheSync {
         // Fetches are dispatched through a window of DownloadSlots.width() tasks alive at once;
         // each takes a DownloadSlots slot and MavenRepo rate-limits the network leg per host.
         Semaphore window = new Semaphore(DownloadSlots.width());
+        AtomicBoolean aborted = new AtomicBoolean();
         List<CompletableFuture<FetchResult>> futures = new ArrayList<>(pending.size());
         int fetched = 0;
         List<String> errors = new ArrayList<>();
         try {
             for (PendingFetch p : pending) {
-                CompletableFuture<FetchResult> fut = submit(window, () -> fetch(p));
+                CompletableFuture<FetchResult> fut = submit(window, aborted, () -> fetch(p, aborted));
                 // Fire the per-package callback on the fetcher's completion
                 // thread so the progress bar updates as parallel fetches
                 // finish, not in a single end-of-pass burst. thenAccept
@@ -166,6 +170,7 @@ public final class CacheSync {
                 // is what we collect below; the notification side-effect
                 // happens before the parent join.
                 fut.thenAccept(result -> {
+                    if (aborted.get()) return; // the sync is already failing; no per-row noise
                     if (result.error != null) observer.failed(p.pkg, result.error);
                     else observer.fetched(p.pkg);
                 });
@@ -186,7 +191,7 @@ public final class CacheSync {
                 else fetched++;
             }
         } catch (InterruptedException | RuntimeException | Error e) {
-            settle(futures);
+            settle(futures, aborted);
             throw e;
         }
 
@@ -222,10 +227,11 @@ public final class CacheSync {
 
         int fetched = 0;
         Semaphore window = new Semaphore(DownloadSlots.width());
+        AtomicBoolean aborted = new AtomicBoolean();
         List<CompletableFuture<FetchResult>> futures = new ArrayList<>();
         try {
             for (PendingFetch p : pending) {
-                futures.add(submit(window, () -> fetchSources(p)));
+                futures.add(submit(window, aborted, () -> fetchSources(p, aborted)));
             }
             for (int i = 0; i < futures.size(); i++) {
                 FetchResult r;
@@ -245,30 +251,35 @@ public final class CacheSync {
                 }
             }
         } catch (InterruptedException | RuntimeException | Error e) {
-            settle(futures);
+            settle(futures, aborted);
             throw e;
         }
         return fetched;
     }
 
-    private static void settle(List<CompletableFuture<FetchResult>> futures) {
-        for (CompletableFuture<FetchResult> f : futures) {
-            if (!f.isDone()) f.cancel(true);
-        }
+    /**
+     * Stop the fan-out and wait until no fetch is still running, discarding outcomes. Futures are
+     * joined, not cancelled: cancelling a {@link CompletableFuture} only marks it done and leaves its
+     * task running. With {@code aborted} set, unstarted tasks return at their gate and running ones
+     * stop at their next leg boundary, so the wait is bounded by the downloads already in progress.
+     */
+    private static void settle(List<CompletableFuture<FetchResult>> futures, AtomicBoolean aborted) {
+        aborted.set(true);
         for (CompletableFuture<FetchResult> f : futures) {
             try {
                 f.join();
-            } catch (RuntimeException | Error ignored) {
+            } catch (CompletionException | CancellationException ignored) {
+                // the failure that got us here, or a sibling's; the sync already reports it
             }
         }
     }
 
-    private static FetchResult fetchSources(PendingFetch p) {
+    private static FetchResult fetchSources(PendingFetch p, AtomicBoolean aborted) {
         Coordinate sourcesCoord =
                 new Coordinate(p.pkg.moduleGroup(), p.pkg.moduleArtifact(), p.pkg.version(), "sources", "jar");
         try {
             // Pinned: the lock's sources checksum is the authority, as for the main artifact.
-            MavenRepo.Fetched f = p.repo.fetchArtifact(sourcesCoord, p.expectedHex, () -> false);
+            MavenRepo.Fetched f = p.repo.fetchArtifact(sourcesCoord, p.expectedHex, aborted::get);
             if (p.expectedHex != null && !f.sha256().equals(p.expectedHex)) {
                 return FetchResult.failure(p.pkg.name() + " sources: checksum mismatch");
             }
@@ -306,11 +317,11 @@ public final class CacheSync {
      * submitting thread, is what keeps the task population near the slot width instead of one
      * parked thread per row of the lock.
      */
-    private CompletableFuture<FetchResult> submit(Semaphore window, Supplier<FetchResult> fetch)
+    private CompletableFuture<FetchResult> submit(Semaphore window, AtomicBoolean aborted, Supplier<FetchResult> fetch)
             throws InterruptedException {
         window.acquire();
         try {
-            return CompletableFuture.supplyAsync(() -> inSlot(fetch), executor)
+            return CompletableFuture.supplyAsync(() -> inSlot(aborted, fetch), executor)
                     .whenComplete((r, e) -> window.release());
         } catch (RuntimeException rejected) {
             window.release();
@@ -318,8 +329,12 @@ public final class CacheSync {
         }
     }
 
-    /** Run one fetch inside a {@link DownloadSlots} slot, so the fan-out is bounded process-wide. */
-    private static FetchResult inSlot(Supplier<FetchResult> fetch) {
+    /**
+     * Run one fetch inside a {@link DownloadSlots} slot, so the fan-out is bounded process-wide. A
+     * sync that is already settling skips the fetch, before the slot and again once it is granted.
+     */
+    private static FetchResult inSlot(AtomicBoolean aborted, Supplier<FetchResult> fetch) {
+        if (aborted.get()) return FetchResult.skippedByAbort();
         try {
             DownloadSlots.acquire();
         } catch (InterruptedException e) {
@@ -327,13 +342,14 @@ public final class CacheSync {
             return FetchResult.failure("interrupted while waiting for a download slot");
         }
         try {
+            if (aborted.get()) return FetchResult.skippedByAbort();
             return fetch.get();
         } finally {
             DownloadSlots.release();
         }
     }
 
-    private static FetchResult fetch(PendingFetch p) {
+    private static FetchResult fetch(PendingFetch p, AtomicBoolean aborted) {
         Coordinate coord = toCoord(p.pkg);
         try {
             // Rate limit lives in MavenRepo.fetch (network leg only). Wrapping again deadlocks the
@@ -341,7 +357,7 @@ public final class CacheSync {
             // Pass the pin so a stale local-mirror copy that no longer matches (republished GAV +
             // re-lock) is evicted and re-fetched, rather than dead-ending in a checksum mismatch that
             // never touches the network.
-            MavenRepo.Fetched f = p.repo.fetchArtifact(coord, p.expectedHex, () -> false);
+            MavenRepo.Fetched f = p.repo.fetchArtifact(coord, p.expectedHex, aborted::get);
             if (!f.sha256().equals(p.expectedHex)) {
                 return FetchResult.failure(p.pkg.name()
                         + " v"
@@ -398,6 +414,10 @@ public final class CacheSync {
 
         static FetchResult notPublished() {
             return new FetchResult(null, true);
+        }
+
+        static FetchResult skippedByAbort() {
+            return failure("sync aborted");
         }
     }
 
