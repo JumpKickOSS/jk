@@ -155,12 +155,20 @@ public final class EngineServer implements AutoCloseable {
      * trigger the idle-housekeeping that a real plan completion does.
      */
     private void abandonBuildPlanSlot() {
-        activeBuildPlans.decrementAndGet();
+        if (activeBuildPlans.decrementAndGet() == 0 && draining) {
+            synchronized (lifecycleLock) {
+                lifecycleLock.notifyAll();
+            }
+        }
     }
 
     /** Release a plan slot after work finished — call <em>before</em> publishing {@code request-finish}. */
     private void noteBuildPlanFinished() {
-        activeBuildPlans.decrementAndGet();
+        if (activeBuildPlans.decrementAndGet() == 0 && draining) {
+            synchronized (lifecycleLock) {
+                lifecycleLock.notifyAll();
+            }
+        }
     }
 
     /** Dashboard SSE fan-out; non-null only when {@link #httpConfig} is set. */
@@ -769,7 +777,7 @@ public final class EngineServer implements AutoCloseable {
         }
     }
 
-    /** How often the drain supervisor re-reads the plan count; a released slot does not notify. */
+    /** How often the drain supervisor re-reads the plan count; the last released slot also notifies. */
     private static final long DRAIN_POLL_MS = 250;
 
     /** Test seam: hold a plan slot so drain cannot exit until {@link #releasePlanSlotForTests}. */

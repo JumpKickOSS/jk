@@ -15,8 +15,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
@@ -32,8 +30,6 @@ public final class TomlScan {
     private final Map<String, String> values;
     private final Map<String, List<String>> arrays;
     private final Set<String> sections;
-
-    private static final Pattern QUOTED = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"");
 
     /**
      * Files either memo holds before it starts over: a bound above any one workspace's manifests,
@@ -204,7 +200,10 @@ public final class TomlScan {
                     // Inside a multi-line string array: collect quoted elements until the
                     // `]` outside quotes that closes it (IPv6-style values carry `]` inside).
                     List<String> open = arrays.computeIfAbsent(arrayKey, k -> new ArrayList<>());
-                    if (collectArrayLine(line, open)) arrayKey = null;
+                    if (collectArrayLine(line, open)) {
+                        arrayKey = null;
+                        if (values.size() + arrays.size() == wanted.size()) break;
+                    }
                     continue;
                 }
                 if (line.startsWith("[")) {
@@ -233,26 +232,50 @@ public final class TomlScan {
                     if (arrays.containsKey(qualified)) continue;
                     List<String> elements = new ArrayList<>();
                     arrays.put(qualified, elements);
-                    if (!collectArrayLine(rest.substring(1), elements)) arrayKey = qualified;
+                    if (collectArrayLine(rest.substring(1), elements)) {
+                        if (values.size() + arrays.size() == wanted.size()) break;
+                    } else {
+                        arrayKey = qualified;
+                    }
                     continue;
                 }
                 if (values.containsKey(qualified)) continue;
                 values.put(qualified, scalar(rest));
-                if (values.size() == wanted.size()) break; // all found — stop reading
+                if (values.size() + arrays.size() == wanted.size()) break; // all found — stop reading
             }
         }
         return new TomlScan(values, arrays, sections);
     }
 
-    /** Collect quoted elements from one array line; true when the closing {@code ]} was seen. */
+    /**
+     * Collect the string elements of one array line, basic ({@code "…"}) and literal ({@code '…'}); true when
+     * the closing {@code ]} was seen. An unquoted {@code #} starts a comment that runs to the end of the line.
+     */
     private static boolean collectArrayLine(String line, List<String> elements) {
-        int close = line.indexOf(']', line.lastIndexOf('"') + 1);
-        String body = close >= 0 ? line.substring(0, close) : line;
-        Matcher m = QUOTED.matcher(body);
-        while (m.find()) {
-            elements.add(m.group(1).replace("\\\"", "\"").replace("\\\\", "\\"));
+        int i = 0;
+        while (i < line.length()) {
+            char c = line.charAt(i);
+            if (c == ']') return true;
+            if (c == '#') return false;
+            if (c == '"') {
+                int end = i + 1;
+                while (end < line.length() && line.charAt(end) != '"') {
+                    if (line.charAt(end) == '\\') end++;
+                    end++;
+                }
+                if (end >= line.length()) return false;
+                elements.add(MinimalToml.unquote(line.substring(i, end + 1)));
+                i = end + 1;
+            } else if (c == '\'') {
+                int end = line.indexOf('\'', i + 1);
+                if (end < 0) return false;
+                elements.add(line.substring(i + 1, end));
+                i = end + 1;
+            } else {
+                i++;
+            }
         }
-        return close >= 0;
+        return false;
     }
 
     /** The scanned value for {@code "section.key"} / {@code "key"}, or {@code null} when absent. */

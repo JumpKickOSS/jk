@@ -95,7 +95,17 @@ public final class SuiteReads {
         Files.createDirectories(dir);
         Path settings = dir.resolve("reads.jfc");
         Files.writeString(settings, SETTINGS, StandardCharsets.UTF_8);
-        return "-XX:StartFlightRecording=settings=" + settings + ",filename=" + dir + ",dumponexit=true";
+        return "-XX:StartFlightRecording=settings=" + jfrPath(settings) + ",filename=" + jfrPath(dir)
+                + ",dumponexit=true";
+    }
+
+    /**
+     * JFR splits its options on commas only, so only a comma needs quoting. A space must not be quoted: on
+     * Windows the launcher wraps the whole argument in quotes, and an inner pair would split it.
+     */
+    static String jfrPath(Path path) {
+        String s = path.toString();
+        return s.indexOf(',') >= 0 ? "\"" + s + "\"" : s;
     }
 
     /**

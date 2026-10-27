@@ -130,7 +130,8 @@ final class LockedAppModel {
             for (Path path : dep.getResolvedPaths()) {
                 if (path.startsWith(from) && Files.isRegularFile(path)) {
                     Files.createDirectories(to);
-                    Path kept = to.resolve(path.getFileName().toString());
+                    String name = dep.getGroupId() + "." + path.getFileName().toString();
+                    Path kept = to.resolve(name);
                     Files.copy(path, kept, StandardCopyOption.REPLACE_EXISTING);
                     paths.add(kept);
                     moved = true;

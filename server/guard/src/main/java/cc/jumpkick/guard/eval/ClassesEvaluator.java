@@ -12,6 +12,7 @@ import cc.jumpkick.guard.facts.MethodFacts;
 import cc.jumpkick.guard.rules.Allow;
 import cc.jumpkick.guard.rules.Rule;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,7 +74,7 @@ final class ClassesEvaluator implements Evaluator {
             selected++;
             List<String[]> failed = new ArrayList<>();
             for (Should s : shoulds) {
-                String detail = holds(s, c, facts, types);
+                String detail = holds(s, c, facts, types, ctx);
                 boolean ok = detail == null;
                 if (ok == s.negate()) {
                     String what = s.key() + " = \"" + s.raw() + "\"";
@@ -147,7 +148,8 @@ final class ClassesEvaluator implements Evaluator {
     }
 
     /** {@code null} when the predicate holds for {@code c}; otherwise what was found instead. */
-    private static @Nullable String holds(Should should, ClassFacts c, FactsIndex facts, TypeHierarchy types) {
+    private static @Nullable String holds(
+            Should should, ClassFacts c, FactsIndex facts, TypeHierarchy types, EvalContext ctx) {
         String v = should.value();
         switch (should.key()) {
             case "reside-in" -> {
@@ -192,10 +194,18 @@ final class ClassesEvaluator implements Evaluator {
                 return hits.isEmpty() ? null : "depends on " + String.join(", ", hits);
             }
             case "only-be-accessed-by" -> {
+                Map<String, List<ClassFacts>> referrersByTarget = ctx.memo("referrersByTarget", context -> {
+                    Map<String, List<ClassFacts>> idx = new HashMap<>();
+                    for (ClassFacts other : context.facts().classList()) {
+                        for (String ref : other.typeRefs()) {
+                            idx.computeIfAbsent(ref, k -> new ArrayList<>()).add(other);
+                        }
+                    }
+                    return idx;
+                });
                 TreeSet<String> outsiders = new TreeSet<>();
-                for (ClassFacts other : facts.classList()) {
+                for (ClassFacts other : referrersByTarget.getOrDefault(c.name(), List.of())) {
                     if (Descriptors.outermost(other.name()).equals(Descriptors.outermost(c.name()))) continue;
-                    if (!other.typeRefs().contains(c.name())) continue;
                     if (targets(v, other.name())) continue;
                     outsiders.add(other.binaryName());
                 }

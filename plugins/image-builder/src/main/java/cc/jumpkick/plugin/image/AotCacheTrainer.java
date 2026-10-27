@@ -528,29 +528,37 @@ final class AotCacheTrainer {
 
         long started = Clock.SYSTEM.nanos();
         boolean asked = false;
-        while (process.isAlive()) {
-            if (process.waitFor(200, TimeUnit.MILLISECONDS)) break;
-            long elapsedMs = (Clock.SYSTEM.nanos() - started) / 1_000_000L;
-            long quietMs = (Clock.SYSTEM.nanos() - lastOutput.get()) / 1_000_000L;
-            if (elapsedMs > TRAIN_TIMEOUT_SECONDS * 1000) {
-                log.accept("the training run did not settle within " + TRAIN_TIMEOUT_SECONDS + "s — stopping it");
-                asked = true;
-            } else if (!asked && elapsedMs >= MIN_RUN_MILLIS && quietMs >= QUIET_MILLIS) {
-                asked = true;
-            }
-            if (asked) {
-                synchronized (out) {
-                    out.append("[jk] settled after ").append(elapsedMs).append("ms — asking it to stop\n");
+        boolean killed = false;
+        try {
+            while (process.isAlive()) {
+                if (process.waitFor(200, TimeUnit.MILLISECONDS)) break;
+                long elapsedMs = (Clock.SYSTEM.nanos() - started) / 1_000_000L;
+                long quietMs = (Clock.SYSTEM.nanos() - lastOutput.get()) / 1_000_000L;
+                if (elapsedMs > TRAIN_TIMEOUT_SECONDS * 1000) {
+                    log.accept("the training run did not settle within " + TRAIN_TIMEOUT_SECONDS + "s — stopping it");
+                    asked = true;
+                } else if (!asked && elapsedMs >= MIN_RUN_MILLIS && quietMs >= QUIET_MILLIS) {
+                    asked = true;
                 }
-                requestStop(process, runtime, containerName);
-                // The JVM writes the cache from a shutdown hook; give it room to finish.
-                process.waitFor(TRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-                break;
+                if (asked) {
+                    synchronized (out) {
+                        out.append("[jk] settled after ").append(elapsedMs).append("ms — asking it to stop\n");
+                    }
+                    requestStop(process, runtime, containerName);
+                    // The JVM writes the cache from a shutdown hook; give it room to finish.
+                    process.waitFor(TRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                    break;
+                }
+            }
+            killed = process.isAlive();
+            if (killed) process.destroyForcibly();
+            reader.join(5_000);
+        } finally {
+            if (process.isAlive()) {
+                forceStop(runtime, containerName);
+                process.destroyForcibly();
             }
         }
-        boolean killed = process.isAlive();
-        if (killed) process.destroyForcibly();
-        reader.join(5_000);
         synchronized (out) {
             out.append("[jk] ")
                     .append(killed ? "did not stop when asked; killed" : "exited " + process.exitValue())
@@ -571,14 +579,36 @@ final class AotCacheTrainer {
             process.destroy();
             return;
         }
+        Process stopper = null;
         try {
-            new ProcessBuilder(runtime, "stop", "--time", String.valueOf(TRAIN_TIMEOUT_SECONDS), containerName)
-                    .redirectErrorStream(true)
-                    .start()
-                    .waitFor(TRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            stopper = new ProcessBuilder(
+                            runtime, "stop", "--time", String.valueOf(TRAIN_TIMEOUT_SECONDS), containerName)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+            stopper.waitFor(TRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             process.destroy(); // best effort: the forcible kill below still bounds the wait
+        } finally {
+            if (stopper != null && stopper.isAlive()) stopper.destroyForcibly();
+        }
+    }
+
+    /** An abandoned run (interrupted or failed): the container is killed, not given time to write its cache. */
+    private static void forceStop(@Nullable String runtime, String containerName) {
+        if (runtime == null) return;
+        Process killer = null;
+        try {
+            killer = new ProcessBuilder(runtime, "kill", containerName)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+            killer.waitFor(10, TimeUnit.SECONDS);
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+        } finally {
+            if (killer != null && killer.isAlive()) killer.destroyForcibly();
         }
     }
 

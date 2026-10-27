@@ -184,7 +184,7 @@ public final class PubGrubResolver implements Resolver {
         decisions = new TreeMap<>(decisions);
         decisions.remove(ROOT_PKG);
 
-        // KMP global variant exclusion (A5f finding 20): a platform artifact's own POM can name
+        // KMP global variant exclusion: a platform artifact's own POM can name
         // a non-selected SIBLING concretely (datastore-core-okio-jvm → datastore-core-jvm)
         // variant-aware in GMM space, a double-define at dex in POM space. When the selected
         // sibling made it into the resolution, the non-selected one leaves it; its dep edges
@@ -198,10 +198,7 @@ public final class PubGrubResolver implements Resolver {
         // Exclusions are a SOLVE-time concern, not a lock-edge concern. MavenPackageSource applies
         // them while listing candidates, so an excluded-everywhere package never reaches
         // `decisions`. Once a package IS in the resolution, every POM edge pointing at it is real
-        // and the closure needs it — filtering here is what dropped logback-classic → logback-core
-        // when an unrelated Micronaut edge excluded logback-core, and the assembly then shipped
-        // without ch.qos.logback.core (ea6dc765). Do not reintroduce a per-edge exclusion filter
-        // below: `decisions.containsKey` is the whole rule.
+        // and the closure needs it: `decisions.containsKey` is the whole rule.
         Map<String, Set<String>> dependsOn = new HashMap<>();
         // Edge ref → the selector the POM wrote for it, so the lock can show what was asked for
         // beside what was picked. KMP and relocation edges are the resolver's own, not a POM's.

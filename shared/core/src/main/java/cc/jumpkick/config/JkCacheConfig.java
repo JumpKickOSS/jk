@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.FileStore;
 import java.nio.file.Files;
@@ -184,15 +185,8 @@ public record JkCacheConfig(
     static long usedBytes(Path root) {
         if (root == null || !Files.isDirectory(root)) return 0L;
         long[] total = {0L};
-        try (var walk = Files.walk(root)) {
-            walk.forEach(f -> {
-                try {
-                    if (Files.isRegularFile(f)) total[0] += Files.size(f);
-                } catch (Exception e) {
-                    // vanished mid-walk
-                    Log.debug("usedBytes: vanished mid-walk", e);
-                }
-            });
+        try {
+            PathUtil.forEachReadableFile(root, (f, attrs) -> total[0] += attrs.size());
         } catch (Exception e) {
             // unreadable tree — treat as empty
             Log.debug("usedBytes: unreadable tree", e);

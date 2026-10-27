@@ -8,6 +8,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import xsbti.VirtualFile;
 import xsbti.compile.IncToolOptionsUtil;
 import xsbti.compile.SingleOutput;
@@ -41,6 +44,58 @@ final class AnalysisOffCompile {
             CollectingReporter reporter,
             String missingType)
             throws IOException {
+        return run(
+                javac,
+                sourceFiles,
+                javacOpts,
+                classpath,
+                classOutput,
+                null,
+                null,
+                List.of(),
+                null,
+                reporter,
+                missingType);
+    }
+
+    static ZincJavaCompiler.Result run(
+            RecordingJavaCompiler javac,
+            VirtualFile[] sourceFiles,
+            String[] javacOpts,
+            List<Path> classpath,
+            Path classOutput,
+            @Nullable JavaCompileJob job,
+            @Nullable ApProvenance provenance,
+            CollectingReporter reporter,
+            String missingType)
+            throws IOException {
+        return run(
+                javac,
+                sourceFiles,
+                javacOpts,
+                classpath,
+                classOutput,
+                job != null ? job.workdir() : null,
+                job != null ? job.sourceOutput() : null,
+                job != null ? job.sources() : List.of(),
+                provenance,
+                reporter,
+                missingType);
+    }
+
+    static ZincJavaCompiler.Result run(
+            RecordingJavaCompiler javac,
+            VirtualFile[] sourceFiles,
+            String[] javacOpts,
+            List<Path> classpath,
+            Path classOutput,
+            @Nullable Path workdir,
+            @Nullable Path sourceOutput,
+            List<Path> sources,
+            @Nullable ApProvenance provenance,
+            CollectingReporter reporter,
+            String missingType)
+            throws IOException {
         int before = reporter.diagnostics().size();
         ZincJavaCompiler.deleteClassFiles(classOutput);
         List<String> options = new ArrayList<>(Arrays.asList(javacOpts));
@@ -58,8 +113,13 @@ final class AnalysisOffCompile {
                 QuietLogger.INSTANCE);
         List<ZincJavaCompiler.Diag> all = reporter.diagnostics();
         List<ZincJavaCompiler.Diag> diags = new ArrayList<>(all.subList(Math.min(before, all.size()), all.size()));
+        var generated = provenance != null ? provenance.generated : Map.<Path, Set<Path>>of();
         if (!ok || reporter.hasErrors()) {
-            return new ZincJavaCompiler.Result(false, diags, javac.compiledSources());
+            return new ZincJavaCompiler.Result(false, diags, javac.compiledSources(), generated);
+        }
+        if (workdir != null && provenance != null) {
+            GeneratedProvenance.of(workdir)
+                    .reconcile(sourceOutput, classOutput, sources, javac.compiledSources(), generated);
         }
         diags.add(new ZincJavaCompiler.Diag(
                 "WARNING",
@@ -70,7 +130,7 @@ final class AnalysisOffCompile {
                         + " supertypes with the compiler worker's JDK, which has no " + missingType
                         + " — javac compiled the module at its --release, so every build compiles it in full;"
                         + " a change to the compile classpath or a clean build tries the analysis again"));
-        return new ZincJavaCompiler.Result(true, diags, javac.compiledSources());
+        return new ZincJavaCompiler.Result(true, diags, javac.compiledSources(), generated);
     }
 
     /** The type a {@link LinkageError} from the analysis could not load, as a class name. */

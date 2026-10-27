@@ -641,7 +641,15 @@ public final class Http {
                         // The refusal's body is abandoned like a retried 5xx's: a streamed one left
                         // unread holds its connection open for as long as the caller holds the stream.
                         if (drain != null) drain.handle(response);
-                        return send(reissue(request, mirrored).build(), handler, drain);
+                        // Later attempts stay on the mirror: Central has just refused this host.
+                        request = reissue(request, mirrored).build();
+                        HttpResponse<T> reissued = send(request, handler, drain);
+                        if (reissued.statusCode() < 500) {
+                            return reissued;
+                        }
+                        if (drain != null) drain.handle(reissued);
+                        lastStatus = reissued.statusCode();
+                        continue;
                     }
                 }
                 if (status < 500) {
@@ -663,7 +671,14 @@ public final class Http {
                         ? centralMirror.toMirror(request.uri())
                         : request.uri();
                 if (!mirrored.equals(request.uri())) {
-                    return send(reissue(request, mirrored).build(), handler, drain);
+                    request = reissue(request, mirrored).build();
+                    HttpResponse<T> reissued = send(request, handler, drain);
+                    if (reissued.statusCode() < 500) {
+                        return reissued;
+                    }
+                    if (drain != null) drain.handle(reissued);
+                    lastStatus = reissued.statusCode();
+                    continue;
                 }
                 throw new NoAnswerException(
                         verb + " " + SafeUri.forMessage(uri) + " got no answer within " + spoken(requestTimeout), e);
@@ -718,10 +733,12 @@ public final class Http {
                         + SafeUri.forMessage(request.uri()));
             }
             if (hops >= MAX_REDIRECTS) {
+                if (drain != null) drain.handle(response);
                 throw new RedirectRefusedException(
                         "too many redirects (" + MAX_REDIRECTS + ") fetching " + SafeUri.forMessage(request.uri()));
             }
             if (!followable(request.uri(), target)) {
+                if (drain != null) drain.handle(response);
                 throw new RedirectRefusedException("refusing a redirect from " + SafeUri.forMessage(request.uri())
                         + " to " + SafeUri.forMessage(target) + ": https to http");
             }

@@ -115,6 +115,8 @@ public final class Size {
     }
 
     private static final int O_RDONLY = 0;
+    private static final int O_CLOEXEC_LINUX = 0x80000;
+    private static final int O_CLOEXEC_DARWIN = 0x1000000;
     private static volatile @Nullable MethodHandle posixOpen;
     private static volatile @Nullable MethodHandle posixClose;
     private static volatile @Nullable MethodHandle posixIsatty;
@@ -187,7 +189,8 @@ public final class Size {
         }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment path = arena.allocateFrom("/dev/tty");
-            int fd = (int) open.invokeExact(path, O_RDONLY);
+            int flags = O_RDONLY | (Os.isDarwin() ? O_CLOEXEC_DARWIN : O_CLOEXEC_LINUX);
+            int fd = (int) open.invokeExact(path, flags);
             if (fd >= 0) {
                 try {
                     Window size = winsizeFromFd(ioctl, fd, arena);

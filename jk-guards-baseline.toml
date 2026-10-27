@@ -16,6 +16,7 @@
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
+"shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 
 [archive-stream-owner]
@@ -40,9 +41,9 @@ population = { files = 2203 }
 "server/io" = { classes = 56, sites = 3311 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "server/toolchain" = { classes = 20, sites = 1776 }
-"shared/client-io" = { classes = 119, sites = 6437 }
-"shared/core" = { classes = 373, sites = 21199 }
-"shared/dynamic-surface" = { classes = 10, sites = 607 }
+"shared/client-io" = { classes = 136, sites = 7243 }
+"shared/core" = { classes = 446, sites = 26137 }
+"shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/host" = { classes = 46, sites = 1921 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 "shared/wire" = { classes = 115, sites = 4305 }
@@ -444,10 +445,6 @@ at     = "cc.jumpkick.compat.ToolInstaller#flattenedRoot(Ljava/nio/file/Path;)Lj
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "shared/client-io"
-at     = "cc.jumpkick.cache.DiskUsage#walkExclusive(Ljava/nio/file/Path;Lcc/jumpkick/cache/DiskUsage$SeenLinks;)Lcc/jumpkick/cache/DiskUsage$Stats; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "shared/client-io"
 at     = "cc.jumpkick.cache.EngineInstall#inferVersion(Ljava/lang/String;)Ljava/util/Optional; -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;Ljava/lang/String;)Ljava/nio/file/DirectoryStream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
@@ -468,10 +465,6 @@ at     = "cc.jumpkick.cache.EngineInstall#sweepRetiredJars(Ljava/util/List;)V ->
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "shared/client-io"
-at     = "cc.jumpkick.cache.SourcesJar#appendTree(Ljava/util/jar/JarOutputStream;Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "shared/client-io"
 at     = "cc.jumpkick.repo.RepoArtifactStore#hasTrackedFile(Ljava/nio/file/Path;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
@@ -489,18 +482,6 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 [[blind-tree-walks.entries]]
 in     = "shared/core"
 at     = "cc.jumpkick.builds.ProjectIdentity#recoverId(Ljava/nio/file/Path;Ljava/util/Optional;)Ljava/util/Optional; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "shared/core"
-at     = "cc.jumpkick.config.JkCacheConfig#usedBytes(Ljava/nio/file/Path;)J -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "shared/core"
-at     = "cc.jumpkick.layout.MainClassScanner#scan(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "shared/core"
-at     = "cc.jumpkick.layout.NativePreflight#scanSourceMains(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "shared/core"
@@ -529,10 +510,6 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 [[blind-tree-walks.entries]]
 in     = "shared/dynamic-surface"
 at     = "cc.jumpkick.surface.DynamicSurfaceIo#importAgentDir(Ljava/nio/file/Path;Ljava/lang/String;)Lcc/jumpkick/surface/DynamicSurface; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "shared/dynamic-surface"
-at     = "cc.jumpkick.surface.DynamicSurfaceIo#importAgentDir(Ljava/nio/file/Path;Ljava/lang/String;)Lcc/jumpkick/surface/DynamicSurface; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "shared/host"
@@ -668,6 +645,7 @@ population = { constants = 29, files = 2266, literals = 44297 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
+"shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 
 [central-address]
@@ -715,6 +693,7 @@ population = { examined = 4 }
 "server/resolver" = { classes = 123, sites = 7334 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 436, sites = 25483 }
+"shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/host" = { classes = 51, sites = 2014 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 [[clock-owner.entries]]
@@ -1438,6 +1417,7 @@ population = { examined = 15 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
+"shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 
 [file-size]
@@ -1489,13 +1469,14 @@ population = { files = 1888 }
 "server/resolver" = { classes = 111, sites = 0 }
 "shared/client-io" = { classes = 106, sites = 0 }
 "shared/core" = { classes = 373, sites = 0 }
+"shared/dynamic-surface" = { classes = 11, sites = 0 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 
 [json-concat]
 population = { files = 2240 }
 
 [json-concat-ratchet]
-population = { units = 2240 }
+population = { units = 2548 }
 [[json-concat-ratchet.entries]]
 unit   = "clients/intellij/src/main/java/cc/jumpkick/idea/JkWireModel.java"
 value  = 1
@@ -1506,7 +1487,7 @@ value  = 1
 reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved to JsonFields; the ratchet lowers each file's count to zero"
 [[json-concat-ratchet.entries]]
 unit   = "server/guard/src/main/java/cc/jumpkick/guard/explain/GuardExplain.java"
-value  = 7
+value  = 5
 reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved to JsonFields; the ratchet lowers each file's count to zero"
 [[json-concat-ratchet.entries]]
 unit   = "server/guard/src/main/java/cc/jumpkick/guard/explain/RuleSummaries.java"
@@ -1804,6 +1785,7 @@ population = { examined = 5 }
 "server/resolver" = { classes = 111, elements = 3 }
 "shared/client-io" = { classes = 106, elements = 7 }
 "shared/core" = { classes = 373, elements = 17 }
+"shared/dynamic-surface" = { classes = 11, elements = 1 }
 "shared/toolchain-jdk" = { classes = 168, elements = 11 }
 
 [one-digest-surface]
@@ -1821,6 +1803,7 @@ population = { examined = 5 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
+"shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 
 [one-hex-spelling]
@@ -1838,6 +1821,7 @@ population = { examined = 5 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
+"shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 
 [one-host-surface]
@@ -1855,6 +1839,7 @@ population = { examined = 5 }
 "server/resolver" = { classes = 111, sites = 5253 }
 "shared/client-io" = { classes = 106, sites = 4458 }
 "shared/core" = { classes = 373, sites = 16704 }
+"shared/dynamic-surface" = { classes = 11, sites = 485 }
 "shared/toolchain-jdk" = { classes = 168, sites = 6288 }
 
 [one-http-client]
@@ -1872,6 +1857,7 @@ population = { examined = 5 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
+"shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 
 [one-json-codec]
@@ -1885,7 +1871,9 @@ population = { files = 2240 }
 "plugins/quarkus" = { classes = 19, sites = 0 }
 "server/engine" = { classes = 1342, sites = 90304 }
 "server/io" = { classes = 59, sites = 0 }
+"shared/client-io" = { classes = 136, sites = 0 }
 "shared/core" = { classes = 435, sites = 0 }
+"shared/dynamic-surface" = { classes = 11, sites = 0 }
 
 [one-recursive-delete]
 population = { files = 2203 }
@@ -1905,6 +1893,7 @@ population = { files = 2203 }
 "server/resolver" = { classes = 111, sites = 5253 }
 "shared/client-io" = { classes = 106, sites = 4458 }
 "shared/core" = { classes = 373, sites = 16704 }
+"shared/dynamic-surface" = { classes = 11, sites = 485 }
 "shared/toolchain-jdk" = { classes = 168, sites = 6288 }
 
 [package-cycles]
@@ -1924,6 +1913,7 @@ population = { files = 2203 }
 "server/toolchain" = { edges = 4, slices = 4 }
 "shared/client-io" = { edges = 10, slices = 7 }
 "shared/core" = { edges = 32, slices = 17 }
+"shared/dynamic-surface" = { edges = 0, slices = 1 }
 "shared/plugin-sdk" = { edges = 7, slices = 4 }
 "shared/toolchain-jdk" = { edges = 8, slices = 11 }
 [[package-cycles.entries]]
@@ -2014,6 +2004,7 @@ population = { examined = 15 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
+"shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 
 [published-installer-ps1]
@@ -2049,6 +2040,7 @@ population = { files = 2335 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
+"shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 
 [schema-compared-to-its-constant]
@@ -2156,6 +2148,7 @@ population = { files = 1920 }
 "server/resolver" = { classes = 111, sites = 5253 }
 "shared/client-io" = { classes = 106, sites = 4458 }
 "shared/core" = { classes = 373, sites = 16704 }
+"shared/dynamic-surface" = { classes = 11, sites = 485 }
 "shared/toolchain-jdk" = { classes = 168, sites = 6288 }
 
 [tree-copy-owner]
@@ -2196,4 +2189,5 @@ population = { files = 1 }
 "server/resolver" = { classes = 111, sites = 6750 }
 "shared/client-io" = { classes = 106, sites = 5913 }
 "shared/core" = { classes = 373, sites = 21199 }
+"shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }

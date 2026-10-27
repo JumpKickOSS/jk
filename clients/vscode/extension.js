@@ -35,7 +35,7 @@ function activate(context) {
     vscode.commands.registerCommand("jk.lock", () => runJk(["lock"])),
     vscode.tasks.registerTaskProvider("jk", {
       provideTasks: () => defaultTasks(),
-      resolveTask: (task) => task,
+      resolveTask: (task) => resolveJkTask(task),
     })
   );
 
@@ -66,6 +66,25 @@ function defaultTasks() {
     task.presentationOptions = { reveal: vscode.TaskRevealKind.Always, panel: vscode.TaskPanelKind.Shared };
     return task;
   });
+}
+
+/**
+ * @param {vscode.Task} task
+ * @returns {vscode.Task | undefined}
+ */
+function resolveJkTask(task) {
+  const def = task.definition;
+  if (!def || def.type !== "jk" || !def.task) return undefined;
+  const folder =
+    task.scope && typeof task.scope === "object" && "uri" in task.scope
+      ? task.scope
+      : workspaceFolder();
+  if (!folder) return undefined;
+  const extra = Array.isArray(def.args) ? def.args.map(String) : [];
+  const exec = new vscode.ShellExecution(jkBin(), [String(def.task), ...extra], {
+    cwd: folder.uri.fsPath,
+  });
+  return new vscode.Task(def, folder, task.name || `jk ${def.task}`, "jk", exec);
 }
 
 /** @returns {vscode.WorkspaceFolder | undefined} */
@@ -106,12 +125,15 @@ function runJk(args) {
   output.appendLine(`  cwd: ${cwd}`);
 
   return new Promise((resolve) => {
-    const child = spawn(bin, args, {
+    // Windows only starts .exe/.com without a shell; cmd.exe resolves a bare `jk` or a jk.bat through
+    // PATHEXT. With a shell the command line is joined unquoted, so the binary path is quoted.
+    const viaShell = process.platform === "win32" && !/\.(exe|com)$/i.test(bin);
+    const child = spawn(viaShell ? `"${bin}"` : bin, args, {
       cwd,
       // The OutputChannel is a parser/pane, not a terminal: jk keeps ANSI on pipes, so ask for
       // plain text (same rationale as the IntelliJ client's NO_COLOR line).
       env: { ...process.env, NO_COLOR: "1" },
-      shell: false,
+      shell: viaShell,
     });
     child.stdout.on("data", (buf) => output.append(buf.toString()));
     child.stderr.on("data", (buf) => output.append(buf.toString()));

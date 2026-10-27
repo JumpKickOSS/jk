@@ -79,6 +79,7 @@ on_exit() {
     snapshot "after the failure" || true
     dump_logs
   fi
+  rm -f "${state_log:-}"
   exit "$status"
 }
 trap on_exit EXIT

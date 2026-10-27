@@ -59,13 +59,9 @@ public final class MinimalToml {
                         case 'b' -> sb.append('\b');
                         case 'f' -> sb.append('\f');
                         case 'u' -> {
-                            if (i + 4 < v.length()) {
-                                try {
-                                    sb.append((char) Integer.parseInt(v.substring(i + 1, i + 5), 16));
-                                    i += 4;
-                                } catch (NumberFormatException malformed) {
-                                    sb.append('\\').append(e);
-                                }
+                            if (i + 4 < v.length() && isHex4(v, i + 1)) {
+                                sb.append((char) Integer.parseInt(v, i + 1, i + 5, 16));
+                                i += 4;
                             } else {
                                 sb.append('\\').append(e);
                             }
@@ -80,5 +76,14 @@ public final class MinimalToml {
         }
         int hash = v.indexOf('#');
         return (hash >= 0 ? v.substring(0, hash) : v).strip();
+    }
+
+    private static boolean isHex4(String s, int from) {
+        for (int k = from; k < from + 4; k++) {
+            char c = s.charAt(k);
+            boolean hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+            if (!hex) return false;
+        }
+        return true;
     }
 }

@@ -154,35 +154,40 @@ public final class CacheSync {
         // each takes a DownloadSlots slot and MavenRepo rate-limits the network leg per host.
         Semaphore window = new Semaphore(DownloadSlots.width());
         List<CompletableFuture<FetchResult>> futures = new ArrayList<>(pending.size());
-        for (PendingFetch p : pending) {
-            CompletableFuture<FetchResult> fut = submit(window, () -> fetch(p));
-            // Fire the per-package callback on the fetcher's completion
-            // thread so the progress bar updates as parallel fetches
-            // finish, not in a single end-of-pass burst. thenAccept
-            // returns a new future we don't track — the original `fut`
-            // is what we collect below; the notification side-effect
-            // happens before the parent join.
-            fut.thenAccept(result -> {
-                if (result.error != null) observer.failed(p.pkg, result.error);
-                else observer.fetched(p.pkg);
-            });
-            futures.add(fut);
-        }
-
         int fetched = 0;
         List<String> errors = new ArrayList<>();
-        for (CompletableFuture<FetchResult> f : futures) {
-            FetchResult r;
-            try {
-                r = f.get();
-            } catch (ExecutionException e) {
-                // Unwrap unexpected throwables from supplyAsync.
-                Throwable cause = e.getCause() != null ? e.getCause() : e;
-                errors.add(cause.getMessage());
-                continue;
+        try {
+            for (PendingFetch p : pending) {
+                CompletableFuture<FetchResult> fut = submit(window, () -> fetch(p));
+                // Fire the per-package callback on the fetcher's completion
+                // thread so the progress bar updates as parallel fetches
+                // finish, not in a single end-of-pass burst. thenAccept
+                // returns a new future we don't track — the original `fut`
+                // is what we collect below; the notification side-effect
+                // happens before the parent join.
+                fut.thenAccept(result -> {
+                    if (result.error != null) observer.failed(p.pkg, result.error);
+                    else observer.fetched(p.pkg);
+                });
+                futures.add(fut);
             }
-            if (r.error != null) errors.add(r.error);
-            else fetched++;
+
+            for (CompletableFuture<FetchResult> f : futures) {
+                FetchResult r;
+                try {
+                    r = f.get();
+                } catch (ExecutionException e) {
+                    // Unwrap unexpected throwables from supplyAsync.
+                    Throwable cause = e.getCause() != null ? e.getCause() : e;
+                    errors.add(cause.getMessage());
+                    continue;
+                }
+                if (r.error != null) errors.add(r.error);
+                else fetched++;
+            }
+        } catch (InterruptedException | RuntimeException | Error e) {
+            settle(futures);
+            throw e;
         }
 
         return new Report(fetched, upToDate, skipped, List.copyOf(errors));
@@ -218,27 +223,44 @@ public final class CacheSync {
         int fetched = 0;
         Semaphore window = new Semaphore(DownloadSlots.width());
         List<CompletableFuture<FetchResult>> futures = new ArrayList<>();
-        for (PendingFetch p : pending) {
-            futures.add(submit(window, () -> fetchSources(p)));
-        }
-        for (int i = 0; i < futures.size(); i++) {
-            FetchResult r;
-            try {
-                r = futures.get(i).get();
-            } catch (ExecutionException e) {
-                observer.failed(pending.get(i).pkg, e.getMessage());
-                continue;
+        try {
+            for (PendingFetch p : pending) {
+                futures.add(submit(window, () -> fetchSources(p)));
             }
-            if (r.absent()) {
-                observer.skipped(pending.get(i).pkg);
-            } else if (r.error() == null) {
-                fetched++;
-                observer.fetched(pending.get(i).pkg);
-            } else {
-                observer.failed(pending.get(i).pkg, r.error());
+            for (int i = 0; i < futures.size(); i++) {
+                FetchResult r;
+                try {
+                    r = futures.get(i).get();
+                } catch (ExecutionException e) {
+                    observer.failed(pending.get(i).pkg, e.getMessage());
+                    continue;
+                }
+                if (r.absent()) {
+                    observer.skipped(pending.get(i).pkg);
+                } else if (r.error() == null) {
+                    fetched++;
+                    observer.fetched(pending.get(i).pkg);
+                } else {
+                    observer.failed(pending.get(i).pkg, r.error());
+                }
             }
+        } catch (InterruptedException | RuntimeException | Error e) {
+            settle(futures);
+            throw e;
         }
         return fetched;
+    }
+
+    private static void settle(List<CompletableFuture<FetchResult>> futures) {
+        for (CompletableFuture<FetchResult> f : futures) {
+            if (!f.isDone()) f.cancel(true);
+        }
+        for (CompletableFuture<FetchResult> f : futures) {
+            try {
+                f.join();
+            } catch (RuntimeException | Error ignored) {
+            }
+        }
     }
 
     private static FetchResult fetchSources(PendingFetch p) {

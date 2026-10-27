@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -190,6 +191,52 @@ class CentralMirrorTest {
                             "central/maven2/org/tomlj/tomlj/maven-metadata.xml",
                             "mirror/mirror/org/tomlj/tomlj/maven-metadata.xml");
             assertThat(m.active()).isTrue();
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /** A mirror 5xx after the reroute is retried against the mirror, never against the Central that refused. */
+    @Test
+    void a_mirror_5xx_after_a_central_429_retries_the_mirror(@TempDir Path dir) throws Exception {
+        var hits = new CopyOnWriteArrayList<String>();
+        var mirrorCalls = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/maven2/", ex -> {
+            hits.add("central");
+            ex.sendResponseHeaders(429, -1);
+            ex.close();
+        });
+        server.createContext("/mirror/", ex -> {
+            hits.add("mirror");
+            if (mirrorCalls.getAndIncrement() == 0) {
+                ex.sendResponseHeaders(503, -1);
+                ex.close();
+                return;
+            }
+            byte[] b = "<metadata/>".getBytes(StandardCharsets.UTF_8);
+            ex.sendResponseHeaders(200, b.length);
+            ex.getResponseBody().write(b);
+            ex.close();
+        });
+        server.start();
+        try {
+            int port = server.getAddress().getPort();
+            // Distinct host names, so Central's cooldown does not also cover the mirror.
+            CentralMirror m = new CentralMirror(
+                    dir, Duration.ofHours(4), true, "127.0.0.1", "http://localhost:" + port + "/mirror");
+            Http http = new Http(
+                    HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(5))
+                            .build(),
+                    new Duration[] {Duration.ofMillis(1), Duration.ofMillis(1)},
+                    m);
+
+            var response = http.get(
+                    URI.create("http://127.0.0.1:" + port + "/maven2/org/tomlj/tomlj/maven-metadata.xml"), Map.of());
+
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(hits).containsExactly("central", "mirror", "mirror");
         } finally {
             server.stop(0);
         }

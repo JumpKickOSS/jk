@@ -271,9 +271,18 @@ public final class WorkerAotCache {
             FAILED.add(cache);
             Log.warn("jk engine: startup cache recording for the " + what + " skipped: " + e.getMessage());
         } catch (InterruptedException e) {
+            if (p != null && p.isAlive()) {
+                try {
+                    p.destroyForcibly().waitFor(5, TimeUnit.SECONDS);
+                } catch (InterruptedException ignored) {
+                }
+            }
             Thread.currentThread().interrupt();
         } finally {
-            if (p != null) LIVE.remove(p);
+            if (p != null) {
+                if (p.isAlive()) p.destroyForcibly();
+                LIVE.remove(p);
+            }
             deleteQuietly(tmp);
             deleteQuietly(tmp.resolveSibling(tmp.getFileName() + ".config")); // an interrupted recording
             if (scratch != null) PathUtil.deleteRecursively(scratch);

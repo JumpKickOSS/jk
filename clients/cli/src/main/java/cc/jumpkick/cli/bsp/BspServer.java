@@ -64,8 +64,8 @@ public final class BspServer {
     /** Compile/test/run requests not yet answered, oldest first. Guarded by itself. */
     private final List<LongJob> jobs = new ArrayList<>();
 
-    private @Nullable IdeWireModel cachedModel;
-    private @Nullable ProjectInfo cachedInfo;
+    private volatile @Nullable IdeWireModel cachedModel;
+    private volatile @Nullable ProjectInfo cachedInfo;
 
     public BspServer(IdeEngineClient ide, InputStream in, OutputStream out) {
         this.ide = ide;
@@ -282,17 +282,17 @@ public final class BspServer {
         }
     }
 
-    private void invalidateModel() {
+    private synchronized void invalidateModel() {
         cachedModel = null;
         cachedInfo = null;
     }
 
-    private IdeWireModel model() throws IOException {
+    private synchronized IdeWireModel model() throws IOException {
         if (cachedModel == null) cachedModel = ide.ideModel();
         return cachedModel;
     }
 
-    private ProjectInfo info() throws IOException {
+    private synchronized ProjectInfo info() throws IOException {
         if (cachedInfo == null) cachedInfo = ide.projectInfo();
         return cachedInfo;
     }
@@ -927,6 +927,9 @@ public final class BspServer {
         out.flush();
     }
 
+    /** Largest frame body accepted; a client announcing more is refused rather than buffered. */
+    private static final int MAX_CONTENT_LENGTH = 64 * 1024 * 1024;
+
     /**
      * The next frame's body decoded as UTF-8, or {@code null} at end of stream or on a frame with no
      * {@code Content-Length}. The length is a byte count, so the body is read as bytes.
@@ -938,7 +941,16 @@ public final class BspServer {
             if (line == null) return null;
             if (line.isEmpty()) break;
             Matcher m = CONTENT_LENGTH.matcher(line);
-            if (m.find()) contentLength = Integer.parseInt(m.group(1));
+            if (m.find()) {
+                try {
+                    contentLength = Integer.parseInt(m.group(1));
+                } catch (NumberFormatException tooLarge) {
+                    throw new IOException("invalid Content-Length: " + m.group(1), tooLarge);
+                }
+            }
+        }
+        if (contentLength > MAX_CONTENT_LENGTH) {
+            throw new IOException("Content-Length " + contentLength + " exceeds " + MAX_CONTENT_LENGTH);
         }
         if (contentLength < 0) return null;
         byte[] body = in.readNBytes(contentLength);

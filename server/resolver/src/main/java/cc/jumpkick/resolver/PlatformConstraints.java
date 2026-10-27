@@ -503,7 +503,7 @@ public final class PlatformConstraints {
             // An INJECTED runtime root is jk's own bookkeeping, not a user override — it
             // already carries the BOM's managed version, and stripping the BOM here would
             // flip every other edge of the GA to raw POM fills (grails-core declares a
-            // groovy NEWER than grails-bom manages → unsat,.
+            // groovy NEWER than grails-bom manages → unsat).
             if (injectedRuntimes.contains(d.module())) continue;
             if (bomConstraints.containsKey(d.module())) {
                 bomConstraints.remove(d.module());

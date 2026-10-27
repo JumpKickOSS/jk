@@ -109,15 +109,17 @@ public final class GroovyCompiler implements Plugin {
             CompilationUnit unit;
             if (scratch != null) {
                 File stubDir = spec.stubsOut != null ? spec.stubsOut : new File(scratch, "stubs");
+                if (spec.stubsOut == null) PathUtil.deleteRecursively(stubDir.toPath());
                 stubDir.mkdirs();
                 // javac output is resolution-only: divert it to a discard dir (the trailing -d wins),
                 // NOT the output dir — jk's javac step owns the real Java outputs.
                 File discard = new File(scratch, "javac-classes");
+                PathUtil.deleteRecursively(discard.toPath());
                 discard.mkdirs();
                 Map<String, Object> joint0 = new LinkedHashMap<>();
                 joint0.put("stubDir", stubDir);
                 joint0.put("keepStubs", spec.stubsOut != null);
-                // Pin the swept javac pass to the project's releasewithout it the
+                // Pin the swept javac pass to the project's release; without it the
                 // sweep typechecks at the worker JVM's level — newer-language sources pass here
                 // and fail in jk's real javac lane (or vice versa). namedValues keys are javac
                 // flags minus the leading dash; -source/-target is the pairing groovy's javac
@@ -128,10 +130,11 @@ public final class GroovyCompiler implements Plugin {
                         "target", spec.jvmTarget));
                 if (!spec.processorPath.isEmpty()) {
                     // Mixed module with annotation processors (Lombok, source generators): the swept
-                    // javac pass must run them or references to generated members fail resolution
-                    // . Generated sources land in scratch; their classes go to the discard
+                    // javac pass must run them or references to generated members fail resolution.
+                    // Generated sources land in scratch; their classes go to the discard
                     // dir like all swept output.
                     File generated = new File(scratch, "javac-generated");
+                    PathUtil.deleteRecursively(generated.toPath());
                     generated.mkdirs();
                     named.addAll(List.of(
                             "processorpath",

@@ -204,15 +204,20 @@ public final class JooqMain {
     static Path stageScripts(List<Path> scripts) throws Exception {
         if (scripts.isEmpty()) throw new IllegalArgumentException("no DDL script to generate from");
         Path dir = Files.createTempDirectory("jk-jooq-ddl");
-        for (Path script : scripts) {
-            Path target = dir.resolve(script.getFileName().toString());
-            if (Files.exists(target)) {
-                throw new IllegalArgumentException("two scripts share the name " + script.getFileName()
-                        + "; DDLDatabase applies scripts by file name, so each needs one of its own");
+        try {
+            for (Path script : scripts) {
+                Path target = dir.resolve(script.getFileName().toString());
+                if (Files.exists(target)) {
+                    throw new IllegalArgumentException("two scripts share the name " + script.getFileName()
+                            + "; DDLDatabase applies scripts by file name, so each needs one of its own");
+                }
+                Files.copy(script, target, StandardCopyOption.COPY_ATTRIBUTES);
             }
-            Files.copy(script, target, StandardCopyOption.COPY_ATTRIBUTES);
+            return dir;
+        } catch (Throwable t) {
+            PathUtil.deleteRecursively(dir);
+            throw t;
         }
-        return dir;
     }
 
     /** The generator's XML configuration for {@code options}; {@code scripts} is the staged DDL directory, or null over JDBC. */
@@ -239,6 +244,16 @@ public final class JooqMain {
             properties.put("defaultNameCase", options.nameCase());
             properties.putAll(options.properties());
             for (Map.Entry<String, String> property : properties.entrySet()) {
+                xml.append("        <property><key>")
+                        .append(escape(property.getKey()))
+                        .append("</key><value>")
+                        .append(escape(property.getValue()))
+                        .append("</value></property>\n");
+            }
+            xml.append("      </properties>\n");
+        } else if (!options.properties().isEmpty()) {
+            xml.append("      <properties>\n");
+            for (Map.Entry<String, String> property : options.properties().entrySet()) {
                 xml.append("        <property><key>")
                         .append(escape(property.getKey()))
                         .append("</key><value>")

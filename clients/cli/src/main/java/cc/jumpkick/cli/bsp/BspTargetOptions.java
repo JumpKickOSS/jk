@@ -114,8 +114,22 @@ final class BspTargetOptions {
                 out.add(uri(Path.of(model.classesDirs().get(sibling))));
             }
         }
-        for (String jar : model.libJars()) {
+        Set<String> moduleLibs = null;
+        if (model.libEntries() != null && !model.libEntries().isEmpty() && model.libNames() != null) {
+            moduleLibs = new LinkedHashSet<>();
+            for (String row : model.libEntries()) {
+                String[] parts = row.split("\\|", 3);
+                if (parts.length >= 2 && Integer.parseInt(parts[0]) == i) {
+                    moduleLibs.add(parts[1]);
+                }
+            }
+        }
+        List<String> libJars = model.libJars();
+        List<String> libNames = model.libNames();
+        for (int j = 0; j < libJars.size(); j++) {
+            String jar = libJars.get(j);
             if (jar == null || jar.isBlank()) continue;
+            if (moduleLibs != null && j < libNames.size() && !moduleLibs.contains(libNames.get(j))) continue;
             String path = jar.contains("|") ? jar.substring(jar.lastIndexOf('|') + 1) : jar;
             out.add(uri(Path.of(path)));
         }

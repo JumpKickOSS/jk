@@ -267,6 +267,12 @@ public final class GradleModelQuery implements GradleBuildImport.ModelSource {
             process.destroyForcibly();
             Thread.currentThread().interrupt();
             throw new IOException("interrupted while Gradle was evaluating " + buildRoot, e);
+        } finally {
+            if (process.isAlive()) process.destroyForcibly();
+            try {
+                process.getInputStream().close();
+            } catch (IOException ignored) {
+            }
         }
     }
 

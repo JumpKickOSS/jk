@@ -2,6 +2,7 @@
 package cc.jumpkick.host;
 
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -20,6 +21,7 @@ public final class Interned {
     static final int MAX_LENGTH = 200;
 
     private static final ConcurrentHashMap<String, String> TABLE = new ConcurrentHashMap<>();
+    private static final AtomicBoolean CLEARING = new AtomicBoolean();
 
     private Interned() {}
 
@@ -28,7 +30,13 @@ public final class Interned {
         if (s.length() > MAX_LENGTH) return s;
         String shared = TABLE.get(s);
         if (shared != null) return shared;
-        if (TABLE.size() >= CAPACITY) TABLE.clear();
+        if (TABLE.size() >= CAPACITY && CLEARING.compareAndSet(false, true)) {
+            try {
+                if (TABLE.size() >= CAPACITY) TABLE.clear();
+            } finally {
+                CLEARING.set(false);
+            }
+        }
         shared = TABLE.putIfAbsent(s, s);
         return shared != null ? shared : s;
     }

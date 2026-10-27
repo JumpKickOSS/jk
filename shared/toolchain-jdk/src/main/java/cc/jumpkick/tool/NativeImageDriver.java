@@ -179,12 +179,16 @@ public final class NativeImageDriver {
             if (effective.workingDir() != null)
                 pb.directory(effective.workingDir().toFile());
             Process process = Forks.start(pb);
-            Thread fwdOut = forwardStdout(process.getInputStream(), listener, sink);
-            Thread fwdErr = forwardStream(process.getErrorStream(), sink);
-            int exit = process.waitFor();
-            fwdOut.join();
-            fwdErr.join();
-            return exit;
+            try {
+                Thread fwdOut = forwardStdout(process.getInputStream(), listener, sink);
+                Thread fwdErr = forwardStream(process.getErrorStream(), sink);
+                int exit = process.waitFor();
+                fwdOut.join();
+                fwdErr.join();
+                return exit;
+            } finally {
+                if (process.isAlive()) process.destroyForcibly();
+            }
         } finally {
             if (argFile != null) Files.deleteIfExists(argFile);
             if (pathingJar != null) Files.deleteIfExists(pathingJar);

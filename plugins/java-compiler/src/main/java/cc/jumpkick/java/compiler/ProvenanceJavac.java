@@ -174,7 +174,9 @@ final class ProvenanceJavac implements JavaCompiler {
     static Set<StandardLocation> declaredLocations(String[] options) {
         Set<StandardLocation> declared = EnumSet.noneOf(StandardLocation.class);
         for (String option : options) {
-            switch (option) {
+            int eq = option.indexOf('=');
+            String flag = eq > 0 && option.startsWith("--") ? option.substring(0, eq) : option;
+            switch (flag) {
                 case "-sourcepath", "--source-path" -> declared.add(StandardLocation.SOURCE_PATH);
                 case "--module-source-path" -> declared.add(StandardLocation.MODULE_SOURCE_PATH);
                 case "-processorpath", "--processor-path" -> declared.add(StandardLocation.ANNOTATION_PROCESSOR_PATH);
@@ -196,17 +198,45 @@ final class ProvenanceJavac implements JavaCompiler {
      */
     static List<Path> pathEntriesNamed(String[] options) {
         List<Path> out = new ArrayList<>();
-        for (int i = 0; i + 1 < options.length; i++) {
-            switch (options[i]) {
+        for (int i = 0; i < options.length; i++) {
+            String opt = options[i];
+            int eq = opt.indexOf('=');
+            if (eq > 0 && opt.startsWith("--")) {
+                String flag = opt.substring(0, eq);
+                String val = opt.substring(eq + 1);
+                switch (flag) {
+                    case "--class-path",
+                            "--source-path",
+                            "--processor-path",
+                            "--module-path",
+                            "--upgrade-module-path",
+                            "--processor-module-path" -> out.addAll(Classpaths.split(val));
+                    case "--patch-module" -> {
+                        int modEq = val.indexOf('=');
+                        if (modEq > 0) out.addAll(Classpaths.split(val.substring(modEq + 1)));
+                    }
+                    default -> {}
+                }
+                continue;
+            }
+            if (i + 1 >= options.length) continue;
+            switch (opt) {
                 case "-classpath",
                         "-cp",
                         "--class-path",
+                        "-sourcepath",
+                        "--source-path",
                         "-processorpath",
                         "--processor-path",
                         "--module-path",
                         "-p",
                         "--upgrade-module-path",
                         "--processor-module-path" -> out.addAll(Classpaths.split(options[i + 1]));
+                case "--patch-module" -> {
+                    String val = options[i + 1];
+                    int modEq = val.indexOf('=');
+                    if (modEq > 0) out.addAll(Classpaths.split(val.substring(modEq + 1)));
+                }
                 default -> {}
             }
         }
