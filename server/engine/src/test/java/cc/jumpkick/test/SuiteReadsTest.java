@@ -61,7 +61,9 @@ class SuiteReadsTest {
     @Test
     void only_a_comma_quotes_a_recording_path() {
         // A quoted space would split the argument on Windows, where the launcher wraps it in quotes again.
-        assertThat(SuiteReads.jfrPath(Path.of("/a b/reads.jfc"))).isEqualTo("/a b/reads.jfc");
-        assertThat(SuiteReads.jfrPath(Path.of("/a,b/reads.jfc"))).isEqualTo("\"/a,b/reads.jfc\"");
+        Path spaced = Path.of("/a b/reads.jfc");
+        Path comma = Path.of("/a,b/reads.jfc");
+        assertThat(SuiteReads.jfrPath(spaced)).isEqualTo(spaced.toString());
+        assertThat(SuiteReads.jfrPath(comma)).isEqualTo("\"" + comma + "\"");
     }
 }
