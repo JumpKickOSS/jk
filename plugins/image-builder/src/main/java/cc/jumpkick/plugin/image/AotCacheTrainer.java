@@ -555,7 +555,7 @@ final class AotCacheTrainer {
             reader.join(5_000);
         } finally {
             if (process.isAlive()) {
-                requestStop(process, runtime, containerName);
+                forceStop(runtime, containerName);
                 process.destroyForcibly();
             }
         }
@@ -592,6 +592,23 @@ final class AotCacheTrainer {
             process.destroy(); // best effort: the forcible kill below still bounds the wait
         } finally {
             if (stopper != null && stopper.isAlive()) stopper.destroyForcibly();
+        }
+    }
+
+    /** An abandoned run (interrupted or failed): the container is killed, not given time to write its cache. */
+    private static void forceStop(@Nullable String runtime, String containerName) {
+        if (runtime == null) return;
+        Process killer = null;
+        try {
+            killer = new ProcessBuilder(runtime, "kill", containerName)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+            killer.waitFor(10, TimeUnit.SECONDS);
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+        } finally {
+            if (killer != null && killer.isAlive()) killer.destroyForcibly();
         }
     }
 

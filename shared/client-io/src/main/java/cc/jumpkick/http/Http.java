@@ -641,8 +641,9 @@ public final class Http {
                         // The refusal's body is abandoned like a retried 5xx's: a streamed one left
                         // unread holds its connection open for as long as the caller holds the stream.
                         if (drain != null) drain.handle(response);
-                        HttpResponse<T> reissued =
-                                send(reissue(request, mirrored).build(), handler, drain);
+                        // Later attempts stay on the mirror: Central has just refused this host.
+                        request = reissue(request, mirrored).build();
+                        HttpResponse<T> reissued = send(request, handler, drain);
                         if (reissued.statusCode() < 500) {
                             return reissued;
                         }
@@ -670,7 +671,8 @@ public final class Http {
                         ? centralMirror.toMirror(request.uri())
                         : request.uri();
                 if (!mirrored.equals(request.uri())) {
-                    HttpResponse<T> reissued = send(reissue(request, mirrored).build(), handler, drain);
+                    request = reissue(request, mirrored).build();
+                    HttpResponse<T> reissued = send(request, handler, drain);
                     if (reissued.statusCode() < 500) {
                         return reissued;
                     }

@@ -77,8 +77,8 @@ public final class JobWorkers {
      * {@link #register} concurrently with {@link #shutdownForRequest}; without the tombstone it
      * either re-created a {@code BY_REQUEST} entry nothing ever removes (leak + untracked live
      * process) or added to the already-removed set after the kill loop (escaped worker).
-     * Cleared on {@link #open} in case a request id is ever reused; clear-on-overflow bounds the
-     * set.
+     * Cleared on {@link #open} in case a request id is ever reused; on overflow only ids far behind
+     * the newest of the same sign are evicted, so a request still mid-shutdown keeps its tombstone.
      */
     private static final Set<Long> TOMBSTONES = ConcurrentHashMap.newKeySet();
 

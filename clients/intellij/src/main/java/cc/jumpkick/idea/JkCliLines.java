@@ -20,7 +20,7 @@ final class JkCliLines {
         return "stderr".equalsIgnoreCase(outputType) || outputType.contains("STDERR");
     }
 
-    /** Append to a transcript buffer, keeping the first error lines and the retained tail on the streaming path. */
+    /** Append to a transcript buffer, keeping its first lines (about 1 KiB) and the retained tail on the streaming path. */
     static void append(StringBuilder sb, String text, boolean capped) {
         sb.append(text);
         if (capped && sb.length() > STREAM_RETAIN_CHARS * 2) {

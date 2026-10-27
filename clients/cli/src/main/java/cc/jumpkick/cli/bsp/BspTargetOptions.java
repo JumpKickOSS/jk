@@ -109,8 +109,6 @@ final class BspTargetOptions {
         for (String row : model.siblingRefs()) {
             String[] parts = row.split("\\|", 3);
             if (parts.length < 2 || Integer.parseInt(parts[0]) != i) continue;
-            String scope = parts.length >= 3 ? parts[2] : "";
-            if (IdeWireModel.SCOPE_TEST.equals(scope) || IdeWireModel.SCOPE_TEST_KIND.equals(scope)) continue;
             int sibling = model.names().indexOf(parts[1]);
             if (sibling >= 0 && sibling < model.classesDirs().size()) {
                 out.add(uri(Path.of(model.classesDirs().get(sibling))));

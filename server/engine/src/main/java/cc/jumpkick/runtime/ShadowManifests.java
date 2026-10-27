@@ -52,16 +52,8 @@ public final class ShadowManifests {
     /** Leaf module → the reactor root whose rendering wrote its shadow. */
     private static final Map<Path, Path> ROOT_OF = new ConcurrentHashMap<>();
 
-    /** Striped render gates: two readers racing on the same POM render it once. */
-    private static final Object[] GATES = new Object[64];
-
-    static {
-        for (int i = 0; i < GATES.length; i++) GATES[i] = new Object();
-    }
-
-    private static Object gate(Path path) {
-        return GATES[Math.floorMod(path.hashCode(), GATES.length)];
-    }
+    /** Per-module render gate: two readers racing on the same POM render it once. */
+    private static final Map<Path, Object> GATES = new ConcurrentHashMap<>();
 
     private static final ShadowRenderFailures FAILURES = ShadowRenderFailures.forStallWindow();
 
@@ -92,7 +84,7 @@ public final class ShadowManifests {
         if (PomShadow.isCurrent(shadow, module)) return shadow;
         Optional<Path> root = PomReactorScan.reactorRootOf(module);
         if (root.isEmpty()) {
-            synchronized (gate(module)) {
+            synchronized (GATES.computeIfAbsent(module, k -> new Object())) {
                 if (!PomShadow.isCurrent(shadow, module)) render(module);
             }
             return shadow;
@@ -103,7 +95,7 @@ public final class ShadowManifests {
         // the root has to render again.
         materialize(root.get());
         if (PomShadow.isCurrent(shadow, module)) return shadow;
-        synchronized (gate(root.get())) {
+        synchronized (GATES.computeIfAbsent(root.get(), k -> new Object())) {
             if (!PomShadow.isCurrent(shadow, module)) render(root.get());
         }
         if (PomShadow.isCurrent(shadow, module)) return shadow;

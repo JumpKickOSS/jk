@@ -99,9 +99,13 @@ public final class SuiteReads {
                 + ",dumponexit=true";
     }
 
-    private static String jfrPath(Path path) {
+    /**
+     * JFR splits its options on commas only, so only a comma needs quoting. A space must not be quoted: on
+     * Windows the launcher wraps the whole argument in quotes, and an inner pair would split it.
+     */
+    static String jfrPath(Path path) {
         String s = path.toString();
-        return s.indexOf(' ') >= 0 || s.indexOf(',') >= 0 ? "\"" + s + "\"" : s;
+        return s.indexOf(',') >= 0 ? "\"" + s + "\"" : s;
     }
 
     /**

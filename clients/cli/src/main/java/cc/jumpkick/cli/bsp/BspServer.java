@@ -927,12 +927,13 @@ public final class BspServer {
         out.flush();
     }
 
+    /** Largest frame body accepted; a client announcing more is refused rather than buffered. */
+    private static final int MAX_CONTENT_LENGTH = 64 * 1024 * 1024;
+
     /**
      * The next frame's body decoded as UTF-8, or {@code null} at end of stream or on a frame with no
      * {@code Content-Length}. The length is a byte count, so the body is read as bytes.
      */
-    private static final int MAX_CONTENT_LENGTH = 64 * 1024 * 1024;
-
     private @Nullable String readMessage() throws IOException {
         int contentLength = -1;
         while (true) {
@@ -948,7 +949,10 @@ public final class BspServer {
                 }
             }
         }
-        if (contentLength < 0 || contentLength > MAX_CONTENT_LENGTH) return null;
+        if (contentLength > MAX_CONTENT_LENGTH) {
+            throw new IOException("Content-Length " + contentLength + " exceeds " + MAX_CONTENT_LENGTH);
+        }
+        if (contentLength < 0) return null;
         byte[] body = in.readNBytes(contentLength);
         return body.length == contentLength ? new String(body, StandardCharsets.UTF_8) : null;
     }

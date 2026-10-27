@@ -208,7 +208,14 @@ public final class ZincJavaCompiler {
                 GeneratedProvenance.of(workdir).ownedClassFiles(sourceOutput, classOutput));
     }
 
-    /** A mixed compile that died on a {@link LinkageError}: the error itself, with what javac already said. */
+    /**
+     * Zinc's Java analysis loaded a compiled class's library supertype with this JVM and reflected over
+     * members whose signatures name a type this JDK no longer has (a release-11 module extending a class
+     * that returns {@code java.security.acl.Group[]}). javac has no such trouble, since {@code --release}
+     * reads the older API from ct.sym, so the module compiles without the analysis, from here on for this
+     * workdir while the classpath stays what it is. javac alone cannot compile Scala sources, so a mixed
+     * compile has no fallback.
+     */
     private static Result onLinkageError(
             LinkageError e,
             JavaCompileJob job,
@@ -231,6 +238,7 @@ public final class ZincJavaCompiler {
                 javac, sourceFiles, javacOpts, cp, job.classOutput(), job, provenance, reporter, missing);
     }
 
+    /** A mixed compile that died on a {@link LinkageError}: the error itself, with what javac already said. */
     private static Result mixedLinkageFailure(CollectingReporter reporter, LinkageError e) {
         List<Diag> diags = new ArrayList<>(reporter.diagnostics());
         diags.add(new Diag(
