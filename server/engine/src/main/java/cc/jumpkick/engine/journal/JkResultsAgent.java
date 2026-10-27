@@ -12,10 +12,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.StringJoiner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -425,10 +427,12 @@ public final class JkResultsAgent {
             Locus head = src.get(i);
             List<Locus> more = new ArrayList<>();
             String pkg = pkg(head.file());
+            String symbol = symbol(head);
             for (int j = i + 1; j < src.size(); j++) {
                 if (used[j]) continue;
                 Locus other = src.get(j);
                 if (!head.message().equals(other.message())) continue;
+                if (!symbolName(symbol).equals(symbolName(symbol(other)))) continue;
                 boolean sameFile = head.file().equals(other.file());
                 boolean samePkg = !pkg.isEmpty() && pkg.equals(pkg(other.file()));
                 if (!sameFile && !samePkg) continue;
@@ -440,23 +444,57 @@ public final class JkResultsAgent {
             sb.append(':').append(head.line());
             if (head.col() > 0) sb.append(':').append(head.col());
             if (!head.message().isEmpty()) sb.append(' ').append(one(head.message(), r.dir()));
+            if (!symbol.isEmpty()) sb.append(": ").append(symbol);
             sb.append('\n');
             appendRows(sb, rows(head.diag(), head.file(), head.line(), r.dir(), opt.fullSnippets));
             if (!more.isEmpty()) {
-                boolean sameFile = true;
-                for (Locus m : more) if (!m.file().equals(head.file())) sameFile = false;
-                String where = sameFile ? leaf(head.file()) : pkg;
-                if (where.isEmpty()) where = leaf(head.file());
                 sb.append("  +")
                         .append(more.size())
-                        .append(" more in ")
-                        .append(where)
+                        .append(" more at ")
+                        .append(sites(head, more))
                         .append('\n');
             }
             appendFix(sb, head.diag());
             blocks.add(sb.toString());
             files.add(head.file());
         }
+    }
+
+    /** javac's {@code symbol:} value, e.g. {@code method contains(Integer)}, or {@code ""}. */
+    private static String symbol(Locus d) {
+        String message = d.diag().message();
+        return message == null ? "" : JkResultsHints.field(message, "symbol:").replaceAll("\\s+", " ");
+    }
+
+    /** The symbol without its argument types, so one renamed method folds across its overloads' calls. */
+    private static String symbolName(String symbol) {
+        int paren = symbol.indexOf('(');
+        return paren < 0 ? symbol : symbol.substring(0, paren);
+    }
+
+    /**
+     * Every folded site as {@code File.java:12,40; Other.java:7}, at most {@link #MAX_ALL} lines. A file
+     * in the head's directory is named by its leaf, any other by its project-relative path.
+     */
+    private static String sites(Locus head, List<Locus> more) {
+        Map<String, List<Integer>> lines = new LinkedHashMap<>();
+        for (Locus m : more.subList(0, Math.min(more.size(), MAX_ALL))) {
+            lines.computeIfAbsent(m.file(), f -> new ArrayList<>()).add(m.line());
+        }
+        String dir = parent(head.file());
+        StringJoiner out = new StringJoiner("; ");
+        for (Map.Entry<String, List<Integer>> e : lines.entrySet()) {
+            String file = parent(e.getKey()).equals(dir) ? leaf(e.getKey()) : e.getKey();
+            StringJoiner at = new StringJoiner(",", file + ":", "");
+            for (int line : e.getValue()) at.add(Integer.toString(line));
+            out.add(at.toString());
+        }
+        return out + (more.size() > MAX_ALL ? "; …" : "");
+    }
+
+    private static String parent(String path) {
+        int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        return slash < 0 ? "" : path.substring(0, slash);
     }
 
     private static void seenTests(
