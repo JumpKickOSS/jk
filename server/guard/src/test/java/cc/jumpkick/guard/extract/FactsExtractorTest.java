@@ -11,11 +11,16 @@ import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.facts.Fingerprints;
 import cc.jumpkick.guard.facts.MethodFacts;
+import cc.jumpkick.host.Hashing;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.objectweb.asm.Opcodes;
@@ -156,6 +161,31 @@ class FactsExtractorTest {
                         "java/lang/NumberFormatException");
         assertThat(Fingerprints.normalise("a.B#lambda$run$3()V")).isEqualTo("a.B#lambda$run$()V");
         assertThat(Fingerprints.normalise("a.B$1#run()V")).isEqualTo("a.B$#run()V");
+    }
+
+    @Test
+    void the_identity_digests_every_class_the_extractor_visits_with() {
+        assertThat(Hashing.isHex(FactsExtractor.identity(), 64)).isTrue();
+        assertThat(FactsExtractor.identity()).isEqualTo(FactsExtractor.identity());
+        assertThat(Arrays.stream(FactsExtractor.class.getNestMembers()).map(Class::getName))
+                .as("the anonymous visitors are nest members, so an edit to one moves the digest")
+                .anyMatch(n -> n.matches(".*\\$\\d+$"));
+    }
+
+    @Test
+    void a_jar_index_another_extractor_cached_is_not_read(@TempDir Path dir) throws IOException {
+        Path jar = dir.resolve("api.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            zip.putNextEntry(new ZipEntry("cc/jumpkick/guard/extract/fixture/Sample.class"));
+            zip.write(classBytes(Sample.class));
+            zip.closeEntry();
+        }
+        Path cache = Files.createDirectories(dir.resolve("cache"));
+        Files.writeString(cache.resolve(Hashing.sha256Hex(jar) + ".idx"), "an index under the old key");
+
+        FactsIndex index = JarFacts.of(jar, cache);
+        assertThat(index.classes()).containsOnlyKeys(sample().name());
+        assertThat(JarFacts.of(jar, cache).classes()).isEqualTo(index.classes());
     }
 
     @Test

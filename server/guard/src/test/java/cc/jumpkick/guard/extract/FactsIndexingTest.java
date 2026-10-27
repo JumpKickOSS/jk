@@ -74,6 +74,27 @@ class FactsIndexingTest {
         assertThat(loaded.classes()).containsOnlyKeys("cc/jumpkick/guard/extract/fixture/Sample");
     }
 
+    @Test
+    void an_index_another_extractor_wrote_is_rebuilt(@TempDir Path dir) throws IOException {
+        Path classes = classes(dir);
+        Path idx = FactsIndexing.indexPath(dir.resolve("target"), "main");
+
+        assertThat(FactsIndexing.ensure(classes, idx, "before").tier()).isEqualTo(Ensured.Tier.BUILT);
+        assertThat(FactsIndexing.ensure(classes, idx, "before").tier()).isEqualTo(Ensured.Tier.FRESH);
+        assertThat(FactsIndexing.freshDigest(classes, idx, "before")).isPresent();
+
+        assertThat(FactsIndexing.freshDigest(classes, idx, "after"))
+                .as("unchanged class files, a different extractor")
+                .isEmpty();
+        Ensured rebuilt = FactsIndexing.ensure(classes, idx, "after");
+        assertThat(rebuilt.tier()).isEqualTo(Ensured.Tier.BUILT);
+        assertThat(rebuilt.classes())
+                .as("the extractor stamp is not a class file")
+                .isEqualTo(2);
+        assertThat(FactsIndexing.load(rebuilt).classes()).hasSize(2);
+        assertThat(FactsIndexing.ensure(classes, idx, "after").tier()).isEqualTo(Ensured.Tier.FRESH);
+    }
+
     /**
      * The module lane and the workspace lane index the same classes directory from one engine at
      * the same time. One of them writes; the other waits and reads what was written. Several
@@ -122,7 +143,9 @@ class FactsIndexingTest {
                 assertThat(left)
                         .as("round " + round + ": no staging file survives")
                         .containsExactly(idx.getFileName().toString());
-                assertThat(FactsIndexing.load(results.get(0)).stamps()).hasSize(42);
+                assertThat(FactsIndexing.load(results.get(0)).stamps())
+                        .hasSize(43)
+                        .containsKey(FactsIndexing.EXTRACTOR_STAMP);
             }
         }
     }
