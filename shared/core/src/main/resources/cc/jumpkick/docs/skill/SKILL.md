@@ -32,7 +32,7 @@ A dependency edit relocks in the same call. Registered as `jk mcp`, tools take n
 ```
 FAIL build app · 2 errors · 0.9s
 E src/main/java/app/Web.java:3:8 package org.springframework.web.bind.annotation does not exist
-  +1 more in Web.java
+  +1 more at Web.java:4
 FIX deps(add, org.springframework.boot:spring-boot-starter-web)
 ```
 

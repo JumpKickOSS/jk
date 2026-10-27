@@ -285,7 +285,7 @@ final class JkResultsHints {
     }
 
     /** The value of javac's indented {@code symbol:} / {@code location:} line, or {@code ""}. */
-    private static String field(String message, String label) {
+    static String field(String message, String label) {
         for (String line : message.split("\n")) {
             String s = line.strip();
             if (s.startsWith(label)) return s.substring(label.length()).strip();

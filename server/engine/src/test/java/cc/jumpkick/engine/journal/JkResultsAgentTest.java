@@ -291,9 +291,33 @@ class JkResultsAgentTest {
         assertThat(JkResultsAgent.render(r)).isEqualTo("""
                         FAIL build rest-service · 4 errors · 900ms
                         E src/main/java/com/example/restservice/GreetingController.java:3:8 package org.springframework.web.bind.annotation does not exist
-                          +3 more in GreetingController.java
+                          +3 more at GreetingController.java:4,5,6
                         FIX deps(add, org.springframework.boot:spring-boot-starter-web)
                         """);
+    }
+
+    @Test
+    void a_renamed_method_folds_by_symbol_and_lists_every_site() {
+        String test = "src/test/java/org/acme/";
+        List<BuildRecord.Diag> diags = List.of(
+                missing("method contains(Integer)", test + "RangeTest.java", 66),
+                missing("method contains(int)", test + "RangeTest.java", 69),
+                missing("method other()", test + "RangeTest.java", 70),
+                missing("method contains(Long)", test + "LongRangeTest.java", 12),
+                missing("method contains(T)", "src/main/java/org/acme/Range.java", 334));
+        BuildRecord r = record("build", false, false, 900, null, diags, List.of());
+        assertThat(JkResultsAgent.render(r)).isEqualTo("""
+                        FAIL build rest-service · 5 errors · 900ms
+                        E src/test/java/org/acme/RangeTest.java:66:9 cannot find symbol: method contains(Integer)
+                          +3 more at RangeTest.java:69; LongRangeTest.java:12; src/main/java/org/acme/Range.java:334
+                        E src/test/java/org/acme/RangeTest.java:70:9 cannot find symbol: method other()
+                        """);
+    }
+
+    private static BuildRecord.Diag missing(String symbol, String file, int line) {
+        String message = "cannot find symbol\n  symbol:   " + symbol + "\n  location: variable range of type Range";
+        return diag(
+                "compile-java", "javac", message, file, line, 9, 0, List.of(), "compiler.err.cant.resolve.location");
     }
 
     @Test
@@ -342,7 +366,7 @@ class JkResultsAgentTest {
                         FAIL build rest-service · 2 errors · 900ms
                         E src/main/java/com/example/restservice/GreetingController.java:3:8 package org.springframework.web.bind.annotation does not exist
                         FIX deps(add, org.springframework.boot:spring-boot-starter-webmvc)
-                        E src/main/java/com/example/restservice/GreetingController.java:9:2 cannot find symbol
+                        E src/main/java/com/example/restservice/GreetingController.java:9:2 cannot find symbol: class RestController
                         """);
     }
 
