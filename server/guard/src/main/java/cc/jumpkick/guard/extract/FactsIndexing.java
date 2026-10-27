@@ -32,6 +32,10 @@ import java.util.concurrent.locks.ReentrantLock;
  * regardless of how they got there. Enabling guards on an already-built module therefore never
  * forces a recompile: the first lane run builds the index.
  *
+ * <p>The header also stamps the {@link FactsExtractor#identity() extractor} that wrote it, so a jk
+ * whose extractor reads class files differently rebuilds every index instead of trusting one that
+ * lacks what it would find.
+ *
  * <p>One writer per index: the module lane and the workspace lane both bring the same index up to
  * date from one engine, so {@link #ensure} serialises callers per index file and the one that
  * waited finds the other's fresh index instead of rewriting it.
@@ -46,6 +50,9 @@ public final class FactsIndexing {
      * bounded by its source sets, so the map never needs sweeping.
      */
     private static final ConcurrentHashMap<Path, ReentrantLock> WRITERS = new ConcurrentHashMap<>();
+
+    /** The header stamp naming the extractor; never a class file path. */
+    static final String EXTRACTOR_STAMP = "@extractor";
 
     private FactsIndexing() {}
 
@@ -74,6 +81,10 @@ public final class FactsIndexing {
      * digest without loading the class table when nothing changed.
      */
     public static Ensured ensure(Path classesDir, Path indexFile) throws IOException {
+        return ensure(classesDir, indexFile, FactsExtractor.identity());
+    }
+
+    static Ensured ensure(Path classesDir, Path indexFile, String extractor) throws IOException {
         if (!Files.isDirectory(classesDir)) {
             return new Ensured(indexFile, "", 0, Ensured.Tier.ABSENT);
         }
@@ -81,16 +92,17 @@ public final class FactsIndexing {
                 WRITERS.computeIfAbsent(indexFile.toAbsolutePath().normalize(), k -> new ReentrantLock());
         writer.lock();
         try {
-            return ensureLocked(classesDir, indexFile);
+            return ensureLocked(classesDir, indexFile, extractor);
         } finally {
             writer.unlock();
         }
     }
 
-    private static Ensured ensureLocked(Path classesDir, Path indexFile) throws IOException {
+    private static Ensured ensureLocked(Path classesDir, Path indexFile, String extractor) throws IOException {
         Map<String, String> current = stamps(classesDir);
+        Map<String, String> recorded = withExtractor(current, extractor);
         Optional<FactsFormat.Header> header = FactsFormat.readHeader(indexFile);
-        if (header.isPresent() && header.get().stamps().equals(current)) {
+        if (header.isPresent() && header.get().stamps().equals(recorded)) {
             return new Ensured(indexFile, header.get().bodyDigest(), current.size(), Ensured.Tier.FRESH);
         }
         // Every class is extracted again: in parallel that costs less than decoding the old index
@@ -98,7 +110,7 @@ public final class FactsIndexing {
         Map<String, ClassFacts> classes = new LinkedHashMap<>();
         for (ClassFacts facts : ParallelMap.map(List.copyOf(current.keySet()), rel -> extractOne(classesDir, rel)))
             classes.put(facts.name(), facts);
-        FactsIndex built = new FactsIndex(classes, current, "");
+        FactsIndex built = new FactsIndex(classes, recorded, "");
         FactsFormat.Encoded encoded = FactsFormat.encode(built);
         AtomicWrites.replace(indexFile, encoded.bytes());
         return new Ensured(indexFile, encoded.bodyDigest(), classes.size(), Ensured.Tier.BUILT);
@@ -127,10 +139,14 @@ public final class FactsIndexing {
      * (the lane would re-extract) or the classes directory does not exist. The forecast's probe.
      */
     public static Optional<String> freshDigest(Path classesDir, Path indexFile) throws IOException {
+        return freshDigest(classesDir, indexFile, FactsExtractor.identity());
+    }
+
+    static Optional<String> freshDigest(Path classesDir, Path indexFile, String extractor) throws IOException {
         if (!Files.isDirectory(classesDir)) return Optional.empty();
         Optional<FactsFormat.Header> header = FactsFormat.readHeader(indexFile);
         if (header.isEmpty()) return Optional.empty();
-        return header.get().stamps().equals(stamps(classesDir))
+        return header.get().stamps().equals(withExtractor(stamps(classesDir), extractor))
                 ? Optional.of(header.get().bodyDigest())
                 : Optional.empty();
     }
@@ -139,6 +155,12 @@ public final class FactsIndexing {
     public static FactsIndex load(Ensured ensured) throws IOException {
         if (ensured.tier() == Ensured.Tier.ABSENT) return FactsIndex.EMPTY;
         return FactsFormat.read(ensured.index());
+    }
+
+    private static Map<String, String> withExtractor(Map<String, String> classStamps, String extractor) {
+        Map<String, String> out = new TreeMap<>(classStamps);
+        out.put(EXTRACTOR_STAMP, extractor);
+        return out;
     }
 
     /** {@code relPath →} {@link StatIdentity} for every class file, sorted. One stat each, no reads. */
