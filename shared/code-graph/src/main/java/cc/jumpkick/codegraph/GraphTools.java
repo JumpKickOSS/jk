@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeSet;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -21,8 +22,16 @@ import org.jspecify.annotations.Nullable;
  */
 public final class GraphTools {
 
+    /** The most call-site lines one edge quotes; the rest stay line numbers in {@code at=}. */
+    static final int QUOTED_SITES = 4;
+
+    /** The widest quoted call-site line, in characters. */
+    static final int QUOTE_WIDTH = 160;
+
     private final CodeGraph graph;
     private final Scope scope;
+    private final Function<String, @Nullable String> files;
+    private final Map<String, @Nullable List<String>> read = new HashMap<>();
 
     public GraphTools(CodeGraph graph) {
         this(graph, Scope.ALL);
@@ -30,8 +39,18 @@ public final class GraphTools {
 
     /** Tools whose names resolve, and whose connections and rankings list, inside {@code scope} first. */
     public GraphTools(CodeGraph graph, Scope scope) {
+        this(graph, scope, rel -> null);
+    }
+
+    /**
+     * Tools that also quote each edge's source lines, read through {@code files} (a workspace-relative
+     * path to its text, {@code null} when unreadable): an agent edits a call site from the answer
+     * without reading the file to find it.
+     */
+    public GraphTools(CodeGraph graph, Scope scope, Function<String, @Nullable String> files) {
         this.graph = graph;
         this.scope = scope;
+        this.files = files;
     }
 
     /** A resolved node id, or the message explaining why there is none. */
@@ -323,9 +342,41 @@ public final class GraphTools {
             String at = e.sourceLocation().isEmpty() ? "" : " at=" + e.sourceFile() + ":" + String.join(",", e.sites());
             lines.add("  " + arrow + " " + GraphQuery.clean(label(other(e, id))) + " [" + e.relation() + "] ["
                     + e.confidence() + "]" + at);
+            lines.addAll(quotes(e));
         }
         if (edges.size() > limit) lines.add("  ... " + (edges.size() - limit) + " more (use --all)");
         return lines;
+    }
+
+    /** The edge's first {@link #QUOTED_SITES} source lines, {@code L<n>| text}; none when the file is unreadable. */
+    private List<String> quotes(GraphEdge e) {
+        if (e.sourceFile().isEmpty()) return List.of();
+        List<String> text = read.computeIfAbsent(e.sourceFile(), f -> {
+            String body = files.apply(f);
+            return body == null ? null : body.lines().toList();
+        });
+        if (text == null) return List.of();
+        List<String> out = new ArrayList<>();
+        for (String site : e.sites()) {
+            if (out.size() == QUOTED_SITES) break;
+            int n = lineNumber(site);
+            if (n < 1 || n > text.size()) continue;
+            String line = text.get(n - 1).strip();
+            if (line.length() > QUOTE_WIDTH) line = line.substring(0, QUOTE_WIDTH) + "…";
+            out.add("      L" + n + "| " + line);
+        }
+        return out;
+    }
+
+    private static int lineNumber(String site) {
+        String digits = site.startsWith("L") ? site.substring(1) : site;
+        int dash = digits.indexOf('-');
+        if (dash > 0) digits = digits.substring(0, dash);
+        try {
+            return Integer.parseInt(digits);
+        } catch (NumberFormatException notALine) {
+            return -1;
+        }
     }
 
     private static String other(GraphEdge e, String id) {

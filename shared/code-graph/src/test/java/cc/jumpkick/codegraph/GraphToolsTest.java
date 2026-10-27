@@ -68,6 +68,16 @@ class GraphToolsTest {
         assertThat(g.edges()).hasSize(1);
         assertThat(new GraphTools(g).neighbors("worker", "calls", 2000))
                 .contains("<-- .split() [calls] [EXTRACTED] at=src/S.java:L21,L9");
+
+        StringBuilder source = new StringBuilder();
+        for (int i = 1; i <= 30; i++) source.append(i == 9 || i == 21 ? "    worker(" + i + ");\n" : "\n");
+        String quoted = new GraphTools(g, Scope.ALL, rel -> rel.equals("src/S.java") ? source.toString() : null)
+                .neighbors("worker", "calls", 2000);
+        assertThat(quoted)
+                .as("each site's own line, so the call is edited without reading the file")
+                .contains("at=src/S.java:L21,L9\n      L21| worker(21);\n      L9| worker(9);");
+        assertThat(new GraphTools(g, Scope.ALL, rel -> null).neighbors("worker", "calls", 2000))
+                .doesNotContain("L21|");
     }
 
     @Test

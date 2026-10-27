@@ -192,7 +192,7 @@ public final class GraphService {
     static String text(Workspace w, GraphBuild.Result build, Request r) {
         CodeGraph g = build.graph();
         Scope scope = Scope.of(r.scope(), r.modulePrefixes(), r.sourceSet(), g.modules());
-        GraphTools tools = new GraphTools(g, scope);
+        GraphTools tools = new GraphTools(g, scope, rel -> source(w.root(), rel));
         List<String> a = r.args();
         return switch (r.op()) {
             case "build" -> "";

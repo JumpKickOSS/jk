@@ -59,21 +59,11 @@ public final class McpTools {
     public static final String BIND = "bind";
 
     /**
-     * The default {@code tools/list}: what one fix-and-rerun loop needs, and the code graph calls
-     * that find code without grepping and reading files, in reading order. Everything else is an
-     * extended {@code tools/list}.
+     * The default {@code tools/list}: what one fix-and-rerun loop needs, in reading order. Every card
+     * is paid on every turn, and agents seldom call the code graph's tools unprompted, so those are on
+     * the extended list.
      */
-    public static final List<String> LOOP = List.of(
-            "run",
-            "snapshot",
-            "diagnostics",
-            "deps",
-            "why",
-            "query_graph",
-            "read_symbol",
-            "get_neighbors",
-            "find_symbols",
-            "skill");
+    public static final List<String> LOOP = List.of("run", "snapshot", "diagnostics", "deps", "why", "skill");
 
     /** Which rows {@code tools/list} answers. */
     public enum Surface {
@@ -106,10 +96,7 @@ public final class McpTools {
                 + "diagnostics is every problem past the cap (file= for one). deps adds, removes, or pins and relocks. "
                 + "why(coord) is the path and the rule that picked the version. "
                 + "snapshot installs the project as <version>-SNAPSHOT, replaced each run, for a sibling project that must see your edits. "
-                + "query_graph answers a question about the code with file:line, instead of grep and reads; "
-                + "read_symbol reads a symbol's source (Type.member, Type.*) instead of whole files; "
-                + "get_neighbors(Type.member, relation_filter=calls) lists its callers; "
-                + "find_symbols(implements=T) its implementations and overrides. skill is the playbook. "
+                + "skill is the playbook. "
                 + (pinned ? "" : "The first call that carries dir binds the connection. ")
                 + "Other tools: tools/list with extended=true.";
     }
