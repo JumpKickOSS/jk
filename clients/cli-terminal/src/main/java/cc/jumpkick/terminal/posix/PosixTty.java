@@ -173,7 +173,7 @@ public final class PosixTty implements AutoCloseable {
         if (pollMh == null) {
             selectWait = true;
         }
-        while (live.getAsBoolean()) {
+        while (live.getAsBoolean() && open) {
             if (!forever && System.nanoTime() >= deadline) {
                 return -1;
             }

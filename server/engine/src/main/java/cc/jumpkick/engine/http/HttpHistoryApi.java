@@ -146,8 +146,8 @@ final class HttpHistoryApi {
      * The first {@code "name"} key's string value, scanned without parsing, or {@code null} when
      * the key is absent or its value is not a string. Journal records write these keys top-level
      * ahead of any free-text payload (see {@code journal.Json}), so the first occurrence is the
-     * real key in both compact and pretty output. Escapes are left as-is — callers only read
-     * machine-written identifier-shaped values.
+     * real key in both compact and pretty output. JSON escapes are decoded, so a Windows
+     * {@code "dir"} comes back with single backslashes.
      */
     private static @Nullable String scanStringField(String raw, String name) {
         int i = raw.indexOf('"' + name + '"');
@@ -155,14 +155,37 @@ final class HttpHistoryApi {
         int j = i + name.length() + 2;
         while (j < raw.length() && (raw.charAt(j) == ':' || Character.isWhitespace(raw.charAt(j)))) j++;
         if (j >= raw.length() || raw.charAt(j) != '"') return null;
-        int end = j + 1;
-        while (end < raw.length()) {
-            char c = raw.charAt(end);
-            if (c == '\\') end += 2;
-            else if (c == '"') break;
-            else end++;
+        StringBuilder value = new StringBuilder();
+        int at = j + 1;
+        while (at < raw.length()) {
+            char c = raw.charAt(at);
+            if (c == '"') return value.toString();
+            if (c != '\\' || at + 1 >= raw.length()) {
+                value.append(c);
+                at++;
+                continue;
+            }
+            char e = raw.charAt(at + 1);
+            if (e == 'u' && at + 6 <= raw.length()) {
+                try {
+                    value.append((char) Integer.parseInt(raw.substring(at + 2, at + 6), 16));
+                    at += 6;
+                    continue;
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            value.append(
+                    switch (e) {
+                        case 'n' -> '\n';
+                        case 't' -> '\t';
+                        case 'r' -> '\r';
+                        case 'b' -> '\b';
+                        case 'f' -> '\f';
+                        default -> e;
+                    });
+            at += 2;
         }
-        return end < raw.length() ? raw.substring(j + 1, end) : null;
+        return null;
     }
 
     /** True when any {@code "name"} key is lexically followed by {@code true} (never misses the top-level one). */

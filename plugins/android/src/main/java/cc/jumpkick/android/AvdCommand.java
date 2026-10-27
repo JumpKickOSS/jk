@@ -132,7 +132,9 @@ final class AvdCommand {
         // Prefer "emulator missing" over accel errors so CI/macOS (no /dev/kvm) get an actionable
         // install path. KVM is Linux-only; macOS uses Hypervisor.framework via the emulator binary.
         String override = flag(args, "--emulator");
-        Path emulator = override != null ? Path.of(override) : root.resolve("emulator/emulator");
+        Path emulator = override != null
+                ? Path.of(override)
+                : root.resolve("emulator").resolve(Os.isWindows() ? "emulator.exe" : "emulator");
         if (!Files.isRegularFile(emulator)) {
             exec.out("jk avd boot: the emulator component is not installed — " + "run `jk android sdk emulator` first");
             return 1;

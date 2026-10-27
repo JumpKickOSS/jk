@@ -208,6 +208,36 @@ public final class ZincJavaCompiler {
                 GeneratedProvenance.of(workdir).ownedClassFiles(sourceOutput, classOutput));
     }
 
+    /**
+     * Zinc's Java analysis loaded a compiled class's library supertype with this JVM and reflected over
+     * members whose signatures name a type this JDK no longer has (a release-11 module extending a class
+     * that returns {@code java.security.acl.Group[]}). javac has no such trouble, since {@code --release}
+     * reads the older API from ct.sym, so the module compiles without the analysis, from here on for this
+     * workdir while the classpath stays what it is. javac alone cannot compile Scala sources, so a mixed
+     * compile has no fallback.
+     */
+    private static Result onLinkageError(
+            LinkageError e,
+            JavaCompileJob job,
+            @Nullable MixedScala mixed,
+            ZincWorkdir zinced,
+            RecordingJavaCompiler javac,
+            VirtualFile[] sourceFiles,
+            String[] javacOpts,
+            List<Path> cp,
+            ApProvenance provenance,
+            CollectingReporter reporter)
+            throws IOException {
+        if (reporter.hasErrors()) {
+            return new Result(false, reporter.diagnostics(), javac.compiledSources(), provenance.generated);
+        }
+        if (mixed != null) return mixedLinkageFailure(reporter, e);
+        String missing = AnalysisOffCompile.missingType(e);
+        zinced.markAnalysisOff(missing, job.classpath());
+        return AnalysisOffCompile.run(
+                javac, sourceFiles, javacOpts, cp, job.classOutput(), job, provenance, reporter, missing);
+    }
+
     /** A mixed compile that died on a {@link LinkageError}: the error itself, with what javac already said. */
     private static Result mixedLinkageFailure(CollectingReporter reporter, LinkageError e) {
         List<Diag> diags = new ArrayList<>(reporter.diagnostics());
@@ -269,7 +299,7 @@ public final class ZincJavaCompiler {
             Optional<String> analysisOff = mixed == null ? zinced.analysisOff(classpath) : Optional.empty();
             if (analysisOff.isPresent()) {
                 return AnalysisOffCompile.run(
-                        javac, sourceFiles, javacOpts, cp, classOutput, reporter, analysisOff.get());
+                        javac, sourceFiles, javacOpts, cp, classOutput, job, provenance, reporter, analysisOff.get());
             }
 
             AnalysisStore store = zinced.store();
@@ -310,20 +340,7 @@ public final class ZincJavaCompiler {
             try {
                 compiled = zinc.compile(inputs, QuietLogger.INSTANCE);
             } catch (LinkageError e) {
-                // Zinc's Java analysis loaded a compiled class's library supertype with this JVM and
-                // reflected over members whose signatures name a type this JDK no longer has (a
-                // release-11 module extending a class that returns java.security.acl.Group[]).
-                // javac had no such trouble — --release reads the older API from ct.sym — so the
-                // module compiles without the analysis, from here on for this workdir while the
-                // classpath stays what it is.
-                if (reporter.hasErrors()) {
-                    return new Result(false, reporter.diagnostics(), javac.compiledSources(), provenance.generated);
-                }
-                // javac alone cannot compile Scala sources, so a mixed compile has no fallback.
-                if (mixed != null) return mixedLinkageFailure(reporter, e);
-                String missing = AnalysisOffCompile.missingType(e);
-                zinced.markAnalysisOff(missing, classpath);
-                return AnalysisOffCompile.run(javac, sourceFiles, javacOpts, cp, classOutput, reporter, missing);
+                return onLinkageError(e, job, mixed, zinced, javac, sourceFiles, javacOpts, cp, provenance, reporter);
             }
             phases.mark("zinc-compile");
             if (reporter.hasErrors()) {

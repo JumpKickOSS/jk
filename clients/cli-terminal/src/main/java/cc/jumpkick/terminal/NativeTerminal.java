@@ -22,8 +22,8 @@ final class NativeTerminal implements TerminalSession {
     private final @Nullable WindowsConsole windows;
     private final PrintWriter out;
     private volatile boolean live = true;
-    private boolean fdsClosed;
-    private int pushback = -1;
+    private volatile boolean fdsClosed;
+    private volatile int pushback = -1;
     private final Keys.ByteFeed feed = new Keys.ByteFeed() {
         @Override
         public int read(Duration timeout) {
@@ -216,6 +216,9 @@ final class NativeTerminal implements TerminalSession {
     }
 
     private int readDevice(Duration timeout) {
+        if (!live || fdsClosed) {
+            return -2;
+        }
         if (pushback >= 0) {
             int b = pushback;
             pushback = -1;

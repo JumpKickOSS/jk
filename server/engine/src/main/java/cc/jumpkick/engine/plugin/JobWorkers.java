@@ -77,8 +77,8 @@ public final class JobWorkers {
      * {@link #register} concurrently with {@link #shutdownForRequest}; without the tombstone it
      * either re-created a {@code BY_REQUEST} entry nothing ever removes (leak + untracked live
      * process) or added to the already-removed set after the kill loop (escaped worker).
-     * Cleared on {@link #open} in case a request id is ever reused; clear-on-overflow bounds the
-     * set.
+     * Cleared on {@link #open} in case a request id is ever reused; on overflow only ids far behind
+     * the newest of the same sign are evicted, so a request still mid-shutdown keeps its tombstone.
      */
     private static final Set<Long> TOMBSTONES = ConcurrentHashMap.newKeySet();
 
@@ -473,7 +473,10 @@ public final class JobWorkers {
         release(requestId);
         // Tombstone FIRST so a register racing us kills its process on arrival, and drop any
         // lease still queued for this job so a fork blocked in launch does not outlive the cancel.
-        if (TOMBSTONES.size() >= MAX_TOMBSTONES) TOMBSTONES.clear();
+        if (TOMBSTONES.size() >= MAX_TOMBSTONES) {
+            long window = MAX_TOMBSTONES / 2;
+            TOMBSTONES.removeIf(id -> (requestId >= 0) == (id >= 0) && Math.abs(requestId - id) > window);
+        }
         TOMBSTONES.add(requestId);
         WorkerLeases.engine().cancelRequest(requestId);
         Set<Process> set = BY_REQUEST.remove(requestId);

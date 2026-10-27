@@ -63,8 +63,10 @@ public final class ActionKey {
 
     private ActionKey() {}
 
+    private static final EntryToken DEFAULT_CP = ClasspathAbi::token;
+
     public static String forJavac(String taskId, CompileRequest request, String jkVersion) throws IOException {
-        return forJavac(taskId, request, jkVersion, ClasspathAbi::token);
+        return forJavac(taskId, request, jkVersion, DEFAULT_CP);
     }
 
     /**
@@ -73,6 +75,12 @@ public final class ActionKey {
      * this compile keys on it with the token that tree will have.
      */
     public static String forJavac(String taskId, CompileRequest request, String jkVersion, EntryToken cp)
+            throws IOException {
+        return forJavac(taskId, request, jkVersion, javacClasspathTokens(request, cp));
+    }
+
+    /** As {@link #forJavac(String, CompileRequest, String)} reusing already-computed {@code classpathTokens}. */
+    public static String forJavac(String taskId, CompileRequest request, String jkVersion, List<String> classpathTokens)
             throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("task:").append(taskId).append('\n');
@@ -84,7 +92,7 @@ public final class ActionKey {
 
         // Sources: path + content hash (FileHashMemo — at most one content read per path/thread).
         appendSources(sb, request.sources());
-        for (String line : javacClasspathTokens(request, cp)) sb.append(line).append('\n');
+        for (String line : classpathTokens) sb.append(line).append('\n');
         return Hashing.sha256Hex(sb.toString());
     }
 
@@ -104,7 +112,7 @@ public final class ActionKey {
      * exactly when the key would and on nothing else.
      */
     public static List<String> javacClasspathTokens(CompileRequest request) throws IOException {
-        return javacClasspathTokens(request, ClasspathAbi::token);
+        return javacClasspathTokens(request, DEFAULT_CP);
     }
 
     /** As {@link #javacClasspathTokens(CompileRequest)} with the compile classpath read through {@code cp}. */
@@ -147,6 +155,7 @@ public final class ActionKey {
      * ClasspathAbi#resources}): what a processor or groovyc reads of a dependency besides its API.
      */
     private static EntryToken withResources(EntryToken cp) {
+        if (cp == DEFAULT_CP) return ClasspathAbi::tokenWithResources;
         return entry -> cp.of(entry) + "+" + ClasspathAbi.resources(entry);
     }
 

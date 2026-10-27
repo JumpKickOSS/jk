@@ -23,7 +23,7 @@ public final class Jsonl {
      * string never closes (a cut-off line yields nothing, not its prefix).
      */
     public static @Nullable String str(@Nullable String json, String key) {
-        return strAt(json, indexOfKey(json, key, false));
+        return strAt(json, indexOfKey(json, key, false), key == null ? 0 : key.length());
     }
 
     /**
@@ -42,15 +42,15 @@ public final class Jsonl {
      * (or any other nested object).
      */
     public static @Nullable String topStr(@Nullable String json, String key) {
-        return strAt(json, indexOfKey(json, key, true));
+        return strAt(json, indexOfKey(json, key, true), key == null ? 0 : key.length());
     }
 
-    private static @Nullable String strAt(@Nullable String json, int keyAt) {
+    private static @Nullable String strAt(@Nullable String json, int keyAt, int keyLen) {
         if (json == null || keyAt < 0) return null;
-        int colon = json.indexOf(':', keyAt);
+        int colon = json.indexOf(':', keyAt + keyLen + 2);
         if (colon < 0) return null;
         int start = colon + 1;
-        while (start < json.length() && json.charAt(start) == ' ') start++;
+        while (start < json.length() && Character.isWhitespace(json.charAt(start))) start++;
         if (start >= json.length() || json.charAt(start) != '"') return null;
         start++;
         StringBuilder sb = new StringBuilder();
@@ -120,7 +120,7 @@ public final class Jsonl {
      */
     static int indexOfKey(@Nullable String json, @Nullable String key, boolean topLevelOnly) {
         if (json == null || key == null) return -1;
-        String needle = "\"" + key + "\"";
+        int keyLen = key.length();
         int depth = 0;
         boolean inString = false;
         for (int i = 0; i < json.length(); i++) {
@@ -135,9 +135,12 @@ public final class Jsonl {
             }
             if (c == '"') {
                 boolean atRoot = !topLevelOnly || depth == 1;
-                if (atRoot && json.startsWith(needle, i)) {
-                    int after = i + needle.length();
-                    while (after < json.length() && json.charAt(after) == ' ') after++;
+                if (atRoot
+                        && i + 1 + keyLen < json.length()
+                        && json.regionMatches(i + 1, key, 0, keyLen)
+                        && json.charAt(i + 1 + keyLen) == '"') {
+                    int after = i + keyLen + 2;
+                    while (after < json.length() && Character.isWhitespace(json.charAt(after))) after++;
                     if (after < json.length() && json.charAt(after) == ':') return i;
                 }
                 inString = true;
@@ -175,7 +178,7 @@ public final class Jsonl {
         while (end < json.length() && Character.isDigit(json.charAt(end))) end++;
         if (end == start || (neg && end == start + 1)) return defaultVal;
         try {
-            return Integer.parseInt(json.substring(start, end));
+            return Integer.parseInt(json, start, end, 10);
         } catch (NumberFormatException ignored) {
             return defaultVal;
         }
@@ -191,7 +194,7 @@ public final class Jsonl {
         while (end < json.length() && Character.isDigit(json.charAt(end))) end++;
         if (end == start || (neg && end == start + 1)) return defaultVal;
         try {
-            return Long.parseLong(json.substring(start, end));
+            return Long.parseLong(json, start, end, 10);
         } catch (NumberFormatException ignored) {
             return defaultVal;
         }
@@ -370,7 +373,7 @@ public final class Jsonl {
             }
             i++;
         }
-        return json.substring(braceStart, i);
+        return depth == 0 ? json.substring(braceStart, i) : null;
     }
 
     /**
@@ -389,12 +392,14 @@ public final class Jsonl {
                 int[] pos = {i};
                 String k = readString(obj, pos);
                 i = pos[0];
-                while (i < obj.length() && (obj.charAt(i) == ' ' || obj.charAt(i) == ':')) i++;
+                while (i < obj.length() && (Character.isWhitespace(obj.charAt(i)) || obj.charAt(i) == ':')) i++;
                 if (i < obj.length() && obj.charAt(i) == '"') {
                     pos[0] = i;
                     String v = readString(obj, pos);
                     i = pos[0];
                     out.put(k, v);
+                } else {
+                    while (i < obj.length() && obj.charAt(i) != ',' && obj.charAt(i) != '}') i++;
                 }
             } else {
                 i++;

@@ -503,13 +503,15 @@ final class ForbidEvaluator implements Evaluator {
     }
 
     private static boolean namesAClassElsewhere(String in, EvalContext ctx) {
-        List<Path> modules;
-        try {
-            modules = WorkspaceModules.of(ctx.root());
-        } catch (IOException unreadable) {
-            return false;
-        }
-        for (var e : WorkspaceModel.classModules(ctx.root(), modules).entrySet()) {
+        Map<String, String> classModules = ctx.memo("classModules", c -> {
+            try {
+                List<Path> modules = WorkspaceModules.of(c.root());
+                return WorkspaceModel.classModules(c.root(), modules);
+            } catch (IOException unreadable) {
+                return Map.of();
+            }
+        });
+        for (var e : classModules.entrySet()) {
             if (e.getValue().equals(ctx.module())) continue;
             String binary = e.getKey().replace('/', '.');
             int dot = binary.lastIndexOf('.');

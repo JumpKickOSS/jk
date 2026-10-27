@@ -60,8 +60,14 @@ public final class JkManifestWatcher implements Disposable {
         if (!MANIFESTS.contains(p.substring(slash + 1))) return false;
         if (base == null) return false;
         String b = base.replace('\\', '/');
-        if (!p.startsWith(b.endsWith("/") ? b : b + "/")) return false;
-        return !p.contains("/target/");
+        String prefix = b.endsWith("/") ? b : b + "/";
+        boolean matchesPrefix = p.startsWith(prefix)
+                || (prefix.length() >= 2
+                        && prefix.charAt(1) == ':'
+                        && p.regionMatches(true, 0, prefix, 0, prefix.length()));
+        if (!matchesPrefix) return false;
+        String rel = "/" + p.substring(prefix.length());
+        return !rel.contains("/target/");
     }
 
     boolean isPending() {

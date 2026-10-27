@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.surface;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
@@ -127,14 +128,14 @@ public final class DynamicSurfaceIo {
         // Nested META-INF/native-image trees some agents write
         Path meta = agentDir.resolve("META-INF/native-image");
         if (Files.isDirectory(meta)) {
-            try (var walk = Files.walk(meta)) {
-                for (Path file : walk.filter(Files::isRegularFile).toList()) {
-                    String rel = meta.relativize(file).toString().replace('\\', '/');
-                    String entryName = "META-INF/native-image/" + rel;
-                    if (!NativeImageMetadata.isMetadataFile(entryName)) continue;
-                    surface = surface.merge(NativeImageMetadata.parse(
-                            entryName, Files.readString(file, StandardCharsets.UTF_8), origin));
-                }
+            List<Path> metaFiles = new ArrayList<>();
+            PathUtil.forEachRegularFile(meta, (file, attrs) -> metaFiles.add(file));
+            for (Path file : metaFiles) {
+                String rel = meta.relativize(file).toString().replace('\\', '/');
+                String entryName = "META-INF/native-image/" + rel;
+                if (!NativeImageMetadata.isMetadataFile(entryName)) continue;
+                surface = surface.merge(
+                        NativeImageMetadata.parse(entryName, Files.readString(file, StandardCharsets.UTF_8), origin));
             }
         }
         return surface;

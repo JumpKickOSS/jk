@@ -2,17 +2,21 @@
 package cc.jumpkick.plugin.build;
 
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.PluginConfig;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -222,6 +226,8 @@ public interface TaskExec {
             return start(ProcessBuilder.Redirect.PIPE);
         }
 
+        private static final int ARG_FILE_THRESHOLD = 28_000;
+
         /**
          * As {@link #start()}, with the child's combined output sent to {@code output} instead of
          * a pipe: a file ({@link ProcessBuilder.Redirect#appendTo}) for a child that keeps writing
@@ -229,11 +235,95 @@ public interface TaskExec {
          * the child's whole life and break its next write when that reader went away.
          */
         public Process start(ProcessBuilder.Redirect output) throws IOException {
+            List<String> cmd = command();
+            Path argFile = null;
+            if (needsArgFile(cmd)) {
+                Charset charset = argFileCharset(cmd.get(0));
+                if (encodable(cmd, charset)) {
+                    argFile = Files.createTempFile("jk-tool-args-", ".txt");
+                    cmd = writeArgFile(cmd, argFile, charset);
+                }
+            }
             ProcessBuilder pb =
-                    new ProcessBuilder(command()).redirectErrorStream(true).redirectOutput(output);
+                    new ProcessBuilder(cmd).redirectErrorStream(true).redirectOutput(output);
             if (cwd != null) pb.directory(cwd.toFile());
             pb.environment().putAll(env);
-            return pb.start();
+            if (argFile == null) return pb.start();
+            Path written = argFile;
+            try {
+                Process process = pb.start();
+                process.onExit().whenComplete((p, e) -> deleteQuietly(written));
+                return process;
+            } catch (IOException | RuntimeException e) {
+                deleteQuietly(written);
+                throw e;
+            }
+        }
+
+        /**
+         * The encoding the tool reads an {@code @argfile} in: javac decodes it with the default charset
+         * (UTF-8), the {@code java} launcher passes its bytes through in the native (ANSI) code page.
+         */
+        private static Charset argFileCharset(String exe) {
+            String name = Path.of(exe).getFileName().toString().toLowerCase(Locale.ROOT);
+            if (name.startsWith("javac")) return StandardCharsets.UTF_8;
+            String nativeEncoding = System.getProperty("native.encoding");
+            try {
+                return nativeEncoding == null ? Charset.defaultCharset() : Charset.forName(nativeEncoding);
+            } catch (IllegalArgumentException e) {
+                return Charset.defaultCharset();
+            }
+        }
+
+        private static boolean encodable(List<String> cmd, Charset charset) {
+            CharsetEncoder encoder = charset.newEncoder();
+            for (int i = 1; i < cmd.size(); i++) {
+                if (!encoder.canEncode(cmd.get(i))) return false;
+            }
+            return true;
+        }
+
+        private static void deleteQuietly(Path file) {
+            try {
+                Files.deleteIfExists(file);
+            } catch (IOException ignored) {
+                // a temp file; the OS temp sweep is the backstop
+            }
+        }
+
+        private static boolean needsArgFile(List<String> cmd) {
+            if (!Os.isWindows() || cmd.size() <= 1) return false;
+            String exe = Path.of(cmd.get(0)).getFileName().toString().toLowerCase(Locale.ROOT);
+            if (!exe.equals("java") && !exe.equals("java.exe") && !exe.equals("javac") && !exe.equals("javac.exe")) {
+                return false;
+            }
+            int chars = 0;
+            for (String a : cmd) chars += a.length() + 3;
+            return chars > ARG_FILE_THRESHOLD;
+        }
+
+        /** One argument per line; quoted when it holds whitespace, a quote or a backslash, or starts a comment. */
+        private static List<String> writeArgFile(List<String> cmd, Path argFile, Charset charset) throws IOException {
+            StringBuilder body = new StringBuilder();
+            for (int i = 1; i < cmd.size(); i++) {
+                String a = cmd.get(i);
+                if (a.isEmpty()
+                        || a.startsWith("#")
+                        || a.indexOf(' ') >= 0
+                        || a.indexOf('\t') >= 0
+                        || a.indexOf('"') >= 0
+                        || a.indexOf('\'') >= 0
+                        || a.indexOf('\\') >= 0) {
+                    body.append('"')
+                            .append(a.replace("\\", "\\\\").replace("\"", "\\\""))
+                            .append('"');
+                } else {
+                    body.append(a);
+                }
+                body.append('\n');
+            }
+            Files.writeString(argFile, body.toString(), charset);
+            return List.of(cmd.get(0), "@" + argFile.toAbsolutePath());
         }
 
         /** Fork and drain: exit code + combined stdout/stderr. */
@@ -250,12 +340,16 @@ public interface TaskExec {
          */
         public int stream(Consumer<String> sink) throws IOException, InterruptedException {
             Process process = start();
-            try (BufferedReader reader =
-                    new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                @Nullable String line;
-                while ((line = reader.readLine()) != null) sink.accept(line);
+            try {
+                try (BufferedReader reader =
+                        new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                    @Nullable String line;
+                    while ((line = reader.readLine()) != null) sink.accept(line);
+                }
+                return process.waitFor();
+            } finally {
+                if (process.isAlive()) process.destroyForcibly();
             }
-            return process.waitFor();
         }
 
         public record Result(int exit, String output) {}

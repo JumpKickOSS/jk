@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.layout;
 
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassModel;
@@ -30,12 +31,11 @@ public final class MainClassScanner {
     public static List<String> scan(Path classesDirOrJar) throws IOException {
         List<String> found = new ArrayList<>();
         if (Files.isDirectory(classesDirOrJar)) {
-            try (var walk = Files.walk(classesDirOrJar)) {
-                for (Path p : walk.filter(f -> f.getFileName().toString().endsWith(".class"))
-                        .toList()) {
+            PathUtil.forEachRegularFile(classesDirOrJar, (p, attrs) -> {
+                if (p.getFileName().toString().endsWith(".class")) {
                     addIfMain(found, Files.readAllBytes(p));
                 }
-            }
+            });
         } else if (Files.isRegularFile(classesDirOrJar)) {
             try (JarFile jar = new JarFile(classesDirOrJar.toFile())) {
                 Enumeration<JarEntry> entries = jar.entries();

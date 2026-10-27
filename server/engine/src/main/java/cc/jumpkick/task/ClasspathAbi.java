@@ -48,6 +48,10 @@ public final class ClasspathAbi {
             return "missing:" + PortablePath.of(abs);
         }
         String identity = ClasspathFingerprint.entry(abs);
+        return token(abs, attrs, identity);
+    }
+
+    private static String token(Path abs, BasicFileAttributes attrs, String identity) throws IOException {
         if (identity.startsWith("missing:")) return identity;
         String hit = AbiMemo.get(MEMO_NAMESPACE + identity);
         if (hit != null) return hit;
@@ -63,6 +67,27 @@ public final class ClasspathAbi {
         return abi;
     }
 
+    /**
+     * Both {@link #token} and {@link #resources} from one {@link ClasspathFingerprint#entry} walk when
+     * {@code cp} is {@link ClasspathAbi#token}.
+     */
+    public static String tokenWithResources(Path entry) throws IOException {
+        Path abs = entry.toAbsolutePath().normalize();
+        BasicFileAttributes attrs;
+        try {
+            attrs = Files.readAttributes(abs, BasicFileAttributes.class);
+        } catch (IOException absent) {
+            String missing = "missing:" + PortablePath.of(abs);
+            return missing + "+res:" + missing;
+        }
+        if (!attrs.isRegularFile() && !attrs.isDirectory()) {
+            String missing = "missing:" + PortablePath.of(abs);
+            return missing + "+res:" + missing;
+        }
+        String identity = ClasspathFingerprint.entry(abs);
+        return token(abs, attrs, identity) + "+" + resources(abs, identity);
+    }
+
     /** Memo namespace of {@link #resources}: its own shape, apart from the ABI's. */
     private static final String RESOURCES_NAMESPACE = "meta-inf.1:";
 
@@ -75,6 +100,10 @@ public final class ClasspathAbi {
     public static String resources(Path entry) throws IOException {
         Path abs = entry.toAbsolutePath().normalize();
         String identity = ClasspathFingerprint.entry(abs);
+        return resources(abs, identity);
+    }
+
+    private static String resources(Path abs, String identity) throws IOException {
         if (identity.startsWith("missing:")) return "res:" + identity;
         String hit = AbiMemo.get(RESOURCES_NAMESPACE + identity);
         if (hit != null) return hit;

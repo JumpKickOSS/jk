@@ -220,17 +220,26 @@ public final class KotlinCompiler implements Plugin {
                 String prefix = Hashing.sha256Hex(entry.getAbsolutePath()) + "-";
                 Path snapshot = dir.resolve(prefix + shapeDigest(entry.toPath()) + SNAPSHOT_SUFFIX);
                 if (!Files.isRegularFile(snapshot)) {
-                    dropStale(dir, prefix);
                     // Written beside and moved in whole: a concurrent compile of another module
                     // reading the same entry sees either no snapshot or a complete one.
                     Path staging = dir.resolve(prefix + UUID.randomUUID() + ".tmp");
                     try {
                         snapshotter.snapshot(entry.toPath(), staging);
-                        Files.move(
-                                staging, snapshot, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                        try {
+                            Files.move(
+                                    staging,
+                                    snapshot,
+                                    StandardCopyOption.ATOMIC_MOVE,
+                                    StandardCopyOption.REPLACE_EXISTING);
+                        } catch (IOException moveFailed) {
+                            if (!Files.isRegularFile(snapshot)) {
+                                Files.move(staging, snapshot, StandardCopyOption.REPLACE_EXISTING);
+                            }
+                        }
                     } finally {
                         Files.deleteIfExists(staging);
                     }
+                    dropStale(dir, prefix, snapshot.getFileName().toString());
                 }
                 out.add(snapshot);
             }
@@ -268,14 +277,22 @@ public final class KotlinCompiler implements Plugin {
     }
 
     /** Remove the snapshots of an entry that describe a shape it no longer has. */
-    private static void dropStale(Path dir, String prefix) throws IOException {
+    private static void dropStale(Path dir, String prefix, String keepName) throws IOException {
         List<Path> stale = new ArrayList<>();
         PathUtil.forEachChild(dir, (file, attrs) -> {
             String name = file.getFileName().toString();
-            if (name.startsWith(prefix) && name.endsWith(SNAPSHOT_SUFFIX)) stale.add(file);
+            if (!name.equals(keepName) && name.startsWith(prefix) && name.endsWith(SNAPSHOT_SUFFIX)) {
+                stale.add(file);
+            }
             return true;
         });
-        for (Path file : stale) Files.deleteIfExists(file);
+        for (Path file : stale) {
+            try {
+                Files.deleteIfExists(file);
+            } catch (IOException ignored) {
+                // another worker may be reading or deleting it concurrently
+            }
+        }
     }
 
     /**

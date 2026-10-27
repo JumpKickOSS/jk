@@ -11,6 +11,7 @@ import cc.jumpkick.terminal.Style;
 import cc.jumpkick.terminal.Styled;
 import cc.jumpkick.terminal.StyledBuilder;
 import cc.jumpkick.terminal.TerminalSession;
+import cc.jumpkick.terminal.Width;
 import java.io.PrintWriter;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -261,7 +262,7 @@ public final class Wizard {
             int height = painter.height();
             painter.paint(frame, lines(step, state), size.cols(), 0, size.rows());
             int next = step instanceof WizardStep.InputStep
-                    ? INDENT_COLS + RAIL_PREFIX_WIDTH + state.input.length() + 1
+                    ? INDENT_COLS + RAIL_PREFIX_WIDTH + Width.columns(state.input.toString()) + 1
                     : -1;
             if (frame.isEmpty() && next == caret) return;
             StringBuilder out = new StringBuilder();

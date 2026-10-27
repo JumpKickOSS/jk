@@ -34,13 +34,9 @@ import org.xml.sax.SAXException;
  * parser sees them, so a legacy Central POM naming {@code Laugst&oslash;l} reads here as it reads
  * there without a declaration ever being honoured.
  *
- * <p>That posture is enforceable only because it is owned. Round 3 found seven files each building
- * their own {@code DocumentBuilderFactory} at four different hardening levels, the weakest with one
- * flag of the six; a text scan cannot tell which factory instance a given {@code setFeature} call
- * configures, so "one place constructs the factory" is the only rule a guard can check. The build's
- * {@code checkSingleXmlParserOwner} (G3) bans {@code DocumentBuilderFactory} everywhere but this
- * file, and reads the six flags back out of {@link #hardened} — so weakening the posture here fails
- * the build rather than silently weakening seven callers.
+ * <p>The build's {@code checkSingleXmlParserOwner} bans {@code DocumentBuilderFactory} everywhere
+ * but this file, and reads the six flags back out of {@link #hardened} — so weakening the posture
+ * here fails the build rather than silently weakening callers.
  *
  * <p>Nothing here hands out a {@link DocumentBuilderFactory} or a {@link DocumentBuilder}: the only
  * way to get a {@link Document} is to get a hardened one.

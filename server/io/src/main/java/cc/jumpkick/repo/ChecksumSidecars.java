@@ -71,9 +71,13 @@ final class ChecksumSidecars {
 
     /** The strongest SHA digest published, or empty when the repository publishes neither. */
     Optional<Published> strongestSha() throws IOException, InterruptedException {
-        Optional<String> strong = join(sha256);
-        if (strong.isPresent()) return Optional.of(new Published(Algorithm.SHA256, strong.get()));
-        return join(sha1).map(hex -> new Published(Algorithm.SHA1, hex));
+        try {
+            Optional<String> strong = join(sha256);
+            if (strong.isPresent()) return Optional.of(new Published(Algorithm.SHA256, strong.get()));
+            return join(sha1).map(hex -> new Published(Algorithm.SHA1, hex));
+        } finally {
+            cancel();
+        }
     }
 
     /** Stop the two SHA reads: a leg still parked in its request is interrupted and ends at once. */

@@ -401,10 +401,16 @@ public final class CodeText {
         String name = before.substring(nameStart);
         if (name.isEmpty() || Character.isDigit(name.charAt(0)) || NOT_A_MEMBER_NAME.contains(name)) return null;
         String prefix = before.substring(0, nameStart).stripTrailing();
-        if (prefix.endsWith("new") || prefix.endsWith("record") || prefix.endsWith("=")) return null;
+        if (endsWithWord(prefix, "new") || endsWithWord(prefix, "record") || prefix.endsWith("=")) return null;
         if (prefix.endsWith(".")) return null; // a chained call ending in `) {` is not a declaration
         String params = head.substring(open + 1, head.length() - 1).strip();
         return new MethodSpan(name, params.isEmpty() ? 0 : topLevelCommas(params) + 1, 0, 0);
+    }
+
+    private static boolean endsWithWord(String s, String word) {
+        if (!s.endsWith(word)) return false;
+        int at = s.length() - word.length();
+        return at == 0 || !Character.isJavaIdentifierPart(s.charAt(at - 1));
     }
 
     private static int matchingOpenParen(String s, int closeAt) {

@@ -99,6 +99,25 @@ class VocabularyEvaluatorTest {
     }
 
     @Test
+    void source_set_all_adds_suite_roots_but_not_nested_projects(@TempDir Path root) throws Exception {
+        Path m = root.resolve("mod");
+        Files.createDirectories(m.resolve("src/integration/java/x"));
+        Files.writeString(
+                m.resolve("src/integration/java/x/I.java"), "package x;\nclass I { String g = \"compile-main\"; }\n");
+        Files.createDirectories(m.resolve("examples/demo/src/main/java/x"));
+        Files.writeString(
+                m.resolve("examples/demo/src/main/java/x/E.java"),
+                "package x;\nclass E { String g = \"compile-main\"; }\n");
+
+        Evaluation all = run(root, "owner = \"" + OWNER + "\"\nsource-set = \"all\"\n");
+
+        assertThat(all.observations())
+                .extracting(Observation::file)
+                .contains("src/integration/java/x/I.java")
+                .doesNotContain("examples/demo/src/main/java/x/E.java");
+    }
+
+    @Test
     void enum_constructor_literals_are_the_vocabulary_of_an_enum_owner(@TempDir Path root) throws Exception {
         ClassFacts tier = FactsExtractor.extract(FixtureBytes.of(Tier.class));
         assertThat(VocabularyEvaluator.constants(tier))

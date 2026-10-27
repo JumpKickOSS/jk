@@ -321,20 +321,28 @@ public final class PomParser {
 
     private static @Nullable String substituteOrNull(@Nullable String raw, Map<String, String> ctx) {
         if (raw == null) return null;
-        Matcher m = PROPERTY_REF.matcher(raw);
-        if (!m.find()) return raw;
-        m.reset();
-        StringBuilder sb = new StringBuilder();
-        while (m.find()) {
-            String key = m.group(1);
-            String value = ctx.get(key);
-            String replacement = value != null ? value : m.group();
-            m.appendReplacement(sb, Matcher.quoteReplacement(replacement));
+        String current = raw;
+        for (int pass = 0; pass < 4; pass++) {
+            Matcher m = PROPERTY_REF.matcher(current);
+            if (!m.find()) return current;
+            m.reset();
+            StringBuilder sb = new StringBuilder();
+            boolean changed = false;
+            while (m.find()) {
+                String key = m.group(1);
+                String value = ctx.get(key);
+                if (value != null && !value.equals(m.group())) {
+                    m.appendReplacement(sb, Matcher.quoteReplacement(value));
+                    changed = true;
+                } else {
+                    m.appendReplacement(sb, Matcher.quoteReplacement(m.group()));
+                }
+            }
+            m.appendTail(sb);
+            current = sb.toString();
+            if (!changed) return current;
         }
-        m.appendTail(sb);
-        // Second pass to resolve nested references like ${spring.version} → ${other}.
-        // One pass is enough for v0.1; deep chains can wait for the resolver.
-        return sb.toString();
+        return current;
     }
 
     // --- DOM helpers -------------------------------------------------------

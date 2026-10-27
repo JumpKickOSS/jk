@@ -183,6 +183,16 @@ public final class WorkspaceScheduler {
         List<U> notStarted = new ArrayList<>(units);
         Map<Path, Integer> height = dependentChainHeight(units, dirOf, edges, unitDirs);
         notStarted.sort(Comparator.comparingInt((U u) -> -height.getOrDefault(dirOf.apply(u), 0)));
+        Map<Path, List<Path>> prereqs = new HashMap<>(units.size());
+        for (U u : units) {
+            Path dir = dirOf.apply(u);
+            Set<Path> raw = edges.getOrDefault(dir, Set.of());
+            List<Path> inRun = new ArrayList<>();
+            for (Path dep : raw) {
+                if (unitDirs.contains(dep)) inRun.add(dep);
+            }
+            prereqs.put(dir, inRun);
+        }
         // Events: a Done per completed unit, or a Path per publish. Admission keys on the
         // publish, so a dependent starts while its prereq still packages and tests;
         // completion accounting (sink, fail-fast, the concurrency cap) stays on Done.
@@ -203,9 +213,7 @@ public final class WorkspaceScheduler {
                 U next = null;
                 for (U u : notStarted) {
                     Set<Path> gate = awaitsCompletion.test(u) ? done : published;
-                    boolean ready = edges.getOrDefault(dirOf.apply(u), Set.of()).stream()
-                            .filter(unitDirs::contains)
-                            .allMatch(gate::contains);
+                    boolean ready = gate.containsAll(prereqs.getOrDefault(dirOf.apply(u), List.of()));
                     if (ready) {
                         if (!full || isSpineHead(u, notStarted, height, dirOf)) next = u;
                         break;
@@ -255,6 +263,8 @@ public final class WorkspaceScheduler {
             Done<U, R> d = (Done<U, R>) event;
             inFlight--;
             if (d.error() != null) {
+                for (U u : List.copyOf(unitOf.values())) stopUnit.accept(u);
+                drainCancelled(inflight);
                 throw d.error() instanceof CompletionException ce ? ce : new CompletionException(d.error());
             }
             if (d.result() == null) {
