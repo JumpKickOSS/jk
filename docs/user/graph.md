@@ -1,9 +1,10 @@
 # Code graph
 
 `jk graph` maps a workspace into a knowledge graph of its code, configuration and documentation, and
-answers questions from it within a token budget. A coding agent asks the graph where something is
-and how it connects instead of grepping and reading whole files; the answer names `file:line` for
-everything it mentions.
+answers questions from it within a token budget; every answer names `file:line` for what it
+mentions. It is built in: no Python install, an index in seconds, and call edges from the compiled
+classes. Its `graphify-out/graph.json` is graphify's format, so graphify's own skill and MCP server
+read it unchanged.
 
 ```bash
 jk graph                                   # build or refresh target/graph/
@@ -210,9 +211,7 @@ no LLM pass: documents are read for their structure, links and code mentions onl
 
 ## MCP
 
-The graph operations are MCP tools. graphify's names keep graphify's arguments: `query_graph`,
-`get_node`, `get_neighbors`, `get_community`, `god_nodes`, `graph_stats` and `shortest_path`;
-`query_graph` and `god_nodes` also take `scope`, `modules` and `source_set`. jk adds `read_symbol`,
-`find_symbols` and `rules_for`. All of them are on the extended `tools/list`, not the default one:
-every card on the default list is paid on every turn, and agents seldom call graph tools unprompted.
-`skill(topic=graph)` introduces them all. See [MCP](mcp.md).
+jk's MCP server does not list the graph: every card an agent's host shows is paid on every turn, and
+measured agents did not call graph tools often enough to repay it. An agent that should use the
+graph gets it from graphify's MCP server (`graphify-mcp graphify-out/graph.json`) over the file
+`[graph] graphify = true` keeps current, or from `jk graph` in a shell.

@@ -26,17 +26,17 @@ default directory is `<project>/.agents/skills`, the project-level location clie
 skill's `name` matches the `jk/` directory it is installed into.
 
 Topics: `dependencies`, `tests`, `workspaces`, `lockfile`, `imports`, `plugins`, `guards`,
-`layout`, `jdk`, `engine`, `graph`.
+`layout`, `jdk`, `engine`.
 
 ## What an agent does
 
-1. Run **`jk skill`** (or MCP **`skill`**) once per session.
+1. Read **`jk skill`** (or MCP **`skill`**) when a task needs more than the `AGENTS.md` section.
 2. Read the **verdict**. MCP `run` returns it. On the CLI, `jk -a` or `JK_AGENT=1` prints it.
    `run=<id>` reads an earlier run.
 3. Detail past the cap is MCP **`diagnostics`** (`file=`). Over `jk mcp` the tools take no `dir`;
    over HTTP, pass `dir` on the first call and it binds the connection.
 4. Edit dependencies with **`deps`** (it relocks) or `jk add` / `jk remove`. Then `run()`.
-5. Format after source edits: `jk format`.
+5. Before handing work back: `jk format`, then `jk guard`.
 
 Other tools (history, explain, graph, jdk, …) are a `tools/list` with `{"extended": true}`.
 

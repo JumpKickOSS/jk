@@ -6,7 +6,6 @@ import cc.jumpkick.engine.http.ProgressTokenRegistry;
 import cc.jumpkick.engine.http.mcp.tools.AffectedTestsTool;
 import cc.jumpkick.engine.http.mcp.tools.BindTool;
 import cc.jumpkick.engine.http.mcp.tools.CancelTool;
-import cc.jumpkick.engine.http.mcp.tools.CodeGraphTool;
 import cc.jumpkick.engine.http.mcp.tools.ConfigTool;
 import cc.jumpkick.engine.http.mcp.tools.DepsTool;
 import cc.jumpkick.engine.http.mcp.tools.DetailsTool;
@@ -60,8 +59,7 @@ public final class McpTools {
 
     /**
      * The default {@code tools/list}: what one fix-and-rerun loop needs, in reading order. Every card
-     * is paid on every turn, and agents seldom call the code graph's tools unprompted, so those are on
-     * the extended list.
+     * is paid on every turn.
      */
     public static final List<String> LOOP = List.of("run", "snapshot", "diagnostics", "deps", "why", "skill");
 
@@ -192,7 +190,7 @@ public final class McpTools {
                 new IdeTool(),
                 new GraphTool(),
                 new DoctorTool()));
-        tools.addAll(CodeGraphTool.all());
+        // CodeGraphTool.all() stays unlisted until agents measurably save tokens with it.
         return new McpTools(tools, LOOP);
     }
 

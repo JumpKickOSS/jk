@@ -96,6 +96,7 @@ class McpToolRegistryTest {
         assertThat(listed)
                 .doesNotContain(
                         "bind", "history", "manifest", "god_nodes", "graph_stats", "query_graph", "get_neighbors");
+        assertThat(tools.names()).doesNotContain("query_graph", "read_symbol", "get_neighbors", "find_symbols");
     }
 
     @Test

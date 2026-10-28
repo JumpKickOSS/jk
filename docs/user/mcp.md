@@ -133,8 +133,7 @@ and the process was spawned by a coding-agent CLI. Human terminals keep today's 
 ## Tools
 
 Every tool card an agent's host shows the model is paid for on every turn. The default
-`tools/list` is six tools: the fix-and-rerun loop. Measured agents seldom call the code graph's
-tools unprompted, so their cards are on the extended list rather than paid on every turn. The same sentences are the skill's tool table (`jk skill` / `skill`),
+`tools/list` is six tools: the fix-and-rerun loop. The same sentences are the skill's tool table (`jk skill` / `skill`),
 which a test holds to the served list. Ask for every card with `tools/list` params
 `{"extended": true}`, or set `[mcp] tools = "all"` (`JK_MCP_TOOLS=all`) and restart the engine.
 
@@ -182,16 +181,6 @@ The whole registry:
 | **`export`** | Write `maven` \| `gradle` \| `bom` files |
 | **`ide`** | Write IDE project files (`kind=idea` \| `vscode` \| `all`) plus `.bsp/jk.json`, same generators as `jk ide`; `preview=true` lists without writing |
 | **`graph`** | Compact module/dep graph (transitive expansion opt-in and budget-capped) |
-| **`query_graph`** | The code graph's answer to a question (`question`), within `token_budget` (default 2000): NODE/EDGE lines with `file:line`. `mode` `bfs`\|`dfs`, `depth`, `context_filter` (`call`, `field`, `import`, …), and `scope` (path globs, `!` excludes), `modules`, `source_set` (`main`\|`test`) to narrow it. Same as `jk graph query`; see [Code graph](graph.md) |
-| **`read_symbol`** | A symbol's source instead of the whole file (`address`: `Type`, `Type.member`, `Type.*`, `Type.**`, a path or glob, `#line=N,M`). `token_budget` picks the view: `content`, then `structure` (declarations without bodies), then `headline`; `view` forces one. A type no workspace file declares is read from the locked jars. Same as `jk graph read` |
-| **`find_symbols`** | Declarations by `kind`, `visibility`, `extends`, `implements` (transitive, library supertypes too), `annotated` and a `name` glob, each a comma list; `scope`/`modules`/`source_set` narrow it; `libraries=true` searches the locked jars' types. Same as `jk graph find` |
-| **`rules_for`** | Before editing a file (`path`): the guard rules that govern it and its `NOTE:`/`WHY:` comments. Same as `jk graph rules` |
-| **`get_node`** | One code-graph node (`label` or `node_id`): source and line, type, community, degree |
-| **`get_neighbors`** | A node's direct connections (`label` or `node_id`, `relation_filter`, `token_budget`) |
-| **`get_community`** | The members of one community (`community_id`, `token_budget`) |
-| **`god_nodes`** | The most-connected entities (`top_n`; `scope`, `modules`, `source_set` narrow it) |
-| **`graph_stats`** | Node, edge and community counts and the confidence mix |
-| **`shortest_path`** | How two nodes connect (`source`, `target`, `max_hops`, `undirected`) |
 
 Start with **`run`**. The reply is the verdict. **`diagnostics`** is the detail past its cap. Do not dump full journal records. A tool
 outside the default list is called by name once `tools/list` with `extended: true` has named it. `tools/call` accepts it either way; the bind and the session are the same.

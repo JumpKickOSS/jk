@@ -132,7 +132,7 @@ class McpContractTest {
                         session)
                 .body();
         assertThat(body).doesNotContain("structuredContent");
-        assertThat(body).contains("A.java").contains("+1 more in A.java").contains("B.java");
+        assertThat(body).contains("A.java").contains("+1 more at A.java:").contains("B.java");
         assertThat(body).doesNotContain("/ws/A.java");
         assertThat(body.length()).isLessThan(4_096);
     }
