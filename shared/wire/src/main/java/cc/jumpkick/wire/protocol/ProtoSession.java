@@ -7,6 +7,8 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.TestFailureMode;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -19,6 +21,9 @@ import org.jspecify.annotations.Nullable;
  * script, cache) and the {@code prune-wait} notice.
  */
 public final class ProtoSession {
+
+    /** The request field carrying the caller's environment; see {@link #withShell}. */
+    public static final String SHELL = "shell";
 
     private ProtoSession() {}
 
@@ -359,6 +364,29 @@ public final class ProtoSession {
     public static String variantOf(String request) {
         String v = Jsonl.topStr(request, "variant");
         return v == null ? "" : v;
+    }
+
+    /**
+     * Attach the caller's whole environment to an encoded request line, as {@code NAME=VALUE}
+     * strings so no variable name can read as one of the request's own fields. An empty map leaves
+     * the line byte-identical.
+     */
+    public static String withShell(String request, Map<String, String> shell) {
+        if (shell.isEmpty()) return request;
+        List<String> pairs = new ArrayList<>(shell.size());
+        shell.forEach((name, value) -> pairs.add(name + "=" + value));
+        return Jsonl.append(
+                request, RequestJson.fields().optionalArray(SHELL, pairs).body());
+    }
+
+    /** Decode side of {@link #withShell}: the caller's environment, or empty when it sent none. */
+    public static Map<String, String> shellOf(String request) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String pair : Jsonl.strArray(request, SHELL)) {
+            int eq = pair.indexOf('=', 1); // Windows keeps per-drive names such as `=C:`
+            if (eq > 0) out.put(pair.substring(0, eq), pair.substring(eq + 1));
+        }
+        return out;
     }
 
     /** Decode side of {@link #withSession}: the client-resolved env values, or empty. */

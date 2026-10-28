@@ -253,7 +253,7 @@ final class EnginePluginAdapter {
     }
 
     private static void send(BufferedWriter writer, String line) throws IOException {
-        writer.write(line);
+        writer.write(EngineWire.withShell(line));
         writer.write('\n');
         writer.flush();
     }

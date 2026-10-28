@@ -398,7 +398,10 @@ inherit = true   # the legacy build scripts read a dozen CI variables; listing t
 Write the reason beside it. `[env]` is per module and is not inherited from a workspace root.
 The engine's own environment is the shell that started it, not the one running `jk` — apart
 from the proxy and display variables above, a variable set for one command reaches a worker only
-through `vars` or `[test] env`.
+through `vars` or `[test] env`. What jk itself decides reads the shell running `jk`, every
+variable of it: `CI`, repository credentials, the git agent, the CI profile, colour. So
+`CI=true jk guard` checks rather than writes, whichever shell started the engine. A request from
+MCP or the HTTP API has no shell of its own, and those decisions read the engine's.
 
 ## Node modules
 

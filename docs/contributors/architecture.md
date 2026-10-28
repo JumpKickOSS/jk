@@ -280,6 +280,7 @@ Same-version client/engine only — not a multi-version public API. Conventions 
 | Project path | Field name is always `dir` |
 | BuildPlan finish | `{"type":"buildplan-finish","kind":…,"dir":…,"success":…}` (+ kind-specific tails) |
 | Session extras | Variant / client env / JVM tuning via typed `withSession` builders — no JSON string surgery |
+| Caller's shell | Every request line the CLI sends carries its whole environment as `"shell":["NAME=VALUE",…]` (an array, so no variable name reads as a request field). The engine binds it as `RequestShell` for the request's extent; `BuildEnv.get` reads it, `ProcessEnv` is the engine's own. It is never logged, journaled or replied |
 | Line limits | Bounded line reader + idle timeout; unknown/`type`-less lines → `error`, not silent drop |
 
 Builders and round-trip tests live in `shared/wire` / `EngineProtocolTest`.
