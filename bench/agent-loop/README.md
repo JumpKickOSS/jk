@@ -269,7 +269,8 @@ does not, **claimed** is a DONE the tests refute.
 
 | Arm | Build tool | MCP | What it isolates |
 |---|---|---|---|
-| `jk` | jk | `jk mcp` (its default list carries no graph cards) | the product as installed, and the no-graph baseline |
+| `jk` | jk | `jk mcp` (no graph cards) | the product as installed, and the no-graph baseline |
+| `jk-graph` | jk | `jk mcp` through `wrappers/mcp-filter --extended --keep`: the loop tools plus `query_graph`, `read_symbol`, `find_symbols`, `get_neighbors`. Needs a jk whose MCP server registers the graph tools; jk's own no longer does | the graph as MCP cards |
 | `jk-hooks` | jk | `jk mcp`, plus `wrappers/jk-graph-hook` on `Grep`, `Glob` and `Read`: the graph's answer (callers with each call's line quoted, subtypes, a long file's outline) beside the search | the graph, delivered where the agent already looks |
 | `jk-hooks-replace` | jk | as `jk-hooks`, but the answer replaces the search (the tool call is denied with it) | the graph instead of text search |
 | `mvn` | Maven | `wrappers/results-mcp` | the null hypothesis, as above |
