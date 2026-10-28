@@ -74,7 +74,7 @@ for “unit + integration + optional house-rule scripts.” [Why](why.md#test-ru
 
 | Channel | Use when |
 |---------|----------|
-| **`jk skill`** | Once per session — the JumpKick playbook (MCP `skill` / `jk://skill`) |
+| **`jk skill`** | The JumpKick playbook, when a task needs more than `AGENTS.md` (MCP `skill` / `jk://skill`) |
 | **MCP `run`** | The verdict for the run it just finished. `run=<id>` reads an earlier one |
 | **`--agent` / `JK_AGENT=1`** | That same text on stdout |
 | **`target/jk-results.md`** | Human report when MCP and `--agent` are both off |
@@ -100,9 +100,9 @@ MCP is **on by default** when the engine HTTP server is on (loopback, token-gate
 the URL with `jk engine status`. Send `Authorization: Bearer <token>`. Pass `dir` on the first
 call — that binds the connection — then omit it; `bind` switches.
 
-The default `tools/list` is `run`, `diagnostics`, `deps`, `why`, and `skill`.
+The default `tools/list` is `run`, `snapshot`, `diagnostics`, `deps`, `why`, and `skill`.
 `deps` edits `jk.toml` and relocks in that same call. Everything else (history, explain,
-graph, jdk, …) is a `tools/list` with `{"extended": true}`. `initialize` says the same:
+jdk, …) is a `tools/list` with `{"extended": true}`. `initialize` says the same:
 run → read the verdict → edit → run.
 
 Catalog prompts include **`fix-failing-build`**. Full tool table: [MCP](mcp.md).

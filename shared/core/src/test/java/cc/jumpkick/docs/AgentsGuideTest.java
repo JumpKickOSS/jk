@@ -91,11 +91,12 @@ class AgentsGuideTest {
     }
 
     @Test
-    void the_section_points_at_the_skill_and_the_graph() {
+    void the_section_points_at_the_skill_and_stays_short() {
         assertThat(AgentsGuide.SECTION)
                 .contains("jk skill")
-                .contains("jk graph query")
+                .doesNotContain("jk graph")
                 .endsWith("\n");
+        assertThat(AgentsGuide.SECTION.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(1_200);
         assertThat(AgentsGuide.SECTION).doesNotContain(AgentsGuide.BEGIN).doesNotContain(AgentsGuide.END);
     }
 
