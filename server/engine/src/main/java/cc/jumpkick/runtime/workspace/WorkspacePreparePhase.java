@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.JkThreads;
@@ -234,7 +235,7 @@ final class WorkspacePreparePhase {
     }
 
     private static boolean prepareParallelEnabled() {
-        return EnvValues.bool(System::getenv, "JK_PREPARE_PARALLEL").orElse(true);
+        return EnvValues.bool(ProcessEnv::get, "JK_PREPARE_PARALLEL").orElse(true);
     }
 
     private static final class PrepareFailed extends RuntimeException {

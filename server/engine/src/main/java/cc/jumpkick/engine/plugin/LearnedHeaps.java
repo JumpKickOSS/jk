@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
@@ -46,7 +47,7 @@ public final class LearnedHeaps {
     /** Headroom over the learned peak, in percent, on a CI host. */
     static final int CI_HEADROOM_PERCENT = 150;
 
-    private static final boolean CI = EnvValues.isCi(System::getenv);
+    private static final boolean CI = EnvValues.isCi(ProcessEnv::get);
 
     private static final LearnedHeaps ENGINE =
             new LearnedHeaps(() -> JkDirs.state().resolve("worker-heaps"), null, true);

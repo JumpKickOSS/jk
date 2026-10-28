@@ -11,7 +11,6 @@ import static cc.jumpkick.runtime.BuildPlanner.TEST_RUNTIME_CP;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.baseline.Baseline;
@@ -743,8 +742,7 @@ final class PlannerGuards {
                 ? EngineValidations.model(g.root())
                 : lane == Lane.MODULE ? EngineValidations.module(g.root(), ectx.module(), ectx.testFacts()) : List.of();
         for (Fault f : faults) ctx.error(f.code(), EngineValidations.render(f));
-        Session session = SessionContext.current();
-        boolean ci = Baselines.ciMode(session == null ? null : session.clientEnv());
+        boolean ci = Baselines.ciMode();
         String storedBaselineSha = tightenBaseline(ctx, g, baselineFile, result, ci, baselineSha);
         writeJsonl(g.root(), taskId, result);
         // The machine view of the whole run, re-rendered from every lane's output: cheap, and always

@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -66,8 +67,8 @@ public record Profiles(Map<String, Profile> byName) {
     }
 
     /** Picks the auto-selected profile name based on env, or {@code null}. */
-    public static @Nullable String autoSelect(Map<String, String> env) {
-        return EnvValues.isCi(env::get) || env.containsKey("GITHUB_ACTIONS") || env.containsKey("GITLAB_CI")
+    public static @Nullable String autoSelect(Function<String, @Nullable String> env) {
+        return EnvValues.isCi(env) || env.apply("GITHUB_ACTIONS") != null || env.apply("GITLAB_CI") != null
                 ? "ci"
                 : null;
     }

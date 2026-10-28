@@ -38,7 +38,7 @@ public final class DeleteParallelism {
 
     /** The width for this host: the override when set, else the OS default. */
     public static int width() {
-        return width(System::getenv, Os.isWindows());
+        return width(ProcessEnv::get, Os.isWindows());
     }
 
     /** {@link #width()} with its inputs explicit, for tests. */

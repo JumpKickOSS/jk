@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.function.Function;
@@ -32,7 +33,7 @@ public record JkHistoryConfig(boolean enabled, int maxAgeDays, int maxDiskMb) {
 
     /** Effective machine config: user-global file + {@code JK_HISTORY_*} env. */
     public static JkHistoryConfig resolve() {
-        return resolve(JkDirs.userConfigFile(), System::getenv);
+        return resolve(JkDirs.userConfigFile(), ProcessEnv::get);
     }
 
     /** As {@link #resolve()} but against an explicit config file + env — for tests. */

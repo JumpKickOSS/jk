@@ -9,6 +9,7 @@ import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.verbs.CacheMaintenanceLocks;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.CachePlans;
@@ -310,7 +311,7 @@ public final class IdleHousekeeping {
 
     private void pruneMetrics() {
         try {
-            BuildMetrics.Limits limits = BuildMetrics.Limits.resolve(JkDirs.userConfigFile(), System::getenv);
+            BuildMetrics.Limits limits = BuildMetrics.Limits.resolve(JkDirs.userConfigFile(), ProcessEnv::get);
             BuildMetrics.PruneReport r = BuildMetrics.prune(metricsFile.get(), limits, clock.getAsLong(), false);
             if (r.evictedByAge() + r.evictedBySize() > 0) {
                 log.accept("jk engine: build metrics prune removed " + (r.evictedByAge() + r.evictedBySize())

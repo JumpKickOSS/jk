@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.SearchPath;
@@ -28,7 +29,7 @@ public final class ActiveJavac {
 
     /** Resolve the current JDK home from the process {@code PATH}. */
     public static Optional<Path> home() {
-        return home(System::getenv);
+        return home(BuildEnv::get);
     }
 
     /**

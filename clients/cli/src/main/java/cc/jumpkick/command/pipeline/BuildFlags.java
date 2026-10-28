@@ -285,7 +285,7 @@ public record BuildFlags(
         Path toml = ManifestPaths.manifestIn(root);
         String explicit = in.value("profile").orElse(null);
         boolean explicitProfile = explicit != null && !explicit.isBlank();
-        String profileName = explicitProfile ? explicit : Profiles.autoSelect(System.getenv());
+        String profileName = explicitProfile ? explicit : Profiles.autoSelect(System::getenv);
         List<String> scanKeys = new ArrayList<>();
         scanKeys.add("test.include-tags");
         scanKeys.add("test.exclude-tags");

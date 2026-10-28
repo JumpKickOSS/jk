@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.layout.BuildLayout;
@@ -424,7 +425,7 @@ public final class PomRuntimeClasspath {
         Path path = JkDirs.of(
                         name -> {
                             if ("JK_HOME".equals(name)) return null;
-                            return System.getenv(name);
+                            return BuildEnv.get(name);
                         },
                         System.getProperty("user.home"))
                 .storeDir()

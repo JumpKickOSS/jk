@@ -3,6 +3,7 @@ package cc.jumpkick.http;
 
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -93,7 +94,7 @@ public final class CentralMirror {
 
     /** The one instance production uses; see {@link #standard()}. */
     private static final CentralMirror STANDARD =
-            new CentralMirror(JkDirs.cache(), DEFAULT_WINDOW, enabledByEnv(System::getenv));
+            new CentralMirror(JkDirs.cache(), DEFAULT_WINDOW, enabledByEnv(ProcessEnv::get));
 
     private final Path stamp;
     private final Duration window;

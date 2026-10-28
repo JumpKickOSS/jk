@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.image;
 import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.image.ImageConfig;
@@ -457,7 +458,7 @@ final class AotCacheTrainer {
     }
 
     private static boolean onPath(String exe) {
-        String path = System.getenv("PATH");
+        String path = ProcessEnv.get("PATH");
         if (path == null) return false;
         boolean windows = Os.isWindows();
         for (String dir : SearchPath.entries(path)) {

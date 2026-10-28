@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.PassthroughEnv;
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.DomXml;
@@ -282,7 +283,7 @@ final class SourceProjectBuilder {
     }
 
     private static @Nullable Path findOnPath(String bin) {
-        String path = System.getenv("PATH");
+        String path = BuildEnv.get("PATH");
         if (path == null) return null;
         List<String> names = Os.isWindows() ? List.of(bin + ".bat", bin + ".cmd", bin + ".exe", bin) : List.of(bin);
         for (String dir : SearchPath.entries(path)) {

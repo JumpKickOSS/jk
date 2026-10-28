@@ -220,7 +220,7 @@ public final class RepositoryToml {
 
     /** Expand {@code raw} under {@code policy} against the process environment; {@code where} names the position. */
     public static @Nullable String interpolate(@Nullable String raw, VarPolicy policy, String where) {
-        return interpolate(raw, policy, where, System::getenv);
+        return interpolate(raw, policy, where, BuildEnv::get);
     }
 
     /**

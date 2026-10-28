@@ -2,6 +2,7 @@
 package cc.jumpkick.model;
 
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.ProcessEnv;
 import java.net.URI;
 import java.util.List;
 import java.util.Locale;
@@ -145,7 +146,7 @@ public record RepositorySpec(
     public static URI officialUrl() {
         String prop = System.getProperty(OFFICIAL_REPO_URL_PROPERTY);
         if (prop == null || prop.isBlank()) {
-            prop = System.getenv("JK_OFFICIAL_REPO_URL");
+            prop = ProcessEnv.get("JK_OFFICIAL_REPO_URL");
         }
         if (prop == null || prop.isBlank()) {
             return JUMPKICK.url();

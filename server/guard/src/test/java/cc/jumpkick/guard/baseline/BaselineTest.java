@@ -4,6 +4,8 @@ package cc.jumpkick.guard.baseline;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -257,7 +259,7 @@ class BaselineTest {
     }
 
     @Test
-    void orphans_and_ci_policy() {
+    void orphans_and_ci_policy() throws Exception {
         Baseline b = Baseline.EMPTY
                 .with("kept", RuleBaseline.of(Map.of(), List.of(new Entry.Site("a", "r"))))
                 .with("removed", RuleBaseline.of(Map.of(), List.of(new Entry.Site("b", "r"))));
@@ -266,7 +268,8 @@ class BaselineTest {
         assertThat(Baselines.ciMode(k -> "true")).isTrue();
         assertThat(Baselines.ciMode(k -> "false")).isFalse();
         assertThat(Baselines.ciMode(k -> null)).isFalse();
-        assertThat(Baselines.ciMode(Map.of("CI", "true"))).isTrue();
+        Session onCi = Session.defaults().withVariant(null, Map.of("CI", "true"));
+        assertThat(SessionContext.where(onCi, () -> Baselines.ciMode())).isTrue();
         assertThat(Baselines.freezeRefusal("", false)).contains("-W");
         assertThat(Baselines.freezeRefusal("why", true)).contains("CI");
         assertThat(Baselines.freezeRefusal("why", false)).isNull();

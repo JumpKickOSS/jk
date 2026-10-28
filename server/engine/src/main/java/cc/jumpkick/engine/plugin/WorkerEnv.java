@@ -5,6 +5,7 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.EnvConfig;
 import java.nio.file.Path;
@@ -184,7 +185,7 @@ public final class WorkerEnv {
      */
     public Map<String, String> environment() {
         return compose(
-                ENGINE.orElse(System.getenv()),
+                ENGINE.orElse(ProcessEnv.all()),
                 BuildEnv.fromRequest(),
                 inherit,
                 withEngineJvmAsLastResort(extras),

@@ -4,6 +4,7 @@ package cc.jumpkick.test;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.HostLoad;
 import cc.jumpkick.host.HostProcessors;
+import cc.jumpkick.host.ProcessEnv;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -51,7 +52,7 @@ final class TestWorkerEnv {
      * {@code -Djk.test.worker.idle.ms} / {@code JK_TEST_WORKER_IDLE_MS}; {@code 0} disables.
      */
     static long idleTimeoutMs() {
-        String prop = System.getProperty("jk.test.worker.idle.ms", System.getenv("JK_TEST_WORKER_IDLE_MS"));
+        String prop = System.getProperty("jk.test.worker.idle.ms", ProcessEnv.get("JK_TEST_WORKER_IDLE_MS"));
         return idleTimeoutMs(prop, HostLoad.loadAverage(), HostProcessors.count());
     }
 

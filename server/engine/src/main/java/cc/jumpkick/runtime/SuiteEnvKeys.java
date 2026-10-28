@@ -6,6 +6,7 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
@@ -41,15 +42,15 @@ final class SuiteEnvKeys {
         List<String> out = new ArrayList<>();
         Map<String, String> machine = BuildEnv.machine();
         Set<String> names = new TreeSet<>(machine.keySet());
-        names.addAll(System.getenv().keySet());
+        names.addAll(ProcessEnv.all().keySet());
         for (String name : names) {
             if (!shapesOutput(name)) continue;
-            String value = machine.getOrDefault(name, System.getenv(name));
+            String value = machine.getOrDefault(name, ProcessEnv.get(name));
             if (value != null) out.add("machine-env:" + name + "=" + value);
         }
         if (build.env().inherit()) {
             // The whole environment reaches the suite: every value keys it, by digest.
-            Map<String, String> inherited = new TreeMap<>(System.getenv());
+            Map<String, String> inherited = new TreeMap<>(ProcessEnv.all());
             inherited.putAll(BuildEnv.fromRequest());
             out.add("inherited-env:" + Hashing.sha256Hex(inherited.toString()));
         }

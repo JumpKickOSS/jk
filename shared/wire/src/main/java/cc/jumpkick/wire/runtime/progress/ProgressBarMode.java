@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.runtime.progress;
 
+import cc.jumpkick.host.ProcessEnv;
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 
@@ -23,7 +24,7 @@ public enum ProgressBarMode {
     public static final String ENV = "JK_PROGRESS_MODE";
 
     public static ProgressBarMode fromEnvironment() {
-        return parse(System.getenv(ENV));
+        return parse(ProcessEnv.get(ENV));
     }
 
     public static ProgressBarMode parse(@Nullable String raw) {

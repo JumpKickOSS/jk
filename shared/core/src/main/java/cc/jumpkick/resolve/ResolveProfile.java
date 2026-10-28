@@ -2,6 +2,7 @@
 package cc.jumpkick.resolve;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongConsumer;
@@ -56,7 +57,7 @@ public final class ResolveProfile {
 
     private static boolean readOn() {
         return Boolean.getBoolean("jk.resolve.profile")
-                || EnvValues.bool(System::getenv, "JK_RESOLVE_PROFILE").orElse(false);
+                || EnvValues.bool(ProcessEnv::get, "JK_RESOLVE_PROFILE").orElse(false);
     }
 
     public static void reset() {

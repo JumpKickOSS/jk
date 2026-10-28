@@ -71,7 +71,7 @@ public final class RepoCredentialResolver {
     private final Supplier<List<RepositorySpec>> userRepositories;
 
     public RepoCredentialResolver() {
-        this(System::getenv, MavenSettings.current());
+        this(BuildEnv::get, MavenSettings.current());
     }
 
     /** Every collaborator explicit — tests. */

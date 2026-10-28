@@ -17,6 +17,7 @@ import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Linking;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.layout.BuildLayout;
@@ -280,7 +281,7 @@ public final class ExecPlans {
             return devicePlan(dir, dev, deployCommand, dev ? DevSidecars.resolve(dir, project, clientEnv) : List.of());
         }
         if (NodeShape.kind(project, dir) == NodeShape.Kind.MODULE) {
-            String path = clientEnv.getOrDefault("PATH", System.getenv("PATH"));
+            String path = clientEnv.getOrDefault("PATH", ProcessEnv.get("PATH"));
             return dev
                     ? NodeRun.devPlan(dir, project, path, DevSidecars.resolve(dir, project, clientEnv))
                     : NodeRun.plan(dir, project, path);
@@ -560,7 +561,7 @@ public final class ExecPlans {
         if (dev) {
             ExecPlan stack = DevStack.plan(root, rootBuild, modules, clientEnv);
             if (stack != null) return stack;
-            Path only = DevStack.single(modules, clientEnv.getOrDefault("PATH", System.getenv("PATH")));
+            Path only = DevStack.single(modules, clientEnv.getOrDefault("PATH", ProcessEnv.get("PATH")));
             if (only != null
                     && NodeShape.kind(Objects.requireNonNull(modules.get(only)), only) == NodeShape.Kind.MODULE) {
                 JkBuild mod = Objects.requireNonNull(modules.get(only));

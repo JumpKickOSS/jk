@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.discovery;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.jdk.JdkHit;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -20,7 +21,7 @@ public final class EnvVarProbe implements LocalToolProbe {
     private final Function<String, @Nullable String> env;
 
     public EnvVarProbe() {
-        this(System::getenv);
+        this(BuildEnv::get);
     }
 
     EnvVarProbe(Function<String, @Nullable String> env) {

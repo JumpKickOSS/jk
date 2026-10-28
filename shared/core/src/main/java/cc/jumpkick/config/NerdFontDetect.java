@@ -34,7 +34,7 @@ public final class NerdFontDetect {
 
     /** Probe using the real process environment and the real config files. */
     public static Result detect() {
-        return detect(System::getenv);
+        return detect(BuildEnv::get);
     }
 
     /** Probe over an env lookup, consulting the real config sources. */

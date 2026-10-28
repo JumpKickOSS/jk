@@ -2134,23 +2134,6 @@ population = { examined = 5 }
 [tests-skip-symlinks-on-windows]
 population = { files = 1920 }
 
-[toolchain-env-from-request]
-[toolchain-env-from-request.populations]
-"plugins/android" = { classes = 30, sites = 1355 }
-"plugins/image-builder" = { classes = 19, sites = 1114 }
-"plugins/protobuf" = { classes = 4, sites = 115 }
-"plugins/publisher" = { classes = 16, sites = 447 }
-"plugins/quarkus" = { classes = 11, sites = 640 }
-"plugins/test-runner" = { classes = 15, sites = 832 }
-"server/engine" = { classes = 1121, sites = 54142 }
-"server/guard" = { classes = 178, sites = 8280 }
-"server/io" = { classes = 56, sites = 2576 }
-"server/resolver" = { classes = 111, sites = 5253 }
-"shared/client-io" = { classes = 106, sites = 4458 }
-"shared/core" = { classes = 373, sites = 16704 }
-"shared/dynamic-surface" = { classes = 11, sites = 485 }
-"shared/toolchain-jdk" = { classes = 168, sites = 6288 }
-
 [tree-copy-owner]
 population = { files = 2203 }
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.RepositoriesScan;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.lock.ManifestPaths;
@@ -64,7 +65,7 @@ final class UploadTail {
             keyFile = configured.startsWith("~/")
                     ? Path.of(System.getProperty("user.home", ".")).resolve(configured.substring(2))
                     : dir.resolve(configured).normalize();
-            passphrase = System.getenv("JK_GPG_PASSPHRASE");
+            passphrase = BuildEnv.get("JK_GPG_PASSPHRASE");
         }
         return new TailArgs.Publish(
                 url, null, null, null, false, false, keyFile, passphrase, false, false, false, credential, false, null);
