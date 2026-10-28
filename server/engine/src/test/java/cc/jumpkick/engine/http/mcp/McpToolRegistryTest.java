@@ -91,7 +91,7 @@ class McpToolRegistryTest {
     void the_default_list_is_the_loop() {
         McpTools tools = McpTools.standard();
         List<String> listed = names(tools.listing(McpTools.Surface.LOOP));
-        assertThat(listed).containsExactly("run", "snapshot", "diagnostics", "deps", "why", "skill");
+        assertThat(listed).containsExactly("run", "diagnostics", "deps", "skill");
         assertThat(listed).isEqualTo(tools.loopNames());
         assertThat(listed)
                 .doesNotContain(
@@ -169,12 +169,14 @@ class McpToolRegistryTest {
 
     @Test
     void the_playbook_names_only_the_default_tools() {
-        String instructions = McpTools.INSTRUCTIONS;
-        for (String name : McpTools.LOOP) {
-            assertThat(instructions).contains(name);
-            assertThat(McpTools.standard().loopNames()).contains(name);
+        for (String instructions : List.of(McpTools.INSTRUCTIONS, McpTools.PINNED_INSTRUCTIONS)) {
+            assertThat(instructions).contains("run(", "skill");
+            for (String name : McpTools.standard().names()) {
+                if (McpTools.LOOP.contains(name)) continue;
+                assertThat(instructions).as("names %s", name).doesNotContainPattern("\\b" + name + "\\(");
+            }
+            assertThat(instructions).doesNotContain("jk_");
         }
-        assertThat(instructions).doesNotContain("jk_");
         assertThat(MiniJson.write(McpTools.standard().listing(McpTools.Surface.ALL)))
                 .doesNotContain("jk_");
     }

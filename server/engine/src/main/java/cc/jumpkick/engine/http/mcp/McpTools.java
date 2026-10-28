@@ -61,7 +61,7 @@ public final class McpTools {
      * The default {@code tools/list}: what one fix-and-rerun loop needs, in reading order. Every card
      * is paid on every turn.
      */
-    public static final List<String> LOOP = List.of("run", "snapshot", "diagnostics", "deps", "why", "skill");
+    public static final List<String> LOOP = List.of("run", "diagnostics", "deps", "skill");
 
     /** Which rows {@code tools/list} answers. */
     public enum Surface {
@@ -86,17 +86,11 @@ public final class McpTools {
     public static final String PINNED_INSTRUCTIONS = instructions(true);
 
     private static String instructions(boolean pinned) {
-        return "JumpKick (jk) is not Maven or Gradle: the manifest is jk.toml, the lock is jk-lock.toml, "
-                + "never add pom.xml or Gradle files. "
+        return "This project builds with jk, not Maven or Gradle: never add pom.xml or Gradle files. "
                 + (pinned
-                        ? "Loop: run() tests and returns the verdict → edit → run() again. "
-                        : "Loop: run(dir=<project>) tests and returns the verdict → edit → run again. ")
-                + "diagnostics is every problem past the cap (file= for one). deps adds, removes, or pins and relocks. "
-                + "why(coord) is the path and the rule that picked the version. "
-                + "snapshot installs the project as <version>-SNAPSHOT, replaced each run, for a sibling project that must see your edits. "
-                + "skill is the playbook. "
-                + (pinned ? "" : "The first call that carries dir binds the connection. ")
-                + "Other tools: tools/list with extended=true.";
+                        ? "Loop: run() returns the verdict → edit → run(). "
+                        : "Loop: run(dir=<project>) returns the verdict and binds the connection → edit → run(). ")
+                + "skill has the rest; tools/list extended=true lists every tool.";
     }
 
     private final Map<String, McpTool> byName;
