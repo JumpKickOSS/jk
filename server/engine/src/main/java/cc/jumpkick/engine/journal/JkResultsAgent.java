@@ -140,6 +140,7 @@ public final class JkResultsAgent {
                 decided != null ? decided.message() : reported ? REPORTED : decidingWarning(record, loci, tests);
         if (reason != null && !reason.isBlank()) sb.append(" — ").append(one(reason, record.dir()));
         sb.append('\n');
+        appendInputsChanged(sb, record);
         appendMemoryEvents(sb, record);
         if (record.success() && !record.cancelled() && !reported) return sb.toString();
         sb.append(body(record, loci, tests, opt));
@@ -162,6 +163,16 @@ public final class JkResultsAgent {
             Next next, boolean fullSnippets, @Nullable String file, int limit) {
         static Options summary() {
             return new Options(Next.ALL, false, null, MAX_PROBLEMS);
+        }
+    }
+
+    /** Inputs that changed while the run read the tree, on every verdict: the run did not see them. */
+    private static void appendInputsChanged(StringBuilder sb, BuildRecord record) {
+        for (BuildRecord.Diag d : record.diagnostics()) {
+            if (d != null && BuildAccumulator.INPUTS_CHANGED.equals(d.code())) {
+                sb.append("W ").append(d.message()).append('\n');
+                return;
+            }
         }
     }
 

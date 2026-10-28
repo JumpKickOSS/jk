@@ -39,6 +39,44 @@ class JkResultsAgentTest {
     }
 
     @Test
+    void an_ok_run_whose_sources_changed_under_it_says_so_first() {
+        BuildRecord.Diag changed = new BuildRecord.Diag(
+                "warning",
+                "/ws/rest-service",
+                null,
+                BuildAccumulator.INPUTS_CHANGED,
+                "sources changed while this ran: src/test/java/RangeTest.java; rerun to build them",
+                null,
+                null);
+        BuildRecord.Diag wait = new BuildRecord.Diag(
+                "warning", "/ws/rest-service", "run-tests", "memory-wait", "waited 12s for memory", null, null);
+        BuildRecord r =
+                record("test", true, false, 500, new BuildRecord.Tests(1, 1, 0, 0), List.of(wait, changed), List.of());
+        assertThat(JkResultsAgent.render(r)).isEqualTo("""
+                OK test rest-service · 1 test · 500ms
+                W sources changed while this ran: src/test/java/RangeTest.java; rerun to build them
+                waited 12s for memory
+                """);
+    }
+
+    @Test
+    void a_changed_source_is_never_the_reason_a_run_failed() {
+        BuildRecord.Diag changed = new BuildRecord.Diag(
+                "warning",
+                "/ws/rest-service",
+                null,
+                BuildAccumulator.INPUTS_CHANGED,
+                "sources changed while this ran: src/A.java; rerun to build them",
+                null,
+                null);
+        BuildRecord r = record("test", false, false, 500, null, List.of(changed), List.of());
+        assertThat(JkResultsAgent.render(r))
+                .startsWith("FAIL test rest-service · 500ms")
+                .doesNotContain("FAIL test rest-service · 500ms — sources changed")
+                .contains("W sources changed while this ran: src/A.java; rerun to build them\n");
+    }
+
+    @Test
     void an_ok_run_still_names_a_heap_retry() {
         BuildRecord.Diag retry = new BuildRecord.Diag(
                 "warning",
