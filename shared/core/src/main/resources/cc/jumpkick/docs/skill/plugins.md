@@ -2,7 +2,7 @@
 
 Plugins are tables in `jk.toml` (`[spring-boot]`, `[quarkus]`, and the others), not a Gradle `plugins` block and not a Maven plugin list.
 
-`jk format` rewrites Java (Palantir), Kotlin (ktfmt), Groovy and Scala (scalafmt), and turns FQCNs into imports. With `[format] enforce`, `jk guard` formats what changed (checks it under CI), so an agent runs only `jk guard`. `jk format -c` is the CI gate. MCP: `run(kind=format)`.
+`jk format` rewrites Java (Palantir), Kotlin (ktfmt), Groovy and Scala (scalafmt), and turns FQCNs into imports. With `[format] enforce`, `jk guard` formats what changed (checks it under CI): an agent never runs `jk format` itself. Without `enforce`, leave the project's formatting alone.
 
 MCP `publish` is a dry-run; `publish(upload=true)` uploads to the repository `[publish]` names. Central and ad-hoc URLs: the CLI, `jk publish`.
 
