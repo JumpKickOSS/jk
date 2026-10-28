@@ -151,6 +151,12 @@ class BuildEnvToolchainTest {
         assertThat(text).doesNotContain("s3cret").contains("1 variables");
     }
 
+    @Test
+    void caller_env_drops_what_a_shell_changes_per_command() throws Exception {
+        Map<String, String> shell = Map.of("_", "/usr/bin/jk", "PWD", "/p", "SHLVL", "2", "=C:", "C:/x", "KEEP", "1");
+        assertThat(RequestShell.where(shell, BuildEnv::callerEnv)).containsOnlyKeys("KEEP");
+    }
+
     private static Session sessionWith(Map<String, String> clientEnv) {
         return Session.defaults().withVariant(null, clientEnv);
     }
