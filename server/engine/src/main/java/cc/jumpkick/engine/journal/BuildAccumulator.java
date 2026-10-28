@@ -374,6 +374,55 @@ public final class BuildAccumulator {
                 0));
     }
 
+    /** The diagnostic code of {@link #addInputsChanged}. */
+    public static final String INPUTS_CHANGED = "inputs-changed";
+
+    /** At most this many changed inputs are named; the rest are counted. */
+    static final int INPUTS_CHANGED_NAMED = 5;
+
+    /** Whether this run judged the tree, so an input changing under it makes its verdict stale. */
+    public boolean judgesTree() {
+        return NOOP_KINDS.contains(kind) && !userCancelled;
+    }
+
+    /**
+     * Inputs that changed after the run read them, {@code changed} absolute and sorted: the verdict
+     * is about the tree as the run found it, so it names them and asks for a rerun. A warning,
+     * which also keeps the run from standing as a no-op. Returns the message, or {@code null} when
+     * nothing changed.
+     */
+    public @Nullable String addInputsChanged(List<Path> changed) {
+        if (changed.isEmpty()) return null;
+        Path root = Path.of(dir).toAbsolutePath().normalize();
+        List<String> named = new ArrayList<>();
+        for (Path p : changed.subList(0, Math.min(INPUTS_CHANGED_NAMED, changed.size()))) {
+            named.add((p.startsWith(root) ? root.relativize(p) : p).toString().replace('\\', '/'));
+        }
+        int more = changed.size() - named.size();
+        String message = "sources changed while this ran: " + String.join(", ", named)
+                + (more > 0 ? " (+" + more + " more)" : "") + "; rerun to build them";
+        addDiag(new BuildRecord.Diag(
+                "warning",
+                dir,
+                null,
+                INPUTS_CHANGED,
+                message,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "",
+                0,
+                0,
+                0,
+                List.of(),
+                0));
+        return message;
+    }
+
     public void addModule(ModuleOutcome o) {
         synchronized (modules) {
             modules.add(o);

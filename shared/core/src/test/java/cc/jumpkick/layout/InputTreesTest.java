@@ -431,6 +431,75 @@ class InputTreesTest {
         assertThat(ack).endsWith("}");
     }
 
+    @Test
+    void an_unchanged_tree_has_nothing_changed_since_the_walk(@TempDir Path dir) throws Exception {
+        Path src = Files.createDirectories(dir.resolve("src/main/java/a"));
+        Files.writeString(src.resolve("A.java"), "class A {}");
+        inRequest(() -> {
+            InputTrees.coverModule(dir);
+            assertThat(InputTrees.changedSinceWalk(10)).isEmpty();
+        });
+    }
+
+    @Test
+    void an_edit_a_new_file_and_a_deletion_after_the_walk_are_each_named(@TempDir Path dir) throws Exception {
+        Path src = Files.createDirectories(dir.resolve("src/main/java/a"));
+        Path edited = src.resolve("A.java");
+        Path deleted = src.resolve("B.java");
+        Path added = Files.createDirectories(dir.resolve("src/main/java/b")).resolve("C.java");
+        Files.writeString(edited, "class A {}");
+        Files.writeString(deleted, "class B {}");
+        Path untouched = Files.writeString(dir.resolve("src/main/java/b/D.java"), "class D {}");
+        inRequest(() -> {
+            InputTrees.coverModule(dir);
+            write(edited, "class A { int x; }");
+            delete(deleted);
+            write(added, "class C {}");
+            assertThat(InputTrees.changedSinceWalk(10))
+                    .containsExactly(
+                            edited.toAbsolutePath().normalize(),
+                            deleted.toAbsolutePath().normalize(),
+                            added.toAbsolutePath().normalize())
+                    .doesNotContain(untouched.toAbsolutePath().normalize());
+            assertThat(InputTrees.changedSinceWalk(1)).hasSize(1);
+        });
+    }
+
+    @Test
+    void a_stream_only_job_kept_nothing_to_compare(@TempDir Path dir) throws Exception {
+        Path src = Files.createDirectories(dir.resolve("src"));
+        Path a = Files.writeString(src.resolve("A.java"), "class A {}");
+        InputTrees.configureForTest(new JkEngineConfig(256, null, false, 0));
+        inRequest(() -> {
+            InputTrees.coverModule(dir);
+            write(a, "class A { int x; }");
+            assertThat(InputTrees.changedSinceWalk(10)).isEmpty();
+        });
+    }
+
+    @Test
+    void off_a_request_nothing_is_retained_to_compare(@TempDir Path dir) throws Exception {
+        Files.writeString(Files.createDirectories(dir.resolve("src")).resolve("A.java"), "class A {}");
+        InputTrees.coverModule(dir);
+        assertThat(InputTrees.changedSinceWalk(10)).isEmpty();
+    }
+
+    private static void write(Path file, String text) {
+        try {
+            Files.writeString(file, text);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static void delete(Path file) {
+        try {
+            Files.delete(file);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
     private static void writeQuietly(Path file) {
         try {
             Files.writeString(file, "generated");

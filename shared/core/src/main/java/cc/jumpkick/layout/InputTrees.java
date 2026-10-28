@@ -12,8 +12,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
@@ -157,6 +160,68 @@ public final class InputTrees {
         if (released > 0) POOL_USED.addAndGet(-released);
     }
 
+    /**
+     * The inputs this job's retained walks hold that changed since the walk: a file whose identity
+     * moved or that is gone, and an entry a directory gained, found by listing again only the
+     * directories whose own identity moved. Sorted, at most {@code limit}. Empty when nothing changed,
+     * off a request, and for a root the job answered by live walks (stream-only or over budget),
+     * which kept nothing to compare.
+     */
+    public static List<Path> changedSinceWalk(int limit) {
+        if (!RequestScope.hasRequest() || limit <= 0) return List.of();
+        Table table = table();
+        List<Listing> walked = new ArrayList<>();
+        synchronized (table) {
+            for (Key key : table.covering) {
+                if (table.byKey.get(key) instanceof Listing listing) walked.add(listing);
+            }
+        }
+        TreeSet<Path> changed = new TreeSet<>();
+        for (Listing listing : walked) {
+            for (FileRef f : listing.files()) {
+                if (!f.identity().equals(identityOrNull(f.path()))) changed.add(f.path());
+            }
+            Set<Path> known = null;
+            Predicate<Path> skip = skipPred(listing.skipId());
+            for (FileRef d : listing.directories()) {
+                StatIdentity now = identityOrNull(d.path());
+                if (d.identity().equals(now)) continue;
+                if (now == null) {
+                    changed.add(d.path());
+                    continue;
+                }
+                if (known == null) known = entries(listing);
+                Set<Path> listed = known;
+                try {
+                    PathUtil.forEachChild(d.path(), (child, attrs) -> {
+                        Path abs = child.toAbsolutePath().normalize();
+                        if (!listed.contains(abs) && !(attrs.isDirectory() && skip.test(abs))) changed.add(abs);
+                        return true;
+                    });
+                } catch (IOException unreadable) {
+                    changed.add(d.path());
+                }
+            }
+        }
+        return changed.stream().limit(limit).toList();
+    }
+
+    private static Set<Path> entries(Listing listing) {
+        Set<Path> out = new HashSet<>();
+        for (FileRef f : listing.files()) out.add(f.path());
+        for (FileRef d : listing.directories()) out.add(d.path());
+        out.addAll(listing.directoryLinks());
+        return out;
+    }
+
+    private static @Nullable StatIdentity identityOrNull(Path path) {
+        try {
+            return StatIdentity.of(path);
+        } catch (IOException gone) {
+            return null;
+        }
+    }
+
     /** Last finished job's VFS JSON object body, or empty. */
     public static String lastStatusJson() {
         LastJob j = LAST;
@@ -268,7 +333,12 @@ public final class InputTrees {
         }
     }
 
-    public record Listing(Path root, String skipId, List<FileRef> files, List<Path> directoryLinks)
+    /**
+     * A retained walk: every regular file, and every directory the walk entered with its identity at
+     * the time, which is how {@link #changedSinceWalk} sees a file added or removed.
+     */
+    public record Listing(
+            Path root, String skipId, List<FileRef> files, List<Path> directoryLinks, List<FileRef> directories)
             implements Snapshot {
         Listing prefix(Path subRoot) {
             Path abs = subRoot.toAbsolutePath().normalize();
@@ -280,7 +350,11 @@ public final class InputTrees {
             for (Path l : directoryLinks) {
                 if (l.toAbsolutePath().normalize().startsWith(abs)) links.add(l);
             }
-            return new Listing(abs, skipId, List.copyOf(sub), List.copyOf(links));
+            List<FileRef> dirs = new ArrayList<>();
+            for (FileRef d : directories) {
+                if (d.path.startsWith(abs)) dirs.add(d);
+            }
+            return new Listing(abs, skipId, List.copyOf(sub), List.copyOf(links), List.copyOf(dirs));
         }
 
         @Override
@@ -540,6 +614,7 @@ public final class InputTrees {
         }
         List<FileRef> files = new ArrayList<>();
         List<Path> links = new ArrayList<>();
+        List<FileRef> dirs = new ArrayList<>();
         long[] used = {0};
         table.walks.incrementAndGet();
         try {
@@ -548,11 +623,19 @@ public final class InputTrees {
             PathUtil.forEachRegularFile(root, skipPred(skipId), new PathUtil.FileVisit() {
                 @Override
                 public void accept(Path file, BasicFileAttributes attrs) throws IOException {
-                    FileRef ref = FileRef.from(file, attrs);
+                    files.add(charge(FileRef.from(file, attrs)));
+                }
+
+                @Override
+                public void directory(Path dir, BasicFileAttributes attrs) throws IOException {
+                    dirs.add(charge(FileRef.from(dir, attrs)));
+                }
+
+                private FileRef charge(FileRef ref) throws WalkLimitExceeded {
                     long add = ref.estimateBytes();
                     if (used[0] + add > room) throw new WalkLimitExceeded();
-                    files.add(ref);
                     used[0] += add;
+                    return ref;
                 }
 
                 @Override
@@ -577,7 +660,7 @@ public final class InputTrees {
         }
         table.bytes += used[0];
         table.nodes += files.size();
-        return new Listing(root, skipId, List.copyOf(files), List.copyOf(links));
+        return new Listing(root, skipId, List.copyOf(files), List.copyOf(links), List.copyOf(dirs));
     }
 
     /**
