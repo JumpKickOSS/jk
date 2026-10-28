@@ -44,6 +44,7 @@ final class JkResultsWarnings {
     static BuildRecord.@Nullable Diag deciding(BuildRecord r) {
         for (BuildRecord.Diag d : r.diagnostics()) {
             if (!JkResultsMarkdown.isWarning(d) || !JkResultsMarkdown.notBlank(d.message())) continue;
+            if (BuildAccumulator.INPUTS_CHANGED.equals(d.code())) continue;
             if (!memoryEvent(d) && !JkResultsMarkdown.isGuard(d)) return d;
         }
         return null;

@@ -3,6 +3,7 @@ package cc.jumpkick.engine.jobs;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JobLimits;
@@ -13,6 +14,7 @@ import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.testing.Await;
@@ -94,6 +96,52 @@ class JobEnvelopeTest {
         // writeJournal must run before clearProgress: the real host retires the session on
         // clear, and takeAccumulator then returns null — permanent "Building" in jk jobs.
         assertThat(host.teardownOrder).containsExactly("writeJournal", "clearProgress");
+    }
+
+    @Test
+    void a_source_edited_after_the_run_read_the_tree_is_named_on_its_verdict(@TempDir Path dir) throws IOException {
+        Path source = Files.createDirectories(dir.resolve("src/main/java")).resolve("A.java");
+        Files.writeString(source, "class A {}");
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
+        host.accumulator = new BuildAccumulator("test", dir.toString(), null, "cli");
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
+        ConnectedClient.submit(
+                env,
+                "{\"type\":\"build-request\",\"dir\":" + Jsonl.quote(dir.toString()) + "}",
+                JobRequest.plan("test", "jk-test-", (line, tok, w) -> {
+                    InputTrees.coverModule(dir);
+                    try {
+                        Files.writeString(source, "class A { int x; }");
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                    return JobOutcome.ok();
+                }),
+                new StringWriter());
+        assertThat(host.accumulator.toRecord(0, false, 0, "test", null).diagnostics())
+                .extracting(BuildRecord.Diag::code, BuildRecord.Diag::message)
+                .contains(tuple(
+                        BuildAccumulator.INPUTS_CHANGED,
+                        "sources changed while this ran: src/main/java/A.java; rerun to build them"));
+    }
+
+    @Test
+    void a_run_over_an_untouched_tree_names_nothing(@TempDir Path dir) throws IOException {
+        Files.writeString(Files.createDirectories(dir.resolve("src/main/java")).resolve("A.java"), "class A {}");
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
+        host.accumulator = new BuildAccumulator("test", dir.toString(), null, "cli");
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
+        ConnectedClient.submit(
+                env,
+                "{\"type\":\"build-request\",\"dir\":" + Jsonl.quote(dir.toString()) + "}",
+                JobRequest.plan("test", "jk-test-", (line, tok, w) -> {
+                    InputTrees.coverModule(dir);
+                    return JobOutcome.ok();
+                }),
+                new StringWriter());
+        assertThat(host.accumulator.toRecord(0, false, 0, "test", null).diagnostics())
+                .extracting(BuildRecord.Diag::code)
+                .doesNotContain(BuildAccumulator.INPUTS_CHANGED);
     }
 
     @Test
