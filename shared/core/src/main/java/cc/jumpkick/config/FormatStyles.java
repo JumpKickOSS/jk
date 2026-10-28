@@ -29,8 +29,16 @@ public final class FormatStyles {
 
     private FormatStyles() {}
 
-    static final String DEFAULT_JAVA = "palantir";
-    static final String DEFAULT_KOTLIN = "kotlinlang";
+    /** Style names, as {@code [format] java} and {@code kotlin} spell them. */
+    public static final String PALANTIR = "palantir";
+
+    public static final String GOOGLE = "google";
+    public static final String AOSP = "aosp";
+    public static final String KOTLINLANG = "kotlinlang";
+    public static final String META = "meta";
+
+    static final String DEFAULT_JAVA = PALANTIR;
+    static final String DEFAULT_KOTLIN = KOTLINLANG;
 
     static final List<String> JAVA_STYLES = List.of("palantir", "google", "aosp");
     static final List<String> KOTLIN_STYLES = List.of("kotlinlang", "google", "meta");

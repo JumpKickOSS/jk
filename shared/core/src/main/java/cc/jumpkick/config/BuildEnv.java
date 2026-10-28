@@ -152,6 +152,13 @@ public final class BuildEnv {
     public static final List<String> JDK_ROOT = List.of("JK_JDKS_DIR");
 
     /**
+     * Whether the shell running {@code jk} is a CI runner ({@code CI}): a guard under CI checks
+     * rather than writes. Forwarded by exact name like {@link #JDK_ROOT}, because the daemon's own
+     * environment is whichever shell started it; it enters no action key and seeds no test JVM.
+     */
+    public static final List<String> RUNNER = List.of("CI");
+
+    /**
      * What a front-end build reads from the shell that runs it: {@code NODE_ENV}, and every variable
      * under a framework's public prefix ({@code VITE_API_URL}). Forwarded like {@link #PROXY}, by
      * name and prefix, because the engine is a daemon; they reach a node step's process and enter

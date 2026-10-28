@@ -142,6 +142,26 @@ are reported as findings (not as successful formats).
 JumpKick formats **this** repository with `jk format`; `jk format -c` is the local
 gate before a commit. There is no required CI format job unless you add one.
 
+## Enforce with `jk guard`
+
+```toml
+[format]
+enforce = true                 # jk guard formats what changed
+# ratchet-from = "origin/main" # only files changed since this ref's merge-base
+```
+
+With `enforce`, `jk guard` formats the sources that changed since the formatter last settled them
+before it builds, so the guard checks the tree as it will be committed; under CI (`CI` set) it
+checks instead, and fails naming every file that is not formatted. `jk build` and `jk test` never
+format. The sources are the ones the guard run's own walk listed, the modules' source roots, so
+formatting costs no second pass over the tree.
+
+`jk new` writes `enforce = true`. `jk import` writes it, with the style, when the Maven build runs
+`spotless-maven-plugin` (`palantirJavaFormat` or `googleJavaFormat`) or `fmt-maven-plugin`; a
+build with no formatter gets no `enforce`, and `jk guard` leaves its files as they are. Turning it
+on in a tree nobody formatted rewrites every source on the first guard: set `ratchet-from` to
+format only what changes from then on.
+
 ## Slow files and the per-file timeout
 
 A code formatter chooses line breaks by searching the expression tree, and that search grows

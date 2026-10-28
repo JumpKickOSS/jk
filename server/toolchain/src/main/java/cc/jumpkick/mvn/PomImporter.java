@@ -304,6 +304,11 @@ public final class PomImporter {
         JkBuild.Library library =
                 mainClass == null && packaging.fatJar() ? new JkBuild.Library(true, packaging.relocate()) : null;
         JkBuild.Builder builder = JkBuild.builder(project)
+                // The workspace root's [format] is the one jk reads; a member inherits the plugin, not the table.
+                .format(
+                        inherited == null
+                                ? FormatPlugins.map(em.model(), report).orElse(JkBuild.FormatConfig.EMPTY)
+                                : JkBuild.FormatConfig.EMPTY)
                 .dependencies(new JkBuild.Dependencies(byScope))
                 .repositories(repos)
                 .features(profileFeatures)
@@ -524,6 +529,7 @@ public final class PomImporter {
         // repository list the workspace lock resolves against, so every member's `<repositories>`
         // is hoisted onto it.
         JkBuild rootJkBuild = JkBuild.builder(rootProject)
+                .format(FormatPlugins.map(rootModel.model(), report).orElse(JkBuild.FormatConfig.EMPTY))
                 .workspace(new Workspace(
                         leaves.stream().map(ReactorModules.Leaf::path).toList(), shared.dependencies()))
                 .repositories(WorkspaceRepositories.hoistRepositories(rootRepositories, members.values()))
