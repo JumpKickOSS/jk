@@ -17,6 +17,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.base.LiveUnits;
+import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -43,6 +44,9 @@ import org.jspecify.annotations.Nullable;
  * request-finish live here as one story — do not split the race comments into hooks.
  */
 public final class JobEnvelope {
+
+    /** The most changed inputs a run's verdict counts. */
+    static final int CHANGED_INPUTS_CAP = 1_000;
 
     /**
      * Process-side callbacks the envelope must not own, as the union of the four ports the
@@ -552,7 +556,16 @@ public final class JobEnvelope {
             // The one success law: the body's verdict is stamped here, nowhere else. A
             // declined verdict leaves the journal to the accumulated facts.
             BuildAccumulator acc = host.accumulatorOf(eventRequestId);
-            if (acc != null) acc.stamp(outcome);
+            if (acc != null) {
+                // The run judged the tree its walk saw; an edit since then is not in this verdict.
+                if (acc.judgesTree()) {
+                    long t0 = Perf.start();
+                    String changed = acc.addInputsChanged(InputTrees.changedSinceWalk(CHANGED_INPUTS_CAP));
+                    Perf.end("inputs-changed check", t0, "changed", changed != null);
+                    if (changed != null) RunNotices.warnOnce(BuildAccumulator.INPUTS_CHANGED, () -> changed);
+                }
+                acc.stamp(outcome);
+            }
         } catch (Throwable t) {
             // The setup and teardown around the body are outside its own catch, and a throw
             // there would otherwise reach nothing but the default uncaught handler: no log

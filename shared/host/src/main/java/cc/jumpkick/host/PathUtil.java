@@ -142,11 +142,11 @@ public final class PathUtil {
         CarrierShare share = new CarrierShare();
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
                 share.visited();
-                return !dir.equals(root) && skipDirectory.test(dir)
-                        ? FileVisitResult.SKIP_SUBTREE
-                        : FileVisitResult.CONTINUE;
+                if (!dir.equals(root) && skipDirectory.test(dir)) return FileVisitResult.SKIP_SUBTREE;
+                visit.directory(dir, attrs);
+                return FileVisitResult.CONTINUE;
             }
 
             @Override
@@ -248,6 +248,9 @@ public final class PathUtil {
 
         /** A link to a directory the walk did not enter; ignored unless the reader asks. */
         default void directoryLink(Path link) throws IOException {}
+
+        /** A directory the walk entered, the root included, before its entries; ignored unless the reader asks. */
+        default void directory(Path dir, BasicFileAttributes attrs) throws IOException {}
     }
 
     /**
