@@ -1,0 +1,1060 @@
+{
+ "repo": "spring-petclinic-kotlin",
+ "commit": "c77f77ba5d43c2dbff7fa777c40be1d7ec321e40",
+ "loc": 1889,
+ "classes": 29,
+ "lint_dropped": false,
+ "questions": [
+  {
+   "id": "callers-0",
+   "kind": "callers",
+   "question": "Who calls OwnerRepository.save?",
+   "subject": {
+    "label": "OwnerRepository.save",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerRepository.kt",
+    "lines": [
+     57,
+     60
+    ]
+   },
+   "truth": [
+    {
+     "label": "OwnerController.processCreationForm",
+     "lines": [
+      49,
+      60
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt"
+    },
+    {
+     "label": "OwnerController.processUpdateOwnerForm",
+     "lines": [
+      94,
+      106
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt"
+    }
+   ]
+  },
+  {
+   "id": "callers-1",
+   "kind": "callers",
+   "question": "Who calls OwnerController.getOwners?",
+   "subject": {
+    "label": "OwnerController.getOwners",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt",
+    "lines": [
+     31,
+     38
+    ]
+   },
+   "truth": [
+    {
+     "label": "OwnerController.initUpdateOwnerForm",
+     "lines": [
+      87,
+      96
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt"
+    },
+    {
+     "label": "OwnerController.processCreationForm",
+     "lines": [
+      49,
+      60
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt"
+    },
+    {
+     "label": "OwnerController.processFindForm",
+     "lines": [
+      66,
+      87
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt"
+    },
+    {
+     "label": "OwnerController.processUpdateOwnerForm",
+     "lines": [
+      94,
+      106
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt"
+    },
+    {
+     "label": "OwnerController.showOwner",
+     "lines": [
+      111,
+      123
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt"
+    }
+   ]
+  },
+  {
+   "id": "callers-2",
+   "kind": "callers",
+   "question": "Who calls OwnerController.getVIEWS_OWNER_CREATE_OR_UPDATE_FORM?",
+   "subject": {
+    "label": "OwnerController.getVIEWS_OWNER_CREATE_OR_UPDATE_FORM",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt",
+    "lines": [
+     33,
+     40
+    ]
+   },
+   "truth": [
+    {
+     "label": "OwnerController.initCreationForm",
+     "lines": [
+      42,
+      51
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt"
+    },
+    {
+     "label": "OwnerController.initUpdateOwnerForm",
+     "lines": [
+      87,
+      96
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt"
+    },
+    {
+     "label": "OwnerController.processCreationForm",
+     "lines": [
+      49,
+      60
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt"
+    },
+    {
+     "label": "OwnerController.processUpdateOwnerForm",
+     "lines": [
+      94,
+      106
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt"
+    }
+   ]
+  },
+  {
+   "id": "callers-3",
+   "kind": "callers",
+   "question": "Who calls PetController.getPets?",
+   "subject": {
+    "label": "PetController.getPets",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt",
+    "lines": [
+     30,
+     37
+    ]
+   },
+   "truth": [
+    {
+     "label": "PetController.initUpdateForm",
+     "lines": [
+      76,
+      85
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt"
+    },
+    {
+     "label": "PetController.populatePetTypes",
+     "lines": [
+      35,
+      42
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt"
+    },
+    {
+     "label": "PetController.processCreationForm",
+     "lines": [
+      61,
+      77
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt"
+    },
+    {
+     "label": "PetController.processUpdateForm",
+     "lines": [
+      83,
+      97
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt"
+    }
+   ]
+  },
+  {
+   "id": "callers-4",
+   "kind": "callers",
+   "question": "Who calls NamedEntity.getName?",
+   "subject": {
+    "label": "NamedEntity.getName",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/model/NamedEntity.kt",
+    "lines": [
+     28,
+     35
+    ]
+   },
+   "truth": [
+    {
+     "label": "NamedEntity.toString",
+     "lines": [
+      31,
+      38
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/model/NamedEntity.kt"
+    },
+    {
+     "label": "Owner.getPet",
+     "lines": [
+      75,
+      91
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/Owner.kt"
+    },
+    {
+     "label": "Owner.getPets",
+     "lines": [
+      45,
+      52
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/Owner.kt"
+    },
+    {
+     "label": "PetController.processCreationForm",
+     "lines": [
+      61,
+      77
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt"
+    },
+    {
+     "label": "PetTypeFormatter.parse",
+     "lines": [
+      37,
+      51
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetTypeFormatter.kt"
+    },
+    {
+     "label": "PetTypeFormatter.print",
+     "lines": [
+      33,
+      40
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetTypeFormatter.kt"
+    },
+    {
+     "label": "PetValidator.validate",
+     "lines": [
+      30,
+      53
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetValidator.kt"
+    },
+    {
+     "label": "Vet.getSpecialties",
+     "lines": [
+      31,
+      38
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/vet/Vet.kt"
+    }
+   ]
+  },
+  {
+   "id": "callers-5",
+   "kind": "callers",
+   "question": "Who calls VetRepository.findAll?",
+   "subject": {
+    "label": "VetRepository.findAll",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/vet/VetRepository.kt",
+    "lines": [
+     39,
+     42
+    ]
+   },
+   "truth": [
+    {
+     "label": "VetController.showHtmlVetList",
+     "lines": [
+      28,
+      37
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/vet/VetController.kt"
+    },
+    {
+     "label": "VetController.showJsonVetList",
+     "lines": [
+      38,
+      45
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/vet/VetController.kt"
+    },
+    {
+     "label": "VetController.showXmlVetList",
+     "lines": [
+      44,
+      51
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/vet/VetController.kt"
+    }
+   ]
+  },
+  {
+   "id": "callers-6",
+   "kind": "callers",
+   "question": "Who calls VetController.getVetRepository?",
+   "subject": {
+    "label": "VetController.getVetRepository",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/vet/VetController.kt",
+    "lines": [
+     24,
+     31
+    ]
+   },
+   "truth": [
+    {
+     "label": "VetController.showHtmlVetList",
+     "lines": [
+      28,
+      37
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/vet/VetController.kt"
+    },
+    {
+     "label": "VetController.showJsonVetList",
+     "lines": [
+      38,
+      45
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/vet/VetController.kt"
+    },
+    {
+     "label": "VetController.showXmlVetList",
+     "lines": [
+      44,
+      51
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/vet/VetController.kt"
+    }
+   ]
+  },
+  {
+   "id": "callers-7",
+   "kind": "callers",
+   "question": "Who calls PetRepository.findPetTypes?",
+   "subject": {
+    "label": "PetRepository.findPetTypes",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetRepository.kt",
+    "lines": [
+     39,
+     42
+    ]
+   },
+   "truth": [
+    {
+     "label": "PetController.populatePetTypes",
+     "lines": [
+      35,
+      42
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt"
+    },
+    {
+     "label": "PetTypeFormatter.parse",
+     "lines": [
+      37,
+      51
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetTypeFormatter.kt"
+    }
+   ]
+  },
+  {
+   "id": "callers-8",
+   "kind": "callers",
+   "question": "Who calls BaseEntity.getId?",
+   "subject": {
+    "label": "BaseEntity.getId",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/model/BaseEntity.kt",
+    "lines": [
+     31,
+     38
+    ]
+   },
+   "truth": [
+    {
+     "label": "BaseEntity.isNew",
+     "lines": [
+      34,
+      41
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/model/BaseEntity.kt"
+    },
+    {
+     "label": "OwnerController.processCreationForm",
+     "lines": [
+      49,
+      60
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt"
+    },
+    {
+     "label": "OwnerController.processFindForm",
+     "lines": [
+      66,
+      87
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt"
+    },
+    {
+     "label": "OwnerController.showOwner",
+     "lines": [
+      111,
+      123
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt"
+    },
+    {
+     "label": "Pet.addVisit",
+     "lines": [
+      52,
+      61
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/Pet.kt"
+    }
+   ]
+  },
+  {
+   "id": "callers-9",
+   "kind": "callers",
+   "question": "Who calls PetRepository.findById?",
+   "subject": {
+    "label": "PetRepository.findById",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetRepository.kt",
+    "lines": [
+     47,
+     50
+    ]
+   },
+   "truth": [
+    {
+     "label": "PetController.initUpdateForm",
+     "lines": [
+      76,
+      85
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt"
+    },
+    {
+     "label": "VisitController.loadPetWithVisit",
+     "lines": [
+      48,
+      59
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/VisitController.kt"
+    }
+   ]
+  },
+  {
+   "id": "callers-10",
+   "kind": "callers",
+   "question": "Who calls Owner.addPet?",
+   "subject": {
+    "label": "Owner.addPet",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/Owner.kt",
+    "lines": [
+     53,
+     64
+    ]
+   },
+   "truth": [
+    {
+     "label": "PetController.initCreationForm",
+     "lines": [
+      53,
+      63
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt"
+    },
+    {
+     "label": "PetController.processCreationForm",
+     "lines": [
+      61,
+      77
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt"
+    },
+    {
+     "label": "PetController.processUpdateForm",
+     "lines": [
+      83,
+      97
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt"
+    }
+   ]
+  },
+  {
+   "id": "callers-11",
+   "kind": "callers",
+   "question": "Who calls Owner.getPet?",
+   "subject": {
+    "label": "Owner.getPet",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/Owner.kt",
+    "lines": [
+     75,
+     91
+    ]
+   },
+   "truth": [
+    {
+     "label": "Owner.getPet",
+     "lines": [
+      66,
+      73
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/Owner.kt"
+    },
+    {
+     "label": "PetController.processCreationForm",
+     "lines": [
+      61,
+      77
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt"
+    }
+   ]
+  },
+  {
+   "id": "callers-12",
+   "kind": "callers",
+   "question": "Who calls OwnerRepository.findById?",
+   "subject": {
+    "label": "OwnerRepository.findById",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerRepository.kt",
+    "lines": [
+     51,
+     54
+    ]
+   },
+   "truth": [
+    {
+     "label": "OwnerController.initUpdateOwnerForm",
+     "lines": [
+      87,
+      96
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt"
+    },
+    {
+     "label": "OwnerController.showOwner",
+     "lines": [
+      111,
+      123
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt"
+    },
+    {
+     "label": "PetController.findOwner",
+     "lines": [
+      39,
+      46
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt"
+    }
+   ]
+  },
+  {
+   "id": "callers-13",
+   "kind": "callers",
+   "question": "Who calls BaseEntity.isNew?",
+   "subject": {
+    "label": "BaseEntity.isNew",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/model/BaseEntity.kt",
+    "lines": [
+     34,
+     41
+    ]
+   },
+   "truth": [
+    {
+     "label": "Owner.addPet",
+     "lines": [
+      53,
+      64
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/Owner.kt"
+    },
+    {
+     "label": "Owner.getPet",
+     "lines": [
+      75,
+      91
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/Owner.kt"
+    },
+    {
+     "label": "PetController.processCreationForm",
+     "lines": [
+      61,
+      77
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt"
+    },
+    {
+     "label": "PetValidator.validate",
+     "lines": [
+      30,
+      53
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetValidator.kt"
+    }
+   ]
+  },
+  {
+   "id": "callers-14",
+   "kind": "callers",
+   "question": "Who calls PetRepository.save?",
+   "subject": {
+    "label": "PetRepository.save",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetRepository.kt",
+    "lines": [
+     53,
+     56
+    ]
+   },
+   "truth": [
+    {
+     "label": "PetController.processCreationForm",
+     "lines": [
+      61,
+      77
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt"
+    },
+    {
+     "label": "PetController.processUpdateForm",
+     "lines": [
+      83,
+      97
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt"
+    }
+   ]
+  },
+  {
+   "id": "callers-15",
+   "kind": "callers",
+   "question": "Who calls Pet.setOwner?",
+   "subject": {
+    "label": "Pet.setOwner",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/Pet.kt",
+    "lines": [
+     42,
+     49
+    ]
+   },
+   "truth": [
+    {
+     "label": "Owner.addPet",
+     "lines": [
+      53,
+      64
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/Owner.kt"
+    },
+    {
+     "label": "PetController.processUpdateForm",
+     "lines": [
+      83,
+      97
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt"
+    }
+   ]
+  },
+  {
+   "id": "implementers-16",
+   "kind": "implementers",
+   "question": "What extends BaseEntity?",
+   "subject": {
+    "label": "BaseEntity",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/model/BaseEntity.kt",
+    "lines": [
+     33,
+     40
+    ]
+   },
+   "truth": [
+    {
+     "label": "NamedEntity",
+     "lines": [
+      31,
+      37
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/model/NamedEntity.kt"
+    },
+    {
+     "label": "Owner",
+     "lines": [
+      36,
+      90
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/Owner.kt"
+    },
+    {
+     "label": "Person",
+     "lines": [
+      30,
+      38
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/model/Person.kt"
+    },
+    {
+     "label": "Pet",
+     "lines": [
+      36,
+      60
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/Pet.kt"
+    },
+    {
+     "label": "PetType",
+     "lines": [
+      30,
+      30
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetType.kt"
+    },
+    {
+     "label": "Specialty",
+     "lines": [
+      30,
+      30
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/vet/Specialty.kt"
+    },
+    {
+     "label": "Vet",
+     "lines": [
+      33,
+      49
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/vet/Vet.kt"
+    },
+    {
+     "label": "Visit",
+     "lines": [
+      33,
+      54
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/visit/Visit.kt"
+    }
+   ]
+  },
+  {
+   "id": "implementers-17",
+   "kind": "implementers",
+   "question": "What extends NamedEntity?",
+   "subject": {
+    "label": "NamedEntity",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/model/NamedEntity.kt",
+    "lines": [
+     31,
+     37
+    ]
+   },
+   "truth": [
+    {
+     "label": "Pet",
+     "lines": [
+      36,
+      60
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/Pet.kt"
+    },
+    {
+     "label": "PetType",
+     "lines": [
+      30,
+      30
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetType.kt"
+    },
+    {
+     "label": "Specialty",
+     "lines": [
+      30,
+      30
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/vet/Specialty.kt"
+    }
+   ]
+  },
+  {
+   "id": "implementers-18",
+   "kind": "implementers",
+   "question": "What extends Person?",
+   "subject": {
+    "label": "Person",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/model/Person.kt",
+    "lines": [
+     30,
+     38
+    ]
+   },
+   "truth": [
+    {
+     "label": "Owner",
+     "lines": [
+      36,
+      90
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/Owner.kt"
+    },
+    {
+     "label": "Vet",
+     "lines": [
+      33,
+      49
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/vet/Vet.kt"
+    }
+   ]
+  },
+  {
+   "id": "definition-19",
+   "kind": "definition",
+   "question": "Where is OwnerController.getVIEWS_OWNER_CREATE_OR_UPDATE_FORM defined?",
+   "subject": {
+    "label": "OwnerController.getVIEWS_OWNER_CREATE_OR_UPDATE_FORM",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt",
+    "lines": [
+     33,
+     40
+    ]
+   },
+   "truth": [
+    {
+     "label": "OwnerController.getVIEWS_OWNER_CREATE_OR_UPDATE_FORM",
+     "lines": [
+      33,
+      40
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/OwnerController.kt"
+    }
+   ]
+  },
+  {
+   "id": "definition-20",
+   "kind": "definition",
+   "question": "Where is Pet.getVisits defined?",
+   "subject": {
+    "label": "Pet.getVisits",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/Pet.kt",
+    "lines": [
+     45,
+     52
+    ]
+   },
+   "truth": [
+    {
+     "label": "Pet.getVisits",
+     "lines": [
+      45,
+      52
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/Pet.kt"
+    }
+   ]
+  },
+  {
+   "id": "definition-21",
+   "kind": "definition",
+   "question": "Where is Person.setFirstName defined?",
+   "subject": {
+    "label": "Person.setFirstName",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/model/Person.kt",
+    "lines": [
+     28,
+     35
+    ]
+   },
+   "truth": [
+    {
+     "label": "Person.setFirstName",
+     "lines": [
+      28,
+      35
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/model/Person.kt"
+    }
+   ]
+  },
+  {
+   "id": "definition-22",
+   "kind": "definition",
+   "question": "Where is PetValidator.supports defined?",
+   "subject": {
+    "label": "PetValidator.supports",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetValidator.kt",
+    "lines": [
+     52,
+     59
+    ]
+   },
+   "truth": [
+    {
+     "label": "PetValidator.supports",
+     "lines": [
+      52,
+      59
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetValidator.kt"
+    }
+   ]
+  },
+  {
+   "id": "definition-23",
+   "kind": "definition",
+   "question": "Where is BaseEntity.isNew defined?",
+   "subject": {
+    "label": "BaseEntity.isNew",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/model/BaseEntity.kt",
+    "lines": [
+     34,
+     41
+    ]
+   },
+   "truth": [
+    {
+     "label": "BaseEntity.isNew",
+     "lines": [
+      34,
+      41
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/model/BaseEntity.kt"
+    }
+   ]
+  },
+  {
+   "id": "definition-24",
+   "kind": "definition",
+   "question": "Where is PetController.initOwnerBinder defined?",
+   "subject": {
+    "label": "PetController.initOwnerBinder",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt",
+    "lines": [
+     43,
+     51
+    ]
+   },
+   "truth": [
+    {
+     "label": "PetController.initOwnerBinder",
+     "lines": [
+      43,
+      51
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetController.kt"
+    }
+   ]
+  },
+  {
+   "id": "definition-25",
+   "kind": "definition",
+   "question": "Where is CacheConfig.createCacheConfiguration defined?",
+   "subject": {
+    "label": "CacheConfig.createCacheConfiguration",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/system/CacheConfig.kt",
+    "lines": [
+     46,
+     53
+    ]
+   },
+   "truth": [
+    {
+     "label": "CacheConfig.createCacheConfiguration",
+     "lines": [
+      46,
+      53
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/system/CacheConfig.kt"
+    }
+   ]
+  },
+  {
+   "id": "definition-26",
+   "kind": "definition",
+   "question": "Where is PetRepository.save defined?",
+   "subject": {
+    "label": "PetRepository.save",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetRepository.kt",
+    "lines": [
+     53,
+     56
+    ]
+   },
+   "truth": [
+    {
+     "label": "PetRepository.save",
+     "lines": [
+      53,
+      56
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/PetRepository.kt"
+    }
+   ]
+  },
+  {
+   "id": "definition-27",
+   "kind": "definition",
+   "question": "Where is VisitController.getPets defined?",
+   "subject": {
+    "label": "VisitController.getPets",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/VisitController.kt",
+    "lines": [
+     29,
+     36
+    ]
+   },
+   "truth": [
+    {
+     "label": "VisitController.getPets",
+     "lines": [
+      29,
+      36
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/VisitController.kt"
+    }
+   ]
+  },
+  {
+   "id": "definition-28",
+   "kind": "definition",
+   "question": "Where is Pet.setOwner defined?",
+   "subject": {
+    "label": "Pet.setOwner",
+    "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/Pet.kt",
+    "lines": [
+     42,
+     49
+    ]
+   },
+   "truth": [
+    {
+     "label": "Pet.setOwner",
+     "lines": [
+      42,
+      49
+     ],
+     "path": "src/main/kotlin/org/springframework/samples/petclinic/owner/Pet.kt"
+    }
+   ]
+  }
+ ]
+}

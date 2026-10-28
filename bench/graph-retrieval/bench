@@ -1,0 +1,840 @@
+#!/usr/bin/env python3
+"""Code-graph retrieval bench: how many tokens each way of answering a navigation question costs,
+and how much of the right answer it finds, graded against the compiler's own facts.
+
+    bench/graph-retrieval/bench setup [--repo R]...      # clone, import, build, truth, questions
+    bench/graph-retrieval/bench run [--repo R] [--arm A] # every arm on every question; rows + table
+    bench/graph-retrieval/bench index [--repo R]         # index wall time per tool, full and incremental
+    bench/graph-retrieval/bench edges [--repo R]         # call-edge precision/recall per graph
+    bench/graph-retrieval/bench cards                    # each MCP server's tool cards, in tokens per turn
+    bench/graph-retrieval/bench render                   # TABLE.md from the latest results
+
+Repos are in repos.toml. Trees live under $GRAPH_RETRIEVAL_HOME (default
+$JK_BENCH_HOME/graph-retrieval). README.md says what each arm does and how answers are graded.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import random
+import re
+import shutil
+import statistics
+import subprocess
+import sys
+import time
+import tomllib
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+import benchtools  # noqa: E402
+
+HOME = benchtools.scratch("GRAPH_RETRIEVAL_HOME", "graph-retrieval")
+(HOME / "rql").mkdir(parents=True, exist_ok=True)
+QUESTIONS = HERE / "questions"
+SRC_EXT = (".java", ".kt", ".groovy")
+SKIP_DIRS = {"target", "build", ".git", ".gradle", "graphify-out", ".idea", "node_modules", ".kotlin",
+             ".jk", ".repoql", "out", "bin"}
+READ_CAP = 15
+TIMEOUT = 120
+
+# A method an agent would ask about: not a constructor, accessor, generated member or Object method.
+NOT_ASKED = {"<init>", "<clinit>", "equals", "hashCode", "toString", "main", "values", "valueOf",
+             "close", "run", "get", "set", "of", "apply", "invoke", "accept", "test"}
+PER_KIND = {"callers": 20, "implementers": 10, "overrides": 10, "definition": 10}
+
+
+def tokens(text: str) -> int:
+    """Tokens at four characters each, the same estimate graphify's own benchmark uses, for every arm."""
+    return (len(text) + 3) // 4
+
+
+def repos() -> dict:
+    return tomllib.loads((HERE / "repos.toml").read_text())["repos"]
+
+
+def tree_of(name: str) -> Path:
+    return HOME / "repos" / name
+
+
+def sh(cmd: list[str], cwd: Path, timeout: int = TIMEOUT, env: dict | None = None) -> tuple[int, str, float]:
+    start = time.perf_counter()
+    try:
+        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
+                           env=env or os.environ.copy(), errors="replace")
+        out, rc = p.stdout + (("\n" + p.stderr) if p.returncode else ""), p.returncode
+    except subprocess.TimeoutExpired:
+        out, rc = f"timeout after {timeout}s", 124
+    except FileNotFoundError as e:
+        out, rc = f"not installed: {e.filename}", 127
+    return rc, out, time.perf_counter() - start
+
+
+def source_files(tree: Path) -> list[Path]:
+    out = []
+    for root, dirs, files in os.walk(tree):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        out.extend(Path(root) / f for f in files if f.endswith(SRC_EXT))
+    return sorted(out)
+
+
+# ---- setup -------------------------------------------------------------------------------------
+
+def setup(name: str, spec: dict) -> None:
+    tree = tree_of(name)
+    tree.parent.mkdir(parents=True, exist_ok=True)
+    url = os.path.expanduser(spec["url"])
+    if not tree.exists():
+        subprocess.run(["git", "clone", "-q", url, str(tree)], check=True)
+    rev = spec.get("commit") or spec.get("ref")
+    subprocess.run(["git", "-C", str(tree), "fetch", "-q", "--tags", "origin"], check=False)
+    subprocess.run(["git", "-C", str(tree), "checkout", "-q", "--detach", rev if spec.get("commit") else
+                    (f"origin/{rev}" if spec.get("native") else rev)], check=True)
+    commit = subprocess.run(["git", "-C", str(tree), "rev-parse", "HEAD"], capture_output=True, text=True,
+                            check=True).stdout.strip()
+    if not spec.get("native") and not (tree / "jk.toml").exists():
+        build_file = next((f for f in ("pom.xml", "build.gradle.kts", "build.gradle") if (tree / f).exists()), None)
+        rc, out, _ = sh(["jk", "-u", "-x", "-a", "import", build_file], tree, timeout=1800)
+        print(out[-2000:])
+        if rc != 0:
+            raise SystemExit(f"{name}: jk import failed")
+    rc, out, wall = sh(["jk", "-u", "-x", "-a", "build", "-S"], tree, timeout=3600)
+    print(f"{name}: build exit {rc} in {wall:.0f}s\n{out[-1500:]}")
+    lint_dropped = False
+    manifest = tree / "jk.toml"
+    if rc != 0 and not spec.get("native") and "[lint]" in manifest.read_text():
+        # The bench needs the classes, not the imported lint: drop [lint] and say so in the questions file.
+        text = manifest.read_text()
+        manifest.write_text(re.sub(r"(?ms)^\[lint\]\n.*?(?=^\[|\Z)", "", text))
+        lint_dropped = True
+        rc, out, wall = sh(["jk", "-u", "-x", "-a", "build", "-S"], tree, timeout=3600)
+        print(f"{name}: build without [lint] exit {rc} in {wall:.0f}s\n{out[-1500:]}")
+    javadoc_dropped = False
+    if rc != 0 and not spec.get("native") and ("package-javadoc" in out or "reference not found" in out):
+        # Nor the javadoc jar: a broken {@link} the POM's own build never renders fails it.
+        text = manifest.read_text()
+        text = re.sub(r"(?m)^javadoc\s*=.*\n", "", text)
+        manifest.write_text(re.sub(r"(?m)^(version\s*=.*)$", r"\1\njavadoc  = false", text, count=1))
+        javadoc_dropped = True
+        rc, out, wall = sh(["jk", "-u", "-x", "-a", "build", "-S"], tree, timeout=3600)
+        print(f"{name}: build without the javadoc jar exit {rc} in {wall:.0f}s\n{out[-1500:]}")
+    if rc != 0:
+        raise SystemExit(f"{name}: jk build failed")
+    class_dirs = sorted(str(p) for p in tree.rglob("target/classes")) + \
+        sorted(str(p) for p in tree.rglob("target/test-classes"))
+    class_dirs = [d for d in class_dirs if "/graphify-out/" not in d and "/.git/" not in d]
+    truth = HOME / "truth" / f"{name}.jsonl"
+    truth.parent.mkdir(parents=True, exist_ok=True)
+    with truth.open("w") as f:
+        subprocess.run(["java", str(HERE / "Truth.java"), *class_dirs], stdout=f, check=True)
+    model = Model(truth, tree)
+    loc = sum(sum(1 for line in p.read_text(errors="replace").splitlines() if line.strip())
+              for p in source_files(tree))
+    qs = model.questions(random.Random(name))
+    QUESTIONS.mkdir(exist_ok=True)
+    (QUESTIONS / f"{name}.json").write_text(json.dumps(
+        {"repo": name, "commit": commit, "loc": loc, "classes": len(model.classes), "lint_dropped": lint_dropped, "javadoc_dropped": javadoc_dropped,
+         "questions": qs},
+        indent=1) + "\n")
+    print(f"{name}: {loc} LOC, {len(model.classes)} classes, {len(qs)} questions")
+
+
+# ---- the compiler's facts ------------------------------------------------------------------------
+
+class Model:
+    """Classes, methods and calls from Truth.java, with each entity placed at its source file and lines."""
+
+    def __init__(self, truth: Path, tree: Path):
+        self.tree = tree
+        self.classes = {}
+        for line in truth.read_text().splitlines():
+            c = json.loads(line)
+            self.classes[c["class"]] = c
+        by_base: dict[str, list[str]] = {}
+        for p in source_files(tree):
+            rel = p.relative_to(tree).as_posix()
+            by_base.setdefault(p.name, []).append(rel)
+        self.lines_cache: dict[str, list[str]] = {}
+        for c in self.classes.values():
+            c["path"] = self._path(c, by_base)
+            c["test"] = "test-classes" in c["root"]
+        self.methods = {}
+        for c in self.classes.values():
+            for m in c["methods"]:
+                self.methods[(c["class"], m["name"], m["desc"])] = m
+                m["owner"] = c["class"]
+
+    def _path(self, c: dict, by_base: dict) -> str | None:
+        src = c.get("source")
+        if not src:
+            return None
+        cands = by_base.get(src, [])
+        pkg = c["class"].rsplit("/", 1)[0] if "/" in c["class"] else ""
+        exact = [p for p in cands if p.endswith(f"{pkg}/{src}")]
+        if len(exact) == 1:
+            return exact[0]
+        if len(cands) == 1:
+            return cands[0]
+        # Several modules declare the same package: pick the one beside the class root.
+        root_mod = c["root"].split("/target/")[0]
+        rel_mod = os.path.relpath(root_mod, self.tree) if os.path.isabs(root_mod) else root_mod
+        near = [p for p in (exact or cands) if p.startswith(rel_mod.rstrip("/") + "/") or rel_mod == "."]
+        return near[0] if len(near) == 1 else None
+
+    def lines(self, path: str) -> list[str]:
+        if path not in self.lines_cache:
+            self.lines_cache[path] = (self.tree / path).read_text(errors="replace").splitlines()
+        return self.lines_cache[path]
+
+    @staticmethod
+    def simple(internal: str) -> str:
+        return internal.rsplit("/", 1)[-1].replace("$", ".")
+
+    def anonymous(self, c: dict) -> bool:
+        return bool(re.search(r"\$\d", c["class"])) or c["synthetic"]
+
+    def class_span(self, c: dict) -> tuple[int, int] | None:
+        if not c.get("path"):
+            return None
+        simple = c["class"].rsplit("/", 1)[-1].split("$")[-1]
+        decl = None
+        pat = re.compile(rf"\b(class|interface|enum|record|object)\s+{re.escape(simple)}\b")
+        for i, line in enumerate(self.lines(c["path"]), 1):
+            if pat.search(line):
+                decl = i
+                break
+        lasts = [m["last"] for m in c["methods"] if m["last"]]
+        firsts = [m["first"] for m in c["methods"] if m["first"]]
+        if decl is None:
+            if not firsts:
+                return None
+            decl = min(firsts)
+        return decl, max(lasts + [decl])
+
+    def method_span(self, m: dict) -> tuple[int, int] | None:
+        c = self.classes[m["owner"]]
+        if not c.get("path"):
+            return None
+        if m["first"]:
+            return max(1, m["first"] - 6), m["last"] + 1
+        # Abstract and interface methods have no code: find the declaration in the class's file.
+        span = self.class_span(c)
+        if not span:
+            return None
+        pat = re.compile(rf"(?<![.\w]){re.escape(m['name'])}\s*\(")
+        for i, line in enumerate(self.lines(c["path"]), 1):
+            if i >= span[0] and pat.search(line) and "return" not in line and "=" not in line.split(m["name"])[0]:
+                return i - 2, i + 1
+        return None
+
+    def entity(self, kind: str, key) -> dict | None:
+        if kind == "method":
+            m = self.methods[key]
+            span = self.method_span(m)
+            path = self.classes[m["owner"]].get("path")
+            label = f"{self.simple(m['owner'])}.{m['name']}"
+        else:
+            c = self.classes[key]
+            span = self.class_span(c)
+            path = c.get("path")
+            label = self.simple(key)
+        if not span or not path:
+            return None
+        return {"label": label, "path": path, "lines": list(span)}
+
+    def enclosing(self, c: dict, m: dict) -> tuple | None:
+        """The source method a synthetic method or a local class's code belongs to."""
+        name = m["name"]
+        if name.startswith("access$"):
+            return None
+        hit = re.match(r"lambda\$(.+?)\$\d+$", name) or re.match(r"(.+?)\$lambda[$-]\d+", name)
+        if hit or m["synthetic"] or self.anonymous(c):
+            target_name = hit.group(1) if hit else None
+            owner = c["class"]
+            if self.anonymous(c) and c.get("outer") and "#" in c["outer"]:
+                owner, target_name = c["outer"].split("#", 1)
+            elif self.anonymous(c):
+                owner = c["class"].split("$")[0]
+            if target_name and owner in self.classes:
+                for mm in self.classes[owner]["methods"]:
+                    if mm["name"] == target_name and not mm["synthetic"]:
+                        return owner, mm["name"], mm["desc"]
+            return (c["class"], m["name"], m["desc"]) if m["first"] else None
+        return c["class"], m["name"], m["desc"]
+
+    def resolve(self, owner: str, name: str, desc: str) -> tuple | None:
+        """The workspace method a call site binds to: the owner's own, else the nearest supertype's."""
+        if name.endswith("$default"):
+            name = name[: -len("$default")]
+            c = self.classes.get(owner)
+            if c:
+                for m in c["methods"]:
+                    if m["name"] == name and not m["synthetic"]:
+                        return owner, m["name"], m["desc"]
+            return None
+        seen, todo = set(), [owner]
+        while todo:
+            o = todo.pop(0)
+            if o in seen or o not in self.classes:
+                continue
+            seen.add(o)
+            if (o, name, desc) in self.methods and not self.methods[(o, name, desc)]["synthetic"]:
+                return o, name, desc
+            c = self.classes[o]
+            todo.extend(([c["super"]] if c["super"] else []) + c["interfaces"])
+        return None
+
+    def supertypes(self, internal: str) -> set[str]:
+        out, todo = set(), [internal]
+        while todo:
+            c = self.classes.get(todo.pop())
+            if not c:
+                continue
+            for s in ([c["super"]] if c["super"] else []) + c["interfaces"]:
+                if s not in out:
+                    out.add(s)
+                    todo.append(s)
+        return out
+
+    def call_edges(self, constructors: bool = False) -> set[tuple]:
+        """Caller and callee of every call site that binds to a workspace method; a constructor
+        call too when `constructors`."""
+        edges = set()
+        for c in self.classes.values():
+            for m in c["methods"]:
+                caller = self.enclosing(c, m)
+                if not caller:
+                    continue
+                for call in m["calls"]:
+                    target = self.resolve(call["owner"], call["name"], call["desc"])
+                    if target and target != caller and (constructors or target[1] not in ("<init>", "<clinit>")):
+                        edges.add((caller, target))
+        return edges
+
+    def questions(self, rng: random.Random) -> list[dict]:
+        edges = self.call_edges()
+        callers: dict[tuple, set] = {}
+        for caller, target in edges:
+            callers.setdefault(target, set()).add(caller)
+        main = {k for k, c in self.classes.items() if not c["test"] and c.get("path") and not self.anonymous(c)}
+
+        def askable(key) -> bool:
+            m = self.methods[key]
+            return (key[0] in main and not m["synthetic"] and key[1] not in NOT_ASKED
+                    and not key[1].startswith(("access$", "lambda$", "component", "copy")) and "$" not in key[1])
+
+        out = []
+
+        def add(kind: str, q: str, subject: dict, truth: list[dict]):
+            truth = [t for t in truth if t]
+            if subject and truth:
+                out.append({"id": f"{kind}-{len(out)}", "kind": kind, "question": q, "subject": subject,
+                            "truth": sorted({json.dumps(t, sort_keys=True) for t in truth})})
+
+        cands = sorted(k for k, v in callers.items() if askable(k) and 2 <= len(v) <= 25)
+        for key in rng.sample(cands, min(PER_KIND["callers"], len(cands))):
+            s = self.entity("method", key)
+            add("callers", f"Who calls {s['label']}?" if s else "", s,
+                [self.entity("method", c) for c in sorted(callers[key])])
+        subtypes: dict[str, set] = {}
+        for k in self.classes:
+            if self.anonymous(self.classes[k]) or not self.classes[k].get("path"):
+                continue
+            for s in self.supertypes(k):
+                subtypes.setdefault(s, set()).add(k)
+        cands = sorted(k for k, v in subtypes.items() if k in main and 2 <= len(v) <= 25)
+        for key in rng.sample(cands, min(PER_KIND["implementers"], len(cands))):
+            s = self.entity("type", key)
+            verb = "implements" if self.classes[key]["interface"] else "extends"
+            add("implementers", f"What {verb} {s['label']}?" if s else "", s,
+                [self.entity("type", k) for k in sorted(subtypes[key])])
+        overrides: dict[tuple, set] = {}
+        for k, m in self.methods.items():
+            if not askable(k):
+                continue
+            for sub in subtypes.get(k[0], ()):
+                if (sub, k[1], k[2]) in self.methods and not self.methods[(sub, k[1], k[2])]["synthetic"]:
+                    overrides.setdefault(k, set()).add((sub, k[1], k[2]))
+        cands = sorted(k for k, v in overrides.items() if 2 <= len(v) <= 25)
+        for key in rng.sample(cands, min(PER_KIND["overrides"], len(cands))):
+            s = self.entity("method", key)
+            add("overrides", f"What overrides {s['label']}?" if s else "", s,
+                [self.entity("method", o) for o in sorted(overrides[key])])
+        cands = sorted(k for k in self.methods if askable(k))
+        for key in rng.sample(cands, min(PER_KIND["definition"], len(cands))):
+            s = self.entity("method", key)
+            add("definition", f"Where is {s['label']} defined?" if s else "", s, [s])
+        for q in out:
+            q["truth"] = [json.loads(t) for t in q["truth"]]
+        return out
+
+
+# ---- the arms ----------------------------------------------------------------------------------
+
+def jk(*args: str) -> list[str]:
+    return ["jk", "-u", "-x", *args]
+
+
+def member(q: dict) -> tuple[str, str]:
+    label = q["subject"]["label"]
+    return label.rsplit(".", 1)[0], label.rsplit(".", 1)[-1]
+
+
+def grep_read(q: dict, tree: Path) -> tuple[str, list[list[str]], set[str]]:
+    """What an agent with only grep and a file reader does: search for the name, read what matched."""
+    owner, name = member(q) if q["kind"] != "implementers" else (q["subject"]["label"], "")
+    simple = owner.rsplit(".", 1)[-1]
+    if q["kind"] == "implementers":
+        pattern = rf"(implements|extends|:)[^{{]*\b{re.escape(simple)}\b"
+    elif q["kind"] == "definition":
+        pattern = rf"(class|interface|enum|record|object)\s+{re.escape(simple)}\b"
+    else:
+        pattern = rf"\b{re.escape(name)}\s*\("
+    cmd = ["grep", "-rnE", *[f"--include=*{e}" for e in SRC_EXT],
+           *[f"--exclude-dir={d}" for d in sorted(SKIP_DIRS)], pattern, "."]
+    _, out, _ = sh(cmd, tree)
+    hits: dict[str, int] = {}
+    for line in out.splitlines():
+        path = line.split(":", 1)[0].removeprefix("./")
+        if (tree / path).is_file():
+            hits[path] = hits.get(path, 0) + 1
+    read = sorted(hits, key=lambda p: (-hits[p], p))[:READ_CAP]
+    text = [out]
+    for path in read:
+        lines = (tree / path).read_text(errors="replace").splitlines()
+        text.append("\n".join(f"{i:6}\t{line}" for i, line in enumerate(lines, 1)))
+    return "\n".join(text), [cmd], set(read)
+
+
+def jk_query(q: dict, tree: Path) -> tuple[str, list[list[str]], set[str]]:
+    cmd = jk("graph", "query", q["question"])
+    _, out, _ = sh(cmd, tree)
+    return out, [cmd], set()
+
+
+def jk_tool(q: dict, tree: Path) -> tuple[str, list[list[str]], set[str]]:
+    """The jk graph command the skill points an agent at for this kind of question."""
+    if q["kind"] == "implementers":
+        cmd = jk("graph", "find", "-I", q["subject"]["label"])
+    else:
+        owner, name = member(q)
+        cmd = {
+            "callers": jk("graph", "neighbors", f"{owner}.{name}", "-R", "calls"),
+            "overrides": jk("graph", "find", name, "-t", "method", "-I", owner),
+            "definition": jk("graph", "read", f"{owner}.{name}", "-w", "headline"),
+        }[q["kind"]]
+    _, out, _ = sh(cmd, tree)
+    return out, [cmd], set()
+
+
+def graphify_query(q: dict, tree: Path) -> tuple[str, list[list[str]], set[str]]:
+    cmd = ["graphify", "query", q["question"], "--budget", "2000"]
+    _, out, _ = sh(cmd, tree)
+    return out, [cmd], set()
+
+
+_GRAPHIFY_IDS: dict[Path, dict] = {}
+
+
+def graphify_id(tree: Path, path: str, label: str) -> str | None:
+    """The node graphify gave `label` in `path`: its CLI wants an id once a name is ambiguous. The
+    lookup is free, so this arm is graphify's best case: an agent first spends a query finding it."""
+    if tree not in _GRAPHIFY_IDS:
+        graph = tree / "graphify-out" / "graph.json"
+        nodes = json.loads(graph.read_text())["nodes"] if graph.exists() else []
+        _GRAPHIFY_IDS[tree] = {(n.get("source_file", ""), n.get("label")): n["id"] for n in nodes}
+    for (src, lab), node_id in _GRAPHIFY_IDS[tree].items():
+        if lab == label and _same(src.removeprefix(str(tree) + "/"), path):
+            return node_id
+    return None
+
+
+def graphify_tool(q: dict, tree: Path) -> tuple[str, list[list[str]], set[str]]:
+    """graphify's own command for the kind: `affected` (its reverse traversal) for callers and
+    implementers, `explain` for a definition or overrides, which it has no edge for."""
+    s = q["subject"]
+    if q["kind"] == "implementers":
+        node = graphify_id(tree, s["path"], s["label"].rsplit(".", 1)[-1])
+        cmd = ["graphify", "affected", node or s["label"], "--relation", "inherits", "--relation", "implements",
+               "--depth", "3"]
+    else:
+        node = graphify_id(tree, s["path"], "." + s["label"].rsplit(".", 1)[-1] + "()")
+        cmd = (["graphify", "affected", node or s["label"], "--relation", "calls", "--depth", "1"]
+               if q["kind"] == "callers" else ["graphify", "explain", node or s["label"]])
+    _, out, _ = sh(cmd, tree)
+    return out, [cmd], set()
+
+
+RQL_SOURCES = "**/*.{java,kt,groovy}"
+
+
+def rql_explore(q: dict, tree: Path) -> tuple[str, list[list[str]], set[str]]:
+    """RepoQL's survey: its hybrid search over the subject's name, reranked by the question."""
+    cmd = ["rql", "explore", q["subject"]["label"], "--uri-glob", RQL_SOURCES, "--question", q["question"],
+           "--token-budget", "2000"]
+    _, out, _ = sh(cmd, tree, timeout=600)
+    return out, [cmd], set()
+
+
+def rql_tool(q: dict, tree: Path) -> tuple[str, list[list[str]], set[str]]:
+    """RepoQL's read for the kind. Its Java index has declarations and direct supertypes but no
+    calls, so callers are its indexed regex search; implementers are its two declaration filters."""
+    label = q["subject"]["label"]
+    owner, name = label.rsplit(".", 1) if "." in label else (label, label)
+    if q["kind"] == "callers":
+        uri = RQL_SOURCES + " => regex: \\b" + re.escape(name) + "\\s*\\("
+        budget = "4000"
+    elif q["kind"] == "implementers":
+        simple = label.rsplit(".", 1)[-1]
+        uri = f"**#extends={simple};**#implements={simple} => headline"
+        budget = "2000"
+    elif q["kind"] == "overrides":
+        uri = f"{RQL_SOURCES}#symbol=*.{name} => headline"
+        budget = "2000"
+    else:
+        uri = f"{RQL_SOURCES}#symbol=*{owner}.{name} => headline"
+        budget = "2000"
+    cmd = ["rql", "read", uri, "--token-budget", budget]
+    _, out, _ = sh(cmd, tree, timeout=600)
+    return out, [cmd], set()
+
+
+ARMS = {"grep-read": grep_read, "jk-query": jk_query, "jk-tool": jk_tool,
+        "graphify-query": graphify_query, "graphify-tool": graphify_tool,
+        "rql-explore": rql_explore, "rql-tool": rql_tool}
+
+MENTION = re.compile(
+    r"(?P<path>[\w./\-]+\.(?:java|kt|kts|groovy))"
+    r"(?:\s+loc=L|:L?|#L|#line=|\s+line\s+|\s*\(line\s+|:)(?P<line>\d+)")
+
+
+# Lines above a declaration an answer may cite it at: its annotations (a type's span starts at its
+# keyword, a method's six lines above its first statement already).
+ANNOTATIONS = 4
+
+
+def mentions(text: str) -> set[tuple[str, int]]:
+    out = set()
+    for m in MENTION.finditer(text):
+        out.add((m.group("path").removeprefix("./"), int(m.group("line"))))
+    return out
+
+
+def qualified(t: dict) -> str:
+    """A type's qualified name from its path and label: src/main/java/a/b/Owner.java, Owner → a.b.Owner."""
+    path = t["path"]
+    for root in ("/java/", "/kotlin/", "/groovy/"):
+        if root in "/" + path:
+            pkg = ("/" + path).split(root, 1)[1].rsplit("/", 1)[0].replace("/", ".")
+            return f"{pkg}.{t['label']}" if pkg else t["label"]
+    return t["label"]
+
+
+def grade(q: dict, text: str, read_files: set[str]) -> dict:
+    ms = mentions(text)
+    types = q["kind"] == "implementers"
+
+    def symbol(t: dict) -> bool:
+        # A citation by name, as RepoQL's #symbol= fragments give: a method by `Type.member`, a type
+        # by its qualified name. Every arm is graded the same way.
+        name = qualified(t) if types else t["label"]
+        return re.search(rf"(?<![\w$]){re.escape(name)}(?![\w$])", text) is not None
+
+    def named(t: dict) -> bool:
+        return (any(_same(p, t["path"]) and t["lines"][0] - ANNOTATIONS <= line <= t["lines"][1] for p, line in ms)
+                or any(_same(r, t["path"]) for r in read_files) or symbol(t))
+
+    found = sum(1 for t in q["truth"] if named(t))
+    useful = sum(1 for p, line in ms
+                 if any(_same(p, t["path"]) and t["lines"][0] - ANNOTATIONS <= line <= t["lines"][1] for t in q["truth"]))
+    return {"recall": found / len(q["truth"]), "found": found, "truth": len(q["truth"]),
+            "mentions": len(ms), "precision": (useful / len(ms)) if ms else None}
+
+
+def _same(a: str, b: str) -> bool:
+    return a == b or a.endswith("/" + b) or b.endswith("/" + a)
+
+
+def run(names: list[str], arms: list[str], out_dir: Path) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rows = out_dir / "rows.jsonl"
+    with rows.open("a") as f:
+        for name in names:
+            qfile = QUESTIONS / f"{name}.json"
+            if not qfile.exists():
+                print(f"{name}: no questions; run setup first")
+                continue
+            qs = json.loads(qfile.read_text())
+            tree = tree_of(name)
+            if "jk-query" in arms or "jk-tool" in arms:
+                sh(jk("graph", "build"), tree, timeout=1800)
+            if any(a.startswith("graphify") for a in arms):
+                sh(["graphify", "update", "."], tree, timeout=3600)
+                _GRAPHIFY_IDS.pop(tree, None)
+            if any(a.startswith("rql") for a in arms):
+                # Index to completion first, so no answer comes from a half-built index.
+                sh(["rql", "snapshot", "--path", ".", "--output", str(HOME / "rql" / f"{name}.tgz")], tree,
+                   timeout=7200)
+            for arm in arms:
+                for q in qs["questions"]:
+                    text, cmds, read = ARMS[arm](q, tree)
+                    g = grade(q, text, read)
+                    row = {"repo": name, "loc": qs["loc"], "arm": arm, "id": q["id"], "kind": q["kind"],
+                           "question": q["question"], "tokens": tokens(text), "commands": len(cmds),
+                           "reads": len(read), **g}
+                    if text.startswith("not installed"):
+                        row["error"] = "not installed"
+                    f.write(json.dumps(row) + "\n")
+                    f.flush()
+                print(f"{name} {arm}: {len(qs['questions'])} questions")
+            if any(a.startswith("rql") for a in arms):
+                sh(["rql", "host", "stop"], tree, timeout=300)
+    render(out_dir)
+
+
+def render(out_dir: Path) -> None:
+    rows = [json.loads(line) for line in (out_dir / "rows.jsonl").read_text().splitlines()]
+    lines = [f"# Graph retrieval — {out_dir.name}", "",
+             "Tokens are characters / 4. Recall is the share of the compiler's answer the output names at "
+             "its `file:line` (grep-read: or reads the file of). Precision is the share of named code "
+             "locations that are part of the answer.", "",
+             "| Repo | LOC | Arm | Questions | Median tokens | Mean recall | Mean precision | Tokens per found |",
+             "|---|---:|---|---:|---:|---:|---:|---:|"]
+    keys = sorted({(r["loc"], r["repo"], r["arm"]) for r in rows if "error" not in r})
+    for loc, repo, arm in keys:
+        rs = [r for r in rows if r["repo"] == repo and r["arm"] == arm and "error" not in r]
+        precs = [r["precision"] for r in rs if r["precision"] is not None]
+        found = sum(r["found"] for r in rs)
+        lines.append(f"| {repo} | {loc} | {arm} | {len(rs)} | {statistics.median(r['tokens'] for r in rs):.0f} "
+                     f"| {statistics.mean(r['recall'] for r in rs):.2f} "
+                     f"| {statistics.mean(precs) if precs else 0:.2f} "
+                     f"| {sum(r['tokens'] for r in rs) / found if found else float('inf'):.0f} |")
+    lines += ["", "## By question kind", "", "| Repo | Kind | Arm | Median tokens | Mean recall |", "|---|---|---|---:|---:|"]
+    for repo, kind, arm in sorted({(r["repo"], r["kind"], r["arm"]) for r in rows if "error" not in r}):
+        rs = [r for r in rows if (r["repo"], r["kind"], r["arm"]) == (repo, kind, arm) and "error" not in r]
+        lines.append(f"| {repo} | {kind} | {arm} | {statistics.median(r['tokens'] for r in rs):.0f} "
+                     f"| {statistics.mean(r['recall'] for r in rs):.2f} |")
+    (out_dir / "TABLE.md").write_text("\n".join(lines) + "\n")
+    print((out_dir / "TABLE.md").read_text())
+
+
+# ---- index wall time and edge accuracy ---------------------------------------------------------
+
+def touch_one(tree: Path) -> tuple[Path, str]:
+    target = next(p for p in source_files(tree) if "/src/main/" in p.as_posix())
+    original = target.read_text()
+    target.write_text(original + "\n// bench edit\n")
+    return target, original
+
+
+def index(names: list[str], out_dir: Path, runs: int) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    tools = {
+        "jk": (lambda t: sh(jk("graph", "build", "-r"), t, 1800), lambda t: sh(jk("graph", "build"), t, 1800)),
+        "graphify": (lambda t: (shutil.rmtree(t / "graphify-out", ignore_errors=True), sh(["graphify", "update", "."], t, 3600))[1],
+                     lambda t: sh(["graphify", "update", "."], t, 3600)),
+        # RepoQL: a from-scratch index in its isolated benchmark cache; after the edit, a snapshot
+        # indexes the live workspace to completion.
+        "rql": (lambda t: sh(["rql", "benchmark", "--path", ".", "--exit-on-idle"], t, 7200),
+                lambda t: sh(["rql", "snapshot", "--path", ".", "--output", str(HOME / "rql" / f"{t.name}.tgz")],
+                             t, 7200)),
+    }
+    with (out_dir / "index.jsonl").open("a") as f:
+        for name in names:
+            tree = tree_of(name)
+            loc = json.loads((QUESTIONS / f"{name}.json").read_text())["loc"]
+            for tool, (full, incremental) in tools.items():
+                walls = {"full": [], "incremental": []}
+                # RepoQL's index is minutes per run (it embeds every file); one run each.
+                for _ in range(1 if tool == "rql" else runs):
+                    rc, out, wall = full(tree)
+                    if rc != 0:
+                        walls["full"].append(None)
+                        print(f"{name} {tool} full: exit {rc}: {out[-300:]}")
+                        break
+                    walls["full"].append(wall)
+                    target, original = touch_one(tree)
+                    try:
+                        rc, out, wall = incremental(tree)
+                        walls["incremental"].append(wall if rc == 0 else None)
+                    finally:
+                        target.write_text(original)
+                for mode, ws in walls.items():
+                    ok = [w for w in ws if w is not None]
+                    row = {"repo": name, "loc": loc, "tool": tool, "mode": mode, "runs": ws,
+                           "median_s": statistics.median(ok) if ok else None}
+                    f.write(json.dumps(row) + "\n")
+                    print(row)
+
+
+def edges(names: list[str], out_dir: Path) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    graphs = {"jk": "target/graph/graph.json", "graphify": "graphify-out/graph.json"}
+    with (out_dir / "edges.jsonl").open("a") as f:
+        for name in names:
+            tree = tree_of(name)
+            model = Model(HOME / "truth" / f"{name}.jsonl", tree)
+
+            # One entity per (file, type, member): graphify's ids give overloads one node, and a
+            # constructor call or initializer is an edge to or from the type.
+            def tkey(k):
+                c = model.classes.get(k[0])
+                if not c or not c.get("path"):
+                    return None
+                member = "<type>" if k[1] in ("<init>", "<clinit>") else k[1]
+                return c["path"], k[0].rsplit("/", 1)[-1].split("$")[-1], member
+
+            truth = {(tkey(a), tkey(b)) for a, b in model.call_edges(constructors=True)}
+            truth = {e for e in truth if e[0] and e[1] and e[0] != e[1]}
+            for tool, rel in graphs.items():
+                path = tree / rel
+                if not path.exists():
+                    continue
+                g = json.loads(path.read_text())
+                nodes = {n["id"]: n for n in g["nodes"]}
+                links = g.get("links", g.get("edges", []))
+                owner = {l["target"]: l["source"] for l in links if l.get("relation") == "method"}
+
+                def gkey(node_id):
+                    n = nodes.get(node_id)
+                    if not n or not n.get("source_file"):
+                        return None
+                    label = str(n.get("label", ""))
+                    if label.startswith("."):
+                        t = nodes.get(owner.get(node_id, ""))
+                        if not t:
+                            return None
+                        member = label[1:].removesuffix("()")
+                        return n["source_file"], str(t.get("label", "")).split(".")[-1], member
+                    return n["source_file"], label.split(".")[-1], "<type>"
+
+                predicted = set()
+                for link in links:
+                    if link.get("relation") != "calls":
+                        continue
+                    ka, kb = gkey(link["source"]), gkey(link["target"])
+                    if ka and kb and ka != kb:
+                        predicted.add((ka, kb))
+                hit = len(predicted & truth)
+                row = {"repo": name, "tool": tool, "truth_edges": len(truth), "graph_edges": len(predicted),
+                       "correct": hit, "precision": hit / len(predicted) if predicted else None,
+                       "recall": hit / len(truth) if truth else None}
+                f.write(json.dumps(row) + "\n")
+                print(row)
+
+
+MCP_SERVERS = {
+    "jk": (["jk", "mcp"], {}),
+    "jk-extended": (["jk", "mcp"], {"extended": True}),
+    "graphify": ([str(Path.home() / ".local/share/uv/tools/graphifyy/bin/graphify-mcp")], {}),
+    "rql": (["rql", "mcp"], {}),
+}
+
+
+def cards(names: list[str], out_dir: Path) -> None:
+    """Each MCP server's tools/list as the model is sent it, every turn: count and tokens of the cards."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    tree = tree_of(names[0])
+    with (out_dir / "cards.jsonl").open("a") as f:
+        for server, (cmd, params) in MCP_SERVERS.items():
+            try:
+                p = subprocess.Popen(cmd, cwd=tree, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=subprocess.DEVNULL, text=True)
+            except FileNotFoundError:
+                print(f"{server}: not installed")
+                continue
+            try:
+                def ask(i, method, prm):
+                    p.stdin.write(json.dumps({"jsonrpc": "2.0", "id": i, "method": method, "params": prm}) + "\n")
+                    p.stdin.flush()
+                    while True:
+                        line = p.stdout.readline()
+                        if not line:
+                            raise RuntimeError(f"{server} closed before answering {method}")
+                        try:
+                            msg = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue  # a log line on stdout
+                        if msg.get("id") == i:
+                            return msg.get("result") or {}
+                ask(1, "initialize", {"protocolVersion": "2024-11-05", "capabilities": {},
+                                      "clientInfo": {"name": "graph-retrieval-bench", "version": "1"}})
+                p.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
+                tools = ask(2, "tools/list", params).get("tools") or []
+            except RuntimeError as failed:
+                print(failed)
+                continue
+            finally:
+                p.kill()
+            text = json.dumps(tools, separators=(",", ":"))
+            row = {"server": server, "tools": len(tools), "tokens": tokens(text),
+                   "graph_tools": sorted(t["name"] for t in tools)}
+            f.write(json.dumps(row) + "\n")
+            print(row)
+
+
+def _line(loc) -> int | None:
+    m = re.match(r"L?(\d+)", str(loc or ""))
+    return int(m.group(1)) if m else None
+
+
+def _entity_key(self, key: tuple):
+    e = self.entity("method", key)
+    return (e["path"], e["lines"][0], e["lines"][1]) if e else None
+
+
+def _locator(self):
+    spans: dict[str, list[tuple]] = {}
+    for key, m in self.methods.items():
+        e = self.entity_key(key) if not m["synthetic"] else None
+        if e:
+            spans.setdefault(e[0], []).append(e)
+
+    def locate(path, line):
+        if not path or line is None:
+            return None
+        for p, items in spans.items():
+            if _same(p, path):
+                inside = [s for s in items if s[1] <= line <= s[2]]
+                if inside:
+                    return min(inside, key=lambda s: s[2] - s[1])
+        return None
+    return locate
+
+
+Model.entity_key = _entity_key
+Model.locator = _locator
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("command", choices=["setup", "run", "index", "edges", "cards", "render"])
+    ap.add_argument("--repo", action="append", help="only this repo (repeatable)")
+    ap.add_argument("--arm", action="append", choices=sorted(ARMS), help="only this arm (repeatable)")
+    ap.add_argument("--runs", type=int, default=3, help="index runs per tool")
+    ap.add_argument("--out", help="results directory (default results/<date>)")
+    ns = ap.parse_args()
+    all_repos = repos()
+    names = ns.repo or list(all_repos)
+    out_dir = Path(ns.out) if ns.out else HERE / "results" / dt.date.today().isoformat()
+    if ns.command == "setup":
+        for n in names:
+            setup(n, all_repos[n])
+    elif ns.command == "run":
+        run(names, ns.arm or list(ARMS), out_dir)
+    elif ns.command == "index":
+        index(names, out_dir, ns.runs)
+    elif ns.command == "edges":
+        edges(names, out_dir)
+    elif ns.command == "cards":
+        cards(names, out_dir)
+    else:
+        render(out_dir)
+
+
+if __name__ == "__main__":
+    main()

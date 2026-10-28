@@ -1,0 +1,41 @@
+# The retrieval corpus: public JVM repositories pinned by commit, smallest first. Each is cloned,
+# imported with `jk import` from its own build file, built once so the compiled classes exist, and
+# read by Truth.java for the ground truth. `lang` is the main source language; `loc` is filled in
+# by `bench setup` (non-blank lines of main and test sources) and printed in the table.
+
+[repos.spring-petclinic]
+url    = "https://github.com/spring-projects/spring-petclinic"
+commit = "f3c74834e31079f69855e9c9eddb34fceb40a8d9"
+lang   = "java"
+
+[repos.spring-petclinic-kotlin]
+url    = "https://github.com/spring-petclinic/spring-petclinic-kotlin"
+commit = "c77f77ba5d43c2dbff7fa777c40be1d7ec321e40"
+lang   = "kotlin"
+
+[repos.commons-cli]
+url    = "https://github.com/apache/commons-cli"
+commit = "340b50c30ef3774403518e4210c17bbf61572635"
+lang   = "java"
+
+[repos.commons-io]
+url    = "https://github.com/apache/commons-io"
+ref    = "rel/commons-io-2.22.0"
+lang   = "java"
+
+[repos.commons-lang]
+url    = "https://github.com/apache/commons-lang"
+ref    = "rel/commons-lang-3.21.0"
+lang   = "java"
+
+[repos.commons-collections]
+url    = "https://github.com/apache/commons-collections"
+ref    = "rel/commons-collections-4.6.0"
+lang   = "java"
+
+# jk's own tree: a large multi-module Java workspace that jk builds natively (no import).
+[repos.jk]
+url    = "~/src/oss/jk"     # the local checkout; the repository is private
+commit = "1d0d441ed10b0ce5fa2bc85c696e1eb898a0c1b2"
+lang   = "java"
+native = true
