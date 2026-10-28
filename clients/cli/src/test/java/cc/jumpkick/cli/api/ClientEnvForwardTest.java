@@ -55,7 +55,6 @@ class ClientEnvForwardTest {
             if (BuildEnv.PROXY.contains(e.getKey())) continue; // by name, tested below
             if (BuildEnv.DISPLAY.contains(e.getKey())) continue; // by name, tested below
             if (BuildEnv.JDK_ROOT.contains(e.getKey())) continue; // by name, tested below
-            if (BuildEnv.RUNNER.contains(e.getKey())) continue; // by name, tested below
             assertThat(ClientEnvForward.names()).contains(e.getKey());
             assertThat(e.getValue()).as(e.getKey()).isEqualTo(System.getenv(e.getKey()));
         }
@@ -148,13 +147,13 @@ class ClientEnvForwardTest {
         }
     }
 
-    /** A guard decides check-or-write by the runner of the shell running {@code jk}, not the daemon's. */
+    /** The engine decides by the caller's whole shell; a name off every forward list still rides it. */
     @Test
-    void it_forwards_ci_so_a_guard_on_a_runner_checks() {
+    void the_shell_carries_what_no_forward_list_names() {
         System.setProperty("jk.env.CI", "true");
         try {
-            assertThat(ClientEnvForward.resolve()).containsEntry("CI", "true");
-            assertThat(ClientEnvForward.names()).doesNotContain("CI");
+            assertThat(ClientEnvForward.shell()).containsEntry("CI", "true");
+            assertThat(ClientEnvForward.resolve()).doesNotContainKey("CI");
         } finally {
             System.clearProperty("jk.env.CI");
         }

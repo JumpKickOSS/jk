@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.cli.api.ClientEnvForward;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.JkVersion;
@@ -8,6 +9,7 @@ import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
+import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -117,7 +119,7 @@ public final class EngineWire {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = new DrainGate(protocolReader(ch));
-            writer.write(requestLine);
+            writer.write(withShell(requestLine));
             writer.write('\n');
             writer.flush();
             return reply.read(reader, ch);
@@ -270,6 +272,11 @@ public final class EngineWire {
             }
             throw t;
         }
+    }
+
+    /** {@code requestLine} carrying this shell's environment, which the engine decides the request by. */
+    static String withShell(String requestLine) {
+        return ProtoSession.withShell(requestLine, ClientEnvForward.shell());
     }
 
     /**

@@ -5,6 +5,7 @@ import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.config.RequestScope;
+import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.api.BuildJobFingerprint;
 import cc.jumpkick.engine.api.InFlightBuilds;
@@ -24,6 +25,7 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.ProtoJobs;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
+import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -542,7 +544,9 @@ public final class JobEnvelope {
             RunNotices.openSink(io, (code, message) -> publishNotice(eventRequestId, eventDir, writer, message));
             JobOutcome outcome;
             try {
-                outcome = runner.run(requestLine, cancelToken, writer);
+                // Every read of the caller's environment in this job answers from its shell.
+                outcome = RequestShell.where(
+                        ProtoSession.shellOf(requestLine), () -> runner.run(requestLine, cancelToken, writer));
             } catch (Throwable t) {
                 // An escaped throw must not impersonate Declined: with clean rows already
                 // recorded and no failure row, the derived verdict would read green. Rule

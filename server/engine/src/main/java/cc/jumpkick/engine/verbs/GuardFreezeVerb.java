@@ -2,7 +2,6 @@
 package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
@@ -11,7 +10,6 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.GuardFreezeAck;
 import cc.jumpkick.wire.protocol.GuardFreezeRequest;
-import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.Objects;
@@ -54,10 +52,12 @@ public final class GuardFreezeVerb implements HostedVerb {
                 GuardFreezeRequest req = GuardFreezeRequest.decode(requestLine);
                 Path dir = Path.of(Objects.requireNonNull(req.dir(), "dir"));
                 Path root = WorkspaceScan.findRoot(dir).orElse(dir);
-                String ruleId = Objects.requireNonNull(req.ruleId(), "ruleId");
-                Session session = ProtoSession.sessionOf(requestLine, cancelToken);
-                Freezer.Result r = SessionContext.where(
-                        session, () -> Freezer.freeze(root, ruleId, req.reason(), req.retire(), req.acceptScope()));
+                Freezer.Result r = Freezer.freeze(
+                        root,
+                        Objects.requireNonNull(req.ruleId(), "ruleId"),
+                        req.reason(),
+                        req.retire(),
+                        req.acceptScope());
                 ack = new GuardFreezeAck(r.error(), r.accepted(), r.total(), r.rebased());
             } catch (Exception e) {
                 ack = GuardFreezeAck.error(Errors.text(e));

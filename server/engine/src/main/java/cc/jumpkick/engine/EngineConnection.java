@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.api.LockFloor;
 import cc.jumpkick.engine.api.WireWriter;
@@ -20,6 +21,7 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.JobControlAckFrame;
 import cc.jumpkick.wire.protocol.JobControlFrame;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
+import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -267,7 +269,9 @@ final class EngineConnection {
                 yield true;
             }
             case VerbShape.SyncRead() -> {
-                verb.run(line, Session.defaults().cancel(), writer);
+                RequestShell.runWhere(
+                        ProtoSession.shellOf(line),
+                        () -> verb.run(line, Session.defaults().cancel(), writer));
                 yield false;
             }
         };

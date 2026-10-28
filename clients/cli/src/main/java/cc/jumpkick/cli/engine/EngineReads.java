@@ -448,12 +448,7 @@ final class EngineReads {
             throws IOException {
         return request(
                 paths,
-                // The session envelope carries the caller's CI, which decides whether a freeze is refused.
-                ProtoSession.withSession(
-                        new GuardFreezeRequest(dir.toString(), ruleId, reason, retire, acceptScope).encode(),
-                        null,
-                        SessionContext.current().clientEnv(),
-                        null),
+                new GuardFreezeRequest(dir.toString(), ruleId, reason, retire, acceptScope).encode(),
                 EngineProtocol.GUARD_FREEZE_ACK,
                 "guard freeze",
                 GuardFreezeAck::decode);
