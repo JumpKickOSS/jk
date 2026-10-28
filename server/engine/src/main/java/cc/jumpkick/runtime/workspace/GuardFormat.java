@@ -3,7 +3,6 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.AffectedSelection;
 import cc.jumpkick.config.DirtyPaths;
-import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.FormatStyles;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.guard.baseline.Baselines;
@@ -50,7 +49,7 @@ final class GuardFormat {
 
     /** The client's shell is a CI runner, or the engine was started on one. */
     static boolean ci(@Nullable Map<String, String> clientEnv) {
-        return (clientEnv != null && EnvValues.isCi(clientEnv::get)) || Baselines.ciMode();
+        return Baselines.ciMode(clientEnv);
     }
 
     static @Nullable Result run(

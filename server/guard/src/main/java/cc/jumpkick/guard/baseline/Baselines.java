@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.baseline;
 
 import cc.jumpkick.config.EnvValues;
+import java.util.Map;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
@@ -24,6 +25,15 @@ public final class Baselines {
 
     public static boolean ciMode() {
         return ciMode(System::getenv);
+    }
+
+    /**
+     * Whether the run is a CI build: the client's shell says so ({@code CI} rides the request), or
+     * the engine was started on a runner. The engine is a daemon, so its own environment alone is
+     * whichever shell started it.
+     */
+    public static boolean ciMode(@Nullable Map<String, String> clientEnv) {
+        return (clientEnv != null && ciMode(clientEnv::get)) || ciMode();
     }
 
     /** Refuse a freeze without a reason or under CI; the message names the sanctioned path. */
