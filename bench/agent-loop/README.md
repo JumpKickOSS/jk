@@ -262,7 +262,7 @@ Tasks are in [`tasks.toml`](tasks.toml), on the repositories of the graph-retrie
 (`bench/graph-retrieval/bench setup`). A sandbox is the corpus tree's tracked files at its commit
 (jk's arms with `jk.toml` and the lock and no Maven or Gradle build; Maven's with its own POM), a
 planted defect when the task has one, committed as the baseline. The agent gets the task as its
-prompt, file tools only (`Read`, `Edit`, `Write`, `Glob`, `Grep`; no shell) and its tool's MCP
+prompt, file tools only (`Read`, `Edit`, `Write`, `Glob`, `Grep`; `--shell` adds `Bash`) and its tool's MCP
 server. When it stops, the task's hidden acceptance tests (`tasks/<task>/`) are copied in, any
 `restore` directory is put back as shipped, and the full test run decides: **green** passes, **red**
 does not, **claimed** is a DONE the tests refute.
