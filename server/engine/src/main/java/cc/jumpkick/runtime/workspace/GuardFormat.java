@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.AffectedSelection;
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.DirtyPaths;
 import cc.jumpkick.config.FormatStyles;
 import cc.jumpkick.config.SessionContext;
@@ -47,9 +48,9 @@ final class GuardFormat {
         return run(entryDir, cache, entry, units, ci(clientEnv));
     }
 
-    /** The client's shell is a CI runner, or the engine was started on one. */
+    /** The client's {@code CI} decides; a request that carries none falls back to the engine's. */
     static boolean ci(@Nullable Map<String, String> clientEnv) {
-        return Baselines.ciMode(clientEnv);
+        return Baselines.ciMode(BuildEnv.over(clientEnv));
     }
 
     static @Nullable Result run(

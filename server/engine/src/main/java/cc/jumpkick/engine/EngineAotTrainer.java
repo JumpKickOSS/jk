@@ -8,6 +8,7 @@ import cc.jumpkick.engine.plugin.WarmLinger;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.util.JkDirs;
@@ -80,8 +81,8 @@ final class EngineAotTrainer {
 
     /** Start the recording when this install has none and the engine is idle; returns at once. */
     static void maybeTrain(BooleanSupplier idle, Consumer<String> log) {
-        if (stopping || !EngineAotCache.enabled(System::getenv) || EnvValues.isCi(System::getenv)) return;
-        String own = System.getenv(EngineAotCache.RECORD_ENV);
+        if (stopping || !EngineAotCache.enabled(ProcessEnv::get) || EnvValues.isCi(ProcessEnv::get)) return;
+        String own = ProcessEnv.get(EngineAotCache.RECORD_ENV);
         if (own != null && !own.isBlank()) return;
         Path cli = JkDirs.binDir().resolve("jk");
         Path jar = Path.of(System.getProperty("java.class.path", ""));
@@ -232,7 +233,7 @@ final class EngineAotTrainer {
      * engine so a kill of this one cannot leave the trainer resident.
      */
     static Map<String, String> env(Path scratch, Path recorded) {
-        Map<String, String> env = new LinkedHashMap<>(System.getenv());
+        Map<String, String> env = new LinkedHashMap<>(ProcessEnv.all());
         env.put("JK_STATE_DIR", scratch.resolve("state").toString());
         env.put("JK_CACHE_DIR", scratch.resolve("cache").toString());
         env.put("JK_STORE_DIR", JkDirs.store().toString());

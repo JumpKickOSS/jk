@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.git;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.forge.ForgeGitCredentials;
 import cc.jumpkick.model.GitSource;
 import java.io.IOException;
@@ -32,7 +33,7 @@ public final class GitFetcher {
     public GitFetcher(Path gitRoot, ForgeGitCredentials credentials) {
         Objects.requireNonNull(gitRoot, "gitRoot");
         Objects.requireNonNull(credentials, "credentials");
-        this.backend = select(System.getenv(BACKEND_ENV), gitRoot, credentials);
+        this.backend = select(BuildEnv.get(BACKEND_ENV), gitRoot, credentials);
     }
 
     static GitBackend select(@Nullable String mode, Path gitRoot, ForgeGitCredentials credentials) {

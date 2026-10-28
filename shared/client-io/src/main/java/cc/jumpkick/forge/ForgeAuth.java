@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.forge;
 
+import cc.jumpkick.config.BuildEnv;
 import java.util.Optional;
 import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +19,7 @@ public final class ForgeAuth {
     private final CliTokenProbe cliProbe;
 
     public ForgeAuth() {
-        this(new TokenStore(), System::getenv, CliTokenProbe.REAL);
+        this(new TokenStore(), BuildEnv::get, CliTokenProbe.REAL);
     }
 
     /**

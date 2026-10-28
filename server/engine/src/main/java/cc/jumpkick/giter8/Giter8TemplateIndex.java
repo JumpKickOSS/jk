@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.giter8;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -171,7 +172,7 @@ public final class Giter8TemplateIndex {
 
     public static List<Path> defaultSearchRoots(List<Path> extras) {
         List<Path> roots = new ArrayList<>();
-        String env = System.getenv("JK_TEMPLATES");
+        String env = BuildEnv.get("JK_TEMPLATES");
         if (env != null && !env.isBlank()) roots.add(Path.of(env));
         roots.add(JkDirs.templates());
         if (extras != null) {
@@ -276,7 +277,7 @@ public final class Giter8TemplateIndex {
     }
 
     private static boolean isLocalRoot(Path tmpl) {
-        String env = System.getenv("JK_TEMPLATES");
+        String env = BuildEnv.get("JK_TEMPLATES");
         if (env != null && !env.isBlank()) {
             Path envRoot = Path.of(env).toAbsolutePath().normalize();
             if (tmpl.startsWith(envRoot)) return true;

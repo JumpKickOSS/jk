@@ -834,22 +834,20 @@ reason = "pruneUnowned deletes only files absent from the owned set, plus emptie
 in     = "server/engine/src/main/java/cc/jumpkick/task/CacheRetention.java"
 reason = "pruneEmptyDirs deletes a directory only when it is already empty"
 
-# G38. The engine is resident, so System.getenv of a toolchain variable answers from whichever
-# shell started the daemon, possibly days earlier: which JDK a module compiled against depended on
-# how the engine happened to be started. `clients/` is out of scope by shape: the native CLI is a
-# one-shot process in the caller's own shell, so there System.getenv IS the request.
-[guards.toolchain-env-from-request]
+# G38. The engine is resident, so System.getenv answers from whichever shell started the daemon,
+# possibly days earlier, not from the jk command being served: a guard froze under CI because the
+# engine had not been started on the runner, and which JDK a module compiled against depended on
+# how the engine happened to be started. Every read goes through the facade, which says which of
+# the two environments it means. `clients/` is out of scope by shape: the native CLI is a one-shot
+# process in the caller's own shell, so there System.getenv IS the request.
+[guards.one-env-surface]
 kind       = "forbid"
-scope      = ["server/**", "shared/**", "plugins/**"]
-signatures = ["java.lang.System#getenv(java.lang.String)"]
-args       = ["JK_JDK", "JAVA_HOME", "GRAALVM_HOME"]
-fixture    = "server/guard/fixtures/toolchain-env-from-request"
-instead    = "BuildEnv.forModule(dir) where a module directory is in hand, BuildEnv.ambient() where none is"
-why        = "a toolchain variable read from the daemon's environment selects a JDK by how the engine was started, not by this build"
-
-[[guards.toolchain-env-from-request.allow]]
-in     = "cc.jumpkick.jdk.JavaHomes"
-reason = "falls back to JAVA_HOME only after this process's own java.home, which is genuinely ambient"
+scope      = ["server/*", "shared/*", "plugins/*"]
+signatures = ["java.lang.System#getenv(**)"]
+owner      = "cc.jumpkick.host.ProcessEnv"
+fixture    = "server/guard/fixtures/one-env-surface"
+instead    = "BuildEnv.get / ambient() / forModule(dir) for anything the request decides; ProcessEnv.get only for jk's own engine settings and whether the machine is a CI runner"
+why        = "the engine is a daemon: System.getenv answers from the shell that started it, not the jk command being served"
 
 # G42. The mirror of G37 for the write direction: every hand-rolled tree copy shared the same three
 # defects (createDirectories per file, no byte-identity check, walk attributes discarded).

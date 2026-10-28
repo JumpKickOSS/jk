@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.RepositorySpec;
@@ -46,7 +47,7 @@ public final class GlobalConfig {
         NerdFontCaps hit = resolvedNerdFont;
         if (hit != null) return hit;
         NerdFontCaps fresh = nerdFont(
-                JkDirs.userConfigFile(), System.getenv("JK_NERD_FONT"), System.getenv("NERD_FONT"), colorEnabled());
+                JkDirs.userConfigFile(), BuildEnv.get("JK_NERD_FONT"), BuildEnv.get("NERD_FONT"), colorEnabled());
         resolvedNerdFont = fresh;
         return fresh;
     }
@@ -63,7 +64,7 @@ public final class GlobalConfig {
      * ({@code NerdFontDetect}: injectable env, reason strings) are different facts, not copies.
      */
     public static boolean ansiSuppressed() {
-        return ansiSuppressed(SessionContext.current().config(), System::getenv);
+        return ansiSuppressed(SessionContext.current().config(), BuildEnv::get);
     }
 
     /** Injectable overload of {@link #ansiSuppressed()} — tests pin the trigger matrix here. */
@@ -82,7 +83,7 @@ public final class GlobalConfig {
      * the resolved {@code --color} choice ({@code AUTO} honors {@code NO_COLOR}, never isatty).
      */
     public static boolean colorEnabled() {
-        return colorEnabled(SessionContext.current().config(), System::getenv);
+        return colorEnabled(SessionContext.current().config(), BuildEnv::get);
     }
 
     /** Injectable overload of {@link #colorEnabled()} — tests pin the trigger matrix here. */
@@ -105,7 +106,7 @@ public final class GlobalConfig {
 
     /** As {@link #nerdFont()} but against an explicit config file — for tests. */
     static NerdFontCaps nerdFont(Path configFile) {
-        return nerdFont(configFile, System.getenv("JK_NERD_FONT"), System.getenv("NERD_FONT"), colorEnabled());
+        return nerdFont(configFile, BuildEnv.get("JK_NERD_FONT"), BuildEnv.get("NERD_FONT"), colorEnabled());
     }
 
     /** As {@link #nerdFont(Path)} but with explicit env values — bypasses the color gate for tests. */
@@ -141,7 +142,7 @@ public final class GlobalConfig {
      * project {@code jdk}. Empty when unset.
      */
     public static Optional<String> engineJdkPin() {
-        return engineJdkPin(JkDirs.userConfigFile(), System.getenv("JK_ENGINE_JDK"));
+        return engineJdkPin(JkDirs.userConfigFile(), ProcessEnv.get("JK_ENGINE_JDK"));
     }
 
     /** As {@link #engineJdkPin()} but against an explicit config file + env value — for tests. */

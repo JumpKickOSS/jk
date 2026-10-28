@@ -6,6 +6,7 @@ import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -137,7 +138,7 @@ public final class CachePruneScheduler {
      * under a path that happens to contain "jk".
      */
     public static Optional<String> resolveJkExe() {
-        String envOverride = System.getenv("JK_EXE");
+        String envOverride = ProcessEnv.get("JK_EXE");
         if (envOverride != null && !envOverride.isBlank()) {
             return Optional.of(envOverride);
         }

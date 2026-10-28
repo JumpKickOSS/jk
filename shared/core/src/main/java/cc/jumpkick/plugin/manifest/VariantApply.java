@@ -241,7 +241,7 @@ public final class VariantApply {
         if (v == null && moduleDir != null) {
             v = BuildEnv.forModule(moduleDir).apply(name);
         }
-        if (v == null) v = System.getenv(name);
+        if (v == null) v = BuildEnv.get(name);
         if (v == null) {
             throw new JkBuildParseException("[" + where + "] references env:" + name + " but " + name + " is not set");
         }

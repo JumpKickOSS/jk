@@ -19,6 +19,7 @@ import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerGc;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -304,7 +305,7 @@ public final class JavaCompilerHost {
 
     /** {@code JK_COMPILE_LANES}, or 0 when unset or not a positive integer. */
     private static int envLanes() {
-        String v = System.getenv("JK_COMPILE_LANES");
+        String v = ProcessEnv.get("JK_COMPILE_LANES");
         if (v == null || v.isBlank()) return 0;
         try {
             int n = Integer.parseInt(v.trim());

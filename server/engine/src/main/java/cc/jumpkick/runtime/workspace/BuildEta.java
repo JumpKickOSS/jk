@@ -5,6 +5,7 @@ import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskForecast;
@@ -718,7 +719,7 @@ public final class BuildEta {
         if (seedMs <= 0 || actualExecuteMs <= 0) return;
         double ratio = (double) seedMs / (double) actualExecuteMs;
         double relErr = Math.abs(seedMs - actualExecuteMs) / (double) actualExecuteMs;
-        boolean verbose = EnvValues.bool(System::getenv, "JK_ETA_SEED_LOG").orElse(false) || Perf.enabled();
+        boolean verbose = EnvValues.bool(ProcessEnv::get, "JK_ETA_SEED_LOG").orElse(false) || Perf.enabled();
         // Always note serious misses so they show up in engine logs without env.
         boolean serious = relErr >= 0.35 && actualExecuteMs >= 5_000L;
         if (!verbose && !serious) return;

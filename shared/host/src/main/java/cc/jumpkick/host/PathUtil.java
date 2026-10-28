@@ -534,7 +534,7 @@ public final class PathUtil {
     private static List<String> windowsExecutableExtensions() {
         List<String> memo = pathExt;
         if (memo != null) return memo;
-        String raw = System.getenv("PATHEXT");
+        String raw = ProcessEnv.get("PATHEXT");
         List<String> parsed = new ArrayList<>();
         if (raw != null && !raw.isBlank()) {
             for (String part : raw.split(";")) {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.androidsdk;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.jdk.DirLinks;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
@@ -32,7 +33,7 @@ public final class AndroidSdk {
         if (override != null && !override.isBlank()) {
             return new AndroidSdk(Files.createDirectories(Path.of(override)));
         }
-        return resolve(System::getenv, JkDirs.store().resolve("android-sdk"));
+        return resolve(BuildEnv::get, JkDirs.store().resolve("android-sdk"));
     }
 
     /** Explicit-env seam for tests. */

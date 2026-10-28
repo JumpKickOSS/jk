@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.ProcessEnv;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.IntSupplier;
@@ -58,6 +59,6 @@ public final class Jobs {
 
     /** Machine-config only (no CLI): env + {@link JkEngineConfig#jobs()}. */
     public static int resolve(JkEngineConfig engine) {
-        return resolve(Optional.empty(), engine, System::getenv);
+        return resolve(Optional.empty(), engine, ProcessEnv::get);
     }
 }

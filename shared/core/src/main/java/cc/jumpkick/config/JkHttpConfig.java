@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -82,7 +83,7 @@ public record JkHttpConfig(
      * Effective machine config (env &gt; file &gt; defaults). Empty when disabled or unreadable.
      */
     public static Optional<JkHttpConfig> resolve() {
-        return resolve(JkDirs.userConfigFile(), System::getenv);
+        return resolve(JkDirs.userConfigFile(), ProcessEnv::get);
     }
 
     /** As {@link #resolve()} but against an explicit config file + env — for tests. */

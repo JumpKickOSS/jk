@@ -46,7 +46,7 @@ public final class EffectiveUserConfig {
 
     /** Effective rows for the live machine config. */
     public static List<Row> rows() {
-        return rows(JkDirs.userConfigFile(), System::getenv);
+        return rows(JkDirs.userConfigFile(), BuildEnv::get);
     }
 
     /** As {@link #rows()} against an explicit config file + env — for tests. */

@@ -6,6 +6,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -154,7 +155,7 @@ public final class JavaHomes {
         // runs on, not which JDK the request asked for. Inside the engine `java.home` is always set,
         // so the fallback only fires in the native CLI — where the process is the caller's shell and
         // its own environment is the right answer.
-        if (home == null || home.isBlank()) home = System.getenv("JAVA_HOME");
+        if (home == null || home.isBlank()) home = ProcessEnv.get("JAVA_HOME");
         if (home == null || home.isBlank()) {
             throw new IllegalStateException("Cannot resolve a JDK: no project pin (`.jdk-version` or `.sdkmanrc`), "
                     + "no `java.home` (running under native-image?), and `JAVA_HOME` is unset. "

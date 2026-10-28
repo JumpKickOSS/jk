@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.config.BuildEnv;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -48,7 +49,7 @@ public final class JdkProvisioning {
     private final String arch;
 
     public JdkProvisioning(JdkRegistry registry) {
-        this(registry, new JdkCatalogClient(), System::getenv, HostPlatform.currentOs(), HostPlatform.currentArch());
+        this(registry, new JdkCatalogClient(), BuildEnv::get, HostPlatform.currentOs(), HostPlatform.currentArch());
     }
 
     public Optional<Result> resolve(JdkSpec spec) throws IOException {

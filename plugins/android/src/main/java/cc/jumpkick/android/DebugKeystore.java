@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.FileAlreadyExistsException;
@@ -46,7 +47,7 @@ final class DebugKeystore {
      * {@code .android}, else {@code ~/.android} — the lookup order the Android tools themselves use.
      */
     static Path stableDir() {
-        return stableDir(System::getenv, System.getProperty("user.home", ""));
+        return stableDir(ProcessEnv::get, System.getProperty("user.home", ""));
     }
 
     /** Seam: the same rule over an explicit environment. */

@@ -48,10 +48,10 @@ class ProfilesTest {
 
     @Test
     void auto_select_picks_ci_when_ci_env_set() {
-        assertThat(Profiles.autoSelect(Map.of("CI", "true"))).isEqualTo("ci");
-        assertThat(Profiles.autoSelect(Map.of("GITHUB_ACTIONS", "true"))).isEqualTo("ci");
-        assertThat(Profiles.autoSelect(Map.of("GITLAB_CI", "true"))).isEqualTo("ci");
-        assertThat(Profiles.autoSelect(Map.of())).isNull();
+        assertThat(Profiles.autoSelect(Map.of("CI", "true")::get)).isEqualTo("ci");
+        assertThat(Profiles.autoSelect(Map.of("GITHUB_ACTIONS", "true")::get)).isEqualTo("ci");
+        assertThat(Profiles.autoSelect(Map.of("GITLAB_CI", "true")::get)).isEqualTo("ci");
+        assertThat(Profiles.autoSelect(name -> null)).isNull();
     }
 
     /**
@@ -63,10 +63,14 @@ class ProfilesTest {
     @Test
     void auto_select_accepts_every_spelling_in_the_truth_set() {
         for (String on : List.of("1", "true", "TRUE", "yes", "on", " true ")) {
-            assertThat(Profiles.autoSelect(Map.of("CI", on))).as("CI=%s", on).isEqualTo("ci");
+            assertThat(Profiles.autoSelect(Map.of("CI", on)::get))
+                    .as("CI=%s", on)
+                    .isEqualTo("ci");
         }
         for (String off : List.of("0", "false", "no", "off", "")) {
-            assertThat(Profiles.autoSelect(Map.of("CI", off))).as("CI=%s", off).isNull();
+            assertThat(Profiles.autoSelect(Map.of("CI", off)::get))
+                    .as("CI=%s", off)
+                    .isNull();
         }
     }
 }

@@ -18,6 +18,7 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -107,7 +108,7 @@ public final class CachePlans {
 
                     var timingsReport = StepTimings.prune(
                             root,
-                            StepTimings.Limits.resolve(JkDirs.userConfigFile(), System::getenv),
+                            StepTimings.Limits.resolve(JkDirs.userConfigFile(), ProcessEnv::get),
                             System.currentTimeMillis(),
                             dryRun);
                     totalFiles += timingsReport.evictedByAge() + timingsReport.evictedBySize();
