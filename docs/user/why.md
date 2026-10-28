@@ -32,7 +32,7 @@ Every claim links what backs it. Where JumpKick loses, the linked page says so.
 | Surface | What it does for the agent | Reference |
 |---|---|---|
 | `target/jk-results.md` | One token-cheap report per invocation: what ran, each failure at its `file:line` with a fix hint, what was skipped, what to run next | [Machine output](machine-output.md) |
-| MCP in the engine | `run` returns a verdict; `diagnostics`, `deps`, `why`, `snapshot` and `skill` complete the default list of six. Two agents on one engine each keep their own project bind | [MCP](mcp.md) |
+| MCP in the engine | `run` returns a verdict; `diagnostics`, `deps` and `skill` complete the default list of four, because every card costs the agent context on every turn. Two agents on one engine each keep their own project bind | [MCP](mcp.md) |
 | `jk skill` | The system prompt for a tool models were not trained on; jk keeps its section of `AGENTS.md` current on every build | [Skill](skill.md) · [Agents](agents.md) |
 | `jk graph` | graphify built in: a knowledge graph of code, config and docs that cites `file:line`, with nothing to install; indexed in seconds, with calls and overrides from the compiler. graphify's skill and MCP server read its `graph.json` unchanged | [Code graph](graph.md) |
 | Named test rungs | The cheap unit suite by default, `--guard` before sharing, `--all` nightly; the report discloses what did not run | [Test rungs](#test-rungs) |
