@@ -126,7 +126,7 @@ def _splice(doc: Path, name: str, text: str) -> None:
         return
     pre, rest = body.split(begin, 1)
     _, post = rest.split(end, 1)
-    doc.write_text(f"{pre}{begin}\n{text}\n{end}{post}", encoding="utf-8")
+    doc.write_text(f"{pre}{begin}\n{text}\n{end}{post}", encoding="utf-8", newline="\n")
     print(f"rendered graph-{name} into {doc.relative_to(JK_TREE)}")
 
 

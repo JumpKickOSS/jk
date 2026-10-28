@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""A Claude Code PreToolUse hook that answers a code search from jk's graph before the search runs.
+
+Prototype of the hook `jk agent install` is to ship (kanartist JK-4339): registered on `Grep|Glob`
+and `Read`, it reads the hook event on stdin and, when jk's compiler-resolved graph has a better
+answer than the text search about to run, returns it as `additionalContext`:
+
+- Grep for `Type.member`  -> that member's callers, each call site at `file:line`
+- Grep for `extends X` / `implements X` / a type name -> the types below it
+- Grep for a bare member name -> every declaration of that name (and how many collide)
+- Read of a whole source file over READ_LINES lines -> the file's declarations without bodies
+
+It says facts, not orders (imperative hook text reads as prompt injection), stays silent when the
+graph has nothing, and speaks at most MAX_NUDGES times per session.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+MAX_NUDGES = 8
+READ_LINES = 300
+BUDGET = 1500  # tokens for one injected answer
+SOURCE = (".java", ".kt", ".groovy")
+NOISE = {"class", "interface", "enum", "record", "extends", "implements", "new", "static", "public", "private",
+         "protected", "final", "abstract", "return", "void", "int", "long", "boolean", "char", "double", "float",
+         "byte", "short", "String", "Object", "this", "super", "import", "package", "fun", "val", "var", "override",
+         "java", "lang", "util", "org", "com", "null", "true", "false", "if", "for", "while", "s", "w", "b", "d"}
+MAX_OWNERS = 4  # declarations of one bare name whose callers are answered
+DECL = re.compile(r"^\s*(?:method|constructor|field)\b.*?\s([A-Z][\w$]*\.[\w$]+)\s", re.M)
+IDENT = re.compile(r"[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*")
+
+
+def jk(cwd: str, *args: str) -> str:
+    try:
+        p = subprocess.run(["jk", "-u", "-x", "-C", cwd, "graph", *args], capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return p.stdout.strip() if p.returncode == 0 else ""
+
+
+def useful(answer: str) -> bool:
+    if not answer:
+        return False
+    first = answer.lstrip().splitlines()[0] if answer.strip() else ""
+    return not first.startswith(("No ", "0 matches", "'")) and "declares no member" not in answer and "matches 0" not in answer
+
+
+def identifiers(pattern: str) -> list[str]:
+    """Names in a regex as written: escapes and classes dropped, `\\.` kept as a dot."""
+    text = re.sub(r"\\[bBsSdDwW]|\[[^\]]*\]|[(){}+*?^$|]|\\\(|\\\)", " ", pattern).replace("\\.", ".").replace("\\", " ")
+    out = []
+    for m in IDENT.finditer(text):
+        name = m.group(0).strip(".")
+        if name and name not in NOISE and len(name) > 2 and name not in out:
+            out.append(name)
+    return out
+
+
+def for_grep(cwd: str, pattern: str) -> str:
+    parts = []
+    for name in identifiers(pattern)[:3]:
+        if "." in name:
+            owner, member = name.rsplit(".", 1)
+            if owner[:1].isupper() and member[:1].islower():
+                callers = jk(cwd, "neighbors", name, "-R", "calls", "-b", str(BUDGET))
+                if useful(callers) and "<--" in callers:
+                    parts.append(f"Callers of {name}, resolved by the compiler; each call site's line is quoted "
+                                 f"under it as L<n>| text:\n{callers}")
+                    continue
+        if re.search(rf"\b(extends|implements)\b[^|]*\b{re.escape(name)}\b", pattern) or (name[:1].isupper() and "." not in name):
+            subs = jk(cwd, "find", "-I", name, "-b", str(BUDGET))
+            if useful(subs):
+                parts.append(f"Types below {name} (transitive, from the compiled classes):\n{subs}")
+                continue
+        if name[:1].islower() and "." not in name:
+            decls = jk(cwd, "find", name, "-t", "member", "-b", str(BUDGET))
+            if not useful(decls):
+                continue
+            # A search for a bare member name is nearly always "who calls it": answer that for each
+            # declaration when there are few, not with the declarations alone.
+            owners = [m.group(1) for m in DECL.finditer(decls)]
+            if 0 < len(owners) <= MAX_OWNERS:
+                answered = []
+                for owner in owners:
+                    callers = jk(cwd, "neighbors", owner, "-R", "calls", "-b", str(BUDGET // len(owners)))
+                    if useful(callers):
+                        answered.append(f"Callers of {owner}, resolved by the compiler; each call site's line is "
+                                        f"quoted under it as L<n>| text (none listed: nothing calls it):\n{callers}")
+                if answered:
+                    parts.append(f"Declarations named {name}:\n{decls}\n\n" + "\n\n".join(answered))
+                    continue
+            parts.append(f"Declarations named {name}:\n{decls}")
+    if not parts:
+        return ""
+    return ("jk's code graph has this search's answer, from the compiled classes. To edit a call site, Read "
+            "that file with offset and limit around its line (Edit needs the file read; the whole file is not "
+            "needed):\n\n"
+            + "\n\n".join(parts))[: BUDGET * 4 * 2]
+
+
+def for_read(cwd: str, tool_input: dict) -> str:
+    path = tool_input.get("file_path") or ""
+    if not path.endswith(SOURCE) or tool_input.get("offset") or tool_input.get("limit"):
+        return ""
+    try:
+        lines = sum(1 for _ in open(path, encoding="utf-8", errors="replace"))
+    except OSError:
+        return ""
+    if lines <= READ_LINES:
+        return ""
+    rel = os.path.relpath(path, cwd)
+    outline = jk(cwd, "read", rel, "-w", "structure", "-b", str(BUDGET))
+    if not useful(outline):
+        return ""
+    return (f"{rel} is {lines} lines. Its declarations, without bodies, each at its line, from jk's graph; "
+            f"Read the part you need with offset and limit:\n{outline}")[: BUDGET * 4 * 2]
+
+
+def main() -> int:
+    ev = json.load(sys.stdin)
+    cwd = ev.get("cwd") or os.getcwd()
+    state = Path("/tmp") / f"jk-graph-hook-{ev.get('session_id', 'none')}"
+    spoken = int(state.read_text()) if state.exists() else 0
+    if spoken >= MAX_NUDGES:
+        return 0
+    tool, tool_input = ev.get("tool_name"), ev.get("tool_input") or {}
+    if tool == "Grep":
+        text = for_grep(cwd, str(tool_input.get("pattern") or ""))
+    elif tool == "Glob":
+        text = for_grep(cwd, str(tool_input.get("pattern") or "").replace("*", " ").replace("/", " "))
+    elif tool == "Read":
+        text = for_read(cwd, tool_input)
+    else:
+        text = ""
+    log = os.environ.get("JK_GRAPH_HOOK_LOG")
+    if log:
+        with open(log, "a") as f:
+            f.write(json.dumps({"tool": tool, "input": tool_input, "injected": len(text)}) + "\n")
+    if not text:
+        return 0
+    state.write_text(str(spoken + 1))
+    if os.environ.get("JK_GRAPH_HOOK_MODE") == "replace":
+        # The graph's answer instead of the search, as graphify's strict mode does for a first Read:
+        # the agent gets the compiler's answer and no text search on top of it.
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": text + "\n\n(The text search was not run: this is its answer from the "
+                                               "compiled classes. Search again if you need something it does not cover.)"}}))
+        return 0
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": text}}))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

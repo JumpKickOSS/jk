@@ -62,3 +62,26 @@ prompt = """
 `StringUtils.containsIgnoreCase("ABC", "b")`; both should be true. Find the cause and fix it. Do
 not change the tests.
 """
+
+# Navigation-heavy: the callers reach the method through variables (`intRange.contains(15)`), so a
+# qualified search misses them, and the bare name collides with every other `contains` in the library.
+[tasks.commons-lang-rename-range-contains]
+repo   = "commons-lang"
+kind   = "rename-colliding"
+tools  = ["jk", "mvn"]
+prompt = """
+Rename the instance method `Range.contains(T)` to `includes`, keeping its behaviour, and update every
+caller, tests included. `Range.containsRange` and every other class's `contains` stay as they are.
+"""
+
+# Navigation-heavy, unfamiliar code: jk's own 680k-line tree, which no model was trained on. Two real
+# callers of an instance method; `.between(` matches about a hundred lines (ChronoUnit, Duration, ...).
+[tasks.jk-rename-codegraph-between]
+repo   = "jk"
+kind   = "rename-colliding"
+tools  = ["jk"]
+test   = ["jk", "-u", "-x", "-a", "test", "-m", "shared/code-graph"]
+prompt = """
+Rename the instance method `CodeGraph.between(String, String)` to `edgesBetween`, keeping its behaviour,
+and update every caller. Methods named `between` on other types stay as they are.
+"""

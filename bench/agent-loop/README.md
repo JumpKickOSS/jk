@@ -254,7 +254,7 @@ implement a method across a hierarchy, find a bug from its symptom. `change-task
 
 ```bash
 bench/agent-loop/change-tasks --list
-bench/agent-loop/change-tasks --task commons-lang-rename-indexof --arm jk --arm jk-nograph --runs 5
+bench/agent-loop/change-tasks --task commons-lang-rename-indexof --arm jk --arm jk-hooks --runs 5
 bench/agent-loop/change-tasks --render
 ```
 
@@ -269,9 +269,11 @@ does not, **claimed** is a DONE the tests refute.
 
 | Arm | Build tool | MCP | What it isolates |
 |---|---|---|---|
-| `jk` | jk | `jk mcp`, graph tools on the default list | the product as installed |
-| `jk-nograph` | jk | `jk mcp` with `query_graph`, `read_symbol`, `get_neighbors` and `find_symbols` disallowed | the graph, everything else equal |
+| `jk` | jk | `jk mcp` (its default list carries no graph cards) | the product as installed, and the no-graph baseline |
+| `jk-hooks` | jk | `jk mcp`, plus `wrappers/jk-graph-hook` on `Grep`, `Glob` and `Read`: the graph's answer (callers with each call's line quoted, subtypes, a long file's outline) beside the search | the graph, delivered where the agent already looks |
+| `jk-hooks-replace` | jk | as `jk-hooks`, but the answer replaces the search (the tool call is denied with it) | the graph instead of text search |
 | `mvn` | Maven | `wrappers/results-mcp` | the null hypothesis, as above |
+| `jk-graphify` | jk | `jk mcp` plus graphify's own install (`graphify claude install`: its CLAUDE.md block and hooks) and MCP server | jk's graph against graphify's, the build tool equal |
 | `mvn-graphify` | Maven | the wrapper plus graphify's MCP server, over a `graphify update .` index | a code graph added by hand |
 
 Each row records tokens (input, output, cache read and write), turns, wall time, the outcome, and
