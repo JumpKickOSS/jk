@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -42,6 +43,8 @@ import org.jspecify.annotations.Nullable;
  * this class adds for it, never the engine's whole environment. The shell that started the daemon
  * carries every {@code JK_REPO_*_TOKEN}, cloud key and {@code GIT_DIR}/{@code GIT_CONFIG_GLOBAL}
  * override, and all of it would otherwise reach git, its transport helpers and the user's hooks.
+ * What git does get is the caller's own {@code GIT_*} settings ({@link #passes}): a fetch is pinned
+ * by its commit, so they change how git reaches a remote, never what a build computes.
  */
 public final class GitCliExtension implements GitBackend {
 
@@ -427,12 +430,16 @@ public final class GitCliExtension implements GitBackend {
     }
 
     /**
-     * The child's whole environment: the worker allow-list, {@code SSH_AUTH_SOCK} so an ssh remote
-     * can still reach the user's agent (a socket path, not a secret), then {@code extras} on top.
+     * The child's whole environment: the worker allow-list, the caller's {@code GIT_*} settings that
+     * {@link #passes}, {@code SSH_AUTH_SOCK} so an ssh remote can still reach the user's agent (a
+     * socket path, not a secret), then {@code extras} on top.
      * The inherited map is cleared first — never the engine's own plus additions.
      */
     private static void replaceEnvironment(ProcessBuilder pb, Map<String, String> extras) {
         Map<String, String> layered = new LinkedHashMap<>();
+        BuildEnv.callerEnv().forEach((name, value) -> {
+            if (passes(name)) layered.put(name, value);
+        });
         String agent = BuildEnv.get("SSH_AUTH_SOCK");
         if (agent != null && !agent.isBlank()) layered.put("SSH_AUTH_SOCK", agent);
         layered.putAll(extras);
@@ -440,6 +447,34 @@ public final class GitCliExtension implements GitBackend {
         env.clear();
         env.putAll(WorkerEnv.strict().with(layered).environment());
     }
+
+    /**
+     * Whether the caller's {@code name} reaches git: its {@code GIT_*} transport, auth and tracing
+     * settings, but not the variables that say which repository to work on (a git hook running
+     * {@code jk} has {@code GIT_DIR} and {@code GIT_INDEX_FILE} pointing at the user's checkout, not
+     * jk's cache), nor the {@code GIT_CONFIG_COUNT} channel this class injects credentials through.
+     */
+    static boolean passes(String name) {
+        if (!name.startsWith("GIT_") || GIT_LOCATION.contains(name)) return false;
+        return !name.equals("GIT_CONFIG_COUNT")
+                && !name.equals("GIT_CONFIG_PARAMETERS")
+                && !name.startsWith("GIT_CONFIG_KEY_")
+                && !name.startsWith("GIT_CONFIG_VALUE_");
+    }
+
+    private static final Set<String> GIT_LOCATION = Set.of(
+            "GIT_DIR",
+            "GIT_WORK_TREE",
+            "GIT_INDEX_FILE",
+            "GIT_INDEX_VERSION",
+            "GIT_OBJECT_DIRECTORY",
+            "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+            "GIT_COMMON_DIR",
+            "GIT_NAMESPACE",
+            "GIT_CEILING_DIRECTORIES",
+            "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+            "GIT_PREFIX",
+            "GIT_QUARANTINE_PATH");
 
     /** Copy the child's merged stdout/stderr into {@code buf} on a daemon thread until EOF. */
     private static Thread drain(Process p, ByteArrayOutputStream buf) {

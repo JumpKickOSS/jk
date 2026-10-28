@@ -849,6 +849,19 @@ fixture    = "server/guard/fixtures/one-env-surface"
 instead    = "BuildEnv.get / ambient() / forModule(dir) for anything the request decides; ProcessEnv.get only for jk's own engine settings and whether the machine is a CI runner"
 why        = "the engine is a daemon: System.getenv answers from the shell that started it, not the jk command being served"
 
+# G117. A child process starts from a copy of the daemon's environment, so a read of
+# ProcessBuilder.environment() is a System.getenv by another name and a write that does not clear it
+# first hands the child whichever shell started the engine. The spawners that build a child's
+# environment on purpose are baselined; a new one composes it through WorkerEnv or TaskExec.
+[guards.child-env-owner]
+kind       = "forbid"
+scope      = ["server/*", "shared/*", "plugins/*"]
+signatures = ["java.lang.ProcessBuilder#environment(**)"]
+owner      = "cc.jumpkick.plugin.build.TaskExec"
+baseline   = true
+instead    = "WorkerEnv.strict() / forModule(...).environment() for a worker, TaskExec.ToolRun for a plugin, BuildEnv.callerEnv() for a step that hands on the caller's shell"
+why        = "a child's environment copied from the daemon is the engine's shell, not the jk command being served"
+
 # G42. The mirror of G37 for the write direction: every hand-rolled tree copy shared the same three
 # defects (createDirectories per file, no byte-identity check, walk attributes discarded).
 [guards.tree-copy-owner]
