@@ -61,7 +61,7 @@ An arm whose tool is not installed records `not installed` and is left out of th
 Tokens are characters / 4 for every arm (graphify's own benchmark uses the same estimate). An
 answer *names* a truth entity when it cites the entity's file at a line inside the entity's span
 (a method: its first body line minus six to its last; a type: its declaration to its last line);
-`grep-read` also names every entity in a file it read. **Recall** is the share of the answer named.
+`grep-read` also names every entity in a file it read, and any arm names one by citing it by name: a method as `Type.member`, a type by its qualified name (RepoQL cites `#symbol=` without lines). **Recall** is the share of the answer named.
 **Precision** is the share of cited code locations that belong to the answer; a graph's context
 nodes lower it on purpose, so it is reported, not ranked. **Tokens per found** is all tokens over
 all named entities: the cost of one correct fact.

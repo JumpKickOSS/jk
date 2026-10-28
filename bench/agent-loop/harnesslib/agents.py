@@ -46,6 +46,7 @@ class Task:
     system: str
     user: str
     servers: dict
+    shell: bool = False  # Bash beside the file tools (Claude Code only)
 
 
 TASK: Task | None = None
@@ -234,7 +235,7 @@ def claude_code(tool: str, sandbox: Path, model: str, max_turns: int, max_second
         "--max-turns", str(max_turns),
         "--system-prompt", system_prompt(tool, sandbox, server),
         "--mcp-config", json.dumps(mcp_config), "--strict-mcp-config",
-        "--tools", "Read,Edit,Write,Glob,Grep",
+        "--tools", "Read,Edit,Write,Glob,Grep" + (",Bash" if TASK and TASK.shell else ""),
         "--permission-mode", "bypassPermissions", "--dangerously-skip-permissions",
         "--no-session-persistence",
     ]

@@ -524,12 +524,29 @@ def mentions(text: str) -> set[tuple[str, int]]:
     return out
 
 
+def qualified(t: dict) -> str:
+    """A type's qualified name from its path and label: src/main/java/a/b/Owner.java, Owner → a.b.Owner."""
+    path = t["path"]
+    for root in ("/java/", "/kotlin/", "/groovy/"):
+        if root in "/" + path:
+            pkg = ("/" + path).split(root, 1)[1].rsplit("/", 1)[0].replace("/", ".")
+            return f"{pkg}.{t['label']}" if pkg else t["label"]
+    return t["label"]
+
+
 def grade(q: dict, text: str, read_files: set[str]) -> dict:
     ms = mentions(text)
+    types = q["kind"] == "implementers"
+
+    def symbol(t: dict) -> bool:
+        # A citation by name, as RepoQL's #symbol= fragments give: a method by `Type.member`, a type
+        # by its qualified name. Every arm is graded the same way.
+        name = qualified(t) if types else t["label"]
+        return re.search(rf"(?<![\w$]){re.escape(name)}(?![\w$])", text) is not None
 
     def named(t: dict) -> bool:
         return (any(_same(p, t["path"]) and t["lines"][0] - ANNOTATIONS <= line <= t["lines"][1] for p, line in ms)
-                or any(_same(r, t["path"]) for r in read_files))
+                or any(_same(r, t["path"]) for r in read_files) or symbol(t))
 
     found = sum(1 for t in q["truth"] if named(t))
     useful = sum(1 for p, line in ms
@@ -572,6 +589,7 @@ def run(names: list[str], arms: list[str], out_dir: Path) -> None:
                     if text.startswith("not installed"):
                         row["error"] = "not installed"
                     f.write(json.dumps(row) + "\n")
+                    f.flush()
                 print(f"{name} {arm}: {len(qs['questions'])} questions")
             if any(a.startswith("rql") for a in arms):
                 sh(["rql", "host", "stop"], tree, timeout=300)
@@ -712,7 +730,7 @@ def edges(names: list[str], out_dir: Path) -> None:
 MCP_SERVERS = {
     "jk": (["jk", "mcp"], {}),
     "jk-extended": (["jk", "mcp"], {"extended": True}),
-    "graphify": (["graphify", "mcp"], {}),
+    "graphify": ([str(Path.home() / ".local/share/uv/tools/graphifyy/bin/graphify-mcp")], {}),
     "rql": (["rql", "mcp"], {}),
 }
 
@@ -734,13 +752,22 @@ def cards(names: list[str], out_dir: Path) -> None:
                     p.stdin.write(json.dumps({"jsonrpc": "2.0", "id": i, "method": method, "params": prm}) + "\n")
                     p.stdin.flush()
                     while True:
-                        msg = json.loads(p.stdout.readline())
+                        line = p.stdout.readline()
+                        if not line:
+                            raise RuntimeError(f"{server} closed before answering {method}")
+                        try:
+                            msg = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue  # a log line on stdout
                         if msg.get("id") == i:
                             return msg.get("result") or {}
                 ask(1, "initialize", {"protocolVersion": "2024-11-05", "capabilities": {},
                                       "clientInfo": {"name": "graph-retrieval-bench", "version": "1"}})
                 p.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
                 tools = ask(2, "tools/list", params).get("tools") or []
+            except RuntimeError as failed:
+                print(failed)
+                continue
             finally:
                 p.kill()
             text = json.dumps(tools, separators=(",", ":"))
