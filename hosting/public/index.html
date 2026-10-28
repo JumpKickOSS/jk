@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>JumpKick — the JVM build system built for coding agents</title>
-  <meta name="description" content="JumpKick (jk) is the JVM build system built for coding agents and the humans supervising them: Java, Kotlin, and Groovy on Maven Central, with MCP, a results file, a code graph, a shared action cache, and batteries included." />
+  <meta name="description" content="JumpKick (jk) is the JVM build system built for coding agents and the humans supervising them: Java, Kotlin, and Groovy on Maven Central, with MCP, a results file, a shared action cache, and batteries included." />
   <link rel="icon" href="jk-logo.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -671,7 +671,7 @@
         <li><code>target/jk-results.md</code>: one token-cheap report per run, each failure at its <code>file:line</code> with a fix hint, and what was skipped.</li>
         <li>MCP built into the engine: <code>run</code> returns a verdict, <code>deps</code> and <code>manifest</code> edit the project and relock.</li>
         <li><code>jk skill</code>, the playbook for a tool models were not trained on, kept current in your <code>AGENTS.md</code>.</li>
-        <li><code>jk graph</code>: a code knowledge graph that answers within a token budget, in place of grep-and-read turns. Built in, with no Python toolchain or add-on to install, and kept current by every build.</li>
+        <li><code>jk graph</code>: graphify built in. A code knowledge graph with no Python toolchain, indexed in seconds, with call edges from the compiler; graphify's skill and MCP server read it unchanged.</li>
         <li>Named test rungs: the cheap unit suite by default, <code>--guard</code> before you share, <code>--all</code> nightly.</li>
         <li>Measured on 165 broken builds: agents reach green in as few or fewer turns than on Maven or Gradle.</li>
       </ul>

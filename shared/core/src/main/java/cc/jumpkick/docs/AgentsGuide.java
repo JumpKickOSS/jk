@@ -21,45 +21,19 @@ public final class AgentsGuide {
     public static final String SECTION = """
             ## JumpKick
 
-            This project builds with **JumpKick** (`jk`), not Maven or Gradle. Run `jk skill` once per
-            session — or call the MCP tool `skill` / read `jk://skill` — before the first build. jk
-            keeps this section current (`jk skill agents`); put project rules outside the markers.
+            This project builds with **JumpKick** (`jk`), not Maven or Gradle. `jk skill <topic>` (MCP
+            `skill`) has details when you need them. jk rewrites this section; put project rules outside
+            the markers.
 
-            ### Never
-
-            - Do not add `pom.xml`, `build.gradle`, or `build.gradle.kts`. Do not run `mvn` or `./gradlew`.
-            - Do not scrape the human terminal. With `-a` (`--agent`) or `JK_AGENT=1`, stdout is the verdict.
-              Otherwise it is drawn for people. MCP `run` returns that same verdict.
-            - Do not edit `jk-guards-baseline.toml`. A guard exemption is an `allow` entry with a reason,
-              and that is the user's call. `jk guard explain <id>` says what to do instead.
-
-            ### Files
-
-            - `jk.toml` — the manifest.
-            - `jk-lock.toml` — the lockfile, committed. `jk build` does not re-resolve while it is valid.
-            - `target/jk-results.md` — the human report. Agents read the verdict: MCP `run`, or `jk -a`.
-            - `node = 24` in a module's `jk.toml` pins its Node.js; jk provisions it and locks the exact
-              release. Use `jk node exec -- <cmd>` or `jk node run <script>`, never a host `node` or `npm`.
-
-            ### Finding code
-
-            `jk graph query "<question>"` answers where something is and how it connects, with `file:line`
-            for each hit, within a token budget. `jk graph read <Type.method>` prints one declaration, not
-            the whole file; `jk graph rules <file>` lists the guard rules that apply before you edit it.
-            Prefer these to grep and whole-file reads.
-
-            ### Loop
-
-            `jk test` (or `run(kind=test)`) → read the verdict → edit → `jk format` → `jk test`. Default
-            `jk test` is the unit suite. `jk test -f` names the tests an edit touched. Do not pass `--all`
-            as a habit. `jk guard` before handing work back.
-
-            ### MCP
-
-            The engine serves MCP on loopback. `jk engine status -O jsonl` includes `mcpUrl`. Pass
-            `dir` on the first call; that binds the connection. Tools: `run`, `diagnostics`, `deps`,
-            `why`, `skill`. `deps` edits `jk.toml` and relocks. Other tools: `tools/list` with
-            `extended` true.
+            - Loop: `jk -a test` (MCP `run`) → read the verdict → edit → rerun. The verdict names each
+              error's file and line with its source line; act on it rather than the terminal or
+              `target/jk-results.md`. `jk -a build` (`run(kind=build)`) also packages.
+            - Before handing work back: `jk format`, then `jk guard`.
+            - `jk add g:a` / `jk remove g:a` (MCP `deps`) edit `jk.toml` and relock `jk-lock.toml`, which
+              is committed.
+            - Never add `pom.xml` or Gradle files, or run `mvn` or `./gradlew`.
+            - Never edit `jk-guards-baseline.toml`; `jk guard explain <id>` says what to do instead.
+            - `node = N` in `jk.toml` pins Node.js: use `jk node exec -- <cmd>`, never a host `node` or `npm`.
             """;
 
     /** What a sync did to the file. */
