@@ -123,13 +123,6 @@ public final class BuildEnv {
     public static final List<String> JDK_ROOT = List.of("JK_JDKS_DIR");
 
     /**
-     * Whether the shell running {@code jk} is a CI runner ({@code CI}): a guard under CI checks
-     * rather than writes. Forwarded by exact name like {@link #JDK_ROOT}, because the daemon's own
-     * environment is whichever shell started it; it enters no action key and seeds no test JVM.
-     */
-    public static final List<String> RUNNER = List.of("CI");
-
-    /**
      * What a front-end build reads from the shell that runs it: {@code NODE_ENV}, and every variable
      * under a framework's public prefix ({@code VITE_API_URL}). Forwarded like {@link #PROXY}, by
      * name and prefix, because the engine is a daemon; they reach a node step's process and enter
@@ -211,21 +204,26 @@ public final class BuildEnv {
     }
 
     /**
-     * {@code name} as the request being served sees it: its shell first, then this process's own
-     * environment. Resolved on every call, so {@code BuildEnv::get} is safe to hold in a long-lived
-     * object; off a request it is {@link ProcessEnv#get}.
+     * {@code name} as the request being served sees it: the session's forwarded values, then the
+     * caller's whole shell ({@link RequestShell}), where an unset name stays unset. Only a request
+     * that carried no shell (MCP, HTTP, a test) falls back to this process's own environment.
+     * Resolved on every call, so {@code BuildEnv::get} is safe to hold in a long-lived object.
      */
     public static @Nullable String get(String name) {
-        String fromClient = clientEnv().get(name);
-        return fromClient != null ? fromClient : ProcessEnv.get(name);
+        return over(clientEnv()).apply(name);
     }
 
-    /** {@code clientEnv} over this process's own environment; a null map is just the latter. */
+    /**
+     * {@code clientEnv} over the request's shell when one is bound, else over this process's own
+     * environment. The shell is captured now, like {@code clientEnv}.
+     */
     public static Function<String, @Nullable String> over(@Nullable Map<String, String> clientEnv) {
-        if (clientEnv == null || clientEnv.isEmpty()) return ProcessEnv::get;
+        RequestShell shell = RequestShell.current();
+        Function<String, @Nullable String> below = shell != null ? shell::get : ProcessEnv::get;
+        if (clientEnv == null || clientEnv.isEmpty()) return below;
         return name -> {
             String fromClient = clientEnv.get(name);
-            return fromClient != null ? fromClient : ProcessEnv.get(name);
+            return fromClient != null ? fromClient : below.apply(name);
         };
     }
 

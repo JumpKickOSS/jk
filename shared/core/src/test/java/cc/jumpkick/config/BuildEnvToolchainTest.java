@@ -3,10 +3,14 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.run.ContextPropagator;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -111,6 +115,40 @@ class BuildEnvToolchainTest {
         SessionContext.runWhere(sessionWith(Map.of("CI", "false")), () -> {
             assertThat(held.apply("CI")).isEqualTo("false");
         });
+    }
+
+    @Test
+    void the_callers_shell_answers_and_an_unset_name_stays_unset() throws Exception {
+        // PATH is set in this process, so a fallback to it would be visible.
+        String path = RequestShell.where(Map.of("CI", "true"), () -> BuildEnv.get("PATH"));
+        assertThat(path).isNull();
+        assertThat(RequestShell.where(Map.of("CI", "true"), () -> BuildEnv.get("CI")))
+                .isEqualTo("true");
+    }
+
+    @Test
+    void forwarded_values_win_over_the_shell() throws Exception {
+        String ci = RequestShell.where(
+                Map.of("CI", "false"),
+                () -> SessionContext.where(sessionWith(Map.of("CI", "true")), () -> BuildEnv.get("CI")));
+        assertThat(ci).isEqualTo("true");
+    }
+
+    @Test
+    void the_shell_follows_work_onto_pool_threads() throws Exception {
+        String seen = RequestShell.where(Map.of("JK_SHELL_PROBE", "here"), () -> {
+            Callable<String> read = ContextPropagator.wrapCallable(() -> BuildEnv.get("JK_SHELL_PROBE"));
+            try (ExecutorService pool = Executors.newSingleThreadExecutor()) {
+                return pool.submit(read).get();
+            }
+        });
+        assertThat(seen).isEqualTo("here");
+    }
+
+    @Test
+    void the_shell_never_prints_its_values() throws Exception {
+        String text = RequestShell.where(Map.of("TOKEN", "s3cret"), () -> String.valueOf(RequestShell.current()));
+        assertThat(text).doesNotContain("s3cret").contains("1 variables");
     }
 
     private static Session sessionWith(Map<String, String> clientEnv) {
