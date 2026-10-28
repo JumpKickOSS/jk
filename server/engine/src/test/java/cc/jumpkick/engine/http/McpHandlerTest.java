@@ -82,7 +82,7 @@ class McpHandlerTest {
         // The instructions are the loop and the door to the rest — the only names a default
         // client can see; the CLI mirrors and the event stream are the playbook's business.
         String instructions = String.valueOf(result.get("instructions"));
-        assertThat(instructions).contains("run", "diagnostics", "deps", "why", "skill");
+        assertThat(instructions).contains("run", "skill");
         assertThat(instructions).doesNotContain("status", "history");
     }
 

@@ -15,9 +15,9 @@ Run, read the verdict, edit, rerun. The verdict is the whole answer; scrape noth
 |---|---|---|
 | test | `jk -a test` | `run()` |
 | build | `jk -a build` | `run(kind=build)` |
-| install for a sibling project | `jk -a snapshot` | `snapshot()` |
+| install for a sibling project | `jk -a snapshot` | `run(kind=snapshot)` |
 | add / remove a dep | `jk add g:a`, `jk remove g:a` | `deps(action=add, coords=["g:a"])` |
-| why this version | `jk why g:a` | `why(coord=g:a)` |
+| why this version | `jk why g:a` | `why` (extended list) |
 | every problem, with lines | `jk results -A` | `diagnostics()` |
 | one skill topic | `jk skill <topic>` | `skill(topic=…)` |
 

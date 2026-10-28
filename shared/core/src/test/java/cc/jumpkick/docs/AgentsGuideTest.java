@@ -96,7 +96,7 @@ class AgentsGuideTest {
                 .contains("jk skill")
                 .doesNotContain("jk graph")
                 .endsWith("\n");
-        assertThat(AgentsGuide.SECTION.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(1_200);
+        assertThat(AgentsGuide.SECTION.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(800);
         assertThat(AgentsGuide.SECTION).doesNotContain(AgentsGuide.BEGIN).doesNotContain(AgentsGuide.END);
     }
 
