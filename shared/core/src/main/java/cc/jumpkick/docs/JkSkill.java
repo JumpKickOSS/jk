@@ -27,8 +27,7 @@ public final class JkSkill {
             "guards",
             "layout",
             "jdk",
-            "engine",
-            "graph");
+            "engine");
 
     /**
      * Project-relative skills directory from the Agent Skills layout: {@code <project>/.agents/skills}.

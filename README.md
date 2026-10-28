@@ -52,10 +52,9 @@ day. Every surface is built for that loop:
   project.
 - **`jk skill`** — the playbook for a tool models were not trained on; jk keeps its section of
   your `AGENTS.md` current.
-- **`jk graph`** — a code knowledge graph that answers "where is it, what calls it" within a
-  token budget and cites `file:line`, instead of grep-and-read turns. It is built in: no Python
-  toolchain, no separate indexer, no add-on to buy. Call and override edges come from the
-  compiler, and every build keeps the graph current, so an agent can count on it in every project.
+- **`jk graph`** — graphify built in: a code knowledge graph that cites `file:line`, with
+  no Python toolchain, indexed in seconds, with call and override edges from the compiler.
+  graphify's skill and MCP server read its `graph.json` unchanged.
 - **Named test rungs** — `jk test` is the cheap unit suite, `--guard` the bar before sharing,
   `--all` the nightly; the report says what was not run.
 
@@ -150,7 +149,7 @@ Full pitch and the feature matrix, losses included: **[Why JumpKick](docs/user/w
 |---|---|---|---|
 | Build file | TOML data | XML | Kotlin / Groovy program |
 | Lockfile | Always, with checksums | None | Opt-in verification |
-| Agent I/O | Results file, MCP, skill, code graph | Log scrape | Log scrape |
+| Agent I/O | Results file, MCP, skill | Log scrape | Log scrape |
 | Work avoidance | Content-addressed action cache, on by default | Recompiles | Build cache, opt-in |
 | Between builds | One capped engine for every project | Nothing resident | A daemon per build environment |
 | Conflict policy | Highest wins, enforced BOMs, prose diagnostics | Nearest wins | Highest wins, dependency trees |

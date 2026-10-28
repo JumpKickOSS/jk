@@ -21,8 +21,6 @@ Run, read the verdict, edit, rerun. The verdict is the whole answer; scrape noth
 | every problem, with lines | `jk results -A` | `diagnostics()` |
 | one skill topic | `jk skill <topic>` | `skill(topic=…)` |
 
-The code graph finds code without grep: `jk graph neighbors T.m -R calls` lists every caller with each call's line, `jk graph read T.m` reads one symbol, `jk graph find -I T` lists implementations and overrides, `jk graph query "…"` answers a question with `file:line`. Over MCP they are `get_neighbors`, `read_symbol`, `find_symbols` and `query_graph`, on the extended `tools/list`.
-
 A sibling project that must see your edits to a library gets them through `jk -a snapshot`: the project is installed to `~/.m2` as `<version>-SNAPSHOT`, replaced each run, like a Maven snapshot; the sibling depends on `g:a:<version>-SNAPSHOT`. `jk install` is for apps; `jk release` cuts a library.
 
 A dependency edit relocks in the same call. Registered as `jk mcp`, tools take no `dir`; over HTTP, pass `dir` (the root) on the first call.
@@ -32,7 +30,7 @@ A dependency edit relocks in the same call. Registered as `jk mcp`, tools take n
 ```
 FAIL build app · 2 errors · 0.9s
 E src/main/java/app/Web.java:3:8 package org.springframework.web.bind.annotation does not exist
-  +1 more in Web.java
+  +1 more at Web.java:4
 FIX deps(add, org.springframework.boot:spring-boot-starter-web)
 ```
 
@@ -40,4 +38,4 @@ One line per problem: `E path:line:col message` (project-relative), `T Class#met
 
 ## Topics
 
-dependencies, tests, workspaces, lockfile, imports, plugins, guards, layout, jdk, engine, graph.
+dependencies, tests, workspaces, lockfile, imports, plugins, guards, layout, jdk, engine.
