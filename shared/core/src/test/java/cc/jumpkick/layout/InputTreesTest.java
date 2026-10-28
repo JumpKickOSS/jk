@@ -17,6 +17,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -442,6 +443,27 @@ class InputTreesTest {
     }
 
     @Test
+    void a_file_the_job_rewrote_itself_is_read_as_rewritten_and_not_reported(@TempDir Path dir) throws Exception {
+        Path src = Files.createDirectories(dir.resolve("src/main/java/a"));
+        Path a = Files.writeString(src.resolve("A.java"), "class A {}");
+        Files.writeString(src.resolve("notes.txt"), "x");
+        inRequest(() -> {
+            assertThat(InputTrees.moduleSources(dir, ".java"))
+                    .containsExactly(a.toAbsolutePath().normalize());
+            long walks = PathUtil.walks();
+            write(a, "class A {\n}\n");
+            InputTrees.rewritten(List.of(a));
+            assertThat(InputTrees.changedSinceWalk(10)).isEmpty();
+            InputTrees.FileRef ref = InputTrees.of(src).files().stream()
+                    .filter(f -> f.name().equals("A.java"))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(ref.identity()).isEqualTo(identity(a));
+            assertThat(PathUtil.walks()).as("answered from the job's walk").isEqualTo(walks);
+        });
+    }
+
+    @Test
     void an_edit_a_new_file_and_a_deletion_after_the_walk_are_each_named(@TempDir Path dir) throws Exception {
         Path src = Files.createDirectories(dir.resolve("src/main/java/a"));
         Path edited = src.resolve("A.java");
@@ -482,6 +504,14 @@ class InputTreesTest {
         Files.writeString(Files.createDirectories(dir.resolve("src")).resolve("A.java"), "class A {}");
         InputTrees.coverModule(dir);
         assertThat(InputTrees.changedSinceWalk(10)).isEmpty();
+    }
+
+    private static StatIdentity identity(Path file) {
+        try {
+            return StatIdentity.of(file.toAbsolutePath().normalize());
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private static void write(Path file, String text) {

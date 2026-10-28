@@ -74,6 +74,9 @@ public final class NewJkBuildRenderer {
             sb.append("\n[native]\n");
             sb.append("enabled    = \"always\"\n");
         }
+        // A new project starts formatted, so `jk guard` keeps it that way from the first change.
+        sb.append("\n[format]\n");
+        sb.append("enforce    = true\n");
 
         if (inputs.plugin()) {
             // The SDK the plugin compiles against. A `main` dep, NOT `provided`: the worker forks

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.docs;
 
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -17,7 +19,7 @@ public final class AgentsGuide {
     public static final String BEGIN = "<!-- BEGIN:jumpkick -->";
     public static final String END = "<!-- END:jumpkick -->";
 
-    /** The guide between the markers, LF-terminated. */
+    /** The guide between the markers, LF-terminated, for a project that does not enforce formatting. */
     public static final String SECTION = """
             ## JumpKick
 
@@ -26,12 +28,17 @@ public final class AgentsGuide {
 
             - Loop: `jk -a test` (MCP `run`) → edit what the verdict names (file, line, source line) →
               rerun. Ignore the terminal and `target/jk-results.md`.
-            - Before handing work back: `jk format`, then `jk guard`.
+            - Before handing work back: `jk guard`.
             - `jk add g:a` / `jk remove g:a` (MCP `deps`) edit `jk.toml` and relock `jk-lock.toml`.
             - Never add `pom.xml` or Gradle files, run `mvn` or `./gradlew`, or edit
               `jk-guards-baseline.toml` (`jk guard explain <id>` says what to do).
             - `node = N` in `jk.toml` pins Node.js: `jk node exec -- <cmd>`, never a host `node` or `npm`.
             """;
+
+    /** {@link #SECTION} for a project whose {@code [format] enforce} has {@code jk guard} format. */
+    public static final String ENFORCED_SECTION = SECTION.replace(
+            "- Before handing work back: `jk guard`.",
+            "- Before handing work back: `jk guard`; it formats what you changed.");
 
     /** What a sync did to the file. */
     public enum Change {
@@ -51,12 +58,33 @@ public final class AgentsGuide {
 
     /** jk's section with its markers, LF-terminated. */
     public static String block() {
-        return BEGIN + "\n" + SECTION + END + "\n";
+        return block(false);
+    }
+
+    /** As {@link #block()}, for a project whose {@code [format] enforce} is {@code enforce}. */
+    public static String block(boolean enforce) {
+        return BEGIN + "\n" + (enforce ? ENFORCED_SECTION : SECTION) + END + "\n";
     }
 
     /** A new {@code AGENTS.md}: a title and jk's section. */
     public static String newFile() {
-        return "# AGENTS.md\n\n" + block();
+        return newFile(false);
+    }
+
+    /** As {@link #newFile()}, for a project whose {@code [format] enforce} is {@code enforce}. */
+    public static String newFile(boolean enforce) {
+        return "# AGENTS.md\n\n" + block(enforce);
+    }
+
+    /** Whether {@code dir}'s {@code jk.toml} enforces formatting; {@code false} without one that parses. */
+    static boolean enforces(Path dir) {
+        Path manifest = ManifestPaths.manifestIn(dir);
+        if (!Files.isRegularFile(manifest)) return false;
+        try {
+            return JkBuildParser.parse(manifest).format().enforce();
+        } catch (Exception unreadable) {
+            return false;
+        }
     }
 
     /**
@@ -67,12 +95,13 @@ public final class AgentsGuide {
      */
     public static Change sync(Path dir) throws IOException {
         Path file = dir.resolve(FILE);
+        boolean enforce = enforces(dir);
         if (!Files.exists(file)) {
-            Files.writeString(file, newFile(), StandardCharsets.UTF_8);
+            Files.writeString(file, newFile(enforce), StandardCharsets.UTF_8);
             return Change.CREATED;
         }
         String text = Files.readString(file, StandardCharsets.UTF_8);
-        String updated = apply(text, file);
+        String updated = apply(text, file, enforce);
         if (updated.equals(text)) return Change.UNCHANGED;
         Files.writeString(file, updated, StandardCharsets.UTF_8);
         return text.contains(BEGIN) ? Change.UPDATED : Change.INSERTED;
@@ -90,7 +119,7 @@ public final class AgentsGuide {
         if (!text.contains(BEGIN)) return Change.ABSENT;
         String updated;
         try {
-            updated = apply(text, file);
+            updated = apply(text, file, enforces(dir));
         } catch (IOException malformed) {
             return Change.UNCHANGED;
         }
@@ -100,9 +129,9 @@ public final class AgentsGuide {
     }
 
     /** {@code text} with jk's section current: replaced between the markers, or inserted. */
-    static String apply(String text, Path file) throws IOException {
+    static String apply(String text, Path file, boolean enforce) throws IOException {
         String eol = text.contains("\r\n") ? "\r\n" : "\n";
-        String block = block().replace("\n", eol);
+        String block = block(enforce).replace("\n", eol);
         int begin = text.indexOf(BEGIN);
         if (begin < 0) {
             if (text.contains(END)) throw malformed(file, "has " + END + " with no " + BEGIN);

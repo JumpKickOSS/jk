@@ -36,7 +36,7 @@ Topics: `dependencies`, `tests`, `workspaces`, `lockfile`, `imports`, `plugins`,
 3. Detail past the cap is MCP **`diagnostics`** (`file=`). Over `jk mcp` the tools take no `dir`;
    over HTTP, pass `dir` on the first call and it binds the connection.
 4. Edit dependencies with **`deps`** (it relocks) or `jk add` / `jk remove`. Then `run()`.
-5. Before handing work back: `jk format`, then `jk guard`.
+5. Before handing work back: `jk guard`; with `[format] enforce` it also formats what you changed.
 
 Other tools (history, explain, graph, jdk, …) are a `tools/list` with `{"extended": true}`.
 
