@@ -55,6 +55,7 @@ class ClientEnvForwardTest {
             if (BuildEnv.PROXY.contains(e.getKey())) continue; // by name, tested below
             if (BuildEnv.DISPLAY.contains(e.getKey())) continue; // by name, tested below
             if (BuildEnv.JDK_ROOT.contains(e.getKey())) continue; // by name, tested below
+            if (BuildEnv.RUNNER.contains(e.getKey())) continue; // by name, tested below
             assertThat(ClientEnvForward.names()).contains(e.getKey());
             assertThat(e.getValue()).as(e.getKey()).isEqualTo(System.getenv(e.getKey()));
         }
@@ -144,6 +145,18 @@ class ClientEnvForwardTest {
             assertThat(ClientEnvForward.names()).doesNotContain("JK_JDKS_DIR");
         } finally {
             System.clearProperty("jk.env.JK_JDKS_DIR");
+        }
+    }
+
+    /** A guard decides check-or-write by the runner of the shell running {@code jk}, not the daemon's. */
+    @Test
+    void it_forwards_ci_so_a_guard_on_a_runner_checks() {
+        System.setProperty("jk.env.CI", "true");
+        try {
+            assertThat(ClientEnvForward.resolve()).containsEntry("CI", "true");
+            assertThat(ClientEnvForward.names()).doesNotContain("CI");
+        } finally {
+            System.clearProperty("jk.env.CI");
         }
     }
 }

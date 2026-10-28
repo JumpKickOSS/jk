@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -70,7 +71,23 @@ public final class FormatFreshnessIndex {
     }
 
     public record Split(
-            List<Path> dirtyJava, List<Path> dirtyKotlin, List<Path> dirtyGroovy, List<Path> dirtyScala, int clean) {}
+            List<Path> dirtyJava, List<Path> dirtyKotlin, List<Path> dirtyGroovy, List<Path> dirtyScala, int clean) {
+
+        /** This split with every dirty file outside {@code only} counted clean: left as it is. */
+        public Split within(Set<Path> only) {
+            List<List<Path>> kept = new ArrayList<>();
+            int left = 0;
+            for (List<Path> dirty : List.of(dirtyJava, dirtyKotlin, dirtyGroovy, dirtyScala)) {
+                List<Path> in = new ArrayList<>();
+                for (Path p : dirty) {
+                    if (only.contains(p.toAbsolutePath().normalize())) in.add(p);
+                    else left++;
+                }
+                kept.add(List.copyOf(in));
+            }
+            return new Split(kept.get(0), kept.get(1), kept.get(2), kept.get(3), clean + left);
+        }
+    }
 
     /** Partition sources into dirty (identity mismatch or unknown) vs already-clean. */
     public Split partition(List<Path> javaFiles, List<Path> kotlinFiles) {

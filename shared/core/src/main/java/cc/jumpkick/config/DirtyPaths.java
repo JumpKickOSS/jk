@@ -39,7 +39,7 @@ public final class DirtyPaths {
     }
 
     /** Unstaged + staged vs HEAD, plus untracked. {@code null} on git failure. */
-    static @Nullable List<String> workingTree(Path root) {
+    public static @Nullable List<String> workingTree(Path root) {
         List<String> diff = gitDiffNameOnly(root, "HEAD");
         if (diff == null) return null;
         List<String> untracked = gitUntracked(root);

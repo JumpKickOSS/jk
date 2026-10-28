@@ -97,7 +97,28 @@ class AgentsGuideTest {
                 .doesNotContain("jk graph")
                 .endsWith("\n");
         assertThat(AgentsGuide.SECTION.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(800);
+        assertThat(AgentsGuide.ENFORCED_SECTION.getBytes(StandardCharsets.UTF_8).length)
+                .isLessThanOrEqualTo(800);
         assertThat(AgentsGuide.SECTION).doesNotContain(AgentsGuide.BEGIN).doesNotContain(AgentsGuide.END);
+        assertThat(AgentsGuide.SECTION).doesNotContain("jk format");
+    }
+
+    @Test
+    void a_project_that_enforces_formatting_is_told_guard_formats(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("jk.toml"), """
+                name = "app"
+                group = "com.example"
+                version = "0.1.0"
+
+                [format]
+                enforce = true
+                """);
+        assertThat(AgentsGuide.sync(dir)).isEqualTo(Change.CREATED);
+        assertThat(read(dir)).isEqualTo(AgentsGuide.newFile(true)).contains("it formats what you changed");
+
+        Files.writeString(dir.resolve("jk.toml"), "name = \"app\"\ngroup = \"com.example\"\nversion = \"0.1.0\"\n");
+        assertThat(AgentsGuide.refresh(dir)).isEqualTo(Change.UPDATED);
+        assertThat(read(dir)).isEqualTo(AgentsGuide.newFile(false));
     }
 
     private static void write(Path dir, String text) throws IOException {

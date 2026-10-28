@@ -994,7 +994,9 @@ public record JkBuild(
 
     /**
      * {@code [format]} block: optional style preset, per-language overrides, and import-hygiene
-     * toggles. Boolean fields are tri-state ({@code null} = use the built-in default).
+     * toggles. Boolean toggles are tri-state ({@code null} = use the built-in default). {@code
+     * enforce} has {@code jk guard} format what changed (check it, under CI); {@code ratchetFrom}, a
+     * git ref, limits that to files changed since its merge-base.
      */
     public record FormatConfig(
             @Nullable String style,
@@ -1002,14 +1004,28 @@ public record JkBuild(
             @Nullable String kotlin,
             @Nullable Boolean optimizeImports,
             @Nullable Boolean importOrder,
-            @Nullable Boolean removeUnusedImports) {
+            @Nullable Boolean removeUnusedImports,
+            boolean enforce,
+            @Nullable String ratchetFrom) {
 
-        public static final FormatConfig EMPTY = new FormatConfig(null, null, null, null, null, null);
+        public static final FormatConfig EMPTY = new FormatConfig(null, null, null, null, null, null, false, null);
+
+        /** The style and import toggles alone: what {@code jk format} reads. */
+        public FormatConfig(
+                @Nullable String style,
+                @Nullable String java,
+                @Nullable String kotlin,
+                @Nullable Boolean optimizeImports,
+                @Nullable Boolean importOrder,
+                @Nullable Boolean removeUnusedImports) {
+            this(style, java, kotlin, optimizeImports, importOrder, removeUnusedImports, false, null);
+        }
 
         public FormatConfig {
             if (style != null && style.isBlank()) style = null;
             if (java != null && java.isBlank()) java = null;
             if (kotlin != null && kotlin.isBlank()) kotlin = null;
+            if (ratchetFrom != null && ratchetFrom.isBlank()) ratchetFrom = null;
         }
     }
 

@@ -135,6 +135,19 @@ public final class WorkspacePreflightPhase {
         Optional<List<String>> syncErrors = WorkspaceSyncPhase.run(request, listener, clock);
         if (syncErrors.isPresent()) return completed(false, Exit.FAILURE, syncErrors.orElseThrow());
 
+        // Before anything fingerprints the tree: what the run reads is the formatted tree.
+        GuardFormat.Result formatted =
+                GuardFormat.run(request.entryDir(), request.cache(), entryBuild, units, request.clientEnv());
+        if (formatted != null && !formatted.unformatted().isEmpty()) {
+            List<String> errors = GuardFormat.checkErrors(formatted, request.entryDir());
+            listener.onPreflightFailed("format", 0, errors.getFirst());
+            return completed(false, Exit.FAILURE, errors);
+        }
+        if (formatted != null && !formatted.rewritten().isEmpty()) {
+            int n = formatted.rewritten().size();
+            listener.onPreflight("format", 1, 1, "formatted " + n + (n == 1 ? " file" : " files"));
+        }
+
         Set<Path> moduleDirs = new LinkedHashSet<>();
         for (BuildGraph.BuildUnit unit : units) moduleDirs.add(unit.dir());
         Set<Path> jarConsumed = jarConsumed(graph);

@@ -12,9 +12,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
@@ -101,10 +104,69 @@ public final class InputTrees {
      * Compact: {@code src/}, {@code test/}, and sibling suite dirs without {@code TestSuites.discover}.
      */
     public static void coverModule(Path moduleDir) {
+        for (Path root : coveredRoots(moduleDir)) of(root);
+    }
+
+    /**
+     * The module's files whose names end with one of {@code exts}, from the same covering roots the
+     * preflight walks: inside a job, the walk it retained.
+     */
+    public static List<Path> moduleSources(Path moduleDir, String... exts) {
+        List<Path> out = new ArrayList<>();
+        for (Path root : coveredRoots(moduleDir)) out.addAll(of(root).withExtensions(exts));
+        return out;
+    }
+
+    /**
+     * The files {@code rewrote} changed on purpose, given their identities now, so the job's listings
+     * hold what the rest of the job will read and {@link #changedSinceWalk} does not report them.
+     * The views a covering listing answered for nested roots are dropped, and rebuilt from it on the
+     * next ask.
+     */
+    public static void rewritten(Collection<Path> rewrote) {
+        if (!RequestScope.hasRequest() || rewrote.isEmpty()) return;
+        Map<Path, FileRef> now = new HashMap<>();
+        for (Path p : rewrote) {
+            Path abs = p.toAbsolutePath().normalize();
+            StatIdentity id = identityOrNull(abs);
+            if (id != null) now.put(abs, new FileRef(abs, abs.getFileName().toString(), id));
+        }
+        Table table = table();
+        synchronized (table) {
+            for (Key key : table.covering) {
+                if (!(table.byKey.get(key) instanceof Listing listing)) continue;
+                List<FileRef> files = new ArrayList<>(listing.files().size());
+                boolean touched = false;
+                for (FileRef f : listing.files()) {
+                    FileRef replaced = now.get(f.path());
+                    touched |= replaced != null;
+                    files.add(replaced != null ? replaced : f);
+                }
+                if (!touched) continue;
+                table.byKey.put(
+                        key,
+                        new Listing(
+                                listing.root(),
+                                listing.skipId(),
+                                List.copyOf(files),
+                                listing.directoryLinks(),
+                                listing.directories()));
+                table.byKey
+                        .keySet()
+                        .removeIf(k -> !table.covering.contains(k)
+                                && k.skipId().equals(key.skipId())
+                                && k.root().startsWith(key.root()));
+            }
+        }
+    }
+
+    /** The roots {@link #coverModule} walks. */
+    private static List<Path> coveredRoots(Path moduleDir) {
         Path mod = moduleDir.toAbsolutePath().normalize();
-        of(mod.resolve("src"));
-        if (!ModuleLayout.isCompact(mod)) return;
-        of(mod.resolve("test"));
+        List<Path> roots = new ArrayList<>();
+        roots.add(mod.resolve("src"));
+        if (!ModuleLayout.isCompact(mod)) return roots;
+        roots.add(mod.resolve("test"));
         try {
             PathUtil.forEachChild(mod, (child, attrs) -> {
                 if (!attrs.isDirectory()) return true;
@@ -122,12 +184,13 @@ public final class InputTrees {
                 // covered: a workspace root's children (clients/, server/ — 70k files of build output
                 // and node_modules between them on jk's own tree) are suite names too, and covering
                 // the whole child listed every one of those files into the job's snapshot.
-                of(child.resolve("src"));
+                roots.add(child.resolve("src"));
                 return true;
             });
         } catch (IOException ignored) {
             // cover is best-effort; collectors still live-walk
         }
+        return roots;
     }
 
     /** Copy this job's counters to last-job and return its bytes to the process pool. */

@@ -52,6 +52,8 @@ final class PluginFacts {
      */
     static final Set<String> MAPPED_PLUGINS = Set.of(
             "maven-compiler-plugin",
+            FormatPlugins.SPOTLESS,
+            FormatPlugins.FMT,
             "frontend-maven-plugin",
             "os-maven-plugin",
             "maven-toolchains-plugin",
