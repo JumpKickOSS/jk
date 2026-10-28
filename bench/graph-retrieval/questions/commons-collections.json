@@ -1,0 +1,2527 @@
+{
+ "repo": "commons-collections",
+ "commit": "4107624de41aeed37985d2a069fad41992fd71a2",
+ "loc": 129244,
+ "classes": 601,
+ "lint_dropped": true,
+ "questions": [
+  {
+   "id": "callers-0",
+   "kind": "callers",
+   "question": "Who calls MultiKeyMap.checkKey?",
+   "subject": {
+    "label": "MultiKeyMap.checkKey",
+    "path": "src/main/java/org/apache/commons/collections4/map/MultiKeyMap.java",
+    "lines": [
+     134,
+     142
+    ]
+   },
+   "truth": [
+    {
+     "label": "MultiKeyMap.put",
+     "lines": [
+      643,
+      651
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/MultiKeyMap.java"
+    },
+    {
+     "label": "MultiKeyMap.putAll",
+     "lines": [
+      657,
+      668
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/MultiKeyMap.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-1",
+   "kind": "callers",
+   "question": "Who calls AbstractBitwiseTrie.BasicEntry.setKeyValue?",
+   "subject": {
+    "label": "AbstractBitwiseTrie.BasicEntry.setKeyValue",
+    "path": "src/main/java/org/apache/commons/collections4/trie/AbstractBitwiseTrie.java",
+    "lines": [
+     101,
+     109
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractPatriciaTrie.put",
+     "lines": [
+      2017,
+      2077
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/trie/AbstractPatriciaTrie.java"
+    },
+    {
+     "label": "AbstractPatriciaTrie.removeEntry",
+     "lines": [
+      2133,
+      2149
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/trie/AbstractPatriciaTrie.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-2",
+   "kind": "callers",
+   "question": "Who calls UnmodifiableCollection.unmodifiableCollection?",
+   "subject": {
+    "label": "UnmodifiableCollection.unmodifiableCollection",
+    "path": "src/main/java/org/apache/commons/collections4/collection/UnmodifiableCollection.java",
+    "lines": [
+     52,
+     64
+    ]
+   },
+   "truth": [
+    {
+     "label": "CollectionUtils.unmodifiableCollection",
+     "lines": [
+      1959,
+      1967
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/CollectionUtils.java"
+    },
+    {
+     "label": "FixedSizeMap.values",
+     "lines": [
+      163,
+      170
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/FixedSizeMap.java"
+    },
+    {
+     "label": "FixedSizeSortedMap.values",
+     "lines": [
+      183,
+      190
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/FixedSizeSortedMap.java"
+    },
+    {
+     "label": "SplitMapUtils.WrappedGet.values",
+     "lines": [
+      146,
+      153
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/SplitMapUtils.java"
+    },
+    {
+     "label": "UnmodifiableMap.values",
+     "lines": [
+      160,
+      167
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/UnmodifiableMap.java"
+    },
+    {
+     "label": "UnmodifiableMultiValuedMap.entries",
+     "lines": [
+      93,
+      100
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multimap/UnmodifiableMultiValuedMap.java"
+    },
+    {
+     "label": "UnmodifiableMultiValuedMap.get",
+     "lines": [
+      98,
+      105
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multimap/UnmodifiableMultiValuedMap.java"
+    },
+    {
+     "label": "UnmodifiableMultiValuedMap.values",
+     "lines": [
+      193,
+      200
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multimap/UnmodifiableMultiValuedMap.java"
+    },
+    {
+     "label": "UnmodifiableOrderedMap.values",
+     "lines": [
+      153,
+      160
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/UnmodifiableOrderedMap.java"
+    },
+    {
+     "label": "UnmodifiableSortedMap.values",
+     "lines": [
+      177,
+      184
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/UnmodifiableSortedMap.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-3",
+   "kind": "callers",
+   "question": "Who calls AbstractLinkedList.size?",
+   "subject": {
+    "label": "AbstractLinkedList.size",
+    "path": "src/main/java/org/apache/commons/collections4/list/AbstractLinkedList.java",
+    "lines": [
+     1064,
+     1071
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractLinkedList.LinkedSubList.<init>",
+     "lines": [
+      243,
+      264
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/AbstractLinkedList.java"
+    },
+    {
+     "label": "AbstractLinkedList.doWriteObject",
+     "lines": [
+      757,
+      768
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/AbstractLinkedList.java"
+    },
+    {
+     "label": "AbstractLinkedList.equals",
+     "lines": [
+      765,
+      789
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/AbstractLinkedList.java"
+    },
+    {
+     "label": "AbstractLinkedList.isEmpty",
+     "lines": [
+      894,
+      901
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/AbstractLinkedList.java"
+    },
+    {
+     "label": "AbstractLinkedList.toString",
+     "lines": [
+      1106,
+      1130
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/AbstractLinkedList.java"
+    },
+    {
+     "label": "CursorableLinkedList.Cursor.nextIndex",
+     "lines": [
+      141,
+      162
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/CursorableLinkedList.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-4",
+   "kind": "callers",
+   "question": "Who calls NOPClosure.nopClosure?",
+   "subject": {
+    "label": "NOPClosure.nopClosure",
+    "path": "src/main/java/org/apache/commons/collections4/functors/NOPClosure.java",
+    "lines": [
+     40,
+     47
+    ]
+   },
+   "truth": [
+    {
+     "label": "ChainedClosure.chainedClosure",
+     "lines": [
+      40,
+      51
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/ChainedClosure.java"
+    },
+    {
+     "label": "ChainedClosure.chainedClosure",
+     "lines": [
+      60,
+      78
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/ChainedClosure.java"
+    },
+    {
+     "label": "ClosureUtils.nopClosure",
+     "lines": [
+      226,
+      233
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/ClosureUtils.java"
+    },
+    {
+     "label": "ForClosure.forClosure",
+     "lines": [
+      43,
+      56
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/ForClosure.java"
+    },
+    {
+     "label": "IfClosure.<init>",
+     "lines": [
+      89,
+      97
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/IfClosure.java"
+    },
+    {
+     "label": "IfClosure.ifClosure",
+     "lines": [
+      46,
+      53
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/IfClosure.java"
+    },
+    {
+     "label": "SwitchClosure.<init>",
+     "lines": [
+      118,
+      129
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/SwitchClosure.java"
+    },
+    {
+     "label": "SwitchClosure.switchClosure",
+     "lines": [
+      54,
+      77
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/SwitchClosure.java"
+    },
+    {
+     "label": "SwitchClosure.switchClosure",
+     "lines": [
+      89,
+      104
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/SwitchClosure.java"
+    },
+    {
+     "label": "TransformerClosure.transformerClosure",
+     "lines": [
+      41,
+      51
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/TransformerClosure.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-5",
+   "kind": "callers",
+   "question": "Who calls StaticBucketMap.BaseIterator.nextEntry?",
+   "subject": {
+    "label": "StaticBucketMap.BaseIterator.nextEntry",
+    "path": "src/main/java/org/apache/commons/collections4/map/StaticBucketMap.java",
+    "lines": [
+     133,
+     144
+    ]
+   },
+   "truth": [
+    {
+     "label": "StaticBucketMap.EntryIterator.next",
+     "lines": [
+      153,
+      160
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/StaticBucketMap.java"
+    },
+    {
+     "label": "StaticBucketMap.KeyIterator.next",
+     "lines": [
+      213,
+      220
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/StaticBucketMap.java"
+    },
+    {
+     "label": "StaticBucketMap.ValueIterator.next",
+     "lines": [
+      314,
+      321
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/StaticBucketMap.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-6",
+   "kind": "callers",
+   "question": "Who calls FunctorUtils.validate?",
+   "subject": {
+    "label": "FunctorUtils.validate",
+    "path": "src/main/java/org/apache/commons/collections4/functors/FunctorUtils.java",
+    "lines": [
+     166,
+     179
+    ]
+   },
+   "truth": [
+    {
+     "label": "AllPredicate.allPredicate",
+     "lines": [
+      76,
+      91
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/AllPredicate.java"
+    },
+    {
+     "label": "AnyPredicate.anyPredicate",
+     "lines": [
+      74,
+      88
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/AnyPredicate.java"
+    },
+    {
+     "label": "NonePredicate.nonePredicate",
+     "lines": [
+      67,
+      79
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/NonePredicate.java"
+    },
+    {
+     "label": "OnePredicate.onePredicate",
+     "lines": [
+      63,
+      78
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/OnePredicate.java"
+    },
+    {
+     "label": "SwitchClosure.switchClosure",
+     "lines": [
+      89,
+      104
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/SwitchClosure.java"
+    },
+    {
+     "label": "SwitchTransformer.switchTransformer",
+     "lines": [
+      99,
+      115
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/SwitchTransformer.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-7",
+   "kind": "callers",
+   "question": "Who calls AbstractLinkedList.addAll?",
+   "subject": {
+    "label": "AbstractLinkedList.addAll",
+    "path": "src/main/java/org/apache/commons/collections4/list/AbstractLinkedList.java",
+    "lines": [
+     584,
+     595
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractLinkedList.LinkedSubList.addAll",
+     "lines": [
+      276,
+      294
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/AbstractLinkedList.java"
+    },
+    {
+     "label": "AbstractLinkedList.addAll",
+     "lines": [
+      579,
+      586
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/AbstractLinkedList.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-8",
+   "kind": "callers",
+   "question": "Who calls BloomFilter.contains?",
+   "subject": {
+    "label": "BloomFilter.contains",
+    "path": "src/main/java/org/apache/commons/collections4/bloomfilter/BloomFilter.java",
+    "lines": [
+     78,
+     85
+    ]
+   },
+   "truth": [
+    {
+     "label": "BloomFilter.contains",
+     "lines": [
+      93,
+      101
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/BloomFilter.java"
+    },
+    {
+     "label": "CountingBloomFilter.getMaxInsert",
+     "lines": [
+      85,
+      103
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/CountingBloomFilter.java"
+    },
+    {
+     "label": "WrappedBloomFilter.contains",
+     "lines": [
+      64,
+      71
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/WrappedBloomFilter.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-9",
+   "kind": "callers",
+   "question": "Who calls CellExtractor.from?",
+   "subject": {
+    "label": "CellExtractor.from",
+    "path": "src/main/java/org/apache/commons/collections4/bloomfilter/CellExtractor.java",
+    "lines": [
+     82,
+     89
+    ]
+   },
+   "truth": [
+    {
+     "label": "CountingBloomFilter.getMaxInsert",
+     "lines": [
+      138,
+      145
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/CountingBloomFilter.java"
+    },
+    {
+     "label": "CountingBloomFilter.merge",
+     "lines": [
+      239,
+      251
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/CountingBloomFilter.java"
+    },
+    {
+     "label": "CountingBloomFilter.remove",
+     "lines": [
+      319,
+      331
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/CountingBloomFilter.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-10",
+   "kind": "callers",
+   "question": "Who calls TreeList.AVLNode.min?",
+   "subject": {
+    "label": "TreeList.AVLNode.min",
+    "path": "src/main/java/org/apache/commons/collections4/list/TreeList.java",
+    "lines": [
+     448,
+     455
+    ]
+   },
+   "truth": [
+    {
+     "label": "TreeList.AVLNode.addAll",
+     "lines": [
+      186,
+      284
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/TreeList.java"
+    },
+    {
+     "label": "TreeList.AVLNode.next",
+     "lines": [
+      457,
+      467
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/TreeList.java"
+    },
+    {
+     "label": "TreeList.AVLNode.removeSelf",
+     "lines": [
+      541,
+      595
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/TreeList.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-11",
+   "kind": "callers",
+   "question": "Who calls IteratorOperations.toCollection?",
+   "subject": {
+    "label": "IteratorOperations.toCollection",
+    "path": "src/main/java/org/apache/commons/collections4/iterators/IteratorOperations.java",
+    "lines": [
+     61,
+     68
+    ]
+   },
+   "truth": [
+    {
+     "label": "IteratorOperations.toList",
+     "lines": [
+      70,
+      77
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/iterators/IteratorOperations.java"
+    },
+    {
+     "label": "IteratorOperations.toSet",
+     "lines": [
+      79,
+      86
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/iterators/IteratorOperations.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-12",
+   "kind": "callers",
+   "question": "Who calls ComparatorChain.checkLocked?",
+   "subject": {
+    "label": "ComparatorChain.checkLocked",
+    "path": "src/main/java/org/apache/commons/collections4/comparators/ComparatorChain.java",
+    "lines": [
+     173,
+     184
+    ]
+   },
+   "truth": [
+    {
+     "label": "ComparatorChain.addComparator",
+     "lines": [
+      148,
+      161
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/comparators/ComparatorChain.java"
+    },
+    {
+     "label": "ComparatorChain.setComparator",
+     "lines": [
+      303,
+      318
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/comparators/ComparatorChain.java"
+    },
+    {
+     "label": "ComparatorChain.setForwardSort",
+     "lines": [
+      320,
+      329
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/comparators/ComparatorChain.java"
+    },
+    {
+     "label": "ComparatorChain.setReverseSort",
+     "lines": [
+      331,
+      340
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/comparators/ComparatorChain.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-13",
+   "kind": "callers",
+   "question": "Who calls SynchronizedSortedMultiSet.decorated?",
+   "subject": {
+    "label": "SynchronizedSortedMultiSet.decorated",
+    "path": "src/main/java/org/apache/commons/collections4/multiset/SynchronizedSortedMultiSet.java",
+    "lines": [
+     80,
+     87
+    ]
+   },
+   "truth": [
+    {
+     "label": "SynchronizedSortedMultiSet.comparator",
+     "lines": [
+      68,
+      77
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multiset/SynchronizedSortedMultiSet.java"
+    },
+    {
+     "label": "SynchronizedSortedMultiSet.decorated",
+     "lines": [
+      28,
+      35
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multiset/SynchronizedSortedMultiSet.java"
+    },
+    {
+     "label": "SynchronizedSortedMultiSet.first",
+     "lines": [
+      85,
+      94
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multiset/SynchronizedSortedMultiSet.java"
+    },
+    {
+     "label": "SynchronizedSortedMultiSet.last",
+     "lines": [
+      92,
+      101
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multiset/SynchronizedSortedMultiSet.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-14",
+   "kind": "callers",
+   "question": "Who calls LazyIteratorChain.updateCurrentIterator?",
+   "subject": {
+    "label": "LazyIteratorChain.updateCurrentIterator",
+    "path": "src/main/java/org/apache/commons/collections4/iterators/LazyIteratorChain.java",
+    "lines": [
+     133,
+     158
+    ]
+   },
+   "truth": [
+    {
+     "label": "LazyIteratorChain.hasNext",
+     "lines": [
+      78,
+      87
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/iterators/LazyIteratorChain.java"
+    },
+    {
+     "label": "LazyIteratorChain.next",
+     "lines": [
+      91,
+      100
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/iterators/LazyIteratorChain.java"
+    },
+    {
+     "label": "LazyIteratorChain.remove",
+     "lines": [
+      122,
+      133
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/iterators/LazyIteratorChain.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-15",
+   "kind": "callers",
+   "question": "Who calls AbstractHashedMap.doWriteObject?",
+   "subject": {
+    "label": "AbstractHashedMap.doWriteObject",
+    "path": "src/main/java/org/apache/commons/collections4/map/AbstractHashedMap.java",
+    "lines": [
+     980,
+     994
+    ]
+   },
+   "truth": [
+    {
+     "label": "CaseInsensitiveMap.writeObject",
+     "lines": [
+      167,
+      176
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/CaseInsensitiveMap.java"
+    },
+    {
+     "label": "HashedMap.writeObject",
+     "lines": [
+      116,
+      125
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/HashedMap.java"
+    },
+    {
+     "label": "LRUMap.doWriteObject",
+     "lines": [
+      310,
+      319
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/LRUMap.java"
+    },
+    {
+     "label": "LinkedMap.writeObject",
+     "lines": [
+      350,
+      359
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/LinkedMap.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-16",
+   "kind": "callers",
+   "question": "Who calls AbstractHashedMap.ensureCapacity?",
+   "subject": {
+    "label": "AbstractHashedMap.ensureCapacity",
+    "path": "src/main/java/org/apache/commons/collections4/map/AbstractHashedMap.java",
+    "lines": [
+     996,
+     1031
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractHashedMap.checkCapacity",
+     "lines": [
+      726,
+      739
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/AbstractHashedMap.java"
+    },
+    {
+     "label": "AbstractHashedMap.putAll",
+     "lines": [
+      1336,
+      1352
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/AbstractHashedMap.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-17",
+   "kind": "callers",
+   "question": "Who calls TreeList.TreeListIterator.checkModCount?",
+   "subject": {
+    "label": "TreeList.TreeListIterator.checkModCount",
+    "path": "src/main/java/org/apache/commons/collections4/list/TreeList.java",
+    "lines": [
+     828,
+     838
+    ]
+   },
+   "truth": [
+    {
+     "label": "TreeList.TreeListIterator.add",
+     "lines": [
+      812,
+      825
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/TreeList.java"
+    },
+    {
+     "label": "TreeList.TreeListIterator.next",
+     "lines": [
+      845,
+      863
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/TreeList.java"
+    },
+    {
+     "label": "TreeList.TreeListIterator.previous",
+     "lines": [
+      866,
+      885
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/TreeList.java"
+    },
+    {
+     "label": "TreeList.TreeListIterator.remove",
+     "lines": [
+      888,
+      910
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/TreeList.java"
+    },
+    {
+     "label": "TreeList.TreeListIterator.set",
+     "lines": [
+      907,
+      919
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/TreeList.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-18",
+   "kind": "callers",
+   "question": "Who calls AbstractLinkedMap.LinkIterator.nextEntry?",
+   "subject": {
+    "label": "AbstractLinkedMap.LinkIterator.nextEntry",
+    "path": "src/main/java/org/apache/commons/collections4/map/AbstractLinkedMap.java",
+    "lines": [
+     221,
+     236
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractLinkedMap.EntrySetIterator.next",
+     "lines": [
+      86,
+      93
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/AbstractLinkedMap.java"
+    },
+    {
+     "label": "AbstractLinkedMap.KeySetIterator.next",
+     "lines": [
+      115,
+      122
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/AbstractLinkedMap.java"
+    },
+    {
+     "label": "AbstractLinkedMap.LinkMapIterator.next",
+     "lines": [
+      320,
+      327
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/AbstractLinkedMap.java"
+    },
+    {
+     "label": "AbstractLinkedMap.ValuesIterator.next",
+     "lines": [
+      358,
+      365
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/AbstractLinkedMap.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-19",
+   "kind": "callers",
+   "question": "Who calls CountingPredicate.processRemaining?",
+   "subject": {
+    "label": "CountingPredicate.processRemaining",
+    "path": "src/main/java/org/apache/commons/collections4/bloomfilter/CountingPredicate.java",
+    "lines": [
+     55,
+     68
+    ]
+   },
+   "truth": [
+    {
+     "label": "BloomFilterExtractor.fromBloomFilterArray",
+     "lines": [
+      45,
+      53
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/BloomFilterExtractor.java"
+    },
+    {
+     "label": "BloomFilterExtractor.processBloomFilterPair",
+     "lines": [
+      122,
+      130
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/BloomFilterExtractor.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-20",
+   "kind": "implementers",
+   "question": "What extends AbstractQuantifierPredicate?",
+   "subject": {
+    "label": "AbstractQuantifierPredicate",
+    "path": "src/main/java/org/apache/commons/collections4/functors/AbstractQuantifierPredicate.java",
+    "lines": [
+     29,
+     54
+    ]
+   },
+   "truth": [
+    {
+     "label": "AllPredicate",
+     "lines": [
+      39,
+      116
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/AllPredicate.java"
+    },
+    {
+     "label": "AnyPredicate",
+     "lines": [
+      35,
+      113
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/AnyPredicate.java"
+    },
+    {
+     "label": "NonePredicate",
+     "lines": [
+      35,
+      104
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/NonePredicate.java"
+    },
+    {
+     "label": "OnePredicate",
+     "lines": [
+      35,
+      108
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/functors/OnePredicate.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-21",
+   "kind": "implementers",
+   "question": "What implements Trie?",
+   "subject": {
+    "label": "Trie",
+    "path": "src/main/java/org/apache/commons/collections4/Trie.java",
+    "lines": [
+     29,
+     29
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractBitwiseTrie",
+     "lines": [
+      34,
+      227
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/trie/AbstractBitwiseTrie.java"
+    },
+    {
+     "label": "AbstractPatriciaTrie",
+     "lines": [
+      47,
+      2468
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/trie/AbstractPatriciaTrie.java"
+    },
+    {
+     "label": "PatriciaTrie",
+     "lines": [
+      65,
+      83
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/trie/PatriciaTrie.java"
+    },
+    {
+     "label": "UnmodifiableTrie",
+     "lines": [
+      41,
+      228
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/trie/UnmodifiableTrie.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-22",
+   "kind": "implementers",
+   "question": "What extends EditCommand?",
+   "subject": {
+    "label": "EditCommand",
+    "path": "src/main/java/org/apache/commons/collections4/sequence/EditCommand.java",
+    "lines": [
+     49,
+     80
+    ]
+   },
+   "truth": [
+    {
+     "label": "DeleteCommand",
+     "lines": [
+      34,
+      54
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/sequence/DeleteCommand.java"
+    },
+    {
+     "label": "InsertCommand",
+     "lines": [
+      34,
+      55
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/sequence/InsertCommand.java"
+    },
+    {
+     "label": "KeepCommand",
+     "lines": [
+      34,
+      56
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/sequence/KeepCommand.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-23",
+   "kind": "implementers",
+   "question": "What implements CellExtractor?",
+   "subject": {
+    "label": "CellExtractor",
+    "path": "src/main/java/org/apache/commons/collections4/bloomfilter/CellExtractor.java",
+    "lines": [
+     44,
+     170
+    ]
+   },
+   "truth": [
+    {
+     "label": "ArrayCountingBloomFilter",
+     "lines": [
+      50,
+      288
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/ArrayCountingBloomFilter.java"
+    },
+    {
+     "label": "CountingBloomFilter",
+     "lines": [
+      57,
+      357
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/CountingBloomFilter.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-24",
+   "kind": "implementers",
+   "question": "What extends AbstractHashedMap.HashIterator?",
+   "subject": {
+    "label": "AbstractHashedMap.HashIterator",
+    "path": "src/main/java/org/apache/commons/collections4/map/AbstractHashedMap.java",
+    "lines": [
+     246,
+     344
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractHashedMap.EntrySetIterator",
+     "lines": [
+      133,
+      146
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/AbstractHashedMap.java"
+    },
+    {
+     "label": "AbstractHashedMap.HashMapIterator",
+     "lines": [
+      354,
+      394
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/AbstractHashedMap.java"
+    },
+    {
+     "label": "AbstractHashedMap.KeySetIterator",
+     "lines": [
+      450,
+      464
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/AbstractHashedMap.java"
+    },
+    {
+     "label": "AbstractHashedMap.ValuesIterator",
+     "lines": [
+      513,
+      527
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/AbstractHashedMap.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-25",
+   "kind": "implementers",
+   "question": "What extends AbstractHashedMap?",
+   "subject": {
+    "label": "AbstractHashedMap",
+    "path": "src/main/java/org/apache/commons/collections4/map/AbstractHashedMap.java",
+    "lines": [
+     66,
+     1506
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractLinkedMap",
+     "lines": [
+      70,
+      697
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/AbstractLinkedMap.java"
+    },
+    {
+     "label": "AbstractReferenceMap",
+     "lines": [
+      92,
+      1153
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/AbstractReferenceMap.java"
+    },
+    {
+     "label": "CaseInsensitiveMap",
+     "lines": [
+      74,
+      175
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/CaseInsensitiveMap.java"
+    },
+    {
+     "label": "HashedMap",
+     "lines": [
+      47,
+      124
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/HashedMap.java"
+    },
+    {
+     "label": "LRUMap",
+     "lines": [
+      68,
+      542
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/LRUMap.java"
+    },
+    {
+     "label": "LinkedMap",
+     "lines": [
+      72,
+      358
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/LinkedMap.java"
+    },
+    {
+     "label": "ReferenceIdentityMap",
+     "lines": [
+      79,
+      255
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/ReferenceIdentityMap.java"
+    },
+    {
+     "label": "ReferenceMap",
+     "lines": [
+      83,
+      198
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/ReferenceMap.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-26",
+   "kind": "implementers",
+   "question": "What implements BloomFilter?",
+   "subject": {
+    "label": "BloomFilter",
+    "path": "src/main/java/org/apache/commons/collections4/bloomfilter/BloomFilter.java",
+    "lines": [
+     39,
+     346
+    ]
+   },
+   "truth": [
+    {
+     "label": "ArrayCountingBloomFilter",
+     "lines": [
+      50,
+      288
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/ArrayCountingBloomFilter.java"
+    },
+    {
+     "label": "CountingBloomFilter",
+     "lines": [
+      57,
+      357
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/CountingBloomFilter.java"
+    },
+    {
+     "label": "LayeredBloomFilter",
+     "lines": [
+      56,
+      362
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/LayeredBloomFilter.java"
+    },
+    {
+     "label": "SimpleBloomFilter",
+     "lines": [
+      29,
+      197
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/SimpleBloomFilter.java"
+    },
+    {
+     "label": "SparseBloomFilter",
+     "lines": [
+      30,
+      202
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/SparseBloomFilter.java"
+    },
+    {
+     "label": "WrappedBloomFilter",
+     "lines": [
+      29,
+      154
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/WrappedBloomFilter.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-27",
+   "kind": "implementers",
+   "question": "What extends AbstractIteratorDecorator?",
+   "subject": {
+    "label": "AbstractIteratorDecorator",
+    "path": "src/main/java/org/apache/commons/collections4/iterators/AbstractIteratorDecorator.java",
+    "lines": [
+     30,
+     45
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractDualBidiMap.EntrySetIterator",
+     "lines": [
+      196,
+      241
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bidimap/AbstractDualBidiMap.java"
+    },
+    {
+     "label": "AbstractDualBidiMap.KeySetIterator",
+     "lines": [
+      286,
+      329
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bidimap/AbstractDualBidiMap.java"
+    },
+    {
+     "label": "AbstractDualBidiMap.ValuesIterator",
+     "lines": [
+      410,
+      453
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bidimap/AbstractDualBidiMap.java"
+    },
+    {
+     "label": "AbstractInputCheckedMapDecorator.EntrySetIterator",
+     "lines": [
+      112,
+      126
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/AbstractInputCheckedMapDecorator.java"
+    },
+    {
+     "label": "AbstractMapMultiSet.UniqueSetIterator",
+     "lines": [
+      233,
+      277
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multiset/AbstractMapMultiSet.java"
+    },
+    {
+     "label": "AbstractMultiValuedMap.AsMap.AsMapEntrySetIterator",
+     "lines": [
+      103,
+      113
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multimap/AbstractMultiValuedMap.java"
+    },
+    {
+     "label": "ListOrderedSet.OrderedSetIterator",
+     "lines": [
+      69,
+      106
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/set/ListOrderedSet.java"
+    },
+    {
+     "label": "PassiveExpiringMap.EntrySetIterator",
+     "lines": [
+      281,
+      301
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/PassiveExpiringMap.java"
+    },
+    {
+     "label": "SetUniqueList.SetListIterator",
+     "lines": [
+      66,
+      87
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/SetUniqueList.java"
+    },
+    {
+     "label": "SkippingIterator",
+     "lines": [
+      32,
+      94
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/iterators/SkippingIterator.java"
+    },
+    {
+     "label": "UnmodifiableEntrySet.UnmodifiableEntrySetIterator",
+     "lines": [
+      68,
+      91
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/UnmodifiableEntrySet.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-28",
+   "kind": "implementers",
+   "question": "What extends Flat3Map.EntryIterator?",
+   "subject": {
+    "label": "Flat3Map.EntryIterator",
+    "path": "src/main/java/org/apache/commons/collections4/map/Flat3Map.java",
+    "lines": [
+     85,
+     117
+    ]
+   },
+   "truth": [
+    {
+     "label": "Flat3Map.EntrySetIterator",
+     "lines": [
+      169,
+      176
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/Flat3Map.java"
+    },
+    {
+     "label": "Flat3Map.KeySetIterator",
+     "lines": [
+      445,
+      454
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/Flat3Map.java"
+    },
+    {
+     "label": "Flat3Map.ValuesIterator",
+     "lines": [
+      499,
+      508
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/Flat3Map.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-29",
+   "kind": "implementers",
+   "question": "What extends AbstractKeyValue?",
+   "subject": {
+    "label": "AbstractKeyValue",
+    "path": "src/main/java/org/apache/commons/collections4/keyvalue/AbstractKeyValue.java",
+    "lines": [
+     30,
+     104
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractMapEntry",
+     "lines": [
+      31,
+      88
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/keyvalue/AbstractMapEntry.java"
+    },
+    {
+     "label": "AbstractMultiValuedMap.MultiValuedMapEntry",
+     "lines": [
+      283,
+      297
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multimap/AbstractMultiValuedMap.java"
+    },
+    {
+     "label": "DefaultKeyValue",
+     "lines": [
+      37,
+      152
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/keyvalue/DefaultKeyValue.java"
+    },
+    {
+     "label": "DefaultMapEntry",
+     "lines": [
+      32,
+      62
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/keyvalue/DefaultMapEntry.java"
+    },
+    {
+     "label": "ListOrderedMap.ListOrderedMapEntry",
+     "lines": [
+      226,
+      241
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/ListOrderedMap.java"
+    },
+    {
+     "label": "UnmodifiableMapEntry",
+     "lines": [
+      33,
+      74
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/keyvalue/UnmodifiableMapEntry.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-30",
+   "kind": "overrides",
+   "question": "What overrides AbstractMapDecorator.containsValue?",
+   "subject": {
+    "label": "AbstractMapDecorator.containsValue",
+    "path": "src/main/java/org/apache/commons/collections4/map/AbstractMapDecorator.java",
+    "lines": [
+     72,
+     79
+    ]
+   },
+   "truth": [
+    {
+     "label": "DualTreeBidiMap.ViewMap.containsValue",
+     "lines": [
+      196,
+      203
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bidimap/DualTreeBidiMap.java"
+    },
+    {
+     "label": "MultiValueMap.containsValue",
+     "lines": [
+      280,
+      295
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/MultiValueMap.java"
+    },
+    {
+     "label": "PassiveExpiringMap.containsValue",
+     "lines": [
+      763,
+      771
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/PassiveExpiringMap.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-31",
+   "kind": "overrides",
+   "question": "What overrides BloomFilter.characteristics?",
+   "subject": {
+    "label": "BloomFilter.characteristics",
+    "path": "src/main/java/org/apache/commons/collections4/bloomfilter/BloomFilter.java",
+    "lines": [
+     67,
+     70
+    ]
+   },
+   "truth": [
+    {
+     "label": "ArrayCountingBloomFilter.characteristics",
+     "lines": [
+      137,
+      144
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/ArrayCountingBloomFilter.java"
+    },
+    {
+     "label": "LayeredBloomFilter.characteristics",
+     "lines": [
+      101,
+      108
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/LayeredBloomFilter.java"
+    },
+    {
+     "label": "SimpleBloomFilter.characteristics",
+     "lines": [
+      80,
+      87
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/SimpleBloomFilter.java"
+    },
+    {
+     "label": "SparseBloomFilter.characteristics",
+     "lines": [
+      79,
+      86
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/SparseBloomFilter.java"
+    },
+    {
+     "label": "WrappedBloomFilter.characteristics",
+     "lines": [
+      54,
+      61
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/WrappedBloomFilter.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-32",
+   "kind": "overrides",
+   "question": "What overrides MultiValuedMap.containsMapping?",
+   "subject": {
+    "label": "MultiValuedMap.containsMapping",
+    "path": "src/main/java/org/apache/commons/collections4/MultiValuedMap.java",
+    "lines": [
+     96,
+     99
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractMultiValuedMap.containsMapping",
+     "lines": [
+      617,
+      625
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multimap/AbstractMultiValuedMap.java"
+    },
+    {
+     "label": "AbstractMultiValuedMapDecorator.containsMapping",
+     "lines": [
+      72,
+      79
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multimap/AbstractMultiValuedMapDecorator.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-33",
+   "kind": "overrides",
+   "question": "What overrides AbstractMapDecorator.entrySet?",
+   "subject": {
+    "label": "AbstractMapDecorator.entrySet",
+    "path": "src/main/java/org/apache/commons/collections4/map/AbstractMapDecorator.java",
+    "lines": [
+     86,
+     93
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractInputCheckedMapDecorator.entrySet",
+     "lines": [
+      181,
+      191
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/AbstractInputCheckedMapDecorator.java"
+    },
+    {
+     "label": "FixedSizeMap.entrySet",
+     "lines": [
+      97,
+      106
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/FixedSizeMap.java"
+    },
+    {
+     "label": "FixedSizeSortedMap.entrySet",
+     "lines": [
+      99,
+      106
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/FixedSizeSortedMap.java"
+    },
+    {
+     "label": "ListOrderedMap.entrySet",
+     "lines": [
+      456,
+      463
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/ListOrderedMap.java"
+    },
+    {
+     "label": "MultiValueMap.entrySet",
+     "lines": [
+      333,
+      340
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/MultiValueMap.java"
+    },
+    {
+     "label": "PassiveExpiringMap.entrySet",
+     "lines": [
+      773,
+      781
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/PassiveExpiringMap.java"
+    },
+    {
+     "label": "UnmodifiableBidiMap.entrySet",
+     "lines": [
+      83,
+      91
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bidimap/UnmodifiableBidiMap.java"
+    },
+    {
+     "label": "UnmodifiableMap.entrySet",
+     "lines": [
+      91,
+      98
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/UnmodifiableMap.java"
+    },
+    {
+     "label": "UnmodifiableOrderedBidiMap.entrySet",
+     "lines": [
+      84,
+      92
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bidimap/UnmodifiableOrderedBidiMap.java"
+    },
+    {
+     "label": "UnmodifiableOrderedMap.entrySet",
+     "lines": [
+      89,
+      96
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/UnmodifiableOrderedMap.java"
+    },
+    {
+     "label": "UnmodifiableSortedBidiMap.entrySet",
+     "lines": [
+      85,
+      93
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bidimap/UnmodifiableSortedBidiMap.java"
+    },
+    {
+     "label": "UnmodifiableSortedMap.entrySet",
+     "lines": [
+      94,
+      101
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/UnmodifiableSortedMap.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-34",
+   "kind": "overrides",
+   "question": "What overrides BitMapExtractor.processBitMapPairs?",
+   "subject": {
+    "label": "BitMapExtractor.processBitMapPairs",
+    "path": "src/main/java/org/apache/commons/collections4/bloomfilter/BitMapExtractor.java",
+    "lines": [
+     134,
+     142
+    ]
+   },
+   "truth": [
+    {
+     "label": "SimpleBloomFilter.processBitMapPairs",
+     "lines": [
+      173,
+      181
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/SimpleBloomFilter.java"
+    },
+    {
+     "label": "WrappedBloomFilter.processBitMapPairs",
+     "lines": [
+      138,
+      145
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bloomfilter/WrappedBloomFilter.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-35",
+   "kind": "overrides",
+   "question": "What overrides AbstractCollectionDecorator.clear?",
+   "subject": {
+    "label": "AbstractCollectionDecorator.clear",
+    "path": "src/main/java/org/apache/commons/collections4/collection/AbstractCollectionDecorator.java",
+    "lines": [
+     92,
+     100
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractDualBidiMap.View.clear",
+     "lines": [
+      478,
+      486
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bidimap/AbstractDualBidiMap.java"
+    },
+    {
+     "label": "FixedSizeList.clear",
+     "lines": [
+      120,
+      127
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/FixedSizeList.java"
+    },
+    {
+     "label": "IndexedCollection.clear",
+     "lines": [
+      140,
+      149
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/collection/IndexedCollection.java"
+    },
+    {
+     "label": "ListOrderedSet.clear",
+     "lines": [
+      292,
+      301
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/set/ListOrderedSet.java"
+    },
+    {
+     "label": "PassiveExpiringMap.EntrySet.clear",
+     "lines": [
+      165,
+      173
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/PassiveExpiringMap.java"
+    },
+    {
+     "label": "PassiveExpiringMap.KeySet.clear",
+     "lines": [
+      331,
+      339
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/PassiveExpiringMap.java"
+    },
+    {
+     "label": "PassiveExpiringMap.ValuesCollection.clear",
+     "lines": [
+      467,
+      475
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/PassiveExpiringMap.java"
+    },
+    {
+     "label": "SetUniqueList.clear",
+     "lines": [
+      284,
+      293
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/SetUniqueList.java"
+    },
+    {
+     "label": "UnmodifiableBag.clear",
+     "lines": [
+      119,
+      126
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bag/UnmodifiableBag.java"
+    },
+    {
+     "label": "UnmodifiableBoundedCollection.clear",
+     "lines": [
+      142,
+      149
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/collection/UnmodifiableBoundedCollection.java"
+    },
+    {
+     "label": "UnmodifiableCollection.clear",
+     "lines": [
+      99,
+      106
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/collection/UnmodifiableCollection.java"
+    },
+    {
+     "label": "UnmodifiableEntrySet.clear",
+     "lines": [
+      148,
+      155
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/UnmodifiableEntrySet.java"
+    },
+    {
+     "label": "UnmodifiableList.clear",
+     "lines": [
+      124,
+      131
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/UnmodifiableList.java"
+    },
+    {
+     "label": "UnmodifiableMultiSet.clear",
+     "lines": [
+      113,
+      120
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multiset/UnmodifiableMultiSet.java"
+    },
+    {
+     "label": "UnmodifiableNavigableSet.clear",
+     "lines": [
+      95,
+      102
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/set/UnmodifiableNavigableSet.java"
+    },
+    {
+     "label": "UnmodifiableQueue.clear",
+     "lines": [
+      99,
+      106
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/queue/UnmodifiableQueue.java"
+    },
+    {
+     "label": "UnmodifiableSet.clear",
+     "lines": [
+      98,
+      105
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/set/UnmodifiableSet.java"
+    },
+    {
+     "label": "UnmodifiableSortedBag.clear",
+     "lines": [
+      116,
+      123
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bag/UnmodifiableSortedBag.java"
+    },
+    {
+     "label": "UnmodifiableSortedMultiSet.clear",
+     "lines": [
+      90,
+      97
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multiset/UnmodifiableSortedMultiSet.java"
+    },
+    {
+     "label": "UnmodifiableSortedSet.clear",
+     "lines": [
+      98,
+      105
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/set/UnmodifiableSortedSet.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-36",
+   "kind": "overrides",
+   "question": "What overrides AbstractHashedMap.isEqualKey?",
+   "subject": {
+    "label": "AbstractHashedMap.isEqualKey",
+    "path": "src/main/java/org/apache/commons/collections4/map/AbstractHashedMap.java",
+    "lines": [
+     1247,
+     1254
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractReferenceMap.isEqualKey",
+     "lines": [
+      975,
+      983
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/AbstractReferenceMap.java"
+    },
+    {
+     "label": "ReferenceIdentityMap.isEqualKey",
+     "lines": [
+      209,
+      217
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/ReferenceIdentityMap.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-37",
+   "kind": "overrides",
+   "question": "What overrides AbstractMapDecorator.keySet?",
+   "subject": {
+    "label": "AbstractMapDecorator.keySet",
+    "path": "src/main/java/org/apache/commons/collections4/map/AbstractMapDecorator.java",
+    "lines": [
+     114,
+     121
+    ]
+   },
+   "truth": [
+    {
+     "label": "FixedSizeMap.keySet",
+     "lines": [
+      109,
+      117
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/FixedSizeMap.java"
+    },
+    {
+     "label": "FixedSizeSortedMap.keySet",
+     "lines": [
+      123,
+      130
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/FixedSizeSortedMap.java"
+    },
+    {
+     "label": "ListOrderedMap.keySet",
+     "lines": [
+      531,
+      538
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/ListOrderedMap.java"
+    },
+    {
+     "label": "PassiveExpiringMap.keySet",
+     "lines": [
+      822,
+      830
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/PassiveExpiringMap.java"
+    },
+    {
+     "label": "UnmodifiableBidiMap.keySet",
+     "lines": [
+      98,
+      106
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bidimap/UnmodifiableBidiMap.java"
+    },
+    {
+     "label": "UnmodifiableMap.keySet",
+     "lines": [
+      96,
+      104
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/UnmodifiableMap.java"
+    },
+    {
+     "label": "UnmodifiableOrderedBidiMap.keySet",
+     "lines": [
+      108,
+      116
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bidimap/UnmodifiableOrderedBidiMap.java"
+    },
+    {
+     "label": "UnmodifiableOrderedMap.keySet",
+     "lines": [
+      94,
+      101
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/UnmodifiableOrderedMap.java"
+    },
+    {
+     "label": "UnmodifiableSortedBidiMap.keySet",
+     "lines": [
+      106,
+      114
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bidimap/UnmodifiableSortedBidiMap.java"
+    },
+    {
+     "label": "UnmodifiableSortedMap.keySet",
+     "lines": [
+      109,
+      116
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/UnmodifiableSortedMap.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-38",
+   "kind": "overrides",
+   "question": "What overrides AbstractMultiValuedMapDecorator.putAll?",
+   "subject": {
+    "label": "AbstractMultiValuedMapDecorator.putAll",
+    "path": "src/main/java/org/apache/commons/collections4/multimap/AbstractMultiValuedMapDecorator.java",
+    "lines": [
+     149,
+     156
+    ]
+   },
+   "truth": [
+    {
+     "label": "TransformedMultiValuedMap.putAll",
+     "lines": [
+      147,
+      159
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multimap/TransformedMultiValuedMap.java"
+    },
+    {
+     "label": "UnmodifiableMultiValuedMap.putAll",
+     "lines": [
+      165,
+      172
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multimap/UnmodifiableMultiValuedMap.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-39",
+   "kind": "overrides",
+   "question": "What overrides AbstractCollectionDecorator.removeAll?",
+   "subject": {
+    "label": "AbstractCollectionDecorator.removeAll",
+    "path": "src/main/java/org/apache/commons/collections4/collection/AbstractCollectionDecorator.java",
+    "lines": [
+     132,
+     139
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractDualBidiMap.View.removeAll",
+     "lines": [
+      493,
+      507
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bidimap/AbstractDualBidiMap.java"
+    },
+    {
+     "label": "CollectionBag.removeAll",
+     "lines": [
+      165,
+      181
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bag/CollectionBag.java"
+    },
+    {
+     "label": "CollectionSortedBag.removeAll",
+     "lines": [
+      106,
+      122
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bag/CollectionSortedBag.java"
+    },
+    {
+     "label": "FixedSizeList.removeAll",
+     "lines": [
+      175,
+      182
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/FixedSizeList.java"
+    },
+    {
+     "label": "IndexedCollection.removeAll",
+     "lines": [
+      205,
+      216
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/collection/IndexedCollection.java"
+    },
+    {
+     "label": "ListOrderedSet.removeAll",
+     "lines": [
+      365,
+      376
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/set/ListOrderedSet.java"
+    },
+    {
+     "label": "PassiveExpiringMap.EntrySet.removeAll",
+     "lines": [
+      210,
+      232
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/PassiveExpiringMap.java"
+    },
+    {
+     "label": "PassiveExpiringMap.KeySet.removeAll",
+     "lines": [
+      368,
+      390
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/PassiveExpiringMap.java"
+    },
+    {
+     "label": "PassiveExpiringMap.ValuesCollection.removeAll",
+     "lines": [
+      507,
+      523
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/PassiveExpiringMap.java"
+    },
+    {
+     "label": "SetUniqueList.removeAll",
+     "lines": [
+      373,
+      384
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/SetUniqueList.java"
+    },
+    {
+     "label": "UnmodifiableBag.removeAll",
+     "lines": [
+      172,
+      179
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bag/UnmodifiableBag.java"
+    },
+    {
+     "label": "UnmodifiableBoundedCollection.removeAll",
+     "lines": [
+      184,
+      191
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/collection/UnmodifiableBoundedCollection.java"
+    },
+    {
+     "label": "UnmodifiableCollection.removeAll",
+     "lines": [
+      126,
+      133
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/collection/UnmodifiableCollection.java"
+    },
+    {
+     "label": "UnmodifiableEntrySet.removeAll",
+     "lines": [
+      175,
+      182
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/UnmodifiableEntrySet.java"
+    },
+    {
+     "label": "UnmodifiableList.removeAll",
+     "lines": [
+      172,
+      179
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/UnmodifiableList.java"
+    },
+    {
+     "label": "UnmodifiableMultiSet.removeAll",
+     "lines": [
+      171,
+      178
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multiset/UnmodifiableMultiSet.java"
+    },
+    {
+     "label": "UnmodifiableNavigableSet.removeAll",
+     "lines": [
+      178,
+      185
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/set/UnmodifiableNavigableSet.java"
+    },
+    {
+     "label": "UnmodifiableQueue.removeAll",
+     "lines": [
+      170,
+      177
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/queue/UnmodifiableQueue.java"
+    },
+    {
+     "label": "UnmodifiableSet.removeAll",
+     "lines": [
+      125,
+      132
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/set/UnmodifiableSet.java"
+    },
+    {
+     "label": "UnmodifiableSortedBag.removeAll",
+     "lines": [
+      169,
+      176
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bag/UnmodifiableSortedBag.java"
+    },
+    {
+     "label": "UnmodifiableSortedMultiSet.removeAll",
+     "lines": [
+      130,
+      137
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multiset/UnmodifiableSortedMultiSet.java"
+    },
+    {
+     "label": "UnmodifiableSortedSet.removeAll",
+     "lines": [
+      143,
+      150
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/set/UnmodifiableSortedSet.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-40",
+   "kind": "definition",
+   "question": "Where is UnmodifiableMap.clear defined?",
+   "subject": {
+    "label": "UnmodifiableMap.clear",
+    "path": "src/main/java/org/apache/commons/collections4/map/UnmodifiableMap.java",
+    "lines": [
+     86,
+     93
+    ]
+   },
+   "truth": [
+    {
+     "label": "UnmodifiableMap.clear",
+     "lines": [
+      86,
+      93
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/UnmodifiableMap.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-41",
+   "kind": "definition",
+   "question": "Where is MapUtils.lazySortedMap defined?",
+   "subject": {
+    "label": "MapUtils.lazySortedMap",
+    "path": "src/main/java/org/apache/commons/collections4/MapUtils.java",
+    "lines": [
+     1406,
+     1413
+    ]
+   },
+   "truth": [
+    {
+     "label": "MapUtils.lazySortedMap",
+     "lines": [
+      1406,
+      1413
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/MapUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-42",
+   "kind": "definition",
+   "question": "Where is CollatingIterator.start defined?",
+   "subject": {
+    "label": "CollatingIterator.start",
+    "path": "src/main/java/org/apache/commons/collections4/iterators/CollatingIterator.java",
+    "lines": [
+     372,
+     387
+    ]
+   },
+   "truth": [
+    {
+     "label": "CollatingIterator.start",
+     "lines": [
+      372,
+      387
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/iterators/CollatingIterator.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-43",
+   "kind": "definition",
+   "question": "Where is ComparatorUtils.chainedComparator defined?",
+   "subject": {
+    "label": "ComparatorUtils.chainedComparator",
+    "path": "src/main/java/org/apache/commons/collections4/ComparatorUtils.java",
+    "lines": [
+     95,
+     106
+    ]
+   },
+   "truth": [
+    {
+     "label": "ComparatorUtils.chainedComparator",
+     "lines": [
+      95,
+      106
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/ComparatorUtils.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-44",
+   "kind": "definition",
+   "question": "Where is AbstractDualBidiMap.EntrySetIterator.remove defined?",
+   "subject": {
+    "label": "AbstractDualBidiMap.EntrySetIterator.remove",
+    "path": "src/main/java/org/apache/commons/collections4/bidimap/AbstractDualBidiMap.java",
+    "lines": [
+     226,
+     242
+    ]
+   },
+   "truth": [
+    {
+     "label": "AbstractDualBidiMap.EntrySetIterator.remove",
+     "lines": [
+      226,
+      242
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bidimap/AbstractDualBidiMap.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-45",
+   "kind": "definition",
+   "question": "Where is CollectionSortedBag.add defined?",
+   "subject": {
+    "label": "CollectionSortedBag.add",
+    "path": "src/main/java/org/apache/commons/collections4/bag/CollectionSortedBag.java",
+    "lines": [
+     64,
+     72
+    ]
+   },
+   "truth": [
+    {
+     "label": "CollectionSortedBag.add",
+     "lines": [
+      64,
+      72
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/bag/CollectionSortedBag.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-46",
+   "kind": "definition",
+   "question": "Where is TreeList.AVLNode.removeMax defined?",
+   "subject": {
+    "label": "TreeList.AVLNode.removeMax",
+    "path": "src/main/java/org/apache/commons/collections4/list/TreeList.java",
+    "lines": [
+     512,
+     527
+    ]
+   },
+   "truth": [
+    {
+     "label": "TreeList.AVLNode.removeMax",
+     "lines": [
+      512,
+      527
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/list/TreeList.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-47",
+   "kind": "definition",
+   "question": "Where is PredicatedMap.isSetValueChecking defined?",
+   "subject": {
+    "label": "PredicatedMap.isSetValueChecking",
+    "path": "src/main/java/org/apache/commons/collections4/map/PredicatedMap.java",
+    "lines": [
+     124,
+     131
+    ]
+   },
+   "truth": [
+    {
+     "label": "PredicatedMap.isSetValueChecking",
+     "lines": [
+      124,
+      131
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/map/PredicatedMap.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-48",
+   "kind": "definition",
+   "question": "Where is TransformedMultiSet.add defined?",
+   "subject": {
+    "label": "TransformedMultiSet.add",
+    "path": "src/main/java/org/apache/commons/collections4/multiset/TransformedMultiSet.java",
+    "lines": [
+     102,
+     109
+    ]
+   },
+   "truth": [
+    {
+     "label": "TransformedMultiSet.add",
+     "lines": [
+      102,
+      109
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/multiset/TransformedMultiSet.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-49",
+   "kind": "definition",
+   "question": "Where is UnmodifiableNavigableSet.writeObject defined?",
+   "subject": {
+    "label": "UnmodifiableNavigableSet.writeObject",
+    "path": "src/main/java/org/apache/commons/collections4/set/UnmodifiableNavigableSet.java",
+    "lines": [
+     233,
+     242
+    ]
+   },
+   "truth": [
+    {
+     "label": "UnmodifiableNavigableSet.writeObject",
+     "lines": [
+      233,
+      242
+     ],
+     "path": "src/main/java/org/apache/commons/collections4/set/UnmodifiableNavigableSet.java"
+    }
+   ]
+  }
+ ]
+}

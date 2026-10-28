@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""A stdio MCP server minus some of its tools: `mcp-filter [--drop a,b] [--extended] -- <command...>`.
+
+Forwards newline-delimited JSON-RPC both ways. A `tools/list` reply loses the dropped tools, and a
+`tools/call` naming one is answered "unknown tool" without reaching the server, so an arm that
+should not have a tool cannot call it whatever its client does with allow-lists. `--extended` asks
+every `tools/list` for the server's extended list, for a client that cannot ask itself; `--keep`
+lists only the named tools.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import threading
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    if "--" not in args:
+        print("usage: mcp-filter [--drop a,b] [--extended] [--keep a,b] -- <command...>", file=sys.stderr)
+        return 2
+    opts, cmd = args[:args.index("--")], args[args.index("--") + 1:]
+    drop = set(opts[opts.index("--drop") + 1].split(",")) if "--drop" in opts else set()
+    keep = set(opts[opts.index("--keep") + 1].split(",")) if "--keep" in opts else None
+    extended = "--extended" in opts
+    child = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
+    lock = threading.Lock()
+
+    def emit(msg: dict) -> None:
+        with lock:
+            sys.stdout.write(json.dumps(msg) + "\n")
+            sys.stdout.flush()
+
+    def from_server() -> None:
+        assert child.stdout
+        for line in child.stdout:
+            try:
+                msg = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            result = msg.get("result")
+            if isinstance(result, dict) and isinstance(result.get("tools"), list):
+                result["tools"] = [t for t in result["tools"]
+                                   if t.get("name") not in drop and (keep is None or t.get("name") in keep)]
+            emit(msg)
+        sys.stdout.flush()
+
+    threading.Thread(target=from_server, daemon=True).start()
+    assert child.stdin
+    for line in sys.stdin:
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if msg.get("method") == "tools/call" and (msg.get("params") or {}).get("name") in drop:
+            if "id" in msg:
+                emit({"jsonrpc": "2.0", "id": msg["id"],
+                      "error": {"code": -32602, "message": f"unknown tool: {msg['params']['name']}"}})
+            continue
+        if extended and msg.get("method") == "tools/list":
+            msg["params"] = {**(msg.get("params") or {}), "extended": True}
+        child.stdin.write(json.dumps(msg) + "\n")
+        child.stdin.flush()
+    child.stdin.close()
+    return child.wait()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -209,6 +209,29 @@ working directory: `[graph] graphify = true` (or `jk graph build --graphify` onc
 `graph.json` (`graphify update`), the next refresh writes jk's graph back and says so. jk's graph has
 no LLM pass: documents are read for their structure, links and code mentions only.
 
+## Against grep and other graphs
+
+The [retrieval bench](../../bench/graph-retrieval/README.md) asks who calls a method, what
+implements or overrides it and where it is defined, on seven JVM repositories, and grades every
+answer against the call and type facts read from the compiled classes. Each cell is the median
+answer size in tokens and the share of the compiler's answer it named.
+
+<!-- graph-table:begin -->
+| Repo | Lines | jk tokens · found | grep tokens · found | graphify tokens · found | RepoQL tokens · found |
+|---|---:|---:|---:|---:|---:|
+| spring-petclinic-kotlin | 1,889 | 73 · 97% | 855 · 70% | 20 · 41% | 63 · 34% |
+| spring-petclinic | 3,635 | 76 · 97% | 2,212 · 98% | 202 · 94% | 136 · 12% |
+| commons-cli | 17,862 | 139 · 84% | 24,509 · 96% | 145 · 68% | 193 · 17% |
+| commons-io | 105,209 | 90 · 85% | 26,037 · 98% | 142 · 60% | — |
+| commons-collections | 129,244 | 128 · 96% | 29,064 · 95% | 184 · 71% | — |
+| commons-lang | 188,332 | 98 · 86% | 22,696 · 96% | 150 · 61% | — |
+| jk | 679,533 | 80 · 99% | 32,527 · 97% | 88 · 48% | — |
+<!-- graph-table:end -->
+
+<!-- graph-claims:begin -->
+On jk (679,533 lines), asked who calls a method, what implements or overrides it and where it is defined, jk's graph tools answered in a median 80 tokens and named 99% of the compiler's answer; grep and reading the files it matched took 32,527 tokens for 97%. Per correct answer that is 35 tokens against 17,482. On the same questions: graphify's 88 tokens for 48%. jk's call edges match the compiled classes' at 96% precision and 98% recall. ([The bench](../../bench/graph-retrieval/README.md), results of 2026-10-26.)
+<!-- graph-claims:end -->
+
 ## MCP
 
 jk's MCP server does not list the graph: every card an agent's host shows is paid on every turn, and

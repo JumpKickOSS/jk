@@ -1,0 +1,464 @@
+#!/usr/bin/env python3
+"""Change tasks: an agent adds, renames, removes or implements code across a real repository, and
+hidden acceptance tests decide whether it did. Measures tokens, turns, wall time and success per
+arm, and how the agent navigated (graph calls against grep, glob and file reads).
+
+    bench/agent-loop/change-tasks --list
+    bench/agent-loop/change-tasks --task petclinic-owner-email --arm jk --runs 1
+    bench/agent-loop/change-tasks --arm jk --arm jk-hooks --arm mvn --runs 5
+    bench/agent-loop/change-tasks --driver grok --arm jk --arm jk-hooks
+    bench/agent-loop/change-tasks --render [--out DIR]
+
+Tasks are in tasks.toml; each task's hidden files are under tasks/<task>/ and are copied over the
+sandbox only after the agent stops. Repositories are the graph-retrieval corpus
+(bench/graph-retrieval/repos.toml), set up there with `bench setup`. Sandboxes and transcripts
+live under $AGENT_LOOP_HOME/change-tasks/<date>/. README.md section "Change tasks" says what the
+arms are.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import re
+import shutil
+import statistics
+import subprocess
+import sys
+import time
+import tomllib
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+sys.path.insert(0, str(HERE))
+import benchtools  # noqa: E402
+from harnesslib import agents  # noqa: E402
+from harnesslib.session import mcp_server_config  # noqa: E402
+
+TASKS = HERE / "tasks.toml"
+TASK_FILES = HERE / "tasks"
+CORPUS = benchtools.scratch("GRAPH_RETRIEVAL_HOME", "graph-retrieval") / "repos"
+HOME = benchtools.scratch("AGENT_LOOP_HOME", "agent-loop") / "change-tasks"
+
+# jk's graph calls, on the extended tools/list; an arm that hides the graph drops them from every list.
+JK_GRAPH_TOOLS = ["query_graph", "read_symbol", "get_neighbors", "find_symbols"]
+# jk's default tools/list.
+JK_LOOP_TOOLS = ["run", "snapshot", "diagnostics", "deps", "why", "skill"]
+# graphify's MCP server (`graphify-mcp`, from the `graphifyy[mcp]` tool install).
+GRAPHIFY_MCP = Path.home() / ".local/share/uv/tools/graphifyy/bin/graphify-mcp"
+
+# arm: build tool, extra MCP servers, jk graph tools hidden, hooks installed in the sandbox, prompt addition
+ARMS = {
+    # The default MCP list carries no graph cards, so `jk` is the no-graph baseline; the graph reaches the agent
+    # through the search hook only (answers beside the search, or in place of it).
+    "jk": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt=""),
+    # The graph tools' cards on the MCP list (the extended list): the graph for a driver without hooks.
+    "jk-graph": dict(tool="jk", extra=[], hide_graph=False, extended=True, hooks=None, prompt=""),
+    "jk-hooks": dict(tool="jk", extra=[], hide_graph=False, hooks="jk", prompt=""),
+    "jk-hooks-replace": dict(tool="jk", extra=[], hide_graph=False, hooks="jk-replace", prompt=""),
+    "mvn": dict(tool="mvn", extra=[], hide_graph=False, hooks=None, prompt=""),
+    "mvn-graphify": dict(tool="mvn", extra=["graphify"], hide_graph=False, hooks="graphify", prompt=""),
+    # graphify's own install (CLAUDE.md block, hooks, MCP server) on a jk build: the graphs compared, the rest equal.
+    "jk-graphify": dict(tool="jk", extra=["graphify"], hide_graph=False, hooks="graphify", prompt=""),
+}
+
+DRIVERS = {"claude-code": agents.claude_code, "grok": agents.grok, "agy": agents.agy}
+DEFAULT_MODEL = {"claude-code": "claude-sonnet-5-5", "grok": "grok-4.7", "agy": "gemini-3.8-flash-high"}
+DEFAULT_EFFORT = {"claude-code": "medium", "grok": "high", "agy": "high"}
+
+# Each CLI's names for the same moves.
+NAV_TEXT = {"Grep", "Glob", "Read", "read_file", "grep", "list_dir", "view_file", "grep_search", "find_by_name"}
+EDITS = {"Edit", "Write", "MultiEdit", "search_replace", "replace_file_content", "multi_replace_file_content",
+         "write_to_file"}
+GRAPH = set(JK_GRAPH_TOOLS) | {"get_node", "get_community", "god_nodes", "graph_stats", "shortest_path",
+                               "rules_for"}
+
+SYSTEM_PROMPT = """You are working in a {tool_label} project at {sandbox}.
+
+Use only the tools you are given (the MCP tools and the file tools), on files under {sandbox}. Do not run shell commands and do not use git. Keep the existing tests passing; add or update tests where the task calls for it.
+
+When the task is done and the build and tests pass, reply with one line: DONE. If you cannot finish, reply with one line starting with FAILED and say why.
+"""
+
+SHELL_PROMPT = """You are working in a {tool_label} project at {sandbox}.
+
+Use the tools you are given (the MCP tools, the file tools and the shell), on files under {sandbox}. Do not use git. Keep the existing tests passing; add or update tests where the task calls for it.
+
+When the task is done and the build and tests pass, reply with one line: DONE. If you cannot finish, reply with one line starting with FAILED and say why.
+"""
+
+# Shell commands by family, for a run with --shell.
+SHELL_GRAPH = re.compile(r"^\s*(?:\S*/)?(?:graphify\b|jk\b.*\bgraph\b)")
+SHELL_TEXT = re.compile(r"^\s*(?:\S*/)?(?:grep|rg|ag|find|cat|head|tail|sed|awk|less|ls|tree|wc)\b")
+
+TOOL_LABEL = {"jk": "JumpKick (jk)", "mvn": "Maven", "gradle": "Gradle"}
+
+
+def tasks() -> dict:
+    out = tomllib.loads(TASKS.read_text())["tasks"]
+    for name, t in out.items():
+        t["name"] = name
+    return out
+
+
+def sh(cmd: list[str], cwd: Path, timeout: int = 1800) -> tuple[int, str, float]:
+    start = time.monotonic()
+    try:
+        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, errors="replace", timeout=timeout)
+        return p.returncode, p.stdout + p.stderr, time.monotonic() - start
+    except subprocess.TimeoutExpired:
+        return 124, f"timeout after {timeout}s", time.monotonic() - start
+
+
+def materialise(task: dict, tool: str, sandbox: Path) -> None:
+    """The repository at its corpus commit, as the tool builds it: tracked files only, plus jk's
+    manifests for jk (and no Maven or Gradle build), so no agent reads another tool's build."""
+    tree = CORPUS / task["repo"]
+    if not (tree / "jk.toml").exists():
+        raise RuntimeError(f"{task['repo']} is not set up: bench/graph-retrieval/bench setup --repo {task['repo']}")
+    sandbox.mkdir(parents=True)
+    archive = subprocess.run(["git", "-C", str(tree), "archive", "HEAD"], capture_output=True, check=True).stdout
+    subprocess.run(["tar", "-x", "-C", str(sandbox)], input=archive, check=True)
+    native = (tree / ".jk").is_dir() and not (tree / "pom.xml").exists()
+    if tool == "jk" and not native:
+        for name in ("jk.toml", "jk-lock.toml"):
+            for src in tree.rglob(name):
+                if "target" in src.parts or ".git" in src.parts:
+                    continue
+                dst = sandbox / src.relative_to(tree)
+                if dst.parent.exists():
+                    shutil.copy2(src, dst)
+        for build in [*sandbox.rglob("pom.xml"), *sandbox.rglob("build.gradle*"), *sandbox.rglob("settings.gradle*"),
+                      *sandbox.rglob("mvnw*"), *sandbox.rglob("gradlew*")]:
+            build.unlink()
+        for d in [*sandbox.rglob(".mvn"), *sandbox.rglob("gradle")]:
+            if d.is_dir() and (d.name == ".mvn" or (d / "wrapper").exists()):
+                shutil.rmtree(d, ignore_errors=True)
+    inject = TASK_FILES / task["name"] / "inject"
+    for overlay in (inject / "all", inject / tool):
+        if overlay.exists():
+            shutil.copytree(overlay, sandbox, dirs_exist_ok=True)
+    for edit in task.get("inject", []):
+        # A planted defect: `from` must occur exactly once, so a moved upstream line fails loudly.
+        target = sandbox / edit["file"]
+        text = target.read_text(encoding="utf-8")
+        if text.count(edit["from"]) != 1:
+            raise RuntimeError(f"inject: {edit['file']} holds `{edit['from']}` {text.count(edit['from'])} times")
+        target.write_text(text.replace(edit["from"], edit["to"]), encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=sandbox, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=sandbox, check=True)
+    subprocess.run(["git", "-c", "user.name=bench", "-c", "user.email=bench@localhost", "commit", "-q", "-m",
+                    "baseline"], cwd=sandbox, check=True)
+
+
+# Maven gates that police files, not behaviour: the hidden tests are the bench's files, and jk's
+# build runs neither check, so verification skips them. The agent's own runs keep them.
+MVN_VERIFY_SKIPS = ["-Drat.skip=true", "-Dspring-javaformat.skip=true"]
+
+
+def test_cmd(tool: str, verify: bool = False, task: dict | None = None) -> list[str]:
+    if task and task.get("test"):
+        return list(task["test"])
+    if tool == "jk":
+        return ["jk", "-u", "-x", "-a", "test"]
+    return [str(HERE / "wrappers" / f"{tool}-results"), "test", *(MVN_VERIFY_SKIPS if verify else [])]
+
+
+def install_hooks(kind: str | None, sandbox: Path, run_dir: Path) -> None:
+    """The agent package an arm runs with: jk's graph hook (prototype), or graphify's own install."""
+    if kind in ("jk", "jk-replace"):
+        settings = sandbox / ".claude" / "settings.json"
+        settings.parent.mkdir(exist_ok=True)
+        mode = "JK_GRAPH_HOOK_MODE=replace " if kind == "jk-replace" else ""
+        hook = {"type": "command",
+                "command": f"{mode}JK_GRAPH_HOOK_LOG={run_dir / 'hook.jsonl'} {HERE / 'wrappers' / 'jk-graph-hook'}",
+                "timeout": 30}
+        settings.write_text(json.dumps({"hooks": {"PreToolUse": [
+            {"matcher": "Grep|Glob", "hooks": [hook]}, {"matcher": "Read", "hooks": [hook]}]}}, indent=2))
+    elif kind == "graphify":
+        # graphify's documented project install: its CLAUDE.md block and its PreToolUse hooks. HOME is
+        # the sandbox's own, so nothing lands in the real ~/.claude.
+        home = run_dir / "graphify-home"
+        home.mkdir(exist_ok=True)
+        code, out, _ = sh_env(["graphify", "claude", "install"], sandbox, {"HOME": str(home)}, 300)
+        (run_dir / "graphify-install.log").write_text(out, encoding="utf-8")
+        if code != 0:
+            raise RuntimeError(f"graphify claude install failed: {out[-300:]}")
+
+
+def sh_env(cmd: list[str], cwd: Path, env: dict, timeout: int) -> tuple[int, str, float]:
+    import os
+    start = time.monotonic()
+    try:
+        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, errors="replace", timeout=timeout,
+                           env={**os.environ, **env})
+        return p.returncode, p.stdout + p.stderr, time.monotonic() - start
+    except subprocess.TimeoutExpired:
+        return 124, f"timeout after {timeout}s", time.monotonic() - start
+
+
+def mcp_servers(tool: str, extra: list[str], hide_graph: bool, sandbox: Path,
+                extended: bool = False) -> tuple[str, dict]:
+    server = "jk" if tool == "jk" else "results"
+    cfg = mcp_server_config(tool, sandbox)
+    if extended:
+        cfg = {"type": "stdio", "command": str(HERE / "wrappers" / "mcp-filter"),
+               "args": ["--extended", "--keep", ",".join(JK_LOOP_TOOLS + JK_GRAPH_TOOLS),
+                        "--", cfg["command"], *cfg["args"]]}
+    if hide_graph:
+        # One proxy for every driver: the graph tools are gone from tools/list and refused if called.
+        cfg = {"type": "stdio", "command": str(HERE / "wrappers" / "mcp-filter"),
+               "args": ["--drop", ",".join(JK_GRAPH_TOOLS), "--", cfg["command"], *cfg["args"]]}
+    servers = {server: cfg}
+    if "graphify" in extra:
+        servers["graphify"] = {"type": "stdio", "command": str(GRAPHIFY_MCP),
+                               "args": [str(sandbox / "graphify-out" / "graph.json")]}
+    return server, servers
+
+
+def called(entry: dict) -> str:
+    """The tool a transcript entry calls; an MCP call made through a meta-tool counts as the tool it names."""
+    name = str(entry.get("tool_use") or "")
+    if name in ("use_tool", "call_mcp_tool"):
+        try:
+            args = json.loads(entry.get("input") or "{}")
+        except json.JSONDecodeError:
+            args = {}
+        inner = args.get("tool_name") or args.get("ToolName") or args.get("name") or args.get("tool")
+        if inner:
+            return str(inner)
+    return name
+
+
+def navigation(summary: list[dict]) -> dict:
+    """Tool calls by family, from a driver's transcript spine."""
+    counts = {"graph": 0, "text": 0, "edits": 0, "build": 0, "other": 0}
+    names: dict[str, int] = {}
+    for entry in summary:
+        if "tool_use" not in entry:
+            continue
+        name = called(entry)
+        names[name] = names.get(name, 0) + 1
+        short = name.split("__")[-1]
+        command = ""
+        if short == "Bash":
+            try:
+                command = str(json.loads(entry.get("input") or "{}").get("command") or "")
+            except json.JSONDecodeError:
+                command = str(entry.get("input") or "")
+        if short in GRAPH or name.startswith("mcp__graphify__") or SHELL_GRAPH.search(command):
+            counts["graph"] += 1
+        elif SHELL_TEXT.search(command):
+            counts["text"] += 1
+        elif short in NAV_TEXT:
+            counts["text"] += 1
+        elif short in EDITS:
+            counts["edits"] += 1
+        elif name.startswith(("mcp__jk__", "mcp__results__")) or short in ("run", "diagnostics", "deps", "why",
+                                                                            "snapshot", "results", "skill"):
+            counts["build"] += 1
+        else:
+            counts["other"] += 1
+    nav = counts["graph"] + counts["text"]
+    return {**counts, "graph_share": counts["graph"] / nav if nav else None, "tool_calls": names}
+
+
+def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -> dict:
+    spec = ARMS[arm]
+    tool, extra, hide_graph = spec["tool"], spec["extra"], spec["hide_graph"]
+    run_dir = run_root / ns.driver / arm / f"{name}.{run_no}"
+    if run_dir.exists():
+        shutil.rmtree(run_dir)
+    sandbox = run_dir / "sandbox"
+    row = {"date": ns.date, "driver": ns.driver, "task": name, "kind": task["kind"], "repo": task["repo"],
+           "arm": arm, "run": run_no, "model": ns.model, "effort": ns.effort, "outcome": "error", "finding": "",
+           "sandbox": str(sandbox), "host": benchtools.host_id()}
+    try:
+        materialise(task, tool, sandbox)
+        code, out, warm = sh(test_cmd(tool, task=task), sandbox, 3600)
+        row["baseline_wall_s"] = round(warm, 1)
+        expected_red = task.get("baseline") == "red"
+        if (code != 0) != expected_red:
+            state = "red" if code else "green"
+            row["finding"] = f"baseline is {state} before the agent, expected {task.get('baseline', 'green')}: {out[-300:]}"
+            return row
+        if tool == "jk":
+            sh(["jk", "-u", "-x", "graph", "build"], sandbox, 1800)
+            # What a jk user's repository holds: jk's AGENTS.md section. Claude Code reads AGENTS.md
+            # itself; a CLAUDE.md import of it adds context and nothing else.
+            sh(["jk", "-u", "-x", "skill", "agents"], sandbox, 300)
+        if "graphify" in extra:
+            gcode, gout, gwall = sh(["graphify", "update", "."], sandbox, 3600)
+            row["graphify_index_s"] = round(gwall, 1)
+            if gcode != 0:
+                row["finding"] = f"graphify index failed: {gout[-300:]}"
+                return row
+        install_hooks(spec["hooks"], sandbox, run_dir)
+        server, servers = mcp_servers(tool, extra, hide_graph, sandbox, spec.get("extended", False))
+        transcript = run_dir / "transcript.jsonl"
+        agents.TASK = agents.Task(
+            system=(SHELL_PROMPT if ns.shell else SYSTEM_PROMPT).format(
+                tool_label=TOOL_LABEL[tool], sandbox=sandbox, server=server) + spec["prompt"],
+            user=task["prompt"].strip(),
+            servers=servers,
+            shell=ns.shell)
+        started = time.monotonic()
+        try:
+            res = DRIVERS[ns.driver](tool, sandbox, ns.model, ns.max_turns, ns.max_minutes * 60, transcript,
+                                     effort=ns.effort)
+        finally:
+            agents.TASK = None
+        row["wall_s"] = round(time.monotonic() - started, 1)
+        usage = res.usage or {}
+        texts = [e["text"] for e in res.transcript if "text" in e]
+        reply = (texts[-1] if texts else "").strip()
+        row.update(
+            turns=res.turns, input_tokens=usage.get("input_tokens", 0),
+            output_tokens=int(usage.get("output_tokens") or 0),
+            cache_read_tokens=usage.get("cache_read_input_tokens", 0),
+            cache_write_tokens=usage.get("cache_creation_input_tokens", 0),
+            reasoning_tokens=agents.reasoning_count(usage, res.extra.get("model_usage")),
+            cost_usd=None if res.cost_usd is None else round(res.cost_usd, 4),
+            claimed=bool(re.search(r"(?m)^\s*DONE\b", reply)), reply=reply[:300],
+            agent_finding=res.finding, **navigation(res.transcript))
+        if res.extra.get("abort"):
+            row["finding"] = f"the {ns.driver} CLI did not start: {res.finding}"[:300]
+            return row
+        row["tokens"] = row["input_tokens"] + row["output_tokens"] + row["cache_read_tokens"] + row["cache_write_tokens"]
+        hook_log = run_dir / "hook.jsonl"
+        if hook_log.exists():
+            fired = [json.loads(line) for line in hook_log.read_text().splitlines() if line.strip()]
+            row["hook_calls"] = len(fired)
+            row["hook_injections"] = sum(1 for h in fired if h.get("injected"))
+            row["hook_chars"] = sum(h.get("injected", 0) for h in fired)
+        hidden = TASK_FILES / name / tool
+        if not hidden.exists():
+            hidden = TASK_FILES / name / "all"
+        if hidden.exists():
+            shutil.copytree(hidden, sandbox, dirs_exist_ok=True)
+        for rel in task.get("restore", []):
+            # The suite as shipped decides, not as the agent may have edited it.
+            src = CORPUS / task["repo"] / rel
+            shutil.rmtree(sandbox / rel, ignore_errors=True)
+            shutil.copytree(src, sandbox / rel)
+        code, out, verify = sh(test_cmd(tool, verify=True, task=task), sandbox, 3600)
+        (run_dir / "verify.log").write_text(out, encoding="utf-8")
+        row["verify_wall_s"] = round(verify, 1)
+        row["accepted"] = code == 0
+        row["outcome"] = "green" if code == 0 else ("claimed" if row["claimed"] else "red")
+        diff = subprocess.run(["git", "diff", "--stat", "HEAD"], cwd=sandbox, capture_output=True, text=True).stdout
+        row["diff_files"] = max(0, len(diff.strip().splitlines()) - 1)
+    except Exception as e:  # noqa: BLE001 - a broken run is a row, not a crash of the matrix
+        row["finding"] = f"{type(e).__name__}: {e}"[:300]
+    return row
+
+
+def reverify(out_dir: Path) -> None:
+    """Re-run verification in every kept sandbox whose row is not green, and rewrite the rows."""
+    path = out_dir / "rows.jsonl"
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    for r in rows:
+        if r.get("outcome") in ("green", "error") or "tokens" not in r:
+            continue
+        sandbox = Path(r["sandbox"])
+        tool = ARMS[r["arm"]]["tool"]
+        code, out, wall = sh(test_cmd(tool, verify=True), sandbox, 3600)
+        (sandbox.parent / "verify.log").write_text(out, encoding="utf-8")
+        r["verify_wall_s"] = round(wall, 1)
+        r["accepted"] = code == 0
+        r["outcome"] = "green" if code == 0 else ("claimed" if r.get("claimed") else "red")
+        r["reverified"] = True
+        print(f"{r.get('driver')} {r['task']} {r['arm']} #{r['run']}: {r['outcome']}")
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    render(out_dir)
+
+
+def render(out_dir: Path) -> None:
+    rows = [json.loads(line) for line in (out_dir / "rows.jsonl").read_text().splitlines()]
+    lines = [f"# Change tasks — {out_dir.name}", "",
+             "Medians over runs. Tokens are input + output + cache read + cache write as the API reports them. "
+             "Graph share is graph calls over graph + Grep/Glob/Read calls.", "",
+             "| Driver | Task | Arm | Runs | Green | Median tokens | Uncached in | Output | Turns | Wall s | Graph share |",
+             "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    for driver, task, arm in sorted({(r.get("driver", "claude-code"), r["task"], r["arm"]) for r in rows}):
+        rs = [r for r in rows if (r.get("driver", "claude-code"), r["task"], r["arm"]) == (driver, task, arm)
+              and "tokens" in r]
+        if not rs:
+            continue
+        med = lambda k: statistics.median(r.get(k) or 0 for r in rs)  # noqa: E731
+        shares = [r["graph_share"] for r in rs if r.get("graph_share") is not None]
+        lines.append(f"| {driver} | {task} | {arm} | {len(rs)} | {sum(r['outcome'] == 'green' for r in rs)} "
+                     f"| {med('tokens'):.0f} | {med('input_tokens'):.0f} | {med('output_tokens'):.0f} "
+                     f"| {med('turns'):.0f} | {med('wall_s'):.0f} "
+                     f"| {statistics.median(shares) if shares else 0:.2f} |")
+    (out_dir / "TABLE.md").write_text("\n".join(lines) + "\n")
+    print((out_dir / "TABLE.md").read_text())
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--list", action="store_true")
+    ap.add_argument("--task", action="append")
+    ap.add_argument("--arm", action="append", choices=sorted(ARMS))
+    ap.add_argument("--runs", type=int, default=1)
+    ap.add_argument("--driver", default="claude-code", choices=sorted(DRIVERS))
+    ap.add_argument("--model", help="default per driver")
+    ap.add_argument("--effort", help="default per driver")
+    ap.add_argument("--max-turns", type=int, default=60)
+    ap.add_argument("--max-minutes", type=int, default=30)
+    ap.add_argument("--shell", action="store_true",
+                    help="give the agent Bash too (Claude Code), as graphify's install expects")
+    ap.add_argument("--render", action="store_true")
+    ap.add_argument("--reverify", action="store_true", help="re-judge kept sandboxes that are not green")
+    ap.add_argument("--out")
+    ns = ap.parse_args()
+    ns.date = dt.date.today().isoformat()
+    ns.model = ns.model or DEFAULT_MODEL[ns.driver]
+    ns.effort = ns.effort or DEFAULT_EFFORT[ns.driver]
+    out_dir = Path(ns.out) if ns.out else HERE / "results" / f"{ns.date}-change-tasks"
+    all_tasks = tasks()
+    if ns.list:
+        for name, t in all_tasks.items():
+            print(f"{name:32} {t['repo']:24} {t['kind']}")
+        return 0
+    if ns.render:
+        render(out_dir)
+        return 0
+    if ns.reverify:
+        benchtools.resolve(allow_stale=True, need=("maven",))
+        reverify(out_dir)
+        return 0
+    cli = {"claude-code": "claude", "grok": "grok", "agy": "agy"}[ns.driver]
+    if not shutil.which(cli):
+        print(f"the `{cli}` CLI is not on PATH", file=sys.stderr)
+        return 2
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if any(ARMS[a]["tool"] == "mvn" for a in (ns.arm or ARMS)):
+        # The wrappers run the pinned Maven, provisioned as the agent-loop harness does.
+        benchtools.resolve(allow_stale=True, need=("maven",))
+    run_root = HOME / ns.date
+    # Apache RAT fails on any file a graph tool or an agent package adds to the sandbox (graphify-out/,
+    # CLAUDE.md), which no task is about; every Maven run skips it, the agent's own and the shell's.
+    os.environ["MAVEN_ARGS"] = (os.environ.get("MAVEN_ARGS", "") + " -Drat.skip=true").strip()
+    names = ns.task or list(all_tasks)
+    with (out_dir / "rows.jsonl").open("a") as f:
+        for run_no in range(1, ns.runs + 1):
+            for name in names:
+                for arm in ns.arm or list(ARMS):
+                    tool = ARMS[arm]["tool"]
+                    if tool not in all_tasks[name].get("tools", ["jk", "mvn"]):
+                        continue
+                    row = run_one(name, all_tasks[name], arm, run_no, ns, run_root)
+                    f.write(json.dumps(row) + "\n")
+                    f.flush()
+                    print(f"{ns.driver} {name} {arm} #{run_no}: {row['outcome']} tokens={row.get('tokens')} "
+                          f"turns={row.get('turns')} graph_share={row.get('graph_share')} {row['finding']}")
+    render(out_dir)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,2167 @@
+{
+ "repo": "jk",
+ "commit": "1d0d441ed10b0ce5fa2bc85c696e1eb898a0c1b2",
+ "loc": 679533,
+ "classes": 4641,
+ "lint_dropped": false,
+ "questions": [
+  {
+   "id": "callers-0",
+   "kind": "callers",
+   "question": "Who calls OutdatedReport.Row.scope?",
+   "subject": {
+    "label": "OutdatedReport.Row.scope",
+    "path": "shared/wire/src/main/java/cc/jumpkick/wire/protocol/OutdatedReport.java",
+    "lines": [
+     23,
+     30
+    ]
+   },
+   "truth": [
+    {
+     "label": "JkOutdatedMarkdown.render",
+     "lines": [
+      41,
+      151
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/runtime/workspace/JkOutdatedMarkdown.java"
+    },
+    {
+     "label": "OutdatedCommand.renderByModule",
+     "lines": [
+      297,
+      340
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/project/OutdatedCommand.java"
+    },
+    {
+     "label": "OutdatedCommand.toJson",
+     "lines": [
+      196,
+      217
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/project/OutdatedCommand.java"
+    },
+    {
+     "label": "OutdatedReport.encode",
+     "lines": [
+      212,
+      237
+     ],
+     "path": "shared/wire/src/main/java/cc/jumpkick/wire/protocol/OutdatedReport.java"
+    },
+    {
+     "label": "OutdatedReport.rollup",
+     "lines": [
+      157,
+      188
+     ],
+     "path": "shared/wire/src/main/java/cc/jumpkick/wire/protocol/OutdatedReport.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-1",
+   "kind": "callers",
+   "question": "Who calls TestFailureInfo.file?",
+   "subject": {
+    "label": "TestFailureInfo.file",
+    "path": "shared/jk-api/src/main/java/cc/jumpkick/run/TestFailureInfo.java",
+    "lines": [
+     16,
+     23
+    ]
+   },
+   "truth": [
+    {
+     "label": "BuildPlanResult.Diagnostic.<init>",
+     "lines": [
+      180,
+      205
+     ],
+     "path": "shared/jk-api/src/main/java/cc/jumpkick/run/BuildPlanResult.java"
+    },
+    {
+     "label": "ErrorLineEvent.of",
+     "lines": [
+      57,
+      83
+     ],
+     "path": "shared/wire/src/main/java/cc/jumpkick/wire/protocol/ErrorLineEvent.java"
+    },
+    {
+     "label": "EventRedaction.redactFailure",
+     "lines": [
+      126,
+      156
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/listen/EventRedaction.java"
+    },
+    {
+     "label": "JsonlShape.error",
+     "lines": [
+      227,
+      261
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/run/JsonlShape.java"
+    },
+    {
+     "label": "PlanDiagnosticEvent.of",
+     "lines": [
+      63,
+      90
+     ],
+     "path": "shared/wire/src/main/java/cc/jumpkick/wire/protocol/PlanDiagnosticEvent.java"
+    },
+    {
+     "label": "ProtoEvents.withoutText",
+     "lines": [
+      186,
+      206
+     ],
+     "path": "shared/wire/src/main/java/cc/jumpkick/wire/protocol/ProtoEvents.java"
+    },
+    {
+     "label": "WarnEvent.of",
+     "lines": [
+      57,
+      83
+     ],
+     "path": "shared/wire/src/main/java/cc/jumpkick/wire/protocol/WarnEvent.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-2",
+   "kind": "callers",
+   "question": "Who calls ToolRunCommand.refuseDebug?",
+   "subject": {
+    "label": "ToolRunCommand.refuseDebug",
+    "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/ToolRunCommand.java",
+    "lines": [
+     242,
+     250
+    ]
+   },
+   "truth": [
+    {
+     "label": "ToolRunCommand.run",
+     "lines": [
+      401,
+      546
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/ToolRunCommand.java"
+    },
+    {
+     "label": "ToolRunCommand.runDirectory",
+     "lines": [
+      251,
+      286
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/ToolRunCommand.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-3",
+   "kind": "callers",
+   "question": "Who calls FormatCommand.redo?",
+   "subject": {
+    "label": "FormatCommand.redo",
+    "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/FormatCommand.java",
+    "lines": [
+     404,
+     411
+    ]
+   },
+   "truth": [
+    {
+     "label": "FormatCommand.runAnimated",
+     "lines": [
+      220,
+      305
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/FormatCommand.java"
+    },
+    {
+     "label": "FormatCommand.runPlain",
+     "lines": [
+      138,
+      219
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/FormatCommand.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-4",
+   "kind": "callers",
+   "question": "Who calls RuleBaseline.withLane?",
+   "subject": {
+    "label": "RuleBaseline.withLane",
+    "path": "server/guard/src/main/java/cc/jumpkick/guard/baseline/RuleBaseline.java",
+    "lines": [
+     73,
+     86
+    ]
+   },
+   "truth": [
+    {
+     "label": "PlannerGuards.mergeTightened",
+     "lines": [
+      936,
+      955
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/runtime/PlannerGuards.java"
+    },
+    {
+     "label": "Reconciliation.frozen",
+     "lines": [
+      116,
+      134
+     ],
+     "path": "server/guard/src/main/java/cc/jumpkick/guard/baseline/Reconciliation.java"
+    },
+    {
+     "label": "Reconciliation.of",
+     "lines": [
+      57,
+      103
+     ],
+     "path": "server/guard/src/main/java/cc/jumpkick/guard/baseline/Reconciliation.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-5",
+   "kind": "callers",
+   "question": "Who calls BuildRecord.diagnostics?",
+   "subject": {
+    "label": "BuildRecord.diagnostics",
+    "path": "server/engine/src/main/java/cc/jumpkick/engine/journal/BuildRecord.java",
+    "lines": [
+     16,
+     23
+    ]
+   },
+   "truth": [
+    {
+     "label": "HistoryShowVerb.run",
+     "lines": [
+      45,
+      138
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/verbs/HistoryShowVerb.java"
+    },
+    {
+     "label": "JkResultsAgent.appendMemoryEvents",
+     "lines": [
+      167,
+      198
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/journal/JkResultsAgent.java"
+    },
+    {
+     "label": "JkResultsAgent.loci",
+     "lines": [
+      377,
+      411
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/journal/JkResultsAgent.java"
+    },
+    {
+     "label": "JkResultsLockNotesSection.append",
+     "lines": [
+      28,
+      45
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/journal/JkResultsLockNotesSection.java"
+    },
+    {
+     "label": "JkResultsLockNotesSection.count",
+     "lines": [
+      22,
+      31
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/journal/JkResultsLockNotesSection.java"
+    },
+    {
+     "label": "JkResultsMarkdown.appendCounts",
+     "lines": [
+      301,
+      352
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/journal/JkResultsMarkdown.java"
+    },
+    {
+     "label": "JkResultsMarkdown.appendFailures",
+     "lines": [
+      371,
+      403
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/journal/JkResultsMarkdown.java"
+    },
+    {
+     "label": "JkResultsMarkdown.appendGuards",
+     "lines": [
+      425,
+      499
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/journal/JkResultsMarkdown.java"
+    },
+    {
+     "label": "JkResultsMarkdown.whyLines",
+     "lines": [
+      220,
+      246
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/journal/JkResultsMarkdown.java"
+    },
+    {
+     "label": "JkResultsStopped.failedElsewhere",
+     "lines": [
+      67,
+      83
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/journal/JkResultsStopped.java"
+    },
+    {
+     "label": "JkResultsWarnings.append",
+     "lines": [
+      11,
+      39
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/journal/JkResultsWarnings.java"
+    },
+    {
+     "label": "JkResultsWarnings.deciding",
+     "lines": [
+      39,
+      50
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/journal/JkResultsWarnings.java"
+    },
+    {
+     "label": "JobDelta.diagKeys",
+     "lines": [
+      156,
+      165
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/journal/JobDelta.java"
+    },
+    {
+     "label": "JobDelta.diagLabels",
+     "lines": [
+      162,
+      171
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/journal/JobDelta.java"
+    },
+    {
+     "label": "Json.write",
+     "lines": [
+      41,
+      161
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/journal/Json.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-6",
+   "kind": "callers",
+   "question": "Who calls CrossPackageFeatures.Result.extrasList?",
+   "subject": {
+    "label": "CrossPackageFeatures.Result.extrasList",
+    "path": "shared/core/src/main/java/cc/jumpkick/resolver/CrossPackageFeatures.java",
+    "lines": [
+     110,
+     117
+    ]
+   },
+   "truth": [
+    {
+     "label": "ModuleRoots.addFeatureExtras",
+     "lines": [
+      154,
+      166
+     ],
+     "path": "shared/client-io/src/main/java/cc/jumpkick/compile/ModuleRoots.java"
+    },
+    {
+     "label": "PathSourceResolution.prepare",
+     "lines": [
+      42,
+      115
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/runtime/PathSourceResolution.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-7",
+   "kind": "callers",
+   "question": "Who calls RuleSource.layer?",
+   "subject": {
+    "label": "RuleSource.layer",
+    "path": "server/guard/src/main/java/cc/jumpkick/guard/rules/RuleSource.java",
+    "lines": [
+     4,
+     11
+    ]
+   },
+   "truth": [
+    {
+     "label": "FixtureCheck.fixtureDir",
+     "lines": [
+      93,
+      111
+     ],
+     "path": "server/guard/src/main/java/cc/jumpkick/guard/eval/FixtureCheck.java"
+    },
+    {
+     "label": "GuardRules.readRule",
+     "lines": [
+      416,
+      524
+     ],
+     "path": "server/guard/src/main/java/cc/jumpkick/guard/rules/GuardRules.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-8",
+   "kind": "callers",
+   "question": "Who calls JdkResolution.resolve?",
+   "subject": {
+    "label": "JdkResolution.resolve",
+    "path": "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/JdkResolution.java",
+    "lines": [
+     101,
+     108
+    ]
+   },
+   "truth": [
+    {
+     "label": "Calibration.resolveJavaHome",
+     "lines": [
+      895,
+      917
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/runtime/Calibration.java"
+    },
+    {
+     "label": "EffortWeights.jdkWeight",
+     "lines": [
+      772,
+      797
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/runtime/EffortWeights.java"
+    },
+    {
+     "label": "JdkEnsure.resolve",
+     "lines": [
+      216,
+      242
+     ],
+     "path": "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/JdkEnsure.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-9",
+   "kind": "callers",
+   "question": "Who calls BuildLogicKtsHost.evaluate?",
+   "subject": {
+    "label": "BuildLogicKtsHost.evaluate",
+    "path": "server/engine/src/main/java/cc/jumpkick/runtime/base/BuildLogicKtsHost.java",
+    "lines": [
+     45,
+     52
+    ]
+   },
+   "truth": [
+    {
+     "label": "BuildLogicKtsHost.evaluate",
+     "lines": [
+      53,
+      60
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/runtime/base/BuildLogicKtsHost.java"
+    },
+    {
+     "label": "BuildLogicSupport.registerScripts",
+     "lines": [
+      362,
+      396
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/runtime/BuildLogicSupport.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-10",
+   "kind": "callers",
+   "question": "Who calls JkBuildParser.readManifest?",
+   "subject": {
+    "label": "JkBuildParser.readManifest",
+    "path": "shared/core/src/main/java/cc/jumpkick/config/JkBuildParser.java",
+    "lines": [
+     168,
+     179
+    ]
+   },
+   "truth": [
+    {
+     "label": "JkBuildParser.document",
+     "lines": [
+      251,
+      264
+     ],
+     "path": "shared/core/src/main/java/cc/jumpkick/config/JkBuildParser.java"
+    },
+    {
+     "label": "JkBuildParser.parseLocal",
+     "lines": [
+      203,
+      244
+     ],
+     "path": "shared/core/src/main/java/cc/jumpkick/config/JkBuildParser.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-11",
+   "kind": "callers",
+   "question": "Who calls WizardBuilder.step?",
+   "subject": {
+    "label": "WizardBuilder.step",
+    "path": "clients/cli/src/main/java/cc/jumpkick/cli/tui/WizardBuilder.java",
+    "lines": [
+     28,
+     36
+    ]
+   },
+   "truth": [
+    {
+     "label": "ActivateCommand.runWizard",
+     "lines": [
+      244,
+      291
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/ActivateCommand.java"
+    },
+    {
+     "label": "JdkInstallWizard.buildWizard",
+     "lines": [
+      99,
+      150
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/JdkInstallWizard.java"
+    },
+    {
+     "label": "JdkUninstallWizard.run",
+     "lines": [
+      39,
+      70
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/JdkUninstallWizard.java"
+    },
+    {
+     "label": "NewWizard.buildWizard",
+     "lines": [
+      114,
+      280
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/project/NewWizard.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-12",
+   "kind": "callers",
+   "question": "Who calls Evaluation.ownerMissing?",
+   "subject": {
+    "label": "Evaluation.ownerMissing",
+    "path": "server/guard/src/main/java/cc/jumpkick/guard/eval/Evaluation.java",
+    "lines": [
+     75,
+     82
+    ]
+   },
+   "truth": [
+    {
+     "label": "ForbidEvaluator.Scan.finish",
+     "lines": [
+      265,
+      296
+     ],
+     "path": "server/guard/src/main/java/cc/jumpkick/guard/eval/ForbidEvaluator.java"
+    },
+    {
+     "label": "GuardSuites.evaluate",
+     "lines": [
+      336,
+      396
+     ],
+     "path": "server/guard/src/main/java/cc/jumpkick/guard/eval/GuardSuites.java"
+    },
+    {
+     "label": "TextEvaluator.finish",
+     "lines": [
+      272,
+      310
+     ],
+     "path": "server/guard/src/main/java/cc/jumpkick/guard/eval/TextEvaluator.java"
+    },
+    {
+     "label": "VocabularyEvaluator.ownerProblem",
+     "lines": [
+      154,
+      168
+     ],
+     "path": "server/guard/src/main/java/cc/jumpkick/guard/eval/VocabularyEvaluator.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-13",
+   "kind": "callers",
+   "question": "Who calls ManifestBuild.Probe.timeoutMillis?",
+   "subject": {
+    "label": "ManifestBuild.Probe.timeoutMillis",
+    "path": "shared/core/src/main/java/cc/jumpkick/config/ManifestBuild.java",
+    "lines": [
+     466,
+     473
+    ]
+   },
+   "truth": [
+    {
+     "label": "ManifestBuild.parseDevReady",
+     "lines": [
+      453,
+      469
+     ],
+     "path": "shared/core/src/main/java/cc/jumpkick/config/ManifestBuild.java"
+    },
+    {
+     "label": "ManifestBuild.parseSidecar",
+     "lines": [
+      546,
+      610
+     ],
+     "path": "shared/core/src/main/java/cc/jumpkick/config/ManifestBuild.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-14",
+   "kind": "callers",
+   "question": "Who calls MavenSettingsRows.Rows.mirrors?",
+   "subject": {
+    "label": "MavenSettingsRows.Rows.mirrors",
+    "path": "clients/cli/src/main/java/cc/jumpkick/command/system/MavenSettingsRows.java",
+    "lines": [
+     38,
+     45
+    ]
+   },
+   "truth": [
+    {
+     "label": "MavenSettingsRows.json",
+     "lines": [
+      142,
+      198
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/system/MavenSettingsRows.java"
+    },
+    {
+     "label": "MavenSettingsRows.render",
+     "lines": [
+      107,
+      144
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/system/MavenSettingsRows.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-15",
+   "kind": "callers",
+   "question": "Who calls PluginTableRegistry.putBuiltIn?",
+   "subject": {
+    "label": "PluginTableRegistry.putBuiltIn",
+    "path": "shared/core/src/main/java/cc/jumpkick/plugin/manifest/PluginTableRegistry.java",
+    "lines": [
+     153,
+     172
+    ]
+   },
+   "truth": [
+    {
+     "label": "BuiltInPluginJars.fetchAndInstall",
+     "lines": [
+      60,
+      76
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/plugin/BuiltInPluginJars.java"
+    },
+    {
+     "label": "BuiltInPluginJars.install",
+     "lines": [
+      33,
+      51
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/plugin/BuiltInPluginJars.java"
+    },
+    {
+     "label": "PluginTableRegistry.installFromJar",
+     "lines": [
+      126,
+      142
+     ],
+     "path": "shared/core/src/main/java/cc/jumpkick/plugin/manifest/PluginTableRegistry.java"
+    },
+    {
+     "label": "PluginTableRegistry.restoreBuiltIn",
+     "lines": [
+      148,
+      157
+     ],
+     "path": "shared/core/src/main/java/cc/jumpkick/plugin/manifest/PluginTableRegistry.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-16",
+   "kind": "callers",
+   "question": "Who calls ForecastPackagingTails.nativeBinaryPresent?",
+   "subject": {
+    "label": "ForecastPackagingTails.nativeBinaryPresent",
+    "path": "server/engine/src/main/java/cc/jumpkick/runtime/ForecastPackagingTails.java",
+    "lines": [
+     173,
+     180
+    ]
+   },
+   "truth": [
+    {
+     "label": "ForecastPackagingTails.nativeImage",
+     "lines": [
+      150,
+      174
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/runtime/ForecastPackagingTails.java"
+    },
+    {
+     "label": "PlannerNative.forecast",
+     "lines": [
+      852,
+      872
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/runtime/PlannerNative.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-17",
+   "kind": "callers",
+   "question": "Who calls UrlRewriter.rewrite?",
+   "subject": {
+    "label": "UrlRewriter.rewrite",
+    "path": "shared/toolchain-jdk/src/main/java/cc/jumpkick/tool/UrlRewriter.java",
+    "lines": [
+     14,
+     37
+    ]
+   },
+   "truth": [
+    {
+     "label": "ToolInstallCommand.installDirectTarget",
+     "lines": [
+      326,
+      392
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/ToolInstallCommand.java"
+    },
+    {
+     "label": "UrlToolSource.fetch",
+     "lines": [
+      63,
+      119
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/UrlToolSource.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-18",
+   "kind": "callers",
+   "question": "Who calls MemoryAdmission.Heap.committedBytes?",
+   "subject": {
+    "label": "MemoryAdmission.Heap.committedBytes",
+    "path": "server/engine/src/main/java/cc/jumpkick/engine/jobs/MemoryAdmission.java",
+    "lines": [
+     61,
+     64
+    ]
+   },
+   "truth": [
+    {
+     "label": "MemoryAdmission.<init>",
+     "lines": [
+      202,
+      262
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/jobs/MemoryAdmission.java"
+    },
+    {
+     "label": "MemoryAdmission.fits",
+     "lines": [
+      413,
+      422
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/jobs/MemoryAdmission.java"
+    },
+    {
+     "label": "MemoryAdmission.release",
+     "lines": [
+      332,
+      347
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/jobs/MemoryAdmission.java"
+    }
+   ]
+  },
+  {
+   "id": "callers-19",
+   "kind": "callers",
+   "question": "Who calls EngineEvent.ModuleFinish.millis?",
+   "subject": {
+    "label": "EngineEvent.ModuleFinish.millis",
+    "path": "server/engine/src/main/java/cc/jumpkick/engine/listen/EngineEvent.java",
+    "lines": [
+     98,
+     105
+    ]
+   },
+   "truth": [
+    {
+     "label": "SseEventSink.emit",
+     "lines": [
+      18,
+      63
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/listen/SseEventSink.java"
+    },
+    {
+     "label": "WireEventSink.encode",
+     "lines": [
+      30,
+      121
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/listen/WireEventSink.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-20",
+   "kind": "implementers",
+   "question": "What implements NativePreflight.Main?",
+   "subject": {
+    "label": "NativePreflight.Main",
+    "path": "shared/core/src/main/java/cc/jumpkick/layout/NativePreflight.java",
+    "lines": [
+     50,
+     50
+    ]
+   },
+   "truth": [
+    {
+     "label": "NativePreflight.Main.Ambiguous",
+     "lines": [
+      55,
+      55
+     ],
+     "path": "shared/core/src/main/java/cc/jumpkick/layout/NativePreflight.java"
+    },
+    {
+     "label": "NativePreflight.Main.None",
+     "lines": [
+      53,
+      53
+     ],
+     "path": "shared/core/src/main/java/cc/jumpkick/layout/NativePreflight.java"
+    },
+    {
+     "label": "NativePreflight.Main.Unique",
+     "lines": [
+      51,
+      51
+     ],
+     "path": "shared/core/src/main/java/cc/jumpkick/layout/NativePreflight.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-21",
+   "kind": "implementers",
+   "question": "What implements ValidationResult?",
+   "subject": {
+    "label": "ValidationResult",
+    "path": "clients/cli/src/main/java/cc/jumpkick/cli/tui/ValidationResult.java",
+    "lines": [
+     4,
+     17
+    ]
+   },
+   "truth": [
+    {
+     "label": "ValidationResult.Error",
+     "lines": [
+      10,
+      10
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/tui/ValidationResult.java"
+    },
+    {
+     "label": "ValidationResult.Ok",
+     "lines": [
+      6,
+      7
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/tui/ValidationResult.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-22",
+   "kind": "implementers",
+   "question": "What implements ToolCoordSpec?",
+   "subject": {
+    "label": "ToolCoordSpec",
+    "path": "shared/jk-api/src/main/java/cc/jumpkick/model/ToolCoordSpec.java",
+    "lines": [
+     11,
+     60
+    ]
+   },
+   "truth": [
+    {
+     "label": "ToolCoordSpec.Floating",
+     "lines": [
+      28,
+      31
+     ],
+     "path": "shared/jk-api/src/main/java/cc/jumpkick/model/ToolCoordSpec.java"
+    },
+    {
+     "label": "ToolCoordSpec.Pinned",
+     "lines": [
+      20,
+      23
+     ],
+     "path": "shared/jk-api/src/main/java/cc/jumpkick/model/ToolCoordSpec.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-23",
+   "kind": "implementers",
+   "question": "What implements PlainAscii.Rewriting?",
+   "subject": {
+    "label": "PlainAscii.Rewriting",
+    "path": "clients/cli/src/main/java/cc/jumpkick/cli/tui/PlainAscii.java",
+    "lines": [
+     100,
+     100
+    ]
+   },
+   "truth": [
+    {
+     "label": "CliOutput.EnvelopeStream",
+     "lines": [
+      337,
+      365
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/api/CliOutput.java"
+    },
+    {
+     "label": "PlainAscii.PlainPrintStream",
+     "lines": [
+      120,
+      135
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/tui/PlainAscii.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-24",
+   "kind": "implementers",
+   "question": "What implements BuildPlanListener?",
+   "subject": {
+    "label": "BuildPlanListener",
+    "path": "shared/jk-api/src/main/java/cc/jumpkick/run/BuildPlanListener.java",
+    "lines": [
+     19,
+     74
+    ]
+   },
+   "truth": [
+    {
+     "label": "AggregateModuleListener",
+     "lines": [
+      20,
+      213
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/run/AggregateModuleListener.java"
+    },
+    {
+     "label": "BridgingPlanListener",
+     "lines": [
+      21,
+      229
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/listen/BridgingPlanListener.java"
+    },
+    {
+     "label": "CoalescingBuildPlanListener",
+     "lines": [
+      56,
+      475
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/engine/api/CoalescingBuildPlanListener.java"
+    },
+    {
+     "label": "CommandManagerListener",
+     "lines": [
+      35,
+      248
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/run/CommandManagerListener.java"
+    },
+    {
+     "label": "CompositeBuildPlanListener",
+     "lines": [
+      21,
+      119
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/run/CompositeBuildPlanListener.java"
+    },
+    {
+     "label": "JsonlEmittingListener",
+     "lines": [
+      22,
+      124
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/run/JsonlEmittingListener.java"
+    },
+    {
+     "label": "JsonlListener",
+     "lines": [
+      13,
+      43
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/run/JsonlListener.java"
+    },
+    {
+     "label": "ServedTally",
+     "lines": [
+      24,
+      75
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/ServedTally.java"
+    },
+    {
+     "label": "SessionMirrorListener",
+     "lines": [
+      14,
+      41
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/run/SessionMirrorListener.java"
+    },
+    {
+     "label": "SilentListener",
+     "lines": [
+      17,
+      39
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/run/SilentListener.java"
+    },
+    {
+     "label": "SimpleTaskListener",
+     "lines": [
+      25,
+      63
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/run/SimpleTaskListener.java"
+    },
+    {
+     "label": "StepTimingsRecorder",
+     "lines": [
+      38,
+      211
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/runtime/workspace/StepTimingsRecorder.java"
+    },
+    {
+     "label": "VerboseListener",
+     "lines": [
+      22,
+      163
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/run/VerboseListener.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-25",
+   "kind": "implementers",
+   "question": "What extends JkCliAction?",
+   "subject": {
+    "label": "JkCliAction",
+    "path": "clients/intellij/src/main/java/cc/jumpkick/idea/JkCliAction.java",
+    "lines": [
+     25,
+     88
+    ]
+   },
+   "truth": [
+    {
+     "label": "JkCliAction.BspInstall",
+     "lines": [
+      113,
+      116
+     ],
+     "path": "clients/intellij/src/main/java/cc/jumpkick/idea/JkCliAction.java"
+    },
+    {
+     "label": "JkCliAction.Build",
+     "lines": [
+      119,
+      122
+     ],
+     "path": "clients/intellij/src/main/java/cc/jumpkick/idea/JkCliAction.java"
+    },
+    {
+     "label": "JkCliAction.Lock",
+     "lines": [
+      131,
+      134
+     ],
+     "path": "clients/intellij/src/main/java/cc/jumpkick/idea/JkCliAction.java"
+    },
+    {
+     "label": "JkCliAction.SyncDeps",
+     "lines": [
+      138,
+      141
+     ],
+     "path": "clients/intellij/src/main/java/cc/jumpkick/idea/JkCliAction.java"
+    },
+    {
+     "label": "JkCliAction.Test",
+     "lines": [
+      125,
+      128
+     ],
+     "path": "clients/intellij/src/main/java/cc/jumpkick/idea/JkCliAction.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-26",
+   "kind": "implementers",
+   "question": "What implements VersionSelector?",
+   "subject": {
+    "label": "VersionSelector",
+    "path": "shared/jk-api/src/main/java/cc/jumpkick/model/VersionSelector.java",
+    "lines": [
+     23,
+     82
+    ]
+   },
+   "truth": [
+    {
+     "label": "VersionSelector.Caret",
+     "lines": [
+      28,
+      28
+     ],
+     "path": "shared/jk-api/src/main/java/cc/jumpkick/model/VersionSelector.java"
+    },
+    {
+     "label": "VersionSelector.Exact",
+     "lines": [
+      30,
+      30
+     ],
+     "path": "shared/jk-api/src/main/java/cc/jumpkick/model/VersionSelector.java"
+    },
+    {
+     "label": "VersionSelector.Latest",
+     "lines": [
+      36,
+      36
+     ],
+     "path": "shared/jk-api/src/main/java/cc/jumpkick/model/VersionSelector.java"
+    },
+    {
+     "label": "VersionSelector.Range",
+     "lines": [
+      34,
+      34
+     ],
+     "path": "shared/jk-api/src/main/java/cc/jumpkick/model/VersionSelector.java"
+    },
+    {
+     "label": "VersionSelector.Snapshot",
+     "lines": [
+      42,
+      42
+     ],
+     "path": "shared/jk-api/src/main/java/cc/jumpkick/model/VersionSelector.java"
+    },
+    {
+     "label": "VersionSelector.Tilde",
+     "lines": [
+      32,
+      32
+     ],
+     "path": "shared/jk-api/src/main/java/cc/jumpkick/model/VersionSelector.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-27",
+   "kind": "implementers",
+   "question": "What extends GroupCommand?",
+   "subject": {
+    "label": "GroupCommand",
+    "path": "shared/host/src/main/java/cc/jumpkick/model/command/GroupCommand.java",
+    "lines": [
+     12,
+     21
+    ]
+   },
+   "truth": [
+    {
+     "label": "AuthCommand",
+     "lines": [
+      20,
+      59
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/system/AuthCommand.java"
+    },
+    {
+     "label": "CacheCommand",
+     "lines": [
+      62,
+      853
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/system/CacheCommand.java"
+    },
+    {
+     "label": "EngineCommand",
+     "lines": [
+      9,
+      23
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/system/EngineCommand.java"
+    },
+    {
+     "label": "ExportCommand",
+     "lines": [
+      11,
+      25
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/interop/ExportCommand.java"
+    },
+    {
+     "label": "GraphCommand",
+     "lines": [
+      19,
+      156
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/project/GraphCommand.java"
+    },
+    {
+     "label": "HistoryCommand",
+     "lines": [
+      39,
+      151
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/system/HistoryCommand.java"
+    },
+    {
+     "label": "JdkCommand",
+     "lines": [
+      9,
+      28
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/JdkCommand.java"
+    },
+    {
+     "label": "LibraryCommand",
+     "lines": [
+      9,
+      28
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/system/LibraryCommand.java"
+    },
+    {
+     "label": "NodeCommand",
+     "lines": [
+      9,
+      28
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/NodeCommand.java"
+    },
+    {
+     "label": "RepoCommand",
+     "lines": [
+      29,
+      43
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/system/RepoCommand.java"
+    },
+    {
+     "label": "SelfCommand",
+     "lines": [
+      53,
+      67
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/system/SelfCommand.java"
+    },
+    {
+     "label": "StorageCommand",
+     "lines": [
+      45,
+      203
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/system/StorageCommand.java"
+    },
+    {
+     "label": "ToolCommand",
+     "lines": [
+      9,
+      23
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/ToolCommand.java"
+    },
+    {
+     "label": "TrustCommand",
+     "lines": [
+      29,
+      52
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/TrustCommand.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-28",
+   "kind": "implementers",
+   "question": "What implements RichText.Color?",
+   "subject": {
+    "label": "RichText.Color",
+    "path": "clients/cli/src/main/java/cc/jumpkick/cli/tui/RichText.java",
+    "lines": [
+     246,
+     246
+    ]
+   },
+   "truth": [
+    {
+     "label": "RichText.HexColor",
+     "lines": [
+      250,
+      250
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/tui/RichText.java"
+    },
+    {
+     "label": "RichText.NamedColor",
+     "lines": [
+      248,
+      248
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/tui/RichText.java"
+    }
+   ]
+  },
+  {
+   "id": "implementers-29",
+   "kind": "implementers",
+   "question": "What implements StepForecast?",
+   "subject": {
+    "label": "StepForecast",
+    "path": "shared/jk-api/src/main/java/cc/jumpkick/run/StepForecast.java",
+    "lines": [
+     12,
+     27
+    ]
+   },
+   "truth": [
+    {
+     "label": "StepForecast.Always",
+     "lines": [
+      38,
+      41
+     ],
+     "path": "shared/jk-api/src/main/java/cc/jumpkick/run/StepForecast.java"
+    },
+    {
+     "label": "StepForecast.Priced",
+     "lines": [
+      32,
+      35
+     ],
+     "path": "shared/jk-api/src/main/java/cc/jumpkick/run/StepForecast.java"
+    },
+    {
+     "label": "StepForecast.Rides",
+     "lines": [
+      30,
+      30
+     ],
+     "path": "shared/jk-api/src/main/java/cc/jumpkick/run/StepForecast.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-30",
+   "kind": "overrides",
+   "question": "What overrides LiveRegion.canceledMessage?",
+   "subject": {
+    "label": "LiveRegion.canceledMessage",
+    "path": "clients/cli/src/main/java/cc/jumpkick/cli/tui/LiveRegion.java",
+    "lines": [
+     29,
+     36
+    ]
+   },
+   "truth": [
+    {
+     "label": "IdeChrome.canceledMessage",
+     "lines": [
+      261,
+      268
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/ide/IdeChrome.java"
+    },
+    {
+     "label": "JkManager.canceledMessage",
+     "lines": [
+      501,
+      508
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/tui/JkManager.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-31",
+   "kind": "overrides",
+   "question": "What overrides BuildVerb.tails?",
+   "subject": {
+    "label": "BuildVerb.tails",
+    "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/BuildVerb.java",
+    "lines": [
+     93,
+     96
+    ]
+   },
+   "truth": [
+    {
+     "label": "CompileVerb.tails",
+     "lines": [
+      58,
+      65
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/CompileVerb.java"
+    },
+    {
+     "label": "ImageVerb.tails",
+     "lines": [
+      113,
+      120
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/ImageVerb.java"
+    },
+    {
+     "label": "NativeVerb.tails",
+     "lines": [
+      136,
+      143
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/NativeVerb.java"
+    },
+    {
+     "label": "PackageVerb.tails",
+     "lines": [
+      105,
+      112
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/PackageVerb.java"
+    },
+    {
+     "label": "PublishVerb.tails",
+     "lines": [
+      69,
+      76
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/PublishVerb.java"
+    },
+    {
+     "label": "RunVerb.tails",
+     "lines": [
+      102,
+      109
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/RunVerb.java"
+    },
+    {
+     "label": "TestVerb.tails",
+     "lines": [
+      136,
+      143
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/TestVerb.java"
+    },
+    {
+     "label": "TrainVerb.tails",
+     "lines": [
+      103,
+      110
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/TrainVerb.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-32",
+   "kind": "overrides",
+   "question": "What overrides Shell.rcFileDisplay?",
+   "subject": {
+    "label": "Shell.rcFileDisplay",
+    "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/Shell.java",
+    "lines": [
+     55,
+     58
+    ]
+   },
+   "truth": [
+    {
+     "label": "BashShell.rcFileDisplay",
+     "lines": [
+      38,
+      45
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/BashShell.java"
+    },
+    {
+     "label": "FishShell.rcFileDisplay",
+     "lines": [
+      42,
+      49
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/FishShell.java"
+    },
+    {
+     "label": "PwshShell.rcFileDisplay",
+     "lines": [
+      41,
+      50
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/PwshShell.java"
+    },
+    {
+     "label": "WindowsPowerShellShell.rcFileDisplay",
+     "lines": [
+      40,
+      47
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/WindowsPowerShellShell.java"
+    },
+    {
+     "label": "ZshShell.rcFileDisplay",
+     "lines": [
+      38,
+      45
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/ZshShell.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-33",
+   "kind": "overrides",
+   "question": "What overrides Extension.id?",
+   "subject": {
+    "label": "Extension.id",
+    "path": "shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/Extension.java",
+    "lines": [
+     10,
+     13
+    ]
+   },
+   "truth": [
+    {
+     "label": "GitCliExtension.id",
+     "lines": [
+      43,
+      50
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/git/GitCliExtension.java"
+    },
+    {
+     "label": "JGitExtension.id",
+     "lines": [
+      38,
+      45
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/git/JGitExtension.java"
+    },
+    {
+     "label": "Plugin.id",
+     "lines": [
+      13,
+      20
+     ],
+     "path": "shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/Plugin.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-34",
+   "kind": "overrides",
+   "question": "What overrides BuildVerb.workspace?",
+   "subject": {
+    "label": "BuildVerb.workspace",
+    "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/BuildVerb.java",
+    "lines": [
+     89,
+     92
+    ]
+   },
+   "truth": [
+    {
+     "label": "CompileVerb.workspace",
+     "lines": [
+      52,
+      60
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/CompileVerb.java"
+    },
+    {
+     "label": "ImageVerb.workspace",
+     "lines": [
+      102,
+      114
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/ImageVerb.java"
+    },
+    {
+     "label": "NativeVerb.workspace",
+     "lines": [
+      128,
+      137
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/NativeVerb.java"
+    },
+    {
+     "label": "PackageVerb.workspace",
+     "lines": [
+      97,
+      106
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/PackageVerb.java"
+    },
+    {
+     "label": "PublishVerb.workspace",
+     "lines": [
+      61,
+      71
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/PublishVerb.java"
+    },
+    {
+     "label": "RunVerb.workspace",
+     "lines": [
+      94,
+      103
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/RunVerb.java"
+    },
+    {
+     "label": "TestVerb.workspace",
+     "lines": [
+      128,
+      138
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/TestVerb.java"
+    },
+    {
+     "label": "TrainVerb.workspace",
+     "lines": [
+      94,
+      104
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/pipeline/TrainVerb.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-35",
+   "kind": "overrides",
+   "question": "What overrides MavenVersion.Item.getType?",
+   "subject": {
+    "label": "MavenVersion.Item.getType",
+    "path": "shared/core/src/main/java/cc/jumpkick/version/MavenVersion.java",
+    "lines": [
+     88,
+     91
+    ]
+   },
+   "truth": [
+    {
+     "label": "MavenVersion.BigIntegerItem.getType",
+     "lines": [
+      248,
+      255
+     ],
+     "path": "shared/core/src/main/java/cc/jumpkick/version/MavenVersion.java"
+    },
+    {
+     "label": "MavenVersion.IntItem.getType",
+     "lines": [
+      107,
+      114
+     ],
+     "path": "shared/core/src/main/java/cc/jumpkick/version/MavenVersion.java"
+    },
+    {
+     "label": "MavenVersion.ListItem.getType",
+     "lines": [
+      431,
+      438
+     ],
+     "path": "shared/core/src/main/java/cc/jumpkick/version/MavenVersion.java"
+    },
+    {
+     "label": "MavenVersion.LongItem.getType",
+     "lines": [
+      177,
+      184
+     ],
+     "path": "shared/core/src/main/java/cc/jumpkick/version/MavenVersion.java"
+    },
+    {
+     "label": "MavenVersion.StringItem.getType",
+     "lines": [
+      350,
+      357
+     ],
+     "path": "shared/core/src/main/java/cc/jumpkick/version/MavenVersion.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-36",
+   "kind": "overrides",
+   "question": "What overrides PackageSource.dependencies?",
+   "subject": {
+    "label": "PackageSource.dependencies",
+    "path": "server/resolver/src/main/java/cc/jumpkick/resolver/pubgrub/PackageSource.java",
+    "lines": [
+     121,
+     124
+    ]
+   },
+   "truth": [
+    {
+     "label": "InMemoryPackageSource.dependencies",
+     "lines": [
+      50,
+      61
+     ],
+     "path": "server/resolver/src/main/java/cc/jumpkick/resolver/pubgrub/InMemoryPackageSource.java"
+    },
+    {
+     "label": "MavenPackageSource.dependencies",
+     "lines": [
+      701,
+      758
+     ],
+     "path": "server/resolver/src/main/java/cc/jumpkick/resolver/MavenPackageSource.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-37",
+   "kind": "overrides",
+   "question": "What overrides InputTrees.Snapshot.files?",
+   "subject": {
+    "label": "InputTrees.Snapshot.files",
+    "path": "shared/core/src/main/java/cc/jumpkick/layout/InputTrees.java",
+    "lines": [
+     237,
+     240
+    ]
+   },
+   "truth": [
+    {
+     "label": "InputTrees.BuildOutput.files",
+     "lines": [
+      394,
+      401
+     ],
+     "path": "shared/core/src/main/java/cc/jumpkick/layout/InputTrees.java"
+    },
+    {
+     "label": "InputTrees.Listing.files",
+     "lines": [
+      265,
+      272
+     ],
+     "path": "shared/core/src/main/java/cc/jumpkick/layout/InputTrees.java"
+    },
+    {
+     "label": "InputTrees.Overflow.files",
+     "lines": [
+      337,
+      344
+     ],
+     "path": "shared/core/src/main/java/cc/jumpkick/layout/InputTrees.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-38",
+   "kind": "overrides",
+   "question": "What overrides Sidecars.Listener.failed?",
+   "subject": {
+    "label": "Sidecars.Listener.failed",
+    "path": "clients/cli/src/main/java/cc/jumpkick/cli/watch/Sidecars.java",
+    "lines": [
+     60,
+     63
+    ]
+   },
+   "truth": [
+    {
+     "label": "SidecarOutput.Both.failed",
+     "lines": [
+      158,
+      167
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/watch/SidecarOutput.java"
+    },
+    {
+     "label": "SidecarOutput.Jsonl.failed",
+     "lines": [
+      247,
+      257
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/watch/SidecarOutput.java"
+    },
+    {
+     "label": "SidecarOutput.Terminal.failed",
+     "lines": [
+      197,
+      205
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/watch/SidecarOutput.java"
+    }
+   ]
+  },
+  {
+   "id": "overrides-39",
+   "kind": "overrides",
+   "question": "What overrides Shell.rcFile?",
+   "subject": {
+    "label": "Shell.rcFile",
+    "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/Shell.java",
+    "lines": [
+     52,
+     55
+    ]
+   },
+   "truth": [
+    {
+     "label": "BashShell.rcFile",
+     "lines": [
+      33,
+      40
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/BashShell.java"
+    },
+    {
+     "label": "FishShell.rcFile",
+     "lines": [
+      37,
+      44
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/FishShell.java"
+    },
+    {
+     "label": "PwshShell.rcFile",
+     "lines": [
+      33,
+      43
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/PwshShell.java"
+    },
+    {
+     "label": "WindowsPowerShellShell.rcFile",
+     "lines": [
+      35,
+      42
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/WindowsPowerShellShell.java"
+    },
+    {
+     "label": "ZshShell.rcFile",
+     "lines": [
+      33,
+      40
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/toolchain/ZshShell.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-40",
+   "kind": "definition",
+   "question": "Where is MethodSelection.methodPattern defined?",
+   "subject": {
+    "label": "MethodSelection.methodPattern",
+    "path": "plugins/test-runner/src/main/java/cc/jumpkick/testrunner/MethodSelection.java",
+    "lines": [
+     16,
+     23
+    ]
+   },
+   "truth": [
+    {
+     "label": "MethodSelection.methodPattern",
+     "lines": [
+      16,
+      23
+     ],
+     "path": "plugins/test-runner/src/main/java/cc/jumpkick/testrunner/MethodSelection.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-41",
+   "kind": "definition",
+   "question": "Where is CacheCommand.CacheDirCommand.options defined?",
+   "subject": {
+    "label": "CacheCommand.CacheDirCommand.options",
+    "path": "clients/cli/src/main/java/cc/jumpkick/command/system/CacheCommand.java",
+    "lines": [
+     428,
+     435
+    ]
+   },
+   "truth": [
+    {
+     "label": "CacheCommand.CacheDirCommand.options",
+     "lines": [
+      428,
+      435
+     ],
+     "path": "clients/cli/src/main/java/cc/jumpkick/command/system/CacheCommand.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-42",
+   "kind": "definition",
+   "question": "Where is FileLocks.Unavailable.reason defined?",
+   "subject": {
+    "label": "FileLocks.Unavailable.reason",
+    "path": "shared/core/src/main/java/cc/jumpkick/util/FileLocks.java",
+    "lines": [
+     87,
+     94
+    ]
+   },
+   "truth": [
+    {
+     "label": "FileLocks.Unavailable.reason",
+     "lines": [
+      87,
+      94
+     ],
+     "path": "shared/core/src/main/java/cc/jumpkick/util/FileLocks.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-43",
+   "kind": "definition",
+   "question": "Where is Bound.reason defined?",
+   "subject": {
+    "label": "Bound.reason",
+    "path": "server/engine/src/main/java/cc/jumpkick/task/Bound.java",
+    "lines": [
+     15,
+     22
+    ]
+   },
+   "truth": [
+    {
+     "label": "Bound.reason",
+     "lines": [
+      15,
+      22
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/task/Bound.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-44",
+   "kind": "definition",
+   "question": "Where is IntellijIdeGenerator.xmlHeader defined?",
+   "subject": {
+    "label": "IntellijIdeGenerator.xmlHeader",
+    "path": "shared/ide/src/main/java/cc/jumpkick/ide/IntellijIdeGenerator.java",
+    "lines": [
+     465,
+     474
+    ]
+   },
+   "truth": [
+    {
+     "label": "IntellijIdeGenerator.xmlHeader",
+     "lines": [
+      465,
+      474
+     ],
+     "path": "shared/ide/src/main/java/cc/jumpkick/ide/IntellijIdeGenerator.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-45",
+   "kind": "definition",
+   "question": "Where is TestSuiteScaling.forRunners defined?",
+   "subject": {
+    "label": "TestSuiteScaling.forRunners",
+    "path": "shared/wire/src/main/java/cc/jumpkick/wire/runtime/TestSuiteScaling.java",
+    "lines": [
+     66,
+     74
+    ]
+   },
+   "truth": [
+    {
+     "label": "TestSuiteScaling.forRunners",
+     "lines": [
+      66,
+      74
+     ],
+     "path": "shared/wire/src/main/java/cc/jumpkick/wire/runtime/TestSuiteScaling.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-46",
+   "kind": "definition",
+   "question": "Where is BuildRequest.encode defined?",
+   "subject": {
+    "label": "BuildRequest.encode",
+    "path": "shared/wire/src/main/java/cc/jumpkick/wire/protocol/BuildRequest.java",
+    "lines": [
+     113,
+     148
+    ]
+   },
+   "truth": [
+    {
+     "label": "BuildRequest.encode",
+     "lines": [
+      113,
+      148
+     ],
+     "path": "shared/wire/src/main/java/cc/jumpkick/wire/protocol/BuildRequest.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-47",
+   "kind": "definition",
+   "question": "Where is JavaCompilerHost.Session.output defined?",
+   "subject": {
+    "label": "JavaCompilerHost.Session.output",
+    "path": "server/engine/src/main/java/cc/jumpkick/compile/JavaCompilerHost.java",
+    "lines": [
+     880,
+     888
+    ]
+   },
+   "truth": [
+    {
+     "label": "JavaCompilerHost.Session.output",
+     "lines": [
+      880,
+      888
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/compile/JavaCompilerHost.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-48",
+   "kind": "definition",
+   "question": "Where is LangCompile.Result.cacheHit defined?",
+   "subject": {
+    "label": "LangCompile.Result.cacheHit",
+    "path": "server/engine/src/main/java/cc/jumpkick/task/LangCompile.java",
+    "lines": [
+     52,
+     59
+    ]
+   },
+   "truth": [
+    {
+     "label": "LangCompile.Result.cacheHit",
+     "lines": [
+      52,
+      59
+     ],
+     "path": "server/engine/src/main/java/cc/jumpkick/task/LangCompile.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-49",
+   "kind": "definition",
+   "question": "Where is MinimalTar.readString defined?",
+   "subject": {
+    "label": "MinimalTar.readString",
+    "path": "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/MinimalTar.java",
+    "lines": [
+     353,
+     363
+    ]
+   },
+   "truth": [
+    {
+     "label": "MinimalTar.readString",
+     "lines": [
+      353,
+      363
+     ],
+     "path": "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/MinimalTar.java"
+    }
+   ]
+  }
+ ]
+}

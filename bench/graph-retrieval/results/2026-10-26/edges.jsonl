@@ -1,0 +1,14 @@
+{"repo": "spring-petclinic", "tool": "jk", "truth_edges": 87, "graph_edges": 91, "correct": 87, "precision": 0.9560439560439561, "recall": 1.0}
+{"repo": "spring-petclinic", "tool": "graphify", "truth_edges": 87, "graph_edges": 253, "correct": 69, "precision": 0.2727272727272727, "recall": 0.7931034482758621}
+{"repo": "spring-petclinic-kotlin", "tool": "jk", "truth_edges": 88, "graph_edges": 87, "correct": 85, "precision": 0.9770114942528736, "recall": 0.9659090909090909}
+{"repo": "spring-petclinic-kotlin", "tool": "graphify", "truth_edges": 88, "graph_edges": 20, "correct": 2, "precision": 0.1, "recall": 0.022727272727272728}
+{"repo": "commons-cli", "tool": "jk", "truth_edges": 622, "graph_edges": 610, "correct": 597, "precision": 0.978688524590164, "recall": 0.9598070739549839}
+{"repo": "commons-cli", "tool": "graphify", "truth_edges": 622, "graph_edges": 2256, "correct": 421, "precision": 0.18661347517730498, "recall": 0.6768488745980707}
+{"repo": "commons-io", "tool": "jk", "truth_edges": 2056, "graph_edges": 2480, "correct": 1970, "precision": 0.7943548387096774, "recall": 0.958171206225681}
+{"repo": "commons-io", "tool": "graphify", "truth_edges": 2056, "graph_edges": 6831, "correct": 1422, "precision": 0.20816864295125165, "recall": 0.6916342412451362}
+{"repo": "commons-lang", "tool": "jk", "truth_edges": 3131, "graph_edges": 3016, "correct": 2927, "precision": 0.9704907161803713, "recall": 0.9348450974129671}
+{"repo": "commons-lang", "tool": "graphify", "truth_edges": 3131, "graph_edges": 12281, "correct": 2309, "precision": 0.1880140053741552, "recall": 0.7374640689875439}
+{"repo": "commons-collections", "tool": "jk", "truth_edges": 4862, "graph_edges": 4956, "correct": 4664, "precision": 0.9410815173527038, "recall": 0.9592760180995475}
+{"repo": "commons-collections", "tool": "graphify", "truth_edges": 4862, "graph_edges": 10636, "correct": 3405, "precision": 0.3201391500564122, "recall": 0.7003290826820239}
+{"repo": "jk", "tool": "jk", "truth_edges": 66178, "graph_edges": 67308, "correct": 64889, "precision": 0.964060735722351, "recall": 0.9805222279307323}
+{"repo": "jk", "tool": "graphify", "truth_edges": 66178, "graph_edges": 81592, "correct": 37325, "precision": 0.45745906461417785, "recall": 0.5640091873432258}
