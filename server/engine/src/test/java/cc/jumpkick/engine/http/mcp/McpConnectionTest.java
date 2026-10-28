@@ -241,7 +241,7 @@ class McpConnectionTest {
         McpHandler.Reply init =
                 mcp.handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}", null, "/ws");
         String id = requireNonNull(init.openedSessionId());
-        assertThat(init.body()).contains("run() tests").doesNotContain("dir");
+        assertThat(init.body()).contains("run() returns the verdict").doesNotContain("dir");
 
         String listing = mcp.handle("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}", id, "/ws")
                 .body();

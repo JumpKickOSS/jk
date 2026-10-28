@@ -21,19 +21,16 @@ public final class AgentsGuide {
     public static final String SECTION = """
             ## JumpKick
 
-            This project builds with **JumpKick** (`jk`), not Maven or Gradle. `jk skill <topic>` (MCP
-            `skill`) has details when you need them. jk rewrites this section; put project rules outside
-            the markers.
+            This project builds with **JumpKick** (`jk`), not Maven or Gradle; `jk skill <topic>` has
+            details. jk rewrites this section; put project rules outside the markers.
 
-            - Loop: `jk -a test` (MCP `run`) → read the verdict → edit → rerun. The verdict names each
-              error's file and line with its source line; act on it rather than the terminal or
-              `target/jk-results.md`. `jk -a build` (`run(kind=build)`) also packages.
+            - Loop: `jk -a test` (MCP `run`) → edit what the verdict names (file, line, source line) →
+              rerun. Ignore the terminal and `target/jk-results.md`.
             - Before handing work back: `jk format`, then `jk guard`.
-            - `jk add g:a` / `jk remove g:a` (MCP `deps`) edit `jk.toml` and relock `jk-lock.toml`, which
-              is committed.
-            - Never add `pom.xml` or Gradle files, or run `mvn` or `./gradlew`.
-            - Never edit `jk-guards-baseline.toml`; `jk guard explain <id>` says what to do instead.
-            - `node = N` in `jk.toml` pins Node.js: use `jk node exec -- <cmd>`, never a host `node` or `npm`.
+            - `jk add g:a` / `jk remove g:a` (MCP `deps`) edit `jk.toml` and relock `jk-lock.toml`.
+            - Never add `pom.xml` or Gradle files, run `mvn` or `./gradlew`, or edit
+              `jk-guards-baseline.toml` (`jk guard explain <id>` says what to do).
+            - `node = N` in `jk.toml` pins Node.js: `jk node exec -- <cmd>`, never a host `node` or `npm`.
             """;
 
     /** What a sync did to the file. */
