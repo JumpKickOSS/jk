@@ -6,6 +6,10 @@ version = "0.49.0"
 description = "JumpKick: the JVM build system built for coding agents"
 java = 25
 
+# `jk guard` formats every source that changed before it builds, so no commit carries unformatted code.
+[format]
+enforce = true
+
 # jk's own modules install to jk's private repository: the engine launches its workers from there.
 [install]
 destination = "jk"

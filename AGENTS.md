@@ -145,7 +145,7 @@ jk engine status          # engine answers, no version-skew crash; `Source` name
 jk new smoke-app -l java && cd smoke-app && jk build
 ```
 
-Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIBUTING.md)). Module and class filters are fine mid-ticket; the merge gate (`jk format`, `jk guard`, `jk snapshot`) and the reinstall smoke are required **before merging a code-changing ticket into local `main`**; `jk snapshot -p integration` is the push gate, run once before pushing `main` to `origin`.
+Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIBUTING.md)). Module and class filters are fine mid-ticket; the merge gate (`jk guard`, `jk snapshot`) and the reinstall smoke are required **before merging a code-changing ticket into local `main`**; `jk snapshot -p integration` is the push gate, run once before pushing `main` to `origin`.
 
 ## Planning / tickets (KanArtist — not this repo)
 
@@ -177,8 +177,8 @@ Prefer a small WIP limit (a few claimed tickets). If blocked: `ka set-status JK-
 
 **Two gates** (keep the merge loop under ~5 minutes; details: [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md)):
 
-- **Merge gate** — before every local merge into `main`: `jk format`, `jk guard`, `jk snapshot`
-  (`jk build` plus the reinstall; never run `jk build` before it).
+- **Merge gate** — before every local merge into `main`: `jk guard` (it formats what changed), then
+  `jk snapshot` (`jk build` plus the reinstall; never run `jk build` before it).
 - **Push gate** — before every `git push` of `main` to `origin`: `jk snapshot -p integration` on the
   local `main` you are about to push (the test classpath and the installed jk must report the same
   `-SNAPSHOT` version; `jk test -p integration` against a snapshot-installed jk does not). One run covers every branch merged since the last push, so
@@ -186,7 +186,7 @@ Prefer a small WIP limit (a few claimed tickets). If blocked: `ka set-status JK-
 
 | Command | What runs | When |
 |---------|-----------|------|
-| `jk guard` | Every house-rule lane, the tree lane and the fixture proofs included | Every local merge |
+| `jk guard` | Formats every changed source, then every house-rule lane, the tree lane and the fixture proofs included | Every commit and every local merge |
 | `jk snapshot` | Exactly what `jk build` runs (every module compiled and packaged, its fast tier, the model/module/workspace/output lanes), then the reinstall | Every local merge |
 | `jk snapshot -p integration` | Engine/CLI e2e, workers, install, lock | Every push to `origin` (the push gate) |
 | `jk test -p slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | Before the push that carries a plugin or toolchain change; nightly |
@@ -198,7 +198,7 @@ Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not**
 **Any ticket that changes Java (or other runtime) code** must **not** merge into local `main` or move to `done` in kanartist until all of the following pass:
 
 1. **Tests (required, non-negotiable)** — prove the change did not break the build:
-   - **Merge gate:** `jk format`, a clean `jk guard` (every house-rule lane, the tree lane included) and a green `jk snapshot` (every module's fast tier, then the reinstall).
+   - **Merge gate:** a clean `jk guard` (it formats what changed, then every house-rule lane, the tree lane included) and a green `jk snapshot` (every module's fast tier, then the reinstall).
    - Mid-ticket, narrow with `-m <module>` and `--class <fqcn>`; run a targeted `-p integration --class …` when the change lives in engine/CLI e2e territory, but do not run the full integration profile per merge.
    - Do not merge into local `main` with a red or un-run fast gate. A broken local `main` is a stop-the-line defect: fix it first, then resume tickets.
 2. **Reinstall** — done by the merge gate's `jk snapshot`. Never run `jk build` and then `jk snapshot`; the install is the build.
@@ -296,47 +296,21 @@ its length. Do not add new noise.
  */
 ```
 
-## Code formatting (mandatory before every commit)
+## Code formatting (part of `jk guard`)
 
-**Hard requirement — not optional.** Before creating **any** git commit
-(including `git commit`, amend, or any equivalent commit action), every
-agent **must** run:
+The root `jk.toml` sets `[format] enforce = true`, so formatting is a step of `jk guard`, not a
+command to remember: before it builds, guard formats every source that changed since the formatter
+last settled it (Spotless plus the first-party FQCN shortener, every language it formats), and under
+CI it fails naming each file that is not formatted. There is no separate `jk format` step.
 
-```bash
-jk format
-```
-
-On Windows this may be `jk.bat` (thin JVM client). Same command: `jk format`.
-
-`jk format` is Spotless + a first-party FQCN shortener over the **whole tree**, not just
-files you touched. Trust its output. Long-hand FQCNs and similar agent
-noise are why this exists.
-
-Rules:
-
-- Run `jk format` after you have finished creating or modifying source
-  files and **before** you stage a commit. This covers **all** languages
-  the command supports, including Java, Kotlin, Groovy, and any other
-  files it formats.
-- **Do not** proceed with `git commit` (or amend / any equivalent) until
-  `jk format` has **successfully completed**.
-- If `jk format` fails, **fix the issues and re-run `jk format`** until
-  it succeeds. Do not skip, defer, or commit around a failed format run.
-- Unformatted source must not enter git history.
-
-**Unrelated files will often change. Keep them.** Another agent skipped
-format or wrote long-hand; `jk format` is catching up. That is expected.
-Do **not** `git restore` those diffs, panic, or treat them as a reason to
-veto or skip the commit.
-
-Land it as two commits when the format set is wider than your change:
-
-1. Your work (already formatted) as one commit.
-2. Leftover format-only files as a second commit (`jk format`).
-
-Do not mix them if you can avoid it. **Do not drop the second commit.**
-Leaving the tree unformatted is not an option; formatting is everyone's
-job, including leftover from the last agent.
+- **Run `jk guard` before every commit** (commit, amend, or any equivalent) and let it finish green.
+  It is the merge gate's first half too. Unformatted source must not enter git history.
+- **Trust what it rewrites.** Long-hand FQCNs and similar agent noise are why it exists.
+- **Unrelated files may change. Keep them.** A file someone changed without a guard run is formatted
+  on yours. Do not `git restore` those diffs or treat them as a reason to skip the commit. When the
+  format set is wider than your change, land your work as one commit and the format-only files as a
+  second; do not drop the second.
+- `jk format -F` rewrites the whole tree, for a formatter or style change; it is not part of the loop.
 
 ## Git workflow (private repo)
 
