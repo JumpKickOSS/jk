@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.function.Function;
@@ -131,7 +132,7 @@ public record JkEngineConfig(
 
     /** Effective machine config: user-global file + {@code JK_ENGINE_MAX_HEAP_MB} / {@code JK_JOBS}. */
     public static JkEngineConfig resolve() {
-        return resolve(JkDirs.userConfigFile(), System::getenv);
+        return resolve(JkDirs.userConfigFile(), ProcessEnv::get);
     }
 
     /** As {@link #resolve()} but against an explicit config file + env — for tests. */

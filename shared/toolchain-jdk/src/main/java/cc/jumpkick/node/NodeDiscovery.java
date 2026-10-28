@@ -2,6 +2,7 @@
 package cc.jumpkick.node;
 
 import cc.jumpkick.compat.BuildTool;
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.discovery.MiseProbe;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
@@ -38,7 +39,7 @@ public final class NodeDiscovery {
 
     /** This machine's environment and home. */
     public NodeDiscovery() {
-        this(System::getenv, Path.of(System.getProperty("user.home", "")), defaultCellars());
+        this(BuildEnv::get, Path.of(System.getProperty("user.home", "")), defaultCellars());
     }
 
     /** An explicit environment, home and Homebrew cellars: a test's fabricated machine. */
@@ -165,7 +166,7 @@ public final class NodeDiscovery {
     }
 
     private static List<Path> defaultCellars() {
-        String cellar = System.getenv("HOMEBREW_CELLAR");
+        String cellar = BuildEnv.get("HOMEBREW_CELLAR");
         if (cellar != null && !cellar.isBlank()) return List.of(Path.of(cellar));
         return List.of(
                 Path.of("/opt/homebrew/Cellar"),

@@ -59,7 +59,7 @@ public final class JkConfigLoader {
             out = out.mergedWith(loadTomlOrEmpty(layer));
         }
         // Env vars override files but are overridden by CLI flags (caller's job).
-        out = out.mergedWith(loadFromEnv(System::getenv));
+        out = out.mergedWith(loadFromEnv(BuildEnv::get));
         return out;
     }
 

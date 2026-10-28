@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.ide;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
@@ -51,7 +52,7 @@ public final class IntellijSdkRegistrar {
     /** Registrar backed by the host's real IDE config directories. */
     public static IntellijSdkRegistrar shared() {
         return new IntellijSdkRegistrar(
-                IntellijJdkTable.defaultVendorRoots(System::getenv, Os.name(), System.getProperty("user.home", "")));
+                IntellijJdkTable.defaultVendorRoots(BuildEnv::get, Os.name(), System.getProperty("user.home", "")));
     }
 
     /**

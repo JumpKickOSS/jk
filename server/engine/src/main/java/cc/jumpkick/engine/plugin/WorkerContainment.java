@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ProcessEnv;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -300,7 +301,7 @@ public final class WorkerContainment {
 
     /** {@link #BUDGET_ENV} in bytes, or {@code -1} when unset or not a positive integer. */
     static long envBudgetBytes() {
-        String raw = System.getenv(BUDGET_ENV);
+        String raw = ProcessEnv.get(BUDGET_ENV);
         if (raw == null || raw.isBlank()) return -1L;
         try {
             long mb = Long.parseLong(raw.trim());
@@ -601,7 +602,7 @@ public final class WorkerContainment {
 
     /** The client's scope note, one line, capped. Empty when the scope was used or nothing was said. */
     private static String scopeNote() {
-        return clean(System.getenv(SCOPE_NOTE));
+        return clean(ProcessEnv.get(SCOPE_NOTE));
     }
 
     /** Collapse whitespace and cap at 160 characters so a status row stays one line. */

@@ -2,6 +2,7 @@
 package cc.jumpkick.util;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -101,7 +102,7 @@ public final class JkDirs {
      * same layout as the client that asked for it.
      */
     public static JkDirs current() {
-        return new JkDirs(JkDirs::overlay, System::getenv, System.getProperty("user.home"), Os.name());
+        return new JkDirs(JkDirs::overlay, ProcessEnv::get, System.getProperty("user.home"), Os.name());
     }
 
     private static @Nullable String overlay(String name) {
@@ -113,9 +114,9 @@ public final class JkDirs {
      * — not just the layout — should read through here, so a test can vary one setting for one
      * test without the JVM-wide value every other test depends on.
      */
-    public static String env(String name) {
+    public static @Nullable String env(String name) {
         String prop = overlay(name);
-        return prop != null ? prop : System.getenv(name);
+        return prop != null ? prop : ProcessEnv.get(name);
     }
 
     /** Test seam: fully synthetic environment (host OS name), with no overlay over it. */

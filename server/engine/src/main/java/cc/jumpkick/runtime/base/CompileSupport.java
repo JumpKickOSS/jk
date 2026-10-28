@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.layout.ModuleLayout;
@@ -215,7 +216,7 @@ public final class CompileSupport {
         if (explicitName != null && !explicitName.isBlank()) {
             return profiles.resolve(explicitName);
         }
-        String auto = Profiles.autoSelect(System.getenv());
+        String auto = Profiles.autoSelect(BuildEnv::get);
         if (auto != null && profiles.contains(auto)) {
             return profiles.resolve(auto);
         }

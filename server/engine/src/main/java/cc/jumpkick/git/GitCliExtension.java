@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.git;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.forge.ForgeGitCredentials;
@@ -79,7 +80,7 @@ public final class GitCliExtension implements GitBackend {
     }
 
     private static Optional<GitCli> probe() {
-        String override = System.getenv("JK_GIT");
+        String override = BuildEnv.get("JK_GIT");
         String exe = (override != null && !override.isBlank()) ? override.trim() : "git";
         return probe(exe, PROBE_TIMEOUT_MS);
     }
@@ -432,7 +433,7 @@ public final class GitCliExtension implements GitBackend {
      */
     private static void replaceEnvironment(ProcessBuilder pb, Map<String, String> extras) {
         Map<String, String> layered = new LinkedHashMap<>();
-        String agent = System.getenv("SSH_AUTH_SOCK");
+        String agent = BuildEnv.get("SSH_AUTH_SOCK");
         if (agent != null && !agent.isBlank()) layered.put("SSH_AUTH_SOCK", agent);
         layered.putAll(extras);
         Map<String, String> env = pb.environment();

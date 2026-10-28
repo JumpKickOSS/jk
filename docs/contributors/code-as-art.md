@@ -900,7 +900,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G35 | a test locating a checkout file from the working directory — `getProtectionDomain` outside `cc.jumpkick.testing.RepoRoot`, or a `user.dir` line escaping with `..`; comment-blind, plus a self-fail arm on the fixture's signatures | ban, no allowlist | `test-paths-from-checkout-root` (text) |
 | G36 | a module whose `build.gradle.kts` and `jk.toml` declare different workspace dependencies, in either direction, including a Gradle `testFixtures(...)` edge with no `fixtures = true` twin — plus a self-fail arm on the project-path-to-artifact-name map | ban, no allowlist | retired: Gradle is bootstrap-only and jk is the gate; `jk.toml` is the manifest every gate reads |
 | G37 | a hand-rolled children-first delete outside `cc.jumpkick.host.PathUtil`, or `FOLLOW_LINKS` in any file that deletes — comment-blind, plus a self-fail arm on the owner still using `walkFileTree` and `NOFOLLOW_LINKS` | ban; four commented exemptions, each a *selective* delete rather than a tree delete | `one-recursive-delete` (text) |
-| G38 | a toolchain env var read straight from the daemon's own environment instead of the request (use `BuildEnv.forModule` / `ambient`) — `JK_JDK=temurin-21 jk build` was silently ignored, so which JDK you compiled against depended on how the resident engine happened to be started | ban; `server/` + `shared/` main sources only (`clients/` is exempt by shape — there `System.getenv` **is** the request), one narrow in-scope exemption | `toolchain-env-from-request` (forbid) |
+| G38 | an environment read straight from `System.getenv` instead of the facade — the engine is a daemon, so it answers from the shell that started it, not the `jk` command being served (`JK_JDK=temurin-21 jk build` was silently ignored; a guard froze under CI because the engine had been started off the runner). `BuildEnv.get` / `ambient()` / `forModule` read the request first; `ProcessEnv.get` is for jk's own engine settings and whether the machine is a CI runner | ban; `server/`, `shared/` and `plugins/` main bytecode (`clients/` is exempt by shape — there `System.getenv` **is** the request), owner `ProcessEnv` | `one-env-surface` (forbid) |
 | G39 | an `isRegularFile` filter placed before a free name-only predicate — the walk already read the attributes, and re-resolving the path costs 10.3 µs on NTFS against 1.0 on ext4 | ban | guard test `cheapest-rejection-first` |
 | G40 | a `Files.isExecutable` outside `PathUtil.isRunnable` — 33.4 µs on Windows against 0.52 on Linux, for a question Windows does not answer that way (there the extension decides) | ban, one exemption (`ActionCache.executableBit`, which wants the bit itself) | `runnable-owner` (forbid) |
 | G41 | never allocated. Letters are issued when a guard lands; this one never was, and is not reusable. G44 briefly carried the same claim and was wrong: it is live in the self-hosted build. | — | — |
@@ -1040,6 +1040,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | no-ticket-ids | text | a ticket id names a tracker the reader does not have; a Giter8 template writes it into a user's project |
 | null-marked-packages | annotate | NullAway checks a package only where it says @NullMarked; an unmarked package is one where every nullness finding is off |
 | one-digest-surface | forbid | one digest surface: buffer size, exception policy and hex spelling decided once |
+| one-env-surface | forbid | the engine is a daemon: System.getenv answers from the shell that started it, not the jk command being served |
 | one-hex-spelling | forbid | bytes become hex in one place; a second spelling is a second answer |
 | one-host-surface | forbid | a copy of the host predicate that tests contains("win") calls Darwin a Windows box |
 | one-http-client | forbid | a client built outside Http goes direct behind the proxy every other request honours |
@@ -1071,7 +1072,6 @@ by id, kind and why. This block is a `generated` guard's rendering
 | task-names | vocabulary | a step name typed by hand is an edge that quietly does not exist |
 | test-paths-from-checkout-root | text | a path from the working directory differs between a module-rooted test run and a workspace jk build |
 | tests-skip-symlinks-on-windows | text | a test that creates a symlink is red for every Windows contributor without Developer Mode |
-| toolchain-env-from-request | forbid | a toolchain variable read from the daemon's environment selects a JDK by how the engine was started, not by this build |
 | tree-copy-owner | text | a hand-rolled tree copy is the shape twelve callers got wrong the same three ways |
 | wire-prefix-pairs | text | a protocol prefix has exactly two ends: one writes it, one reads it |
 | wire-types | vocabulary | a wire type typed by hand is an event nobody handles |

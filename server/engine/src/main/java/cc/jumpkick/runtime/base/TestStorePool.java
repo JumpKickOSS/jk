@@ -5,6 +5,7 @@ import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.DirLinks;
 import cc.jumpkick.model.RepositorySpec;
@@ -173,7 +174,7 @@ public final class TestStorePool {
     }
 
     static long maxBytes() {
-        return maxBytes(System.getProperty(MAX_MB_PROPERTY), System::getenv);
+        return maxBytes(System.getProperty(MAX_MB_PROPERTY), ProcessEnv::get);
     }
 
     /**

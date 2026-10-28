@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.util.MinimalXml;
@@ -28,7 +29,7 @@ public final class M2Dirs {
     private M2Dirs() {}
 
     public static Path localRepository() {
-        return localRepository(System.getenv("JK_M2_LOCAL"));
+        return localRepository(ProcessEnv.get("JK_M2_LOCAL"));
     }
 
     /**

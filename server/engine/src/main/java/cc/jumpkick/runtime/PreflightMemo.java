@@ -12,6 +12,7 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
@@ -961,7 +962,7 @@ public final class PreflightMemo {
     }
 
     static boolean useMtimeMode() {
-        return EnvValues.bool(System::getenv, "JK_PREFLIGHT_MEMO_MTIME").orElse(false);
+        return EnvValues.bool(ProcessEnv::get, "JK_PREFLIGHT_MEMO_MTIME").orElse(false);
     }
 
     private static Path absFromRel(Path root, String rel) {

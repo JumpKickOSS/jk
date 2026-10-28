@@ -2,6 +2,7 @@
 package cc.jumpkick.wire;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.ProcessEnv;
 import java.security.SecureRandom;
 import java.util.Base64;
 import org.jspecify.annotations.Nullable;
@@ -33,7 +34,7 @@ public final class EngineTransport {
      */
     public static boolean useLoopbackTcp() {
         String forced = System.getProperty(TRANSPORT_PROPERTY);
-        if (forced == null || forced.isBlank()) forced = System.getenv(TRANSPORT_ENV);
+        if (forced == null || forced.isBlank()) forced = ProcessEnv.get(TRANSPORT_ENV);
         return resolve(forced);
     }
 

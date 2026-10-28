@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.java.compiler;
 
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import java.io.FilterInputStream;
 import java.io.FilterOutputStream;
@@ -61,7 +62,7 @@ final class FileOps {
 
     /** A recorder that writes where {@code JK_FILE_OPS} points, or one that does nothing. */
     static FileOps open() {
-        String path = System.getenv(ENV);
+        String path = ProcessEnv.get(ENV);
         if (path == null || path.isBlank()) return new FileOps(null, Clock.SYSTEM);
         return new FileOps(Path.of(path.trim()), Clock.SYSTEM);
     }

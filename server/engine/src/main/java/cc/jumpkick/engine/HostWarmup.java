@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.model.JkVersion;
@@ -37,7 +38,7 @@ public final class HostWarmup {
 
     /** Whether the engine may schedule calibration. Default on; off when config or env says so. */
     public static boolean enabled() {
-        return enabled(JkDirs.userConfigFile(), System::getenv);
+        return enabled(JkDirs.userConfigFile(), ProcessEnv::get);
     }
 
     static boolean enabled(Path userConfig, @Nullable Function<String, @Nullable String> env) {

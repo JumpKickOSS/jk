@@ -4,6 +4,7 @@ package cc.jumpkick.resolver;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.HostLoad;
 import cc.jumpkick.host.HostProcessors;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
@@ -75,7 +76,7 @@ public final class StallWatch {
      * stretched with the host's load.
      */
     public static long envWindowMs() {
-        return windowMs(System.getenv("JK_RESOLVE_TIMEOUT_MS"), HostLoad.loadAverage(), HostProcessors.count());
+        return windowMs(ProcessEnv.get("JK_RESOLVE_TIMEOUT_MS"), HostLoad.loadAverage(), HostProcessors.count());
     }
 
     /**

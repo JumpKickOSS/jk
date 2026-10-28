@@ -5,6 +5,7 @@ import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.DevReady;
@@ -49,7 +50,7 @@ final class DevSidecars {
     static List<ExecPlan.Sidecar> resolve(Path moduleDir, JkBuild module, Map<String, String> clientEnv)
             throws IOException, InterruptedException {
         Map<String, ExecPlan.Sidecar> inferred = new LinkedHashMap<>();
-        String path = clientEnv.getOrDefault("PATH", System.getenv("PATH"));
+        String path = clientEnv.getOrDefault("PATH", ProcessEnv.get("PATH"));
         if (NodeShape.kind(module, moduleDir) == NodeShape.Kind.SIDE_BY_SIDE) {
             put(inferred, module.project().name() + "-node", NodeRun.dev(moduleDir, module, path));
         }
@@ -72,7 +73,7 @@ final class DevSidecars {
             Path root, JkBuild rootBuild, Map<Path, JkBuild> nodeMembers, Map<String, String> clientEnv)
             throws IOException, InterruptedException {
         Map<String, ExecPlan.Sidecar> inferred = new LinkedHashMap<>();
-        String path = clientEnv.getOrDefault("PATH", System.getenv("PATH"));
+        String path = clientEnv.getOrDefault("PATH", ProcessEnv.get("PATH"));
         for (var e : nodeMembers.entrySet()) {
             put(inferred, e.getValue().project().name(), NodeRun.dev(e.getKey(), e.getValue(), path));
         }

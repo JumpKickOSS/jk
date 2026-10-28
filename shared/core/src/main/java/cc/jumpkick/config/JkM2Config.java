@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.function.Function;
@@ -37,7 +38,7 @@ public record JkM2Config(boolean integration, boolean autoClean, int cleanAfterD
             MachineConfig.of(DEFAULTS.cleanAfterDays(), days -> days > 0);
 
     public static JkM2Config resolve() {
-        return resolve(JkDirs.userConfigFile(), System::getenv, System::getProperty);
+        return resolve(JkDirs.userConfigFile(), ProcessEnv::get, System::getProperty);
     }
 
     /** As {@link #resolve()} but against an explicit config file + env, with no JVM properties. */

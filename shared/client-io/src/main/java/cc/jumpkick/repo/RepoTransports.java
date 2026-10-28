@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.repo.s3.AwsCredentialChain;
@@ -35,8 +36,8 @@ public final class RepoTransports {
         String scheme = url.getScheme() == null ? "" : url.getScheme().toLowerCase(Locale.ROOT);
         return switch (scheme) {
             case "http", "https" -> new HttpTransport(http);
-            case "s3" -> S3Transport.forS3(http, url, cfg, new AwsCredentialChain(), System::getenv);
-            case "gs" -> S3Transport.forGcs(http, url, cfg, new AwsCredentialChain(), System::getenv);
+            case "s3" -> S3Transport.forS3(http, url, cfg, new AwsCredentialChain(), BuildEnv::get);
+            case "gs" -> S3Transport.forGcs(http, url, cfg, new AwsCredentialChain(), BuildEnv::get);
             case "file" -> new FileTransport();
             default ->
                 throw new IllegalArgumentException("no repository transport for scheme '"
