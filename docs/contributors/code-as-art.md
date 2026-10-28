@@ -312,7 +312,7 @@ Apply to every new file and every extract, not only the engine.
 - Do not “simplify” cancel, exclusive fingerprints, journal completion,
   or SSE connect ordering. If the new type cannot express the old
   invariant, the type is unfinished.
-- `jk format` before every commit.
+- `jk guard` before every commit; it formats what changed.
 - **Change what a key hashes → turn the salt, in the same commit.** Every
   action key composes the product version with `BuildIdentity.CACHE_KEY_SALT`.
   A change to the bytes a key covers (a new input, a dropped one, a different
@@ -761,8 +761,8 @@ corpus guard is needed (G0 is subsumed by it).
 lanes on every build that does work; the tree lane (text, metric, parity and
 generated rules) and the fixture proofs run on `jk guard`, `jk test -g` and
 `jk build -g`, so an inner `jk build` never pays a tree scan. CI's self-host
-job runs `jk guard` after the build, and `jk guard` is the second step of the
-local gate (`jk format`, `jk guard`, `jk build`, `jk test -p integration`).
+job runs `jk guard` after the build (under CI it also fails on unformatted source), and `jk guard`
+is the first step of the local gate (`jk guard`, `jk build`, `jk test -p integration`).
 The shell scripts have their lint in the same place: the `shellcheck` guard test
 (G100) runs `scripts/shellcheck.sh` under `jk guard`. Windows skips it.
 

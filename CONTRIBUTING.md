@@ -111,9 +111,10 @@ jk-templates. `scripts/templates-sync.sh --check` names every drifted file; the 
 
 ### Formatting
 
-jk formats itself. Run `jk format` before you commit. There is no pre-commit hook or CI
-format job — `jk format -c` is the local gate (required before every commit; see
-[AGENTS.md](AGENTS.md#code-formatting-mandatory-before-every-commit)).
+jk formats itself: the root `jk.toml` sets `[format] enforce = true`, so `jk guard` formats every
+source that changed before it builds, and in CI (where `CI` is set) the same step fails naming any
+unformatted file. Run `jk guard` before every commit; there is no separate format step (see
+[AGENTS.md](AGENTS.md#code-formatting-part-of-jk-guard)).
 
 ### Code as Art
 
@@ -142,8 +143,7 @@ The client never embeds the engine. Spawning uses
 ### The gate
 
 ```bash
-jk format                                    # before every commit
-jk guard                                     # every house-rule lane, fixtures included
+jk guard                                     # before every commit: formats what changed, then every house-rule lane
 jk build                                     # every module, fast tier included
 jk test -p integration                       # the push gate: before pushing main to origin
 ```
@@ -178,8 +178,7 @@ JaCoCo agent stays off unless asked for, so the fast tier does not pay for it.
 **Reproduce locally**
 
 ```bash
-jk format -c
-jk guard
+CI=true jk guard                             # the format check and every house-rule lane, as CI runs them
 jk build
 jk test -p integration
 scripts/curated-integration.sh               # what the pull request's boundary lane runs
