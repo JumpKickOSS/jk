@@ -86,7 +86,7 @@ public final class ClientEnvForward {
     /**
      * Those of {@link #names()} the caller actually has, in listed order, then the
      * {@link BuildEnv#SHELL} variables it has (proxy, display, container runtime), the
-     * {@link BuildEnv#JDK_ROOT} and {@link BuildEnv#NODE} it has, then every {@link #REPO_PREFIX} and
+     * {@link BuildEnv#JDK_ROOT}, {@link BuildEnv#RUNNER} and {@link BuildEnv#NODE} it has, then every {@link #REPO_PREFIX} and
      * {@link BuildEnv#NODE_PREFIXES} variable.
      * {@code System::getenv} is passed explicitly — the client resolves from its own shell, never
      * from a session's {@code clientEnv}. The proxy, display, JDK-root and repository names also
@@ -96,6 +96,7 @@ public final class ClientEnvForward {
         Map<String, String> out = new LinkedHashMap<>(BuildEnv.machine(System::getenv));
         out.putAll(BuildEnv.resolve(BuildEnv.SHELL, System::getenv));
         out.putAll(BuildEnv.resolve(BuildEnv.JDK_ROOT, System::getenv));
+        out.putAll(BuildEnv.resolve(BuildEnv.RUNNER, System::getenv));
         out.putAll(BuildEnv.resolve(BuildEnv.NODE, System::getenv));
         for (Map.Entry<String, String> e : System.getenv().entrySet()) {
             if (e.getKey().startsWith(REPO_PREFIX) || nodePrefixed(e.getKey())) out.put(e.getKey(), e.getValue());
@@ -124,7 +125,8 @@ public final class ClientEnvForward {
                 || nodePrefixed(name)
                 || BuildEnv.NODE.contains(name)
                 || BuildEnv.SHELL.contains(name)
-                || BuildEnv.JDK_ROOT.contains(name);
+                || BuildEnv.JDK_ROOT.contains(name)
+                || BuildEnv.RUNNER.contains(name);
     }
 
     /**

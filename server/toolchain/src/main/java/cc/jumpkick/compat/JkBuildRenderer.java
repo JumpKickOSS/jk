@@ -79,6 +79,7 @@ public final class JkBuildRenderer {
         renderResolve(sb, jkBuild.build());
         renderJavac(sb, jkBuild.build().javac());
         renderNullness(sb, jkBuild.build().nullness());
+        renderFormat(sb, jkBuild.format());
         renderMultiRelease(sb, jkBuild.build().multiRelease());
         renderProfiles(sb, jkBuild);
         renderFeatures(sb, jkBuild);
@@ -288,6 +289,18 @@ public final class JkBuildRenderer {
         if (!nullness.options().isEmpty())
             sb.append("options = ").append(list(nullness.options())).append('\n');
         if (nullness.tests()) sb.append("tests = true\n");
+    }
+
+    /** {@code [format]}, each key only when it is set. */
+    private static void renderFormat(StringBuilder sb, JkBuild.FormatConfig format) {
+        if (format.equals(JkBuild.FormatConfig.EMPTY)) return;
+        sb.append("\n[format]\n");
+        if (format.style() != null)
+            sb.append("style = \"").append(format.style()).append("\"\n");
+        if (format.java() != null) sb.append("java = \"").append(format.java()).append("\"\n");
+        if (format.kotlin() != null)
+            sb.append("kotlin = \"").append(format.kotlin()).append("\"\n");
+        if (format.enforce()) sb.append("enforce = true\n");
     }
 
     private static void renderJavacPlugins(StringBuilder sb, String prefix, Map<String, List<String>> plugins) {

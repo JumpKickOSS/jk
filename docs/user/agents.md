@@ -118,7 +118,7 @@ Catalog prompts include **`fix-failing-build`**. Full tool table: [MCP](mcp.md).
 | Change `java = N` | MCP `manifest`, or edit `jk.toml` (`java` is language level, not `jdk`) |
 | Node.js for a front end | `jk node pin` (or MCP `node action=pin`); run its scripts with `jk node run <script>` and one-off package binaries with `jk npx <pkg>` (`jk npm …` for npm itself), never a host `npm` ([Node.js](node.md)) |
 | Scaffold | `jk new -t …`, or MCP `new` (`preview=true` first; `action=templates` lists ids) |
-| Format after edits | `jk format` — [Format](format.md) |
+| Format after edits | `jk guard` formats what changed when `[format] enforce` is on; `jk format` formats everything — [Format](format.md#enforce-with-jk-guard) |
 | Import Maven/Gradle | `jk import`, or MCP `import` |
 | Publish | MCP `publish` is a **dry-run**; `publish(upload=true)` uploads to the `[publish]` repository. Central and ad-hoc URLs stay on the CLI |
 

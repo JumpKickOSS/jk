@@ -155,7 +155,9 @@ public final class ManifestTables {
                 stringOrThrow(format, "kotlin", "format.kotlin"),
                 optionalBool(format, "optimize-imports"),
                 optionalBool(format, "import-order"),
-                optionalBool(format, "remove-unused-imports"));
+                optionalBool(format, "remove-unused-imports"),
+                Boolean.TRUE.equals(optionalBool(format, "enforce")),
+                stringOrThrow(format, "ratchet-from", "format.ratchet-from"));
     }
 
     /**

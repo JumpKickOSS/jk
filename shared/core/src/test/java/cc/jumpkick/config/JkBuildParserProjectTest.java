@@ -719,5 +719,22 @@ class JkBuildParserProjectTest {
         JkBuild parsed = JkBuildParser.parse(PROJECT);
         assertThat(parsed.format()).isEqualTo(JkBuild.FormatConfig.EMPTY);
         assertThat(parsed.format().java()).isNull();
+        assertThat(parsed.format().enforce()).isFalse();
+        assertThat(parsed.format().ratchetFrom()).isNull();
+    }
+
+    @Test
+    void parses_format_enforce_and_its_ratchet() {
+        JkBuild parsed = JkBuildParser.parse("""
+                group    = "com.example"
+                name     = "widget"
+                version  = "1.0.0"
+
+                [format]
+                enforce      = true
+                ratchet-from = "origin/main"
+                """);
+        assertThat(parsed.format().enforce()).isTrue();
+        assertThat(parsed.format().ratchetFrom()).isEqualTo("origin/main");
     }
 }

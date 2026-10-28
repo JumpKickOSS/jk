@@ -26,6 +26,28 @@ final class FormatSources {
         }
     }
 
+    /** The formattable files of {@code files}, by language and sorted, with the walk's exclusions applied. */
+    static CollectedSources of(Path root, List<Path> files) {
+        List<Path> java = new ArrayList<>();
+        List<Path> kotlin = new ArrayList<>();
+        List<Path> groovy = new ArrayList<>();
+        List<Path> scala = new ArrayList<>();
+        for (Path file : files) {
+            Path rel = file.startsWith(root) ? root.relativize(file) : file;
+            if (!notExcluded(rel)) continue;
+            String name = file.getFileName().toString();
+            if (name.endsWith(".java")) java.add(file);
+            else if (name.endsWith(".kt")) kotlin.add(file);
+            else if (name.endsWith(".groovy")) groovy.add(file);
+            else if (name.endsWith(".scala")) scala.add(file);
+        }
+        java.sort(null);
+        kotlin.sort(null);
+        groovy.sort(null);
+        scala.sort(null);
+        return new CollectedSources(List.copyOf(java), List.copyOf(kotlin), List.copyOf(groovy), List.copyOf(scala));
+    }
+
     /**
      * One walk, skipping excluded directories entirely ({@code target/}, Gradle's {@code build/},
      * {@code .git/}, …) instead of descending and filtering files afterwards. Gradle's build dir is

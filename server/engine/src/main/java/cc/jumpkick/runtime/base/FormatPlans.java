@@ -31,6 +31,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -74,7 +75,7 @@ public final class FormatPlans {
             boolean removeUnusedImports,
             boolean redo,
             FormatWorker.FileObserver observer) {
-        Options o = new Options(
+        return plan(new Options(
                 projectDir,
                 cache,
                 check,
@@ -84,7 +85,44 @@ public final class FormatPlans {
                 importOrder,
                 removeUnusedImports,
                 redo,
-                observer);
+                observer,
+                null,
+                null));
+    }
+
+    /**
+     * As {@link #formatBuildPlan}, over {@code sources} instead of a walk of the tree: the files a
+     * guard run already listed. {@code only}, when given, is the subset that may be formatted; the
+     * rest key the run and are left as they are.
+     */
+    public static BuildPlan formatSourcesPlan(
+            Path projectDir,
+            Path cache,
+            boolean check,
+            @Nullable String javaStyle,
+            @Nullable String kotlinStyle,
+            boolean optimizeImports,
+            boolean importOrder,
+            boolean removeUnusedImports,
+            List<Path> sources,
+            @Nullable Set<Path> only,
+            FormatWorker.FileObserver observer) {
+        return plan(new Options(
+                projectDir,
+                cache,
+                check,
+                javaStyle,
+                kotlinStyle,
+                optimizeImports,
+                importOrder,
+                removeUnusedImports,
+                false,
+                observer,
+                List.copyOf(sources),
+                only == null ? null : Set.copyOf(only)));
+    }
+
+    private static BuildPlan plan(Options o) {
         Keys k = Keys.create();
         return BuildPlan.builder("format")
                 .stateKeys(
@@ -125,7 +163,9 @@ public final class FormatPlans {
             boolean importOrder,
             boolean removeUnusedImports,
             boolean redo,
-            FormatWorker.FileObserver observer) {}
+            FormatWorker.FileObserver observer,
+            @Nullable List<Path> sources,
+            @Nullable Set<Path> only) {}
 
     /** The plan keys the steps hand each other: dirty files, every file, jars, index and config key. */
     private record Keys(
@@ -171,7 +211,9 @@ public final class FormatPlans {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("collect sources");
-                    FormatSources.CollectedSources all = FormatSources.collectSources(o.projectDir());
+                    FormatSources.CollectedSources all = o.sources() == null
+                            ? FormatSources.collectSources(o.projectDir())
+                            : FormatSources.of(o.projectDir(), o.sources());
                     ctx.put(k.allJavaFilesKey(), all.javaFiles());
                     ctx.put(k.allKotlinFilesKey(), all.kotlinFiles());
                     ctx.put(k.allGroovyFilesKey(), all.groovyFiles());
@@ -196,6 +238,7 @@ public final class FormatPlans {
                             : FormatFreshnessIndex.open(o.cache(), o.projectDir(), configKey);
                     FormatFreshnessIndex.Split split = index.partition(
                             all.javaFiles(), all.kotlinFiles(), all.groovyFiles(), all.scalaFiles(), o.redo());
+                    if (o.only() != null) split = split.within(o.only());
                     ctx.put(k.javaFilesKey(), split.dirtyJava());
                     ctx.put(k.kotlinFilesKey(), split.dirtyKotlin());
                     ctx.put(k.groovyFilesKey(), split.dirtyGroovy());
