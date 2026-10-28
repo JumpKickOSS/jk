@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """A Claude Code PreToolUse hook that answers a code search from jk's graph before the search runs.
 
-Prototype of the hook `jk agent install` is to ship (kanartist JK-4339): registered on `Grep|Glob`
-and `Read`, it reads the hook event on stdin and, when jk's compiler-resolved graph has a better
-answer than the text search about to run, returns it as `additionalContext`:
+A prototype of a hook for `jk agent install`: registered on `Grep|Glob` and `Read`, it reads the
+hook event on stdin and, when jk's compiler-resolved graph has a better answer than the text
+search about to run, returns it as `additionalContext`:
 
 - Grep for `Type.member`  -> that member's callers, each call site at `file:line`
 - Grep for `extends X` / `implements X` / a type name -> the types below it
