@@ -201,7 +201,7 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
   checkout: `../jk-examples/scripts/scenarios.py check <scenario>`,
   `scripts/example-dev-smoke.sh --examples ../jk-examples` and
   `scripts/examples-lock-drift.sh ../jk-examples`.
-- Local gate: `jk format`, `jk guard`, `jk install` (the build plus the reinstall), `jk test -p integration`;
+- Local gate: `jk guard` (it formats what changed), `jk install` (the build plus the reinstall), `jk test -p integration`;
   `scripts/curated-integration.sh` runs what the pull request's boundary lane will run.
 - Never the `network` or `bench` profile as a merge gate.
 

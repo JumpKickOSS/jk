@@ -122,7 +122,8 @@ Nightly:
 jk test -A -j0 -w0          # every suite; still keep bench out of a red gate
 ```
 
-Format gate: `jk format -c`. Outdated deps: `jk outdated -O jsonl` is a non-empty
+Format gate: `jk guard` when `[format] enforce` is on (under CI it checks and names every unformatted
+file), or `jk format -c` without it. Outdated deps: `jk outdated -O jsonl` is a non-empty
 array exactly when a dependency can move (exit code is always 0 on success). Archive `target/jk-results.md` and
 `target/jk-profile.json` as artifacts.
 
