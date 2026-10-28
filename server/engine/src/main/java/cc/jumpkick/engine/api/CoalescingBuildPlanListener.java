@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.api;
 
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -149,7 +150,7 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
 
     /** Resolve cadence: {@code JK_WIRE_PROGRESS_MS} or {@link #DEFAULT_CADENCE_MS}. */
     public static long cadenceFromEnv() {
-        String raw = System.getenv("JK_WIRE_PROGRESS_MS");
+        String raw = ProcessEnv.get("JK_WIRE_PROGRESS_MS");
         if (raw == null || raw.isBlank()) return DEFAULT_CADENCE_MS;
         try {
             return Long.parseLong(raw.trim());

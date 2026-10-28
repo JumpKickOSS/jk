@@ -46,7 +46,7 @@ public final class MacPrefs {
      * non-macOS, when iTerm2 has never run, or on any failure whatsoever.
      */
     public static Optional<String> itermFontName() {
-        return itermFontName(System::getenv);
+        return itermFontName(BuildEnv::get);
     }
 
     /**

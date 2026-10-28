@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.io.InputStream;
@@ -104,7 +105,7 @@ public final class OverbookSignals {
      * the engine process: {@code jk engine stop} first.
      */
     public static boolean policyOff() {
-        return policyOff(System.getenv("CI"), System.getenv(ENV));
+        return policyOff(ProcessEnv.get("CI"), ProcessEnv.get(ENV));
     }
 
     /** {@code ci} and {@code knob} are the raw values, not the variable names. */
@@ -138,8 +139,8 @@ public final class OverbookSignals {
 
     private static Reading sample() {
         if (!Os.isLinux()) return CLOSED;
-        String ci = System.getenv("CI");
-        String knob = System.getenv(ENV);
+        String ci = ProcessEnv.get("CI");
+        String knob = ProcessEnv.get(ENV);
         Path workers = WorkerContainment.report().mode() == WorkerContainment.Mode.CGROUP
                 ? WorkerContainment.workersGroup()
                 : null;

@@ -3,6 +3,7 @@ package cc.jumpkick.android;
 
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.plugin.build.PluginCommandExec;
 import java.io.IOException;
@@ -44,7 +45,7 @@ final class AndroidCommand {
         Path root = exec.requireExtra("sdk-root");
         // The license texts come off Google's repository feed; there is no cached copy to accept
         // from, so an offline run refuses rather than reaching out behind the flag's back.
-        String feedUrl = System.getenv().getOrDefault("JK_ANDROID_FEED_URL", FEED_URL);
+        String feedUrl = ProcessEnv.all().getOrDefault("JK_ANDROID_FEED_URL", FEED_URL);
         if (exec.offline() && !feedUrl.startsWith("file:")) {
             throw new IOException(Errors.offlineRefusal(feedUrl));
         }

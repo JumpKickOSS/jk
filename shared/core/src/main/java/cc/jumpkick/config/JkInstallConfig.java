@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
@@ -20,7 +21,7 @@ public record JkInstallConfig(InstallDestination destination) {
     private static final MachineConfig<InstallDestination> DESTINATION = MachineConfig.of(DEFAULTS.destination());
 
     public static JkInstallConfig resolve() {
-        return resolve(JkDirs.userConfigFile(), System::getenv, System::getProperty);
+        return resolve(JkDirs.userConfigFile(), ProcessEnv::get, System::getProperty);
     }
 
     /** As {@link #resolve()} but against an explicit config file + env, with no JVM properties. */

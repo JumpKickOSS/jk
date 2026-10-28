@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver.pubgrub;
 
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.resolve.ResolveProfile;
 import cc.jumpkick.resolver.StallWatch;
@@ -219,7 +220,7 @@ public class PubGrubSolver {
     }
 
     private static int envMaxDecisions() {
-        String v = System.getenv("JK_RESOLVE_MAX_DECISIONS");
+        String v = ProcessEnv.get("JK_RESOLVE_MAX_DECISIONS");
         if (v == null || v.isBlank()) return DEFAULT_MAX_DECISIONS;
         try {
             int n = Integer.parseInt(v.trim());

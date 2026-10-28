@@ -2,6 +2,7 @@
 package cc.jumpkick.http;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.RepositorySpec;
 import java.io.ByteArrayInputStream;
@@ -125,7 +126,7 @@ public final class Http {
      */
     public static final String DENY_HOSTS_ENV = "JK_HTTP_DENY_HOSTS";
 
-    private static final Set<String> DENIED_BY_ENV = deniedHosts(System.getenv(DENY_HOSTS_ENV));
+    private static final Set<String> DENIED_BY_ENV = deniedHosts(ProcessEnv.get(DENY_HOSTS_ENV));
 
     /** A client whose requests go through {@link ProxyEnvironment#ambient()}. */
     public Http() {

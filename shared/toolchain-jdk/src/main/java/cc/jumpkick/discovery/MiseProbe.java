@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.discovery;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.jdk.JdkHit;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -21,7 +22,7 @@ public final class MiseProbe implements LocalToolProbe {
     private final Path dataDir;
 
     public MiseProbe() {
-        this(resolveDataDir(System::getenv, System.getProperty("user.home", "")));
+        this(resolveDataDir(BuildEnv::get, System.getProperty("user.home", "")));
     }
 
     MiseProbe(Path dataDir) {

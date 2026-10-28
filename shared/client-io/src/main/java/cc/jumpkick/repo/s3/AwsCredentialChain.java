@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo.s3;
 
+import cc.jumpkick.config.BuildEnv;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,7 +23,7 @@ public final class AwsCredentialChain {
     private final Path awsDir;
 
     public AwsCredentialChain() {
-        this(System::getenv, defaultAwsDir());
+        this(BuildEnv::get, defaultAwsDir());
     }
 
     public AwsCredentialChain(Function<String, @Nullable String> env, Path awsDir) {

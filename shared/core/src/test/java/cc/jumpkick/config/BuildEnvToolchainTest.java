@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
@@ -26,19 +27,15 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class BuildEnvToolchainTest {
 
-    @Test
-    void toolchain_names_are_owned_in_one_place() {
-        // The ban list lives here so G38 and every build-path reader agree on what must not be a
-        // raw System.getenv. ClientEnvForward deliberately does not forward these.
-        assertThat(BuildEnv.TOOLCHAIN).containsExactly("JK_JDK", "JAVA_HOME", "GRAALVM_HOME");
-    }
+    /** The names that pick a JDK; none may come from the daemon's own environment. */
+    private static final List<String> TOOLCHAIN = List.of("JK_JDK", "JAVA_HOME", "GRAALVM_HOME");
 
     @Test
     void machine_names_are_owned_in_one_place() {
         // ClientEnvForward and TestEnv both read this list — the client ships them on the request,
         // the engine seeds them into every forked test JVM. They must not drift.
         assertThat(BuildEnv.MACHINE).contains("PATH");
-        assertThat(BuildEnv.MACHINE).doesNotContainAnyElementsOf(BuildEnv.TOOLCHAIN);
+        assertThat(BuildEnv.MACHINE).doesNotContainAnyElementsOf(TOOLCHAIN);
         assertThat(BuildEnv.MACHINE).hasSizeLessThanOrEqualTo(10);
     }
 
@@ -57,7 +54,7 @@ class BuildEnvToolchainTest {
 
         SessionContext.runWhere(sessionWith(requestEnv), () -> {
             Function<String, @Nullable String> env = BuildEnv.ambient();
-            for (String name : BuildEnv.TOOLCHAIN) {
+            for (String name : TOOLCHAIN) {
                 assertThat(env.apply(name))
                         .as("%s must come from the request, not the daemon", name)
                         .isEqualTo(requestEnv.get(name));
@@ -101,6 +98,18 @@ class BuildEnvToolchainTest {
         // documents and is worth pinning where it can be observed.
         SessionContext.runWhere(sessionWith(Map.of("JK_JDK", "temurin-21")), () -> {
             assertThat(BuildEnv.forModule(moduleDir).apply("JK_JDK")).isEqualTo("temurin-21");
+        });
+    }
+
+    @Test
+    void get_answers_from_whichever_request_is_being_served() {
+        // A long-lived object holds BuildEnv::get once; each request must still see its own value.
+        Function<String, @Nullable String> held = BuildEnv::get;
+        SessionContext.runWhere(sessionWith(Map.of("CI", "true")), () -> {
+            assertThat(held.apply("CI")).isEqualTo("true");
+        });
+        SessionContext.runWhere(sessionWith(Map.of("CI", "false")), () -> {
+            assertThat(held.apply("CI")).isEqualTo("false");
         });
     }
 

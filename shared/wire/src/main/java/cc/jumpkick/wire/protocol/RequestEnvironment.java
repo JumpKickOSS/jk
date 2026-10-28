@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.protocol;
 
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import org.jspecify.annotations.Nullable;
 
@@ -24,7 +25,7 @@ public final class RequestEnvironment {
 
     /** {@code jk.build.trigger} system property, else {@code JK_BUILD_TRIGGER}; null when neither is set. */
     public static @Nullable String trigger() {
-        return firstNonBlank(System.getProperty(TRIGGER_PROPERTY), System.getenv("JK_BUILD_TRIGGER"));
+        return firstNonBlank(System.getProperty(TRIGGER_PROPERTY), ProcessEnv.get("JK_BUILD_TRIGGER"));
     }
 
     /**
@@ -33,7 +34,7 @@ public final class RequestEnvironment {
      * tell one IDE window or agent connection from another.
      */
     public static @Nullable String session() {
-        return firstNonBlank(System.getProperty(SESSION_PROPERTY), System.getenv("JK_BUILD_SESSION"));
+        return firstNonBlank(System.getProperty(SESSION_PROPERTY), ProcessEnv.get("JK_BUILD_SESSION"));
     }
 
     /** Stamp this process as {@code trigger} on behalf of {@code session} for every later request. */

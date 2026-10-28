@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
@@ -68,7 +69,7 @@ public final class ChromeTimeline {
      */
     public static @Nullable ChromeTimeline open(@Nullable Path projectDir, boolean noTimeline) {
         if (noTimeline || projectDir == null) return null;
-        String env = System.getenv(ENV);
+        String env = ProcessEnv.get(ENV);
         // Blank is this switch's own "off"; a non-boolean value is a destination path.
         if (env != null
                 && (env.isBlank() || EnvValues.parseBool(env).filter(on -> !on).isPresent())) {

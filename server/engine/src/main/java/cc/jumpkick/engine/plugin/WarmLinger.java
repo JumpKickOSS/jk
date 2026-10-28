@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.host.ProcessEnv;
 import java.time.Duration;
 import org.jspecify.annotations.Nullable;
 
@@ -37,7 +38,7 @@ public final class WarmLinger {
     public static long millis() {
         long pinned = forTests;
         if (pinned >= 0) return pinned;
-        String v = System.getenv(ENV);
+        String v = ProcessEnv.get(ENV);
         if (v != null && !v.isBlank()) {
             try {
                 return Duration.ofMinutes(Math.max(0L, Long.parseLong(v.trim())))
@@ -56,7 +57,7 @@ public final class WarmLinger {
 
     private static boolean ci() {
         Boolean pinned = ciForTests;
-        return pinned != null ? pinned : EnvValues.isCi(System::getenv);
+        return pinned != null ? pinned : EnvValues.isCi(ProcessEnv::get);
     }
 
     /** Test seam: pin whether this is CI; {@code null} reads the environment again. */

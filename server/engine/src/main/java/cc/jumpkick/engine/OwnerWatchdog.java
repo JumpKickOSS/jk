@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.host.ProcessEnv;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
@@ -45,7 +46,7 @@ public final class OwnerWatchdog {
 
     /** Start the watch this process was given, by {@link #PROPERTY} or {@link #ENV}. */
     public static @Nullable Thread start(Runnable onGone, Consumer<String> log) {
-        return start(ownerPid(System::getProperty, System::getenv), onGone, log);
+        return start(ownerPid(System::getProperty, ProcessEnv::get), onGone, log);
     }
 
     /**

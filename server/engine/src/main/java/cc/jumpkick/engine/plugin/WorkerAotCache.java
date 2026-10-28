@@ -5,6 +5,7 @@ import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkVendor;
@@ -82,7 +83,7 @@ public final class WorkerAotCache {
     /** False when {@code jk.worker.aot} / {@code JK_WORKER_AOT} is {@code off}, {@code false} or {@code 0}. */
     public static boolean enabled() {
         String raw = System.getProperty("jk.worker.aot");
-        if (raw == null || raw.isBlank()) raw = System.getenv("JK_WORKER_AOT");
+        if (raw == null || raw.isBlank()) raw = ProcessEnv.get("JK_WORKER_AOT");
         return EnvValues.parseBool(raw == null ? "" : raw.trim()).orElse(true);
     }
 

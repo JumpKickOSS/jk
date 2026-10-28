@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.MainClassScanner;
 import cc.jumpkick.layout.NodeShape;
@@ -35,7 +36,7 @@ final class DevStack {
             throws IOException, InterruptedException {
         Map<String, String> members = new LinkedHashMap<>();
         Map<Path, JkBuild> nodeMembers = new LinkedHashMap<>();
-        String path = clientEnv.getOrDefault("PATH", System.getenv("PATH"));
+        String path = clientEnv.getOrDefault("PATH", ProcessEnv.get("PATH"));
         for (var e : modules.entrySet()) {
             Path dir = e.getKey();
             JkBuild module = e.getValue();
