@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.EnvDecl;
 import java.nio.file.Path;
@@ -184,6 +185,19 @@ class WorkerEnvTest {
         WorkerEnv defaulted = env.withDefaults(Map.of("A", "0", "C", "0"));
         assertThat(defaulted.extras()).containsExactlyInAnyOrderEntriesOf(Map.of("A", "2", "B", "2", "C", "0"));
         assertThat(defaulted.inherit()).isFalse();
+    }
+
+    @Test
+    void an_inheriting_worker_gets_the_callers_shell_not_the_daemons() throws Exception {
+        WorkerEnv inherit = WorkerEnv.policy(new EnvConfig(true, List.of()));
+        Map<String, String> env = RequestShell.where(
+                Map.of("JK_CALLER_ONLY", "yes", "PWD", "/somewhere", "PATH", "/caller/bin"), inherit::environment);
+
+        assertThat(env).containsEntry("JK_CALLER_ONLY", "yes");
+        assertThat(env).as("per-invocation noise would fork a worker per build").doesNotContainKey("PWD");
+        assertThat(WorkerEnv.strict().environment())
+                .as("a strict worker never sees the caller's other variables")
+                .doesNotContainKey("JK_CALLER_ONLY");
     }
 
     @Test

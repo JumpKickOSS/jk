@@ -979,6 +979,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G114 | a `:cli` test naming the ambient store and one of its pooled trees (`central`, `google`, `jumpkick`) without `@IsolatedStore` — those trees are links into the pool every test sandbox on the host shares ([test-suite-tiers](test-suite-tiers.md#isolation)) | text over `clients/cli/src/test/java`, a self-fail arm on a class known to seed Central | guard test `cli-test-shared-store-trees` |
 | G115 | a build-like goal planning a module outside `ModulePipeline`: calling `BuildPlanner.coreBuilder`/`fullPlan`, `PlannerTails.appendDeclaredTails`/`joinTests`, or constructing `BuildPlanner.Inputs` anywhere but the pipeline and its factory ([lifecycle](lifecycle.md)) | forbid over main bytecode; `BuildPlan.Builder` refuses a re-root that drops the terminal it replaced; `LifecycleParityTest` holds every goal to the build plus its tail | `one-module-planner` (forbid) |
 | G116 | a step in a module build plan whose `Task.builder` chain declares no `StepForecast` (`PRICED`, `RIDES` or `always(why)`) — the forecast could not say whether it runs, so a clean tree skips it or a stale one never stops rebuilding ([lifecycle](lifecycle.md#forecasting)) | text over engine main, plans no module build runs exempt by file; a self-fail arm on the site count | guard test `steps-declare-forecast` |
+| G117 | a `ProcessBuilder.environment()` outside the spawners that build a child's environment on purpose — a child starts from a copy of the daemon's environment, so a read of it is a `System.getenv` by another name and a write that does not clear it hands the child the shell that started the engine | forbid, baselined at the 16 existing spawners; a new one composes through `WorkerEnv` or `TaskExec` | `child-env-owner` (forbid) |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
@@ -1014,6 +1015,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | cache-tiers | vocabulary | a cache tier is named once; the homonyms each have their own owner |
 | case-conversion-locale | forbid | a case conversion in the default locale misparses identifiers under tr_TR and az |
 | central-address | text | the mirror and the cooldown key on the canonical host; an alias matches neither |
+| child-env-owner | forbid | a child's environment copied from the daemon is the engine's shell, not the jk command being served |
 | cli-runtime-classpath | depend | the CLI runtime is the native image; a test or build-time library there is a mis-scoped dependency |
 | cli-runtime-modules | layers | a CLI edge to an engine-side module puts engine code in the native image; shared/ide is client-side by construction (the IDE file generators the CLI and the engine both link) |
 | clock-owner | forbid | a wall-clock read the caller cannot move is a test that has to sleep, and a sleep asserts a duration instead of a condition |

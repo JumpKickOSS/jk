@@ -564,6 +564,14 @@ and forge tokens stay behind: a resident engine outlives the shell that started 
 inherited once would be every later terminal's truth. Workers are narrowed again —
 [Build § Worker environment](build.md#worker-environment-env).
 
+Every request carries the whole environment of the shell running `jk`, and the engine decides the
+request from that rather than from its own: `CI`, repository and cloud credentials, the CI
+profile, colour. A variable you leave unset reads as unset. git, which jk runs for git
+dependencies, gets your `GIT_*` settings (`GIT_SSH_COMMAND`, `GIT_ASKPASS`, `GIT_SSL_CAINFO`,
+tracing) and your SSH agent, but never the variables that name a repository (`GIT_DIR`,
+`GIT_INDEX_FILE`, …), so `jk` run from a git hook cannot point jk's checkouts at yours. MCP and HTTP
+requests have no shell, and those decisions fall back to the engine's environment.
+
 <!-- engine-process:start -->
 | Env | Default | Meaning |
 |---|---|---|
