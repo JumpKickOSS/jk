@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -212,6 +213,34 @@ public final class BuildEnv {
     public static @Nullable String get(String name) {
         return over(clientEnv()).apply(name);
     }
+
+    /**
+     * The caller's whole environment, or this process's own when the request carried none (MCP,
+     * HTTP, a test). For a step that hands the caller's environment on: an uncached tail, a module
+     * that says {@code [env] inherit}.
+     */
+    public static Map<String, String> callerEnv() {
+        RequestShell shell = RequestShell.current();
+        Map<String, String> all = shell != null ? shell.vars() : ProcessEnv.all();
+        Map<String, String> out = new LinkedHashMap<>();
+        all.forEach((name, value) -> {
+            if (!perInvocation(name)) out.put(name, value);
+        });
+        return Collections.unmodifiableMap(out);
+    }
+
+    /**
+     * The variables a shell changes from one command to the next: the last command, the working
+     * directory, the nesting depth, the terminal session, Windows' per-drive directories. Handed on,
+     * they would fork a fresh worker and rerun an inheriting suite on every build while meaning
+     * nothing to either.
+     */
+    static boolean perInvocation(String name) {
+        return name.isEmpty() || name.charAt(0) == '=' || PER_INVOCATION.contains(name);
+    }
+
+    private static final Set<String> PER_INVOCATION =
+            Set.of("_", "PWD", "OLDPWD", "SHLVL", "TERM_SESSION_ID", "WT_SESSION", "WINDOWID");
 
     /**
      * {@code clientEnv} over the request's shell when one is bound, else over this process's own

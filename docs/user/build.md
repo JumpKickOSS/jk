@@ -394,8 +394,9 @@ between two builds runs the suite again — [Test](test.md).
 inherit = true   # the legacy build scripts read a dozen CI variables; listing them is on the backlog
 ```
 
-`inherit = true` hands the module's workers the engine's whole environment, secrets included.
-Write the reason beside it. `[env]` is per module and is not inherited from a workspace root.
+`inherit = true` hands the module's workers the whole environment of the shell running `jk`,
+secrets included, less what a shell changes per command (`PWD`, `_`, `SHLVL`, the terminal
+session); its suite reruns when any of the rest changes. Write the reason beside it. `[env]` is per module and is not inherited from a workspace root.
 The engine's own environment is the shell that started it, not the one running `jk` — apart
 from the proxy and display variables above, a variable set for one command reaches a worker only
 through `vars` or `[test] env`. What jk itself decides reads the shell running `jk`, every

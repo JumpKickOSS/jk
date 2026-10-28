@@ -50,7 +50,7 @@ final class SuiteEnvKeys {
         }
         if (build.env().inherit()) {
             // The whole environment reaches the suite: every value keys it, by digest.
-            Map<String, String> inherited = new TreeMap<>(ProcessEnv.all());
+            Map<String, String> inherited = new TreeMap<>(BuildEnv.callerEnv());
             inherited.putAll(BuildEnv.fromRequest());
             out.add("inherited-env:" + Hashing.sha256Hex(inherited.toString()));
         }

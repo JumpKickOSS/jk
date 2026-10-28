@@ -30,7 +30,8 @@ import org.jspecify.annotations.Nullable;
  * every compiler worker and, through the test JVM, the project's own test code. Instead a worker
  * gets the {@link #allowed allow-list} of the engine's variables, then the module's {@code [env]
  * vars}, then whatever the fork site adds (a sandboxed {@code JK_HOME}, a spec path). A module that
- * needs more says {@code [env] inherit = true}; docs/user/build.md spells out the list.
+ * needs more says {@code [env] inherit = true}, which hands it the whole shell that ran {@code jk};
+ * docs/user/build.md spells out the list.
  */
 public final class WorkerEnv {
 
@@ -181,11 +182,12 @@ public final class WorkerEnv {
 
     /**
      * The child's complete environment: inherited names first, the request's proxy and display
-     * variables over the engine's, then {@link #extras()}.
+     * variables over the engine's, then {@link #extras()}. Under {@code inherit} the inherited names
+     * are the caller's whole shell ({@link BuildEnv#callerEnv}), not the daemon's.
      */
     public Map<String, String> environment() {
         return compose(
-                ENGINE.orElse(ProcessEnv.all()),
+                ENGINE.orElse(inherit ? BuildEnv.callerEnv() : ProcessEnv.all()),
                 BuildEnv.fromRequest(),
                 inherit,
                 withEngineJvmAsLastResort(extras),
@@ -225,7 +227,7 @@ public final class WorkerEnv {
     }
 
     /**
-     * The pure rule: {@code engine} whole when {@code inherit}, else only its {@link #allowed} names;
+     * The pure rule: {@code base} whole when {@code inherit}, else only its {@link #allowed} names;
      * {@code request} — the proxy and display variables of the shell running {@code jk} — over
      * those, so the worker goes where the request goes and draws where it draws rather than where
      * the engine's spawning shell did; {@code extras} on top in their own order. Windows variable
