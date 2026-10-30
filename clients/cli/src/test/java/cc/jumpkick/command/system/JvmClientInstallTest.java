@@ -11,6 +11,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -59,10 +61,40 @@ class JvmClientInstallTest {
                 .contains("-D" + JvmClient.JAR_PROPERTY + "=%JK_JAR%")
                 .contains("-Djk.argv0=%~n0")
                 .contains("%JK_CLIENT_OPTS%")
-                .contains("-jar \"%JK_JAR%\" %*\r\n")
+                .contains("-jar \"%JK_JAR%\" %* & goto :jk_exit\r\n:jk_exit\r\n")
                 .endsWith("exit /b %ERRORLEVEL%\r\n");
         assertThat(script.indexOf("JK_JAVA_HOME")).isLessThan(script.indexOf("if exist \"" + java + "\""));
         assertThat(script.indexOf("if exist \"" + java + "\"")).isLessThan(script.indexOf("defined JAVA_HOME"));
+    }
+
+    /**
+     * {@code cmd} resumes a batch file at a byte offset after each line, so a launcher replaced
+     * while its java line runs must not have its tail read out of the new file's bytes.
+     */
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void a_launcher_replaced_while_it_runs_still_exits_with_the_client_s_code(@TempDir Path dir) throws Exception {
+        Path launcher = dir.resolve("run.bat");
+        Path replacement = dir.resolve("next.bat");
+        Path swap = dir.resolve("swap.cmd");
+        Files.writeString(
+                swap,
+                "@copy /y \"" + replacement + "\" \"" + launcher + ".new\" >nul\r\n"
+                        + "@move /y \"" + launcher + ".new\" \"" + launcher + "\" >nul\r\n"
+                        + "@exit /b 7\r\n");
+        String original = JvmClientInstall.renderWindows(dir.resolve("a.jar"), dir.resolve("java.exe"))
+                .replaceFirst(
+                        "(?m)^\"%JAVA%\".*? & goto :jk_exit",
+                        "call \"" + swap.toString().replace("\\", "\\\\") + "\" & goto :jk_exit");
+        String longer = original.replace("setlocal\r\n", "setlocal\r\nrem " + "x".repeat(400) + "\r\necho TAIL\r\n");
+        Files.writeString(launcher, original);
+        Files.writeString(replacement, longer);
+        Process p = new ProcessBuilder("cmd.exe", "/c", launcher.toString())
+                .redirectErrorStream(true)
+                .start();
+        String out = new String(p.getInputStream().readAllBytes());
+        assertThat(p.waitFor()).as(out).isEqualTo(7);
+        assertThat(out).doesNotContain("TAIL");
     }
 
     @Test

@@ -214,6 +214,21 @@ class EngineInstallTest {
         assertThat(store.currentInstall().orElseThrow().version()).isEqualTo("0.13.0");
     }
 
+    @Test
+    void a_deliberate_downgrade_replaces_a_newer_live_engine(@TempDir Path dir) throws Exception {
+        Path home = Files.createDirectories(dir.resolve("home"));
+        var cas = new Cas(home.resolve("cache"));
+        var store = install(home);
+        store.materializeFromFiles("0.13.0", cas, Files.writeString(dir.resolve("new.jar"), "newer"));
+        Path older = Files.writeString(dir.resolve("old.jar"), "older");
+        String olderSha = Hashing.sha256Hex(older);
+        cas.putFile(older, olderSha);
+
+        store.materialize("0.12.0", cas, olderSha, true);
+
+        assertThat(store.currentInstall().orElseThrow().version()).isEqualTo("0.12.0");
+    }
+
     /**
      * Every engine-install version shape, ascending. Ordering is {@link Versions#compare} — the
      * product's one version comparator — so this table is the contract the downgrade guard and the

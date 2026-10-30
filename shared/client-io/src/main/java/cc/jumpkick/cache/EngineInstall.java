@@ -155,6 +155,15 @@ public final class EngineInstall {
      * {@link Versions#compare} — the one version order in the product.
      */
     public Materialized materialize(String version, Cas cas, String engineJarSha) throws IOException {
+        return materialize(version, cas, engineJarSha, false);
+    }
+
+    /**
+     * As {@link #materialize(String, Cas, String)}; {@code downgrade} lifts the refusal of an older
+     * version, for the explicit {@code jk self update <version>} a person runs to go back.
+     */
+    public Materialized materialize(String version, Cas cas, String engineJarSha, boolean downgrade)
+            throws IOException {
         Optional<Materialized> existing = currentInstall();
         if (sameLive(existing, version, engineJarSha) && pointerComplete(existing.get())) {
             return existing.get();
@@ -168,7 +177,7 @@ public final class EngineInstall {
             if (sameLive(raced, version, engineJarSha)) {
                 return confirmLive(raced.get(), version, engineJarSha);
             }
-            if (raced.isPresent() && Versions.compare(raced.get().version(), version) > 0) {
+            if (!downgrade && raced.isPresent() && Versions.compare(raced.get().version(), version) > 0) {
                 throw new IOException(
                         "refusing to replace jk-engine " + raced.get().version() + " with older " + version);
             }
@@ -197,10 +206,21 @@ public final class EngineInstall {
             Files.move(live, old, StandardCopyOption.REPLACE_EXISTING);
             return Optional.of(old);
         } catch (IOException occupied) {
+            // The parked name is still mapped, or a scanner holds the live file it just saw written:
+            // park beside it, retrying a Windows sharing denial the way every atomic replace does.
             Path alt = live.resolveSibling(live.getFileName() + ".old-" + System.nanoTime());
-            Files.move(live, alt, StandardCopyOption.REPLACE_EXISTING);
+            AtomicWrites.moveInto(live, alt);
             return Optional.of(alt);
         }
+    }
+
+    /** The {@code jk} on PATH under {@code binDir}: {@code jk.exe}, else {@code jk.bat}, else {@code jk}. */
+    public static Path pathClient(Path binDir) {
+        Path exe = binDir.resolve("jk.exe");
+        if (Files.isRegularFile(exe)) return exe;
+        Path bat = binDir.resolve("jk.bat");
+        if (Files.isRegularFile(bat)) return bat;
+        return binDir.resolve("jk");
     }
 
     public static Path parkedName(Path live) {
