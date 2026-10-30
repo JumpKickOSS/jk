@@ -10,6 +10,7 @@ import cc.jumpkick.codegraph.CodeGraph;
 import cc.jumpkick.codegraph.Decl;
 import cc.jumpkick.codegraph.GraphEdge;
 import cc.jumpkick.codegraph.GraphNode;
+import cc.jumpkick.codegraph.Linker;
 import cc.jumpkick.codegraph.Modules;
 import cc.jumpkick.codegraph.StaleRef;
 import cc.jumpkick.guard.extract.FactsIndexing;
@@ -215,7 +216,7 @@ import java.util.List;
 
                                         public class Spec implements Exec<String> {
                                             public void run(String s) {}
-                                            public String home() { return "a"; }
+                                            public String home() { return home(1); }
                                             public String home(int n) { return "b"; }
                                         }
                                         """,
@@ -240,6 +241,14 @@ import java.util.List;
                 .containsExactly("(Lcom/acme/shop/Exec;)Ljava/lang/String;>()Ljava/lang/String;");
         assertThat(overloads(g, "step_two", "exec_home", "calls"))
                 .containsExactly("(Lcom/acme/shop/Exec;)Ljava/lang/String;>(I)Ljava/lang/String;");
+        assertThat(g.nodes().stream()
+                        .filter(n -> n.id().endsWith("spec_home"))
+                        .findFirst()
+                        .orElseThrow()
+                        .extra()
+                        .get(Linker.DELEGATES))
+                .as("home() calls home(int): an overload of the same node, kept on the node")
+                .isEqualTo(List.of("()Ljava/lang/String;>(I)Ljava/lang/String;"));
         assertThat(overloads(g, "step_three", "exec_run", "calls"))
                 .as("a lambda's call is made by the one method of its name")
                 .containsExactly("(Lcom/acme/shop/Exec;)V>(Ljava/lang/Object;)V");

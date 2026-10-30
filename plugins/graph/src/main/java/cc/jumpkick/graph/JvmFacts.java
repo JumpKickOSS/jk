@@ -78,6 +78,7 @@ final class JvmFacts {
         List<GraphEdge> edges = new ArrayList<>();
         List<Mention> mentions = new ArrayList<>();
         Map<String, Set<String>> signatures = new LinkedHashMap<>();
+        Map<String, Set<String>> delegates = new LinkedHashMap<>();
         Map<String, Map<String, Object>> facts = new LinkedHashMap<>();
         for (ClassFacts c : index.classList()) {
             if (c.isPackageInfo() || c.name().endsWith("module-info") || c.sourceFile() == null) continue;
@@ -123,7 +124,7 @@ final class JvmFacts {
             }
             for (MethodFacts m : c.methods()) {
                 if (generated.contains(m.name())) continue;
-                method(c, m, owner, rel, nodes, edges, mentions, signatures, facts);
+                method(c, m, owner, rel, nodes, edges, mentions, signatures, delegates, facts);
             }
         }
         facts.forEach((id, f) -> {
@@ -135,6 +136,8 @@ final class JvmFacts {
             if (n != null) {
                 Map<String, Object> extra = new LinkedHashMap<>(n.extra());
                 extra.put(Linker.DESCRIPTORS, List.copyOf(sigs));
+                Set<String> calls = delegates.get(id);
+                if (calls != null) extra.put(Linker.DELEGATES, List.copyOf(calls));
                 if (sigs.size() > 1) extra.put("attributes", Map.of("signatures", List.copyOf(sigs)));
                 nodes.put(
                         id, new GraphNode(n.id(), n.label(), n.fileType(), n.sourceFile(), n.sourceLocation(), extra));
@@ -224,6 +227,7 @@ final class JvmFacts {
             List<GraphEdge> edges,
             List<Mention> mentions,
             Map<String, Set<String>> signatures,
+            Map<String, Set<String>> delegates,
             Map<String, Map<String, Object>> facts) {
         if (m.name().equals("<clinit>")) return;
         String name = m.name();
@@ -290,6 +294,9 @@ final class JvmFacts {
                         ? site.name().substring(0, site.name().length() - "$default".length())
                         : site.name();
                 String called = callee.equals(site.name()) ? site.desc() : "*";
+                if (site.owner().equals(c.name()) && callee.equals(name) && !from.equals(owner.id())) {
+                    delegates.computeIfAbsent(from, k -> new TreeSet<>()).add(caller + ">" + called);
+                }
                 mentions.add(new Mention(
                         from,
                         Mention.Kind.MEMBER,

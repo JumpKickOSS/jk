@@ -263,7 +263,7 @@ public final class GraphTools {
             Set<String> subs = out.getOrDefault(sub, Set.of());
             for (GraphEdge e : graph.incident(sub)) {
                 if (!e.source().equals(sub) || !e.relation().equals(Relations.OVERRIDES)) continue;
-                Set<String> sup = across(e, subs);
+                Set<String> sup = delegating(e.target(), across(e, subs));
                 if (sup.isEmpty()) continue;
                 Set<String> had = out.computeIfAbsent(e.target(), k -> new TreeSet<>());
                 if (covered(had, sup)) continue;
@@ -296,8 +296,32 @@ public final class GraphTools {
         return had != null && (had.contains(ANY) || had.containsAll(overloads));
     }
 
+    /**
+     * {@code overloads} of {@code method} and every overload of it that calls one of them, directly or
+     * through another: an overload that delegates runs what the one it delegates to runs.
+     */
+    private Set<String> delegating(String method, Set<String> overloads) {
+        GraphNode n = graph.node(method);
+        if (overloads.contains(ANY) || n == null || !(n.extra().get(Linker.DELEGATES) instanceof List<?> pairs)) {
+            return overloads;
+        }
+        Set<String> out = new TreeSet<>(overloads);
+        for (boolean grew = true; grew; ) {
+            grew = false;
+            for (Object o : pairs) {
+                String pair = String.valueOf(o);
+                int gt = pair.indexOf('>');
+                String from = pair.substring(0, gt);
+                String to = pair.substring(gt + 1);
+                if ((out.contains(to) || to.equals(ANY)) && out.add(from)) grew = true;
+            }
+        }
+        return out;
+    }
+
     /** Adds {@code overloads} to {@code method}'s reached set; returns the ones that were new. */
-    private static Set<String> add(Map<String, Set<String>> reached, String method, Set<String> overloads) {
+    private Set<String> add(Map<String, Set<String>> reached, String method, Set<String> called) {
+        Set<String> overloads = delegating(method, called);
         Set<String> had = reached.computeIfAbsent(method, k -> new TreeSet<>());
         if (covered(had, overloads)) return Set.of();
         if (overloads.contains(ANY)) {

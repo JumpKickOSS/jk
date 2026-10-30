@@ -25,6 +25,12 @@ public final class Linker {
     /** A compiled method node's JVM descriptors, one per overload: what an override mention is checked against. */
     public static final String DESCRIPTORS = "descriptors";
 
+    /**
+     * A compiled method node's calls between its own overloads, each {@code from>to}: an overload
+     * that delegates to another runs what that one runs, and the linker keeps no edge from a node to itself.
+     */
+    public static final String DELEGATES = "delegates";
+
     /** The {@code node_kind} of a configuration key node. */
     public static final String CONFIG_KEY = "config_key";
 
