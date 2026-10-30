@@ -260,7 +260,7 @@ class GraphToolsTest {
      * {@code Tool.tool(A)} calls {@code X.x}, {@code Tool.tool(B)} does not; {@code P.p} calls only
      * {@code tool(B)}, {@code Q.q} calls {@code tool(A)}. {@code Impl.m(A)} overrides {@code Iface.m(A)};
      * {@code R.r} calls {@code Iface.m(B)}, an overload {@code Impl} does not override, {@code S.s} calls
-     * {@code Iface.m(A)}.
+     * {@code Iface.m(A)}. {@code tool(C)} delegates to {@code tool(A)}, and {@code U.u} calls {@code tool(C)}.
      */
     private static CodeGraph overloads() {
         String f = "src/main/java/o/O.java";
@@ -273,10 +273,12 @@ class GraphToolsTest {
             {"iface", "Iface", "m"},
             {"impl", "Impl", "m"},
             {"r", "R", "r"},
-            {"s", "S", "s"}
+            {"s", "S", "s"},
+            {"u", "U", "u"}
         }) {
             nodes.add(type(t[0], t[1], "o." + t[1], f));
-            nodes.add(new GraphNode(t[0] + "_m", "." + t[2] + "()", "code", f, "L2"));
+            Map<String, Object> extra = t[0].equals("tool") ? Map.of(Linker.DELEGATES, List.of("(C)>(A)")) : Map.of();
+            nodes.add(new GraphNode(t[0] + "_m", "." + t[2] + "()", "code", f, "L2", extra));
         }
         List<GraphEdge> edges = new ArrayList<>();
         for (GraphNode n : nodes) {
@@ -287,6 +289,7 @@ class GraphToolsTest {
         edges.add(call("tool_m", "x_m", "(A)>()"));
         edges.add(call("p_m", "tool_m", "()>(B)"));
         edges.add(call("q_m", "tool_m", "()>(A)"));
+        edges.add(call("u_m", "tool_m", "()>(C)"));
         edges.add(GraphEdge.of("impl_m", "iface_m", Relations.OVERRIDES, Confidence.EXTRACTED, f, 2)
                 .withOverload("(A)>(A)"));
         edges.add(call("r_m", "iface_m", "()>(B)"));
@@ -304,6 +307,8 @@ class GraphToolsTest {
         assertThat(new GraphTools(overloads()).callers("X.x", 8, 2000))
                 .as("tool(A) reaches X; P calls tool(B), which does not")
                 .contains("Tool.tool()", "Q.q()")
+                .as("tool(C) delegates to tool(A), so U, which calls tool(C), reaches X too")
+                .contains("U.u()")
                 .doesNotContain("P.p()");
         assertThat(new GraphTools(overloads()).callers("Impl.m", 8, 2000))
                 .as("a call to Iface.m(B) never dispatches to Impl.m(A)")
