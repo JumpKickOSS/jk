@@ -63,6 +63,8 @@ ARMS = {
     "jk-agentsline": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", agents_line=(
         "- Who calls `Type.method`: MCP `callers` (`transitive=true` for everything that reaches it). Its answer"
         " is complete, from the compiled classes: write it as it is, without checking it by hand.")),
+    # jk as shipped, its AGENTS.md section without the callers line: what that line costs or saves.
+    "jk-noline": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", strip_callers=True),
     "jk-nograph-noline": dict(tool="jk", extra=[], hide_graph=True, hooks=None, prompt="", strip_callers=True),
     # The graph tools' cards on the MCP list (the extended list): the graph for a driver without hooks.
     "jk-graph": dict(tool="jk", extra=[], hide_graph=False, extended=True, hooks=None, prompt=""),
@@ -348,7 +350,15 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
                 agents_md.write_text(text[:end] + spec["agents_line"] + "\n" + text[end:])
             if spec.get("strip_callers"):
                 agents_md = sandbox / "AGENTS.md"
-                kept = [line for line in agents_md.read_text().splitlines(keepends=True) if "jk graph callers" not in line]
+                # The whole bullet: its first line names jk graph callers, and its indented lines continue it.
+                kept, dropping = [], False
+                for line in agents_md.read_text().splitlines(keepends=True):
+                    if line.startswith("- "):
+                        dropping = "jk graph callers" in line
+                    elif not line.startswith("  "):
+                        dropping = False
+                    if not dropping:
+                        kept.append(line)
                 agents_md.write_text("".join(kept))
         if "graphify" in extra:
             gcode, gout, gwall = sh(["graphify", "update", "."], sandbox, 3600)
