@@ -32,14 +32,16 @@ Every claim links what backs it. Where JumpKick loses, the linked page says so.
 | Surface | What it does for the agent | Reference |
 |---|---|---|
 | `target/jk-results.md` | One token-cheap report per invocation: what ran, each failure at its `file:line` with a fix hint, what was skipped, what to run next | [Machine output](machine-output.md) |
-| MCP in the engine | `run` returns a verdict; `diagnostics`, `deps` and `skill` complete the default list of four, because every card costs the agent context on every turn. Two agents on one engine each keep their own project bind | [MCP](mcp.md) |
+| MCP in the engine | `run` returns a verdict; `diagnostics`, `deps`, `callers` and `skill` complete the default list of five, because every card costs the agent context on every turn. Two agents on one engine each keep their own project bind | [MCP](mcp.md) |
 | `jk skill` | The system prompt for a tool models were not trained on; jk keeps its section of `AGENTS.md` current on every build | [Skill](skill.md) · [Agents](agents.md) |
 | `jk graph` | A code graph built in: code, config and docs, with nothing to install; indexed in seconds, with calls and overrides from the compiled classes. Answers name each symbol `Owner.member()` at `file:line` | [Code graph](graph.md) |
 | Named test rungs | The cheap unit suite by default, `--guard` before sharing, `--all` nightly; the report discloses what did not run | [Test rungs](#test-rungs) |
 | Guards and hooks | House rules as data: each violation names the rule, the sanctioned alternative and why, so the fix is mechanical; git hooks refuse banned commit trailers and hand-edited guard files | [Guards](guards.md) · [Agents](agents.md#hooks-and-protected-files) |
 
 The measure is turns, tokens and wall time to green on broken builds, against Maven and Gradle
-given the same agent tooling: [Agents reach green](#agents-reach-green).
+given the same agent tooling: [Agents reach green](#agents-reach-green). Asked who calls a method
+or what can end up running it, agents from three vendors answered every question with the graph,
+in a fifth to two fifths of the turns they took without it: [Asking about the code](#asking-about-the-code).
 
 ### 2. Never type `clean` again
 
@@ -346,6 +348,34 @@ real coordinate.
 
 On jk 0.14.0, before the agent report, the same matrix fixed 65% within 8 turns at 85k input
 tokens. The table is re-run each release ([Releases](../contributors/releases.md#benchmarks-each-release)).
+
+### Asking about the code
+
+Before an agent changes a method it asks who calls it and what can end up running it. Four such
+questions, on commons-lang and on jk itself, two of them through dynamic dispatch, were graded
+against the compiler's answer: correct means an F1 of at least 0.9. Each agent ran jk as installed,
+whose default MCP list carries `callers`, and the same jk with every graph tool removed
+([change tasks](../../bench/agent-loop/README.md#change-tasks), measured 2026-10-29/30 on jk 0.49
+snapshots, 3–5 runs per question and arm). Turns, tokens (input, output, cache read and write)
+and wall are the per-question medians summed over the four:
+
+| Agent, jk / jk without the graph | Correct | Turns | Tokens | Wall |
+|---|---|---|---|---|
+| Vendor A, mid-tier | 12 of 12 / 17 of 20 | 13 / 65 | 151k / 994k | 42 / 132 s |
+| Vendor B, frontier | 12 of 12 / 12 of 12 | 30 / 155 | 463k / 10.2M | 220 / 1,507 s |
+| Vendor C, fast | 12 of 12 / 3 of 12 | 87 / 215 | 1.9M / 12.4M | 501 / 1,051 s |
+
+With the graph every agent answered every question, Vendor A's and Vendor B's agents in about a
+fifth of the turns and Vendor C's in two fifths. Without it Vendor C's agent hit its 60-turn
+budget on three of the four questions and missed them, so its row understates the gap; Vendor A's
+stopped short of the far end of a call chain and claimed done. The answer is `callers` (`-t` for
+everything that reaches the method): complete from the compiled classes, where grep finds names
+one file at a time.
+
+On edit tasks (rename a method and its callers, add a field through the layers, find a bug from
+its symptom) the graph is not yet a clear win: Vendor A's agent reaches green on all seven either
+way, in the same turns give or take two, with fewer tokens on three tasks, more on two and about
+the same on two.
 
 ## What is still open
 

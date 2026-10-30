@@ -39,6 +39,11 @@ build; fix them by hand.
 7. Stalled                   jk jobs / jk cancel   or MCP status, then cancel (extended tools/list)
 ```
 
+Before changing a method, ask who calls it: MCP `callers` or `jk graph callers Type.method`
+(`-t` / `transitive=true` for everything that can end up running it). The answer comes from the
+compiled classes and is complete, so it replaces grepping for the name and reading each match
+([Code graph](graph.md#callers)).
+
 Read the **verdict** first. `run` returns it; `jk -a` prints the same text. The human
 markdown at `target/jk-results.md` is for a person, or for an agent with neither MCP nor
 `--agent`. The verdict is one line when the run is OK. A `run` that answers `TIMEOUT … jid=N`

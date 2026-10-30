@@ -221,6 +221,11 @@ and its calls are missing until `jk build`.
 and so on up to `-L` hops (default 8), grouped by hop, each with the method it calls on the way.
 That is the change-impact question grep answers one hop and one file at a time.
 
+Ask it before changing a method's signature or behaviour, and trust the list: it is complete, so
+there is no need to grep for the name afterwards. A method reached only by reflection or named in
+a string is not a call, so it is not listed; the note under the answer says when a module's calls
+are missing.
+
 ## Against grep and other graphs
 
 The [retrieval bench](../../bench/graph-retrieval/README.md) asks who calls a method, what
@@ -247,8 +252,11 @@ On jk (679,533 lines), asked who calls a method, what implements or overrides it
 ## MCP
 
 jk's MCP server lists one graph tool by default, `callers`: every card an agent's host shows is paid
-on every turn, and in measured agent runs only caller questions repaid it, answered in about a third
-fewer tokens than grep and reads in a large workspace. `query`, `read` and `find` answer as their
+on every turn, and in measured agent runs caller questions are the ones that repay it. Asked who
+calls a method or what can end up running it, agents from three vendors answered every question
+with `callers` and took a fifth to two fifths of the turns they took without the graph; without
+it the fast-tier agent missed three of the four ([Asking about the code](why.md#asking-about-the-code)).
+On edit tasks the graph does not yet save turns. `query`, `read` and `find` answer as their
 `jk graph` subcommands do and are on the extended list (`tools/list` with `extended: true`, or
 `[mcp] tools = "all"`); every tool is callable by name either way. `neighbors`, `path` and `rules`
 are `jk graph` in a shell. See [MCP](mcp.md).

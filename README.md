@@ -64,6 +64,11 @@ fewer input tokens and less wall time. On Gradle-built Kotlin repositories the a
 spend more turns on jk; that gap is open
 ([the table](docs/user/why.md#agents-reach-green)).
 
+Asked who calls a method or what can end up running it, the same three vendors' agents answered
+every question with `jk graph callers` and took a fifth to two fifths of the turns they took
+without the graph; without it the fast-tier agent missed three of the four questions
+([the table](docs/user/why.md#asking-about-the-code)).
+
 ### 2. Never type `clean` again
 
 An incremental build produces exactly what a build from nothing produces, or it is a bug.
