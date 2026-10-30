@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.codegraph;
 
-/** The relation names graphify and jk share; an edge may carry any other string as well. */
+/** The relation names the extractors write; an edge may carry any other string as well. */
 public final class Relations {
 
     private Relations() {}

@@ -27,16 +27,8 @@ public final class GraphSources {
     /** Larger files are generated or data, not source a reader navigates. */
     public static final long MAX_BYTES = 1_000_000;
 
-    private static final Set<String> SKIP_DIRS = Set.of(
-            "dist",
-            "out",
-            "coverage",
-            "bower_components",
-            "jspm_packages",
-            "vendor",
-            "__pycache__",
-            "venv",
-            "graphify-out");
+    private static final Set<String> SKIP_DIRS =
+            Set.of("dist", "out", "coverage", "bower_components", "jspm_packages", "vendor", "__pycache__", "venv");
     private static final Set<String> SKIP_FILES =
             Set.of("package-lock.json", "yarn.lock", "pnpm-lock.yaml", ManifestNames.LOCK, "npm-shrinkwrap.json");
 

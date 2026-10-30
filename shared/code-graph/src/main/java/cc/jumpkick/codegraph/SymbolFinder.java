@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code find_symbols}: the declarations that pass every filter given, one line each. Filters take
+ * {@code find}: the declarations that pass every filter given, one line each. Filters take
  * comma-separated alternatives and match case-insensitively; a supertype or annotation matches by
  * simple or qualified name.
  *

@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/** Text folding shared by ids and search, matching graphify's so both sides tokenize alike. */
+/** Text folding shared by ids and search, so both tokenize alike. */
 final class GraphText {
 
     private GraphText() {}
@@ -19,7 +19,7 @@ final class GraphText {
         return out.toString();
     }
 
-    /** Diacritics stripped, lower-cased: graphify's {@code norm_label}. */
+    /** Diacritics stripped, lower-cased: a node's {@code norm_label}. */
     static String fold(String text) {
         return stripDiacritics(text).toLowerCase(Locale.ROOT);
     }

@@ -88,10 +88,8 @@ class GraphRunnerTest {
                 3,
                 2000,
                 List.of(),
-                false,
                 true,
                 8,
-                10,
                 null,
                 false,
                 false,
@@ -111,13 +109,11 @@ class GraphRunnerTest {
         assertThat(built.classes()).isEqualTo(2);
         assertThat(built.extracted()).isEqualTo(4);
         assertThat(progress).isNotEmpty();
-        assertThat(root.resolve("target/graph/graph.json")).isRegularFile();
+        assertThat(root.resolve("target/graph/" + GraphRunner.SNAPSHOT)).isRegularFile();
 
         GraphAck query = GraphRunner.run(request(root, "query", List.of("order service total")), p -> {});
         assertThat(query.extracted()).isZero();
-        assertThat(query.text())
-                .contains("NODE OrderService")
-                .contains("--calls [EXTRACTED context=call]--> PriceCalculator.sum()");
+        assertThat(query.text()).contains("\nOrderService  ").contains(" -calls-> PriceCalculator.sum()  ");
 
         GraphAck path = GraphRunner.run(request(root, "path", List.of("README.md", "PriceCalculator")), p -> {});
         assertThat(path.text()).startsWith("Shortest path");
@@ -132,9 +128,7 @@ class GraphRunnerTest {
                         2000,
                         List.of(),
                         false,
-                        false,
                         8,
-                        10,
                         null,
                         true,
                         false,

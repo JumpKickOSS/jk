@@ -81,6 +81,9 @@ public final class GraphRunner {
         }
     }
 
+    /** The graph file the worker writes under {@link #outputDir}: a workspace with one has a graph. */
+    static final String SNAPSHOT = "graph.bin";
+
     /** Where a workspace's graph lives. */
     public static Path outputDir(Path root) {
         return BuildLayout.moduleTargetDir(root).resolve("graph");
@@ -120,7 +123,7 @@ public final class GraphRunner {
      */
     public static void refreshExisting(Path dir) {
         Path root = rootOf(dir);
-        if (!Files.isRegularFile(outputDir(root).resolve("graph.json"))) return;
+        if (!Files.isRegularFile(outputDir(root).resolve(SNAPSHOT))) return;
         GraphRequest build = new GraphRequest(
                 root.toString(),
                 "build",
@@ -130,8 +133,6 @@ public final class GraphRunner {
                 0,
                 List.of(),
                 false,
-                false,
-                0,
                 0,
                 null,
                 false,
@@ -254,13 +255,12 @@ public final class GraphRunner {
                 text == null ? "" : text,
                 Jsonl.intValue(json, "nodes", 0),
                 Jsonl.intValue(json, "edges", 0),
-                Jsonl.intValue(json, "communities", 0),
                 Jsonl.intValue(json, "files", 0),
                 Jsonl.intValue(json, "extracted", 0),
                 Jsonl.intValue(json, "classes", 0),
                 Jsonl.longValue(json, "millis", 0),
                 dir == null ? "" : dir,
-                Jsonl.str(json, "note"));
+                null);
     }
 
     private static Path spec(
@@ -271,7 +271,6 @@ public final class GraphRunner {
             List<String> prefixes,
             GraphScripts.@Nullable Tools scripts)
             throws IOException {
-        GraphConfig config = graphConfig(root);
         List<String> rules = "rules".equals(r.op()) && !r.args().isEmpty()
                 ? GraphRules.rows(root, relative(root, r.args().getFirst()), allModulePrefixes(root))
                 : List.of();
@@ -281,8 +280,7 @@ public final class GraphRunner {
                 .configList("libraries", apis ? libraryRows(root) : List.of())
                 .configString("apiCache", apis ? JkStores.resolve("graph-api").toString() : null)
                 .configList("modulePrefixes", prefixes)
-                .configBool("graphify", config.graphify() || r.options().contains("graphify=true"))
-                .configList("aliases", aliasRows(config))
+                .configList("aliases", aliasRows(graphConfig(root)))
                 .writeTempSpec();
     }
 
@@ -303,10 +301,8 @@ public final class GraphRunner {
                 .configInt("depth", r.depth())
                 .configInt("budget", r.budget())
                 .configList("contexts", r.contexts())
-                .configBool("all", r.all())
                 .configBool("undirected", r.undirected())
                 .configInt("maxHops", r.maxHops())
-                .configInt("topN", r.topN())
                 .configString("relation", r.relation())
                 .configBool("rebuild", r.rebuild())
                 .configBool("noRefresh", r.noRefresh())
@@ -409,7 +405,6 @@ public final class GraphRunner {
                 ack.text(),
                 ack.nodes(),
                 ack.edges(),
-                ack.communities(),
                 ack.files(),
                 ack.extracted(),
                 ack.classes(),

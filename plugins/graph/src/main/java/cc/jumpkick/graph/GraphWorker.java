@@ -49,13 +49,11 @@ public final class GraphWorker implements Plugin {
             event.put("text", answer.text());
             event.put("nodes", b.graph().size());
             event.put("edges", b.graph().edges().size());
-            event.put("communities", b.graph().communities().size());
             event.put("files", b.files());
             event.put("extracted", b.extracted());
             event.put("classes", b.classes());
             event.put("millis", b.millis());
             event.put("dir", b.dir().toString());
-            if (answer.note() != null) event.put("note", answer.note());
             out.emit(MiniJson.write(event));
             return 0;
         } catch (IllegalArgumentException refused) {
@@ -72,10 +70,8 @@ public final class GraphWorker implements Plugin {
                 (int) c.intValue("depth", 3),
                 (int) c.intValue("budget", 2000),
                 c.stringList("contexts"),
-                c.bool("all", false),
                 c.bool("undirected", false),
                 (int) c.intValue("maxHops", 8),
-                (int) c.intValue("topN", 10),
                 c.stringOpt("relation").orElse(null),
                 c.bool("rebuild", false),
                 c.bool("noRefresh", false),
@@ -119,7 +115,6 @@ public final class GraphWorker implements Plugin {
                 new ScriptReader(
                         c.stringOpt("node").map(Path::of).orElse(null),
                         c.stringOpt("oxc").map(Path::of).orElse(null)),
-                c.bool("graphify", false),
                 aliases(c.stringList("aliases")),
                 c.stringList("rules"),
                 LibraryApi.jars(c.stringList("libraries")),

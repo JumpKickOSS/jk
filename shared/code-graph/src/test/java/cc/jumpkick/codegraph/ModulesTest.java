@@ -38,20 +38,18 @@ class ModulesTest {
     }
 
     @Test
-    void roundTripsThroughGraphJsonAndTheSnapshot() throws Exception {
+    void roundTripsThroughTheSnapshot() throws Exception {
         CodeGraph g = CodeGraph.merge(List.of(new Fragment(
                 List.of(Decl.with(
                         new GraphNode("a", "A", "code", "src/main/java/A.java", "L1"),
                         Map.of(Decl.KIND, "class", Decl.END, 4))),
                 List.of())));
         g.modules(modules);
-        CodeGraph back = GraphJson.read(GraphJson.write(g, "test", null));
-        assertThat(back.modules()).isEqualTo(modules);
-        assertThat(Decl.end(Objects.requireNonNull(back.node("a")))).isEqualTo(4);
         var bytes = new ByteArrayOutputStream();
         GraphSnapshot.write(g, new GraphSnapshot.Key("x", 1, "c", null), bytes);
         var loaded = Objects.requireNonNull(GraphSnapshot.read(new ByteArrayInputStream(bytes.toByteArray())));
         assertThat(loaded.graph().modules()).isEqualTo(modules);
         assertThat(Decl.kind(Objects.requireNonNull(loaded.graph().node("a")))).isEqualTo("class");
+        assertThat(Decl.end(Objects.requireNonNull(loaded.graph().node("a")))).isEqualTo(4);
     }
 }

@@ -10,32 +10,16 @@ import cc.jumpkick.codegraph.GraphEdge;
 import cc.jumpkick.codegraph.GraphNode;
 import cc.jumpkick.codegraph.Linker;
 import cc.jumpkick.codegraph.Mention;
+import cc.jumpkick.codegraph.ShopFixture;
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
 class ExtractorsTest {
 
-    /** The fixture graphify ran on, extracted and linked; {@code .txt} keeps the formatter off the sources. */
     static CodeGraph shop() throws IOException {
-        List<Fragment> fragments = new ArrayList<>();
-        for (String file : resource("../shop-files.txt").lines().toList()) {
-            String rel = file.substring(2);
-            String path = rel.endsWith(".txt") ? rel.substring(0, rel.length() - 4) : rel;
-            Extractor e = Objects.requireNonNull(Extractors.forPath(path), path);
-            fragments.add(e.extract(path, resource("../shop/" + rel)));
-        }
-        return Linker.link(fragments);
-    }
-
-    private static String resource(String name) throws IOException {
-        try (InputStream in = ExtractorsTest.class.getResourceAsStream(name)) {
-            return new String(Objects.requireNonNull(in, name).readAllBytes(), StandardCharsets.UTF_8);
-        }
+        return ShopFixture.graph();
     }
 
     private static boolean edge(CodeGraph g, String from, String to, String relation) {
@@ -72,7 +56,7 @@ class ExtractorsTest {
     }
 
     @Test
-    void sourceScanGivesGraphifysIdsAndLines() throws IOException {
+    void sourceScanGivesIdsAndLines() throws IOException {
         CodeGraph g = shop();
         String svc = "src_main_java_com_acme_shop_orderservice_orderservice";
         assertThat(g.node(svc))
@@ -210,9 +194,9 @@ class ExtractorsTest {
         assertThat(Extractors.forPath("logo.png")).isNull();
     }
 
-    /** graphify's ids for the same file: nested types at file level, constructors as members. */
+    /** Ids for the same file: nested types at file level, constructors as members. */
     @Test
-    void nestedTypesAndConstructorsTakeGraphifysIds() {
+    void nestedTypesAndConstructorsTakeFileLevelIds() {
         Fragment f = JvmSourceScanner.extract("src/a/Outer.java", """
                 package a;
 

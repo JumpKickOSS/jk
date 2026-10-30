@@ -13,7 +13,7 @@ public enum Confidence {
         this.defaultScore = defaultScore;
     }
 
-    /** The {@code confidence_score} graphify assumes when an edge carries none. */
+    /** The {@code confidence_score} an edge that carries none is read with. */
     public double defaultScore() {
         return defaultScore;
     }
