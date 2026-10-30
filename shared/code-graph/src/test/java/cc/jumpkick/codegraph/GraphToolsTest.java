@@ -255,4 +255,59 @@ class GraphToolsTest {
                 .contains("  Step.run()  src/main/java/a/Step.java:6")
                 .doesNotContain("  through ");
     }
+
+    /**
+     * {@code Tool.tool(A)} calls {@code X.x}, {@code Tool.tool(B)} does not; {@code P.p} calls only
+     * {@code tool(B)}, {@code Q.q} calls {@code tool(A)}. {@code Impl.m(A)} overrides {@code Iface.m(A)};
+     * {@code R.r} calls {@code Iface.m(B)}, an overload {@code Impl} does not override, {@code S.s} calls
+     * {@code Iface.m(A)}.
+     */
+    private static CodeGraph overloads() {
+        String f = "src/main/java/o/O.java";
+        List<GraphNode> nodes = new ArrayList<>();
+        for (String[] t : new String[][] {
+            {"x", "X", "x"},
+            {"tool", "Tool", "tool"},
+            {"p", "P", "p"},
+            {"q", "Q", "q"},
+            {"iface", "Iface", "m"},
+            {"impl", "Impl", "m"},
+            {"r", "R", "r"},
+            {"s", "S", "s"}
+        }) {
+            nodes.add(type(t[0], t[1], "o." + t[1], f));
+            nodes.add(new GraphNode(t[0] + "_m", "." + t[2] + "()", "code", f, "L2"));
+        }
+        List<GraphEdge> edges = new ArrayList<>();
+        for (GraphNode n : nodes) {
+            if (n.id().endsWith("_m")) {
+                edges.add(GraphEdge.of(n.id().replace("_m", ""), n.id(), Relations.METHOD, Confidence.EXTRACTED, f, 2));
+            }
+        }
+        edges.add(call("tool_m", "x_m", "(A)>()"));
+        edges.add(call("p_m", "tool_m", "()>(B)"));
+        edges.add(call("q_m", "tool_m", "()>(A)"));
+        edges.add(GraphEdge.of("impl_m", "iface_m", Relations.OVERRIDES, Confidence.EXTRACTED, f, 2)
+                .withOverload("(A)>(A)"));
+        edges.add(call("r_m", "iface_m", "()>(B)"));
+        edges.add(call("s_m", "iface_m", "()>(A)"));
+        return CodeGraph.merge(List.of(new Fragment(nodes, edges)));
+    }
+
+    private static GraphEdge call(String from, String to, String overload) {
+        return GraphEdge.of(from, to, Relations.CALLS, Confidence.EXTRACTED, "src/main/java/o/O.java", 5)
+                .withOverload(overload);
+    }
+
+    @Test
+    void callers_follow_the_overloads_a_call_joins_not_every_method_of_the_name() {
+        assertThat(new GraphTools(overloads()).callers("X.x", 8, 2000))
+                .as("tool(A) reaches X; P calls tool(B), which does not")
+                .contains("Tool.tool()", "Q.q()")
+                .doesNotContain("P.p()");
+        assertThat(new GraphTools(overloads()).callers("Impl.m", 8, 2000))
+                .as("a call to Iface.m(B) never dispatches to Impl.m(A)")
+                .contains("S.s()  src/main/java/o/O.java:5  through Iface.m()")
+                .doesNotContain("R.r()");
+    }
 }

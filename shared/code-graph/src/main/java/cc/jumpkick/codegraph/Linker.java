@@ -22,6 +22,9 @@ public final class Linker {
     /** The node attribute holding a JVM type's binary name, {@code com.acme.Shop$Cart}. */
     public static final String QUALIFIED_NAME = "qualified_name";
 
+    /** A compiled method node's JVM descriptors, one per overload: what an override mention is checked against. */
+    public static final String DESCRIPTORS = "descriptors";
+
     /** The {@code node_kind} of a configuration key node. */
     public static final String CONFIG_KEY = "config_key";
 
@@ -158,6 +161,7 @@ public final class Linker {
                 };
         List<GraphEdge> out = new ArrayList<>();
         for (String target : targets) {
+            if (!overrides(m, target)) continue;
             GraphEdge edge = GraphEdge.of(
                     m.source(),
                     target,
@@ -165,11 +169,23 @@ public final class Linker {
                     inferred ? Confidence.INFERRED : Confidence.EXTRACTED,
                     from.sourceFile(),
                     m.line());
+            if (m.overload() != null) edge = edge.withOverload(m.overload());
             if (m.kind() == Mention.Kind.SYMBOL) edge = edge.withScore(0.95);
             if (m.kind() == Mention.Kind.CONFIG_KEY) edge = edge.withScore(0.85);
             out.add(context == null ? edge : edge.withContext(context));
         }
         return out;
+    }
+
+    /**
+     * False for an override mention whose target's compiled signatures lack the descriptor it
+     * names: an overload of the same name, which a call to it never dispatches to the mentioning one.
+     */
+    private boolean overrides(Mention m, String target) {
+        if (!m.relation().equals(Relations.OVERRIDES) || m.overload() == null) return true;
+        String declared = m.overload().substring(m.overload().indexOf('>') + 1);
+        GraphNode n = nodes.get(target);
+        return n == null || !(n.extra().get(DESCRIPTORS) instanceof List<?> declares) || declares.contains(declared);
     }
 
     /** {@code owner#name}: the member on the owner, else on the nearest supertype declaring it. */

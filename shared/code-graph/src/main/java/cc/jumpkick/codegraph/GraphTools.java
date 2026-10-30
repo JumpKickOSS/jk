@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -145,36 +146,39 @@ public final class GraphTools {
      * tests, counted, and said to be complete. Every overload of a {@code Type.member} address
      * answers. {@code depth} above 1 also lists the callers' callers, each with the method it
      * calls on the way, up to {@code depth} hops; nothing is listed twice. A call to a supertype's
-     * method that a method overrides may run it, so it counts, marked with the method it names.
+     * method that a method overrides may run it, so it counts, marked with the method it names. The
+     * walk follows overloads, not names: a call reaches on only through the overload it calls, as
+     * the compiled classes record it.
      */
     public String callers(String name, int depth, int budget) {
         String wanted = name.strip();
         List<String> targets = graph.has(wanted) ? List.of(wanted) : members(wanted);
         if (targets.isEmpty()) return noMethod(wanted);
         Map<String, Caller> found = new LinkedHashMap<>();
-        List<String> frontier = targets;
+        Map<String, Set<String>> reached = new HashMap<>();
+        Map<String, Set<String>> frontier = new LinkedHashMap<>();
+        for (String t : targets) {
+            frontier.put(t, Set.of(ANY));
+            reached.put(t, new TreeSet<>(Set.of(ANY)));
+        }
         for (int hop = 1; hop <= depth && !frontier.isEmpty(); hop++) {
-            List<String> next = new ArrayList<>();
-            for (String callee : frontier) {
-                for (String called : overridden(callee)) {
-                    for (GraphEdge e : graph.incident(called)) {
-                        if (!e.target().equals(called) || !e.relation().equals(Relations.CALLS)) continue;
-                        String caller = e.source();
-                        if (targets.contains(caller)
-                                || found.containsKey(caller)
-                                || !scope.contains(graph.node(caller))) continue;
-                        found.put(caller, new Caller(caller, hop, callee, called.equals(callee) ? null : called, e));
-                        next.add(caller);
-                    }
+            Map<String, Set<String>> next = new LinkedHashMap<>();
+            for (Map.Entry<String, Set<String>> callee : frontier.entrySet()) {
+                for (Reach r : reaches(callee.getKey(), callee.getValue())) {
+                    if (targets.contains(r.caller()) || !scope.contains(graph.node(r.caller()))) continue;
+                    Set<String> added = add(reached, r.caller(), r.overloads());
+                    if (added.isEmpty()) continue;
+                    found.putIfAbsent(r.caller(), new Caller(r.caller(), hop, callee.getKey(), r.through(), r.edge()));
+                    next.computeIfAbsent(r.caller(), k -> new TreeSet<>()).addAll(added);
                 }
             }
             frontier = next;
         }
-        boolean cut = frontier.stream().anyMatch(m -> overridden(m).stream()
-                .flatMap(called -> graph.incident(called).stream()
-                        .filter(e -> e.target().equals(called) && e.relation().equals(Relations.CALLS)))
-                .map(GraphEdge::source)
-                .anyMatch(c -> !targets.contains(c) && !found.containsKey(c) && scope.contains(graph.node(c))));
+        boolean cut = frontier.entrySet().stream()
+                .flatMap(f -> reaches(f.getKey(), f.getValue()).stream())
+                .anyMatch(r -> !targets.contains(r.caller())
+                        && scope.contains(graph.node(r.caller()))
+                        && !covered(reached.get(r.caller()), r.overloads()));
         int deepest = found.values().stream().mapToInt(Caller::hop).max().orElse(0);
         Comparator<Caller> order = Comparator.comparingInt(Caller::hop).thenComparing(c -> graph.display(c.id()));
         List<Caller> main = new ArrayList<>();
@@ -220,17 +224,91 @@ public final class GraphTools {
         return Budget.lines(lines, budget, "Raise the budget, or narrow with scope, modules or source_set");
     }
 
-    /** {@code method} and every supertype method it overrides, nearest first: a call to any of them may run it. */
-    private List<String> overridden(String method) {
-        List<String> out = new ArrayList<>(List.of(method));
-        for (int i = 0; i < out.size(); i++) {
-            for (GraphEdge e : graph.incident(out.get(i))) {
-                if (e.source().equals(out.get(i))
-                        && e.relation().equals(Relations.OVERRIDES)
-                        && !out.contains(e.target())) out.add(e.target());
+    /** Any overload: an edge or method whose overload the compiled classes did not say. */
+    private static final String ANY = "*";
+
+    /** A method that calls {@code method}'s {@code overloads} or a supertype method they override. */
+    private record Reach(
+            String caller, Set<String> overloads, @Nullable String through, GraphEdge edge) {}
+
+    /**
+     * Who calls {@code overloads} of {@code method}, or of a supertype method they override (the
+     * {@code through}), each with the overloads of its own that make the call.
+     */
+    private List<Reach> reaches(String method, Set<String> overloads) {
+        List<Reach> out = new ArrayList<>();
+        for (Map.Entry<String, Set<String>> called :
+                overridden(method, overloads).entrySet()) {
+            for (GraphEdge e : graph.incident(called.getKey())) {
+                if (!e.target().equals(called.getKey()) || !e.relation().equals(Relations.CALLS)) continue;
+                Set<String> from = across(e, called.getValue());
+                if (from.isEmpty()) continue;
+                String through = called.getKey().equals(method) ? null : called.getKey();
+                out.add(new Reach(e.source(), from, through, e));
             }
         }
         return out;
+    }
+
+    /**
+     * {@code method} with {@code overloads}, then each supertype method they override with the
+     * overloads overridden, nearest first: a call to any of them may run one of {@code overloads}.
+     */
+    private Map<String, Set<String>> overridden(String method, Set<String> overloads) {
+        Map<String, Set<String>> out = new LinkedHashMap<>();
+        out.put(method, overloads);
+        List<String> todo = new ArrayList<>(List.of(method));
+        for (int i = 0; i < todo.size(); i++) {
+            String sub = todo.get(i);
+            Set<String> subs = out.getOrDefault(sub, Set.of());
+            for (GraphEdge e : graph.incident(sub)) {
+                if (!e.source().equals(sub) || !e.relation().equals(Relations.OVERRIDES)) continue;
+                Set<String> sup = across(e, subs);
+                if (sup.isEmpty()) continue;
+                Set<String> had = out.computeIfAbsent(e.target(), k -> new TreeSet<>());
+                if (covered(had, sup)) continue;
+                had.addAll(sup);
+                todo.add(e.target());
+            }
+        }
+        return out;
+    }
+
+    /**
+     * The overloads at {@code e}'s source that join one of {@code wanted} at its target: every
+     * {@code from} of an overload {@code from>to} whose {@code to} is wanted. An edge that names no
+     * overloads joins any.
+     */
+    private static Set<String> across(GraphEdge e, Set<String> wanted) {
+        List<String> pairs = e.overloads();
+        if (pairs.isEmpty()) return Set.of(ANY);
+        Set<String> out = new TreeSet<>();
+        for (String pair : pairs) {
+            int gt = pair.indexOf('>');
+            String to = pair.substring(gt + 1);
+            if (wanted.contains(ANY) || to.equals(ANY) || wanted.contains(to)) out.add(pair.substring(0, gt));
+        }
+        return out;
+    }
+
+    /** True when {@code had} already holds every one of {@code overloads}. */
+    private static boolean covered(@Nullable Set<String> had, Set<String> overloads) {
+        return had != null && (had.contains(ANY) || had.containsAll(overloads));
+    }
+
+    /** Adds {@code overloads} to {@code method}'s reached set; returns the ones that were new. */
+    private static Set<String> add(Map<String, Set<String>> reached, String method, Set<String> overloads) {
+        Set<String> had = reached.computeIfAbsent(method, k -> new TreeSet<>());
+        if (covered(had, overloads)) return Set.of();
+        if (overloads.contains(ANY)) {
+            had.clear();
+            had.add(ANY);
+            return Set.of(ANY);
+        }
+        Set<String> added = new TreeSet<>(overloads);
+        added.removeAll(had);
+        had.addAll(added);
+        return added;
     }
 
     /**
