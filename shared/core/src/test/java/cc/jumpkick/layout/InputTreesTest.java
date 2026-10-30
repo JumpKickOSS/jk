@@ -472,6 +472,9 @@ class InputTreesTest {
         Files.writeString(edited, "class A {}");
         Files.writeString(deleted, "class B {}");
         Path untouched = Files.writeString(dir.resolve("src/main/java/b/D.java"), "class D {}");
+        // A file system stamps a directory with a clock that ticks every few milliseconds (ext4 at
+        // 100 Hz, NTFS): C.java added in the tick that wrote D.java would leave b's identity as walked.
+        Thread.sleep(25);
         inRequest(() -> {
             InputTrees.coverModule(dir);
             write(edited, "class A { int x; }");
