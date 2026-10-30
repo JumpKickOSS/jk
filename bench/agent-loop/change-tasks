@@ -44,17 +44,21 @@ CORPUS = benchtools.scratch("GRAPH_RETRIEVAL_HOME", "graph-retrieval") / "repos"
 HOME = benchtools.scratch("AGENT_LOOP_HOME", "agent-loop") / "change-tasks"
 
 # jk's graph calls, on the extended tools/list; an arm that hides the graph drops them from every list.
-JK_GRAPH_TOOLS = ["query_graph", "read_symbol", "get_neighbors", "find_symbols"]
-# jk's default tools/list.
-JK_LOOP_TOOLS = ["run", "snapshot", "diagnostics", "deps", "why", "skill"]
+JK_GRAPH_TOOLS = ["callers", "query", "read", "find"]
+# jk's default tools/list without its one graph card, callers.
+JK_LOOP_TOOLS = ["run", "diagnostics", "deps", "skill"]
 # graphify's MCP server (`graphify-mcp`, from the `graphifyy[mcp]` tool install).
 GRAPHIFY_MCP = Path.home() / ".local/share/uv/tools/graphifyy/bin/graphify-mcp"
 
 # arm: build tool, extra MCP servers, jk graph tools hidden, hooks installed in the sandbox, prompt addition
 ARMS = {
-    # The default MCP list carries no graph cards, so `jk` is the no-graph baseline; the graph reaches the agent
-    # through the search hook only (answers beside the search, or in place of it).
+    # jk as it ships: the default MCP list carries one graph card, callers.
     "jk": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt=""),
+    # The no-graph baseline: callers (and every other graph tool) gone from the list and refused.
+    "jk-nograph": dict(tool="jk", extra=[], hide_graph=True, hooks=None, prompt=""),
+    # No graph tool on MCP and no callers line in AGENTS.md: with --shell, what jk graph callers adds
+    # when the only pointer to it is AGENTS.md (against jk-nograph, which keeps the line).
+    "jk-nograph-noline": dict(tool="jk", extra=[], hide_graph=True, hooks=None, prompt="", strip_callers=True),
     # The graph tools' cards on the MCP list (the extended list): the graph for a driver without hooks.
     "jk-graph": dict(tool="jk", extra=[], hide_graph=False, extended=True, hooks=None, prompt=""),
     "jk-hooks": dict(tool="jk", extra=[], hide_graph=False, hooks="jk", prompt=""),
@@ -73,14 +77,23 @@ DEFAULT_EFFORT = {"claude-code": "medium", "grok": "high", "agy": "high"}
 NAV_TEXT = {"Grep", "Glob", "Read", "read_file", "grep", "list_dir", "view_file", "grep_search", "find_by_name"}
 EDITS = {"Edit", "Write", "MultiEdit", "search_replace", "replace_file_content", "multi_replace_file_content",
          "write_to_file"}
-GRAPH = set(JK_GRAPH_TOOLS) | {"get_node", "get_community", "god_nodes", "graph_stats", "shortest_path",
-                               "rules_for"}
+GRAPH = set(JK_GRAPH_TOOLS) | {"query_graph", "read_symbol", "get_neighbors", "find_symbols", "get_node",
+                               "get_community", "god_nodes", "graph_stats", "shortest_path", "rules_for"}
 
 SYSTEM_PROMPT = """You are working in a {tool_label} project at {sandbox}.
 
 Use only the tools you are given (the MCP tools and the file tools), on files under {sandbox}. Do not run shell commands and do not use git. Keep the existing tests passing; add or update tests where the task calls for it.
 
 When the task is done and the build and tests pass, reply with one line: DONE. If you cannot finish, reply with one line starting with FAILED and say why.
+"""
+
+QUESTION_PROMPT = """You are working in a {tool_label} project at {sandbox}.
+
+Use only the tools you are given (the MCP tools and the file tools), on files under {sandbox}. Do not run shell commands and do not use git.
+
+The task is a question about the code. Write the answer to {sandbox}/ANSWER.txt and change no other file; you do not need to build or test. One method per line as `ClassName.methodName`, where ClassName is the simple name of the innermost class that declares the method (a constructor is `ClassName.<init>`; list overloads once), or one type per line as its simple name when the question asks for types. Count main sources only, not tests. A call inside a lambda counts as a call from the method that contains the lambda.
+
+When ANSWER.txt is written, reply with one line: DONE.
 """
 
 SHELL_PROMPT = """You are working in a {tool_label} project at {sandbox}.
@@ -266,10 +279,39 @@ def navigation(summary: list[dict]) -> dict:
     return {**counts, "graph_share": counts["graph"] / nav if nav else None, "tool_calls": names}
 
 
+def answer_key(line: str) -> str:
+    """`Type.method` or `Type` as the truth names it, from however the agent wrote it."""
+    line = re.sub(r"^[-*\d.)\s]+(?=[A-Za-z_$])", "", line.strip()).strip("`'\" ,;")
+    line = re.sub(r"\(.*\)$", "", line).replace("$", ".").replace("#", ".")
+    parts = [p for p in line.split(".") if p]
+    if len(parts) >= 2 and parts[-1] == parts[-2]:
+        parts[-1] = "<init>"
+    if len(parts) >= 2 and (parts[-1] == "<init>" or parts[-1][:1].islower()):
+        return ".".join(parts[-2:])
+    return parts[-1] if parts else ""
+
+
+def grade(task: dict, sandbox: Path) -> dict:
+    """Recall and precision of ANSWER.txt against the task's answer."""
+    path = sandbox / "ANSWER.txt"
+    if not path.exists():
+        return {"recall": 0.0, "precision": 0.0, "f1": 0.0, "answered": 0, "missed": task["answer"], "extra": []}
+    got = {k for k in (answer_key(line) for line in path.read_text(errors="replace").splitlines()) if k}
+    want = set(task["answer"])
+    hit = got & want
+    recall = len(hit) / len(want)
+    precision = len(hit) / len(got) if got else 0.0
+    f1 = 2 * recall * precision / (recall + precision) if hit else 0.0
+    return {"recall": round(recall, 3), "precision": round(precision, 3), "f1": round(f1, 3), "answered": len(got),
+            "missed": sorted(want - got), "extra": sorted(got - want)}
+
+
 def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -> dict:
     spec = ARMS[arm]
+    question = task["kind"] == "question"
     tool, extra, hide_graph = spec["tool"], spec["extra"], spec["hide_graph"]
-    run_dir = run_root / ns.driver / arm / f"{name}.{run_no}"
+    # A --shell run is another condition: its own directory, so it never replaces the file-tools run's sandbox.
+    run_dir = run_root / ns.driver / (arm + "-shell" if ns.shell else arm) / f"{name}.{run_no}"
     if run_dir.exists():
         shutil.rmtree(run_dir)
     sandbox = run_dir / "sandbox"
@@ -278,7 +320,9 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
            "sandbox": str(sandbox), "host": benchtools.host_id()}
     try:
         materialise(task, tool, sandbox)
-        code, out, warm = sh(test_cmd(tool, task=task), sandbox, 3600)
+        # A question needs the classes (the graph's compiled facts), not a test run.
+        code, out, warm = sh(["jk", "-u", "-x", "-a", "build", "-S"] if question else test_cmd(tool, task=task),
+                             sandbox, 3600)
         row["baseline_wall_s"] = round(warm, 1)
         expected_red = task.get("baseline") == "red"
         if (code != 0) != expected_red:
@@ -290,6 +334,10 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
             # What a jk user's repository holds: jk's AGENTS.md section. Claude Code reads AGENTS.md
             # itself; a CLAUDE.md import of it adds context and nothing else.
             sh(["jk", "-u", "-x", "skill", "agents"], sandbox, 300)
+            if spec.get("strip_callers"):
+                agents_md = sandbox / "AGENTS.md"
+                kept = [line for line in agents_md.read_text().splitlines(keepends=True) if "jk graph callers" not in line]
+                agents_md.write_text("".join(kept))
         if "graphify" in extra:
             gcode, gout, gwall = sh(["graphify", "update", "."], sandbox, 3600)
             row["graphify_index_s"] = round(gwall, 1)
@@ -300,7 +348,7 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
         server, servers = mcp_servers(tool, extra, hide_graph, sandbox, spec.get("extended", False))
         transcript = run_dir / "transcript.jsonl"
         agents.TASK = agents.Task(
-            system=(SHELL_PROMPT if ns.shell else SYSTEM_PROMPT).format(
+            system=(QUESTION_PROMPT if question else SHELL_PROMPT if ns.shell else SYSTEM_PROMPT).format(
                 tool_label=TOOL_LABEL[tool], sandbox=sandbox, server=server) + spec["prompt"],
             user=task["prompt"].strip(),
             servers=servers,
@@ -334,6 +382,11 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
             row["hook_calls"] = len(fired)
             row["hook_injections"] = sum(1 for h in fired if h.get("injected"))
             row["hook_chars"] = sum(h.get("injected", 0) for h in fired)
+        if question:
+            row.update(grade(task, sandbox))
+            row["accepted"] = row["f1"] >= 0.9
+            row["outcome"] = "green" if row["accepted"] else ("claimed" if row["claimed"] else "red")
+            return row
         hidden = TASK_FILES / name / tool
         if not hidden.exists():
             hidden = TASK_FILES / name / "all"
@@ -381,8 +434,9 @@ def render(out_dir: Path) -> None:
     lines = [f"# Change tasks — {out_dir.name}", "",
              "Medians over runs. Tokens are input + output + cache read + cache write as the API reports them. "
              "Graph share is graph calls over graph + Grep/Glob/Read calls.", "",
-             "| Driver | Task | Arm | Runs | Green | Median tokens | Uncached in | Output | Turns | Wall s | Graph share |",
-             "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
+             "| Driver | Task | Arm | Runs | Green | Median tokens | Uncached in | Output | Turns | Wall s | Graph share "
+             "| Median F1 |",
+             "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for driver, task, arm in sorted({(r.get("driver", "claude-code"), r["task"], r["arm"]) for r in rows}):
         rs = [r for r in rows if (r.get("driver", "claude-code"), r["task"], r["arm"]) == (driver, task, arm)
               and "tokens" in r]
@@ -393,7 +447,8 @@ def render(out_dir: Path) -> None:
         lines.append(f"| {driver} | {task} | {arm} | {len(rs)} | {sum(r['outcome'] == 'green' for r in rs)} "
                      f"| {med('tokens'):.0f} | {med('input_tokens'):.0f} | {med('output_tokens'):.0f} "
                      f"| {med('turns'):.0f} | {med('wall_s'):.0f} "
-                     f"| {statistics.median(shares) if shares else 0:.2f} |")
+                     f"| {statistics.median(shares) if shares else 0:.2f} "
+                     f"| {statistics.median(r['f1'] for r in rs) if all('f1' in r for r in rs) else '-'} |")
     (out_dir / "TABLE.md").write_text("\n".join(lines) + "\n")
     print((out_dir / "TABLE.md").read_text())
 
@@ -404,6 +459,7 @@ def main() -> int:
     ap.add_argument("--task", action="append")
     ap.add_argument("--arm", action="append", choices=sorted(ARMS))
     ap.add_argument("--runs", type=int, default=1)
+    ap.add_argument("--first-run", type=int, default=1, help="number the runs from here (keeps earlier runs of the day)")
     ap.add_argument("--driver", default="claude-code", choices=sorted(DRIVERS))
     ap.add_argument("--model", help="default per driver")
     ap.add_argument("--effort", help="default per driver")
@@ -445,7 +501,7 @@ def main() -> int:
     os.environ["MAVEN_ARGS"] = (os.environ.get("MAVEN_ARGS", "") + " -Drat.skip=true").strip()
     names = ns.task or list(all_tasks)
     with (out_dir / "rows.jsonl").open("a") as f:
-        for run_no in range(1, ns.runs + 1):
+        for run_no in range(ns.first_run, ns.first_run + ns.runs):
             for name in names:
                 for arm in ns.arm or list(ARMS):
                     tool = ARMS[arm]["tool"]

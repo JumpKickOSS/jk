@@ -68,10 +68,9 @@ def for_grep(cwd: str, pattern: str) -> str:
         if "." in name:
             owner, member = name.rsplit(".", 1)
             if owner[:1].isupper() and member[:1].islower():
-                callers = jk(cwd, "neighbors", name, "-R", "calls", "-b", str(BUDGET))
-                if useful(callers) and "<--" in callers:
-                    parts.append(f"Callers of {name}, resolved by the compiler; each call site's line is quoted "
-                                 f"under it as L<n>| text:\n{callers}")
+                callers = jk(cwd, "callers", name, "-b", str(BUDGET))
+                if useful(callers) and callers.startswith("Callers of"):
+                    parts.append(callers)
                     continue
         if re.search(rf"\b(extends|implements)\b[^|]*\b{re.escape(name)}\b", pattern) or (name[:1].isupper() and "." not in name):
             subs = jk(cwd, "find", "-I", name, "-b", str(BUDGET))
@@ -88,10 +87,9 @@ def for_grep(cwd: str, pattern: str) -> str:
             if 0 < len(owners) <= MAX_OWNERS:
                 answered = []
                 for owner in owners:
-                    callers = jk(cwd, "neighbors", owner, "-R", "calls", "-b", str(BUDGET // len(owners)))
-                    if useful(callers):
-                        answered.append(f"Callers of {owner}, resolved by the compiler; each call site's line is "
-                                        f"quoted under it as L<n>| text (none listed: nothing calls it):\n{callers}")
+                    callers = jk(cwd, "callers", owner, "-b", str(BUDGET // len(owners)))
+                    if useful(callers) and callers.startswith("Callers of"):
+                        answered.append(callers)
                 if answered:
                     parts.append(f"Declarations named {name}:\n{decls}\n\n" + "\n\n".join(answered))
                     continue

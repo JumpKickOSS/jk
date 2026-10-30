@@ -15,6 +15,7 @@ import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
@@ -164,10 +165,10 @@ public final class Oracle {
         Map<String, String> b = outputs(clean);
         if (!a.equals(b)) return "outputs differ: " + diff(a, b);
         must(jk(clean, cleanCache, List.of("graph", "-r"), Map.of()), "clean graph");
-        Set<String> ga = edges(ws.resolve("target/graph/graph.json"));
-        Set<String> gb = edges(clean.resolve("target/graph/graph.json"));
-        if (!ga.equals(gb)) return "graph differs: " + diff(ga, gb);
-        if (a.isEmpty() || ga.isEmpty()) return "nothing compared: " + a.size() + " outputs, " + ga.size() + " edges";
+        byte[] ga = snapshot(ws);
+        byte[] gb = snapshot(clean);
+        if (!Arrays.equals(ga, gb)) return "graph differs: the refreshed graph.bin is not the from-scratch one";
+        if (a.isEmpty() || ga.length == 0) return "nothing compared: " + a.size() + " outputs, " + ga.length + " graph bytes";
         return "ok";
     }
 
@@ -218,16 +219,10 @@ public final class Oracle {
         return out;
     }
 
-    /** {@code source relation target} for every link of a graph.json. */
-    private static Set<String> edges(Path graph) throws IOException {
-        Set<String> out = new TreeSet<>();
-        if (!Files.isRegularFile(graph)) return out;
-        String json = Files.readString(graph);
-        Matcher m = Pattern.compile(
-                        "\\{[^{}]*\"source\":\\s*\"([^\"]+)\"[^{}]*\"target\":\\s*\"([^\"]+)\"[^{}]*\"relation\":\\s*\"([^\"]+)\"[^{}]*}")
-                .matcher(json);
-        while (m.find()) out.add(m.group(1) + " " + m.group(3) + " " + m.group(2));
-        return out;
+    /** The graph snapshot a refresh wrote: the same tree gives the same bytes, however it was built. */
+    private static byte[] snapshot(Path root) throws IOException {
+        Path bin = root.resolve("target/graph/graph.bin");
+        return Files.isRegularFile(bin) ? Files.readAllBytes(bin) : new byte[0];
     }
 
     private static String diff(Map<String, String> a, Map<String, String> b) {
@@ -241,13 +236,6 @@ public final class Oracle {
             if (d.size() == 5) break;
         }
         return String.join(", ", d);
-    }
-
-    private static String diff(Set<String> a, Set<String> b) {
-        List<String> d = new ArrayList<>();
-        for (String s : a) if (!b.contains(s) && d.size() < 3) d.add("incremental only: " + s);
-        for (String s : b) if (!a.contains(s) && d.size() < 6) d.add("clean only: " + s);
-        return String.join("; ", d);
     }
 
     // ------------------------------------------------------------------ the edits

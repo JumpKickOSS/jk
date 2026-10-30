@@ -267,10 +267,20 @@ server. When it stops, the task's hidden acceptance tests (`tasks/<task>/`) are 
 `restore` directory is put back as shipped, and the full test run decides: **green** passes, **red**
 does not, **claimed** is a DONE the tests refute.
 
+A task of kind `question` asks about the code instead (who calls a method, everything that reaches it,
+what extends a type). The agent writes `ANSWER.txt` and changes nothing else; its lines are graded
+against the task's `answer`, the compiler's facts from `bench/graph-retrieval/Truth.java` (main classes;
+a lambda counts as its enclosing method; the dispatch tasks count a call to a supertype method as
+reaching each override). The row carries recall, precision and F1 and what was missed or extra, and
+**green** is an F1 of at least 0.9. A question's sandbox is compiled (`jk build -S`) before the agent
+starts, not tested.
+
 | Arm | Build tool | MCP | What it isolates |
 |---|---|---|---|
-| `jk` | jk | `jk mcp` (no graph cards) | the product as installed, and the no-graph baseline |
-| `jk-graph` | jk | `jk mcp` through `wrappers/mcp-filter --extended --keep`: the loop tools plus `query_graph`, `read_symbol`, `find_symbols`, `get_neighbors`. Needs a jk whose MCP server registers the graph tools; jk's own no longer does | the graph as MCP cards |
+| `jk` | jk | `jk mcp`: the default list, whose one graph card is `callers` | the product as installed |
+| `jk-nograph` | jk | `jk mcp` through `wrappers/mcp-filter --drop`: no graph tool listed or callable | the no-graph baseline |
+| `jk-nograph-noline` | jk | as `jk-nograph`, and the `jk graph callers` line taken out of the sandbox's `AGENTS.md` | with `--shell`, what that line alone moves |
+| `jk-graph` | jk | `jk mcp` through `wrappers/mcp-filter --extended --keep`: the loop tools plus `callers`, `query`, `read`, `find` | the graph as MCP cards |
 | `jk-hooks` | jk | `jk mcp`, plus `wrappers/jk-graph-hook` on `Grep`, `Glob` and `Read`: the graph's answer (callers with each call's line quoted, subtypes, a long file's outline) beside the search | the graph, delivered where the agent already looks |
 | `jk-hooks-replace` | jk | as `jk-hooks`, but the answer replaces the search (the tool call is denied with it) | the graph instead of text search |
 | `mvn` | Maven | `wrappers/results-mcp` | the null hypothesis, as above |
@@ -279,6 +289,12 @@ does not, **claimed** is a DONE the tests refute.
 
 Each row records tokens (input, output, cache read and write), turns, wall time, the outcome, and
 how the agent navigated: graph calls, `Grep`/`Glob`/`Read` calls, and the graph's share of the two.
-`results/<date>-change-tasks/TABLE.md` is the medians per task and arm.
+`results/<date>-change-tasks/TABLE.md` is the medians per task and arm, with the median F1 for
+questions. `--first-run N` numbers a day's further runs from N, so they do not replace its earlier ones.
+
+`graph-counterfactual` prices a search hook offline from runs already made: it replays each search
+in the transcripts against the graph and counts the reads of never-edited files an earlier graph
+answer named (what a hook could have saved) against the answers it would have attached (what it
+would have cost), each as tokens times the API calls that carried them.
 
 `bench/jar-size/` is the neighbouring bench; this one measures the loop, that one the artefact.
