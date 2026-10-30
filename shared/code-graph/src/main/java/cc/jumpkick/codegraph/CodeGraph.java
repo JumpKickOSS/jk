@@ -9,14 +9,12 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
  * The merged graph. Nodes are unique by id and edges by {@code (source, target, relation)}; an
- * edge whose endpoint no fragment declares is dropped. Traversal treats the graph as undirected
- * (graphify's model) while every edge keeps its true direction. Communities are assigned after
- * construction by {@link Communities}.
+ * edge whose endpoint no fragment declares is dropped. Traversal may treat the graph as undirected
+ * while every edge keeps its true direction.
  */
 public final class CodeGraph {
 
@@ -24,8 +22,6 @@ public final class CodeGraph {
     private final List<GraphEdge> edges;
     private final Map<String, Set<String>> neighbors = new HashMap<>();
     private final Map<String, List<GraphEdge>> incident = new HashMap<>();
-    private final Map<String, Integer> community = new HashMap<>();
-    private final Map<Integer, String> communityNames = new HashMap<>();
     private Modules modules = Modules.NONE;
     private List<StaleRef> stale = List.of();
 
@@ -92,15 +88,6 @@ public final class CodeGraph {
         return new GraphNode(base.id(), base.label(), base.fileType(), base.sourceFile(), base.sourceLocation(), extra);
     }
 
-    /** A graph read back from {@code graph.json}, communities included. */
-    static CodeGraph of(
-            List<GraphNode> nodes, List<GraphEdge> edges, Map<String, Integer> community, Map<Integer, String> names) {
-        CodeGraph g = merge(List.of(new Fragment(nodes, edges)));
-        g.community.putAll(community);
-        g.communityNames.putAll(names);
-        return g;
-    }
-
     public Collection<GraphNode> nodes() {
         return nodes.values();
     }
@@ -156,7 +143,7 @@ public final class CodeGraph {
         return neighbors.getOrDefault(id, Set.of());
     }
 
-    /** Distinct neighbour count: graphify's degree on its simple undirected graph. */
+    /** Distinct neighbour count: the degree on the simple undirected graph. */
     public int degree(String id) {
         return neighbors(id).size();
     }
@@ -178,25 +165,6 @@ public final class CodeGraph {
         return out;
     }
 
-    /** The community of {@code id}, {@code -1} before {@link Communities#assign} ran. */
-    public int community(String id) {
-        return community.getOrDefault(id, -1);
-    }
-
-    public @Nullable String communityName(int id) {
-        return communityNames.get(id);
-    }
-
-    /** Community id → member ids, members in graph order. */
-    public Map<Integer, List<String>> communities() {
-        Map<Integer, List<String>> out = new TreeMap<>();
-        for (String id : nodes.keySet()) {
-            int c = community(id);
-            if (c >= 0) out.computeIfAbsent(c, k -> new ArrayList<>()).add(id);
-        }
-        return out;
-    }
-
     /** The workspace's modules, {@link Modules#NONE} until a build or a reader sets them. */
     public Modules modules() {
         return modules;
@@ -213,12 +181,5 @@ public final class CodeGraph {
 
     public void stale(List<StaleRef> stale) {
         this.stale = List.copyOf(stale);
-    }
-
-    void assignCommunities(Map<String, Integer> assignment, Map<Integer, String> names) {
-        community.clear();
-        community.putAll(assignment);
-        communityNames.clear();
-        communityNames.putAll(names);
     }
 }

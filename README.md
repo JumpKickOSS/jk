@@ -52,9 +52,9 @@ day. Every surface is built for that loop:
   project.
 - **`jk skill`** — the playbook for a tool models were not trained on; jk keeps its section of
   your `AGENTS.md` current.
-- **`jk graph`** — graphify built in: a code knowledge graph that cites `file:line`, with
-  no Python toolchain, indexed in seconds, with call and override edges from the compiler.
-  graphify's skill and MCP server read its `graph.json` unchanged.
+- **`jk graph`** — a code graph built in: nothing to install, indexed in seconds, with call and
+  override edges from the compiled classes. Answers name each symbol `Owner.member()` at
+  `file:line`, and `jk graph callers` lists every caller of a method, complete.
 - **Named test rungs** — `jk test` is the cheap unit suite, `--guard` the bar before sharing,
   `--all` the nightly; the report says what was not run.
 

@@ -9,7 +9,6 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import cc.jumpkick.codegraph.CodeGraph;
 import cc.jumpkick.codegraph.Decl;
 import cc.jumpkick.codegraph.GraphEdge;
-import cc.jumpkick.codegraph.GraphJson;
 import cc.jumpkick.codegraph.GraphNode;
 import cc.jumpkick.codegraph.Modules;
 import cc.jumpkick.codegraph.StaleRef;
@@ -20,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -51,7 +51,7 @@ class GraphBuildTest {
             "PriceCalculator.java", """
                     package com.acme.shop;
 
-                    import java.util.List;
+import java.util.List;
 
                     public class PriceCalculator {
                         public long sum(List<Long> cents) {
@@ -62,7 +62,7 @@ class GraphBuildTest {
             "OrderService.java", """
                     package com.acme.shop;
 
-                    import java.util.List;
+import java.util.List;
 
                     /** Places orders. */
                     public class OrderService extends BaseService implements Auditable {
@@ -175,9 +175,19 @@ class GraphBuildTest {
                 .allMatch(c -> c.name().equals("EXTRACTED"));
         assertThat(g.node("src_main_java_com_acme_shop_orderservice_orderservice_total"))
                 .satisfies(n -> assertThat(n.sourceLocation()).isEqualTo("L9"));
-        String json = Files.readString(r.dir().resolve("graph.json"));
-        assertThat(GraphJson.read(json).size()).isEqualTo(g.size());
-        assertThat(r.dir().resolve("GRAPH_REPORT.md")).exists();
+        assertThat(r.dir().resolve(GraphOutputs.SNAPSHOT)).exists();
+    }
+
+    @Test
+    void anImplementationOverridesItsInterfaceMethodSoTheInterfacesCallersReachIt(@TempDir Path dir)
+            throws IOException {
+        CodeGraph g = refresh(workspace(dir), false).graph();
+        assertThat(edge(g, "orderservice_audit", "auditable_audit", "overrides"))
+                .isTrue();
+        assertThat(g.edges())
+                .filteredOn(e -> e.relation().equals("overrides"))
+                .as("a private, static or constructor member overrides nothing")
+                .hasSize(1);
     }
 
     @Test
@@ -220,49 +230,16 @@ class GraphBuildTest {
         assertThat(Decl.kind(auditable)).isEqualTo("interface");
     }
 
-    @Test
-    void graphifyOutMirrorsTheGraphAndIsTakenBackWhenRewritten(@TempDir Path dir) throws IOException {
-        GraphMemory.clear();
-        Path root = workspace(dir);
-        GraphService.Request stats = request("stats");
-        assertThat(GraphService.run(workspace(root, false), stats, GraphBuild.Progress.NONE)
-                        .note())
-                .isNull();
-        assertThat(root.resolve("graphify-out")).doesNotExist();
-
-        assertThat(GraphService.run(workspace(root, true), stats, GraphBuild.Progress.NONE)
-                        .note())
-                .isNull();
-        Path mirror = root.resolve("graphify-out/graph.json");
-        assertThat(mirror).hasSameTextualContentAs(root.resolve("target/graph/graph.json"));
-        assertThat(root.resolve("graphify-out/GRAPH_REPORT.md")).exists();
-        assertThat(GraphService.run(workspace(root, true), stats, GraphBuild.Progress.NONE)
-                        .note())
-                .isNull();
-
-        Files.writeString(mirror, "{\"nodes\": [], \"links\": []}");
-        assertThat(GraphService.run(workspace(root, true), stats, GraphBuild.Progress.NONE)
-                        .note())
-                .contains("changed since jk wrote it");
-        assertThat(mirror).hasSameTextualContentAs(root.resolve("target/graph/graph.json"));
-
-        Files.delete(root.resolve("graphify-out/.jk-graph"));
-        Files.writeString(mirror, "{}");
-        assertThat(GraphService.run(workspace(root, true), stats, GraphBuild.Progress.NONE)
-                        .note())
-                .contains("was not jk's");
-    }
-
     /** -n answers from what was written; with nothing written it says so rather than build one. */
     @Test
     void noRefreshWithNoStoredGraphIsAnError(@TempDir Path dir) throws IOException {
         GraphMemory.clear();
         Path root = workspace(dir);
         GraphService.Request stored = new GraphService.Request(
-                "stats", List.of(), "bfs", 3, 2000, List.of(), false, false, 8, 10, null, false, true);
-        assertThatThrownBy(() -> GraphService.run(workspace(root, false), stored, GraphBuild.Progress.NONE))
+                "query", List.of("order"), "bfs", 3, 2000, List.of(), false, 8, null, false, true);
+        assertThatThrownBy(() -> GraphService.run(service(root), stored, GraphBuild.Progress.NONE))
                 .hasMessageContaining("no graph has been built");
-        assertThat(root.resolve("target/graph/graph.json")).doesNotExist();
+        assertThat(root.resolve("target/graph/" + GraphOutputs.SNAPSHOT)).doesNotExist();
     }
 
     /** A Java class's facts belong to the file in its package directory, never a same-named one elsewhere. */
@@ -301,7 +278,6 @@ class GraphBuildTest {
         Files.writeString(root.resolve("README.md"), "# Shop\n\nSee [license](LICENSE) and [gone](gone.md).\n");
         GraphBuild.Result r = refresh(root, false);
         assertThat(r.graph().stale()).extracting(StaleRef::target).containsExactly("gone.md");
-        assertThat(Files.readString(r.dir().resolve("GRAPH_REPORT.md"))).contains("links to missing `gone.md`");
     }
 
     @Test
@@ -366,6 +342,25 @@ class GraphBuildTest {
         assertThat(second.graph().size()).isEqualTo(first.graph().size());
     }
 
+    /** A snapshot of another layout, or a damaged one, is no graph: the next refresh builds it again. */
+    @Test
+    void aSnapshotThatDoesNotParseIsRebuilt(@TempDir Path dir) throws IOException {
+        GraphMemory.clear();
+        Path root = workspace(dir);
+        GraphBuild.Result first = refresh(root, false);
+        Path bin = first.dir().resolve(GraphOutputs.SNAPSHOT);
+        byte[] whole = Files.readAllBytes(bin);
+        Files.write(bin, Arrays.copyOf(whole, whole.length + 4));
+        GraphMemory.clear();
+        GraphService.Request stored = new GraphService.Request(
+                "query", List.of("order"), "bfs", 3, 2000, List.of(), false, 8, null, false, true);
+        assertThatThrownBy(() -> GraphService.run(service(root), stored, GraphBuild.Progress.NONE))
+                .hasMessageContaining("no graph has been built");
+        GraphBuild.Result second = refresh(root, false);
+        assertThat(second.changed()).isTrue();
+        assertThat(second.graph().size()).isEqualTo(first.graph().size());
+    }
+
     @Test
     void anotherWorkspaceDropsTheFirstFromMemory(@TempDir Path dir) throws IOException {
         GraphMemory.clear();
@@ -379,30 +374,28 @@ class GraphBuildTest {
     void theServiceAnswersEveryOperationFromOneRefresh(@TempDir Path dir) throws IOException {
         Path root = workspace(dir);
         assertThat(run(root, request("query", "how is the order total computed")))
-                .contains("NODE ")
-                .contains(".total()");
-        assertThat(run(root, request("path", "OrderService", "BaseService"))).startsWith("Shortest path (1 hops):");
-        assertThat(run(root, request("explain", "PriceCalculator"))).contains("Node: PriceCalculator");
-        assertThat(run(root, request("stats"))).startsWith("Nodes: ");
-        assertThat(run(root, request("god-nodes"))).startsWith("God nodes (most connected):");
+                .contains("OrderService.total()  src/main/java/com/acme/shop/OrderService.java:");
+        assertThat(run(root, request("path", "OrderService", "BaseService"))).startsWith("Shortest path, 1 hop:");
+        assertThat(run(root, request("neighbors", "PriceCalculator"))).startsWith("Neighbors of PriceCalculator:");
+        assertThat(run(root, request("callers", "BaseService.log")))
+                .startsWith("Callers of BaseService.log(): 1 in main sources");
         GraphService.Request stored = new GraphService.Request(
-                "stats", List.of(), "bfs", 3, 2000, List.of(), false, false, 8, 10, null, false, true);
-        assertThat(run(root, stored)).startsWith("Nodes: ");
+                "neighbors", List.of("PriceCalculator"), "bfs", 3, 2000, List.of(), false, 8, null, false, true);
+        assertThat(run(root, stored)).startsWith("Neighbors of PriceCalculator:");
+        assertThatThrownBy(() -> run(root, request("stats"))).hasMessageContaining("unknown graph operation 'stats'");
     }
 
     private static String run(Path root, GraphService.Request r) throws IOException {
-        return GraphService.run(workspace(root, false), r, GraphBuild.Progress.NONE)
-                .text();
+        return GraphService.run(service(root), r, GraphBuild.Progress.NONE).text();
     }
 
-    private static GraphService.Workspace workspace(Path root, boolean graphify) throws IOException {
+    private static GraphService.Workspace service(Path root) throws IOException {
         return new GraphService.Workspace(
                 root,
                 root.resolve("target/graph"),
                 indexes(root, Set.of()),
                 Modules.NONE,
                 NO_NODE,
-                graphify,
                 Map.of(),
                 List.of(),
                 List.of(),
@@ -410,7 +403,6 @@ class GraphBuildTest {
     }
 
     private static GraphService.Request request(String op, String... args) {
-        return new GraphService.Request(
-                op, List.of(args), "bfs", 3, 2000, List.of(), false, false, 8, 10, null, false, false);
+        return new GraphService.Request(op, List.of(args), "bfs", 3, 2000, List.of(), false, 8, null, false, false);
     }
 }

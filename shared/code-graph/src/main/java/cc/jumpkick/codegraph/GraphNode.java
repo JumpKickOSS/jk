@@ -5,10 +5,9 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * One symbol, file, heading or config key. {@code fileType} is graphify's {@code file_type}
- * ({@code code}, {@code document}, {@code rationale}, {@code concept}); {@code sourceLocation} is
- * {@code L<line>}, empty when unknown. {@code extra} carries every other field verbatim, so a
- * graph written by graphify round-trips.
+ * One symbol, file, heading or config key. {@code fileType} is {@code code}, {@code document},
+ * {@code rationale} or {@code concept}; {@code sourceLocation} is {@code L<line>}, empty when
+ * unknown. {@code extra} carries every other field verbatim.
  */
 public record GraphNode(
         String id, String label, String fileType, String sourceFile, String sourceLocation, Map<String, Object> extra) {

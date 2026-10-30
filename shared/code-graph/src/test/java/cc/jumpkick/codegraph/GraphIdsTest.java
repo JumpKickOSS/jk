@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 class GraphIdsTest {
 
     @Test
-    void fileAndMemberIdsMatchGraphify() {
+    void fileAndMemberIdsFollowThePath() {
         String file = "src/main/java/com/acme/shop/OrderService.java";
         assertThat(GraphIds.file(file)).isEqualTo("src_main_java_com_acme_shop_orderservice");
         String type = GraphIds.declared(file, "OrderService");

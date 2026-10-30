@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code read_symbol}: the source of a symbol, a type's members or a set of files, in the richest
+ * {@code read}: the source of a symbol, a type's members or a set of files, in the richest
  * view that fits a token budget. Views, richest first: {@code content} (the numbered source of each
  * span), {@code structure} (declarations without bodies) and {@code headline} (one line per symbol).
  *

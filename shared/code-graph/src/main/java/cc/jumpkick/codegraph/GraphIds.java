@@ -7,11 +7,11 @@ import java.util.Set;
 import java.util.StringJoiner;
 
 /**
- * graphify's node-id scheme. An id is the parts joined with {@code _}, case-folded and
+ * The node-id scheme. An id is the parts joined with {@code _}, case-folded and
  * NFKC-normalized to a fixpoint, with every run of non-word characters collapsed to one {@code _}
  * and the ends trimmed. A source or Markdown file's ids start from its repo-relative path minus the
- * extension, as graphify's do: {@code src/main/java/a/Foo.java} is {@code src_main_java_a_foo} and
- * its class {@code Foo} is {@code src_main_java_a_foo_foo}; so does JSON, which graphify reads too.
+ * extension: {@code src/main/java/a/Foo.java} is {@code src_main_java_a_foo} and its class {@code
+ * Foo} is {@code src_main_java_a_foo_foo}; so does JSON.
  * Every other file keeps its extension,
  * so an Angular component's {@code app.ts}, {@code app.html} and {@code app.css} stay three nodes.
  */
@@ -60,7 +60,7 @@ public final class GraphIds {
         return dot > slash + 1 && dot < relPath.length() - 1 ? relPath.substring(0, dot) : relPath;
     }
 
-    /** Extensions whose files take graphify's extension-less ids. */
+    /** Extensions whose files take extension-less ids. */
     private static final Set<String> STEMMED = Set.of(
             "java",
             "kt",

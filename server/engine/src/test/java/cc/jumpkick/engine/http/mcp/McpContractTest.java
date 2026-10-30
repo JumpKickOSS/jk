@@ -180,8 +180,8 @@ class McpContractTest {
                         "\"bind\"",
                         "\"manifest\"",
                         "\"jdk\"",
-                        "\"god_nodes\"",
-                        "\"query_graph\"",
+                        "\"query\"",
+                        "\"find\"",
                         "\"why\"",
                         "\"snapshot\"");
 
