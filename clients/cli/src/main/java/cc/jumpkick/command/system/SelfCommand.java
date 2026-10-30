@@ -17,6 +17,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontDetect;
 import cc.jumpkick.config.NerdFontMode;
+import cc.jumpkick.config.SelfUpdateState;
 import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
@@ -30,6 +31,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.repo.ReleaseVerifier;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.version.Versions;
 import cc.jumpkick.wire.EnginePaths;
@@ -361,22 +363,35 @@ public final class SelfCommand extends GroupCommand {
                 CommandWedge.printFail("Self", "could not resolve a target version");
                 return Exit.SOFTWARE;
             }
+            String version = target;
+            boolean download = in.isSet("download");
+            boolean downgrade = Versions.compare(version, running) < 0;
             EngineInstall install = EngineInstall.current();
             Cas cas = JkStores.storeCas();
-            if (target.equals(running) && install.resolve(target).isPresent()) {
+            if (version.equals(running) && install.resolve(version).isPresent()) {
                 PreparedUpdate.delete(install.engineHome());
-                CommandWedge.printOk("Self", target + " is already current");
+                if (!download) releaseHold();
+                CommandWedge.printOk("Self", version + " is already current");
                 return 0;
             }
 
-            PreparedUpdate prepared = preparedFor(install, cas, target).orElse(null);
-            if (prepared == null) prepared = prepare(base, verifier, target, running, install, cas);
-            if (in.isSet("download")) {
-                CommandWedge.printOk("Self", target + " downloaded; `jk self update " + target + "` installs it");
+            // One update at a time per home: the engine's own update and a prompt's answer run this too.
+            Optional<String> installed = FileLocks.withLock(install.engineHome().resolve(UPDATE_LOCK), () -> {
+                PreparedUpdate prepared = preparedFor(install, cas, version).orElse(null);
+                if (prepared == null) prepared = prepare(base, verifier, version, running, install, cas);
+                return download ? Optional.<String>empty() : Optional.of(apply(prepared, install, cas, downgrade));
+            });
+            if (installed.isEmpty()) {
+                CommandWedge.printOk("Self", version + " downloaded; `jk self update " + version + "` installs it");
                 return 0;
             }
-            String installed = apply(prepared, install, cas, Versions.compare(target, running) < 0);
-            CommandWedge.printOk("Self", target + " installed (" + installed + ")");
+            CommandWedge.printOk("Self", version + " installed (" + installed.get() + ")");
+            if (downgrade) {
+                SelfUpdateState.update(s -> s.withHold(version, running));
+                CliOutput.out("auto-update is held at " + version + "; `jk self update` resumes it");
+            } else {
+                releaseHold();
+            }
 
             // Hand the engine over: --now stops the old daemon (killing its jobs) first;
             // otherwise the NEW engine's startup drains it gracefully — zero interrupted builds.
@@ -394,9 +409,30 @@ public final class SelfCommand extends GroupCommand {
             return 0;
         }
 
-        /** {@code --check}: the signed latest-release pointer against the running version. */
+        /** The lock file under the engine home that one download-or-install holds. */
+        static final String UPDATE_LOCK = ".jk-update.lock";
+
+        /** Drop a downgrade's hold, saying so when there was one. */
+        private static void releaseHold() throws IOException {
+            if (!SelfUpdateState.read().isHeld()) return;
+            SelfUpdateState.update(SelfUpdateState::withoutHold);
+            CliOutput.out("auto-update resumes");
+        }
+
+        /**
+         * {@code --check}: the signed latest-release pointer against the running version, recorded
+         * in the update state the engine's scheduler reads. A pointer that cannot be read is recorded
+         * as an attempt, so the scheduler backs off.
+         */
         private static int check(URI base, ReleaseVerifier verifier, String running) throws IOException {
-            String latest = ReleaseArtifacts.latestVersion(base, verifier, running);
+            String latest;
+            try {
+                latest = ReleaseArtifacts.latestVersion(base, verifier, running);
+            } catch (IOException unreachable) {
+                SelfUpdateState.update(s -> s.withAttempt(Clock.SYSTEM.instant()));
+                throw unreachable;
+            }
+            SelfUpdateState.update(s -> s.withCheck(Clock.SYSTEM.instant(), latest));
             if (Versions.compare(latest, running) > 0) {
                 CommandWedge.printOk("Self", "jk " + latest + " is available (this is " + running + ")");
             } else {

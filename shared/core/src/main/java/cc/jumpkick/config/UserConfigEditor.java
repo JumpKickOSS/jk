@@ -11,19 +11,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Minimal merge editor for {@code ~/.jk/config.toml}. Preserves unknown keys; only
- * touches root-level {@code nerd-font}.
+ * Minimal merge editor for {@code ~/.jk/config.toml}. Preserves unknown keys; only touches the
+ * root-level {@code nerd-font} and {@code self-update}.
  */
 public final class UserConfigEditor {
 
-    /**
-     * Matches any existing value form — bare boolean or quoted mode word — so re-running {@code jk
-     * self setup-terminal} replaces rather than duplicates the key.
-     */
     private static final Pattern TABLE_HEADER = Pattern.compile("(?m)^[ \\t]*\\[");
-
-    private static final Pattern NERD_FONT_LINE =
-            Pattern.compile("(?m)^([ \\t]*)nerd-font[ \\t]*=[ \\t]*(?:true|false|\"[^\"]*\"|'[^']*')[ \\t]*$");
 
     private UserConfigEditor() {}
 
@@ -31,47 +24,57 @@ public final class UserConfigEditor {
      * Set root-level {@code nerd-font}, creating the file as needed. Returns the path written.
      */
     public static Path setNerdFont(Path configFile, NerdFontMode mode) throws IOException {
+        return setRoot(configFile, "nerd-font", mode.toToml());
+    }
+
+    /** Set root-level {@code self-update}, creating the file as needed. Returns the path written. */
+    public static Path setSelfUpdate(Path configFile, SelfUpdatePolicy.Mode mode) throws IOException {
+        return setRoot(configFile, SelfUpdatePolicy.KEY, "\"" + mode.spelling() + "\"");
+    }
+
+    private static Path setRoot(Path configFile, String key, String value) throws IOException {
         Path parent = configFile.getParent();
         if (parent != null) Files.createDirectories(parent);
         String text = Files.isRegularFile(configFile) ? Files.readString(configFile, StandardCharsets.UTF_8) : "";
-        String updated = upsertNerdFont(text, mode.toToml());
-        Files.writeString(configFile, updated, StandardCharsets.UTF_8);
+        Files.writeString(configFile, upsertRoot(text, key, value), StandardCharsets.UTF_8);
         return configFile;
     }
 
     /**
-     * Pure text transform for tests. {@code value} is already TOML-encoded by {@link
-     * NerdFontMode#toToml} and is a closed set of literals ({@code true}, {@code false},
-     * {@code "auto"}, {@code "wedge"}, {@code "pill"}) — none contains a {@code $} or {@code \},
-     * so it is safe to splice into a replacement without escaping.
+     * Pure text transform for tests. {@code value} is already TOML-encoded and is one of a closed
+     * set of literals (booleans or a quoted mode word), none containing {@code $} or {@code \}, so
+     * it is safe to splice into a replacement without escaping.
      *
-     * <p>Inserts at the top of the file when missing so the key stays root-level (TOML bare keys
-     * after a {@code [table]} header would land under that table).
+     * <p>Matches any existing value form, bare boolean or quoted word, so re-running replaces rather
+     * than duplicates the key. Inserts at the top of the file when missing so the key stays
+     * root-level (TOML bare keys after a {@code [table]} header would land under that table).
      */
-    static String upsertNerdFont(String toml, String value) {
+    static String upsertRoot(String toml, String key, String value) {
         if (toml == null) toml = "";
+        Pattern line = Pattern.compile(
+                "(?m)^([ \\t]*)" + Pattern.quote(key) + "[ \\t]*=[ \\t]*(?:true|false|\"[^\"]*\"|'[^']*')[ \\t]*$");
         // The reader is root-level only, so a copy under any [table] is one it never sees. Replace
         // the root copy in place; delete every table copy; insert at the top when no root copy.
         int rootEnd = firstTableHeader(toml);
         List<int[]> matches = new ArrayList<>();
-        Matcher m = NERD_FONT_LINE.matcher(toml);
+        Matcher m = line.matcher(toml);
         while (m.find()) matches.add(new int[] {m.start(), m.end(), m.group(1).length()});
         StringBuilder sb = new StringBuilder(toml);
         boolean replacedAtRoot = false;
         for (int i = matches.size() - 1; i >= 0; i--) {
             int[] at = matches.get(i);
             if (at[0] < rootEnd && !replacedAtRoot) {
-                sb.replace(at[0], at[1], toml.substring(at[0], at[0] + at[2]) + "nerd-font = " + value);
+                sb.replace(at[0], at[1], toml.substring(at[0], at[0] + at[2]) + key + " = " + value);
                 replacedAtRoot = true;
             } else {
                 sb.delete(at[0], Math.min(sb.length(), at[1] + 1));
             }
         }
         if (replacedAtRoot) return sb.toString();
-        String line = "nerd-font = " + value + "\n";
+        String added = key + " = " + value + "\n";
         String rest = sb.toString();
-        if (rest.isBlank()) return line;
-        return line + "\n" + rest.stripLeading();
+        if (rest.isBlank()) return added;
+        return added + "\n" + rest.stripLeading();
     }
 
     /** Offset of the first {@code [table]} header, or the text length when there is none. */
