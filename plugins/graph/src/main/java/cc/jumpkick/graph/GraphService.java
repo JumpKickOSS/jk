@@ -40,6 +40,7 @@ public final class GraphService {
             "path",
             "node",
             "neighbors",
+            "callers",
             "community",
             "god-nodes",
             "stats",
@@ -205,6 +206,11 @@ public final class GraphService {
             case "node" -> tools.node(arg(a, 0, "a node name"));
             case "neighbors" ->
                 tools.neighbors(arg(a, 0, "a node name"), r.relation() == null ? "" : r.relation(), r.budget());
+            case "callers" ->
+                tools.callers(
+                        arg(a, 0, "a method"),
+                        EnvValues.parseBool(r.options().get("transitive")).orElse(false) ? r.maxHops() : 1,
+                        r.budget());
             case "community" -> tools.community(community(arg(a, 0, "a community id")), r.budget());
             case "god-nodes" -> tools.godNodes(r.topN());
             case "stats" -> tools.stats(build.commit());
