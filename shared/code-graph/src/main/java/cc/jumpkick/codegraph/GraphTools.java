@@ -168,12 +168,9 @@ public final class GraphTools {
      * calls on the way, up to {@code depth} hops; nothing is listed twice.
      */
     public String callers(String name, int depth, int budget) {
-        List<String> targets = members(name.strip());
-        if (targets.isEmpty()) {
-            Resolved r = resolve(name);
-            if (r.id() == null) return String.valueOf(r.error());
-            targets = List.of(r.id());
-        }
+        String wanted = name.strip();
+        List<String> targets = graph.has(wanted) ? List.of(wanted) : members(wanted);
+        if (targets.isEmpty()) return noMethod(wanted);
         Map<String, Caller> found = new LinkedHashMap<>();
         List<String> frontier = targets;
         for (int hop = 1; hop <= depth && !frontier.isEmpty(); hop++) {
@@ -227,6 +224,25 @@ public final class GraphTools {
         }
         if (found.isEmpty()) lines.add("Nothing in the compiled classes calls it.");
         return Budget.lines(lines, budget, "Raise the budget, or narrow with scope, modules or source_set");
+    }
+
+    /**
+     * Why {@code address} names no method, with the closest names: an answer an agent acts on without
+     * checking must never be about something it did not ask for.
+     */
+    private String noMethod(String address) {
+        String missing = missingMember(address);
+        if (missing != null) return missing;
+        List<String> lines = new ArrayList<>();
+        lines.add("No method '" + address + "'. Pass Type.method.");
+        List<String> near = new GraphSearch(graph, scope).nearest(address, 5);
+        if (!near.isEmpty()) lines.add("Closest names:");
+        for (String id : near) {
+            GraphNode n = graph.node(id);
+            if (n != null)
+                lines.add("  " + GraphQuery.clean(graph.display(id)) + "  " + n.sourceFile() + ":" + Decl.line(n));
+        }
+        return String.join("\n", lines);
     }
 
     /**

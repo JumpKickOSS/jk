@@ -170,4 +170,13 @@ class GraphToolsTest {
         assertThat(new GraphTools(release()).callers("Cli.run", 8, 2000))
                 .endsWith("Nothing in the compiled classes calls it.");
     }
+
+    @Test
+    void callers_of_a_method_the_graph_does_not_have_says_so_instead_of_answering_for_a_near_name() {
+        assertThat(new GraphTools(release()).callers("Main.main", 1, 2000))
+                .startsWith("No method 'Main.main'.")
+                .doesNotContain("Callers of");
+        assertThat(new GraphTools(release()).callers("Info.nmae", 1, 2000))
+                .startsWith("'Info' (src/main/java/a/Info.java) declares no member 'nmae'; its members: name");
+    }
 }
