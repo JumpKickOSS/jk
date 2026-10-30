@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.function.Supplier;
 
 /**
  * A released client older than the version the install now names: jk updated itself while this
@@ -30,19 +31,19 @@ final class SupersededClient {
     private SupersededClient() {}
 
     /** The installed version when it is newer than {@code running}; empty for a development client. */
-    static Optional<String> newerInstall(String running, boolean releasedClient, Optional<String> installed) {
+    static Optional<String> newerInstall(String running, boolean releasedClient, Supplier<Optional<String>> installed) {
         if (!ReleaseArtifacts.applicable(running, releasedClient, false)) return Optional.empty();
-        return installed.filter(v -> Versions.compare(v, running) > 0);
+        return installed.get().filter(v -> Versions.compare(v, running) > 0);
     }
 
     /** Run {@code args} on the installed client when this one is superseded; the child's exit code. */
     static OptionalInt handOff(String[] args) {
         if (System.getenv(ENV) != null) return OptionalInt.empty();
         try {
-            Optional<String> newer = newerInstall(
-                    JkVersion.VERSION,
-                    ReleaseArtifacts.releasedClient(),
-                    EngineInstall.current().currentInstall().map(EngineInstall.Materialized::version));
+            Optional<String> newer =
+                    newerInstall(JkVersion.VERSION, ReleaseArtifacts.releasedClient(), () -> EngineInstall.current()
+                            .currentInstall()
+                            .map(EngineInstall.Materialized::version));
             if (newer.isEmpty()) return OptionalInt.empty();
             Path jk = EngineInstall.pathClient(JkDirs.binDir());
             if (!Files.isRegularFile(jk)) return OptionalInt.empty();

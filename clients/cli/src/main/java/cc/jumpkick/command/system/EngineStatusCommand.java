@@ -94,7 +94,7 @@ public final class EngineStatusCommand implements CliCommand {
         long now = System.currentTimeMillis();
         long uptimeSeconds = Math.max(0, (now - s.startedAtMillis()) / 1000);
         if (global.outputIsJson()) {
-            CliOutput.out(runningJson(s, uptimeSeconds, EngineFleet.list()));
+            CliOutput.out(runningJson(s, uptimeSeconds, EngineFleet.list(), SelfUpdateStatus.describe()));
             return Exit.SUCCESS;
         }
         CommandWedge.envelopeStart();
@@ -110,6 +110,7 @@ public final class EngineStatusCommand implements CliCommand {
         }
         detail("Version", s.version());
         if (s.installSource() != null && !s.installSource().isEmpty()) detail("Source", s.installSource());
+        detail("Updates", SelfUpdateStatus.describe());
         detail("Uptime", formatUptime(uptimeSeconds));
         detail("Live Jobs", String.valueOf(s.activeBuildPlans()));
         for (EngineProbe.Job job : s.jobs()) if (job.live()) jobRow(job, now);
@@ -301,7 +302,8 @@ public final class EngineStatusCommand implements CliCommand {
     }
 
     /** The `-O jsonl` line for a running engine. */
-    public static String runningJson(EngineProbe.Status s, long uptimeSeconds, List<EngineFleet.Member> fleet) {
+    public static String runningJson(
+            EngineProbe.Status s, long uptimeSeconds, List<EngineFleet.Member> fleet, String selfUpdate) {
         JsonFields json = JsonFields.object()
                 .bool("running", true)
                 .number("pid", s.pid())
@@ -328,6 +330,7 @@ public final class EngineStatusCommand implements CliCommand {
                 .number("logRolledAt", s.logRolledAt())
                 .string("ignoredSignals", s.ignoredSignals())
                 .string("installSource", s.installSource())
+                .string("selfUpdate", selfUpdate)
                 .string("containment", s.containment())
                 .string("containmentReason", s.containmentReason())
                 .number("workerMemoryMax", s.workerMemoryMax())

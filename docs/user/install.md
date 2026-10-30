@@ -49,9 +49,46 @@ released natives are signed).
 `install.cmd` and `irm | iex` do not.) Installing `jk.bat` parks a leftover `jk.exe` so
 `jk` does not keep launching the blocked PE. See [Contributing](../../CONTRIBUTING.md).
 
-Self-update of an installed binary: `jk self update` (verifies the release). Release
-layout and signing: [contributor releases](../contributors/releases.md). Reporting a
-signature or install defect: [Security](security.md).
+Self-update of an installed binary: `jk self update` (verifies the release); jk also
+[updates itself](#updates). Release layout and signing: [contributor
+releases](../contributors/releases.md). Reporting a signature or install defect:
+[Security](security.md).
+
+## Updates
+
+jk keeps itself current. The engine checks the signed latest-release pointer at most once a
+day, when it has had no build for 10 minutes or after the third build in a row that never left it
+that quiet. When there is a newer release it downloads and verifies it, installs it, and starts the
+new engine; builds still running finish on the old one. A build that starts in the middle pauses
+the update until the next quiet spell (or three more builds). Your next command runs the new jk.
+
+```bash
+jk self update --check      # is there a newer release? installs nothing
+jk self update --download   # fetch and verify it now; install later
+jk self update              # install the latest (a download already made is reused)
+jk self update 0.16.2       # go back to a release, and hold there
+```
+
+`self-update` in `~/.jk/config.toml` (or env `JK_SELF_UPDATE`, which wins) picks the behaviour:
+
+| Value | What happens |
+|-------|--------------|
+| `"auto"` | Updates as above, without asking. The default on CI and wherever no one answers a terminal (coding agents, scripts) |
+| `"ask"` | The engine downloads; the next command run at a terminal offers it: `[Y]es / [n]ot now / [a]lways / ne[v]er`. *Always* writes `"auto"`, *never* writes `"never"`, *not now* asks again in a day. The default on a machine where someone uses jk at a terminal |
+| `"never"` | No checks and no downloads. `jk self update` still updates by hand |
+
+Before 1.0 updates are compulsory: `"ask"` and `"never"` in the config file are ignored (jk says
+so once), and only `JK_SELF_UPDATE=never` turns them off. Development builds (`-SNAPSHOT`) never
+update themselves. On CI, a jk home less than a day old (a fresh runner) does not update itself;
+the installer or wrapper that created it already fetched the latest release.
+
+`jk self update <older>` holds this jk home at that release: nothing checks, downloads or offers an
+update until a plain `jk self update` (or any update to the same or a newer release) clears the
+hold. `jk engine status` shows the hold, the last check, and a download waiting to install.
+
+A command started by the jk that was just replaced hands itself to the new one. A long-running
+client from before the update (an MCP server, a watch) stops and asks to be started again rather
+than displace the newer engine.
 
 ## The JVM client
 

@@ -1116,6 +1116,10 @@ in     = "server/engine/src/main/java/cc/jumpkick/engine/EngineAotTrainer.java"
 reason = "records the engine's startup cache from an idle engine by driving a scratch trainer engine; serves no request"
 
 [[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/SelfUpdateScheduler.java"
+reason = "engine-lifetime update ticker and the jk self update runs it starts; serves no request"
+
+[[guards.request-thread-carries-session.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/engine/EngineHttpFront.java"
 reason = "retries a busy HTTP port beside startup so the first build never waits on the dashboard; serves no request"
 

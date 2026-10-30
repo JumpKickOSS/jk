@@ -39,7 +39,9 @@ the running build and refuses with its number.
 `jk engine status` prints the engine's version and, when the engine was installed by
 `jk install` from a checkout, a `Source` row naming that checkout — the one whose workers this
 engine forks (`installSource` in `-O jsonl` and `GET /api/status`; see
-[install](install.md#on-disk-layout)). It lists every job the engine holds under its `Live Jobs`
+[install](install.md#on-disk-layout)). Its `Updates` row says what jk's own update does next —
+the mode and why, the last check, a download waiting to install, or a hold (`selfUpdate` in `-O
+jsonl`; see [install](install.md#updates)). It lists every job the engine holds under its `Live Jobs`
 and `Queued` rows — jid, kind, project directory, when it was admitted or arrived, its live worker
 processes and how long since its last task event:
 

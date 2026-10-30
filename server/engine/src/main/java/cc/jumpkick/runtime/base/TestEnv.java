@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.SelfUpdatePolicy;
 import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Log;
@@ -184,6 +185,8 @@ public final class TestEnv {
         // opts in.
         out.put("JK_HTTP_ENABLED", "false");
         out.put("JK_HTTP_PORT", "0");
+        // A nested engine never fetches a release into the sandbox and installs it.
+        out.put(SelfUpdatePolicy.ENV, SelfUpdatePolicy.Mode.NEVER.spelling());
         EnvConfig policy = project.build().env();
         out.putAll(WorkerEnv.declared(policy, moduleDir, target));
         Function<String, @Nullable String> buildEnv = BuildEnv.forModule(moduleDir);
