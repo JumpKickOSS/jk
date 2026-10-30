@@ -352,7 +352,7 @@ tokens. The table is re-run each release ([Releases](../contributors/releases.md
 ### Asking about the code
 
 Before an agent changes a method it asks who calls it and what can end up running it. Four such
-questions, on commons-lang and on jk itself, two of them through dynamic dispatch, were graded
+questions, on commons-lang and on jk itself, one of them through dynamic dispatch, were graded
 against the compiler's answer: correct means an F1 of at least 0.9. Each agent ran jk as installed,
 whose default MCP list carries `callers`, and the same jk with every graph tool removed
 ([change tasks](../../bench/agent-loop/README.md#change-tasks), measured 2026-10-29/30 on jk 0.49
