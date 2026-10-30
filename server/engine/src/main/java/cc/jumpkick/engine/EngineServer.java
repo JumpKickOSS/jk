@@ -108,6 +108,9 @@ public final class EngineServer implements AutoCloseable {
     private volatile @Nullable EngineLogSink logSink;
 
     private final IdleHousekeeping idle;
+    /** Updates jk itself when the engine is quiet; null for an engine that never does. */
+    private final @Nullable SelfUpdateScheduler selfUpdate;
+
     private final EngineVitals vitals;
     private final SsePublisher sse;
     private final LiveRuns liveRuns;
@@ -169,6 +172,7 @@ public final class EngineServer implements AutoCloseable {
                 lifecycleLock.notifyAll();
             }
         }
+        if (selfUpdate != null) selfUpdate.buildFinished();
     }
 
     /** Dashboard SSE fan-out; non-null only when {@link #httpConfig} is set. */
@@ -300,6 +304,9 @@ public final class EngineServer implements AutoCloseable {
         this.drain = newDrainReporter();
         this.watchdog = newDisplacementWatchdog();
         this.idle = newIdleHousekeeping();
+        this.selfUpdate = SelfUpdateScheduler.forEngine(
+                        this.version, activeBuildPlans::get, () -> draining || shuttingDown, this.log)
+                .orElse(null);
         this.journalWriter = new JournalWriter(
                 sessions, journal, historyConfig, () -> metricsFile, clockMillis, this.version, this.log);
         this.sse = new SsePublisher(
@@ -503,6 +510,7 @@ public final class EngineServer implements AutoCloseable {
         EngineStartup.Started started = new EngineStartup(version, pid, election, http, journal, idle, log).run(won);
         storeFeedRefresh = started.feeds();
         engineMaintenance = started.maintenance();
+        if (selfUpdate != null) selfUpdate.start();
         watchdog.start();
         Thread lastWords = lastWordsOnSignal();
         Runtime.getRuntime().addShutdownHook(lastWords);
@@ -818,6 +826,7 @@ public final class EngineServer implements AutoCloseable {
     }
 
     private void cleanup() {
+        if (selfUpdate != null) selfUpdate.close();
         if (engineMaintenance != null) {
             engineMaintenance.close();
             engineMaintenance = null;

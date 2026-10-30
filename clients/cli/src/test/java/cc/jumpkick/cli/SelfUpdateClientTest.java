@@ -12,21 +12,21 @@ class SelfUpdateClientTest {
 
     @Test
     void a_released_client_hands_off_only_to_a_newer_install() {
-        assertThat(SupersededClient.newerInstall("0.16.2", true, Optional.of("0.17.0")))
+        assertThat(SupersededClient.newerInstall("0.16.2", true, () -> Optional.of("0.17.0")))
                 .contains("0.17.0");
-        assertThat(SupersededClient.newerInstall("0.17.0", true, Optional.of("0.17.0")))
+        assertThat(SupersededClient.newerInstall("0.17.0", true, () -> Optional.of("0.17.0")))
                 .isEmpty();
-        assertThat(SupersededClient.newerInstall("0.17.0", true, Optional.of("0.16.2")))
+        assertThat(SupersededClient.newerInstall("0.17.0", true, () -> Optional.of("0.16.2")))
                 .isEmpty();
-        assertThat(SupersededClient.newerInstall("0.16.2", true, Optional.empty()))
+        assertThat(SupersededClient.newerInstall("0.16.2", true, () -> Optional.empty()))
                 .isEmpty();
     }
 
     @Test
     void a_development_client_never_hands_off() {
-        assertThat(SupersededClient.newerInstall("0.16.2-SNAPSHOT", true, Optional.of("0.17.0")))
+        assertThat(SupersededClient.newerInstall("0.16.2-SNAPSHOT", true, () -> Optional.of("0.17.0")))
                 .isEmpty();
-        assertThat(SupersededClient.newerInstall("0.16.2", false, Optional.of("0.17.0")))
+        assertThat(SupersededClient.newerInstall("0.16.2", false, () -> Optional.of("0.17.0")))
                 .isEmpty();
     }
 

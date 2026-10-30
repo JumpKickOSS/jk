@@ -90,7 +90,7 @@ class EngineDrainWordingTest {
     void json_carries_draining_and_the_deadline_for_the_engine_and_each_fleet_member() {
         EngineProbe.Status s = draining(1, DEADLINE);
         EngineFleet.Member member = new EngineFleet.Member(null, null, s, 19518L, false);
-        String json = EngineStatusCommand.runningJson(s, 60, List.of(member));
+        String json = EngineStatusCommand.runningJson(s, 60, List.of(member), "auto");
         assertThat(Jsonl.bool(json, "draining", false)).isTrue();
         assertThat(Jsonl.longValue(json, "drainDeadline", 0)).isEqualTo(DEADLINE);
         assertThat(EngineStatusCommand.enginesJson(List.of(member)))

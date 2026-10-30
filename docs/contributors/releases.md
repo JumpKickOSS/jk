@@ -453,6 +453,14 @@ committed wrappers refuse one below the lock's `jk-min` floor. `JK_VERSION` and
 `jk self update <version>` never read the pointer and remain the deliberate way to a specific
 release, down included.
 
+The engine's own update (`SelfUpdateScheduler`, policy in `SelfUpdatePolicy`) fetches nothing
+itself: each step is `jk self update --check`, `--download <version>` or `<version>` run on the
+PATH client, so a scheduled update is held to exactly the evidence a manual one is. The scheduler
+only exists in an engine running the jar its home installed, at a non-`-SNAPSHOT` version; test
+sandboxes also carry `JK_SELF_UPDATE=never`. A download is recorded in
+`lib/jk-engine/jk-update.toml` (`PreparedUpdate`) and pinned against the store GC until it
+installs.
+
 Wire Firebase Hosting (or Firebase CDN / load balancer) so `jumpkick.build/releases/*` is
 served from the GCS prefix `releases/*` (custom domain + backend bucket, or Hosting rewrites
 to Cloud Storage — either is fine as long as the URL layout above is public HTTPS).

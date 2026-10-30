@@ -2,6 +2,8 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.version.Versions;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Locale;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -94,6 +96,18 @@ public final class SelfUpdatePolicy {
         return attended
                 ? new Decision(Action.ASK, "the default at a terminal")
                 : new Decision(Action.AUTO, "the default where no one is asked");
+    }
+
+    /** How recently a person must have used jk at a terminal for the engine's default to ask first. */
+    public static final Duration ATTENDED_WITHIN = Duration.ofDays(30);
+
+    /**
+     * Whether a person answers prompts on this home, as the engine sees it: not CI, and jk was used
+     * at a terminal within {@link #ATTENDED_WITHIN}.
+     */
+    public static boolean attended(SelfUpdateState state, Instant now, boolean ci) {
+        Instant seen = state.interactiveSeen();
+        return !ci && seen != null && seen.plus(ATTENDED_WITHIN).isAfter(now);
     }
 
     /** Whether {@code version} is before 1.0, where updates are compulsory. */
