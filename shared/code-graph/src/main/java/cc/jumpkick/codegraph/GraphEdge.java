@@ -69,6 +69,9 @@ public record GraphEdge(
     /** The {@code extra} key listing the further {@code L<line>} sites of one edge, in line order. */
     public static final String SITES = "sites";
 
+    /** The extra key of {@link #overloads()}. */
+    public static final String OVERLOADS = "overloads";
+
     /**
      * Every {@code L<line>} this edge was found at in its source file, its own location first: two
      * calls from one method (or from overloads, which share a node) to one target are one edge.
@@ -80,18 +83,49 @@ public record GraphEdge(
         return out;
     }
 
-    /** This edge with {@code other}'s sites added when it was found in the same file. */
+    /**
+     * The overloads a compiled call or override joins, each {@code from>to} in JVM descriptors
+     * ({@code *} where one is not known); empty when the edge did not come from compiled classes.
+     */
+    public List<String> overloads() {
+        return extra.get(OVERLOADS) instanceof List<?> l
+                ? l.stream().map(String::valueOf).toList()
+                : List.of();
+    }
+
+    /** This edge with {@code overload} among its {@link #overloads()}. */
+    public GraphEdge withOverload(String overload) {
+        TreeSet<String> all = new TreeSet<>(overloads());
+        if (!all.add(overload)) return this;
+        Map<String, Object> next = new TreeMap<>(extra);
+        next.put(OVERLOADS, List.copyOf(all));
+        return new GraphEdge(
+                source,
+                target,
+                relation,
+                confidence,
+                confidenceScore,
+                sourceFile,
+                sourceLocation,
+                weight,
+                context,
+                next);
+    }
+
+    /** This edge with {@code other}'s sites added when it was found in the same file, and its overloads. */
     public GraphEdge withSitesOf(GraphEdge other) {
-        if (!other.sourceFile.equals(sourceFile)) return this;
+        GraphEdge out = this;
+        for (String o : other.overloads()) out = out.withOverload(o);
+        if (!other.sourceFile.equals(sourceFile)) return out;
         TreeSet<Integer> lines = new TreeSet<>();
         for (String s : sites()) lines.add(lineOf(s));
         boolean added = false;
         for (String s : other.sites()) added |= lines.add(lineOf(s));
-        if (!added) return this;
+        if (!added) return out;
         lines.remove(lineOf(sourceLocation));
         List<String> more =
                 lines.stream().filter(l -> l > 0).map(GraphNode::location).toList();
-        Map<String, Object> next = new TreeMap<>(extra);
+        Map<String, Object> next = new TreeMap<>(out.extra);
         next.put(SITES, more);
         return new GraphEdge(
                 source,

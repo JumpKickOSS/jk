@@ -213,7 +213,8 @@ and code mentions only.
 `Owner.method()` with its call sites' `file:line` and the first lines quoted, main sources before
 tests, with a count. The calls come from the compiled classes, so the list is complete: a call
 inside a lambda counts for the method holding it, and a call made through a supertype's method is
-listed under that method. A module whose classes are older than its sources is named in a note,
+listed under that method. The calls are followed overload by overload: a call to `tool(String)`
+does not reach what only `tool(Path)` calls. A module whose classes are older than its sources is named in a note,
 and its calls are missing until `jk build`.
 
 `-t` (MCP `transitive=true`) lists everything that reaches the method instead: its callers, theirs,

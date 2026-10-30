@@ -32,7 +32,9 @@ import org.jspecify.annotations.Nullable;
  * so the two land on the same nodes. The compiler has resolved every call, so calls and type
  * references are {@code EXTRACTED}. Lambda and anonymous-class bodies count toward the method or
  * class that holds them; a Kotlin file facade's functions belong to its file; overloads share one
- * node and list their descriptors in {@code attributes.signatures}.
+ * node and list their descriptors in {@code attributes.signatures}; every method's descriptors are
+ * under {@link Linker#DESCRIPTORS}, and each call and override edge names the overloads it joins
+ * ({@link GraphEdge#overloads()}).
  */
 final class JvmFacts {
 
@@ -76,6 +78,7 @@ final class JvmFacts {
         List<GraphEdge> edges = new ArrayList<>();
         List<Mention> mentions = new ArrayList<>();
         Map<String, Set<String>> signatures = new LinkedHashMap<>();
+        Map<String, Set<String>> delegates = new LinkedHashMap<>();
         Map<String, Map<String, Object>> facts = new LinkedHashMap<>();
         for (ClassFacts c : index.classList()) {
             if (c.isPackageInfo() || c.name().endsWith("module-info") || c.sourceFile() == null) continue;
@@ -121,7 +124,7 @@ final class JvmFacts {
             }
             for (MethodFacts m : c.methods()) {
                 if (generated.contains(m.name())) continue;
-                method(c, m, owner, rel, nodes, edges, mentions, signatures, facts);
+                method(c, m, owner, rel, nodes, edges, mentions, signatures, delegates, facts);
             }
         }
         facts.forEach((id, f) -> {
@@ -130,9 +133,12 @@ final class JvmFacts {
         });
         signatures.forEach((id, sigs) -> {
             GraphNode n = nodes.get(id);
-            if (n != null && sigs.size() > 1) {
+            if (n != null) {
                 Map<String, Object> extra = new LinkedHashMap<>(n.extra());
-                extra.put("attributes", Map.of("signatures", List.copyOf(sigs)));
+                extra.put(Linker.DESCRIPTORS, List.copyOf(sigs));
+                Set<String> calls = delegates.get(id);
+                if (calls != null) extra.put(Linker.DELEGATES, List.copyOf(calls));
+                if (sigs.size() > 1) extra.put("attributes", Map.of("signatures", List.copyOf(sigs)));
                 nodes.put(
                         id, new GraphNode(n.id(), n.label(), n.fileType(), n.sourceFile(), n.sourceLocation(), extra));
             }
@@ -221,6 +227,7 @@ final class JvmFacts {
             List<GraphEdge> edges,
             List<Mention> mentions,
             Map<String, Set<String>> signatures,
+            Map<String, Set<String>> delegates,
             Map<String, Map<String, Object>> facts) {
         if (m.name().equals("<clinit>")) return;
         String name = m.name();
@@ -258,10 +265,25 @@ final class JvmFacts {
                 signature(m.desc(), from, mentions);
                 annotations(m.annotations(), from, mentions);
                 if (!owner.facade() && (m.access() & (ACC_STATIC | ACC_PRIVATE)) == 0) {
-                    overrides(c, name, from, m.firstLine(), mentions);
+                    overrides(c, name, from, m.firstLine(), m.desc() + ">" + m.desc(), mentions);
                 }
             }
         }
+        if ((m.access() & ACC_BRIDGE) != 0 && owner.named() && !owner.facade()) {
+            // A bridge carries the supertype's erased descriptor and calls the method that overrides it.
+            for (CallSite site : m.calls()) {
+                if (site.owner().equals(c.name()) && site.name().equals(m.name())) {
+                    overrides(
+                            c,
+                            m.name(),
+                            GraphIds.member(owner.id(), m.name()),
+                            m.firstLine(),
+                            site.desc() + ">" + m.desc(),
+                            mentions);
+                }
+            }
+        }
+        String caller = from.equals(owner.id()) ? "*" : callerOverload(c, m, name, lambda.matches());
         for (CallSite site : m.calls()) {
             if (platform(site.owner())) continue;
             String target = Descriptors.binaryName(site.owner());
@@ -271,7 +293,18 @@ final class JvmFacts {
                 String callee = site.name().endsWith("$default")
                         ? site.name().substring(0, site.name().length() - "$default".length())
                         : site.name();
-                mentions.add(new Mention(from, Mention.Kind.MEMBER, target + "#" + callee, site.line()));
+                String called = callee.equals(site.name()) ? site.desc() : "*";
+                if (site.owner().equals(c.name()) && callee.equals(name) && !from.equals(owner.id())) {
+                    delegates.computeIfAbsent(from, k -> new TreeSet<>()).add(caller + ">" + called);
+                }
+                mentions.add(new Mention(
+                        from,
+                        Mention.Kind.MEMBER,
+                        target + "#" + callee,
+                        site.line(),
+                        Relations.CALLS,
+                        null,
+                        caller + ">" + called));
             }
         }
         for (CallSite site : m.calls()) {
@@ -298,11 +331,27 @@ final class JvmFacts {
     }
 
     /**
+     * The descriptor of the method whose body made {@code m}'s calls: its own, or for a lambda the one
+     * method of that name in the class; {@code *} when the class declares several, or for a Kotlin
+     * {@code $default}, whose own descriptor is not the method's.
+     */
+    private static String callerOverload(ClassFacts c, MethodFacts m, String name, boolean lambda) {
+        if (!lambda) return m.desc();
+        if (m.name().endsWith("$default")) return "*";
+        List<String> named = c.methods().stream()
+                .filter(o -> o.name().equals(name) && (o.access() & (ACC_SYNTHETIC | ACC_BRIDGE)) == 0)
+                .map(MethodFacts::desc)
+                .toList();
+        return named.size() == 1 ? named.getFirst() : "*";
+    }
+
+    /**
      * The member {@code from} as an override of {@code name} on each direct supertype, or on the
      * nearest one above it that declares {@code name}: the linker resolves each, and drops the
      * mention when no supertype in the workspace declares one.
      */
-    private static void overrides(ClassFacts c, String name, String from, int line, List<Mention> mentions) {
+    private static void overrides(
+            ClassFacts c, String name, String from, int line, String overload, List<Mention> mentions) {
         List<String> direct = new ArrayList<>();
         if (c.superName() != null && !ROOT_TYPES.contains(c.superName())) direct.add(c.superName());
         direct.addAll(c.interfaces());
@@ -314,7 +363,8 @@ final class JvmFacts {
                     Descriptors.binaryName(sup) + "#" + name,
                     line,
                     Relations.OVERRIDES,
-                    "override"));
+                    "override",
+                    overload));
         }
     }
 
