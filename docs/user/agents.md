@@ -100,8 +100,9 @@ MCP is **on by default** when the engine HTTP server is on (loopback, token-gate
 the URL with `jk engine status`. Send `Authorization: Bearer <token>`. Pass `dir` on the first
 call — that binds the connection — then omit it; `bind` switches.
 
-The default `tools/list` is `run`, `diagnostics`, `deps`, and `skill`: every card is paid on every
-turn, so the list holds only what a fix-and-rerun loop calls. `run(kind=snapshot)` installs for a
+The default `tools/list` is `run`, `diagnostics`, `deps`, `callers`, and `skill`: every card is paid
+on every turn, so the list holds what a fix-and-rerun loop calls plus `callers`, which answers who
+calls a method, complete, in one call instead of a grep and reads. `run(kind=snapshot)` installs for a
 sibling project.
 `deps` edits `jk.toml` and relocks in that same call. Everything else (history, explain,
 jdk, why, …) is a `tools/list` with `{"extended": true}`. `initialize` says the same:

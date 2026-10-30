@@ -123,6 +123,7 @@ final class GraphOpCommand implements CliCommand {
         }
         if (in.isSet("graphify")) out.add("graphify=true");
         if (in.isSet("libraries")) out.add("libraries=true");
+        if (in.isSet("transitive")) out.add("transitive=true");
         return out;
     }
 

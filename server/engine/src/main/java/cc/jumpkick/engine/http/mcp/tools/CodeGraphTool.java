@@ -18,7 +18,7 @@ import java.util.function.Function;
 
 /**
  * The code graph's read tools, under graphify's names and arguments so an agent's graphify habits
- * carry over: {@code query_graph}, {@code get_node}, {@code get_neighbors}, {@code get_community},
+ * carry over, plus {@code callers}: {@code query_graph}, {@code get_node}, {@code get_neighbors}, {@code get_community},
  * {@code god_nodes}, {@code graph_stats}, {@code shortest_path}. Each refreshes the graph first (a
  * walk and a snapshot load when nothing changed) and answers in graphify's text.
  */
@@ -51,6 +51,7 @@ public final class CodeGraphTool implements McpTool {
                                 List.of("question")),
                         "query",
                         in -> List.of(required(in, "question"))),
+                callers(),
                 new CodeGraphTool(
                         spec(
                                 "read_symbol",
@@ -149,6 +150,26 @@ public final class CodeGraphTool implements McpTool {
                         in -> List.of(required(in, "source"), required(in, "target"))));
     }
 
+    /**
+     * {@code callers}: who calls a method, complete, in one call. The one graph tool on the default
+     * list — measured to answer caller questions in fewer tokens than grep and reads.
+     */
+    public static McpTool callers() {
+        return new CodeGraphTool(
+                spec(
+                        "callers",
+                        "Who calls Type.method (every overload), complete from the compiled classes: Owner.method at "
+                                + "file:line. transitive=true: all that reach it. Use it, not grep.",
+                        scoped(Map.of(
+                                "address", McpSchemas.string(),
+                                "transitive", McpSchemas.bool(),
+                                "max_hops", McpSchemas.integer(),
+                                "token_budget", McpSchemas.integer())),
+                        List.of("address")),
+                "callers",
+                in -> List.of(required(in, "address")));
+    }
+
     @Override
     public Spec spec() {
         return spec;
@@ -207,6 +228,7 @@ public final class CodeGraphTool implements McpTool {
             if (v != null && !v.isBlank()) out.add(key + "=" + v);
         }
         if (in.flag("libraries")) out.add("libraries=true");
+        if (in.flag("transitive")) out.add("transitive=true");
         return out;
     }
 

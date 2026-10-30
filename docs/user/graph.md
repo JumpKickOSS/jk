@@ -13,7 +13,8 @@ jk graph read OrderService.total           # that method's source, not the whole
 jk graph read OrderService -w structure    # the type's declarations without bodies
 jk graph find -t interface -I Repository   # declarations by kind, supertype, annotation, name
 jk graph explain OrderService              # one node and its connections
-jk graph neighbors OrderService.total -R calls   # who calls it, every overload
+jk graph callers OrderService.total       # who calls it, every overload, complete
+jk graph callers OrderService.total -t    # everything that reaches it
 jk graph path OrderService PriceCalculator -U
 jk graph rules src/main/java/com/acme/shop/OrderService.java
 jk graph god-nodes                         # the most-connected entities
@@ -21,8 +22,10 @@ jk graph report                            # GRAPH_REPORT.md: god nodes, surpris
 ```
 
 A name is a node id, a label, or `Type.member` (qualify the type, `shop.OrderService.total`, when
-two packages declare it). `neighbors` answers for every overload a `Type.member` names; the commands
-that need one node list the overloads' ids instead.
+two packages declare it). `callers` and `neighbors` answer for every overload a `Type.member` names;
+the commands that need one node list the overloads' ids instead. Answers name a member with its
+owner, `Release.Plan.label()` for a nested type's, so a caller is never read as its file's top-level
+class.
 
 ## What is in it
 
@@ -103,7 +106,7 @@ the closest names.
 
 ## Scope
 
-`query`, `explain`, `neighbors`, `god-nodes`, `read` and `find` take the same three narrowing
+`query`, `explain`, `neighbors`, `callers`, `god-nodes`, `read` and `find` take the same three narrowing
 options. A node outside the scope is neither a starting point nor walked through.
 
 | Option | Meaning |
@@ -209,6 +212,19 @@ working directory: `[graph] graphify = true` (or `jk graph build --graphify` onc
 `graph.json` (`graphify update`), the next refresh writes jk's graph back and says so. jk's graph has
 no LLM pass: documents are read for their structure, links and code mentions only.
 
+## Callers
+
+`jk graph callers Type.method` (MCP `callers`) lists every method that calls it, each as
+`Owner.method()` with its call sites' `file:line` and the first lines quoted, main sources before
+tests, with a count. The calls come from the compiled classes, so the list is complete: a call
+inside a lambda counts for the method holding it, and a call made through a supertype's method is
+listed under that method. A module whose classes are older than its sources is named in a note,
+and its calls are missing until `jk build`.
+
+`-t` (MCP `transitive=true`) lists everything that reaches the method instead: its callers, theirs,
+and so on up to `-L` hops (default 8), grouped by hop, each with the method it calls on the way.
+That is the change-impact question grep answers one hop and one file at a time.
+
 ## Against grep and other graphs
 
 The [retrieval bench](../../bench/graph-retrieval/README.md) asks who calls a method, what
@@ -234,7 +250,8 @@ On jk (679,533 lines), asked who calls a method, what implements or overrides it
 
 ## MCP
 
-jk's MCP server does not list the graph: every card an agent's host shows is paid on every turn, and
-measured agents did not call graph tools often enough to repay it. An agent that should use the
-graph gets it from graphify's MCP server (`graphify-mcp graphify-out/graph.json`) over the file
-`[graph] graphify = true` keeps current, or from `jk graph` in a shell.
+jk's MCP server lists one graph tool, `callers`: every card an agent's host shows is paid on every
+turn, and in measured agent runs only caller questions repaid it, answered in about a third fewer
+tokens than grep and reads in a large workspace. An agent that should use the rest of the graph
+gets it from graphify's MCP server (`graphify-mcp graphify-out/graph.json`) over the file `[graph]
+graphify = true` keeps current, or from `jk graph` in a shell.
