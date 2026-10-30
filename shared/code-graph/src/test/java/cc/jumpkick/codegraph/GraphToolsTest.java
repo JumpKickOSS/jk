@@ -152,7 +152,8 @@ class GraphToolsTest {
     void callers_are_counted_split_main_from_test_and_said_to_be_complete() {
         String out = new GraphTools(release()).callers("Info.name", 1, 2000);
         assertThat(out)
-                .startsWith("Callers of Info.name(): 2 in main sources, 1 in tests.\nComplete for the compiled classes")
+                .startsWith(
+                        "Callers of Info.name(): 2 in main sources, 1 in tests.\nComplete from the compiled classes")
                 .contains("main:\n  Release.Plan.label()  src/main/java/a/Release.java:21\n"
                         + "  Release.publish()  src/main/java/a/Release.java:10,12\n"
                         + "test:\n  InfoTest.names()  src/test/java/a/InfoTest.java:10")
@@ -178,5 +179,42 @@ class GraphToolsTest {
                 .doesNotContain("Callers of");
         assertThat(new GraphTools(release()).callers("Info.nmae", 1, 2000))
                 .startsWith("'Info' (src/main/java/a/Info.java) declares no member 'nmae'; its members: name");
+    }
+
+    /** {@code Step.run} calls {@code Exec.home} only; {@code Spec.home} implements it, and {@code Cli.main} calls run. */
+    private static CodeGraph dispatch() {
+        String exec = "src/main/java/a/Exec.java";
+        String spec = "src/main/java/a/Spec.java";
+        String step = "src/main/java/a/Step.java";
+        List<GraphNode> nodes = List.of(
+                type("exec", "Exec", "a.Exec", exec),
+                new GraphNode("exec_home", ".home()", "code", exec, "L4"),
+                type("spec", "Spec", "a.Spec", spec),
+                new GraphNode("spec_home", ".home()", "code", spec, "L6"),
+                type("step", "Step", "a.Step", step),
+                new GraphNode("step_run", ".run()", "code", step, "L5"),
+                new GraphNode("step_main", ".main()", "code", step, "L9"));
+        List<GraphEdge> edges = List.of(
+                GraphEdge.of("exec", "exec_home", Relations.METHOD, Confidence.EXTRACTED, exec, 4),
+                GraphEdge.of("spec", "spec_home", Relations.METHOD, Confidence.EXTRACTED, spec, 6),
+                GraphEdge.of("step", "step_run", Relations.METHOD, Confidence.EXTRACTED, step, 5),
+                GraphEdge.of("step", "step_main", Relations.METHOD, Confidence.EXTRACTED, step, 9),
+                GraphEdge.of("spec_home", "exec_home", Relations.OVERRIDES, Confidence.EXTRACTED, spec, 6),
+                GraphEdge.of("step_run", "exec_home", Relations.CALLS, Confidence.EXTRACTED, step, 6),
+                GraphEdge.of("step_main", "step_run", Relations.CALLS, Confidence.EXTRACTED, step, 10));
+        return CodeGraph.merge(List.of(new Fragment(nodes, edges)));
+    }
+
+    @Test
+    void a_call_to_the_interface_method_an_implementation_overrides_counts_as_reaching_it() {
+        assertThat(new GraphTools(dispatch()).callers("Spec.home", 1, 2000))
+                .startsWith("Callers of Spec.home(): 1 in main sources, 0 in tests.")
+                .contains("  Step.run()  src/main/java/a/Step.java:6  through Exec.home()");
+        assertThat(new GraphTools(dispatch()).callers("Spec.home", 8, 2000))
+                .contains("  hop 2:\n  Step.main()  src/main/java/a/Step.java:10  -> Step.run()");
+        assertThat(new GraphTools(dispatch()).callers("Exec.home", 1, 2000))
+                .as("the interface's own callers are not marked: they call it by name")
+                .contains("  Step.run()  src/main/java/a/Step.java:6")
+                .doesNotContain("  through ");
     }
 }

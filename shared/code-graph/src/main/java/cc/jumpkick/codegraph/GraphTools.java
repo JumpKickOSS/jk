@@ -132,15 +132,20 @@ public final class GraphTools {
         return Budget.lines(lines, budget, "Narrow with --relation, or read one symbol with jk graph read");
     }
 
-    /** One method that reaches the subject: {@code hop} calls away, through {@code callee}, at {@code edge}. */
-    private record Caller(String id, int hop, String callee, GraphEdge edge) {}
+    /**
+     * One method that reaches the subject: {@code hop} calls away, calling {@code callee} at {@code
+     * edge}, or calling {@code through}, a supertype's method {@code callee} overrides, which may run it.
+     */
+    private record Caller(
+            String id, int hop, String callee, @Nullable String through, GraphEdge edge) {}
 
     /**
      * Who calls a method, answered so it can be acted on without a search to check it: each caller
      * named {@code Owner.member()} with its call sites' {@code file:line}, main sources before
      * tests, counted, and said to be complete. Every overload of a {@code Type.member} address
      * answers. {@code depth} above 1 also lists the callers' callers, each with the method it
-     * calls on the way, up to {@code depth} hops; nothing is listed twice.
+     * calls on the way, up to {@code depth} hops; nothing is listed twice. A call to a supertype's
+     * method that a method overrides may run it, so it counts, marked with the method it names.
      */
     public String callers(String name, int depth, int budget) {
         String wanted = name.strip();
@@ -151,13 +156,16 @@ public final class GraphTools {
         for (int hop = 1; hop <= depth && !frontier.isEmpty(); hop++) {
             List<String> next = new ArrayList<>();
             for (String callee : frontier) {
-                for (GraphEdge e : graph.incident(callee)) {
-                    if (!e.target().equals(callee) || !e.relation().equals(Relations.CALLS)) continue;
-                    String caller = e.source();
-                    if (targets.contains(caller) || found.containsKey(caller) || !scope.contains(graph.node(caller)))
-                        continue;
-                    found.put(caller, new Caller(caller, hop, callee, e));
-                    next.add(caller);
+                for (String called : overridden(callee)) {
+                    for (GraphEdge e : graph.incident(called)) {
+                        if (!e.target().equals(called) || !e.relation().equals(Relations.CALLS)) continue;
+                        String caller = e.source();
+                        if (targets.contains(caller)
+                                || found.containsKey(caller)
+                                || !scope.contains(graph.node(caller))) continue;
+                        found.put(caller, new Caller(caller, hop, callee, called.equals(callee) ? null : called, e));
+                        next.add(caller);
+                    }
                 }
             }
             frontier = next;
@@ -178,9 +186,8 @@ public final class GraphTools {
         lines.add((transitive ? "Every method that reaches " : "Callers of ") + subject + ": " + main.size()
                 + " in main sources, " + test.size() + " in tests"
                 + (transitive ? ", up to " + depth + " hops." : "."));
-        lines.add("Complete for the compiled classes: every call site they record is listed, and a call inside a "
-                + "lambda counts for the method holding it, so no search is needed to confirm it. A call made "
-                + "through a supertype's method is listed under that method.");
+        lines.add("Complete from the compiled classes; no search needed. A lambda's call counts for its method; a call"
+                + " to a supertype method it overrides is marked through.");
         for (List<Caller> set : List.of(main, test)) {
             if (set.isEmpty()) continue;
             lines.add(set == main ? "main:" : "test:");
@@ -191,14 +198,28 @@ public final class GraphTools {
                     lines.add("  hop " + hop + (hop == 1 ? " (calls it directly):" : ":"));
                 }
                 String via = transitive && c.hop() > 1 ? "  -> " + GraphQuery.clean(graph.display(c.callee())) : "";
+                String through = c.through() == null ? "" : "  through " + GraphQuery.clean(graph.display(c.through()));
                 lines.add("  " + GraphQuery.clean(graph.display(c.id())) + "  "
                         + c.edge().sourceFile() + ":"
-                        + String.join(",", c.edge().sites()).replace("L", "") + via);
+                        + String.join(",", c.edge().sites()).replace("L", "") + via + through);
                 if (!transitive) lines.addAll(quotes(c.edge()).stream().limit(2).toList());
             }
         }
         if (found.isEmpty()) lines.add("Nothing in the compiled classes calls it.");
         return Budget.lines(lines, budget, "Raise the budget, or narrow with scope, modules or source_set");
+    }
+
+    /** {@code method} and every supertype method it overrides, nearest first: a call to any of them may run it. */
+    private List<String> overridden(String method) {
+        List<String> out = new ArrayList<>(List.of(method));
+        for (int i = 0; i < out.size(); i++) {
+            for (GraphEdge e : graph.incident(out.get(i))) {
+                if (e.source().equals(out.get(i))
+                        && e.relation().equals(Relations.OVERRIDES)
+                        && !out.contains(e.target())) out.add(e.target());
+            }
+        }
+        return out;
     }
 
     /**
