@@ -90,15 +90,20 @@ class AgentsGuideTest {
         assertThatThrownBy(() -> AgentsGuide.sync(dir)).hasMessageContaining("more than once");
     }
 
+    /**
+     * Every byte is paid on every turn. The callers line repays its bytes for an agent that checks
+     * every answer by hand: told the list is complete, it answers a who-calls question in a fraction of
+     * the turns it otherwise spends walking the calls itself.
+     */
     @Test
-    void the_section_points_at_the_skill_and_stays_short() {
+    void the_section_points_at_the_skill_and_callers_and_stays_short() {
         assertThat(AgentsGuide.SECTION)
                 .contains("jk skill")
-                .doesNotContain("jk graph")
+                .contains("jk graph callers")
                 .endsWith("\n");
-        assertThat(AgentsGuide.SECTION.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(800);
+        assertThat(AgentsGuide.SECTION.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(900);
         assertThat(AgentsGuide.ENFORCED_SECTION.getBytes(StandardCharsets.UTF_8).length)
-                .isLessThanOrEqualTo(800);
+                .isLessThanOrEqualTo(900);
         assertThat(AgentsGuide.SECTION).doesNotContain(AgentsGuide.BEGIN).doesNotContain(AgentsGuide.END);
         assertThat(AgentsGuide.SECTION).doesNotContain("jk format");
     }
