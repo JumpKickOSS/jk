@@ -56,6 +56,9 @@ ARMS = {
     "jk": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt=""),
     # The no-graph baseline: callers (and every other graph tool) gone from the list and refused.
     "jk-nograph": dict(tool="jk", extra=[], hide_graph=True, hooks=None, prompt=""),
+    # No graph tool on MCP and no callers line in AGENTS.md: with --shell, what jk graph callers adds
+    # when the only pointer to it is AGENTS.md (against jk-nograph, which keeps the line).
+    "jk-nograph-noline": dict(tool="jk", extra=[], hide_graph=True, hooks=None, prompt="", strip_callers=True),
     # The graph tools' cards on the MCP list (the extended list): the graph for a driver without hooks.
     "jk-graph": dict(tool="jk", extra=[], hide_graph=False, extended=True, hooks=None, prompt=""),
     "jk-hooks": dict(tool="jk", extra=[], hide_graph=False, hooks="jk", prompt=""),
@@ -330,6 +333,10 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
             # What a jk user's repository holds: jk's AGENTS.md section. Claude Code reads AGENTS.md
             # itself; a CLAUDE.md import of it adds context and nothing else.
             sh(["jk", "-u", "-x", "skill", "agents"], sandbox, 300)
+            if spec.get("strip_callers"):
+                agents_md = sandbox / "AGENTS.md"
+                kept = [line for line in agents_md.read_text().splitlines(keepends=True) if "jk graph callers" not in line]
+                agents_md.write_text("".join(kept))
         if "graphify" in extra:
             gcode, gout, gwall = sh(["graphify", "update", "."], sandbox, 3600)
             row["graphify_index_s"] = round(gwall, 1)
