@@ -16,7 +16,7 @@ Medians over runs. Tokens are input + output + cache read + cache write as the A
 | claude-code | jk-callers-projectinfo-name | jk-nograph | 5 | 5 | 372788 | 24 | 6235 | 25 | 45 | 0.00 | 0.963 |
 | claude-code | jk-callers-sidecar-name | jk | 5 | 5 | 45328 | 6 | 389 | 3 | 7 | 1.00 | 1.0 |
 | claude-code | jk-callers-sidecar-name | jk-nograph | 5 | 5 | 144826 | 14 | 1967 | 9 | 19 | 0.00 | 1.0 |
-| claude-code | jk-impact-dispatch-javahome | jk | 5 | 0 | 76885 | 8 | 1060 | 4 | 12 | 1.00 | 0.423 |
-| claude-code | jk-impact-dispatch-javahome | jk-nograph | 5 | 0 | 704546 | 34 | 12161 | 31 | 86 | 0.00 | 0.441 |
-| claude-code | jk-impact-lockstale | jk | 5 | 5 | 48089 | 6 | 560 | 3 | 8 | 1.00 | 0.909 |
-| claude-code | jk-impact-lockstale | jk-nograph | 5 | 5 | 385038 | 24 | 5661 | 21 | 37 | 0.00 | 0.958 |
+| claude-code | jk-impact-dispatch-javahome | jk | 5 | 5 | 76885 | 8 | 1060 | 4 | 12 | 1.00 | 0.923 |
+| claude-code | jk-impact-dispatch-javahome | jk-nograph | 5 | 2 | 704546 | 34 | 12161 | 31 | 86 | 0.00 | 0.872 |
+| claude-code | jk-impact-lockstale | jk | 5 | 5 | 48089 | 6 | 560 | 3 | 8 | 1.00 | 1.0 |
+| claude-code | jk-impact-lockstale | jk-nograph | 5 | 2 | 385038 | 24 | 5661 | 21 | 37 | 0.00 | 0.868 |

@@ -310,7 +310,8 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
     spec = ARMS[arm]
     question = task["kind"] == "question"
     tool, extra, hide_graph = spec["tool"], spec["extra"], spec["hide_graph"]
-    run_dir = run_root / ns.driver / arm / f"{name}.{run_no}"
+    # A --shell run is another condition: its own directory, so it never replaces the file-tools run's sandbox.
+    run_dir = run_root / ns.driver / (arm + "-shell" if ns.shell else arm) / f"{name}.{run_no}"
     if run_dir.exists():
         shutil.rmtree(run_dir)
     sandbox = run_dir / "sandbox"
