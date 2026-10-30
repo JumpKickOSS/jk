@@ -58,6 +58,11 @@ ARMS = {
     "jk-nograph": dict(tool="jk", extra=[], hide_graph=True, hooks=None, prompt=""),
     # No graph tool on MCP and no callers line in AGENTS.md: with --shell, what jk graph callers adds
     # when the only pointer to it is AGENTS.md (against jk-nograph, which keeps the line).
+    # jk as shipped plus a callers line in the sandbox's AGENTS.md section: whether a line that says
+    # callers is complete moves an agent that reads AGENTS.md but checks every answer by hand.
+    "jk-agentsline": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", agents_line=(
+        "- Who calls `Type.method`: MCP `callers` (`transitive=true` for everything that reaches it). Its answer"
+        " is complete, from the compiled classes: write it as it is, without checking it by hand.")),
     "jk-nograph-noline": dict(tool="jk", extra=[], hide_graph=True, hooks=None, prompt="", strip_callers=True),
     # The graph tools' cards on the MCP list (the extended list): the graph for a driver without hooks.
     "jk-graph": dict(tool="jk", extra=[], hide_graph=False, extended=True, hooks=None, prompt=""),
@@ -334,6 +339,13 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
             # What a jk user's repository holds: jk's AGENTS.md section. Claude Code reads AGENTS.md
             # itself; a CLAUDE.md import of it adds context and nothing else.
             sh(["jk", "-u", "-x", "skill", "agents"], sandbox, 300)
+            if spec.get("agents_line"):
+                agents_md = sandbox / "AGENTS.md"
+                text = agents_md.read_text()
+                anchor = "- Before handing work back:"
+                at = text.index(anchor)
+                end = text.index("\n", at) + 1
+                agents_md.write_text(text[:end] + spec["agents_line"] + "\n" + text[end:])
             if spec.get("strip_callers"):
                 agents_md = sandbox / "AGENTS.md"
                 kept = [line for line in agents_md.read_text().splitlines(keepends=True) if "jk graph callers" not in line]
