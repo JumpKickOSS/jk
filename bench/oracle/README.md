@@ -16,7 +16,7 @@ declare, a suite that sleeps on request), and for each edit class:
    failed suite must run again);
 3. copies the sources to a fresh directory and builds them against a fresh, empty cache;
 4. compares exit codes, every jar and every file of every classes tree, and the code graph the
-   build refreshed against a from-scratch `jk graph -r`.
+   build refreshed against a from-scratch `jk graph -r`, byte for byte (`target/graph/graph.bin`).
 
 One line per class; the exit status is non-zero when any failed. The classes cover source edits
 (body, signature, public and package-private constants, add, delete, rename, case-only rename,

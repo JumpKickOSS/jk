@@ -1,0 +1,404 @@
+#!/usr/bin/env python3
+"""Offline counterfactual: how many tokens could a graph-augmenting search hook have saved in runs
+that already happened? Reads change-tasks transcripts (Claude Code stream-json), replays every
+search against the jk code graph of the task's corpus repository, and prices two things:
+
+- savings: file reads the graph answer could have replaced. Only reads of files the run never
+  edited count, because Edit needs a Read first. A read counts when an earlier graph hit in the
+  same run named that file (``reachable``), or did so within ``--near`` API calls (``near``).
+- cost: the graph answer the hook would attach to each search that hits, once per symbol per run.
+
+Every tool result stays in context for each later API call, so a result of T tokens before the
+last N calls costs about T x N of the run's total (cache reads included, as the bench counts
+them). Both sides are priced that way. Sizes are characters / ``--chars-per-token``.
+
+All three numbers are upper bounds on the benefit: a graph answer names a file and a line, not the
+code the agent read it for. If even ``reachable`` minus cost is small next to the run's tokens, a
+hook of this kind cannot pay for itself on these tasks.
+
+    bench/agent-loop/graph-counterfactual                         # every run under change-tasks/
+    bench/agent-loop/graph-counterfactual --date 2026-10-26 --arm jk --arm jk-nograph
+    bench/agent-loop/graph-counterfactual --graph-cmd 'jk graph find -n {sym}' --json out.json
+    bench/agent-loop/graph-counterfactual --runs-only             # per-run rows too
+
+Graph answers are cached in ``--cache`` (keyed by repo, command and symbol); delete it after the
+corpus or jk changes.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shlex
+import statistics
+import subprocess
+import sys
+import tomllib
+from dataclasses import dataclass, field
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+
+
+def scratch(env: str, name: str) -> Path:
+    if os.environ.get(env):
+        return Path(os.environ[env])
+    return Path(os.environ.get("JK_BENCH_HOME", Path.home() / ".cache/jk-bench")) / name
+
+
+RUNS = scratch("AGENT_LOOP_HOME", "agent-loop") / "change-tasks"
+CORPUS = scratch("GRAPH_RETRIEVAL_HOME", "graph-retrieval") / "repos"
+# Used when tasks.toml is not beside this script (it lives with change-tasks).
+REPO_BY_PREFIX = {"commons-lang-": "commons-lang", "petclinic-": "spring-petclinic", "jk-": "jk"}
+
+EDITS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
+SOURCE_FILE = re.compile(r"[\w./$-]+\.(?:java|kt|kts|groovy|scala|xml|properties|ya?ml|toml|md|html|sql|json)\b")
+IDENT = r"[A-Za-z_$][\w$]*"
+SYMBOL = re.compile(rf"^(?:{IDENT}\.)*{IDENT}$")
+KEYWORDS = re.compile(r"^(?:(?:public|private|protected|static|final|abstract|class|interface|enum|record|void|new|"
+                      r"fun|def|val|var|boolean|int|long|String)\s+)+")
+
+
+# ---- transcript ---------------------------------------------------------------------------------
+
+@dataclass
+class Call:
+    """One tool call and the API call index its result first appears after."""
+    id: str
+    name: str
+    input: dict
+    api: int
+    result: str = ""
+    error: bool = False
+
+
+@dataclass
+class Run:
+    path: Path
+    date: str
+    arm: str
+    task: str
+    cwd: str = ""
+    api_calls: int = 0
+    total_tokens: int = 0
+    calls: list[Call] = field(default_factory=list)
+
+
+def text_of(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(c.get("text", "") for c in content if isinstance(c, dict))
+    return ""
+
+
+def load(path: Path) -> Run | None:
+    parts = path.parts
+    run = Run(path, parts[-5], parts[-3], parts[-2].rsplit(".", 1)[0])
+    by_id: dict[str, Call] = {}
+    seen_msgs: set[str] = set()
+    result = None
+    for line in path.open(errors="replace"):
+        try:
+            o = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        kind = o.get("type")
+        if kind == "system" and o.get("subtype") == "init":
+            run.cwd = o.get("cwd", "")
+        elif kind == "assistant":
+            msg = o.get("message", {})
+            if msg.get("id") not in seen_msgs:
+                seen_msgs.add(msg.get("id"))
+                run.api_calls += 1
+            for c in msg.get("content", []):
+                if c.get("type") == "tool_use":
+                    call = Call(c["id"], c["name"], c.get("input") or {}, run.api_calls)
+                    by_id[call.id] = call
+                    run.calls.append(call)
+        elif kind == "user":
+            for c in o.get("message", {}).get("content", []) if isinstance(o.get("message", {}).get("content"), list) else []:
+                if c.get("type") == "tool_result" and c.get("tool_use_id") in by_id:
+                    call = by_id[c["tool_use_id"]]
+                    call.result = text_of(c.get("content"))
+                    call.error = bool(c.get("is_error"))
+        elif kind == "result":
+            result = o
+    if not result:
+        return None
+    u = result.get("usage", {})
+    run.total_tokens = sum(int(u.get(k) or 0) for k in
+                           ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
+    return run
+
+
+def rel(run: Run, p: str) -> str:
+    p = p.strip().strip("'\"")
+    if run.cwd and p.startswith(run.cwd):
+        p = p[len(run.cwd):]
+    return p.lstrip("./").lstrip("/")
+
+
+# ---- classifying calls --------------------------------------------------------------------------
+
+def bash_words(cmd: str) -> list[list[str]]:
+    """Each simple command of a shell line, split; unparseable lines give nothing."""
+    out = []
+    for piece in re.split(r"\s*(?:&&|\|\||;|\|)\s*", cmd):
+        try:
+            words = shlex.split(piece)
+        except ValueError:
+            continue
+        if words:
+            out.append(words)
+    return out
+
+
+def search_patterns(call: Call) -> list[str]:
+    """The patterns a search call looked for: Grep, Glob, or grep / rg / git grep / find in Bash."""
+    if call.name == "Grep":
+        return [call.input.get("pattern", "")]
+    if call.name == "Glob":
+        return [call.input.get("pattern", "")]
+    if call.name != "Bash":
+        return []
+    pats = []
+    for w in bash_words(call.input.get("command", "")):
+        if w[:2] == ["git", "grep"]:
+            w = w[1:]
+        if w[0] in ("grep", "egrep", "fgrep", "rg"):
+            args = [a for a in w[1:] if not a.startswith("-")]
+            if "-e" in w and w.index("-e") + 1 < len(w):
+                pats.append(w[w.index("-e") + 1])
+            elif args:
+                pats.append(args[0])
+        elif w[0] == "find" and "-name" in w and w.index("-name") + 1 < len(w):
+            pats.append("**/" + w[w.index("-name") + 1])
+    return pats
+
+
+def symbols(pattern: str, glob: bool) -> list[str]:
+    """Identifiers a symbol-shaped pattern names, or none for literal-text or regex searches."""
+    if glob:
+        m = re.search(rf"(?:^|/)({IDENT})\.(?:java|kt|groovy)$", pattern)
+        return [m.group(1)] if m else []
+    p = pattern
+    for noise in (r"\b", r"\s*", r"\s+", r"\(", r"\)", r"\<", r"\>", ".*", r"\w*", "^", "$"):
+        p = p.replace(noise, " ")
+    p = p.replace(r"\.", ".").replace("(", " ").replace(")", " ")
+    out = []
+    for alt in p.split("|"):
+        alt = KEYWORDS.sub("", alt.strip()).strip()
+        if alt and len(alt) >= 3 and SYMBOL.match(alt):
+            out.append(alt)
+    return out[:3] if len(out) == len(p.split("|")) else []
+
+
+def read_target(call: Call) -> str | None:
+    if call.name == "Read":
+        return call.input.get("file_path")
+    if call.name == "Bash":
+        for w in bash_words(call.input.get("command", "")):
+            if w[0] in ("cat", "head", "tail", "less", "bat") or (w[0] == "sed" and "-n" in w and "-i" not in w):
+                files = [a for a in w[1:] if SOURCE_FILE.fullmatch(a.strip("'\""))]
+                if files:
+                    return files[-1]
+    return None
+
+
+def edited(call: Call) -> tuple[set[str], bool]:
+    """Files a call changed, and whether it changed files this cannot name (a bulk shell edit)."""
+    if call.name in EDITS and not call.error:
+        return {call.input.get("file_path", "")}, False
+    if call.name != "Bash":
+        return set(), False
+    cmd = call.input.get("command", "")
+    if not re.search(r"\b(sed|perl)\b[^|;&]*\s-[a-zA-Z]*i|\bmv\b|>\s*[\w/]", cmd):
+        return set(), False
+    files = set(SOURCE_FILE.findall(cmd))
+    return files, bool(re.search(r"\bxargs\b|-exec\b|\$\(|`", cmd)) or not files
+
+
+# ---- graph --------------------------------------------------------------------------------------
+
+class Graph:
+    def __init__(self, corpus: Path, template: str, budget: int, cache: Path):
+        self.corpus, self.template, self.budget, self.cache_path = corpus, template, budget, cache
+        self.cache = json.loads(cache.read_text()) if cache.exists() else {}
+        self.built: set[str] = set()
+
+    def answer(self, repo: str, sym: str) -> dict:
+        cmd = self.template.format(sym=shlex.quote(sym), budget=self.budget)
+        key = f"{repo}\t{cmd}"
+        if key in self.cache:
+            return self.cache[key]
+        tree = self.corpus / repo
+        if repo not in self.built:
+            subprocess.run(["jk", "graph", "build", "-a", "-u"], cwd=tree, capture_output=True, timeout=1800)
+            self.built.add(repo)
+        p = subprocess.run(shlex.split(cmd) + ["-u"], cwd=tree, capture_output=True, text=True,
+                           errors="replace", timeout=300)
+        hit = p.returncode == 0 and "No matching nodes" not in p.stdout and p.stdout.strip() != ""
+        self.cache[key] = {"hit": hit, "chars": len(p.stdout) if hit else 0,
+                           "files": sorted({f.lstrip("./") for f in SOURCE_FILE.findall(p.stdout)}) if hit else []}
+        return self.cache[key]
+
+    def save(self) -> None:
+        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+        self.cache_path.write_text(json.dumps(self.cache, indent=1, sort_keys=True))
+
+
+# ---- the counterfactual -------------------------------------------------------------------------
+
+def repo_of(task: str, task_repos: dict) -> str | None:
+    if task in task_repos:
+        return task_repos[task]
+    return next((r for pre, r in REPO_BY_PREFIX.items() if task.startswith(pre)), None)
+
+
+def analyse(run: Run, repo: str, graph: Graph, ns) -> dict:
+    tok = lambda chars: chars / ns.chars_per_token  # noqa: E731
+    carried = lambda chars, api: tok(chars) * max(run.api_calls - api, 0)  # noqa: E731
+
+    edits, bulk = set(), False
+    for c in run.calls:
+        files, unknown = edited(c)
+        edits |= {rel(run, f) for f in files if f}
+        bulk |= unknown
+
+    hits: list[tuple[int, set[str]]] = []   # (api index, files the answer named)
+    seen_syms: set[str] = set()
+    row = dict(date=run.date, arm=run.arm, task=run.task, run=run.path.parent.name, tokens=run.total_tokens,
+               api_calls=run.api_calls, searches=0, symbol_searches=0, graph_hits=0, reads=0, explore_reads=0,
+               read_tok=0.0, ceiling=0.0, reachable=0.0, near=0.0, cost=0.0, bulk_edit=bulk)
+    for c in run.calls:
+        pats = search_patterns(c)
+        if pats:
+            row["searches"] += 1
+            syms = [s for p in pats for s in symbols(p, c.name == "Glob" or p.startswith("**/"))]
+            if syms:
+                row["symbol_searches"] += 1
+            for s in syms:
+                a = graph.answer(repo, s)
+                if not a["hit"]:
+                    continue
+                row["graph_hits"] += 1
+                hits.append((c.api, set(a["files"])))
+                if s not in seen_syms:
+                    seen_syms.add(s)
+                    row["cost"] += carried(a["chars"], c.api)
+            continue
+        target = read_target(c)
+        if not target or c.error:
+            continue
+        f = rel(run, target)
+        size = carried(len(c.result), c.api)
+        row["reads"] += 1
+        row["read_tok"] += size
+        if f in edits:
+            continue
+        row["explore_reads"] += 1
+        row["ceiling"] += size
+        named = [api for api, files in hits if api <= c.api and f in files]
+        if named:
+            row["reachable"] += size
+            if c.api - max(named) <= ns.near:
+                row["near"] += size
+    row["net"] = row["reachable"] - row["cost"]
+    for k in ("read_tok", "ceiling", "reachable", "near", "cost", "net"):
+        row[k] = round(row[k])
+    return row
+
+
+def pct(part: float, whole: float) -> str:
+    return f"{100 * part / whole:5.1f}%" if whole else "   - "
+
+
+def report(rows: list[dict], ns) -> None:
+    cols = ("ceiling", "reachable", "near", "cost", "net")
+    if ns.runs_only:
+        print("| Date | Arm | Run | Tokens | Calls | Search (sym/hit) | Explore reads | "
+              + " | ".join(c.capitalize() for c in cols) + " | Bulk edit |")
+        print("|" + "---|" * (8 + len(cols) - 2))
+        for r in rows:
+            print(f"| {r['date']} | {r['arm']} | {r['run']} | {r['tokens']} | {r['api_calls']} "
+                  f"| {r['searches']} ({r['symbol_searches']}/{r['graph_hits']}) | {r['explore_reads']}/{r['reads']} | "
+                  + " | ".join(pct(r[c], r["tokens"]) for c in cols) + f" | {'yes' if r['bulk_edit'] else ''} |")
+        print()
+
+    print("Median share of the run's tokens (each group's runs):\n")
+    print("| Arm | Task | Runs | Median tokens | " + " | ".join(c.capitalize() for c in cols) + " |")
+    print("|" + "---|" * (4 + len(cols)))
+    groups: dict[tuple, list[dict]] = {}
+    for r in rows:
+        groups.setdefault((r["arm"], r["task"]), []).append(r)
+    for (arm, task), rs in sorted(groups.items()):
+        share = lambda c: statistics.median(r[c] / r["tokens"] for r in rs if r["tokens"])  # noqa: E731
+        print(f"| {arm} | {task} | {len(rs)} | {statistics.median(r['tokens'] for r in rs):.0f} | "
+              + " | ".join(f"{100 * share(c):.1f}%" for c in cols) + " |")
+
+    total = sum(r["tokens"] for r in rows)
+    agg = {c: sum(r[c] for r in rows) for c in cols}
+    print(f"\nAll {len(rows)} runs, token-weighted: " + ", ".join(f"{c} {pct(agg[c], total).strip()}" for c in cols))
+    bulk = sum(r["bulk_edit"] for r in rows)
+    if bulk:
+        print(f"{bulk} run(s) edited files through the shell in ways this cannot name; their reads may count as "
+              "exploration when they were not, which only raises the ceiling.")
+    best = agg["net"] / total if total else 0
+    verdict = ("below" if best < ns.bar else "above")
+    print(f"\nUpper-bound net saving {100 * best:.1f}% is {verdict} the {100 * ns.bar:.0f}% bar"
+          + (": a graph-augmenting search hook cannot pay for itself on these tasks." if best < ns.bar
+             else ": worth a live spike (this is a ceiling, not a forecast)."))
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--runs-root", type=Path, default=RUNS, help=f"change-tasks output root (default {RUNS})")
+    ap.add_argument("--corpus", type=Path, default=CORPUS, help=f"graph-retrieval repos (default {CORPUS})")
+    ap.add_argument("--date", action="append", help="only these run dates (repeatable)")
+    ap.add_argument("--arm", action="append", help="only these arms (repeatable)")
+    ap.add_argument("--task", action="append", help="only these tasks (repeatable)")
+    ap.add_argument("--driver", default="claude-code", help="only this driver's transcripts (stream-json)")
+    ap.add_argument("--graph-cmd", default="jk graph query {sym} -b {budget} -n",
+                    help="the answer a hook would attach; {sym} and {budget} are filled in")
+    ap.add_argument("--budget", type=int, default=300, help="graph answer budget in tokens (default 300)")
+    ap.add_argument("--near", type=int, default=3, help="API calls within which a hit counts as 'near' (default 3)")
+    ap.add_argument("--chars-per-token", type=float, default=3.5)
+    ap.add_argument("--bar", type=float, default=0.10, help="net share worth a live spike (default 0.10)")
+    ap.add_argument("--cache", type=Path, default=RUNS / "graph-counterfactual-cache.json")
+    ap.add_argument("--runs-only", action="store_true", help="print per-run rows before the summary")
+    ap.add_argument("--json", type=Path, help="write the per-run rows here")
+    ns = ap.parse_args()
+
+    tasks_toml = HERE / "tasks.toml"
+    task_repos = ({n: t["repo"] for n, t in tomllib.loads(tasks_toml.read_text())["tasks"].items()}
+                  if tasks_toml.exists() else {})
+    graph = Graph(ns.corpus, ns.graph_cmd, ns.budget, ns.cache)
+    rows = []
+    for path in sorted(ns.runs_root.glob(f"*/{ns.driver}/*/*/transcript.jsonl")):
+        date, arm = path.parts[-5], path.parts[-3]
+        if (ns.date and date not in ns.date) or (ns.arm and arm not in ns.arm):
+            continue
+        run = load(path)
+        if not run or (ns.task and run.task not in ns.task):
+            continue
+        repo = repo_of(run.task, task_repos)
+        if not repo or not (ns.corpus / repo / "jk.toml").exists():
+            print(f"skip {path.parent}: no corpus repo for {run.task}", file=sys.stderr)
+            continue
+        rows.append(analyse(run, repo, graph, ns))
+        print(f"{date} {arm} {path.parent.name}", file=sys.stderr)
+    graph.save()
+    if not rows:
+        print("no runs matched", file=sys.stderr)
+        return 1
+    if ns.json:
+        ns.json.write_text(json.dumps(rows, indent=1))
+    report(rows, ns)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
