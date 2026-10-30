@@ -17,10 +17,10 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * The code graph's read tools, under graphify's names and arguments so an agent's graphify habits
- * carry over, plus {@code callers}: {@code query_graph}, {@code get_node}, {@code get_neighbors}, {@code get_community},
- * {@code god_nodes}, {@code graph_stats}, {@code shortest_path}. Each refreshes the graph first (a
- * walk and a snapshot load when nothing changed) and answers in graphify's text.
+ * The code graph's read tools, named like the {@code jk graph} subcommands they answer: {@code
+ * callers} on the default list, {@code query}, {@code read} and {@code find} on the extended one.
+ * Each refreshes the graph first (a walk and a snapshot load when nothing changed) and answers with
+ * {@code Owner.member()} at {@code file:line}.
  */
 public final class CodeGraphTool implements McpTool {
 
@@ -32,122 +32,6 @@ public final class CodeGraphTool implements McpTool {
         this.spec = spec;
         this.op = op;
         this.args = args;
-    }
-
-    /** Every graph tool, in the order {@code tools/list} shows them. */
-    public static List<McpTool> all() {
-        return List.of(
-                new CodeGraphTool(
-                        spec(
-                                "query_graph",
-                                "Answer a question about the code in a token budget, with file:line, instead of "
-                                        + "grep and reads. scope (path globs, ! excludes), modules, source_set narrow it.",
-                                scoped(Map.of(
-                                        "question", McpSchemas.string(),
-                                        "mode", McpSchemas.oneOf("bfs", "dfs"),
-                                        "depth", McpSchemas.integer(),
-                                        "token_budget", McpSchemas.integer(),
-                                        "context_filter", McpSchemas.strings("call, field, import, …"))),
-                                List.of("question")),
-                        "query",
-                        in -> List.of(required(in, "question"))),
-                callers(),
-                new CodeGraphTool(
-                        spec(
-                                "read_symbol",
-                                "A symbol's source instead of whole files: Type, Type.member, Type.*, a path; "
-                                        + "#line=N,M. The budget picks content, structure or headline.",
-                                scoped(Map.of(
-                                        "address", McpSchemas.string(),
-                                        "view", McpSchemas.oneOf("content", "structure", "headline"),
-                                        "token_budget", McpSchemas.integer())),
-                                List.of("address")),
-                        "read",
-                        in -> List.of(required(in, "address"))),
-                new CodeGraphTool(
-                        spec(
-                                "find_symbols",
-                                "Declarations by kind, visibility, extends, implements, annotated, name glob; each "
-                                        + "a comma list.",
-                                scoped(Map.of(
-                                        "name", McpSchemas.string(),
-                                        "kind", McpSchemas.string(),
-                                        "visibility", McpSchemas.string(),
-                                        "extends", McpSchemas.string(),
-                                        "implements", McpSchemas.string(),
-                                        "annotated", McpSchemas.string())),
-                                List.of()),
-                        "find",
-                        in -> {
-                            String name = in.str("name");
-                            return name == null || name.isBlank() ? List.of() : List.of(name);
-                        }),
-                new CodeGraphTool(
-                        spec(
-                                "rules_for",
-                                "Before editing a file: the guard rules that govern it (what is banned, the "
-                                        + "sanctioned alternative, why) and its NOTE:/WHY: comments.",
-                                props(Map.of("path", McpSchemas.string())),
-                                List.of("path")),
-                        "rules",
-                        in -> List.of(required(in, "path"))),
-                new CodeGraphTool(
-                        spec(
-                                "get_node",
-                                "One node's details: source file and line, type, community, degree. Same as jk graph node.",
-                                props(Map.of("label", McpSchemas.string(), "node_id", McpSchemas.string())),
-                                List.of()),
-                        "node",
-                        in -> List.of(name(in))),
-                new CodeGraphTool(
-                        spec(
-                                "get_neighbors",
-                                "A symbol's direct connections with relation and file:line.",
-                                props(Map.of(
-                                        "label", McpSchemas.string(),
-                                        "node_id", McpSchemas.string(),
-                                        "relation_filter", McpSchemas.string("calls, imports, …"),
-                                        "token_budget", McpSchemas.integer())),
-                                List.of()),
-                        "neighbors",
-                        in -> List.of(name(in))),
-                new CodeGraphTool(
-                        spec(
-                                "get_community",
-                                "The members of one community (a cluster of closely connected code). Same as jk graph community.",
-                                props(Map.of(
-                                        "community_id", McpSchemas.integer(), "token_budget", McpSchemas.integer())),
-                                List.of("community_id")),
-                        "community",
-                        in -> List.of(String.valueOf(in.num("community_id")))),
-                new CodeGraphTool(
-                        spec(
-                                "god_nodes",
-                                "The most-connected entities: where to start reading. Same as jk graph god-nodes.",
-                                scoped(Map.of("top_n", McpSchemas.integer("How many (default 10)"))),
-                                List.of()),
-                        "god-nodes",
-                        in -> List.of()),
-                new CodeGraphTool(
-                        spec(
-                                "graph_stats",
-                                "Node, edge and community counts and the confidence mix. Same as jk graph stats.",
-                                props(Map.of()),
-                                List.of()),
-                        "stats",
-                        in -> List.of()),
-                new CodeGraphTool(
-                        spec(
-                                "shortest_path",
-                                "How two symbols connect: the shortest path along edge direction unless undirected.",
-                                props(Map.of(
-                                        "source", McpSchemas.string(),
-                                        "target", McpSchemas.string(),
-                                        "max_hops", McpSchemas.integer(),
-                                        "undirected", McpSchemas.bool())),
-                                List.of("source", "target")),
-                        "path",
-                        in -> List.of(required(in, "source"), required(in, "target"))));
     }
 
     /**
@@ -170,6 +54,58 @@ public final class CodeGraphTool implements McpTool {
                 in -> List.of(required(in, "address")));
     }
 
+    /** {@code query}: the symbols and connections a question is about, as {@code jk graph query} answers it. */
+    public static McpTool query() {
+        return new CodeGraphTool(
+                spec(
+                        "query",
+                        "Answer a question about the code in a token budget: the symbols it names and how they "
+                                + "connect, each at file:line, instead of grep and reads.",
+                        scoped(Map.of("question", McpSchemas.string(), "token_budget", McpSchemas.integer())),
+                        List.of("question")),
+                "query",
+                in -> List.of(required(in, "question")));
+    }
+
+    /** {@code read}: one symbol's source or a type's members, as {@code jk graph read} answers it. */
+    public static McpTool read() {
+        return new CodeGraphTool(
+                spec(
+                        "read",
+                        "A symbol's source instead of whole files: Type, Type.member, Type.*, a path; "
+                                + "#line=N,M. The budget picks content, structure or headline.",
+                        scoped(Map.of(
+                                "address", McpSchemas.string(),
+                                "view", McpSchemas.oneOf("content", "structure", "headline"),
+                                "token_budget", McpSchemas.integer())),
+                        List.of("address")),
+                "read",
+                in -> List.of(required(in, "address")));
+    }
+
+    /** {@code find}: declarations by kind, visibility, supertype, annotation and name, as {@code jk graph find}. */
+    public static McpTool find() {
+        return new CodeGraphTool(
+                spec(
+                        "find",
+                        "Declarations by kind, visibility, extends, implements, annotated, name glob; each "
+                                + "a comma list.",
+                        scoped(Map.of(
+                                "name", McpSchemas.string(),
+                                "kind", McpSchemas.string(),
+                                "visibility", McpSchemas.string(),
+                                "extends", McpSchemas.string(),
+                                "implements", McpSchemas.string(),
+                                "annotated", McpSchemas.string(),
+                                "token_budget", McpSchemas.integer())),
+                        List.of()),
+                "find",
+                in -> {
+                    String name = in.str("name");
+                    return name == null || name.isBlank() ? List.of() : List.of(name);
+                });
+    }
+
     @Override
     public Spec spec() {
         return spec;
@@ -181,15 +117,13 @@ public final class CodeGraphTool implements McpTool {
                 PathUtil.resolveUserPath(in.requiredDir()).toString(),
                 op,
                 args.apply(in),
-                "dfs".equals(in.str("mode")) ? "dfs" : "bfs",
-                in.count("depth", 3, 1, 6),
+                "bfs",
+                3,
                 in.count("token_budget", 2000, 100, 100_000),
-                in.strings("context_filter"),
+                List.of(),
                 false,
-                in.flag("undirected"),
                 in.count("max_hops", 8, 1, 50),
-                in.count("top_n", 10, 1, 200),
-                in.str("relation_filter"),
+                null,
                 false,
                 false,
                 in.str("scope"),
@@ -227,12 +161,11 @@ public final class CodeGraphTool implements McpTool {
             String v = in.str(key);
             if (v != null && !v.isBlank()) out.add(key + "=" + v);
         }
-        if (in.flag("libraries")) out.add("libraries=true");
         if (in.flag("transitive")) out.add("transitive=true");
         return out;
     }
 
-    /** {@code props} plus the optional scope a graphify caller never passes: paths, modules, source set. */
+    /** {@code props} plus the optional scope: paths, modules, source set. */
     private static Map<String, Object> scoped(Map<String, Object> props) {
         Map<String, Object> out = new LinkedHashMap<>(props);
         out.put("scope", McpSchemas.string());
@@ -244,13 +177,6 @@ public final class CodeGraphTool implements McpTool {
     private static String required(McpCall in, String key) {
         String v = in.str(key);
         if (v == null || v.isBlank()) throw new McpError(-32602, "requires arguments." + key);
-        return v;
-    }
-
-    private static String name(McpCall in) {
-        String v = in.str("node_id");
-        if (v == null || v.isBlank()) v = in.str("label");
-        if (v == null || v.isBlank()) throw new McpError(-32602, "requires arguments.label or arguments.node_id");
         return v;
     }
 }

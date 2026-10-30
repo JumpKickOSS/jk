@@ -3,9 +3,7 @@ package cc.jumpkick.graph;
 
 import cc.jumpkick.codegraph.Budget;
 import cc.jumpkick.codegraph.CodeGraph;
-import cc.jumpkick.codegraph.GraphJson;
 import cc.jumpkick.codegraph.GraphQuery;
-import cc.jumpkick.codegraph.GraphReport;
 import cc.jumpkick.codegraph.GraphSnapshot;
 import cc.jumpkick.codegraph.GraphTools;
 import cc.jumpkick.codegraph.Modules;
@@ -33,21 +31,8 @@ public final class GraphService {
     private GraphService() {}
 
     /** The operations {@link #run} answers. */
-    public static final List<String> OPS = List.of(
-            "build",
-            "query",
-            "explain",
-            "path",
-            "node",
-            "neighbors",
-            "callers",
-            "community",
-            "god-nodes",
-            "stats",
-            "report",
-            "read",
-            "find",
-            "rules");
+    public static final List<String> OPS =
+            List.of("build", "query", "path", "neighbors", "callers", "read", "find", "rules");
 
     /**
      * One operation's arguments, as the CLI and MCP surfaces collect them. {@code modulePrefixes} are
@@ -61,10 +46,8 @@ public final class GraphService {
             int depth,
             int budget,
             List<String> contexts,
-            boolean all,
             boolean undirected,
             int maxHops,
-            int topN,
             @Nullable String relation,
             boolean rebuild,
             boolean noRefresh,
@@ -86,10 +69,8 @@ public final class GraphService {
                 int depth,
                 int budget,
                 List<String> contexts,
-                boolean all,
                 boolean undirected,
                 int maxHops,
-                int topN,
                 @Nullable String relation,
                 boolean rebuild,
                 boolean noRefresh) {
@@ -100,10 +81,8 @@ public final class GraphService {
                     depth,
                     budget,
                     contexts,
-                    all,
                     undirected,
                     maxHops,
-                    topN,
                     relation,
                     rebuild,
                     noRefresh,
@@ -116,8 +95,7 @@ public final class GraphService {
 
     /**
      * What the engine knows about the workspace: its root, where its graph lives, every module's
-     * class facts index, its modules, the script reader, whether {@code graphify-out/} is kept
-     * current, the {@code [graph.aliases]} (term → outside words), for {@code rules} the guard rules
+     * class facts index, its modules, the script reader, the {@code [graph.aliases]} (term → outside words), for {@code rules} the guard rules
      * the engine matched to the file (one JSON object each), and for {@code read} and {@code find} the
      * locked jars and where their API indexes are kept.
      */
@@ -127,7 +105,6 @@ public final class GraphService {
             List<GraphBuild.ClassIndex> indexes,
             Modules modules,
             ScriptReader scripts,
-            boolean graphify,
             Map<String, List<String>> aliases,
             List<String> guardRules,
             List<LibraryApi.Jar> libraries,
@@ -141,9 +118,8 @@ public final class GraphService {
         }
     }
 
-    /** An operation's text, the refresh it was answered from, and a note for the user or {@code null}. */
-    public record Answer(
-            String text, GraphBuild.Result build, @Nullable String note) {}
+    /** An operation's text and the refresh it was answered from. */
+    public record Answer(String text, GraphBuild.Result build) {}
 
     public static Answer run(Workspace w, Request r, GraphBuild.Progress progress) throws IOException {
         if (!OPS.contains(r.op())) throw new IllegalArgumentException("unknown graph operation '" + r.op() + "'");
@@ -156,32 +132,24 @@ public final class GraphService {
         if (build == null) {
             build = GraphBuild.refresh(w.root(), w.out(), w.indexes(), w.modules(), w.scripts(), r.rebuild(), progress);
         }
-        String note = w.graphify() ? GraphifyMirror.sync(w.root(), w.out(), build.changed()) : null;
-        return new Answer(text(w, build, r), build, note);
+        return new Answer(text(w, build, r), build);
     }
 
     /**
      * The last graph written, without looking at the tree: the one in memory while it is current,
-     * else {@code graph.bin}, else {@code graph.json}.
+     * else {@code graph.bin}; {@code null} when neither holds one.
      */
     private static GraphBuild.@Nullable Result stored(Path out) {
         GraphMemory.Graph held = GraphMemory.graph(out);
         if (held != null) return storedResult(held.graph(), held.key(), out);
-        try {
-            Path bin = out.resolve(GraphOutputs.SNAPSHOT);
-            if (Files.isRegularFile(bin)) {
-                try (InputStream in = Files.newInputStream(bin)) {
-                    GraphSnapshot.Loaded loaded = GraphSnapshot.read(in);
-                    if (loaded != null) {
-                        GraphMemory.sawGraph(out, loaded.graph(), loaded.key());
-                        return storedResult(loaded.graph(), loaded.key(), out);
-                    }
-                }
-            }
-            Path json = out.resolve(GraphOutputs.JSON);
-            if (!Files.isRegularFile(json)) return null;
-            return new GraphBuild.Result(GraphJson.read(Files.readString(json)), 0, 0, 0, out, 0, false, null);
-        } catch (IOException | IllegalArgumentException unreadable) {
+        Path bin = out.resolve(GraphOutputs.SNAPSHOT);
+        if (!Files.isRegularFile(bin)) return null;
+        try (InputStream in = Files.newInputStream(bin)) {
+            GraphSnapshot.Loaded loaded = GraphSnapshot.read(in);
+            if (loaded == null) return null;
+            GraphMemory.sawGraph(out, loaded.graph(), loaded.key());
+            return storedResult(loaded.graph(), loaded.key(), out);
+        } catch (IOException unreadable) {
             return null;
         }
     }
@@ -200,10 +168,8 @@ public final class GraphService {
             case "query" ->
                 new GraphQuery(g, scope, w.aliases())
                         .query(String.join(" ", a), mode(r.mode()), r.depth(), r.budget(), r.contexts());
-            case "explain" -> tools.explain(arg(a, 0, "a node name"), r.all());
             case "path" ->
                 tools.shortestPath(arg(a, 0, "a source"), arg(a, 1, "a target"), r.maxHops(), r.undirected());
-            case "node" -> tools.node(arg(a, 0, "a node name"));
             case "neighbors" ->
                 tools.neighbors(arg(a, 0, "a node name"), r.relation() == null ? "" : r.relation(), r.budget());
             case "callers" ->
@@ -211,10 +177,6 @@ public final class GraphService {
                         arg(a, 0, "a method"),
                         EnvValues.parseBool(r.options().get("transitive")).orElse(false) ? r.maxHops() : 1,
                         r.budget());
-            case "community" -> tools.community(community(arg(a, 0, "a community id")), r.budget());
-            case "god-nodes" -> tools.godNodes(r.topN());
-            case "stats" -> tools.stats(build.commit());
-            case "report" -> GraphReport.write(g, build.commit());
             case "rules" -> RulesFor.answer(g, w.root(), arg(a, 0, "a file"), w.guardRules());
             case "find" -> find(w, g, scope, r, a);
             case "read" ->
@@ -262,14 +224,6 @@ public final class GraphService {
 
     private static GraphQuery.Mode mode(String mode) {
         return mode.toLowerCase(Locale.ROOT).equals("dfs") ? GraphQuery.Mode.DFS : GraphQuery.Mode.BFS;
-    }
-
-    private static int community(String id) {
-        try {
-            return Integer.parseInt(id.strip());
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("community id must be a number, got '" + id + "'");
-        }
     }
 
     private static String arg(List<String> args, int i, String what) {

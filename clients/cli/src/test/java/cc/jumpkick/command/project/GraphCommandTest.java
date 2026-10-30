@@ -29,21 +29,8 @@ class GraphCommandTest {
                 .isEqualTo("build");
         assertThat(new GraphCommand().subcommands())
                 .extracting(CliCommand::name)
-                .containsExactly(
-                        "build",
-                        "query",
-                        "explain",
-                        "path",
-                        "node",
-                        "neighbors",
-                        "callers",
-                        "community",
-                        "god-nodes",
-                        "read",
-                        "find",
-                        "rules",
-                        "stats",
-                        "report");
+                .containsExactly("build", "query", "path", "neighbors", "callers", "read", "find", "rules");
+        assertThat(op("build").options()).isEmpty();
     }
 
     @Test
@@ -117,14 +104,13 @@ class GraphCommandTest {
 
     @Test
     void theBuildSummaryNamesWhatWasRead() {
-        GraphAck ack = new GraphAck(null, "", 61_304, 167_942, 1_771, 5_419, 0, 4_917, 460, "/w/target/graph", null);
+        GraphAck ack = new GraphAck(null, "", 61_304, 167_942, 5_419, 0, 4_917, 460, "/w/target/graph", null);
         assertThat(GraphOpCommand.summary(ack))
-                .contains(
-                        "61,304 nodes · 167,942 edges · 1,771 communities from 5,419 files (none changed, 4,917 classes)");
+                .contains("61,304 nodes · 167,942 edges from 5,419 files (none changed, 4,917 classes)");
     }
 
     @Test
-    void noOptionsMeansGraphifysDefaults() {
+    void noOptionsMeansTheDefaults() {
         GraphRequest r = op("path")
                 .request(
                         Path.of("/w"),

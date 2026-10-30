@@ -2,10 +2,7 @@
 package cc.jumpkick.graph;
 
 import cc.jumpkick.codegraph.CodeGraph;
-import cc.jumpkick.codegraph.Communities;
 import cc.jumpkick.codegraph.Fragment;
-import cc.jumpkick.codegraph.GraphJson;
-import cc.jumpkick.codegraph.GraphReport;
 import cc.jumpkick.codegraph.GraphSnapshot;
 import cc.jumpkick.codegraph.Linker;
 import cc.jumpkick.codegraph.Modules;
@@ -21,7 +18,6 @@ import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -42,8 +38,7 @@ import org.jspecify.annotations.Nullable;
  * file's stat with the last build's; when nothing moved and the class indexes are the ones the last
  * graph was built from, the stored snapshot is the answer. Otherwise every changed file is hashed
  * and, if its bytes changed, extracted again (in parallel), the class facts are mapped, and the
- * graph is linked, clustered and written: {@code graph.json}, {@code graph.bin}, {@code
- * GRAPH_REPORT.md}, {@code files.tsv} and {@code fragments.jsonl}.
+ * graph is linked and written: {@code graph.bin}, {@code files.tsv} and {@code fragments.jsonl}.
  */
 public final class GraphBuild {
 
@@ -63,11 +58,6 @@ public final class GraphBuild {
         default void phase(String label) {}
     }
 
-    /**
-     * One source set's facts index, kept current by the engine: the index file, the repo-relative
-     * directory of its module ({@code ""} for the root, else ending in {@code /}), its body digest
-     * and its class count.
-     */
     /**
      * One module's class set: its facts index, the module's path prefix, the index's digest and
      * class count, and the workspace-relative sources edited since those classes were built, whose
@@ -206,13 +196,12 @@ public final class GraphBuild {
         }
         progress.phase("map compiled classes");
         int classes = mapClasses(sources, indexes, all);
-        progress.phase("link and cluster");
+        progress.phase("link");
         CodeGraph graph = Linker.link(all);
         graph.modules(modules);
         graph.stale(stale(base, graph.stale()));
-        Communities.assign(graph);
         progress.phase("write graph");
-        write(out, graph, key, commit);
+        write(out, graph, key);
         GraphMemory.sawGraph(out, graph, key);
         stats.save(out, sources);
         GraphMemory.savedStats(out, stats);
@@ -263,15 +252,8 @@ public final class GraphBuild {
                 && had.classes().equals(key.classes());
     }
 
-    private static void write(Path out, CodeGraph graph, GraphSnapshot.Key key, @Nullable String commit)
-            throws IOException {
+    private static void write(Path out, CodeGraph graph, GraphSnapshot.Key key) throws IOException {
         Files.createDirectories(out);
-        Path json = AtomicWrites.staging(out.resolve(GraphOutputs.JSON));
-        try (Writer w = Files.newBufferedWriter(json, StandardCharsets.UTF_8)) {
-            GraphJson.write(graph, GraphOutputs.generator(), commit, w);
-        }
-        AtomicWrites.moveInto(json, out.resolve(GraphOutputs.JSON));
-        AtomicWrites.replace(out.resolve(GraphOutputs.REPORT), GraphReport.write(graph, commit));
         Path tmp = AtomicWrites.staging(out.resolve(GraphOutputs.SNAPSHOT));
         try (OutputStream o = Files.newOutputStream(tmp)) {
             GraphSnapshot.write(graph, key, o);

@@ -59,18 +59,17 @@ class ScopeTest {
 
     @Test
     void aScopedQuerySeedsAndWalksOnlyInsideIt() throws IOException {
-        CodeGraph g = GraphJsonTest.shop();
+        CodeGraph g = ShopFixture.graph();
         String kotlin = new GraphQuery(g, scope("src/main/kotlin/**"), Map.of())
                 .query("price calculator", GraphQuery.Mode.BFS, 2, 2000, List.of());
-        assertThat(kotlin.lines().filter(l -> l.startsWith("NODE ")))
+        assertThat(kotlin.lines().skip(2).takeWhile(l -> !l.contains(" -")))
                 .isNotEmpty()
-                .allMatch(l -> l.contains("src=src/main/kotlin/"));
+                .allMatch(l -> l.contains("  src/main/kotlin/"));
         String javaOnly = new GraphQuery(g, scope("src/main/java/**"), Map.of())
                 .query("what does OrderService use", GraphQuery.Mode.BFS, 2, 2000, List.of());
         assertThat(javaOnly)
-                .contains("NODE OrderService")
+                .contains("\nOrderService  src/main/java/com/acme/shop/OrderService.java:")
                 .doesNotContain("README.md")
                 .doesNotContain("PriceCalculator");
-        assertThat(new GraphTools(g, scope("docs/**")).godNodes(5)).doesNotContain("OrderService");
     }
 }

@@ -387,7 +387,7 @@ final class JvmSourceScanner {
     private static final Pattern CONSTRUCTOR = Pattern.compile("(?m)^[ \\t]*(?:(?:" + ANNOTATION
             + "|public|protected|private)\\s+)*(?:<[^>]+>\\s+)?([A-Z][\\w$]*)\\s*\\(");
 
-    /** A Java constructor is a member named after its type, as graphify names it: {@code .Outer()}. */
+    /** A Java constructor is a member named after its type: {@code .Outer()}. */
     private static void constructors(
             FragmentBuilder b, String text, String code, Lines lines, int[] depth, int[] close, List<Open> open) {
         Matcher m = CONSTRUCTOR.matcher(code);

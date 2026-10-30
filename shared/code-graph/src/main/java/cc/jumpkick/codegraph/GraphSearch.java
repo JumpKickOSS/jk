@@ -13,7 +13,7 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Lexical node search, graphify's scorer: per query term an exact label match is worth 1000, a
+ * Lexical node search: per query term an exact label match is worth 1000, a
  * prefix 100, a substring 1 and a source-path hit 0.5, each weighted by the term's IDF over labels;
  * the whole query matching a label exactly or as a prefix adds ten times that. Label tiers scale by
  * the square of the share of terms matched. A word of a declaration's doc summary is worth 0.6. No

@@ -187,8 +187,10 @@ public final class McpTools {
                 new IdeTool(),
                 new GraphTool(),
                 new DoctorTool(),
-                // Of CodeGraphTool.all(), only callers: the one graph tool measured to save agents tokens.
-                CodeGraphTool.callers()));
+                CodeGraphTool.callers(),
+                CodeGraphTool.query(),
+                CodeGraphTool.read(),
+                CodeGraphTool.find()));
         return new McpTools(tools, LOOP);
     }
 

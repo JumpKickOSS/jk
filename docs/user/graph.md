@@ -1,10 +1,9 @@
 # Code graph
 
-`jk graph` maps a workspace into a knowledge graph of its code, configuration and documentation, and
-answers questions from it within a token budget; every answer names `file:line` for what it
-mentions. It is built in: no Python install, an index in seconds, and call edges from the compiled
-classes. Its `graphify-out/graph.json` is graphify's format, so graphify's own skill and MCP server
-read it unchanged.
+`jk graph` maps a workspace into a graph of its code, configuration and documentation, and answers
+questions from it within a token budget. It is built in: nothing to install, an index in seconds,
+and call edges from the compiled classes. Every answer names a symbol as `Owner.member()` and places
+it at `file:line`.
 
 ```bash
 jk graph                                   # build or refresh target/graph/
@@ -12,18 +11,16 @@ jk graph query "how is the order total computed"
 jk graph read OrderService.total           # that method's source, not the whole file
 jk graph read OrderService -w structure    # the type's declarations without bodies
 jk graph find -t interface -I Repository   # declarations by kind, supertype, annotation, name
-jk graph explain OrderService              # one node and its connections
-jk graph callers OrderService.total       # who calls it, every overload, complete
-jk graph callers OrderService.total -t    # everything that reaches it
+jk graph callers OrderService.total        # who calls it, every overload, complete
+jk graph callers OrderService.total -t     # everything that reaches it
+jk graph neighbors OrderService            # its direct connections
 jk graph path OrderService PriceCalculator -U
 jk graph rules src/main/java/com/acme/shop/OrderService.java
-jk graph god-nodes                         # the most-connected entities
-jk graph report                            # GRAPH_REPORT.md: god nodes, surprises, communities
 ```
 
 A name is a node id, a label, or `Type.member` (qualify the type, `shop.OrderService.total`, when
 two packages declare it). `callers` and `neighbors` answer for every overload a `Type.member` names;
-the commands that need one node list the overloads' ids instead. Answers name a member with its
+`path`, which needs one node, lists the overloads' ids instead. Answers name a member with its
 owner, `Release.Plan.label()` for a nested type's, so a caller is never read as its file's top-level
 class.
 
@@ -40,9 +37,9 @@ class.
 | HTML, CSS/SCSS/Less, SQL, DOT/Mermaid/PlantUML, CSV | pages, tables, columns | loaded files, imported stylesheets, drawn types |
 
 Calls, inheritance and type references come from the compiled classes, resolved by the compiler, so
-they are exact (`EXTRACTED`). A tree that does not compile yet still gets its declarations from the
-source; build to bring the call edges up to date. Links from prose and config keys matched by name
-are `INFERRED`.
+they are exact. A tree that does not compile yet still gets its declarations from the source; build
+to bring the call edges up to date. Links from prose and config keys matched by name are inferred,
+and an answer marks them `(inferred)`.
 
 Every JVM declaration also carries its kind (class, interface, enum, record, annotation, object,
 method, constructor, function, property), visibility, last line, annotations, supertypes and the
@@ -74,14 +71,21 @@ stays up between commands with the graph in memory and exits after 30 idle minut
 ## Reading an answer
 
 ```
-Traversal: BFS depth=3 | Start: ['OrderService'] | 19 nodes found
+From OrderService: 15 symbols within 3 hops, breadth-first.
 
-NODE OrderService [src=src/main/java/com/acme/shop/OrderService.java loc=L6 community=OrderService]
-EDGE OrderService --inherits [EXTRACTED]--> BaseService at=src/main/java/com/acme/shop/OrderService.java:L6
+OrderService  src/main/java/com/acme/shop/OrderService.java:6
+OrderService.total()  src/main/java/com/acme/shop/OrderService.java:10
+BaseService  src/main/java/com/acme/shop/BaseService.java:3
+OrderService -inherits-> BaseService  src/main/java/com/acme/shop/OrderService.java:6
+OrderService.total() -calls-> PriceCalculator.sum()  src/main/java/com/acme/shop/OrderService.java:12
+Shop -references-> OrderService (inferred)  README.md:3
 ```
 
-An edge found at several lines of its file (two calls from one method, or from overloads, which
-share a node) names them all: `at=…/StringUtils.java:L7206,L7235`.
+The symbols come first, each at the line that declares it, then the connections, each at the line
+that makes it. A connection found at several lines of its file (two calls from one method, or from
+overloads, which share a node) names them all: `…/StringUtils.java:7206,7235`. A connection says
+`(inferred)` when it was matched by name rather than read from the code, and names its kind
+(`field`, `parameter_type`, …) when the relation alone does not.
 
 The question's words pick the starting nodes: an exact name beats a prefix, which beats a whole
 camel-case word inside a name (`errors` finds `ApiErrors`), which beats a substring; plurals, past
@@ -91,9 +95,9 @@ dependencies on the same word, and tests start an answer only when the question 
 (the walk still reaches them). A few words map to what code calls them (`endpoint` and `route` to
 controllers and mappings). The graph is walked `-d` hops (default 3) and the result is cut to `-b`
 tokens (default 2000): the starting nodes first, then the nodes the question's words match, best
-match first, then the rest nearest first, then the edges, those touching the nearest nodes first —
-so a cut drops what the question did not ask about, and the budget holds even when every node
-fits. A cut answer says how large a budget would show everything. A question that matches nothing lists
+match first, then the rest nearest first, then the connections, those touching the nearest symbols
+first — so a cut drops what the question did not ask about, and the budget holds even when every
+symbol fits. A cut answer says how large a budget would show everything. A question that matches nothing lists
 the closest names.
 
 | Option | Meaning |
@@ -101,13 +105,13 @@ the closest names.
 | `-d`, `--depth N` | Hops from the matched nodes |
 | `-b`, `--budget N` | Answer size in tokens |
 | `-s`, `--dfs` | Walk depth-first |
-| `-c`, `--context call,field,…` | Follow only edges with these contexts; a question that says "calls" or "imports" sets it, and one that says "returns", "member" or "template" sets it unless that leaves fewer than ten nodes (the header then says the context was dropped) |
+| `-c`, `--context call,field,…` | Follow only edges with these contexts; a question that says "calls" or "imports" sets it, and one that says "returns", "member" or "template" sets it unless that leaves fewer than ten symbols (the first line then says every edge was followed) |
 | `-n`, `--no-refresh` | Answer from the last graph without looking at the tree |
 
 ## Scope
 
-`query`, `explain`, `neighbors`, `callers`, `god-nodes`, `read` and `find` take the same three narrowing
-options. A node outside the scope is neither a starting point nor walked through.
+`query`, `neighbors`, `callers`, `read` and `find` take the same three narrowing options. A symbol
+outside the scope is neither a starting point nor walked through.
 
 | Option | Meaning |
 |---|---|
@@ -173,44 +177,35 @@ jk graph find -l '*Mapper' -t class
 module, its source set, the rule's `files` and `languages`, no `allow` entry for it), each with the
 sanctioned alternative and why, and the `NOTE:`/`WHY:` comments the file carries.
 
+## Neighbors and paths
+
+`jk graph neighbors <name>` lists a symbol's direct connections, one per line:
+`-calls-> PriceCalculator.sum()  src/main/java/com/acme/shop/OrderService.java:12` for an edge
+leaving it, `<-inherits- OrderService  …` for one arriving, with the lines that make it quoted when
+the file reads. `-R calls` keeps only relations containing the word.
+
+`jk graph path <from> <to>` names the shortest chain of connections between two symbols, one symbol
+per line with its `file:line`. It follows edge direction; `-U` ignores it, and `-L` caps the hops
+(default 8).
+
 ## Outputs
 
-`target/graph/` at the workspace root:
-
-| File | Contents |
-|---|---|
-| `graph.json` | The graph in graphify's node-link format (`graph.schema_version` 1) |
-| `GRAPH_REPORT.md` | God nodes, surprising connections, import cycles, stale doc references and communities: one read to orient |
-| `graph.bin` | A compact copy jk reloads quickly |
-| `files.tsv`, `fragments.jsonl` | Per-file state that makes the next refresh incremental |
-
-The report's stale doc references are relative links to files that do not exist, and qualified class
-names in one of the workspace's packages that no source declares.
+`target/graph/` at the workspace root holds jk's own state, read by `jk graph` and the MCP tools:
+`graph.bin` (the graph), and `files.tsv` and `fragments.jsonl` (per-file state that makes the next
+refresh incremental). None of it is an exchange format.
 
 ## Settings
 
 The workspace root's `jk.toml`:
 
 ```toml
-[graph]
-graphify = true                          # keep graphify-out/ current for graphify's tools
-
 [graph.aliases]
 Tariff = ["price", "rate card"]          # a question saying "price" also starts at Tariff
 ```
 
 An alias maps a name in the code to the words people use for it. A question holding one of the words
-also starts from the name.
-
-### graphify
-
-`graph.json` follows [graphify](https://github.com/Graphify-Labs/graphify)'s format and node ids, so
-graphify's tools read it unchanged. jk's declaration facts sit under each node's `jk` key, which
-graphify keeps and does not search. graphify's skill looks for `graphify-out/graph.json` in the
-working directory: `[graph] graphify = true` (or `jk graph build --graphify` once) writes
-`graphify-out/graph.json` and `GRAPH_REPORT.md` on every refresh. When something else rewrites that
-`graph.json` (`graphify update`), the next refresh writes jk's graph back and says so. jk's graph has
-no LLM pass: documents are read for their structure, links and code mentions only.
+also starts from the name. jk's graph has no LLM pass: documents are read for their structure, links
+and code mentions only.
 
 ## Callers
 
@@ -250,8 +245,9 @@ On jk (679,533 lines), asked who calls a method, what implements or overrides it
 
 ## MCP
 
-jk's MCP server lists one graph tool, `callers`: every card an agent's host shows is paid on every
-turn, and in measured agent runs only caller questions repaid it, answered in about a third fewer
-tokens than grep and reads in a large workspace. An agent that should use the rest of the graph
-gets it from graphify's MCP server (`graphify-mcp graphify-out/graph.json`) over the file `[graph]
-graphify = true` keeps current, or from `jk graph` in a shell.
+jk's MCP server lists one graph tool by default, `callers`: every card an agent's host shows is paid
+on every turn, and in measured agent runs only caller questions repaid it, answered in about a third
+fewer tokens than grep and reads in a large workspace. `query`, `read` and `find` answer as their
+`jk graph` subcommands do and are on the extended list (`tools/list` with `extended: true`, or
+`[mcp] tools = "all"`); every tool is callable by name either way. `neighbors`, `path` and `rules`
+are `jk graph` in a shell. See [MCP](mcp.md).

@@ -10,9 +10,7 @@ import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A declaration's facts, held on its node under the top-level {@code jk} key of {@code graph.json}.
- * graphify keeps the key and never searches it (it searches {@code attributes}), so these facts
- * leave graphify's answers unchanged.
+ * A declaration's facts, held on its node under the {@code jk} key of its extra fields.
  *
  * <p>Keys: {@code kind} ({@code class}, {@code interface}, {@code enum}, {@code record}, {@code
  * annotation}, {@code object}, {@code trait}, {@code method}, {@code constructor}, {@code function},

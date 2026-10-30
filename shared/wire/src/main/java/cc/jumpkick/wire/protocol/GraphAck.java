@@ -7,16 +7,15 @@ import org.jspecify.annotations.Nullable;
 /**
  * The answer to a {@link GraphRequest}: the operation's text (empty for {@code build}) and the
  * graph it was answered from. {@code files} files were walked and {@code extracted} of them read
- * again; {@code dir} is where {@code graph.json} was written; {@code note} is one line the user
- * should see, such as jk taking {@code graphify-out/} back. {@code error} is set, and nothing else
- * is meaningful, when the request failed.
+ * again; {@code dir} is where the graph was written; {@code note} is what the user should see about
+ * the answer, such as compiled facts left out of it. {@code error} is set, and nothing else is
+ * meaningful, when the request failed.
  */
 public record GraphAck(
         @Nullable String error,
         String text,
         int nodes,
         int edges,
-        int communities,
         int files,
         int extracted,
         int classes,
@@ -25,7 +24,7 @@ public record GraphAck(
         @Nullable String note) {
 
     public static GraphAck error(String message) {
-        return new GraphAck(message, "", 0, 0, 0, 0, 0, 0, 0, "", null);
+        return new GraphAck(message, "", 0, 0, 0, 0, 0, 0, "", null);
     }
 
     public boolean ok() {
@@ -38,7 +37,6 @@ public record GraphAck(
                 .string("text", text)
                 .number("nodes", nodes)
                 .number("edges", edges)
-                .number("communities", communities)
                 .number("files", files)
                 .number("extracted", extracted)
                 .number("classes", classes)
@@ -56,7 +54,6 @@ public record GraphAck(
                 text == null ? "" : text,
                 Jsonl.intValue(json, "nodes", 0),
                 Jsonl.intValue(json, "edges", 0),
-                Jsonl.intValue(json, "communities", 0),
                 Jsonl.intValue(json, "files", 0),
                 Jsonl.intValue(json, "extracted", 0),
                 Jsonl.intValue(json, "classes", 0),

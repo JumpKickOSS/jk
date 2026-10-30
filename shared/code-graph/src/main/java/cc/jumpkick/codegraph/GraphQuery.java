@@ -9,14 +9,17 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
- * graphify's {@code query_graph}: seed from {@link GraphSearch}, walk {@code depth} hops breadth- or
+ * {@code jk graph query}: seed from {@link GraphSearch}, walk {@code depth} hops breadth- or
  * depth-first (hubs above the 99th degree percentile, at least 50, are not expanded unless seeded),
- * then render seeds first and the rest nearest-first as {@code NODE}/{@code EDGE} lines cut to
- * {@code budget} tokens at three characters per token.
+ * then render seeds first and the rest nearest-first, cut to {@code budget} tokens at three
+ * characters per token. A symbol reads {@code Owner.member()  path/File.java:12}, a connection
+ * {@code a -calls-> b  path/File.java:21,9}.
  */
 public final class GraphQuery {
 
@@ -36,7 +39,7 @@ public final class GraphQuery {
     /** Contexts whose hint words are as often plain English as a question about the relation. */
     private static final Set<String> AMBIGUOUS = Set.of("field", "parameter_type", "return_type", "generic_arg");
 
-    /** Edge contexts a question's words imply, in graphify's order. */
+    /** Edge contexts a question's words imply, in the order the header names them. */
     private static final List<Map.Entry<String, List<String>>> CONTEXT_HINTS = List.of(
             Map.entry("call", List.of("call", "calls", "called", "caller", "callers", "invoke", "invokes", "invoked")),
             Map.entry("import", List.of("import", "imports", "imported", "module", "modules")),
@@ -48,6 +51,7 @@ public final class GraphQuery {
     private final CodeGraph graph;
     private final Scope scope;
     private final Map<String, List<String>> aliases;
+    private final GraphTools tools;
 
     public GraphQuery(CodeGraph graph) {
         this(graph, Scope.ALL, Map.of());
@@ -61,6 +65,7 @@ public final class GraphQuery {
         this.graph = graph;
         this.scope = scope;
         this.aliases = aliases;
+        this.tools = new GraphTools(graph, scope);
     }
 
     /** The budgeted answer to {@code question}; {@code contexts} empty infers them from its words. */
@@ -71,7 +76,7 @@ public final class GraphQuery {
         for (String id : search.rank(withAliases(question))) relevant.putIfAbsent(id, relevant.size());
         if (seeds.isEmpty()) return noMatch(search.nearest(question, 8));
         List<String> filters = contexts.isEmpty() ? inferContexts(question) : contexts;
-        String source = contexts.isEmpty() ? "heuristic" : "explicit";
+        String source = contexts.isEmpty() ? "read from the question" : "as asked";
         Walk walk = mode == Mode.DFS ? dfs(seeds, depth, filters) : bfs(seeds, depth, filters);
         if (contexts.isEmpty()
                 && AMBIGUOUS.containsAll(filters)
@@ -80,24 +85,28 @@ public final class GraphQuery {
             // "returns", "member", "template" are ordinary English as often as they ask for a
             // relation ("which endpoint returns …"); a context read off one that starves the walk
             // was the wrong guess, so the walk runs unfiltered. "calls" and "imports" always mean it.
-            source = "heuristic, dropped: it left " + walk.nodes().size() + " nodes";
             Walk open = mode == Mode.DFS ? dfs(seeds, depth, List.of()) : bfs(seeds, depth, List.of());
             if (open.nodes().size() > walk.nodes().size()) {
-                walk = open;
-                List<String> header = new ArrayList<>();
-                header.add("Traversal: " + mode + " depth=" + depth);
-                header.add("Start: " + seeds.stream().map(this::label).toList());
-                header.add("Context: " + String.join(", ", filters) + " (" + source + ")");
-                header.add(walk.nodes().size() + " nodes found");
-                return String.join(" | ", header) + "\n\n" + render(walk, seeds, relevant, budget, List.of());
+                String dropped = "every edge: only " + String.join(", ", filters)
+                        + " edges, read from the question, left " + walk.nodes().size() + " symbols";
+                return header(seeds, mode, depth, open, dropped) + "\n\n"
+                        + render(open, seeds, relevant, budget, List.of());
             }
         }
-        List<String> header = new ArrayList<>();
-        header.add("Traversal: " + mode + " depth=" + depth);
-        header.add("Start: " + seeds.stream().map(this::label).toList());
-        if (!filters.isEmpty()) header.add("Context: " + String.join(", ", filters) + " (" + source + ")");
-        header.add(walk.nodes().size() + " nodes found");
-        return String.join(" | ", header) + "\n\n" + render(walk, seeds, relevant, budget, filters);
+        String following = filters.isEmpty() ? null : String.join(", ", filters) + " edges (" + source + ")";
+        return header(seeds, mode, depth, walk, following) + "\n\n" + render(walk, seeds, relevant, budget, filters);
+    }
+
+    /**
+     * {@code From A, B: 19 symbols within 2 hops, breadth-first, following call edges (read from the
+     * question).}
+     */
+    private String header(List<String> seeds, Mode mode, int depth, Walk walk, @Nullable String following) {
+        return "From " + String.join(", ", seeds.stream().map(this::label).toList()) + ": "
+                + walk.nodes().size()
+                + (walk.nodes().size() == 1 ? " symbol" : " symbols") + " within " + depth
+                + (depth == 1 ? " hop, " : " hops, ") + (mode == Mode.DFS ? "depth-first" : "breadth-first")
+                + (following == null ? "" : ", following " + following) + ".";
     }
 
     record Walk(Set<String> nodes, List<String[]> edges) {}
@@ -164,8 +173,8 @@ public final class GraphQuery {
                         .thenComparingInt(n -> -graph.degree(n))
                         .thenComparing(n -> n))
                 .forEach(ordered::add);
-        List<String> lines = new ArrayList<>();
-        for (String id : ordered) lines.add(nodeLine(id));
+        List<String> nodes = new ArrayList<>();
+        for (String id : ordered) nodes.add(nodeLine(id));
         Map<String, Integer> rank = new HashMap<>();
         for (int i = 0; i < ordered.size(); i++) rank.put(ordered.get(i), i);
         Set<String> drawn = new HashSet<>();
@@ -177,6 +186,7 @@ public final class GraphQuery {
             }
         }
         // An edge ranks by its nearer end, so a budget cut keeps the seeds' own connections.
+        List<String> edges = new ArrayList<>();
         drawnEdges.stream()
                 .sorted(Comparator.comparingInt((GraphEdge e) -> Math.min(
                                 rank.getOrDefault(e.source(), Integer.MAX_VALUE),
@@ -184,27 +194,32 @@ public final class GraphQuery {
                         .thenComparingInt(e -> Math.max(
                                 rank.getOrDefault(e.source(), Integer.MAX_VALUE),
                                 rank.getOrDefault(e.target(), Integer.MAX_VALUE))))
-                .forEach(e -> lines.add(edgeLine(e)));
-        return Budget.cut(lines, seedHits.size(), budget);
+                .forEach(e -> edges.add(edgeLine(e)));
+        return Budget.cut(nodes, edges, seedHits.size(), budget);
     }
 
+    /** {@code Owner.member()  path/File.java:12}. */
     private String nodeLine(String id) {
-        GraphNode n = graph.node(id);
-        if (n == null) return "NODE " + clean(id);
-        int c = graph.community(id);
-        String name = c < 0 ? null : graph.communityName(c);
-        String community = name != null ? name : c < 0 ? "" : String.valueOf(c);
-        return "NODE " + clean(graph.display(id)) + " [src=" + clean(n.sourceFile()) + " loc="
-                + clean(n.sourceLocation()) + " community=" + clean(community) + "]";
+        return clean(graph.display(id)) + tools.where(id);
     }
 
+    /**
+     * {@code a -references-> b (field, inferred)  path/File.java:21,9}: the context only when neither
+     * the relation nor an end already says it, the confidence only when the edge was not read from
+     * the code.
+     */
     private String edgeLine(GraphEdge e) {
-        String context = e.context() == null ? "" : " context=" + clean(e.context());
-        String at = e.sourceLocation().isEmpty()
-                ? ""
-                : " at=" + clean(e.sourceFile()) + ":" + clean(String.join(",", e.sites()));
-        return "EDGE " + clean(label(e.source())) + " --" + clean(e.relation()) + " [" + e.confidence() + context
-                + "]--> " + clean(label(e.target())) + at;
+        List<String> notes = new ArrayList<>();
+        String context = e.context();
+        if (context != null
+                && !context.isBlank()
+                && !e.relation().startsWith(context)
+                && !label(e.source()).contains(context)
+                && !label(e.target()).contains(context)) notes.add(clean(context));
+        if (e.confidence() != Confidence.EXTRACTED)
+            notes.add(e.confidence().name().toLowerCase(Locale.ROOT));
+        return clean(label(e.source())) + " -" + clean(e.relation()) + "-> " + clean(label(e.target()))
+                + (notes.isEmpty() ? "" : " (" + String.join(", ", notes) + ")") + GraphTools.at(e);
     }
 
     private Map<String, Integer> hops(List<String> seeds, Set<String> nodes) {
@@ -285,8 +300,7 @@ public final class GraphQuery {
         List<String> lines = new ArrayList<>();
         lines.add(NO_MATCH + " Closest names:");
         for (String id : nearest) {
-            GraphNode n = graph.node(id);
-            if (n != null) lines.add("  " + clean(graph.display(id)) + "  " + n.sourceFile() + ":" + Decl.line(n));
+            if (graph.has(id)) lines.add("  " + clean(graph.display(id)) + tools.where(id));
         }
         return String.join("\n", lines);
     }

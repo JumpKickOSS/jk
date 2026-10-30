@@ -6,6 +6,7 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -18,16 +19,16 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A built graph in a compact binary form a query loads in a fraction of {@code graph.json}'s time:
- * a string table, then nodes and edges as indices into it. {@code key} records what the graph was
- * built from, so a reader can tell whether it still describes the tree. Not an exchange format:
- * {@code graph.json} is the one other tools read.
+ * A built graph in the compact binary form every read loads: a string table, then nodes and edges
+ * as indices into it. {@code key} records what the graph was built from, so a reader can tell
+ * whether it still describes the tree.
  *
  * <p>Layout: magic {@code JKGS}, format 1, the key, the string table, the nodes ({@code id, label,
- * file_type, source_file, source_location, extra-as-JSON, community}), the edges ({@code source,
- * target, relation, confidence ordinal, score, source_file, source_location, weight, context,
- * extra-as-JSON}, every string an index, {@code -1} for none), the community names, then the
- * modules ({@code prefix, compact}) and the stale document references as JSON.
+ * file_type, source_file, source_location, extra-as-JSON}), the edges ({@code source, target,
+ * relation, confidence ordinal, source_file, source_location, context, extra-as-JSON}, every string
+ * an index, {@code -1} for none, then score and weight as floats), the modules ({@code prefix,
+ * compact}) and the stale document references as JSON, then end of file. A file that does not
+ * parse to exactly that end reads as no snapshot.
  */
 public final class GraphSnapshot {
 
@@ -60,8 +61,7 @@ public final class GraphSnapshot {
                 strings.of(g.fileType()),
                 strings.of(g.sourceFile()),
                 strings.of(g.sourceLocation()),
-                g.extra().isEmpty() ? -1 : strings.of(MiniJson.write(g.extra())),
-                graph.community(g.id())
+                g.extra().isEmpty() ? -1 : strings.of(MiniJson.write(g.extra()))
             };
         }
         List<GraphEdge> edges = graph.edges();
@@ -98,13 +98,6 @@ public final class GraphSnapshot {
             d.writeFloat((float) edges.get(i).confidenceScore());
             d.writeFloat((float) edges.get(i).weight());
         }
-        Map<Integer, List<String>> communities = graph.communities();
-        d.writeInt(communities.size());
-        for (int c : communities.keySet()) {
-            d.writeInt(c);
-            String name = graph.communityName(c);
-            writeString(d, name == null ? "" : name);
-        }
         List<Modules.Module> modules = graph.modules().list();
         d.writeInt(modules.size());
         for (Modules.Module m : modules) {
@@ -122,14 +115,25 @@ public final class GraphSnapshot {
         return readKey(d);
     }
 
+    /**
+     * The snapshot {@code in} holds; {@code null} for a file that is not one, including one of another
+     * layout or cut short, so the caller builds the graph again.
+     */
     public static @Nullable Loaded read(InputStream in) throws IOException {
         DataInputStream d = new DataInputStream(new BufferedInputStream(in, 1 << 16));
+        try {
+            return read(d);
+        } catch (EOFException | RuntimeException malformed) {
+            return null;
+        }
+    }
+
+    private static @Nullable Loaded read(DataInputStream d) throws IOException {
         if (d.readInt() != MAGIC || d.readInt() != FORMAT) return null;
         Key key = readKey(d);
         String[] s = new String[d.readInt()];
         for (int i = 0; i < s.length; i++) s[i] = readString(d);
         GraphNode[] nodes = new GraphNode[d.readInt()];
-        Map<String, Integer> community = new HashMap<>();
         for (int i = 0; i < nodes.length; i++) {
             String id = s[d.readInt()];
             String label = s[d.readInt()];
@@ -137,9 +141,7 @@ public final class GraphSnapshot {
             String file = s[d.readInt()];
             String loc = s[d.readInt()];
             int extra = d.readInt();
-            int c = d.readInt();
             nodes[i] = new GraphNode(id, label, type, file, loc, extra < 0 ? Map.of() : map(s[extra]));
-            if (c >= 0) community.put(id, c);
         }
         List<GraphEdge> edges = new ArrayList<>();
         int count = d.readInt();
@@ -167,19 +169,14 @@ public final class GraphSnapshot {
                     context < 0 ? null : s[context],
                     extra < 0 ? Map.of() : map(s[extra])));
         }
-        Map<Integer, String> names = new HashMap<>();
-        int communities = d.readInt();
-        for (int i = 0; i < communities; i++) {
-            int c = d.readInt();
-            String name = readString(d);
-            if (!name.isEmpty()) names.put(c, name);
-        }
         List<Modules.Module> modules = new ArrayList<>();
         int moduleCount = d.readInt();
         for (int i = 0; i < moduleCount; i++) modules.add(new Modules.Module(readString(d), d.readBoolean()));
-        CodeGraph graph = CodeGraph.of(List.of(nodes), edges, community, names);
+        List<StaleRef> stale = StaleRef.ofTree(MiniJson.parse(readString(d)));
+        if (d.read() != -1) return null;
+        CodeGraph graph = CodeGraph.merge(List.of(new Fragment(List.of(nodes), edges)));
         graph.modules(new Modules(modules));
-        graph.stale(StaleRef.ofTree(MiniJson.parse(readString(d))));
+        graph.stale(stale);
         return new Loaded(key, graph);
     }
 

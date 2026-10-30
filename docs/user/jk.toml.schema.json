@@ -522,9 +522,8 @@
     },
     "graph": {
       "type": "object",
-      "description": "[graph] table (workspace root): graphify = true keeps graphify-out/ current for graphify's tools; [graph.aliases] maps a term in the code to the outside words that should find it. See docs/user/graph.md.",
+      "description": "[graph] table (workspace root): [graph.aliases] maps a term in the code to the outside words that should find it. See docs/user/graph.md.",
       "properties": {
-        "graphify": { "type": "boolean" },
         "aliases": {
           "type": "object",
           "additionalProperties": { "type": "array", "items": { "type": "string" } }

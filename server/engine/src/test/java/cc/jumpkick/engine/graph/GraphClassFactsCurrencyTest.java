@@ -81,6 +81,6 @@ class GraphClassFactsCurrencyTest {
     }
 
     private static GraphAck ack() {
-        return new GraphAck(null, "", 0, 0, 0, 0, 0, 0, 0, "", null);
+        return new GraphAck(null, "", 0, 0, 0, 0, 0, 0, "", null);
     }
 }

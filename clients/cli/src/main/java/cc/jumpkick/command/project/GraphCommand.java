@@ -12,9 +12,9 @@ import java.util.List;
 
 /**
  * {@code jk graph}: the workspace's code graph — symbols, files, configuration and docs, and how
- * they connect — built engine-side and queried within a token budget. Bare {@code jk graph} builds
- * it; every read refreshes it first. Format and tools follow graphify's, so an agent's graphify
- * habits work unchanged. See {@code docs/user/graph.md}.
+ * they connect, with calls and overrides from the compiled classes — built engine-side and queried
+ * within a token budget. Bare {@code jk graph} builds it; every read refreshes it first. Answers
+ * name a symbol {@code Owner.member()} at {@code file:line}. See {@code docs/user/graph.md}.
  */
 public final class GraphCommand extends GroupCommand {
 
@@ -45,10 +45,7 @@ public final class GraphCommand extends GroupCommand {
     }
 
     private final GraphOpCommand build = new GraphOpCommand(
-            "build",
-            "Build or refresh target/graph/ (-r re-reads every file)",
-            List.of(Opt.flag("Also write graphify-out/ for graphify's tools.", "-g", "--graphify")),
-            List.of());
+            "build", "Build or refresh target/graph/ (-r re-reads every file)", List.of(), List.of());
 
     @Override
     public List<CliCommand> subcommands() {
@@ -70,11 +67,6 @@ public final class GraphCommand extends GroupCommand {
                                 NO_REFRESH),
                         List.of(Param.of("question", Arity.ONE_OR_MORE, "words or symbol names"))),
                 new GraphOpCommand(
-                        "explain",
-                        "Show one node and its connections",
-                        scoped(Opt.flag("List every connection, not the top 20.", "-A", "--all"), NO_REFRESH),
-                        List.of(Param.of("name", Arity.ONE, "label or node id"))),
-                new GraphOpCommand(
                         "path",
                         "Shortest path between two nodes",
                         List.of(
@@ -84,11 +76,6 @@ public final class GraphCommand extends GroupCommand {
                         List.of(
                                 Param.of("from", Arity.ONE, "label or node id"),
                                 Param.of("to", Arity.ONE, "label or node id"))),
-                new GraphOpCommand(
-                        "node",
-                        "One node's details",
-                        List.of(NO_REFRESH),
-                        List.of(Param.of("name", Arity.ONE, "label or node id"))),
                 new GraphOpCommand(
                         "neighbors",
                         "A node's direct connections",
@@ -110,16 +97,6 @@ public final class GraphCommand extends GroupCommand {
                                 BUDGET,
                                 NO_REFRESH),
                         List.of(Param.of("method", Arity.ONE, "Type.method (every overload)"))),
-                new GraphOpCommand(
-                        "community",
-                        "The members of one community",
-                        List.of(BUDGET, NO_REFRESH),
-                        List.of(Param.of("id", Arity.ONE, "community number"))),
-                new GraphOpCommand(
-                        "god-nodes",
-                        "The most-connected entities",
-                        scoped(Opt.value("<n>", "How many (default 10).", "-t", "--top"), NO_REFRESH),
-                        List.of()),
                 new GraphOpCommand(
                         "read",
                         "A symbol's source or a type's members, in the view that fits",
@@ -155,9 +132,7 @@ public final class GraphCommand extends GroupCommand {
                         "rules",
                         "The guard rules and NOTE/WHY comments that govern a file",
                         List.of(NO_REFRESH),
-                        List.of(Param.of("file", Arity.ONE, "a path from the workspace root"))),
-                new GraphOpCommand("stats", "Node, edge and community counts", List.of(NO_REFRESH), List.of()),
-                new GraphOpCommand("report", "Print GRAPH_REPORT.md", List.of(NO_REFRESH), List.of()));
+                        List.of(Param.of("file", Arity.ONE, "a path from the workspace root"))));
     }
 
     @Override
