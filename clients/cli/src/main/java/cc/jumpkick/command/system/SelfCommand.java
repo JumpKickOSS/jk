@@ -4,6 +4,7 @@ package cc.jumpkick.command.system;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.cache.PreparedUpdate;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.engine.EngineFleet;
@@ -16,9 +17,11 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontDetect;
 import cc.jumpkick.config.NerdFontMode;
+import cc.jumpkick.config.SelfUpdateState;
 import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -28,7 +31,9 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.repo.ReleaseVerifier;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.version.Versions;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -334,7 +339,10 @@ public final class SelfCommand extends GroupCommand {
         public List<Opt> options() {
             // No --version option: the global -V/--version flag owns that name (the dispatcher
             // rejects duplicates), so the target rides as a positional.
-            return List.of(Opt.flag("Stop the engine immediately (no drain)", "-n", "--now"));
+            return List.of(
+                    Opt.flag("Stop the engine immediately (no drain)", "-n", "--now"),
+                    Opt.flag("Report whether a newer release is out; install nothing", "-c", "--check"),
+                    Opt.flag("Download and verify the release; install it later", "-d", "--download"));
         }
 
         @Override
@@ -349,40 +357,40 @@ public final class SelfCommand extends GroupCommand {
             String target = in.positionals().isEmpty() ? null : in.positionals().get(0);
             String running = JkVersion.VERSION;
             ReleaseVerifier verifier = ReleaseVerifier.current(GlobalConfig.releaseTrustedKeys());
+            if (in.isSet("check")) return check(base, verifier, running);
             if (target == null) target = ReleaseArtifacts.latestVersion(base, verifier, running);
             if (target.isEmpty()) {
                 CommandWedge.printFail("Self", "could not resolve a target version");
                 return Exit.SOFTWARE;
             }
+            String version = target;
+            boolean download = in.isSet("download");
+            boolean downgrade = Versions.compare(version, running) < 0;
             EngineInstall install = EngineInstall.current();
             Cas cas = JkStores.storeCas();
-            if (target.equals(running) && install.resolve(target).isPresent()) {
-                CommandWedge.printOk("Self", target + " is already current");
+            if (version.equals(running) && install.resolve(version).isPresent()) {
+                PreparedUpdate.delete(install.engineHome());
+                if (!download) releaseHold();
+                CommandWedge.printOk("Self", version + " is already current");
                 return 0;
             }
 
-            ReleaseArtifacts.Manifest release = ReleaseArtifacts.manifest(base, target, verifier);
-            boolean jvm = JvmClient.installed();
-            // A JVM client moves to the native one as soon as a release lists it for this host,
-            // unless JK_CLIENT=jvm asks to stay; a native client has nothing else to move to.
-            String nativeClient = !jvm
-                    ? pickClientArtifact(release.text(), target)
-                    : "jvm".equals(System.getenv("JK_CLIENT"))
-                            ? null
-                            : nativeClientArtifact(release.text(), target).orElse(null);
-            if (nativeClient == null) {
-                // The install the launcher describes: a new jar under <home>/lib/jk and a launcher
-                // rewritten over it, on the JVM this update runs on.
-                EngineInstall.Materialized engine = fetchAndMaterializeJvm(release, target, install, cas);
-                CommandWedge.printOk("Self", target + " installed (" + engine.engineJar() + ")");
+            // One update at a time per home: the engine's own update and a prompt's answer run this too.
+            Optional<String> installed = FileLocks.withLock(install.engineHome().resolve(UPDATE_LOCK), () -> {
+                PreparedUpdate prepared = preparedFor(install, cas, version).orElse(null);
+                if (prepared == null) prepared = prepare(base, verifier, version, running, install, cas);
+                return download ? Optional.<String>empty() : Optional.of(apply(prepared, install, cas, downgrade));
+            });
+            if (installed.isEmpty()) {
+                CommandWedge.printOk("Self", version + " downloaded; `jk self update " + version + "` installs it");
+                return 0;
+            }
+            CommandWedge.printOk("Self", version + " installed (" + installed.get() + ")");
+            if (downgrade) {
+                SelfUpdateState.update(s -> s.withHold(version, running));
+                CliOutput.out("auto-update is held at " + version + "; `jk self update` resumes it");
             } else {
-                Fetched fetched = fetchAndMaterialize(release, target, install, cas, nativeClient);
-                EngineInstall.installBinaries(cas.pathFor(fetched.clientSha()), JkDirs.binDir());
-                if (jvm) JvmClientInstall.retire(JkDirs.binDir(), JvmClientInstall.libDir(), Os.isWindows());
-                CommandWedge.printOk(
-                        "Self",
-                        target + " installed (" + fetched.engine().engineJar() + ")"
-                                + (jvm ? " — the native client replaces the JVM client" : ""));
+                releaseHold();
             }
 
             // Hand the engine over: --now stops the old daemon (killing its jobs) first;
@@ -391,7 +399,7 @@ public final class SelfCommand extends GroupCommand {
             if (in.isSet("now")) {
                 EngineProcessControl.forceStop(EnginePaths.activeSocket(paths));
             }
-            Path newJk = pathClient(JkDirs.binDir());
+            Path newJk = EngineInstall.pathClient(JkDirs.binDir());
             if (Files.isRegularFile(newJk)) {
                 CliOutput.handOffTerminal(new ProcessBuilder(newJk.toString(), "engine", "start"))
                         .waitFor();
@@ -401,32 +409,114 @@ public final class SelfCommand extends GroupCommand {
             return 0;
         }
 
-        record Fetched(EngineInstall.Materialized engine, String clientSha) {}
+        /** The lock file under the engine home that one download-or-install holds. */
+        static final String UPDATE_LOCK = ".jk-update.lock";
 
-        static Path pathClient(Path binDir) {
-            Path exe = binDir.resolve("jk.exe");
-            if (Files.isRegularFile(exe)) return exe;
-            Path bat = binDir.resolve("jk.bat");
-            if (Files.isRegularFile(bat)) return bat;
-            return binDir.resolve("jk");
+        /** Drop a downgrade's hold, saying so when there was one. */
+        private static void releaseHold() throws IOException {
+            if (!SelfUpdateState.read().isHeld()) return;
+            SelfUpdateState.update(SelfUpdateState::withoutHold);
+            CliOutput.out("auto-update resumes");
         }
 
         /**
-         * The JVM client's update: the engine jar and {@code jk-<version>.jar}, both verified
-         * against the release's signed manifest, the engine materialized, the client jar placed
-         * under {@code <home>/lib/jk} and the launcher rewritten over it.
+         * {@code --check}: the signed latest-release pointer against the running version, recorded
+         * in the update state the engine's scheduler reads. A pointer that cannot be read is recorded
+         * as an attempt, so the scheduler backs off.
          */
-        static EngineInstall.Materialized fetchAndMaterializeJvm(
-                ReleaseArtifacts.Manifest release, String version, EngineInstall install, Cas cas) throws IOException {
-            ReleaseArtifacts.Verified jar = fetch(release, engineJarName(version), "engine jar", version);
-            String clientName = jvmClientArtifact(release.text(), version);
-            ReleaseArtifacts.Verified client = fetch(release, clientName, "client jar", version);
+        private static int check(URI base, ReleaseVerifier verifier, String running) throws IOException {
+            String latest;
+            try {
+                latest = ReleaseArtifacts.latestVersion(base, verifier, running);
+            } catch (IOException unreachable) {
+                SelfUpdateState.update(s -> s.withAttempt(Clock.SYSTEM.instant()));
+                throw unreachable;
+            }
+            SelfUpdateState.update(s -> s.withCheck(Clock.SYSTEM.instant(), latest));
+            if (Versions.compare(latest, running) > 0) {
+                CommandWedge.printOk("Self", "jk " + latest + " is available (this is " + running + ")");
+            } else {
+                CommandWedge.printOk("Self", "jk " + running + " is the latest release");
+            }
+            return 0;
+        }
 
-            cas.put(jar.bytes(), jar.sha256());
-            EngineInstall.Materialized engine = install.materialize(version, cas, jar.sha256());
-            Path placed = JvmClientInstall.installJar(client.bytes(), JvmClientInstall.libDir(), version);
-            JvmClientInstall.writeLauncher(JkDirs.binDir(), placed, JvmClientInstall.runningJava(), Os.isWindows());
-            return engine;
+        /**
+         * The prepared record for {@code target} when one is on disk with both blobs intact. A record
+         * for any other version, or one whose blobs a store wipe took, is dropped.
+         */
+        static Optional<PreparedUpdate> preparedFor(EngineInstall install, Cas cas, String target) throws IOException {
+            Optional<PreparedUpdate> found = PreparedUpdate.read(install.engineHome());
+            if (found.isEmpty()) return Optional.empty();
+            if (found.get().version().equals(target) && found.get().blobsIntact(cas)) return found;
+            PreparedUpdate.delete(install.engineHome());
+            return Optional.empty();
+        }
+
+        /**
+         * Download {@code target}'s engine jar and this host's client, verify both against the
+         * release's signed manifest, put them in the CAS and record them. Nothing live changes.
+         */
+        static PreparedUpdate prepare(
+                URI base, ReleaseVerifier verifier, String target, String running, EngineInstall install, Cas cas)
+                throws IOException {
+            ReleaseArtifacts.Manifest release = ReleaseArtifacts.manifest(base, target, verifier);
+            boolean jvm = JvmClient.installed();
+            // A JVM client moves to the native one as soon as a release lists it for this host,
+            // unless JK_CLIENT=jvm asks to stay; a native client has nothing else to move to.
+            String nativeClient = !jvm
+                    ? pickClientArtifact(release.text(), target)
+                    : "jvm".equals(System.getenv("JK_CLIENT"))
+                            ? null
+                            : nativeClientArtifact(release.text(), target).orElse(null);
+            ReleaseArtifacts.Verified engine = fetch(release, engineJarName(target), "engine jar", target);
+            String clientSha;
+            PreparedUpdate.Client kind;
+            if (nativeClient == null) {
+                ReleaseArtifacts.Verified client =
+                        fetch(release, jvmClientArtifact(release.text(), target), "client jar", target);
+                cas.put(client.bytes(), client.sha256());
+                clientSha = client.sha256();
+                kind = PreparedUpdate.Client.JVM;
+            } else {
+                // The native CLI never inflates xz; the engine jar does.
+                ReleaseArtifacts.Verified archive = fetch(release, nativeClient, "client binary", target);
+                Path client = nativeClient.endsWith(".xz")
+                        ? inflateXzViaEngine(engine.bytes(), archive.bytes())
+                        : unzipSingleBinary(archive.bytes());
+                clientSha = ingestClient(cas, client);
+                kind = PreparedUpdate.Client.NATIVE;
+            }
+            cas.put(engine.bytes(), engine.sha256());
+            PreparedUpdate prepared =
+                    new PreparedUpdate(target, running, engine.sha256(), kind, clientSha, Clock.SYSTEM.instant());
+            prepared.write(install.engineHome());
+            return prepared;
+        }
+
+        /**
+         * Install a prepared update: the engine pointer moves to its jar, then the PATH client is
+         * replaced (a native binary parked and renamed in, or the JVM client's jar placed under
+         * {@code <home>/lib/jk} with the launcher rewritten over it), and the record goes. {@code
+         * downgrade} lets an explicit older target replace the live engine. Returns the engine jar.
+         */
+        static String apply(PreparedUpdate prepared, EngineInstall install, Cas cas, boolean downgrade)
+                throws IOException {
+            EngineInstall.Materialized engine =
+                    install.materialize(prepared.version(), cas, prepared.engineSha256(), downgrade);
+            Path client = cas.pathFor(prepared.clientSha256());
+            if (prepared.client() == PreparedUpdate.Client.JVM) {
+                Path placed = JvmClientInstall.installJar(
+                        Files.readAllBytes(client), JvmClientInstall.libDir(), prepared.version());
+                JvmClientInstall.writeLauncher(JkDirs.binDir(), placed, JvmClientInstall.runningJava(), Os.isWindows());
+            } else {
+                EngineInstall.installBinaries(client, JkDirs.binDir());
+                if (JvmClient.installed()) {
+                    JvmClientInstall.retire(JkDirs.binDir(), JvmClientInstall.libDir(), Os.isWindows());
+                }
+            }
+            PreparedUpdate.delete(install.engineHome());
+            return engine.engineJar().toString();
         }
 
         /** {@code jk-engine-<version>.jar}, the release's platform-neutral engine. */
@@ -452,23 +542,6 @@ public final class SelfCommand extends GroupCommand {
             if (sumHas(sumsText, jar)) return jar;
             throw new IOException("release SHA256SUMS has no " + jar
                     + " — this release ships no JVM client; refusing to install an unverifiable one");
-        }
-
-        static Fetched fetchAndMaterialize(
-                ReleaseArtifacts.Manifest release, String version, EngineInstall install, Cas cas, String clientName)
-                throws IOException {
-            // Engine jar (platform-neutral) + the platform client. The native CLI never inflates
-            // xz — the engine jar does.
-            ReleaseArtifacts.Verified jar = fetch(release, engineJarName(version), "engine jar", version);
-            ReleaseArtifacts.Verified clientArchive = fetch(release, clientName, "client binary", version);
-            Path client = clientName.endsWith(".xz")
-                    ? inflateXzViaEngine(jar.bytes(), clientArchive.bytes())
-                    : unzipSingleBinary(clientArchive.bytes());
-
-            cas.put(jar.bytes(), jar.sha256());
-            String clientSha = ingestClient(cas, client);
-            EngineInstall.Materialized engine = install.materialize(version, cas, jar.sha256());
-            return new Fetched(engine, clientSha);
         }
 
         /**

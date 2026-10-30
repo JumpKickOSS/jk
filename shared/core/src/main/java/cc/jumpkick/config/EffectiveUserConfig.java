@@ -75,6 +75,11 @@ public final class EffectiveUserConfig {
         // "auto" must read as "auto" rather than as whatever this terminal happens to resolve to.
         NerdFontMode mode = GlobalConfig.nerdFontMode(file, env.apply("JK_NERD_FONT"), env.apply("NERD_FONT"));
         add(out, "nerd-font", NerdFontMode.AUTO.name().toLowerCase(Locale.ROOT), name(mode));
+        String selfUpdate = SelfUpdatePolicy.Mode.parse(env.apply(SelfUpdatePolicy.ENV))
+                .or(() -> GlobalConfig.selfUpdate(file).flatMap(SelfUpdatePolicy.Mode::parse))
+                .map(SelfUpdatePolicy.Mode::spelling)
+                .orElse("");
+        add(out, SelfUpdatePolicy.KEY, "", selfUpdate);
     }
 
     /** Lowercase mode word as it is spelled in config — {@code false} / {@code true} for the booleans. */

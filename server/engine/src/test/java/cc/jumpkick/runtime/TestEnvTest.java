@@ -70,6 +70,8 @@ class TestEnvTest {
         assertThat(env.get("JK_HOME")).doesNotContain(System.getProperty("user.home") + "/.jk/store");
         assertThat(env.get("JK_HTTP_ENABLED")).isEqualTo("false");
         assertThat(env.get("JK_HTTP_PORT")).isEqualTo("0");
+        // A nested engine never updates the sandbox's jk from the release site.
+        assertThat(env.get("JK_SELF_UPDATE")).isEqualTo("never");
     }
 
     /**

@@ -25,7 +25,8 @@ import java.util.Set;
  * each first-party jar and the native client, and an engine is pinned to one install's set by its
  * {@link ShelfManifest}. The sets of the installs before are garbage the moment the next lands, and
  * the native client is 35 MB or more of it. A blob is therefore <em>pinned</em> when an installed
- * engine's manifest names it or it is the client on {@code PATH}; every other blob is on a countdown
+ * engine's manifest names it, a {@link PreparedUpdate} waits to install it, or it is the client on
+ * {@code PATH}; every other blob is on a countdown
  * set by what it is and how big, shortened by disk pressure:
  *
  * <ul>
@@ -129,6 +130,10 @@ public final class StoreCasGc {
             pinned.add(m.engineSha256());
             pinned.addAll(m.jars().values());
             pinned.addAll(m.poms().values());
+        });
+        PreparedUpdate.read(install.engineHome()).ifPresent(p -> {
+            pinned.add(p.engineSha256());
+            pinned.add(p.clientSha256());
         });
         Path bin = JkDirs.binDir();
         for (String name : List.of("jk", "jk.exe", "jkx", "jkx.exe")) {

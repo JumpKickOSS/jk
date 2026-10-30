@@ -3,6 +3,7 @@ package cc.jumpkick.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.LinkedHashMap;
 import org.junit.jupiter.api.Test;
 
 class MinimalTomlTest {
@@ -60,5 +61,15 @@ class MinimalTomlTest {
         assertThat(MinimalToml.unquote("'C:\\raw\\path'")).isEqualTo("C:\\raw\\path");
         assertThat(MinimalToml.unquote("bare # trailing comment")).isEqualTo("bare");
         assertThat(MinimalToml.unquote("\"unknown \\q escape\"")).isEqualTo("unknown \\q escape");
+    }
+
+    @Test
+    void flat_records_round_trip_and_stop_at_the_first_table() {
+        var values = new LinkedHashMap<String, String>();
+        values.put("version", "0.17.0");
+        values.put("path", "C:\\Users\\dev\\.jk");
+        String text = MinimalToml.writeFlat(values) + "# note\n\n[later]\nversion = \"9\"\n";
+
+        assertThat(MinimalToml.readFlat(text)).containsExactlyEntriesOf(values);
     }
 }
