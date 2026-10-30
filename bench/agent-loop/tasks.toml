@@ -85,3 +85,117 @@ prompt = """
 Rename the instance method `CodeGraph.between(String, String)` to `edgesBetween`, keeping its behaviour,
 and update every caller. Methods named `between` on other types stay as they are.
 """
+
+# Navigation questions: the agent writes ANSWER.txt and nothing else, graded against the compiler's
+# facts (bench/graph-retrieval/Truth.java, main classes, lambdas count as their enclosing method).
+# Picked where a name search is weak: a method name many types declare, a chain of calls several
+# hops deep, a type hierarchy more than one level deep. No build or test run decides these.
+
+[tasks.cl-callers-csu-indexof]
+repo   = "commons-lang"
+kind   = "question"
+tools  = ["jk"]
+prompt = """
+Which methods call `org.apache.commons.lang3.CharSequenceUtils.indexOf` (either overload) directly?
+"""
+answer = ["CsStrings.contains", "CsStrings.indexOf", "StringUtils.contains", "StringUtils.countMatches",
+          "StringUtils.indexOf", "StringUtils.indexOfAny", "StringUtils.ordinalIndexOf"]
+
+[tasks.cl-impact-ispackage]
+repo   = "commons-lang"
+kind   = "question"
+tools  = ["jk"]
+prompt = """
+We are changing `org.apache.commons.lang3.reflect.MemberUtils.isPackage`. List every method that can
+reach it through a chain of direct calls: its callers, their callers, and so on.
+"""
+answer = ["ConstructorUtils.getMatchingAccessibleConstructor", "ConstructorUtils.invokeConstructor",
+          "EventBindingInvocationHandler.invoke", "EventUtils.addEventListener", "EventUtils.bindEventsToMethod",
+          "FieldUtils.getField", "FieldUtils.readDeclaredField", "FieldUtils.readDeclaredStaticField",
+          "FieldUtils.readField", "FieldUtils.readStaticField", "FieldUtils.setAccessible",
+          "FieldUtils.writeDeclaredField", "FieldUtils.writeDeclaredStaticField", "FieldUtils.writeField",
+          "FieldUtils.writeStaticField", "MemberUtils.setAccessibleWorkaround", "MethodUtils.getInvokeMethod",
+          "MethodUtils.getMatchingAccessibleMethod", "MethodUtils.getOverrideHierarchy", "MethodUtils.invokeMethod",
+          "MethodUtils.invokeStaticMethod"]
+
+[tasks.cl-subtypes-daterule]
+repo   = "commons-lang"
+kind   = "question"
+tools  = ["jk"]
+prompt = """
+List every type that is a subtype of `org.apache.commons.lang3.time.FastDatePrinter.Rule` (the nested
+interface), directly or indirectly: classes and interfaces, at any depth.
+"""
+answer = ["CharacterLiteral", "DayInWeekField", "Iso8601_Rule", "NumberRule", "PaddedNumberField", "StringLiteral",
+          "TextField", "TimeZoneNameRule", "TimeZoneNumberRule", "TwelveHourField", "TwentyFourHourField",
+          "TwoDigitMonthField", "TwoDigitNumberField", "TwoDigitYearField", "UnpaddedMonthField",
+          "UnpaddedNumberField", "WeekYear"]
+
+[tasks.jk-callers-projectinfo-name]
+repo   = "jk"
+kind   = "question"
+tools  = ["jk"]
+prompt = """
+Which methods call `name()` on `cc.jumpkick.wire.protocol.ProjectInfo` directly?
+"""
+answer = ["AddCommand.addModule", "BuildRun.projectGaLabel", "BuildRun.projectGavLabel", "CwdModuleScope.resolve",
+          "EnsureFreshLock.lockCoordLabel", "InstallCommand.applyWorkspaceInstall", "ModuleScopeHint.namesFrom",
+          "ParentInfo.displayName", "PublishCommand.report", "ReleaseCommand.release", "ReleaseCommand.startClaim",
+          "ReleaseCommand.tagAndStart", "RemoveCommand.shortNameOf", "StatusCommand.loadProject"]
+
+[tasks.jk-impact-lockstale]
+repo   = "jk"
+kind   = "question"
+tools  = ["jk"]
+prompt = """
+We are changing `cc.jumpkick.wire.protocol.ProjectInfo.lockStale()`. List every method that can reach it
+through a chain of direct calls: its callers, their callers, and so on.
+"""
+answer = ["AuditCommand.run", "BspCommand.run", "BspCommand.serve", "DenyCommand.run", "EnsureFreshLock.ensure",
+          "EnsureFreshLock.ensureBestEffort", "EnsureFreshLock.ensureQuiet", "EnsureFreshLock.needsRefresh",
+          "ExplainCommand.run", "ExportBomCommand.run", "ExportGradleCommand.run", "ExportIdeaCommand.run",
+          "ExportMavenCommand.run", "ExportSupport.generate", "IdeCommand.printModel", "IdeCommand.run",
+          "IdeSupport.build", "IdeSupport.wireModel", "JshellCommand.run", "OutdatedCommand.run", "StatusCommand.run",
+          "SyncCommand.run", "TreeCommand.run", "VscodeCommand.run", "WhyCommand.run"]
+
+[tasks.jk-callers-sidecar-name]
+repo   = "jk"
+kind   = "question"
+tools  = ["jk"]
+prompt = """
+Which methods call `name()` on `cc.jumpkick.wire.protocol.ExecPlan.Sidecar` directly?
+"""
+answer = ["DevSidecars.combine", "DevSidecars.over", "DevUrls.of", "DevUrls.withExports", "Running.<init>",
+          "Sidecars.awaitReady", "Sidecars.launch", "Sidecars.pump", "Sidecars.supervise", "StackWatchLoop.run"]
+
+# Impact through dynamic dispatch: the method has no static callers, and what reaches it does so
+# through a supertype's or interface's method it overrides (class-hierarchy analysis at every hop).
+
+[tasks.cl-impact-dispatch-appendto]
+repo   = "commons-lang"
+kind   = "question"
+tools  = ["jk"]
+prompt = """
+We are changing `org.apache.commons.lang3.time.FastDatePrinter.TwoDigitYearField.appendTo` (both
+overloads). List every method that can end up running it: the methods that call it, the methods that
+call those, and so on. A call to a supertype's or interface's method that a method overrides or
+implements counts as a call to that method, at every step.
+"""
+answer = ["DateFormatUtils.format", "DateFormatUtils.formatUTC", "DayInWeekField.appendTo", "FastDateFormat.applyRules",
+          "FastDateFormat.format", "FastDatePrinter.applyRules", "FastDatePrinter.applyRulesToString",
+          "FastDatePrinter.format", "TwelveHourField.appendTo", "TwentyFourHourField.appendTo", "WeekYear.appendTo"]
+
+[tasks.jk-impact-dispatch-javahome]
+repo   = "jk"
+kind   = "question"
+tools  = ["jk"]
+prompt = """
+We are changing `cc.jumpkick.plugin.build.BuildPluginHarness.SpecTaskExec.javaHome()`. List every method
+that can end up running it: the methods that call it, the methods that call those, and so on. A call to
+a supertype's or interface's method that a method overrides or implements counts as a call to that
+method, at every step.
+"""
+answer = ["DexStep.run", "GeneratorEntry.task", "GeneratorStep.run", "LintPlugin.task", "LintStep.run",
+          "ManifestStep.merge", "ManifestStep.run", "MicronautPlugin.runAot", "QuarkusPlugin.runAugment",
+          "QuarkusPlugin.runTestModel", "R8Step.run", "SpringBootPlugin.runAot", "TaskExec.java", "TaskExec.tool",
+          "TestConfigStep.run"]
