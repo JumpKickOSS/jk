@@ -89,6 +89,9 @@ The agent loop is measured: over 165 broken-build scenarios, five coding agents 
 vendors, the same prompt and budget for each tool. On the four agents that fix every scenario jk
 takes 5–6 turns against 5–8, 23–46k input tokens against 25–69k, and 11–19 s against 14–32 s
 (medians; one host, Gradle single-module guides — [the table](why.md#agents-reach-green)).
+Asked who calls a method or what can end up running it, three vendors' agents answered every
+question with jk's graph, in a fifth to two fifths of the turns they took without it
+([the table](why.md#asking-about-the-code)); Maven and Gradle have no first-party graph to ask.
 See [Why JumpKick](why.md) and [Agents](agents.md).
 
 ## Speed and memory
