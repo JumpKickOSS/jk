@@ -182,6 +182,9 @@ The whole registry:
 | **`ide`** | Write IDE project files (`kind=idea` \| `vscode` \| `all`) plus `.bsp/jk.json`, same generators as `jk ide`; `preview=true` lists without writing |
 | **`graph`** | Compact module/dep graph (transitive expansion opt-in and budget-capped) |
 | **`callers`** | Who calls a method (`address` = `Type.method`, every overload): each caller as `Owner.method` with `file:line` and the call's line, main sources before tests, counted, from the compiled classes and so complete. `transitive=true` lists every method that reaches it, by hop, up to `max_hops` (default 8). Same as `jk graph callers` ([Code graph](graph.md#callers)) |
+| **`query`** | A question about the code (`question`) answered in a token budget: the symbols it names as `Owner.member()` at `file:line`, and how they connect. Same as `jk graph query` ([Code graph](graph.md)) |
+| **`read`** | One symbol's source or a type's members (`address` = `Type`, `Type.member`, `Type.*`, a path or glob; `#line=N,M`), in the `view` the budget fits. Same as `jk graph read` |
+| **`find`** | Declarations by `kind`, `visibility`, `extends`, `implements`, `annotated` and a `name` glob. Same as `jk graph find` |
 
 Start with **`run`**. The reply is the verdict. **`diagnostics`** is the detail past its cap. Do not dump full journal records. A tool
 outside the default list is called by name once `tools/list` with `extended: true` has named it. `tools/call` accepts it either way; the bind and the session are the same.

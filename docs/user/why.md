@@ -34,7 +34,7 @@ Every claim links what backs it. Where JumpKick loses, the linked page says so.
 | `target/jk-results.md` | One token-cheap report per invocation: what ran, each failure at its `file:line` with a fix hint, what was skipped, what to run next | [Machine output](machine-output.md) |
 | MCP in the engine | `run` returns a verdict; `diagnostics`, `deps` and `skill` complete the default list of four, because every card costs the agent context on every turn. Two agents on one engine each keep their own project bind | [MCP](mcp.md) |
 | `jk skill` | The system prompt for a tool models were not trained on; jk keeps its section of `AGENTS.md` current on every build | [Skill](skill.md) · [Agents](agents.md) |
-| `jk graph` | graphify built in: a knowledge graph of code, config and docs that cites `file:line`, with nothing to install; indexed in seconds, with calls and overrides from the compiler. graphify's skill and MCP server read its `graph.json` unchanged | [Code graph](graph.md) |
+| `jk graph` | A code graph built in: code, config and docs, with nothing to install; indexed in seconds, with calls and overrides from the compiled classes. Answers name each symbol `Owner.member()` at `file:line` | [Code graph](graph.md) |
 | Named test rungs | The cheap unit suite by default, `--guard` before sharing, `--all` nightly; the report discloses what did not run | [Test rungs](#test-rungs) |
 | Guards and hooks | House rules as data: each violation names the rule, the sanctioned alternative and why, so the fix is mechanical; git hooks refuse banned commit trailers and hand-edited guard files | [Guards](guards.md) · [Agents](agents.md#hooks-and-protected-files) |
 

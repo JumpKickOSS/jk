@@ -59,7 +59,7 @@ class VocabularyTest {
     void docWordsSeedAQuestionThatNamesNoSymbol() throws IOException {
         CodeGraph shop = ExtractorsTest.shop();
         assertThat(new GraphQuery(shop).query("which code places things", GraphQuery.Mode.BFS, 1, 2000, List.of()))
-                .contains("Start: [OrderService]");
+                .startsWith("From OrderService: ");
     }
 
     @Test
@@ -67,7 +67,7 @@ class VocabularyTest {
         CodeGraph shop = ExtractorsTest.shop();
         GraphQuery q = new GraphQuery(shop, Scope.ALL, Map.of("PriceCalculator", List.of("tariff", "rate card")));
         assertThat(q.query("where is the rate card", GraphQuery.Mode.BFS, 1, 2000, List.of()))
-                .contains("Start: [PriceCalculator]");
+                .startsWith("From PriceCalculator: ");
     }
 
     @Test

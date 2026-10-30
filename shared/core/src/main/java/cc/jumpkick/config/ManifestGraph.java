@@ -12,13 +12,13 @@ import org.tomlj.TomlTable;
 
 /**
  * The {@code [graph]} table of a {@code jk.toml} → a {@link GraphConfig}. Unknown keys are refused,
- * so a misspelt {@code graphify} does not leave the mirror silently off.
+ * so a misspelt {@code aliases} does not leave every alias silently unread.
  */
 final class ManifestGraph {
 
     static final String TABLE = "graph";
 
-    static final Set<String> KEYS = Set.of("graphify", "aliases");
+    static final Set<String> KEYS = Set.of("aliases");
 
     private ManifestGraph() {}
 
@@ -28,13 +28,8 @@ final class ManifestGraph {
         TomlTable graph = Objects.requireNonNull(root.getTable(TABLE), TABLE);
         for (String k : graph.keySet()) {
             if (!KEYS.contains(k)) {
-                throw new JkBuildParseException("[graph] unknown key `" + k + "` — expected graphify, aliases");
+                throw new JkBuildParseException("[graph] unknown key `" + k + "` — expected aliases");
             }
-        }
-        boolean graphify = false;
-        if (graph.contains("graphify")) {
-            if (!graph.isBoolean("graphify")) throw new JkBuildParseException("[graph] graphify must be a boolean");
-            graphify = Boolean.TRUE.equals(graph.getBoolean("graphify"));
         }
         Map<String, List<String>> aliases = new LinkedHashMap<>();
         if (graph.contains("aliases")) {
@@ -57,6 +52,6 @@ final class ManifestGraph {
                 aliases.put(term, List.copyOf(out));
             }
         }
-        return new GraphConfig(graphify, aliases);
+        return new GraphConfig(aliases);
     }
 }

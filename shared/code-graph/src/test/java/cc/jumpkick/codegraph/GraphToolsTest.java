@@ -68,7 +68,7 @@ class GraphToolsTest {
                         GraphEdge.of("split", "worker", Relations.CALLS, Confidence.EXTRACTED, "src/S.java", 21)))));
         assertThat(g.edges()).hasSize(1);
         assertThat(new GraphTools(g).neighbors("worker", "calls", 2000))
-                .contains("<-- .split() [calls] [EXTRACTED] at=src/S.java:L21,L9");
+                .contains("  <-calls- .split()  src/S.java:21,9");
 
         StringBuilder source = new StringBuilder();
         for (int i = 1; i <= 30; i++) source.append(i == 9 || i == 21 ? "    worker(" + i + ");\n" : "\n");
@@ -76,7 +76,7 @@ class GraphToolsTest {
                 .neighbors("worker", "calls", 2000);
         assertThat(quoted)
                 .as("each site's own line, so the call is edited without reading the file")
-                .contains("at=src/S.java:L21,L9\n      L21| worker(21);\n      L9| worker(9);");
+                .contains("  src/S.java:21,9\n      L21| worker(21);\n      L9| worker(9);");
         assertThat(new GraphTools(g, Scope.ALL, rel -> null).neighbors("worker", "calls", 2000))
                 .doesNotContain("L21|");
     }
@@ -85,14 +85,14 @@ class GraphToolsTest {
     void neighbors_of_an_overloaded_member_lists_every_overload() {
         String out = new GraphTools(shop()).neighbors("OrderService.total", "calls", 2000);
         assertThat(out)
-                .contains("Neighbors of OrderService.total() [src/shop/OrderService.java:10]:")
-                .contains("Neighbors of OrderService.total() [src/shop/OrderService.java:20]:")
-                .contains("<-- .checkout() [calls]")
-                .contains("<-- .invoice() [calls]")
+                .contains("Neighbors of OrderService.total()  src/shop/OrderService.java:10:")
+                .contains("Neighbors of OrderService.total()  src/shop/OrderService.java:20:")
+                .contains("<-calls- .checkout()  src/shop/Checkout.java:6")
+                .contains("<-calls- .invoice()  src/shop/Invoice.java:9")
                 .doesNotContain("Cart");
         assertThat(new GraphTools(shop()).neighbors("Cart.total", "calls", 2000))
                 .startsWith("Neighbors of Cart.total():")
-                .contains("<-- .checkout() [calls]")
+                .contains("<-calls- .checkout()  src/shop/Checkout.java:7")
                 .doesNotContain("invoice");
     }
 
@@ -144,8 +144,8 @@ class GraphToolsTest {
         assertThat(g.display("info_name")).isEqualTo("Info.name()");
         assertThat(new GraphTools(g).neighbors("Info.name", "calls", 2000))
                 .as("a caller in a nested record reads as that record's, not the file's top-level class")
-                .contains("<-- Release.Plan.label() [calls]")
-                .contains("<-- Release.publish() [calls]");
+                .contains("<-calls- Release.Plan.label()  src/main/java/a/Release.java:21")
+                .contains("<-calls- Release.publish()  src/main/java/a/Release.java:10,12");
     }
 
     @Test

@@ -2,46 +2,64 @@
 package cc.jumpkick.codegraph;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
+import cc.jumpkick.jsonl.MiniJson;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
 class GraphJsonTest {
 
-    static CodeGraph shop() throws IOException {
-        try (InputStream in = GraphJsonTest.class.getResourceAsStream("graphify-shop.json")) {
-            return GraphJson.read(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-        }
+    @Test
+    void aFragmentRoundTripsAndWritesStableBytes() {
+        GraphNode a = new GraphNode("a", "A", "code", "A.java", "L1", Map.of("zeta", "z", "alpha", "x"));
+        GraphNode b = new GraphNode("b", ".run()", "code", "A.java", "L3");
+        GraphEdge e = GraphEdge.of("a", "b", Relations.METHOD, Confidence.EXTRACTED, "A.java", 3);
+        Mention m = new Mention("a", Mention.Kind.CLASS, "com.acme.B", 2, Relations.REFERENCES, "field");
+        Fragment f = new Fragment(List.of(a, b), List.of(e), List.of(m));
+        String once = MiniJson.write(GraphJson.fragmentTree(f));
+        Fragment back = GraphJson.fragmentOf(MiniJson.parse(once));
+        assertThat(back).isEqualTo(f);
+        assertThat(MiniJson.write(GraphJson.fragmentTree(back))).isEqualTo(once);
+        assertThat(once).contains("{\"id\":\"a\",\"label\":\"A\",\"alpha\":\"x\",");
     }
 
     @Test
-    void readsAGraphGraphifyWrote() throws IOException {
-        CodeGraph g = shop();
-        assertThat(g.size()).isEqualTo(23);
-        assertThat(g.edges()).hasSize(27);
-        assertThat(g.node("src_main_java_com_acme_shop_orderservice_orderservice_total"))
-                .satisfies(total -> {
-                    assertThat(total.label()).isEqualTo(".total()");
-                    assertThat(total.sourceLocation()).isEqualTo("L10");
-                    assertThat(total.extra()).containsKey("_origin");
-                });
-        assertThat(g.community("src_main_java_com_acme_shop_orderservice_orderservice"))
-                .isZero();
-        assertThat(g.communityName(0)).isEqualTo("OrderService");
+    void aSnapshotRoundTripsTheGraph() throws IOException {
+        CodeGraph g = ShopFixture.graph();
+        var bytes = new ByteArrayOutputStream();
+        GraphSnapshot.write(g, new GraphSnapshot.Key("x", 7, "c", "abc123"), bytes);
+        var loaded = Objects.requireNonNull(GraphSnapshot.read(new ByteArrayInputStream(bytes.toByteArray())));
+        assertThat(loaded.key()).isEqualTo(new GraphSnapshot.Key("x", 7, "c", "abc123"));
+        assertThat(loaded.graph().nodes())
+                .extracting(GraphNode::id)
+                .containsExactlyInAnyOrderElementsOf(
+                        g.nodes().stream().map(GraphNode::id).toList());
+        assertThat(loaded.graph().edges())
+                .extracting(GraphEdge::source, GraphEdge::target, GraphEdge::relation, GraphEdge::sourceLocation)
+                .containsExactlyInAnyOrderElementsOf(g.edges().stream()
+                        .map(e -> tuple(e.source(), e.target(), e.relation(), e.sourceLocation()))
+                        .toList());
     }
 
+    /** A snapshot of another layout, or cut short, reads as none, so the graph is built again. */
     @Test
-    void writeIsStableAndRoundTrips() throws IOException {
-        CodeGraph g = shop();
-        String once = GraphJson.write(g, "jk test", "abc123");
-        String twice = GraphJson.write(GraphJson.read(once), "jk test", "abc123");
-        assertThat(twice).isEqualTo(once);
-        assertThat(once).startsWith("{\"directed\":false,\"multigraph\":false,\"graph\":{\"schema_version\":1,");
-        assertThat(once).contains("{\"id\":\"docs_notes\",\"label\":\"notes.md\",");
-        assertThat(once).contains("\"built_at_commit\":\"abc123\"");
+    void aSnapshotThatDoesNotParseIsAbsent() throws IOException {
+        var bytes = new ByteArrayOutputStream();
+        GraphSnapshot.write(ShopFixture.graph(), new GraphSnapshot.Key("x", 7, "c", null), bytes);
+        byte[] whole = bytes.toByteArray();
+        byte[] longer = Arrays.copyOf(whole, whole.length + 4);
+        byte[] shorter = Arrays.copyOf(whole, whole.length / 2);
+        assertThat(GraphSnapshot.read(new ByteArrayInputStream(longer))).isNull();
+        assertThat(GraphSnapshot.read(new ByteArrayInputStream(shorter))).isNull();
+        assertThat(GraphSnapshot.read(new ByteArrayInputStream(new byte[] {1, 2})))
+                .isNull();
     }
 
     @Test

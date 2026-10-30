@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.codegraph;
 
-import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -69,29 +66,5 @@ public record Modules(List<Module> list) {
         if (inside.startsWith("src/main/")) return SourceSet.MAIN;
         if (inside.startsWith("src/") && inside.indexOf('/', 4) > 4) return SourceSet.TEST;
         return SourceSet.OTHER;
-    }
-
-    /** The modules as {@code graph.json} metadata. */
-    public List<Map<String, Object>> tree() {
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Module m : list) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("prefix", m.prefix());
-            row.put("compact", m.compact());
-            out.add(row);
-        }
-        return out;
-    }
-
-    /** The modules {@link #tree} wrote; anything else reads as none. */
-    public static Modules ofTree(@Nullable Object tree) {
-        if (!(tree instanceof List<?> rows)) return NONE;
-        List<Module> out = new ArrayList<>();
-        for (Object o : rows) {
-            if (o instanceof Map<?, ?> m && m.get("prefix") instanceof String prefix) {
-                out.add(new Module(prefix, Boolean.TRUE.equals(m.get("compact"))));
-            }
-        }
-        return new Modules(out);
     }
 }

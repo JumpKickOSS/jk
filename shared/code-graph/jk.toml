@@ -1,5 +1,5 @@
 name = "jk-code-graph"
-description = "Code graph model: graphify-compatible ids and graph.json, budgeted query, paths, communities and the report"
+description = "Code graph model: ids, merge, binary snapshot, budgeted query, callers, paths and symbol reads"
 
 [dependencies]
 jk-host.workspace = true

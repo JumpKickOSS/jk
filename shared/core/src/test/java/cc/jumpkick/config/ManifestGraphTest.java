@@ -15,27 +15,24 @@ class ManifestGraphTest {
     }
 
     @Test
-    void absentIsOffWithNoAliases() {
+    void absentHasNoAliases() {
         assertThat(parse("name = \"a\"\n")).isEqualTo(GraphConfig.EMPTY);
     }
 
     @Test
-    void readsTheMirrorSwitchAndTheAliases() {
+    void readsTheAliases() {
         GraphConfig c = parse("""
-                [graph]
-                graphify = true
-
                 [graph.aliases]
                 Tariff = ["price", "rate card"]
                 """);
-        assertThat(c.graphify()).isTrue();
         assertThat(c.aliases()).containsEntry("Tariff", List.of("price", "rate card"));
     }
 
     @Test
     void refusesWhatItDoesNotKnow() {
-        assertThatThrownBy(() -> parse("[graph]\ngraphifi = true\n")).hasMessageContaining("unknown key `graphifi`");
-        assertThatThrownBy(() -> parse("[graph]\ngraphify = \"yes\"\n")).hasMessageContaining("boolean");
+        assertThatThrownBy(() -> parse("[graph]\ngraphify = true\n"))
+                .hasMessageContaining("unknown key `graphify`")
+                .hasMessageEndingWith("expected aliases");
         assertThatThrownBy(() -> parse("[graph.aliases]\nTariff = \"price\"\n")).hasMessageContaining("list of words");
     }
 }

@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Markdown and AsciiDoc as graphify reads markdown: the page, its headings nested by level, links
+ * Markdown and AsciiDoc: the page, its headings nested by level, links
  * to other files, and code spans naming a symbol — which the linker ties to the code they name.
  * Fenced and delimited code blocks are skipped.
  */

@@ -102,10 +102,8 @@ final class GraphOpCommand implements CliCommand {
                 number(in, "depth", 3),
                 number(in, "budget", 2000),
                 in.values("context"),
-                in.isSet("all"),
                 in.isSet("undirected"),
                 number(in, "max-hops", 8),
-                number(in, "top", 10),
                 in.value("relation").orElse(null),
                 rebuild,
                 in.isSet("no-refresh"),
@@ -121,7 +119,6 @@ final class GraphOpCommand implements CliCommand {
         for (String name : SETTINGS) {
             for (String v : in.values(name)) out.add(name + "=" + v);
         }
-        if (in.isSet("graphify")) out.add("graphify=true");
         if (in.isSet("libraries")) out.add("libraries=true");
         if (in.isSet("transitive")) out.add("transitive=true");
         return out;
@@ -140,16 +137,15 @@ final class GraphOpCommand implements CliCommand {
         }
     }
 
-    /** {@code 4,812 nodes · 11,903 edges · 37 communities from 1,204 files (6 read) → target/graph}. */
+    /** {@code 4,812 nodes · 11,903 edges from 1,204 files (6 read) → target/graph}. */
     static String summary(GraphAck ack) {
         String read = ack.extracted() == 0 ? "none changed" : String.format(Locale.ROOT, "%,d read", ack.extracted());
         String classes = ack.classes() == 0 ? "" : String.format(Locale.ROOT, ", %,d classes", ack.classes());
         return String.format(
                         Locale.ROOT,
-                        "%,d nodes · %,d edges · %,d communities from %,d files (%s%s)",
+                        "%,d nodes · %,d edges from %,d files (%s%s)",
                         ack.nodes(),
                         ack.edges(),
-                        ack.communities(),
                         ack.files(),
                         read,
                         classes)

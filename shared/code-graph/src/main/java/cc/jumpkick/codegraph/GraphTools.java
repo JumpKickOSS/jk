@@ -15,15 +15,14 @@ import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The read tools over one graph, each answering in graphify's text so an agent's prompts carry
- * over: {@code get_node}, {@code get_neighbors}, {@code get_community}, {@code god_nodes}, {@code
- * graph_stats}, {@code shortest_path} and the CLI's {@code explain}. A name resolves by exact id,
+ * The read tools over one graph: {@code neighbors}, {@code callers} and {@code path}. Each names a
+ * symbol {@code Owner.member()} and places it at {@code file:line}. A name resolves by exact id,
  * then exact label, then the best search hit; a label several files declare is refused with the
  * candidates.
  */
 public final class GraphTools {
 
-    /** The most call-site lines one edge quotes; the rest stay line numbers in {@code at=}. */
+    /** The most call-site lines one edge quotes; the rest stay line numbers after the file. */
     static final int QUOTED_SITES = 4;
 
     /** The widest quoted call-site line, in characters. */
@@ -79,10 +78,7 @@ public final class GraphTools {
         if (exact.size() > 1) {
             List<String> lines = new ArrayList<>();
             lines.add("'" + wanted + "' matches " + exact.size() + " nodes; pass one id:");
-            for (String id : exact.subList(0, Math.min(exact.size(), 10))) {
-                GraphNode n = graph.node(id);
-                lines.add("  " + id + (n == null ? "" : "  [" + n.sourceFile() + " " + n.sourceLocation() + "]"));
-            }
+            for (String id : exact.subList(0, Math.min(exact.size(), 10))) lines.add("  " + id + where(id));
             return new Resolved(null, String.join("\n", lines));
         }
         List<String> members = members(wanted);
@@ -90,10 +86,7 @@ public final class GraphTools {
         if (members.size() > 1) {
             List<String> lines = new ArrayList<>();
             lines.add("'" + wanted + "' names " + members.size() + " members; pass one id:");
-            for (String id : members.subList(0, Math.min(members.size(), 10))) {
-                GraphNode n = graph.node(id);
-                lines.add("  " + id + (n == null ? "" : "  [" + n.sourceFile() + " " + n.sourceLocation() + "]"));
-            }
+            for (String id : members.subList(0, Math.min(members.size(), 10))) lines.add("  " + id + where(id));
             return new Resolved(null, String.join("\n", lines));
         }
         String missing = missingMember(wanted);
@@ -120,22 +113,6 @@ public final class GraphTools {
         return new Resolved(ranked.getFirst(), null);
     }
 
-    public String node(String name) {
-        Resolved r = resolve(name);
-        if (r.id() == null) return String.valueOf(r.error());
-        GraphNode n = node0(r.id());
-        List<String> lines = new ArrayList<>();
-        lines.add("Node: " + GraphQuery.clean(graph.display(n.id())));
-        lines.add("  ID: " + n.id());
-        lines.add("  Source: " + n.sourceFile() + " " + n.sourceLocation());
-        lines.add("  Type: " + n.fileType());
-        lines.add("  Community: " + community(n.id()));
-        lines.add("  Degree: " + graph.degree(n.id()));
-        Object attrs = n.extra().get("attributes");
-        if (attrs != null) lines.add("  Attributes: " + GraphQuery.clean(String.valueOf(attrs)));
-        return String.join("\n", lines);
-    }
-
     public String neighbors(String name, String relationFilter, int budget) {
         // Every overload of a Type.member address answers at once: who calls a method rarely means one signature.
         List<String> overloads = members(name.strip());
@@ -149,12 +126,10 @@ public final class GraphTools {
         }
         List<String> lines = new ArrayList<>();
         for (String id : ids) {
-            GraphNode n = graph.node(id);
-            String at = n == null || ids.size() == 1 ? "" : " [" + n.sourceFile() + ":" + Decl.line(n) + "]";
-            lines.add("Neighbors of " + GraphQuery.clean(graph.display(id)) + at + ":");
-            lines.addAll(edgeLines(id, relationFilter.toLowerCase(Locale.ROOT), Integer.MAX_VALUE));
+            lines.add("Neighbors of " + GraphQuery.clean(graph.display(id)) + (ids.size() == 1 ? "" : where(id)) + ":");
+            lines.addAll(edgeLines(id, relationFilter.toLowerCase(Locale.ROOT)));
         }
-        return Budget.lines(lines, budget, "Narrow with relation_filter or use get_node for a specific symbol");
+        return Budget.lines(lines, budget, "Narrow with --relation, or read one symbol with jk graph read");
     }
 
     /** One method that reaches the subject: {@code hop} calls away, through {@code callee}, at {@code edge}. */
@@ -300,63 +275,6 @@ public final class GraphTools {
         return scoped.isEmpty() ? out.stream().sorted().toList() : scoped;
     }
 
-    public String explain(String name, boolean all) {
-        Resolved r = resolve(name);
-        if (r.id() == null) return String.valueOf(r.error());
-        GraphNode n = node0(r.id());
-        List<String> lines = new ArrayList<>();
-        lines.add("Node: " + GraphQuery.clean(graph.display(n.id())));
-        lines.add("  Source:    " + n.sourceFile() + " " + n.sourceLocation());
-        lines.add("  Community: " + community(n.id()));
-        lines.add("  Degree:    " + graph.degree(n.id()));
-        List<String> edges = edgeLines(n.id(), "", all ? Integer.MAX_VALUE : 20);
-        lines.add("");
-        lines.add("Connections (" + graph.incident(n.id()).size() + "):");
-        lines.addAll(edges);
-        return String.join("\n", lines);
-    }
-
-    public String community(int id, int budget) {
-        List<String> members = graph.communities().getOrDefault(id, List.of());
-        if (members.isEmpty()) return "Community " + id + " not found.";
-        String name = graph.communityName(id);
-        String header = "Community " + id + (name == null ? "" : " — " + GraphQuery.clean(name));
-        List<String> lines = new ArrayList<>();
-        lines.add(header + " (" + members.size() + " nodes):");
-        for (String m : members)
-            lines.add("  " + GraphQuery.clean(graph.display(m)) + " [" + node0(m).sourceFile() + "]");
-        return Budget.lines(lines, budget, "Raise token_budget or use get_node for specific members");
-    }
-
-    public String godNodes(int topN) {
-        List<String> lines = new ArrayList<>();
-        lines.add("God nodes (most connected):");
-        int i = 1;
-        for (String id : GraphAnalysis.godNodes(graph, topN, scope)) {
-            lines.add("  " + i++ + ". " + GraphQuery.clean(graph.display(id)) + " - " + graph.degree(id) + " edges");
-        }
-        return String.join("\n", lines);
-    }
-
-    public String stats(@Nullable String builtFrom) {
-        Map<Confidence, Integer> counts = new HashMap<>();
-        graph.edges().forEach(e -> counts.merge(e.confidence(), 1, Integer::sum));
-        double total = Math.max(graph.edges().size(), 1);
-        StringBuilder out = new StringBuilder();
-        out.append("Nodes: ").append(graph.size()).append('\n');
-        out.append("Edges: ").append(graph.edges().size()).append('\n');
-        out.append("Communities: ").append(graph.communities().size()).append('\n');
-        for (Confidence c : Confidence.values()) {
-            out.append(c)
-                    .append(": ")
-                    .append(Math.round(counts.getOrDefault(c, 0) / total * 100))
-                    .append("%\n");
-        }
-        if (builtFrom != null)
-            out.append("Built from commit: ").append(builtFrom).append('\n');
-        return out.toString();
-    }
-
     /** The fewest hops from {@code source} to {@code target}; directed unless {@code undirected}. */
     public String shortestPath(String source, String target, int maxHops, boolean undirected) {
         Resolved from = resolve(source);
@@ -372,15 +290,18 @@ public final class GraphTools {
             return undirected
                     ? "No path found between '" + graph.display(from.id()) + "' and '" + graph.display(to.id()) + "'."
                     : "No directed path found between '" + graph.display(from.id()) + "' and '" + graph.display(to.id())
-                            + "'. Retry with undirected=true to search ignoring edge direction.";
+                            + "'. Retry with --undirected to search ignoring edge direction.";
         }
         int hops = path.size() - 1;
-        if (hops > maxHops) return "Path exceeds max_hops=" + maxHops + " (" + hops + " hops found).";
-        StringBuilder out = new StringBuilder(graph.display(path.getFirst()));
-        for (int i = 0; i < hops; i++) out.append(' ').append(segment(path.get(i), path.get(i + 1)));
-        return "Shortest path (" + hops + " hops):\n  " + out;
+        if (hops > maxHops) return "The shortest path is " + hops + " hops, longer than --max-hops " + maxHops + ".";
+        List<String> lines = new ArrayList<>();
+        lines.add("Shortest path, " + hops + (hops == 1 ? " hop:" : " hops:"));
+        lines.add("  " + GraphQuery.clean(graph.display(path.getFirst())) + where(path.getFirst()));
+        for (int i = 0; i < hops; i++) lines.add("  " + segment(path.get(i), path.get(i + 1)));
+        return String.join("\n", lines);
     }
 
+    /** One hop of a path: {@code -rel-> Owner.member()  file:line}, the arrow reversed for an edge walked backwards. */
     private String segment(String u, String v) {
         List<GraphEdge> fwd = new ArrayList<>();
         List<GraphEdge> bwd = new ArrayList<>();
@@ -388,11 +309,18 @@ public final class GraphTools {
         List<GraphEdge> datas = fwd.isEmpty() ? bwd : fwd;
         String rel = String.join(
                 "/", new TreeSet<>(datas.stream().map(GraphEdge::relation).toList()));
-        String conf = String.join(
-                "/",
-                new TreeSet<>(datas.stream().map(e -> e.confidence().name()).toList()));
-        String tag = (rel.isEmpty() ? "related" : rel) + (conf.isEmpty() ? "" : " [" + conf + "]");
-        return fwd.isEmpty() ? "<--" + tag + "-- " + graph.display(v) : "--" + tag + "--> " + graph.display(v);
+        if (rel.isEmpty()) rel = "related";
+        String guessed = String.join(
+                ", ",
+                new TreeSet<>(datas.stream()
+                        .map(GraphEdge::confidence)
+                        .filter(c -> c != Confidence.EXTRACTED)
+                        .map(c -> c.name().toLowerCase(Locale.ROOT))
+                        .toList()));
+        return (fwd.isEmpty() ? "<-" + rel + "- " : "-" + rel + "-> ")
+                + GraphQuery.clean(graph.display(v))
+                + (guessed.isEmpty() ? "" : " (" + guessed + ")")
+                + where(v);
     }
 
     private List<String> bfsPath(String from, String to, boolean undirected) {
@@ -418,7 +346,7 @@ public final class GraphTools {
         return path;
     }
 
-    private List<String> edgeLines(String id, String relationFilter, int limit) {
+    private List<String> edgeLines(String id, String relationFilter) {
         List<GraphEdge> edges = graph.incident(id).stream()
                 .filter(e -> relationFilter.isEmpty()
                         || e.relation().toLowerCase(Locale.ROOT).contains(relationFilter))
@@ -427,15 +355,37 @@ public final class GraphTools {
                         .thenComparing(e -> other(e, id)))
                 .toList();
         List<String> lines = new ArrayList<>();
-        for (GraphEdge e : edges.subList(0, Math.min(limit, edges.size()))) {
-            String arrow = e.source().equals(id) ? "-->" : "<--";
-            String at = e.sourceLocation().isEmpty() ? "" : " at=" + e.sourceFile() + ":" + String.join(",", e.sites());
-            lines.add("  " + arrow + " " + GraphQuery.clean(graph.display(other(e, id))) + " [" + e.relation() + "] ["
-                    + e.confidence() + "]" + at);
+        for (GraphEdge e : edges) {
+            String arrow = e.source().equals(id) ? "-" + e.relation() + "-> " : "<-" + e.relation() + "- ";
+            lines.add("  " + arrow + GraphQuery.clean(graph.display(other(e, id))) + confidence(e) + at(e));
             lines.addAll(quotes(e));
         }
-        if (edges.size() > limit) lines.add("  ... " + (edges.size() - limit) + " more (use --all)");
         return lines;
+    }
+
+    /**
+     * Two spaces and the node's {@code file:line}, or its file alone when it has no line; empty for a
+     * node with no source file.
+     */
+    String where(String id) {
+        GraphNode n = graph.node(id);
+        if (n == null || n.sourceFile().isEmpty()) return "";
+        int line = Decl.line(n);
+        return "  " + GraphQuery.clean(n.sourceFile()) + (line > 0 ? ":" + line : "");
+    }
+
+    /** Two spaces and where the edge was found, {@code file:21,9}; empty for an edge with no site. */
+    static String at(GraphEdge e) {
+        if (e.sourceFile().isEmpty() || e.sourceLocation().isEmpty()) return "";
+        return "  " + GraphQuery.clean(e.sourceFile()) + ":"
+                + GraphQuery.clean(String.join(",", e.sites()).replace("L", ""));
+    }
+
+    /** {@code " (inferred)"} or {@code " (ambiguous)"} for an edge not read straight from the code; else empty. */
+    static String confidence(GraphEdge e) {
+        return e.confidence() == Confidence.EXTRACTED
+                ? ""
+                : " (" + e.confidence().name().toLowerCase(Locale.ROOT) + ")";
     }
 
     /** The edge's first {@link #QUOTED_SITES} source lines, {@code L<n>| text}; none when the file is unreadable. */
@@ -471,19 +421,6 @@ public final class GraphTools {
 
     private static String other(GraphEdge e, String id) {
         return e.source().equals(id) ? e.target() : e.source();
-    }
-
-    private String community(String id) {
-        int c = graph.community(id);
-        if (c < 0) return "";
-        String name = graph.communityName(c);
-        return name == null ? String.valueOf(c) : GraphQuery.clean(name);
-    }
-
-    private GraphNode node0(String id) {
-        GraphNode n = graph.node(id);
-        if (n == null) throw new IllegalStateException("no node " + id);
-        return n;
     }
 
     private String label(String id) {

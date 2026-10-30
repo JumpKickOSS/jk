@@ -1,10 +1,10 @@
 version = 1
 generated-by = "jk 0.49.0-SNAPSHOT"
-generated-by-build = "76f834f62e30"
-generated-by-build-time = "2026-10-28T14:44:20Z"
+generated-by-build = "e29a62963696"
+generated-by-build-time = "2026-10-30T02:26:21Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "26160dda29b196224911e298f55f977facdd2ed7c47f2a1360471084608a0ad9"
+manifests-sha256 = "43b5636383478908373080639f304832f1395166f449efcf4facafb2d729bfd3"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -7399,7 +7399,7 @@ group   = "cc.jumpkick"
 name    = "jk-code-graph"
 version = "0.49.0"
 java    = 25
-description = "Code graph model: graphify-compatible ids and graph.json, budgeted query, paths, communities and the report"
+description = "Code graph model: ids, merge, binary snapshot, budgeted query, callers, paths and symbol reads"
 install.destination = "jk"
 
 [[module]]
