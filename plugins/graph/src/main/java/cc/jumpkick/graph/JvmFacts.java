@@ -45,6 +45,7 @@ final class JvmFacts {
     private static final int ACC_ANNOTATION = 0x2000;
     private static final int ACC_PUBLIC = 0x0001;
     private static final int ACC_PRIVATE = 0x0002;
+    private static final int ACC_STATIC = 0x0008;
     private static final int ACC_PROTECTED = 0x0004;
 
     /** Members the compiler writes for every record or enum: not the author's API, so not nodes. */
@@ -256,6 +257,9 @@ final class JvmFacts {
                 facts.merge(from, member, Decl::merge);
                 signature(m.desc(), from, mentions);
                 annotations(m.annotations(), from, mentions);
+                if (!owner.facade() && (m.access() & (ACC_STATIC | ACC_PRIVATE)) == 0) {
+                    overrides(c, name, from, m.firstLine(), mentions);
+                }
             }
         }
         for (CallSite site : m.calls()) {
@@ -291,6 +295,27 @@ final class JvmFacts {
             }
         }
         return method;
+    }
+
+    /**
+     * The member {@code from} as an override of {@code name} on each direct supertype, or on the
+     * nearest one above it that declares {@code name}: the linker resolves each, and drops the
+     * mention when no supertype in the workspace declares one.
+     */
+    private static void overrides(ClassFacts c, String name, String from, int line, List<Mention> mentions) {
+        List<String> direct = new ArrayList<>();
+        if (c.superName() != null && !ROOT_TYPES.contains(c.superName())) direct.add(c.superName());
+        direct.addAll(c.interfaces());
+        for (String sup : direct) {
+            if (platform(sup)) continue;
+            mentions.add(new Mention(
+                    from,
+                    Mention.Kind.MEMBER,
+                    Descriptors.binaryName(sup) + "#" + name,
+                    line,
+                    Relations.OVERRIDES,
+                    "override"));
+        }
     }
 
     private static void supertypes(ClassFacts c, String id, String rel, List<Mention> mentions) {

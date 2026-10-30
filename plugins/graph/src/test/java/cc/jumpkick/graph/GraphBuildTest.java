@@ -179,6 +179,18 @@ import java.util.List;
     }
 
     @Test
+    void anImplementationOverridesItsInterfaceMethodSoTheInterfacesCallersReachIt(@TempDir Path dir)
+            throws IOException {
+        CodeGraph g = refresh(workspace(dir), false).graph();
+        assertThat(edge(g, "orderservice_audit", "auditable_audit", "overrides"))
+                .isTrue();
+        assertThat(g.edges())
+                .filteredOn(e -> e.relation().equals("overrides"))
+                .as("a private, static or constructor member overrides nothing")
+                .hasSize(1);
+    }
+
+    @Test
     void aStaleSourceLosesOnlyItsOwnCompiledFacts(@TempDir Path dir) throws IOException {
         Path root = workspace(dir);
         CodeGraph calc = refresh(root, false, Set.of("src/main/java/com/acme/shop/PriceCalculator.java"))

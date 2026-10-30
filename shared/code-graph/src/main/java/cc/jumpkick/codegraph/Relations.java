@@ -14,6 +14,9 @@ public final class Relations {
     public static final String IMPORTS_FROM = "imports_from";
     public static final String RE_EXPORTS = "re_exports";
     public static final String CALLS = "calls";
+    /** A method to the supertype method it overrides or implements: a call to that one may run this one. */
+    public static final String OVERRIDES = "overrides";
+
     public static final String REFERENCES = "references";
     public static final String USES = "uses";
     public static final String RATIONALE_FOR = "rationale_for";
