@@ -186,8 +186,8 @@ public final class GraphTools {
         lines.add((transitive ? "Every method that reaches " : "Callers of ") + subject + ": " + main.size()
                 + " in main sources, " + test.size() + " in tests"
                 + (transitive ? ", up to " + depth + " hops." : "."));
-        lines.add("Complete from the compiled classes; no search needed. A lambda's call counts for its method; a call"
-                + " to a supertype method it overrides is marked through.");
+        lines.add("Complete from the compiled classes; no search needed unless a note below says otherwise. A lambda's"
+                + " call counts for its method; a call to a supertype method it overrides is marked through.");
         for (List<Caller> set : List.of(main, test)) {
             if (set.isEmpty()) continue;
             lines.add(set == main ? "main:" : "test:");

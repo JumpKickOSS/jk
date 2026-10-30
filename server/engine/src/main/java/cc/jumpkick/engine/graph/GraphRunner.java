@@ -395,8 +395,9 @@ public final class GraphRunner {
             List<String> shown = edited.subList(0, Math.min(edited.size(), 5));
             lines.add(edited.size() + (edited.size() == 1 ? " source edited" : " sources edited")
                     + " since the build (" + String.join(", ", shown) + (edited.size() > shown.size() ? ", …" : "")
-                    + "): their own calls and lines come from the sources; every other file keeps its compiled"
-                    + " facts; jk build brings them back");
+                    + "): the calls they make are missing from a callers answer and their lines come from the"
+                    + " sources, so search those files for calls too; every other file keeps its compiled facts;"
+                    + " jk build brings them back");
         }
         String line = String.join("\n", lines);
         String note = ack.note() == null ? line : ack.note() + "\n" + line;
