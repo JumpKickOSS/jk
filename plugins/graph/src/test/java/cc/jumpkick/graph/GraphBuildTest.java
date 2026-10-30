@@ -101,6 +101,10 @@ import java.util.List;
     };
 
     private static Path workspace(Path dir) throws IOException {
+        return workspace(dir, SOURCES);
+    }
+
+    private static Path workspace(Path dir, Map<String, String> sources) throws IOException {
         Files.writeString(dir.resolve("jk.toml"), """
                 group = "com.acme"
                 name = "shop"
@@ -109,7 +113,7 @@ import java.util.List;
                 """);
         Path pkg = Files.createDirectories(dir.resolve("src/main/java/com/acme/shop"));
         List<String> paths = new ArrayList<>();
-        for (Map.Entry<String, String> e : SOURCES.entrySet()) {
+        for (Map.Entry<String, String> e : sources.entrySet()) {
             Path f = pkg.resolve(e.getKey());
             Files.writeString(f, e.getValue());
             paths.add(f.toString());
@@ -188,6 +192,67 @@ import java.util.List;
                 .filteredOn(e -> e.relation().equals("overrides"))
                 .as("a private, static or constructor member overrides nothing")
                 .hasSize(1);
+    }
+
+    @Test
+    void callsAndOverridesNameTheOverloadsTheyJoinAndAGenericOverrideIsFoundThroughItsBridge(@TempDir Path dir)
+            throws IOException {
+        CodeGraph g = refresh(
+                        workspace(
+                                dir,
+                                Map.of(
+                                        "Exec.java", """
+                                        package com.acme.shop;
+
+                                        public interface Exec<T> {
+                                            void run(T t);
+                                            String home();
+                                            String home(int n);
+                                        }
+                                        """,
+                                        "Spec.java", """
+                                        package com.acme.shop;
+
+                                        public class Spec implements Exec<String> {
+                                            public void run(String s) {}
+                                            public String home() { return "a"; }
+                                            public String home(int n) { return "b"; }
+                                        }
+                                        """,
+                                        "Step.java", """
+                                        package com.acme.shop;
+
+                                        public class Step {
+                                            String one(Exec<String> e) { return e.home(); }
+                                            String two(Exec<String> e) { return e.home(2); }
+                                            void three(Exec<String> e) { Runnable r = () -> e.run("x"); r.run(); }
+                                        }
+                                        """)),
+                        false)
+                .graph();
+        assertThat(overloads(g, "spec_run", "exec_run", "overrides"))
+                .as("run(String) overrides run(T) as the bridge run(Object) says")
+                .containsExactly("(Ljava/lang/String;)V>(Ljava/lang/Object;)V");
+        assertThat(overloads(g, "spec_home", "exec_home", "overrides"))
+                .containsExactly(
+                        "()Ljava/lang/String;>()Ljava/lang/String;", "(I)Ljava/lang/String;>(I)Ljava/lang/String;");
+        assertThat(overloads(g, "step_one", "exec_home", "calls"))
+                .containsExactly("(Lcom/acme/shop/Exec;)Ljava/lang/String;>()Ljava/lang/String;");
+        assertThat(overloads(g, "step_two", "exec_home", "calls"))
+                .containsExactly("(Lcom/acme/shop/Exec;)Ljava/lang/String;>(I)Ljava/lang/String;");
+        assertThat(overloads(g, "step_three", "exec_run", "calls"))
+                .as("a lambda's call is made by the one method of its name")
+                .containsExactly("(Lcom/acme/shop/Exec;)V>(Ljava/lang/Object;)V");
+    }
+
+    private static List<String> overloads(CodeGraph g, String from, String to, String relation) {
+        return g.edges().stream()
+                .filter(e -> e.source().endsWith(from)
+                        && e.target().endsWith(to)
+                        && e.relation().equals(relation))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("no " + relation + " edge " + from + " -> " + to))
+                .overloads();
     }
 
     @Test
