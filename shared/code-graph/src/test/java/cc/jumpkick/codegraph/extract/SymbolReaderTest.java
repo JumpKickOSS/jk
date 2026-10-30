@@ -156,7 +156,7 @@ class SymbolReaderTest {
                 .startsWith("Point.x [method public]  src/main/java/a/Point.java:3-3");
         assertThat(reader.read("Point.tags", View.HEADLINE, 2000))
                 .startsWith("Point.tags [method public]  src/main/java/a/Point.java:4-4");
-        assertThat(new GraphTools(g).neighbors("Point.tags", "", 2000)).startsWith("Neighbors of .tags():");
+        assertThat(new GraphTools(g).neighbors("Point.tags", "", 2000)).startsWith("Neighbors of Point.tags():");
     }
 
     @Test

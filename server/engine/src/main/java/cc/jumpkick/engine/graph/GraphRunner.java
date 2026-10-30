@@ -392,8 +392,8 @@ public final class GraphRunner {
         List<String> lines = new ArrayList<>();
         if (!leftOut.isEmpty()) {
             lines.add("compiled facts left out for " + String.join(", ", leftOut)
-                    + " (classes older than the sources, or being built): calls, overrides and lines there come from"
-                    + " the sources alone; jk build brings them back");
+                    + " (classes older than the sources, or being built): calls and overrides there are missing, so a"
+                    + " callers answer is not complete, and lines come from the sources; jk build brings them back");
         }
         if (!edited.isEmpty()) {
             List<String> shown = edited.subList(0, Math.min(edited.size(), 5));

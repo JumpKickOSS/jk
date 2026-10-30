@@ -194,8 +194,8 @@ public final class GraphQuery {
         int c = graph.community(id);
         String name = c < 0 ? null : graph.communityName(c);
         String community = name != null ? name : c < 0 ? "" : String.valueOf(c);
-        return "NODE " + clean(n.label()) + " [src=" + clean(n.sourceFile()) + " loc=" + clean(n.sourceLocation())
-                + " community=" + clean(community) + "]";
+        return "NODE " + clean(graph.display(id)) + " [src=" + clean(n.sourceFile()) + " loc="
+                + clean(n.sourceLocation()) + " community=" + clean(community) + "]";
     }
 
     private String edgeLine(GraphEdge e) {
@@ -259,8 +259,7 @@ public final class GraphQuery {
     }
 
     private String label(String id) {
-        GraphNode n = graph.node(id);
-        return n == null ? id : n.label();
+        return graph.display(id);
     }
 
     /** {@code question} with every term one of whose aliases it says appended. */
@@ -287,7 +286,7 @@ public final class GraphQuery {
         lines.add(NO_MATCH + " Closest names:");
         for (String id : nearest) {
             GraphNode n = graph.node(id);
-            if (n != null) lines.add("  " + clean(n.label()) + "  " + n.sourceFile() + ":" + Decl.line(n));
+            if (n != null) lines.add("  " + clean(graph.display(id)) + "  " + n.sourceFile() + ":" + Decl.line(n));
         }
         return String.join("\n", lines);
     }

@@ -36,6 +36,7 @@ class GraphCommandTest {
                         "path",
                         "node",
                         "neighbors",
+                        "callers",
                         "community",
                         "god-nodes",
                         "read",

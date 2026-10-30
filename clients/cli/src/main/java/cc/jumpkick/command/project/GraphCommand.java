@@ -102,6 +102,15 @@ public final class GraphCommand extends GroupCommand {
                                 NO_REFRESH),
                         List.of(Param.of("name", Arity.ONE, "label or node id"))),
                 new GraphOpCommand(
+                        "callers",
+                        "Who calls a method, complete, with each call's file:line",
+                        scoped(
+                                Opt.flag("Also their callers, and theirs: all that reach it.", "-t", "--transitive"),
+                                Opt.value("<n>", "Most hops with -t (default 8).", "-L", "--max-hops"),
+                                BUDGET,
+                                NO_REFRESH),
+                        List.of(Param.of("method", Arity.ONE, "Type.method (every overload)"))),
+                new GraphOpCommand(
                         "community",
                         "The members of one community",
                         List.of(BUDGET, NO_REFRESH),

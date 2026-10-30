@@ -77,6 +77,39 @@ class DeclFactsTest {
     }
 
     @Test
+    void anAnnotationBetweenTheModifiersAndTheTypeStillDeclaresTheMember() {
+        Fragment f = Objects.requireNonNull(Extractors.forPath("src/main/java/a/Lookup.java"))
+                .extract("src/main/java/a/Lookup.java", """
+                        package a;
+
+                        public class Lookup {
+                            private static final @Nullable String FALLBACK = null;
+
+                            public @Inject Lookup(String root) {
+                            }
+
+                            static @Nullable String find(String key) {
+                                return null;
+                            }
+
+                            public static <T> @org.jspecify.annotations.Nullable T first(java.util.List<T> xs) {
+                                return null;
+                            }
+
+                            private @Size(max = 3) java.util.List<String> names() {
+                                return null;
+                            }
+                        }
+                        """);
+        assertThat(Decl.kind(node(f, ".find()"))).isEqualTo("method");
+        assertThat(Decl.vis(node(f, ".find()"))).isEqualTo("package");
+        assertThat(Decl.vis(node(f, ".first()"))).isEqualTo("public");
+        assertThat(Decl.vis(node(f, ".names()"))).isEqualTo("private");
+        assertThat(Decl.kind(node(f, ".Lookup()"))).isEqualTo("constructor");
+        assertThat(Decl.kind(node(f, ".FALLBACK"))).isEqualTo("constant");
+    }
+
+    @Test
     void namedConstantsAreMembersOfTheirType() {
         Fragment f = Objects.requireNonNull(Extractors.forPath("src/main/java/a/Pricing.java"))
                 .extract("src/main/java/a/Pricing.java", """

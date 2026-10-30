@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -124,7 +125,7 @@ public final class GraphTools {
         if (r.id() == null) return String.valueOf(r.error());
         GraphNode n = node0(r.id());
         List<String> lines = new ArrayList<>();
-        lines.add("Node: " + GraphQuery.clean(n.label()));
+        lines.add("Node: " + GraphQuery.clean(graph.display(n.id())));
         lines.add("  ID: " + n.id());
         lines.add("  Source: " + n.sourceFile() + " " + n.sourceLocation());
         lines.add("  Type: " + n.fileType());
@@ -150,10 +151,82 @@ public final class GraphTools {
         for (String id : ids) {
             GraphNode n = graph.node(id);
             String at = n == null || ids.size() == 1 ? "" : " [" + n.sourceFile() + ":" + Decl.line(n) + "]";
-            lines.add("Neighbors of " + GraphQuery.clean(label(id)) + at + ":");
+            lines.add("Neighbors of " + GraphQuery.clean(graph.display(id)) + at + ":");
             lines.addAll(edgeLines(id, relationFilter.toLowerCase(Locale.ROOT), Integer.MAX_VALUE));
         }
         return Budget.lines(lines, budget, "Narrow with relation_filter or use get_node for a specific symbol");
+    }
+
+    /** One method that reaches the subject: {@code hop} calls away, through {@code callee}, at {@code edge}. */
+    private record Caller(String id, int hop, String callee, GraphEdge edge) {}
+
+    /**
+     * Who calls a method, answered so it can be acted on without a search to check it: each caller
+     * named {@code Owner.member()} with its call sites' {@code file:line}, main sources before
+     * tests, counted, and said to be complete. Every overload of a {@code Type.member} address
+     * answers. {@code depth} above 1 also lists the callers' callers, each with the method it
+     * calls on the way, up to {@code depth} hops; nothing is listed twice.
+     */
+    public String callers(String name, int depth, int budget) {
+        List<String> targets = members(name.strip());
+        if (targets.isEmpty()) {
+            Resolved r = resolve(name);
+            if (r.id() == null) return String.valueOf(r.error());
+            targets = List.of(r.id());
+        }
+        Map<String, Caller> found = new LinkedHashMap<>();
+        List<String> frontier = targets;
+        for (int hop = 1; hop <= depth && !frontier.isEmpty(); hop++) {
+            List<String> next = new ArrayList<>();
+            for (String callee : frontier) {
+                for (GraphEdge e : graph.incident(callee)) {
+                    if (!e.target().equals(callee) || !e.relation().equals(Relations.CALLS)) continue;
+                    String caller = e.source();
+                    if (targets.contains(caller) || found.containsKey(caller) || !scope.contains(graph.node(caller)))
+                        continue;
+                    found.put(caller, new Caller(caller, hop, callee, e));
+                    next.add(caller);
+                }
+            }
+            frontier = next;
+        }
+        Comparator<Caller> order = Comparator.comparingInt(Caller::hop).thenComparing(c -> graph.display(c.id()));
+        List<Caller> main = new ArrayList<>();
+        List<Caller> test = new ArrayList<>();
+        for (Caller c : found.values()) {
+            boolean inTest = graph.modules().sourceSet(c.edge().sourceFile()) == Modules.SourceSet.TEST;
+            (inTest ? test : main).add(c);
+        }
+        main.sort(order);
+        test.sort(order);
+        boolean transitive = depth > 1;
+        String subject =
+                graph.display(targets.getFirst()) + (targets.size() > 1 ? " (" + targets.size() + " overloads)" : "");
+        List<String> lines = new ArrayList<>();
+        lines.add((transitive ? "Every method that reaches " : "Callers of ") + subject + ": " + main.size()
+                + " in main sources, " + test.size() + " in tests"
+                + (transitive ? ", up to " + depth + " hops." : "."));
+        lines.add("Complete for the compiled classes: every call site they record is listed, and a call inside a "
+                + "lambda counts for the method holding it, so no search is needed to confirm it. A call made "
+                + "through a supertype's method is listed under that method.");
+        for (List<Caller> set : List.of(main, test)) {
+            if (set.isEmpty()) continue;
+            lines.add(set == main ? "main:" : "test:");
+            int hop = 0;
+            for (Caller c : set) {
+                if (transitive && c.hop() != hop) {
+                    hop = c.hop();
+                    lines.add("  hop " + hop + (hop == 1 ? " (calls it directly):" : ":"));
+                }
+                String via = transitive && c.hop() > 1 ? "  -> " + GraphQuery.clean(graph.display(c.callee())) : "";
+                lines.add("  " + GraphQuery.clean(graph.display(c.id())) + "  "
+                        + c.edge().sourceFile() + ":"
+                        + String.join(",", c.edge().sites()).replace("L", "") + via);
+                if (!transitive) lines.addAll(quotes(c.edge()).stream().limit(2).toList());
+            }
+        }
+        if (found.isEmpty()) lines.add("Nothing in the compiled classes calls it.");
+        return Budget.lines(lines, budget, "Raise the budget, or narrow with scope, modules or source_set");
     }
 
     /**
@@ -216,7 +289,7 @@ public final class GraphTools {
         if (r.id() == null) return String.valueOf(r.error());
         GraphNode n = node0(r.id());
         List<String> lines = new ArrayList<>();
-        lines.add("Node: " + GraphQuery.clean(n.label()));
+        lines.add("Node: " + GraphQuery.clean(graph.display(n.id())));
         lines.add("  Source:    " + n.sourceFile() + " " + n.sourceLocation());
         lines.add("  Community: " + community(n.id()));
         lines.add("  Degree:    " + graph.degree(n.id()));
@@ -234,7 +307,8 @@ public final class GraphTools {
         String header = "Community " + id + (name == null ? "" : " — " + GraphQuery.clean(name));
         List<String> lines = new ArrayList<>();
         lines.add(header + " (" + members.size() + " nodes):");
-        for (String m : members) lines.add("  " + GraphQuery.clean(label(m)) + " [" + node0(m).sourceFile() + "]");
+        for (String m : members)
+            lines.add("  " + GraphQuery.clean(graph.display(m)) + " [" + node0(m).sourceFile() + "]");
         return Budget.lines(lines, budget, "Raise token_budget or use get_node for specific members");
     }
 
@@ -243,7 +317,7 @@ public final class GraphTools {
         lines.add("God nodes (most connected):");
         int i = 1;
         for (String id : GraphAnalysis.godNodes(graph, topN, scope)) {
-            lines.add("  " + i++ + ". " + GraphQuery.clean(label(id)) + " - " + graph.degree(id) + " edges");
+            lines.add("  " + i++ + ". " + GraphQuery.clean(graph.display(id)) + " - " + graph.degree(id) + " edges");
         }
         return String.join("\n", lines);
     }
@@ -280,13 +354,13 @@ public final class GraphTools {
         List<String> path = bfsPath(from.id(), to.id(), undirected);
         if (path.isEmpty()) {
             return undirected
-                    ? "No path found between '" + label(from.id()) + "' and '" + label(to.id()) + "'."
-                    : "No directed path found between '" + label(from.id()) + "' and '" + label(to.id())
+                    ? "No path found between '" + graph.display(from.id()) + "' and '" + graph.display(to.id()) + "'."
+                    : "No directed path found between '" + graph.display(from.id()) + "' and '" + graph.display(to.id())
                             + "'. Retry with undirected=true to search ignoring edge direction.";
         }
         int hops = path.size() - 1;
         if (hops > maxHops) return "Path exceeds max_hops=" + maxHops + " (" + hops + " hops found).";
-        StringBuilder out = new StringBuilder(label(path.getFirst()));
+        StringBuilder out = new StringBuilder(graph.display(path.getFirst()));
         for (int i = 0; i < hops; i++) out.append(' ').append(segment(path.get(i), path.get(i + 1)));
         return "Shortest path (" + hops + " hops):\n  " + out;
     }
@@ -302,7 +376,7 @@ public final class GraphTools {
                 "/",
                 new TreeSet<>(datas.stream().map(e -> e.confidence().name()).toList()));
         String tag = (rel.isEmpty() ? "related" : rel) + (conf.isEmpty() ? "" : " [" + conf + "]");
-        return fwd.isEmpty() ? "<--" + tag + "-- " + label(v) : "--" + tag + "--> " + label(v);
+        return fwd.isEmpty() ? "<--" + tag + "-- " + graph.display(v) : "--" + tag + "--> " + graph.display(v);
     }
 
     private List<String> bfsPath(String from, String to, boolean undirected) {
@@ -340,7 +414,7 @@ public final class GraphTools {
         for (GraphEdge e : edges.subList(0, Math.min(limit, edges.size()))) {
             String arrow = e.source().equals(id) ? "-->" : "<--";
             String at = e.sourceLocation().isEmpty() ? "" : " at=" + e.sourceFile() + ":" + String.join(",", e.sites());
-            lines.add("  " + arrow + " " + GraphQuery.clean(label(other(e, id))) + " [" + e.relation() + "] ["
+            lines.add("  " + arrow + " " + GraphQuery.clean(graph.display(other(e, id))) + " [" + e.relation() + "] ["
                     + e.confidence() + "]" + at);
             lines.addAll(quotes(e));
         }

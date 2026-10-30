@@ -33,22 +33,22 @@ class GraphQueryTest {
                 .containsExactly(
                         "OrderService",
                         "OrderService.java",
-                        ".audit()",
-                        ".total()",
+                        "OrderService.audit()",
+                        "OrderService.total()",
                         "Shop",
                         "PriceCalculator",
                         "Auditable",
                         "BaseService",
                         "Item",
-                        ".sum()",
+                        "PriceCalculator.sum()",
                         "README.md",
-                        ".log()",
+                        "BaseService.log()",
                         "PriceCalculator.kt",
                         "list",
                         "Override",
                         "Design",
                         "Auditable.java",
-                        ".audit()",
+                        "Auditable.audit()",
                         "BaseService.java");
         assertThat(out).contains("19 nodes found");
     }
@@ -81,8 +81,8 @@ class GraphQueryTest {
         assertThat(new GraphSearch(g).members(List.of("baseservice", "log")))
                 .containsExactly("src_main_java_com_acme_shop_baseservice_baseservice_log");
         assertThat(new GraphQuery(g).query("what calls BaseService log", GraphQuery.Mode.BFS, 1, 2000, List.of()))
-                .contains("Start: [.log()")
-                .contains("EDGE .audit() --calls [INFERRED context=call]--> .log()");
+                .contains("Start: [BaseService.log()")
+                .contains("EDGE OrderService.audit() --calls [INFERRED context=call]--> BaseService.log()");
     }
 
     @Test
@@ -90,7 +90,7 @@ class GraphQueryTest {
         CodeGraph g = GraphJsonTest.shop();
         String out = new GraphQuery(g).query("who calls log", GraphQuery.Mode.BFS, 2, 2000, List.of());
         assertThat(out).contains("Context: call (heuristic)");
-        assertThat(out).contains("EDGE .audit() --calls [INFERRED context=call]--> .log()");
+        assertThat(out).contains("EDGE OrderService.audit() --calls [INFERRED context=call]--> BaseService.log()");
         assertThat(out).doesNotContain("--contains");
     }
 
