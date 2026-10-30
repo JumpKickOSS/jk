@@ -170,6 +170,12 @@ public final class GraphTools {
             }
             frontier = next;
         }
+        boolean cut = frontier.stream().anyMatch(m -> overridden(m).stream()
+                .flatMap(called -> graph.incident(called).stream()
+                        .filter(e -> e.target().equals(called) && e.relation().equals(Relations.CALLS)))
+                .map(GraphEdge::source)
+                .anyMatch(c -> !targets.contains(c) && !found.containsKey(c) && scope.contains(graph.node(c))));
+        int deepest = found.values().stream().mapToInt(Caller::hop).max().orElse(0);
         Comparator<Caller> order = Comparator.comparingInt(Caller::hop).thenComparing(c -> graph.display(c.id()));
         List<Caller> main = new ArrayList<>();
         List<Caller> test = new ArrayList<>();
@@ -185,7 +191,12 @@ public final class GraphTools {
         List<String> lines = new ArrayList<>();
         lines.add((transitive ? "Every method that reaches " : "Callers of ") + subject + ": " + main.size()
                 + " in main sources, " + test.size() + " in tests"
-                + (transitive ? ", up to " + depth + " hops." : "."));
+                + (!transitive
+                        ? "."
+                        : cut
+                                ? ", stopped at " + depth + " hops: more lie beyond, raise max_hops (-L) for them."
+                                : ", every one: the chain ends after " + deepest
+                                        + (deepest == 1 ? " hop." : " hops.")));
         lines.add("Complete from the compiled classes; no search needed unless a note below says otherwise. A lambda's"
                 + " call counts for its method; a call to a supertype method it overrides is marked through.");
         for (List<Caller> set : List.of(main, test)) {
