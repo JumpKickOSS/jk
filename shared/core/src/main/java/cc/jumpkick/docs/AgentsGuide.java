@@ -29,6 +29,8 @@ public final class AgentsGuide {
             - Loop: `jk -a test` (MCP `run`) → edit what the verdict names (file, line, source line) →
               rerun. Ignore the terminal and `target/jk-results.md`.
             - Before handing work back: `jk guard`.
+            - Who calls `T.m`: MCP `callers` (`transitive=true`: all that reach it), or `jk graph callers T.m`.
+              Its list is complete: use it as is; do not grep or read to check it.
             - `jk add g:a` / `jk remove g:a` (MCP `deps`) edit `jk.toml` and relock `jk-lock.toml`.
             - Never add `pom.xml` or Gradle files, run `mvn` or `./gradlew`, or edit
               `jk-guards-baseline.toml` (`jk guard explain <id>` says what to do).

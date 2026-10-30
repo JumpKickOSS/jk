@@ -3,6 +3,7 @@ package cc.jumpkick.codegraph;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -162,10 +163,47 @@ class GraphToolsTest {
     }
 
     @Test
+    void a_walk_says_whether_it_reached_every_caller_or_the_hop_limit_stopped_it() {
+        assertThat(new GraphTools(release()).callers("Info.name", 2, 2000))
+                .as("the limit reached exactly where the chain ends is not a cut")
+                .contains(", every one: the chain ends after 2 hops.");
+        assertThat(new GraphTools(dispatch()).callers("Spec.home", 2, 2000))
+                .contains(", every one: the chain ends after 2 hops.");
+        assertThat(new GraphTools(release()).callers("Cli.run", 1, 2000)).doesNotContain("hops");
+        String cut = new GraphTools(chain()).callers("C.c", 2, 2000);
+        assertThat(cut)
+                .startsWith(
+                        "Every method that reaches C.c(): 2 in main sources, 0 in tests, stopped at 2 hops: more lie"
+                                + " beyond, raise max_hops (-L) for them.")
+                .doesNotContain("A.a()");
+    }
+
+    /** {@code A.a} calls {@code B.b} calls {@code BB.bb} calls {@code C.c}: three hops. */
+    private static CodeGraph chain() {
+        List<GraphNode> nodes = new ArrayList<>();
+        List<GraphEdge> edges = new ArrayList<>();
+        String[][] chain = {{"a", "A"}, {"b", "B"}, {"bb", "BB"}, {"c", "C"}};
+        for (String[] t : chain) {
+            String file = "src/main/java/x/" + t[1] + ".java";
+            nodes.add(type(t[0], t[1], "x." + t[1], file));
+            nodes.add(new GraphNode(t[0] + "_m", "." + t[0] + "()", "code", file, "L3"));
+            edges.add(GraphEdge.of(t[0], t[0] + "_m", Relations.METHOD, Confidence.EXTRACTED, file, 3));
+        }
+        for (int i = 0; i + 1 < chain.length; i++) {
+            String file = "src/main/java/x/" + chain[i][1] + ".java";
+            edges.add(GraphEdge.of(
+                    chain[i][0] + "_m", chain[i + 1][0] + "_m", Relations.CALLS, Confidence.EXTRACTED, file, 4));
+        }
+        return CodeGraph.merge(List.of(new Fragment(nodes, edges)));
+    }
+
+    @Test
     void transitive_callers_list_every_method_that_reaches_it_by_hop_with_the_step_taken() {
         String out = new GraphTools(release()).callers("Info.name", 8, 2000);
         assertThat(out)
-                .startsWith("Every method that reaches Info.name(): 3 in main sources, 1 in tests, up to 8 hops.")
+                .startsWith(
+                        "Every method that reaches Info.name(): 3 in main sources, 1 in tests, every one: the chain ends"
+                                + " after 2 hops.")
                 .contains("  hop 1 (calls it directly):\n  Release.Plan.label()")
                 .contains("  hop 2:\n  Cli.run()  src/main/java/a/Cli.java:6  -> Release.publish()");
         assertThat(new GraphTools(release()).callers("Cli.run", 8, 2000))
