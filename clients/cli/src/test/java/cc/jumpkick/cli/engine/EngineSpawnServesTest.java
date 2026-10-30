@@ -58,4 +58,26 @@ class EngineSpawnServesTest {
         assertThat(EngineSpawn.serves(engine("0.13.3", "ab12cd34ef56"), "0.13.3", Optional.empty()))
                 .isTrue();
     }
+
+    /**
+     * After jk updated itself, a client that started before the install meets the newer engine the
+     * install names. It refuses to take that engine over rather than start a tug of war with the
+     * next command's client.
+     */
+    @Test
+    void an_older_released_client_never_takes_over_the_engine_the_install_names() {
+        assertThat(EngineSpawn.supersededBy(engine("0.17.0", ""), "0.16.2", true, Optional.of("0.17.0")))
+                .isTrue();
+        // The install names some other version: an ordinary skew, taken over as before.
+        assertThat(EngineSpawn.supersededBy(engine("0.17.0", ""), "0.16.2", true, Optional.of("0.16.2")))
+                .isFalse();
+        // A newer client takes an older engine over, as ever.
+        assertThat(EngineSpawn.supersededBy(engine("0.16.2", ""), "0.17.0", true, Optional.of("0.16.2")))
+                .isFalse();
+        // A development client is never superseded.
+        assertThat(EngineSpawn.supersededBy(engine("0.17.0", ""), "0.16.2-SNAPSHOT", true, Optional.of("0.17.0")))
+                .isFalse();
+        assertThat(EngineSpawn.supersededBy(engine("0.17.0", ""), "0.16.2", false, Optional.of("0.17.0")))
+                .isFalse();
+    }
 }

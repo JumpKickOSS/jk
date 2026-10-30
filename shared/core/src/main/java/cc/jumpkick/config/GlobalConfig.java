@@ -151,6 +151,16 @@ public final class GlobalConfig {
         return stringFromGlobal(file, "toolchain", "jdk");
     }
 
+    /** Root-level {@code self-update} as written, before {@link SelfUpdatePolicy} reads it. */
+    public static Optional<String> selfUpdate() {
+        return selfUpdate(JkDirs.userConfigFile());
+    }
+
+    /** As {@link #selfUpdate()} against an explicit config file. */
+    public static Optional<String> selfUpdate(Path configFile) {
+        return stringFromRoot(configFile, SelfUpdatePolicy.KEY);
+    }
+
     /** {@code [release] trusted-keys}: base64 RSA SPKI keys extending built-in release trust. */
     public static List<String> releaseTrustedKeys() {
         return stringFromGlobal(JkDirs.userConfigFile(), "release", "trusted-keys")

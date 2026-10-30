@@ -23,6 +23,7 @@ import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
+import cc.jumpkick.version.Versions;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.HelloAckFrame;
@@ -77,6 +78,21 @@ public final class EngineSpawn {
         return expected.startsWith(hs.buildId());
     }
 
+    /**
+     * Whether the live engine is the newer release the install now names, and this released client
+     * is older than it: the shape an update leaves behind for a client that started before it.
+     */
+    static boolean supersededBy(
+            EngineProbe.Handshake hs, String clientVersion, boolean releasedClient, Optional<String> installed) {
+        if (hs.draining() || !ReleaseArtifacts.applicable(clientVersion, releasedClient, false)) return false;
+        if (Versions.compare(hs.version(), clientVersion) <= 0) return false;
+        return installed.filter(v -> v.equals(hs.version())).isPresent();
+    }
+
+    private static Optional<String> installedVersion() {
+        return EngineInstall.current().currentInstall().map(EngineInstall.Materialized::version);
+    }
+
     private static Optional<String> pointerSha(String clientVersion) {
         return EngineInstall.current().engineSha(clientVersion);
     }
@@ -107,6 +123,12 @@ public final class EngineSpawn {
             Optional<String> pointer = pointerSha(clientVersion);
             if (serves(hs, clientVersion, pointer)) {
                 return hs;
+            }
+            if (supersededBy(hs, clientVersion, ReleaseArtifacts.releasedClient(), installedVersion())) {
+                // jk updated itself while this process ran: taking the newer engine over would hand
+                // the next command's client an engine older than itself, and it would take it back.
+                throw new IOException("jk was updated to " + hs.version() + " while this " + clientVersion
+                        + " client ran; run the command again");
             }
             logReason(
                     paths,

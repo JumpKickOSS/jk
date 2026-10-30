@@ -74,11 +74,18 @@ public final class Jk {
             System.exit(Exit.SOFTWARE);
             return;
         }
+        var superseded = SupersededClient.handOff(args);
+        if (superseded.isPresent()) {
+            StartupPulse.release();
+            System.exit(superseded.getAsInt());
+            return;
+        }
         GlobalCancel.install();
         GlobalSuspend.install();
         int code;
         try {
             code = execute(args);
+            SelfUpdatePrompt.afterCommand(commandName(args), List.of(args), code);
         } catch (JkDirs.InvalidOverrideException e) {
             System.err.println("jk: invalid environment: " + e.getMessage());
             code = Exit.USAGE;
@@ -121,6 +128,12 @@ public final class Jk {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /** The command {@code args} name, before alias rewriting; null for bare {@code jk}, help and the version. */
+    static @Nullable String commandName(String[] args) {
+        int at = CommandDispatch.commandIndex(List.of(args));
+        return at >= 0 ? args[at] : null;
     }
 
     /** The {@link JkDirs.InvalidOverrideException} in {@code t}'s cause chain, or null. */
