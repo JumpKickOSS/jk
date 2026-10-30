@@ -115,7 +115,9 @@ class GraphRunnerTest {
 
         GraphAck query = GraphRunner.run(request(root, "query", List.of("order service total")), p -> {});
         assertThat(query.extracted()).isZero();
-        assertThat(query.text()).contains("NODE OrderService").contains("--calls [EXTRACTED context=call]--> .sum()");
+        assertThat(query.text())
+                .contains("NODE OrderService")
+                .contains("--calls [EXTRACTED context=call]--> PriceCalculator.sum()");
 
         GraphAck path = GraphRunner.run(request(root, "path", List.of("README.md", "PriceCalculator")), p -> {});
         assertThat(path.text()).startsWith("Shortest path");

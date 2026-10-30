@@ -4,6 +4,7 @@ package cc.jumpkick.codegraph;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /** A {@code Type.member} address names the member, not the type, and every overload answers. */
@@ -84,14 +85,98 @@ class GraphToolsTest {
     void neighbors_of_an_overloaded_member_lists_every_overload() {
         String out = new GraphTools(shop()).neighbors("OrderService.total", "calls", 2000);
         assertThat(out)
-                .contains("Neighbors of .total() [src/shop/OrderService.java:10]:")
-                .contains("Neighbors of .total() [src/shop/OrderService.java:20]:")
+                .contains("Neighbors of OrderService.total() [src/shop/OrderService.java:10]:")
+                .contains("Neighbors of OrderService.total() [src/shop/OrderService.java:20]:")
                 .contains("<-- .checkout() [calls]")
                 .contains("<-- .invoice() [calls]")
                 .doesNotContain("Cart");
         assertThat(new GraphTools(shop()).neighbors("Cart.total", "calls", 2000))
-                .startsWith("Neighbors of .total():")
+                .startsWith("Neighbors of Cart.total():")
                 .contains("<-- .checkout() [calls]")
                 .doesNotContain("invoice");
+    }
+
+    /**
+     * {@code Release.publish} calls {@code Info.name} (twice) and {@code Release.Plan.label}, a nested
+     * record's member, calls it too; {@code Cli.run} calls {@code publish}; a test calls {@code name}.
+     */
+    private static CodeGraph release() {
+        String rel = "src/main/java/a/Release.java";
+        String info = "src/main/java/a/Info.java";
+        String cli = "src/main/java/a/Cli.java";
+        String test = "src/test/java/a/InfoTest.java";
+        List<GraphNode> nodes = List.of(
+                type("info", "Info", "a.Info", info),
+                new GraphNode("info_name", ".name()", "code", info, "L4"),
+                type("release", "Release", "a.Release", rel),
+                new GraphNode("release_publish", ".publish()", "code", rel, "L8"),
+                type("plan", "Plan", "a.Release$Plan", rel),
+                new GraphNode("plan_label", ".label()", "code", rel, "L20"),
+                type("cli", "Cli", "a.Cli", cli),
+                new GraphNode("cli_run", ".run()", "code", cli, "L5"),
+                type("infotest", "InfoTest", "a.InfoTest", test),
+                new GraphNode("infotest_names", ".names()", "code", test, "L9"));
+        List<GraphEdge> edges = List.of(
+                GraphEdge.of("info", "info_name", Relations.METHOD, Confidence.EXTRACTED, info, 4),
+                GraphEdge.of("release", "release_publish", Relations.METHOD, Confidence.EXTRACTED, rel, 8),
+                GraphEdge.of("release", "plan", Relations.CONTAINS, Confidence.EXTRACTED, rel, 19),
+                GraphEdge.of("plan", "plan_label", Relations.METHOD, Confidence.EXTRACTED, rel, 20),
+                GraphEdge.of("cli", "cli_run", Relations.METHOD, Confidence.EXTRACTED, cli, 5),
+                GraphEdge.of("infotest", "infotest_names", Relations.METHOD, Confidence.EXTRACTED, test, 9),
+                GraphEdge.of("release_publish", "info_name", Relations.CALLS, Confidence.EXTRACTED, rel, 10),
+                GraphEdge.of("release_publish", "info_name", Relations.CALLS, Confidence.EXTRACTED, rel, 12),
+                GraphEdge.of("plan_label", "info_name", Relations.CALLS, Confidence.EXTRACTED, rel, 21),
+                GraphEdge.of("cli_run", "release_publish", Relations.CALLS, Confidence.EXTRACTED, cli, 6),
+                GraphEdge.of("infotest_names", "info_name", Relations.CALLS, Confidence.EXTRACTED, test, 10));
+        return CodeGraph.merge(List.of(new Fragment(nodes, edges)));
+    }
+
+    private static GraphNode type(String id, String label, String qualified, String file) {
+        return new GraphNode(
+                id, label, "code", file, "L1", Map.of(Linker.QUALIFIED_NAME, qualified, "jk", Map.of("kind", "class")));
+    }
+
+    @Test
+    void a_member_is_shown_with_its_owner_and_a_nested_owner_with_its_outer_type() {
+        CodeGraph g = release();
+        assertThat(g.display("plan_label")).isEqualTo("Release.Plan.label()");
+        assertThat(g.display("plan")).isEqualTo("Release.Plan");
+        assertThat(g.display("info_name")).isEqualTo("Info.name()");
+        assertThat(new GraphTools(g).neighbors("Info.name", "calls", 2000))
+                .as("a caller in a nested record reads as that record's, not the file's top-level class")
+                .contains("<-- Release.Plan.label() [calls]")
+                .contains("<-- Release.publish() [calls]");
+    }
+
+    @Test
+    void callers_are_counted_split_main_from_test_and_said_to_be_complete() {
+        String out = new GraphTools(release()).callers("Info.name", 1, 2000);
+        assertThat(out)
+                .startsWith("Callers of Info.name(): 2 in main sources, 1 in tests.\nComplete for the compiled classes")
+                .contains("main:\n  Release.Plan.label()  src/main/java/a/Release.java:21\n"
+                        + "  Release.publish()  src/main/java/a/Release.java:10,12\n"
+                        + "test:\n  InfoTest.names()  src/test/java/a/InfoTest.java:10")
+                .as("direct callers only: the caller's caller waits for depth > 1")
+                .doesNotContain("Cli.run()");
+    }
+
+    @Test
+    void transitive_callers_list_every_method_that_reaches_it_by_hop_with_the_step_taken() {
+        String out = new GraphTools(release()).callers("Info.name", 8, 2000);
+        assertThat(out)
+                .startsWith("Every method that reaches Info.name(): 3 in main sources, 1 in tests, up to 8 hops.")
+                .contains("  hop 1 (calls it directly):\n  Release.Plan.label()")
+                .contains("  hop 2:\n  Cli.run()  src/main/java/a/Cli.java:6  -> Release.publish()");
+        assertThat(new GraphTools(release()).callers("Cli.run", 8, 2000))
+                .endsWith("Nothing in the compiled classes calls it.");
+    }
+
+    @Test
+    void callers_of_a_method_the_graph_does_not_have_says_so_instead_of_answering_for_a_near_name() {
+        assertThat(new GraphTools(release()).callers("Main.main", 1, 2000))
+                .startsWith("No method 'Main.main'.")
+                .doesNotContain("Callers of");
+        assertThat(new GraphTools(release()).callers("Info.nmae", 1, 2000))
+                .startsWith("'Info' (src/main/java/a/Info.java) declares no member 'nmae'; its members: name");
     }
 }

@@ -6,6 +6,7 @@ import cc.jumpkick.engine.http.ProgressTokenRegistry;
 import cc.jumpkick.engine.http.mcp.tools.AffectedTestsTool;
 import cc.jumpkick.engine.http.mcp.tools.BindTool;
 import cc.jumpkick.engine.http.mcp.tools.CancelTool;
+import cc.jumpkick.engine.http.mcp.tools.CodeGraphTool;
 import cc.jumpkick.engine.http.mcp.tools.ConfigTool;
 import cc.jumpkick.engine.http.mcp.tools.DepsTool;
 import cc.jumpkick.engine.http.mcp.tools.DetailsTool;
@@ -58,10 +59,11 @@ public final class McpTools {
     public static final String BIND = "bind";
 
     /**
-     * The default {@code tools/list}: what one fix-and-rerun loop needs, in reading order. Every card
-     * is paid on every turn.
+     * The default {@code tools/list}: what one fix-and-rerun loop needs, in reading order, and {@code
+     * callers}, the one graph question that answers in a call what grep and reads take turns to
+     * approximate. Every card is paid on every turn.
      */
-    public static final List<String> LOOP = List.of("run", "diagnostics", "deps", "skill");
+    public static final List<String> LOOP = List.of("run", "diagnostics", "deps", "callers", "skill");
 
     /** Which rows {@code tools/list} answers. */
     public enum Surface {
@@ -90,6 +92,7 @@ public final class McpTools {
                 + (pinned
                         ? "Loop: run() returns the verdict → edit → run(). "
                         : "Loop: run(dir=<project>) returns the verdict and binds the connection → edit → run(). ")
+                + "Who calls a method: callers(address), complete, instead of grep. "
                 + "skill has the rest; tools/list extended=true lists every tool.";
     }
 
@@ -183,8 +186,9 @@ public final class McpTools {
                 new ExportTool(),
                 new IdeTool(),
                 new GraphTool(),
-                new DoctorTool()));
-        // CodeGraphTool.all() stays unlisted until agents measurably save tokens with it.
+                new DoctorTool(),
+                // Of CodeGraphTool.all(), only callers: the one graph tool measured to save agents tokens.
+                CodeGraphTool.callers()));
         return new McpTools(tools, LOOP);
     }
 

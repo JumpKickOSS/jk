@@ -37,8 +37,17 @@ final class JvmSourceScanner {
             "(?<![\\w.$])(@interface|class|interface|enum|record|object|trait)\\s+(?!(?:class|interface|object)\\b)([A-Za-z_][A-Za-z0-9_]*)");
     private static final Pattern FUNCTION =
             Pattern.compile("(?<![\\w.])(?:fun|def)\\s+(?:<[^>]*>\\s*)?(?:[\\w.]+\\.)?([A-Za-z_]\\w*)\\s*\\(");
-    private static final Pattern JAVA_METHOD = Pattern.compile(
-            "(?m)^[ \\t]*(?:@\\w+(?:\\([^)]*\\))?\\s+)*(?:(?:public|protected|private|static|final|abstract|synchronized|native|default|strictfp)\\s+)*(?:<[^>]+>\\s+)?[\\w$.]+(?:<[^;{}()]*>)?(?:\\[\\])*\\s+([a-z_$][\\w$]*)\\s*\\(");
+    /**
+     * An annotation as a declaration spells it: {@code @Nullable}, {@code @a.b.Nullable}, {@code @Size(max = 3)}.
+     * Java lets one sit between the modifiers and before the type ({@code static @Nullable String name()}),
+     * so every declaration pattern takes them wherever a modifier may stand.
+     */
+    private static final String ANNOTATION = "@[\\w$.]+(?:\\([^)]*\\))?";
+
+    private static final Pattern JAVA_METHOD = Pattern.compile("(?m)^[ \\t]*(?:(?:" + ANNOTATION
+            + "|public|protected|private|static|final|abstract|synchronized|native|default|strictfp)\\s+)*"
+            + "(?:<[^>]+>\\s+)?(?:" + ANNOTATION + "\\s+)*"
+            + "[\\w$.]+(?:<[^;{}()]*>)?(?:\\[\\])*\\s+([a-z_$][\\w$]*)\\s*\\(");
     private static final Pattern SUPERS =
             Pattern.compile("\\G[^{;]*?(?:\\bextends\\s+([\\w.<>, ]+?))?(?:\\bimplements\\s+([\\w.<>, ]+?))?\\s*\\{");
     private static final Pattern KOTLIN_SUPERS = Pattern.compile("\\G(?:\\([^)]*\\))?\\s*:\\s*([^{=]+)");
@@ -375,8 +384,8 @@ final class JvmSourceScanner {
         return owner.implicitPublic ? "public" : "package";
     }
 
-    private static final Pattern CONSTRUCTOR = Pattern.compile(
-            "(?m)^[ \\t]*(?:@\\w+(?:\\([^)]*\\))?\\s+)*(?:(?:public|protected|private)\\s+)?([A-Z][\\w$]*)\\s*\\(");
+    private static final Pattern CONSTRUCTOR = Pattern.compile("(?m)^[ \\t]*(?:(?:" + ANNOTATION
+            + "|public|protected|private)\\s+)*(?:<[^>]+>\\s+)?([A-Z][\\w$]*)\\s*\\(");
 
     /** A Java constructor is a member named after its type, as graphify names it: {@code .Outer()}. */
     private static void constructors(
@@ -395,9 +404,9 @@ final class JvmSourceScanner {
         }
     }
 
-    private static final Pattern JAVA_CONSTANT = Pattern.compile("(?m)^[ \\t]*(?:@\\w+(?:\\([^)]*\\))?\\s+)*"
-            + "(?:(?:public|protected|private)\\s+)?(?:static\\s+final|final\\s+static)\\s+[\\w$.<>\\[\\]?, ]+?\\s+"
-            + "([A-Z][A-Z0-9_]*)\\s*[=;]");
+    private static final Pattern JAVA_CONSTANT = Pattern.compile("(?m)^[ \\t]*(?:" + ANNOTATION + "\\s+)*"
+            + "(?:(?:public|protected|private)\\s+)?(?:static\\s+final|final\\s+static)\\s+(?:" + ANNOTATION
+            + "\\s+)*[\\w$.<>\\[\\]?, ]+?\\s+([A-Z][A-Z0-9_]*)\\s*[=;]");
     private static final Pattern KOTLIN_CONSTANT = Pattern.compile(
             "(?m)^[ \\t]*(?:(?:public|internal|protected|private)\\s+)?const\\s+val\\s+([A-Z][A-Z0-9_]*)\\b");
 

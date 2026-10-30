@@ -121,6 +121,36 @@ public final class CodeGraph {
         return nodes.size();
     }
 
+    /**
+     * The name an answer shows for {@code id}: a member as {@code Outer.Inner.member()}, a nested type
+     * as {@code Outer.Inner}, anything else as its label. A bare {@code .member()} leaves the reader
+     * to guess the class from the file, and a nested type's member then reads as the outer class's.
+     */
+    public String display(String id) {
+        GraphNode n = nodes.get(id);
+        if (n == null) return id;
+        if (n.label().startsWith(".")) {
+            GraphNode owner = owner(id);
+            return owner == null ? n.label() : display(owner.id()) + n.label();
+        }
+        if (n.extra().get(Linker.QUALIFIED_NAME) instanceof String q && Decl.isType(n)) {
+            String simple = q.substring(q.lastIndexOf('.') + 1).replace('$', '.');
+            if (simple.endsWith(n.label())) return simple;
+        }
+        return n.label();
+    }
+
+    /** The type that declares member {@code id}: the source of its {@code method} edge. */
+    public @Nullable GraphNode owner(String id) {
+        for (GraphEdge e : incident(id)) {
+            if (e.target().equals(id) && e.relation().equals(Relations.METHOD)) {
+                GraphNode owner = nodes.get(e.source());
+                if (owner != null && !owner.label().startsWith(".")) return owner;
+            }
+        }
+        return null;
+    }
+
     /** Distinct neighbours of {@code id}, in either direction. */
     public Set<String> neighbors(String id) {
         return neighbors.getOrDefault(id, Set.of());
