@@ -279,6 +279,7 @@ starts, not tested.
 |---|---|---|---|
 | `jk` | jk | `jk mcp`: the default list, whose one graph card is `callers` | the product as installed |
 | `jk-nograph` | jk | `jk mcp` through `wrappers/mcp-filter --drop`: no graph tool listed or callable | the no-graph baseline |
+| `jk-nograph-noline` | jk | as `jk-nograph`, and the `jk graph callers` line taken out of the sandbox's `AGENTS.md` | with `--shell`, what that line alone moves |
 | `jk-graph` | jk | `jk mcp` through `wrappers/mcp-filter --extended --keep`: the loop tools plus `callers`, `query`, `read`, `find` | the graph as MCP cards |
 | `jk-hooks` | jk | `jk mcp`, plus `wrappers/jk-graph-hook` on `Grep`, `Glob` and `Read`: the graph's answer (callers with each call's line quoted, subtypes, a long file's outline) beside the search | the graph, delivered where the agent already looks |
 | `jk-hooks-replace` | jk | as `jk-hooks`, but the answer replaces the search (the tool call is denied with it) | the graph instead of text search |
