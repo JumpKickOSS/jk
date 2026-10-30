@@ -200,7 +200,12 @@ public final class JvmClientInstall {
                 + " \"-D" + JvmClient.JAR_PROPERTY + "=$JK_JAR\" \"-Djk.argv0=$0\" -jar \"$JK_JAR\" \"$@\"\n";
     }
 
-    /** The Windows launcher: {@code cmd.exe} batch, ASCII, CRLF. */
+    /**
+     * The Windows launcher: {@code cmd.exe} batch, ASCII, CRLF. {@code cmd} re-reads a running batch
+     * file by byte offset after each line, so once {@code jk self update} has replaced this file the
+     * old offset lands inside the new text. The java line therefore jumps to a label on the same
+     * line: a label is looked up by name, which the replacement carries too.
+     */
     static String renderWindows(Path jar, Path java) {
         String jarPath = jar.toAbsolutePath().toString();
         return "@echo off\r\n"
@@ -215,7 +220,9 @@ public final class JvmClientInstall {
                 + "if not defined JK_JAVA_HOME if not exist \"" + java
                 + "\" if defined JAVA_HOME set \"JAVA=%JAVA_HOME%\\bin\\java.exe\"\r\n"
                 + "\"%JAVA%\" " + JVM_FLAGS + " %JK_CLIENT_OPTS%"
-                + " \"-D" + JvmClient.JAR_PROPERTY + "=%JK_JAR%\" \"-Djk.argv0=%~n0\" -jar \"%JK_JAR%\" %*\r\n"
+                + " \"-D" + JvmClient.JAR_PROPERTY + "=%JK_JAR%\" \"-Djk.argv0=%~n0\" -jar \"%JK_JAR%\" %*"
+                + " & goto :jk_exit\r\n"
+                + ":jk_exit\r\n"
                 + "exit /b %ERRORLEVEL%\r\n";
     }
 
