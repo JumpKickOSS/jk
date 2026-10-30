@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.util;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * TOML basic-string quoting ({@code \"} {@code \\} {@code \n}/{@code \r}/{@code \t},
  * and {@code \\uXXXX} for other controls).
@@ -76,6 +79,34 @@ public final class MinimalToml {
         }
         int hash = v.indexOf('#');
         return (hash >= 0 ? v.substring(0, hash) : v).strip();
+    }
+
+    /**
+     * The root-level {@code key = scalar} pairs of {@code text}, values {@link #unquote unquoted}, in
+     * file order. Reading stops at the first {@code [table]} header; comments and blank lines are
+     * skipped. For the small state records jk writes with {@link #writeFlat}.
+     */
+    public static Map<String, String> readFlat(String text) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String raw : text.split("\\R")) {
+            String line = raw.strip();
+            if (line.isEmpty() || line.startsWith("#")) continue;
+            if (line.startsWith("[")) break;
+            int eq = line.indexOf('=');
+            if (eq <= 0) continue;
+            String key = unquote(line.substring(0, eq).strip());
+            out.put(key, unquote(line.substring(eq + 1).strip()));
+        }
+        return out;
+    }
+
+    /** {@code values} as root-level {@code key = "value"} lines; keys must be bare TOML keys. */
+    public static String writeFlat(Map<String, String> values) {
+        StringBuilder sb = new StringBuilder();
+        for (var e : values.entrySet()) {
+            sb.append(e.getKey()).append(" = ").append(quote(e.getValue())).append('\n');
+        }
+        return sb.toString();
     }
 
     private static boolean isHex4(String s, int from) {

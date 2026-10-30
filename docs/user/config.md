@@ -81,6 +81,13 @@ a patched font there has to be claimed with `--mode wedge` or `--mode on`. Env
 
 Contributor TUI rules: [TUI](../contributors/tui.md).
 
+## Self-update
+
+Root-level `self-update = "auto" | "ask" | "never"` in `~/.jk/config.toml` (env
+`JK_SELF_UPDATE`) decides whether jk installs new releases on its own, offers them at a terminal,
+or leaves itself alone. Unset asks at a terminal and updates everywhere else; before 1.0 updates
+are compulsory. Details: [Install](install.md#updates).
+
 ## Engine
 
 Machine-scoped `[engine]` keys and `JK_ENGINE_*` process env: [Engine](engine.md#configuration).
