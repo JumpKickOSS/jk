@@ -97,6 +97,8 @@ def _startup_failure(text: str) -> bool:
         "does not exist",
         "lack access",
         "not logged",
+        "not signed in",
+        "not authenticated",
         "no credentials",
         "please sign in",
         "no valid authentication",
