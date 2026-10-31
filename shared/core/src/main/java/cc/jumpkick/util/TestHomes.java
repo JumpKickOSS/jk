@@ -233,6 +233,7 @@ public final class TestHomes {
     public static boolean discard(Path moduleDir) {
         Path slot = slotFor(moduleDir);
         if (!Files.isDirectory(slot) || held(slot)) return false;
+        TestHomeEngines.stop(slot);
         PathUtil.deleteRecursively(slot);
         return !Files.exists(slot);
     }
@@ -325,6 +326,9 @@ public final class TestHomes {
                     Path holds = file.getParent();
                     Path slot = holds == null ? null : holds.getParent();
                     if (slot != null) Files.deleteIfExists(slot.resolve(SIZE));
+                    // The last suite to read the slot is done: an engine one of its tests started
+                    // there has no one left to serve.
+                    if (slot != null && !held(slot)) TestHomeEngines.stop(slot);
                 } catch (IOException | RuntimeException e) {
                     // A hold left behind names this live process; it lapses when the process does.
                     Log.debug("Hold.close: A hold left behind lapses when this process exits", e);
@@ -481,6 +485,7 @@ public final class TestHomes {
 
     private static boolean delete(Path slot) {
         try {
+            TestHomeEngines.stop(slot);
             PathUtil.deleteRecursivelyOrThrow(slot);
             return true;
         } catch (IOException | RuntimeException heldOrDenied) {
