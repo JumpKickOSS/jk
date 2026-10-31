@@ -311,25 +311,19 @@ class GraphRenameTest {
             }
             """);
 
-    /** An index file for {@code file} as the compile writes it: the spans given, under the hash given. */
+    /** An index file for {@code file} as the compile writes it (version 2): the spans given, under the hash given. */
     private static void index(Path root, String file, String sha, String symbol, String... spans) throws IOException {
         String text = read(root, file);
-        StringBuilder out = new StringBuilder(ReferenceIndex.HEADER + sha + "\n");
+        StringBuilder out = new StringBuilder(ReferenceIndex.HEADER + sha + "\n=" + symbol + "\n");
+        int previous = 0;
         for (String span : spans) {
-            boolean decl = span.startsWith("d:");
             String needle = span.substring(2);
             int at = text.indexOf(needle) + needle.indexOf("size");
-            long line = text.substring(0, at).chars().filter(c -> c == '\n').count() + 1;
-            out.append(decl ? 'd' : 'r')
-                    .append('\t')
-                    .append(symbol)
-                    .append('\t')
-                    .append(at)
-                    .append('\t')
-                    .append(at + 4)
-                    .append('\t')
-                    .append(line)
+            out.append(span.startsWith("d:") ? 'd' : 'r')
+                    .append("0\t")
+                    .append(at - previous)
                     .append('\n');
+            previous = at;
         }
         Path f = root.resolve("target/incremental/classes-refs/" + PKG + file + ".refs");
         Files.createDirectories(f.getParent());
@@ -372,5 +366,21 @@ class GraphRenameTest {
 
         assertThat(rename(root, "Box.size", "count")).contains("Not renamed", "Use.java");
         assertThat(read(root, "Use.java")).contains("b.size() + l.size()");
+    }
+
+    @Test
+    void aVersion2IndexDecodesSpansFromTheSymbolsNamesAndTheSource() {
+        String text = "class A {\n  void size() {}\n  int n = size();\n}\n";
+        List<ReferenceIndex.Span> spans = ReferenceIndex.decode(
+                List.of(
+                        "=M A#size()V",
+                        "d0\t" + text.indexOf("size"),
+                        "r0\t" + (text.lastIndexOf("size") - text.indexOf("size"))),
+                text);
+        assertThat(spans)
+                .extracting(sp -> sp.kind() + ":" + text.substring(sp.start(), sp.end()) + "@" + sp.line())
+                .containsExactly("d:size@2", "r:size@3");
+        assertThat(ReferenceIndex.simpleName("T a.b.Outer$Inner")).isEqualTo("Inner");
+        assertThat(ReferenceIndex.simpleName("F a.B#count")).isEqualTo("count");
     }
 }
