@@ -10,6 +10,7 @@ import cc.jumpkick.codegraph.CodeGraph;
 import cc.jumpkick.codegraph.Decl;
 import cc.jumpkick.codegraph.GraphEdge;
 import cc.jumpkick.codegraph.GraphNode;
+import cc.jumpkick.codegraph.GraphTools;
 import cc.jumpkick.codegraph.Linker;
 import cc.jumpkick.codegraph.Modules;
 import cc.jumpkick.codegraph.StaleRef;
@@ -252,6 +253,59 @@ import java.util.List;
         assertThat(overloads(g, "step_three", "exec_run", "calls"))
                 .as("a lambda's call is made by the one method of its name")
                 .containsExactly("(Lcom/acme/shop/Exec;)V>(Ljava/lang/Object;)V");
+    }
+
+    @Test
+    void anOverrideOfAnInheritedOverloadLinksToTheTypeThatDeclaresItAndCarriesItsCallers(@TempDir Path dir)
+            throws IOException {
+        CodeGraph g = refresh(
+                        workspace(
+                                dir,
+                                Map.of(
+                                        "Rule.java", """
+                                        package com.acme.shop;
+
+                                        public interface Rule {
+                                            void put(StringBuilder b, String s);
+                                        }
+                                        """,
+                                        "NumberRule.java", """
+                                        package com.acme.shop;
+
+                                        public interface NumberRule extends Rule {
+                                            void put(StringBuilder b, int n);
+                                        }
+                                        """,
+                                        "Two.java", """
+                                        package com.acme.shop;
+
+                                        public class Two implements NumberRule {
+                                            public void put(StringBuilder b, String s) { b.append(s); }
+                                            public void put(StringBuilder b, int n) { b.append(n); }
+                                        }
+                                        """,
+                                        "Printer.java", """
+                                        package com.acme.shop;
+
+                                        public class Printer {
+                                            String print(Rule r) {
+                                                StringBuilder b = new StringBuilder();
+                                                r.put(b, "x");
+                                                return b.toString();
+                                            }
+
+                                            String render(Rule r) { return print(r); }
+                                        }
+                                        """)),
+                        false)
+                .graph();
+        assertThat(overloads(g, "two_put", "rule_put", "overrides"))
+                .as("put(String) overrides Rule's, which NumberRule inherits without declaring")
+                .containsExactly(
+                        "(Ljava/lang/StringBuilder;Ljava/lang/String;)V>(Ljava/lang/StringBuilder;Ljava/lang/String;)V");
+        assertThat(overloads(g, "two_put", "numberrule_put", "overrides"))
+                .containsExactly("(Ljava/lang/StringBuilder;I)V>(Ljava/lang/StringBuilder;I)V");
+        assertThat(new GraphTools(g).callers("Two.put", 8, 2000)).contains("Printer.print()", "Printer.render()");
     }
 
     private static List<String> overloads(CodeGraph g, String from, String to, String relation) {
