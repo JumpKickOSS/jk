@@ -220,7 +220,10 @@ public final class McpJobRuns {
 
     /**
      * Park until {@code jid} leaves the live set, asking the job's own liveness probe each tick —
-     * never the live-run snapshot, which copies every in-flight module and step map per call.
+     * never the live-run snapshot, which copies every in-flight module and step map per call. A job
+     * never seen live is done only once its record is there: one that finished between two ticks
+     * has one, and one still queued (behind the workspace's previous job, or waiting for memory) is
+     * not live yet and has none, and a wait that gave up on it answered FAIL for a build that passed.
      */
     private static boolean waitUntilGone(McpContext ctx, long jid, long timeoutMs) {
         long start = System.currentTimeMillis();
@@ -229,7 +232,9 @@ public final class McpJobRuns {
             boolean live = McpVitals.isLive(ctx, jid);
             if (live) seen = true;
             if (seen && !live) return true;
-            if (!seen && System.currentTimeMillis() - start > 250) return true;
+            if (!seen && System.currentTimeMillis() - start > 250 && ctx.finishedRecords().apply(jid) != null) {
+                return true;
+            }
             try {
                 Thread.sleep(50);
             } catch (InterruptedException e) {
