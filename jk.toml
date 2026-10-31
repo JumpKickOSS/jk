@@ -2,7 +2,7 @@ group = "cc.jumpkick"
 name = "jk"
 # The installers' floors (install.sh, install.ps1 and their hosting copies) are bumped by hand with this
 # version until the bootstrap pin reads `[release] files`; then jk.toml declares them.
-version = "0.49.0"
+version = "0.50.0"
 description = "JumpKick: the JVM build system built for coding agents"
 java = 25
 
