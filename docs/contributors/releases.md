@@ -41,6 +41,13 @@ has nothing to say. This section is the one home for release highlights; there i
 - **MCP `rename`** (on the default list; `jk graph rename T.m newName`) renames a method with every
   override, call, method reference and doc link the compiled classes record, in one call. Claude Code
   renamed across commons-lang, petclinic and jk in 2 to 9 turns, against 7 to 43 without the graph.
+  The answer ends with the tests to run: the modules it edited, not the whole workspace.
+- **A reference index, written by jk's own javac.** Every Java compile now records where each name
+  that resolves to a type, method, constructor, field, enum constant or record component is written —
+  declarations, calls, imports, annotations, Javadoc links — by the symbol the class files name, with
+  its exact span, under `target/incremental/`. No new dependency and no second parse: about a tenth
+  of javac's own time, and an incremental compile indexes only what it recompiles. It is what field
+  and class rename will read, exact where today's rename matches text against the classes' counts.
 - **The code graph is committed.** The first graph question makes `.jk/graph/`; from then on every
   build and question keeps it current, one line per file, merged line by line and kept out of
   ripgrep. A fresh checkout answers complete callers without building. Delete the directory to stop.
