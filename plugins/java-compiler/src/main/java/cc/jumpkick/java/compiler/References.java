@@ -30,12 +30,11 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
@@ -91,6 +90,9 @@ final class References implements TaskListener {
     private final Types types;
     private final Map<CompilationUnitTree, List<Ref>> units = new IdentityHashMap<>();
     private final Set<Tree> scanned = Collections.newSetFromMap(new IdentityHashMap<>());
+
+    /** Symbols already built, by element: most names are of a few symbols, and building one erases types. */
+    private final Map<Element, String> symbols = new HashMap<>();
 
     References(JavacTask task) {
         this.trees = DocTrees.instance(task);
@@ -173,6 +175,16 @@ final class References implements TaskListener {
     @Nullable
     String symbol(@Nullable Element el) {
         if (el == null) return null;
+        String known = symbols.get(el);
+        if (known == null) {
+            String built = build(el);
+            known = built == null ? "" : built;
+            symbols.put(el, known);
+        }
+        return known.isEmpty() ? null : known;
+    }
+
+    private @Nullable String build(Element el) {
         return switch (el.getKind()) {
             case CLASS, INTERFACE, ENUM, RECORD, ANNOTATION_TYPE -> "T " + binary((TypeElement) el);
             case METHOD, CONSTRUCTOR -> {
@@ -220,13 +232,22 @@ final class References implements TaskListener {
         };
     }
 
+    /** Whether a raw doc comment can hold a reference: a link, a see, a throws or a value tag. */
+    static boolean hasReferenceTag(String raw) {
+        return raw.contains("@link")
+                || raw.contains("@see")
+                || raw.contains("@throws")
+                || raw.contains("@exception")
+                || raw.contains("@value");
+    }
+
     /** Collects one source's references; one per compilation unit and type event. */
     private final class Scanner extends TreePathScanner<Void, Void> {
 
         private final CompilationUnitTree cu;
         private final List<Ref> refs;
         private final DocSourcePositions positions;
-        private @Nullable CharSequence text;
+        private @Nullable String text;
 
         Scanner(CompilationUnitTree cu, List<Ref> refs) {
             this.cu = cu;
@@ -234,10 +255,10 @@ final class References implements TaskListener {
             this.positions = trees.getSourcePositions();
         }
 
-        private CharSequence text() {
+        private String text() {
             if (text == null) {
                 try {
-                    text = cu.getSourceFile().getCharContent(true);
+                    text = cu.getSourceFile().getCharContent(true).toString();
                 } catch (IOException unreadable) {
                     text = "";
                 }
@@ -246,18 +267,17 @@ final class References implements TaskListener {
         }
 
         private void add(char kind, @Nullable Element el, int start, int end) {
+            if (el == null || start < 0 || end <= start) return;
             String symbol = symbol(el);
-            if (symbol == null || el == null || start < 0 || end <= start) return;
+            if (symbol == null) return;
             // A tree javac made up (an enum constant's `new`, a record's accessor) has a position but
             // no text of its own: only a span that spells the name it records is kept.
-            CharSequence t = text();
-            String name = el.getKind() == ElementKind.CONSTRUCTOR
-                    ? String.valueOf(
-                            el.getEnclosingElement() == null
-                                    ? ""
-                                    : el.getEnclosingElement().getSimpleName())
-                    : el.getSimpleName().toString();
-            if (end > t.length() || !t.subSequence(start, end).toString().equals(name)) return;
+            Element owner = el.getEnclosingElement();
+            CharSequence name = el.getKind() == ElementKind.CONSTRUCTOR
+                    ? (owner == null ? "" : owner.getSimpleName())
+                    : el.getSimpleName();
+            String t = text();
+            if (end - start != name.length() || !t.regionMatches(start, name.toString(), 0, name.length())) return;
             refs.add(new Ref(kind, symbol, start, end, cu.getLineMap().getLineNumber(start)));
         }
 
@@ -306,7 +326,7 @@ final class References implements TaskListener {
             scanned.add(node);
             String name = node.getSimpleName().toString();
             if (!name.isEmpty()) {
-                int at = find(KIND_THEN_NAME, name, (int) positions.getStartPosition(cu, node), bodyStart(node));
+                int at = find(name, (int) positions.getStartPosition(cu, node), bodyStart(node), Follow.DECLARED_TYPE);
                 Element el = trees.getElement(getCurrentPath());
                 if (at >= 0) add('d', el, at, at + name.length());
                 docs(el);
@@ -322,17 +342,17 @@ final class References implements TaskListener {
                 String name = owner.getSimpleName().toString();
                 int from = (int) positions.getStartPosition(cu, node);
                 int to = bodyStart(node);
-                int at = find(NAME_THEN_PAREN, name, from, to);
+                int at = find(name, from, to, Follow.PAREN);
                 // A record's compact canonical constructor has no parameter list: `Square {`.
-                if (at < 0) at = find(NAME_THEN_BRACE, name, from, to + 1);
+                if (at < 0) at = find(name, from, to + 1, Follow.BRACE);
                 if (at >= 0) add('d', owner, at, at + name.length());
-            } else if (el != null && el.getKind() != ElementKind.CONSTRUCTOR) {
+            } else if (el != null) {
                 String name = node.getName().toString();
                 Tree ret = node.getReturnType();
                 int from = ret == null
                         ? (int) positions.getStartPosition(cu, node)
                         : (int) positions.getEndPosition(cu, ret);
-                int at = find(NAME_THEN_PAREN, name, from, bodyStart(node));
+                int at = find(name, from, bodyStart(node), Follow.PAREN);
                 if (at >= 0) add('d', el, at, at + name.length());
             }
             docs(el);
@@ -350,7 +370,7 @@ final class References implements TaskListener {
                         ? -1
                         : positions.getEndPosition(cu, type);
                 int from = typeEnd > 0 ? (int) typeEnd : (int) positions.getStartPosition(cu, node);
-                int at = find(NAME_ALONE, name, from, (int) positions.getEndPosition(cu, node));
+                int at = find(name, from, (int) positions.getEndPosition(cu, node), Follow.ANY);
                 if (at >= 0) add('d', el, at, at + name.length());
                 docs(el);
             }
@@ -361,6 +381,10 @@ final class References implements TaskListener {
         private void docs(@Nullable Element owner) {
             if (owner == null) return;
             TreePath path = getCurrentPath();
+            // Parsing a doc comment costs more than the rest of the scan: only one that can hold a
+            // reference is parsed.
+            String raw = trees.getDocComment(path);
+            if (raw == null || !hasReferenceTag(raw)) return;
             DocCommentTree doc = trees.getDocCommentTree(path);
             if (doc == null) return;
             new DocTreePathScanner<Void, Void>() {
@@ -409,20 +433,57 @@ final class References implements TaskListener {
             return (int) positions.getEndPosition(cu, node);
         }
 
-        /** Where {@code name} is, matched by {@code shape} between {@code from} and {@code to}; -1 when not. */
-        private int find(String shape, String name, int from, int to) {
-            CharSequence t = text();
+        /**
+         * Where the declared {@code name} is between {@code from} and {@code to}: the first whole-word
+         * occurrence that {@code follow} accepts; -1 when there is none.
+         */
+        private int find(String name, int from, int to, Follow follow) {
+            String t = text();
             if (from < 0 || from >= t.length()) return -1;
             int end = to < 0 || to > t.length() ? t.length() : to;
-            Matcher m = Pattern.compile(shape.replace("NAME", Pattern.quote(name)))
-                    .matcher(t)
-                    .region(from, end);
-            return m.find() ? m.start(1) : -1;
+            for (int at = t.indexOf(name, from); at >= 0 && at + name.length() <= end; at = t.indexOf(name, at + 1)) {
+                int after = at + name.length();
+                if (at > 0 && Character.isJavaIdentifierPart(t.charAt(at - 1))) continue;
+                if (after < t.length() && Character.isJavaIdentifierPart(t.charAt(after))) continue;
+                if (follow.accepts(t, at, after)) return at;
+            }
+            return -1;
         }
     }
 
-    private static final String KIND_THEN_NAME = "(?:class|interface|enum|record|@\\s*interface)\\s+(NAME)\\b";
-    private static final String NAME_THEN_PAREN = "\\b(NAME)\\s*(?:<[^()]*>\\s*)?\\(";
-    private static final String NAME_ALONE = "\\b(NAME)\\b";
-    private static final String NAME_THEN_BRACE = "\\b(NAME)\\s*\\{";
+    /** What must stand around a declared name for an occurrence of it to be the declaration. */
+    enum Follow {
+        ANY,
+        /** A method or constructor: its parameter list. */
+        PAREN,
+        /** A record's compact constructor: its body. */
+        BRACE,
+        /** A type: after {@code class}, {@code interface}, {@code enum}, {@code record} or {@code @interface}. */
+        DECLARED_TYPE;
+
+        boolean accepts(String t, int at, int after) {
+            return switch (this) {
+                case ANY -> true;
+                case PAREN -> next(t, after) == '(';
+                case BRACE -> next(t, after) == '{';
+                case DECLARED_TYPE -> {
+                    int i = at - 1;
+                    while (i >= 0 && Character.isWhitespace(t.charAt(i))) i--;
+                    int wordEnd = i + 1;
+                    while (i >= 0 && Character.isJavaIdentifierPart(t.charAt(i))) i--;
+                    String word = t.substring(i + 1, wordEnd);
+                    yield word.equals("class")
+                            || word.equals("interface")
+                            || word.equals("enum")
+                            || word.equals("record");
+                }
+            };
+        }
+
+        private static char next(String t, int from) {
+            int i = from;
+            while (i < t.length() && Character.isWhitespace(t.charAt(i))) i++;
+            return i < t.length() ? t.charAt(i) : 0;
+        }
+    }
 }
