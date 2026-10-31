@@ -144,7 +144,7 @@ class GraphRenameTest {
 
         assertThat(answer)
                 .startsWith("Renamed FlatPricer.price to cost: 2 declarations, 2 calls, in 3 files.")
-                .contains("no search needed");
+                .contains("no search needed. Test next: run(kind=test), or jk test.");
         assertThat(read(root, "Pricer.java")).contains("int cost(String sku);");
         assertThat(read(root, "FlatPricer.java"))
                 .contains(
@@ -266,5 +266,24 @@ class GraphRenameTest {
     private static GraphService.Request request(String address, String to) {
         return new GraphService.Request(
                 "rename", List.of(address, to), "bfs", 3, 4000, List.of(), false, 8, null, false, false);
+    }
+
+    @Test
+    void theAnswerNamesTheModulesTheRenameEditedToTest() {
+        Modules modules = new Modules(List.of(
+                new Modules.Module("", false),
+                new Modules.Module("shared/code-graph/", false),
+                new Modules.Module("plugins/graph/", false)));
+        assertThat(GraphRename.testNext(
+                        modules,
+                        List.of(
+                                "shared/code-graph/src/main/java/a/CodeGraph.java",
+                                "plugins/graph/src/main/java/b/GraphTools.java",
+                                "plugins/graph/src/test/java/b/GraphToolsTest.java")))
+                .as("by directory, sorted, the whole workspace's unrelated failures left out")
+                .isEqualTo("Test the modules it edited: run(kind=test, only=plugins/graph,shared/code-graph),"
+                        + " or jk test -m plugins/graph,shared/code-graph.");
+        assertThat(GraphRename.testNext(modules, List.of("src/main/java/Root.java")))
+                .isEqualTo("Test next: run(kind=test), or jk test.");
     }
 }
