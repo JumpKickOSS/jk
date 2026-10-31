@@ -6,6 +6,7 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.GraphConfig;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleSelection;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.plugin.HeapLadder;
@@ -162,6 +163,25 @@ public final class GraphRunner {
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /** Workspaces with a refresh waiting to start: a build that finishes meanwhile needs no second. */
+    private static final Set<Path> PENDING = ConcurrentHashMap.newKeySet();
+
+    /**
+     * {@link #refreshExisting} on its own thread, so the build that asked is reported, and its
+     * record written, without waiting for it: an agent's {@code run} answered the moment the graph
+     * was current, and a refresh longer than the record's settle window made that answer "no run
+     * record" for a build that passed. A graph question asked meanwhile takes the workspace's lock
+     * after the refresh, so it still answers for the tree the build compiled.
+     */
+    public static void refreshAfterBuild(Path dir) {
+        Path root = rootOf(dir);
+        if (!hasGraph(root) || !PENDING.add(root)) return;
+        SessionContext.startVirtual("jk-graph-refresh", () -> {
+            PENDING.remove(root);
+            refreshExisting(root);
+        });
     }
 
     /** What the lease ledger and {@code jk engine status} call the graph worker. */

@@ -124,6 +124,18 @@ class GraphRunnerTest {
         GraphRunner.refreshExisting(root);
         assertThat(Files.readString(store)).isNotEqualTo(before);
 
+        // After a build the refresh runs behind the verdict, and still lands.
+        Files.writeString(
+                root.resolve("src/main/java/com/acme/shop/PriceCalculator.java"),
+                Files.readString(root.resolve("src/main/java/com/acme/shop/PriceCalculator.java")) + "// again\n");
+        String refreshed = Files.readString(store);
+        GraphRunner.refreshAfterBuild(root);
+        long deadline = System.currentTimeMillis() + 60_000;
+        while (Files.readString(store).equals(refreshed) && System.currentTimeMillis() < deadline) {
+            Thread.sleep(100);
+        }
+        assertThat(Files.readString(store)).isNotEqualTo(refreshed);
+
         PathUtil.deleteRecursively(root.resolve(".jk-graph"));
         GraphRunner.refreshExisting(root);
         assertThat(GraphRunner.hasGraph(root)).isFalse();

@@ -367,10 +367,11 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             if (rid > 0) host.putProgressRoot(rid, entryDirStr);
             WorkspaceBuildListener listener = host.workspaceListener(writer, entryDirStr);
             WorkspaceResult result = SessionContext.where(session, () -> BuildService.buildWorkspace(req, listener));
+            JobOutcome outcome = WorkspaceTerminal.finish(host, writer, entryDirStr, result, cancelToken.cancelled());
             // The graph is a build product: one that exists is brought up to the tree the build
-            // just compiled before the build is reported done.
-            if (result.success() && !cancelToken.cancelled()) GraphRunner.refreshExisting(Path.of(entryDirStr));
-            return WorkspaceTerminal.finish(host, writer, entryDirStr, result, cancelToken.cancelled());
+            // just compiled, after the verdict, so the build is not reported late for it.
+            if (result.success() && !cancelToken.cancelled()) GraphRunner.refreshAfterBuild(Path.of(entryDirStr));
+            return outcome;
         } catch (ShadowManifests.NotBuiltHere refused) {
             // A shadowed directory Maven would not build here: a configuration refusal, not a crash.
             host.sendQuiet(writer, host.requestFailedLine(Jsonl.str(requestLine, "dir"), refused));
