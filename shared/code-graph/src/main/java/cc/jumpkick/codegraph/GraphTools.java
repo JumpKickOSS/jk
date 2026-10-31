@@ -201,8 +201,9 @@ public final class GraphTools {
                                 ? ", stopped at " + depth + " hops: more lie beyond, raise max_hops (-L) for them."
                                 : ", every one: the chain ends after " + deepest
                                         + (deepest == 1 ? " hop." : " hops.")));
-        lines.add("Complete from the compiled classes; no search needed unless a note below says otherwise. A lambda's"
-                + " call counts for its method; a call to a supertype method it overrides is marked through.");
+        lines.add("Complete from the compiled classes; no search needed unless a note below says otherwise. Every"
+                + " method listed reaches it: a lambda's call counts for its method, and one marked through calls a"
+                + " supertype method that dispatches to it.");
         for (List<Caller> set : List.of(main, test)) {
             if (set.isEmpty()) continue;
             lines.add(set == main ? "main:" : "test:");
@@ -221,6 +222,17 @@ public final class GraphTools {
             }
         }
         if (found.isEmpty()) lines.add("Nothing in the compiled classes calls it.");
+        if (!transitive) {
+            long onward = found.keySet().stream()
+                    .filter(c -> reaches(c, reached.getOrDefault(c, Set.of(ANY))).stream()
+                            .anyMatch(r -> !targets.contains(r.caller()) && scope.contains(graph.node(r.caller()))))
+                    .count();
+            if (onward > 0) {
+                lines.add(
+                        onward + (onward == 1 ? " of them is" : " of them are") + " called in turn: transitive=true"
+                                + " (-t) lists every method that reaches it in one answer, instead of a callers call per method.");
+            }
+        }
         return Budget.lines(lines, budget, "Raise the budget, or narrow with scope, modules or source_set");
     }
 

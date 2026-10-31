@@ -150,7 +150,7 @@ public final class Linker {
         List<String> targets =
                 switch (m.kind()) {
                     case CLASS -> one(classes.get(m.text().replace('$', '.')));
-                    case MEMBER -> one(member(m.text()));
+                    case MEMBER -> one(member(m));
                     case SYMBOL -> one(unique(symbols.get(bare(m.text()))));
                     case FILE -> one(files.get(relative(from.sourceFile(), m.text())));
                     case MODULE -> one(module(m.text()));
@@ -167,7 +167,6 @@ public final class Linker {
                 };
         List<GraphEdge> out = new ArrayList<>();
         for (String target : targets) {
-            if (!overrides(m, target)) continue;
             GraphEdge edge = GraphEdge.of(
                     m.source(),
                     target,
@@ -184,18 +183,28 @@ public final class Linker {
     }
 
     /**
-     * False for an override mention whose target's compiled signatures lack the descriptor it
-     * names: an overload of the same name, which a call to it never dispatches to the mentioning one.
+     * A member mention's target. With the overload it joins, the target is the nearest type up the
+     * hierarchy that declares that very descriptor: a supertype declaring only other overloads of the
+     * name is passed over, so an override of an inherited overload lands on the type that declares
+     * it. An override that no type declares links to nothing; a call falls back to the name.
      */
-    private boolean overrides(Mention m, String target) {
-        if (!m.relation().equals(Relations.OVERRIDES) || m.overload() == null) return true;
-        String declared = m.overload().substring(m.overload().indexOf('>') + 1);
-        GraphNode n = nodes.get(target);
-        return n == null || !(n.extra().get(DESCRIPTORS) instanceof List<?> declares) || declares.contains(declared);
+    private @Nullable String member(Mention m) {
+        String declared = null;
+        if (m.overload() != null) {
+            String to = m.overload().substring(m.overload().indexOf('>') + 1);
+            if (!to.equals("*")) declared = to;
+        }
+        String exact = member(m.text(), declared);
+        if (exact != null || declared == null || m.relation().equals(Relations.OVERRIDES)) return exact;
+        return member(m.text(), null);
     }
 
-    /** {@code owner#name}: the member on the owner, else on the nearest supertype declaring it. */
-    private @Nullable String member(String text) {
+    /**
+     * {@code owner#name}: the member on the owner, else on the nearest supertype declaring it; with
+     * {@code descriptor}, only a member whose compiled overloads include it (one whose overloads are
+     * not known counts).
+     */
+    private @Nullable String member(String text, @Nullable String descriptor) {
         int hash = text.indexOf('#');
         if (hash < 0) return null;
         String owner = classes.get(text.substring(0, hash).replace('$', '.'));
@@ -206,7 +215,7 @@ public final class Linker {
             List<String> next = new ArrayList<>();
             for (String type : frontier) {
                 String id = GraphIds.member(type, name);
-                if (nodes.containsKey(id)) return id;
+                if (nodes.containsKey(id) && declares(id, descriptor)) return id;
                 String property = propertyOf(name);
                 if (property != null && nodes.containsKey(GraphIds.member(type, property))) {
                     return GraphIds.member(type, property);
@@ -216,6 +225,13 @@ public final class Linker {
             frontier = next;
         }
         return null;
+    }
+
+    /** True when {@code descriptor} is null, or member {@code id} has it among its compiled descriptors or has none listed. */
+    private boolean declares(String id, @Nullable String descriptor) {
+        if (descriptor == null) return true;
+        GraphNode n = nodes.get(id);
+        return n == null || !(n.extra().get(DESCRIPTORS) instanceof List<?> declares) || declares.contains(descriptor);
     }
 
     /** The property a Kotlin accessor reads: {@code getAppModule} → {@code appModule}; {@code null} for any other name. */
