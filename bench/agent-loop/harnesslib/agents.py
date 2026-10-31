@@ -533,6 +533,10 @@ def grok(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int,
          effort: str = "high") -> AgentResult:
     """`grok -p` with the tool's MCP server, file tools only, and the same system prompt as Claude Code.
 
+    The system prompt goes in as `--rules`, appended to grok's own. grok 1.0.70 accepts
+    `--system-prompt-override` but, since 2026-10-31, the model never sees it, and passing it drops
+    `--rules` as well: a run told to write ANSWER.txt answered in chat instead.
+
     Config, sessions and memory live in a throwaway directory (`GROK_HOME`) that this function deletes.
     A copy of the login is passed as `GROK_AUTH_PATH`. File tools run under `--sandbox agent-loop`.
     """
@@ -551,7 +555,7 @@ def grok(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int,
             "--model", model,
             "--reasoning-effort", effort,
             "--max-turns", str(max_turns),
-            "--system-prompt-override", system_prompt(tool, sandbox, server),
+            "--rules", system_prompt(tool, sandbox, server),
             "--tools", ",".join(GROK_FILE_TOOLS),
             "--disable-web-search",
             "--no-subagents",
