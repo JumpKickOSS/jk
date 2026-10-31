@@ -201,8 +201,9 @@ public final class GraphTools {
                                 ? ", stopped at " + depth + " hops: more lie beyond, raise max_hops (-L) for them."
                                 : ", every one: the chain ends after " + deepest
                                         + (deepest == 1 ? " hop." : " hops.")));
-        lines.add("Complete from the compiled classes; no search needed unless a note below says otherwise. A lambda's"
-                + " call counts for its method; a call to a supertype method it overrides is marked through.");
+        lines.add("Complete from the compiled classes; no search needed unless a note below says otherwise. Every"
+                + " method listed reaches it: a lambda's call counts for its method, and one marked through calls a"
+                + " supertype method that dispatches to it.");
         for (List<Caller> set : List.of(main, test)) {
             if (set.isEmpty()) continue;
             lines.add(set == main ? "main:" : "test:");
