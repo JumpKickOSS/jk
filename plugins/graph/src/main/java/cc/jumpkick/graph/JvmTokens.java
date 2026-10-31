@@ -241,6 +241,20 @@ final class JvmTokens {
     }
 
     /** True when the use at {@code token} declares the method: a type or modifier stands before it. */
+    /** The token that starts at {@code offset}, or -1 when none does. */
+    int tokenAt(int offset) {
+        int lo = 0;
+        int hi = start.size() - 1;
+        while (lo <= hi) {
+            int mid = (lo + hi) >>> 1;
+            int s = start.get(mid);
+            if (s == offset) return mid;
+            if (s < offset) lo = mid + 1;
+            else hi = mid - 1;
+        }
+        return -1;
+    }
+
     boolean declares(int token) {
         if (token == 0) return false;
         String prev = text.get(token - 1);

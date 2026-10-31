@@ -19,8 +19,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -189,19 +189,6 @@ final class GraphRename {
     }
 
     /** One rename's working state: what the classes record per file, and the edits chosen from it. */
-    /** {@link Run#testNext} for the files a rename edited, by the modules that hold them. */
-    static String testNext(Modules modules, Collection<String> edited) {
-        Set<String> touched = new TreeSet<>();
-        for (String rel : edited) {
-            Modules.Module m = modules.of(rel);
-            if (m == null || m.prefix().isEmpty()) return "Test next: run(kind=test), or jk test.";
-            touched.add(m.prefix().substring(0, m.prefix().length() - 1));
-        }
-        if (touched.isEmpty()) return "Test next: run(kind=test), or jk test.";
-        String only = String.join(",", touched);
-        return "Test the modules it edited: run(kind=test, only=" + only + "), or jk test -m " + only + ".";
-    }
-
     private static final class Run {
         final Path root;
         final CodeGraph graph;
@@ -220,6 +207,9 @@ final class GraphRename {
         final Map<String, String> edited = new TreeMap<>();
         final Map<String, List<Integer>> changedLines = new TreeMap<>();
         final Map<String, List<String>> unsettled = new TreeMap<>();
+        /** Files edited from the compile's reference index; their doc links were renamed with them. */
+        final Set<String> indexed = new TreeSet<>();
+
         int overriding;
         int annotated;
         int calls;
@@ -333,6 +323,7 @@ final class GraphRename {
                     continue;
                 }
                 JvmTokens tokens = JvmTokens.of(text);
+                if (rel.endsWith(".java") && fromIndex(rel, text, t, tokens)) continue;
                 List<Integer> chosen = new ArrayList<>();
                 List<Integer> left = new ArrayList<>();
                 settle(tokens, tokens.uses(old), t, chosen, left);
@@ -352,9 +343,42 @@ final class GraphRename {
             }
         }
 
-        /** Renames the doc links to the method in every source. */
+        /**
+         * Edits {@code rel} from the reference index its compile wrote: every span whose symbol is one
+         * of the family's methods, declarations, calls and doc links alike, exactly where javac
+         * resolved them. False, and nothing chosen, when the file has no index describing it as it is,
+         * or the index holds fewer calls of the family than the classes record (then the token path
+         * decides, as it does without an index).
+         */
+        boolean fromIndex(String rel, String text, Tally t, JvmTokens tokens) {
+            List<ReferenceIndex.Span> spans = ReferenceIndex.of(root, graph.modules(), rel, text);
+            if (spans == null) return false;
+            Set<String> symbols = new HashSet<>();
+            family.forEach((owner, descs) -> descs.forEach(d -> symbols.add(ReferenceIndex.method(owner, old, d))));
+            long recorded = t.recs.stream()
+                    .filter(r -> r.mine() && !r.decl())
+                    .mapToLong(Rec::count)
+                    .sum();
+            ReferenceIndex.Edit e = ReferenceIndex.rename(spans, text, symbols, old, to, recorded);
+            if (e == null) return false;
+            if (e.lines().isEmpty()) return true;
+            declarations += e.declarations().size();
+            calls += e.calls();
+            docs += e.docs();
+            for (int at : e.declarations()) {
+                int token = tokens.tokenAt(at);
+                if (token >= 0 && tokens.overrideMarked(token)) annotated++;
+            }
+            edited.put(rel, e.text());
+            changedLines.put(rel, e.lines());
+            indexed.add(rel);
+            return true;
+        }
+
+        /** Renames the doc links to the method in every source not already edited from its index. */
         void docLinks() {
             for (String rel : jvmFiles) {
+                if (indexed.contains(rel)) continue;
                 String text = edited.containsKey(rel) ? edited.get(rel) : read(root, rel);
                 if (text == null || !text.contains("#" + old)) continue;
                 Tally t = tallies.get(rel);
@@ -375,7 +399,7 @@ final class GraphRename {
          * project, or an edit at the workspace root, is tested whole.
          */
         String testNext() {
-            return GraphRename.testNext(graph.modules(), edited.keySet());
+            return EditedTests.next(graph.modules(), edited.keySet());
         }
 
         List<String> answer() {
