@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.codegraph.Modules;
 import cc.jumpkick.guard.extract.FactsIndexing;
+import cc.jumpkick.host.Hashing;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -274,7 +276,7 @@ class GraphRenameTest {
                 new Modules.Module("", false),
                 new Modules.Module("shared/code-graph/", false),
                 new Modules.Module("plugins/graph/", false)));
-        assertThat(GraphRename.testNext(
+        assertThat(EditedTests.next(
                         modules,
                         List.of(
                                 "shared/code-graph/src/main/java/a/CodeGraph.java",
@@ -283,7 +285,92 @@ class GraphRenameTest {
                 .as("by directory, sorted, the whole workspace's unrelated failures left out")
                 .isEqualTo("Test the modules it edited: run(kind=test, only=plugins/graph,shared/code-graph),"
                         + " or jk test -m plugins/graph,shared/code-graph.");
-        assertThat(GraphRename.testNext(modules, List.of("src/main/java/Root.java")))
+        assertThat(EditedTests.next(modules, List.of("src/main/java/Root.java")))
                 .isEqualTo("Test next: run(kind=test), or jk test.");
+    }
+
+    private static final Map<String, String> SIZES = sources(
+            "Box.java", """
+            package com.acme.shop;
+
+            public class Box {
+                public int size() {
+                    return 1;
+                }
+            }
+            """,
+            "Use.java", """
+            package com.acme.shop;
+
+            import java.util.List;
+
+            public class Use {
+                int both(Box b, List<String> l) {
+                    return b.size() + l.size();
+                }
+            }
+            """);
+
+    /** An index file for {@code file} as the compile writes it: the spans given, under the hash given. */
+    private static void index(Path root, String file, String sha, String symbol, String... spans) throws IOException {
+        String text = read(root, file);
+        StringBuilder out = new StringBuilder(ReferenceIndex.HEADER + sha + "\n");
+        for (String span : spans) {
+            boolean decl = span.startsWith("d:");
+            String needle = span.substring(2);
+            int at = text.indexOf(needle) + needle.indexOf("size");
+            long line = text.substring(0, at).chars().filter(c -> c == '\n').count() + 1;
+            out.append(decl ? 'd' : 'r')
+                    .append('\t')
+                    .append(symbol)
+                    .append('\t')
+                    .append(at)
+                    .append('\t')
+                    .append(at + 4)
+                    .append('\t')
+                    .append(line)
+                    .append('\n');
+        }
+        Path f = root.resolve("target/incremental/classes-refs/" + PKG + file + ".refs");
+        Files.createDirectories(f.getParent());
+        Files.writeString(f, out);
+    }
+
+    private static String sha(Path root, String file) throws IOException {
+        return Hashing.sha256Hex(read(root, file).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static final String BOX_SIZE = "M com.acme.shop.Box#size()I";
+
+    @Test
+    void withoutAnIndexABodyCallingTwoMethodsOfTheNameIsListedNotGuessed(@TempDir Path dir) throws IOException {
+        Path root = workspace(dir, SIZES);
+        String answer = rename(root, "Box.size", "count");
+        assertThat(answer).contains("Not renamed", "Use.java");
+        assertThat(read(root, "Use.java")).contains("b.size() + l.size()");
+    }
+
+    @Test
+    void theCompilesReferenceIndexMakesThatRenameExact(@TempDir Path dir) throws IOException {
+        Path root = workspace(dir, SIZES);
+        index(root, "Box.java", sha(root, "Box.java"), BOX_SIZE, "d:int size()");
+        index(root, "Use.java", sha(root, "Use.java"), BOX_SIZE, "r:b.size()");
+
+        String answer = rename(root, "Box.size", "count");
+        assertThat(answer)
+                .startsWith("Renamed Box.size to count: 1 declaration, 1 call, in 2 files.")
+                .doesNotContain("Not renamed");
+        assertThat(read(root, "Box.java")).contains("public int count() {");
+        assertThat(read(root, "Use.java")).contains("b.count() + l.size()");
+    }
+
+    @Test
+    void anIndexThatNoLongerDescribesTheSourceIsNotUsed(@TempDir Path dir) throws IOException {
+        Path root = workspace(dir, SIZES);
+        index(root, "Box.java", sha(root, "Box.java"), BOX_SIZE, "d:int size()");
+        index(root, "Use.java", "0".repeat(64), BOX_SIZE, "r:b.size()");
+
+        assertThat(rename(root, "Box.size", "count")).contains("Not renamed", "Use.java");
+        assertThat(read(root, "Use.java")).contains("b.size() + l.size()");
     }
 }
