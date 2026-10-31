@@ -118,6 +118,22 @@ class McpRunWaitTest {
     }
 
     @Test
+    void wait_outlasts_a_job_that_queues_before_it_runs() {
+        // Queued for 600ms (behind the workspace's previous job), then live once, then finished.
+        long queuedUntil = System.currentTimeMillis() + 600;
+        AtomicBoolean ran = new AtomicBoolean();
+        long now = System.currentTimeMillis();
+        HttpLive.Run run = new HttpLive.Run(
+                JID, 9, "build", "/ws", "g:a", null, null, now, now, 0.5, "r9", -1, -1, 0, 0, List.of(), List.of());
+        Supplier<List<HttpLive.Run>> live = () -> {
+            if (System.currentTimeMillis() < queuedUntil || ran.getAndSet(true)) return List.of();
+            return List.of(run);
+        };
+        McpHandler mcp = handler(List::of, jid -> ran.get() ? FINISHED_OK : null, live);
+        assertThat(textOf(runWait(mcp))).startsWith("OK build a ·");
+    }
+
+    @Test
     void wait_with_no_journal_row_never_reports_a_previous_runs_outcome() {
         // History disabled: no row for this jid; the newest row on disk is an old success.
         String stale = "{\"id\":\"old\",\"kind\":\"build\",\"dir\":\"/ws\",\"success\":true,"
@@ -142,17 +158,17 @@ class McpRunWaitTest {
                 + "\"startedAt\":1700000000000,\"modules\":[],"
                 + "\"diagnostics\":[{\"severity\":\"error\",\"dir\":\"/ws\",\"file\":\"src/A.java\","
                 + "\"line\":3,\"col\":10,\"message\":\"';' expected\"}]}";
-        AtomicInteger served = new AtomicInteger();
+        // The first trigger's record is the failure, the second's the success.
         McpHandler mcp = handler(() -> List.of(), jid -> {
             if (jid != JID) return null;
-            return served.getAndIncrement() == 0 ? failed : FINISHED_OK;
+            return triggers.get() == 1 ? failed : FINISHED_OK;
         });
         String first = textOf(runWait(mcp));
         String second = textOf(runWait(mcp));
         assertThat(first).startsWith("FAIL build a").contains("src/A.java:3:10").contains("';' expected");
         assertThat(first).doesNotContain("run", "dashboard", "session");
         assertThat(second).startsWith("OK build a").doesNotContain("run");
-        assertThat(served).hasValue(2);
+        assertThat(triggers).hasValue(2);
     }
 
     @Test

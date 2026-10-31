@@ -225,7 +225,7 @@ class McpHandlerTest {
         AtomicInteger polls = new AtomicInteger();
         AtomicInteger yields = new AtomicInteger();
         HttpLive.Run live = new HttpLive.Run(
-                42L,
+                43L,
                 1L,
                 "build",
                 "/tmp/demo",
