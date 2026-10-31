@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.plugin.WarmWorkers;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.wire.protocol.GraphAck;
@@ -99,6 +100,33 @@ class GraphRunnerTest {
                 List.of());
     }
 
+    /**
+     * A build keeps an existing graph current and makes none: the first graph question makes one,
+     * and deleting .jk/graph/ is how a project stops.
+     */
+    @Test
+    void aBuildRefreshesOnlyAGraphTheProjectHas(@TempDir Path tmp) throws Exception {
+        Path root = workspace(tmp);
+        GraphRunner.refreshExisting(root);
+        assertThat(GraphRunner.hasGraph(root)).isFalse();
+        assertThat(root.resolve(".jk")).doesNotExist();
+
+        assertThat(GraphRunner.run(request(root, "build", List.of()), p -> {}).error())
+                .isNull();
+        assertThat(GraphRunner.hasGraph(root)).isTrue();
+        Path store = root.resolve(".jk/graph/" + GraphRunner.STORE);
+        Files.writeString(
+                root.resolve("src/main/java/com/acme/shop/PriceCalculator.java"),
+                Files.readString(root.resolve("src/main/java/com/acme/shop/PriceCalculator.java")) + "// edited\n");
+        String before = Files.readString(store);
+        GraphRunner.refreshExisting(root);
+        assertThat(Files.readString(store)).isNotEqualTo(before);
+
+        PathUtil.deleteRecursively(root.resolve(".jk/graph"));
+        GraphRunner.refreshExisting(root);
+        assertThat(GraphRunner.hasGraph(root)).isFalse();
+    }
+
     @Test
     void buildsInTheWorkerAndAnswersFromTheStoredGraphWhenNothingChanged(@TempDir Path tmp) throws Exception {
         Path root = workspace(tmp);
@@ -109,7 +137,8 @@ class GraphRunnerTest {
         assertThat(built.classes()).isEqualTo(2);
         assertThat(built.extracted()).isEqualTo(4);
         assertThat(progress).isNotEmpty();
-        assertThat(root.resolve("target/graph/" + GraphRunner.SNAPSHOT)).isRegularFile();
+        assertThat(root.resolve(".jk/graph/" + GraphRunner.STORE)).isRegularFile();
+        assertThat(GraphRunner.hasGraph(root)).isTrue();
 
         GraphAck query = GraphRunner.run(request(root, "query", List.of("order service total")), p -> {});
         assertThat(query.extracted()).isZero();

@@ -168,7 +168,8 @@ public final class Oracle {
         byte[] ga = snapshot(ws);
         byte[] gb = snapshot(clean);
         if (!Arrays.equals(ga, gb)) return "graph differs: the refreshed graph.bin is not the from-scratch one";
-        if (a.isEmpty() || ga.length == 0) return "nothing compared: " + a.size() + " outputs, " + ga.length + " graph bytes";
+        if (a.isEmpty() || ga.length == 0)
+            return "nothing compared: " + a.size() + " outputs, " + ga.length + " graph bytes";
         return "ok";
     }
 

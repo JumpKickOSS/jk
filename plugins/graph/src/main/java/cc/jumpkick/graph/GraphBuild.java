@@ -3,8 +3,11 @@ package cc.jumpkick.graph;
 
 import cc.jumpkick.codegraph.CodeGraph;
 import cc.jumpkick.codegraph.Fragment;
+import cc.jumpkick.codegraph.GraphEdge;
+import cc.jumpkick.codegraph.GraphNode;
 import cc.jumpkick.codegraph.GraphSnapshot;
 import cc.jumpkick.codegraph.Linker;
+import cc.jumpkick.codegraph.Mention;
 import cc.jumpkick.codegraph.Modules;
 import cc.jumpkick.codegraph.StaleRef;
 import cc.jumpkick.codegraph.extract.Extractor;
@@ -24,7 +27,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -35,10 +38,14 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * One refresh of a workspace's graph, in the graph worker. Walks the tree once and compares every
- * file's stat with the last build's; when nothing moved and the class indexes are the ones the last
- * graph was built from, the stored snapshot is the answer. Otherwise every changed file is hashed
- * and, if its bytes changed, extracted again (in parallel), the class facts are mapped, and the
- * graph is linked and written: {@code graph.bin}, {@code files.tsv} and {@code fragments.jsonl}.
+ * file's stat with the last build's; when nothing moved, the class indexes are the ones the last
+ * graph was built from and the committed store is the one it was linked from, the stored snapshot
+ * is the answer. Otherwise every changed file is hashed and, unless the committed store holds its
+ * bytes, extracted again (in parallel), the class facts are mapped, and the graph is linked and
+ * written: the committed store under {@code .jk/graph/} ({@link FragmentStore}), and this
+ * checkout's {@code graph.bin} and {@code files.tsv} under {@code target/graph/}. A file whose
+ * classes this checkout has not built, or built from other bytes, takes the compiled facts the
+ * store holds for its bytes, so a fresh checkout answers from the facts of whoever built last.
  */
 public final class GraphBuild {
 
@@ -83,18 +90,20 @@ public final class GraphBuild {
     public static Result refresh(
             Path root,
             Path out,
+            Path shared,
             List<ClassIndex> indexes,
             Modules modules,
             ScriptReader scripts,
             boolean rebuild,
             Progress progress)
             throws IOException {
-        return refresh(root, out, indexes, modules, scripts, rebuild, progress, Clock.SYSTEM);
+        return refresh(root, out, shared, indexes, modules, scripts, rebuild, progress, Clock.SYSTEM);
     }
 
     static Result refresh(
             Path root,
             Path out,
+            Path shared,
             List<ClassIndex> indexes,
             Modules modules,
             ScriptReader scripts,
@@ -143,7 +152,8 @@ public final class GraphBuild {
         String classDigest = classDigest(indexes, modules);
         String commit = GitHead.read(base);
         String extractors = Extractors.VERSION + (scripts.active() ? "+oxc" : "");
-        GraphSnapshot.Key key = new GraphSnapshot.Key(extractors, sources.size(), classDigest, commit);
+        GraphSnapshot.Key key = new GraphSnapshot.Key(
+                extractors, sources.size(), linkedFrom(classDigest, FragmentStore.stamp(shared)), commit);
         boolean sameFiles = changed.isEmpty() && unreadable.isEmpty() && stats.size() == sources.size();
         if (!rebuild && sameFiles) {
             CodeGraph stored = snapshot(out, key);
@@ -157,7 +167,7 @@ public final class GraphBuild {
                 return new Result(stored, sources.size(), 0, classes(indexes), out, millis, false, commit);
             }
         }
-        FragmentStore store = rebuild ? FragmentStore.empty() : GraphMemory.store(out);
+        FragmentStore store = rebuild ? FragmentStore.empty() : GraphMemory.store(out, shared);
         List<String> unread = new ArrayList<>();
         for (GraphSources.Source s : sources) {
             String sha = shas.get(s.rel());
@@ -178,7 +188,7 @@ public final class GraphBuild {
             Fragment read = oxc.get(s.rel());
             Fragment f = stored != null ? stored : read != null ? read : extract(s, changed.get(s.rel()));
             if (stored == null) {
-                if (read == null) k = FragmentStore.key(s.rel(), sha);
+                if (read == null) k = FragmentStore.key(s.rel(), sha, "");
                 store.put(k, f);
                 extracted.incrementAndGet();
             }
@@ -187,26 +197,36 @@ public final class GraphBuild {
             progress.file(s.rel(), stored == null);
         });
         List<Fragment> all = new ArrayList<>();
-        Set<String> live = new LinkedHashSet<>();
         for (GraphSources.Source s : sources) {
             Fragment f = fragments.get(s.rel());
             if (f != null) all.add(f);
-            String k = keys.get(s.rel());
-            if (k != null) live.add(k);
         }
         progress.phase("map compiled classes");
-        int classes = mapClasses(sources, indexes, all);
+        Map<String, Fragment> built = new HashMap<>();
+        int classes = mapClasses(sources, indexes, built);
+        List<FragmentStore.Row> rows = new ArrayList<>();
+        for (GraphSources.Source s : sources) {
+            String k = keys.get(s.rel());
+            String sha = shas.get(s.rel());
+            if (k == null || sha == null) continue;
+            Fragment compiled = built.get(s.rel());
+            if (compiled == null) compiled = store.classes(s.rel(), sha);
+            if (compiled != null) all.add(compiled);
+            rows.add(new FragmentStore.Row(s.rel(), k, compiled));
+        }
         progress.phase("link");
         CodeGraph graph = Linker.link(all);
         graph.modules(modules);
         graph.stale(stale(base, graph.stale()));
         progress.phase("write graph");
-        write(out, graph, key);
-        GraphMemory.sawGraph(out, graph, key);
+        store.save(shared, rows, modules);
+        GraphMemory.savedStore(out, shared, store);
+        GraphSnapshot.Key written = new GraphSnapshot.Key(
+                extractors, sources.size(), linkedFrom(classDigest, FragmentStore.stamp(shared)), commit);
+        write(out, graph, written);
+        GraphMemory.sawGraph(out, graph, written);
         stats.save(out, sources);
         GraphMemory.savedStats(out, stats);
-        store.save(out, live);
-        GraphMemory.savedStore(out, store);
         long millis = (clock.nanos() - start) / 1_000_000;
         return new Result(graph, sources.size(), extracted.get(), classes, out, millis, true, commit);
     }
@@ -226,7 +246,12 @@ public final class GraphBuild {
 
     /** The store key of a file's fragment: an oxc read is kept apart from a scanner read of the same bytes. */
     private static String key(String rel, String sha, ScriptReader scripts) {
-        return FragmentStore.key(rel, sha + scripts.flavor(rel));
+        return FragmentStore.key(rel, sha, scripts.flavor(rel));
+    }
+
+    /** What a graph was linked from: the class indexes and modules, and the committed store's files as they stood. */
+    private static String linkedFrom(String classDigest, String storeStamp) {
+        return Hashing.sha256Hex(classDigest + "\n" + storeStamp);
     }
 
     /** The stored graph when its key matches, else {@code null}: from memory while it is current. */
@@ -274,8 +299,12 @@ public final class GraphBuild {
         }
     }
 
-    /** Appends each class index's mapping to {@code all}; returns the class count. */
-    private static int mapClasses(List<GraphSources.Source> sources, List<ClassIndex> indexes, List<Fragment> all) {
+    /**
+     * Puts each class index's mapping into {@code bySource}, one fragment per source file the
+     * classes came from; returns the class count.
+     */
+    private static int mapClasses(
+            List<GraphSources.Source> sources, List<ClassIndex> indexes, Map<String, Fragment> bySource) {
         Map<String, List<String>> byName = new HashMap<>();
         for (GraphSources.Source s : sources) {
             if (Extractors.isJvmSource(s.rel())) {
@@ -288,15 +317,65 @@ public final class GraphBuild {
             try {
                 var index = FactsFormat.read(c.index());
                 classes += index.classes().size();
-                all.add(JvmFacts.map(index, (pkg, file) -> {
+                Fragment mapped = JvmFacts.map(index, (pkg, file) -> {
                     String rel = find(byName, c.modulePrefix(), pkg, file);
                     return rel == null || c.stale().contains(rel) ? null : rel;
-                }));
+                });
+                split(mapped).forEach((rel, f) -> bySource.merge(rel, f, GraphBuild::concat));
             } catch (IOException | RuntimeException unreadable) {
                 Log.debug("graph: class facts unreadable at " + c.index(), unreadable);
             }
         }
         return classes;
+    }
+
+    /**
+     * {@code f} cut into one fragment per source file: a node and an edge by the file they name, a
+     * mention by the file of the node it comes from.
+     */
+    static Map<String, Fragment> split(Fragment f) {
+        Map<String, String> fileOf = new HashMap<>();
+        Map<String, List<GraphNode>> nodes = new LinkedHashMap<>();
+        Map<String, List<GraphEdge>> edges = new HashMap<>();
+        Map<String, List<Mention>> mentions = new HashMap<>();
+        for (GraphNode n : f.nodes()) {
+            fileOf.put(n.id(), n.sourceFile());
+            nodes.computeIfAbsent(n.sourceFile(), k -> new ArrayList<>()).add(n);
+        }
+        for (GraphEdge e : f.edges()) {
+            edges.computeIfAbsent(e.sourceFile(), k -> new ArrayList<>()).add(e);
+        }
+        for (Mention m : f.mentions()) {
+            String file = fileOf.get(m.source());
+            if (file == null) {
+                Log.debug("graph: a compiled mention from " + m.source() + " names no file; left out");
+                continue;
+            }
+            mentions.computeIfAbsent(file, k -> new ArrayList<>()).add(m);
+        }
+        Set<String> files = new TreeSet<>(nodes.keySet());
+        files.addAll(edges.keySet());
+        files.addAll(mentions.keySet());
+        Map<String, Fragment> out = new LinkedHashMap<>();
+        for (String file : files) {
+            out.put(
+                    file,
+                    new Fragment(
+                            nodes.getOrDefault(file, List.of()),
+                            edges.getOrDefault(file, List.of()),
+                            mentions.getOrDefault(file, List.of())));
+        }
+        return out;
+    }
+
+    private static Fragment concat(Fragment a, Fragment b) {
+        List<GraphNode> nodes = new ArrayList<>(a.nodes());
+        nodes.addAll(b.nodes());
+        List<GraphEdge> edges = new ArrayList<>(a.edges());
+        edges.addAll(b.edges());
+        List<Mention> mentions = new ArrayList<>(a.mentions());
+        mentions.addAll(b.mentions());
+        return new Fragment(nodes, edges, mentions);
     }
 
     private static int classes(List<ClassIndex> indexes) {

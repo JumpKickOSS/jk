@@ -110,6 +110,7 @@ public final class GraphWorker implements Plugin {
         return new GraphService.Workspace(
                 Path.of(c.string("root")),
                 Path.of(c.string("out")),
+                Path.of(c.string("shared")),
                 indexes(c),
                 modules(c),
                 new ScriptReader(
