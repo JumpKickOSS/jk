@@ -37,11 +37,17 @@ public final class GraphSnapshot {
     private static final int MAGIC = 0x4A4B4753;
     private static final int FORMAT = 1;
 
-    /** What a graph was built from: extractor version, file count, class index digest, and commit. */
+    /**
+     * What a graph was built from: extractor version, file count, class index digest, the digest of
+     * every file's path and content hash it read ({@code inputs}), and commit. {@code inputs} is what
+     * lets the graph vouch for itself: a stat index from another refresh can cost a re-read, never
+     * a graph served for contents it was not built from.
+     */
     public record Key(
             String extractors,
             int files,
             String classes,
+            String inputs,
             @Nullable String commit) {}
 
     /** A snapshot read back: its key and graph. */
@@ -71,6 +77,7 @@ public final class GraphSnapshot {
         d.writeUTF(key.extractors());
         d.writeInt(key.files());
         d.writeUTF(key.classes());
+        d.writeUTF(key.inputs());
         d.writeUTF(key.commit() == null ? "" : key.commit());
         int[][] e = new int[edges.size()][];
         for (int i = 0; i < edges.size(); i++) {
@@ -184,8 +191,9 @@ public final class GraphSnapshot {
         String extractors = d.readUTF();
         int files = d.readInt();
         String classes = d.readUTF();
+        String inputs = d.readUTF();
         String commit = d.readUTF();
-        return new Key(extractors, files, classes, commit.isEmpty() ? null : commit);
+        return new Key(extractors, files, classes, inputs, commit.isEmpty() ? null : commit);
     }
 
     /** UTF-8 bytes with an int length: {@code writeUTF} stops at 64 KiB. */

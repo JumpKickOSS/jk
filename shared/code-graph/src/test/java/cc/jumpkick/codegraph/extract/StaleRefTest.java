@@ -42,7 +42,7 @@ class StaleRefTest {
                         new StaleRef("docs/guide.md", 3, StaleRef.FILE, "docs/old.md"),
                         new StaleRef("docs/guide.md", 4, StaleRef.CLASS, "com.acme.Basket"));
         var bytes = new ByteArrayOutputStream();
-        GraphSnapshot.write(g, new GraphSnapshot.Key("x", 2, "c", null), bytes);
+        GraphSnapshot.write(g, new GraphSnapshot.Key("x", 2, "c", "i", null), bytes);
         assertThat(Objects.requireNonNull(GraphSnapshot.read(new ByteArrayInputStream(bytes.toByteArray())))
                         .graph()
                         .stale())

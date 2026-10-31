@@ -46,7 +46,7 @@ class ModulesTest {
                 List.of())));
         g.modules(modules);
         var bytes = new ByteArrayOutputStream();
-        GraphSnapshot.write(g, new GraphSnapshot.Key("x", 1, "c", null), bytes);
+        GraphSnapshot.write(g, new GraphSnapshot.Key("x", 1, "c", "i", null), bytes);
         var loaded = Objects.requireNonNull(GraphSnapshot.read(new ByteArrayInputStream(bytes.toByteArray())));
         assertThat(loaded.graph().modules()).isEqualTo(modules);
         assertThat(Decl.kind(Objects.requireNonNull(loaded.graph().node("a")))).isEqualTo("class");
