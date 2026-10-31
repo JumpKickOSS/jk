@@ -19,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -188,6 +189,19 @@ final class GraphRename {
     }
 
     /** One rename's working state: what the classes record per file, and the edits chosen from it. */
+    /** {@link Run#testNext} for the files a rename edited, by the modules that hold them. */
+    static String testNext(Modules modules, Collection<String> edited) {
+        Set<String> touched = new TreeSet<>();
+        for (String rel : edited) {
+            Modules.Module m = modules.of(rel);
+            if (m == null || m.prefix().isEmpty()) return "Test next: run(kind=test), or jk test.";
+            touched.add(m.prefix().substring(0, m.prefix().length() - 1));
+        }
+        if (touched.isEmpty()) return "Test next: run(kind=test), or jk test.";
+        String only = String.join(",", touched);
+        return "Test the modules it edited: run(kind=test, only=" + only + "), or jk test -m " + only + ".";
+    }
+
     private static final class Run {
         final Path root;
         final CodeGraph graph;
@@ -355,6 +369,15 @@ final class GraphRename {
             }
         }
 
+        /**
+         * What to run next: the tests of the modules the rename edited, by directory, not the whole
+         * workspace, whose unrelated failures an agent would otherwise chase. A single-module
+         * project, or an edit at the workspace root, is tested whole.
+         */
+        String testNext() {
+            return GraphRename.testNext(graph.modules(), edited.keySet());
+        }
+
         List<String> answer() {
             List<String> lines = new ArrayList<>();
             lines.add("Renamed " + display(target) + " to " + to + ": " + count(declarations, "declaration") + ", "
@@ -364,7 +387,7 @@ final class GraphRename {
                 lines.add("  " + e.getKey() + ":" + numbers(e.getValue()));
             }
             if (unsettled.isEmpty() && unplaced.isEmpty() && unchecked.isEmpty()) {
-                lines.add("Every use the compiled classes record is renamed; no search needed. Build and test next.");
+                lines.add("Every use the compiled classes record is renamed; no search needed. " + testNext());
             }
             if (!unchecked.isEmpty()) {
                 lines.add("Not checked: these modules may call it but have no compiled classes. Each line below uses a "
