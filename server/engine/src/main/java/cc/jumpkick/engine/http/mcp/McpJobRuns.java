@@ -232,7 +232,9 @@ public final class McpJobRuns {
             boolean live = McpVitals.isLive(ctx, jid);
             if (live) seen = true;
             if (seen && !live) return true;
-            if (!seen && System.currentTimeMillis() - start > 250 && ctx.finishedRecords().apply(jid) != null) {
+            if (!seen
+                    && System.currentTimeMillis() - start > 250
+                    && ctx.finishedRecords().apply(jid) != null) {
                 return true;
             }
             try {
