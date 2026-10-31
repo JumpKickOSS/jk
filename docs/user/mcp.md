@@ -34,7 +34,7 @@ Outside a project `jk mcp` still serves, and the tools take `dir` as over HTTP.
 | Session | `initialize` answers with an `Mcp-Session-Id` header; echo it on every later request. One id is one **session**: the runs it starts journal as `trigger: mcp · session: <clientInfo.name> <id>`. `DELETE /mcp` with the header ends it |
 | Protocol | Advertised `protocolVersion` `2024-11-05` (Streamable-HTTP) |
 | Server name | `jk-engine` |
-| Tool list | `tools/list` answers five tools (`run`, `diagnostics`, `deps`, `callers`, `skill`); `run(kind=snapshot)` installs for a sibling project. `{"extended": true}` on that call, or `[mcp] tools = "all"` (`JK_MCP_TOOLS=all`), lists every card. Every tool is callable by name either way |
+| Tool list | `tools/list` answers six tools (`run`, `diagnostics`, `deps`, `callers`, `rename`, `skill`); `run(kind=snapshot)` installs for a sibling project. `{"extended": true}` on that call, or `[mcp] tools = "all"` (`JK_MCP_TOOLS=all`), lists every card. Every tool is callable by name either way |
 | CLI | `jk engine status` shows **MCP**; JSON includes `mcpUrl` |
 
 Token: `jk engine status` / `jk web` URL fragment, or the file under the state directory
@@ -56,7 +56,7 @@ Disable MCP only: `[mcp] enabled = false` in `~/.jk/config.toml` (or
 
 SSE budget: `[mcp] max-event-streams` / `JK_MCP_MAX_EVENT_STREAMS` (default **16**).
 
-The loop tools (`run`, `diagnostics`, `deps`, `callers`, `skill`) and `why` answer `content` text only;
+The loop tools (`run`, `diagnostics`, `deps`, `callers`, `rename`, `skill`) and `why` answer `content` text only;
 for `run` and `diagnostics` that text **is** the verdict (below). They send no
 `structuredContent`, because hosts that get one show the model that instead of the text. A
 failure the agent must act on (a bad `deps` coord, a failed relock) sets `isError`. The extended
@@ -133,7 +133,7 @@ and the process was spawned by a coding-agent CLI. Human terminals keep today's 
 ## Tools
 
 Every tool card an agent's host shows the model is paid for on every turn. The default
-`tools/list` is five tools: the fix-and-rerun loop and `callers`, the one graph question measured to save an agent tokens. The same sentences are the skill's tool table (`jk skill` / `skill`),
+`tools/list` is six tools: the fix-and-rerun loop, `callers`, the one graph question measured to save an agent tokens, and `rename`, which makes in one call the edits a rename otherwise takes a turn each for. The same sentences are the skill's tool table (`jk skill` / `skill`),
 which a test holds to the served list. Ask for every card with `tools/list` params
 `{"extended": true}`, or set `[mcp] tools = "all"` (`JK_MCP_TOOLS=all`) and restart the engine.
 
@@ -182,6 +182,7 @@ The whole registry:
 | **`ide`** | Write IDE project files (`kind=idea` \| `vscode` \| `all`) plus `.bsp/jk.json`, same generators as `jk ide`; `preview=true` lists without writing |
 | **`graph`** | Compact module/dep graph (transitive expansion opt-in and budget-capped) |
 | **`callers`** | Who calls a method (`address` = `Type.method`, every overload): each caller as `Owner.method` with `file:line` and the call's line, main sources before tests, counted, from the compiled classes and so complete. `transitive=true` lists every method that reaches it, by hop, up to `max_hops` (default 8). Same as `jk graph callers` ([Code graph](graph.md#callers)) |
+| **`rename`** | Rename a method (`address` = `Type.method`, every overload, or `Type.method(int,String)`) to `to`, with every override, call, method reference and doc link the compiled classes record, in one call; lists any use it could not tell apart. Not read-only. Same as `jk graph rename` ([Code graph](graph.md#rename)) |
 | **`query`** | A question about the code (`question`) answered in a token budget: the symbols it names as `Owner.member()` at `file:line`, and how they connect. Same as `jk graph query` ([Code graph](graph.md)) |
 | **`read`** | One symbol's source or a type's members (`address` = `Type`, `Type.member`, `Type.*`, a path or glob; `#line=N,M`), in the `view` the budget fits. Same as `jk graph read` |
 | **`find`** | Declarations by `kind`, `visibility`, `extends`, `implements`, `annotated` and a `name` glob. Same as `jk graph find` |

@@ -98,6 +98,14 @@ public final class GraphCommand extends GroupCommand {
                                 NO_REFRESH),
                         List.of(Param.of("method", Arity.ONE, "Type.method (every overload)"))),
                 new GraphOpCommand(
+                        "rename",
+                        "Rename a method and every override, call and doc link to it",
+                        List.of(BUDGET),
+                        List.of(
+                                Param.of(
+                                        "method", Arity.ONE, "Type.method (every overload) or Type.method(int,String)"),
+                                Param.of("name", Arity.ONE, "the new name"))),
+                new GraphOpCommand(
                         "read",
                         "A symbol's source or a type's members, in the view that fits",
                         scoped(
