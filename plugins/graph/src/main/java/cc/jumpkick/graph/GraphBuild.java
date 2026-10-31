@@ -42,7 +42,7 @@ import org.jspecify.annotations.Nullable;
  * graph was built from and the committed store is the one it was linked from, the stored snapshot
  * is the answer. Otherwise every changed file is hashed and, unless the committed store holds its
  * bytes, extracted again (in parallel), the class facts are mapped, and the graph is linked and
- * written: the committed store under {@code .jk/graph/} ({@link FragmentStore}), and this
+ * written: the committed store under {@code .jk-graph/} ({@link FragmentStore}), and this
  * checkout's {@code graph.bin} and {@code files.tsv} under {@code target/graph/}. A file whose
  * classes this checkout has not built, or built from other bytes, takes the compiled facts the
  * store holds for its bytes, so a fresh checkout answers from the facts of whoever built last.
