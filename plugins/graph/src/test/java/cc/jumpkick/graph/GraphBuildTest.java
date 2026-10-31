@@ -309,6 +309,27 @@ import java.util.List;
         assertThat(new GraphTools(g).callers("Two.put", 8, 2000)).contains("Printer.print()", "Printer.render()");
     }
 
+    @Test
+    void aReferenceToAnOwnMethodCallsIt(@TempDir Path dir) throws IOException {
+        CodeGraph g = refresh(workspace(dir, Map.of("Steps.java", """
+                                        package com.acme.shop;
+
+                                        import java.util.ArrayList;
+                                        import java.util.List;
+
+                                        public class Steps {
+                                            final List<Runnable> steps = new ArrayList<>();
+
+                                            void build() { steps.add(Steps::compile); }
+
+                                            void test() { steps.add(() -> compile()); }
+
+                                            static void compile() {}
+                                        }
+                                        """)), false).graph();
+        assertThat(new GraphTools(g).callers("Steps.compile", 1, 2000)).contains("Steps.build()", "Steps.test()");
+    }
+
     /** Edits {@code file} after its classes were built: new bytes, so no compiled facts are of them. */
     private static void edit(Path file) throws IOException {
         Files.writeString(file, Files.readString(file) + "// edited\n");

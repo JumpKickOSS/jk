@@ -57,6 +57,10 @@ public final class Sample implements Supplier<String> {
         return () -> names.forEach(System.out::println);
     }
 
+    Runnable ownReference() {
+        return this::hidden;
+    }
+
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.PARAMETER)
     public @interface Marked {}

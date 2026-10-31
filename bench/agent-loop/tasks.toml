@@ -87,7 +87,8 @@ and update every caller. Methods named `between` on other types stay as they are
 """
 
 # Navigation questions: the agent writes ANSWER.txt and nothing else, graded against the compiler's
-# facts (bench/graph-retrieval/Truth.java, main classes, lambdas count as their enclosing method).
+# facts (bench/graph-retrieval/Truth.java, main classes, lambdas count as their enclosing method, and a
+# method reference `T::m` as a call of `m`, as the same call inside a lambda would).
 # Picked where a name search is weak: a method name many types declare, a chain of calls several
 # hops deep, a type hierarchy more than one level deep. No build or test run decides these.
 
@@ -199,14 +200,16 @@ that can end up running it: the methods that call it, the methods that call thos
 a supertype's or interface's method that a method overrides or implements counts as a call to that
 method, at every step.
 """
-answer = ["AndroidPlugin.run", "AntlrPreset.build", "AntlrPreset.run", "AvroPreset.build", "AvroPreset.run",
-          "BuildPluginHarness.asBuildPlugin", "BuildPluginHarness.run", "DexStep.run", "GeneratorEntry.task",
-          "GeneratorStep.run", "Generators.build", "Generators.run", "GrailsPlugin.run", "HibernatePlugin.run",
-          "IntellijPlugin.run", "JavafxPlugin.run", "JaxbPreset.build", "JaxbPreset.run", "JenkinsTestPlugin.run",
-          "JooqPreset.build", "JooqPreset.run", "LintPlugin.build", "LintPlugin.run", "LintPlugin.task",
-          "LintStep.run", "LocalizerPreset.build", "LocalizerPreset.run", "ManifestStep.merge", "ManifestStep.run",
+answer = ["AndroidPlugin.register", "AndroidPlugin.run", "AntlrPreset.build", "AntlrPreset.run",
+          "AvroPreset.build", "AvroPreset.run", "BuildPluginHarness.asBuildPlugin", "BuildPluginHarness.run",
+          "DexStep.run", "GeneratorEntry.task", "GeneratorStep.run", "Generators.build", "Generators.run",
+          "GrailsPlugin.run", "HibernatePlugin.run", "IntellijPlugin.run", "JavafxPlugin.run",
+          "JaxbPreset.build", "JaxbPreset.run", "JenkinsTestPlugin.run", "JooqPreset.build", "JooqPreset.run",
+          "LintPlugin.build", "LintPlugin.run", "LintPlugin.task", "LintStep.run", "LocalizerPreset.build",
+          "LocalizerPreset.run", "ManifestStep.merge", "ManifestStep.run", "MicronautPlugin.build",
           "MicronautPlugin.run", "MicronautPlugin.runAot", "MinifiedPlugin.run", "OpenApiPreset.build",
-          "OpenApiPreset.run", "PluginMain.main", "PluginMain.serve", "ProtoCompiler.run", "QuarkusPlugin.run",
-          "QuarkusPlugin.runAugment", "QuarkusPlugin.runTestModel", "R8Step.run", "SpringBootPlugin.run",
-          "SpringBootPlugin.runAot", "TaglibPreset.build", "TaglibPreset.run", "TaskExec.java", "TaskExec.tool",
-          "TestConfigStep.run"]
+          "OpenApiPreset.run", "PluginMain.main", "PluginMain.serve", "ProtoCompiler.run",
+          "QuarkusPlugin.build", "QuarkusPlugin.run", "QuarkusPlugin.runAugment",
+          "QuarkusPlugin.runTestModel", "QuarkusPlugin.test", "R8Step.run", "SpringBootPlugin.build",
+          "SpringBootPlugin.run", "SpringBootPlugin.runAot", "TaglibPreset.build", "TaglibPreset.run",
+          "TaskExec.java", "TaskExec.tool", "TestConfigStep.run"]
