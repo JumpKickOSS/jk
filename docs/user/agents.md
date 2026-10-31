@@ -42,7 +42,9 @@ build; fix them by hand.
 Before changing a method, ask who calls it: MCP `callers` or `jk graph callers Type.method`
 (`-t` / `transitive=true` for everything that can end up running it). The answer comes from the
 compiled classes and is complete, so it replaces grepping for the name and reading each match
-([Code graph](graph.md#callers)).
+([Code graph](graph.md#callers)). To rename a method, MCP `rename` or `jk graph rename Type.method
+newName` makes every edit in one call and quotes any use it could not tell apart
+([Code graph](graph.md#rename)).
 
 Read the **verdict** first. `run` returns it; `jk -a` prints the same text. The human
 markdown at `target/jk-results.md` is for a person, or for an agent with neither MCP nor
@@ -105,9 +107,10 @@ MCP is **on by default** when the engine HTTP server is on (loopback, token-gate
 the URL with `jk engine status`. Send `Authorization: Bearer <token>`. Pass `dir` on the first
 call — that binds the connection — then omit it; `bind` switches.
 
-The default `tools/list` is `run`, `diagnostics`, `deps`, `callers`, and `skill`: every card is paid
-on every turn, so the list holds what a fix-and-rerun loop calls plus `callers`, which answers who
-calls a method, complete, in one call instead of a grep and reads. `run(kind=snapshot)` installs for a
+The default `tools/list` is `run`, `diagnostics`, `deps`, `callers`, `rename`, and `skill`: every
+card is paid on every turn, so the list holds what a fix-and-rerun loop calls plus `callers`, which
+answers who calls a method, complete, in one call instead of a grep and reads, and `rename`, which
+renames a method and every use in one call instead of an edit per use. `run(kind=snapshot)` installs for a
 sibling project.
 `deps` edits `jk.toml` and relocks in that same call. Everything else (history, explain,
 jdk, why, …) is a `tools/list` with `{"extended": true}`. `initialize` says the same:

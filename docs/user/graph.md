@@ -240,7 +240,26 @@ there is no need to grep for the name afterwards. A method reached only by refle
 a string is not a call, so it is not listed; the note under the answer says when a module's calls
 are missing.
 
-## Against grep and other graphs
+## Rename
+
+`jk graph rename Type.method newName` (MCP `rename`) renames a method in one call: its declaration,
+every override and implementation of it, every call and method reference, and the `{@link}`s to
+it. `Type.method` renames every overload; `Type.method(int,String)` one. The answer lists each file
+and line it changed; build and test next.
+
+The compiled classes say which calls are the method's: a call names its owner and descriptor, and
+the class hierarchy says whether that reaches the method, so a `contains` on a `String` or a `List`
+is never touched. They count a method's calls, not each call's line, so a file is edited only where
+the uses of the name in its source are exactly the ones the classes count; where another method of
+the name is called too, uses are told apart by method body and by argument count. Anything that
+still cannot be told apart (a method reference to the class's own method, a call in a `finally`
+block, which the compiler copies) is left alone and quoted under the answer, as are the uses of the
+name in a module that may call it but has no compiled classes, so the agent edits those few by hand.
+
+It refuses, changing nothing, when a source was edited since the build (build first), when a
+related type already declares the new name with the same parameters, or when the method overrides
+one outside the workspace (`@Override` with no supertype here declaring it) or `Object`'s.
+
 
 The [retrieval bench](../../bench/graph-retrieval/README.md) asks who calls a method, what
 implements or overrides it and where it is defined, on seven JVM repositories, and grades every

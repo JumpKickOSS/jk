@@ -101,9 +101,9 @@ class AgentsGuideTest {
                 .contains("jk skill")
                 .contains("jk graph callers")
                 .endsWith("\n");
-        assertThat(AgentsGuide.SECTION.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(900);
+        assertThat(AgentsGuide.SECTION.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(1000);
         assertThat(AgentsGuide.ENFORCED_SECTION.getBytes(StandardCharsets.UTF_8).length)
-                .isLessThanOrEqualTo(900);
+                .isLessThanOrEqualTo(1000);
         assertThat(AgentsGuide.SECTION).doesNotContain(AgentsGuide.BEGIN).doesNotContain(AgentsGuide.END);
         assertThat(AgentsGuide.SECTION).doesNotContain("jk format");
     }

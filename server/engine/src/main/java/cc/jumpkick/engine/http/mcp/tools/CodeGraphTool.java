@@ -54,6 +54,24 @@ public final class CodeGraphTool implements McpTool {
                 in -> List.of(required(in, "address")));
     }
 
+    /**
+     * {@code rename}: a method renamed with every override, call, method reference and doc link the
+     * compiled classes record, in one call; the uses it cannot tell apart are listed. It writes, so
+     * it is not read-only.
+     */
+    public static McpTool rename() {
+        return new CodeGraphTool(
+                new Spec(
+                        "rename",
+                        "Rename Type.method (every overload, or Type.method(int,String)) to `to`, with every override,"
+                                + " call and doc link, in one call. Then run tests.",
+                        McpSchemas.object(
+                                props(Map.of("address", McpSchemas.string(), "to", McpSchemas.string())),
+                                List.of("address", "to"))),
+                "rename",
+                in -> List.of(required(in, "address"), required(in, "to")));
+    }
+
     /** {@code query}: the symbols and connections a question is about, as {@code jk graph query} answers it. */
     public static McpTool query() {
         return new CodeGraphTool(
