@@ -31,6 +31,28 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
 
+### 0.50.1
+
+- **Build scripts move to `.jk/scripts/`.** `.jk/` is now a project's checked-in jk state, one
+  directory per concern: `.jk/scripts/` (the build scripts, the only build input), `.jk/graph/`
+  (the code graph). `jk/` is no longer read, and a script left at the top of `.jk/` does not run —
+  the build names it once. To move, put the scripts from `.jk/` (or `jk/`) in `.jk/scripts/`.
+  `selective-plan.json` is written under `target/`.
+- **MCP `rename`** (on the default list; `jk graph rename T.m newName`) renames a method with every
+  override, call, method reference and doc link the compiled classes record, in one call. Claude Code
+  renamed across commons-lang, petclinic and jk in 2 to 9 turns, against 7 to 43 without the graph.
+- **The code graph is committed.** The first graph question makes `.jk/graph/`; from then on every
+  build and question keeps it current, one line per file, merged line by line and kept out of
+  ripgrep. A fresh checkout answers complete callers without building. Delete the directory to stop.
+- **A question after an edit compiles the edited module first**, so callers and overrides are the
+  code's as edited; code that does not compile yet is answered from the last build, saying so.
+- **MCP `run` no longer answers `FAIL … no run record` for a build that passed** — it happened to a
+  queued job and to a green build whose record was still being written, and cost agents turns.
+- **Less memory held:** an idle graph worker gives its heap back within seconds; a worker asked for
+  its memory while still starting gives it back; engines a test suite started stop when it ends.
+- `callers` takes a nested type's binary name (`Outer$Inner.m`), numbers transitive hops without gaps,
+  and counts a class's own method references (`this::step`) as calls.
+
 ### 0.50.0
 
 - **jk updates itself.** The engine checks for a new release, downloads it and installs it between
