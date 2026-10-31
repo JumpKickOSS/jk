@@ -111,13 +111,39 @@ class ReferencesTest {
             Path index = References.dirFor(classes).resolve(References.relative(dir, file) + ".refs");
             List<String> lines = Files.readAllLines(index);
             assertThat(lines.getFirst()).isEqualTo(References.HEADER + References.sha256(Files.readAllBytes(file)));
+            List<String> symbols = new ArrayList<>();
+            int start = 0;
             for (String line : lines.subList(1, lines.size())) {
+                if (line.startsWith("=")) {
+                    symbols.add(line.substring(1));
+                    continue;
+                }
                 String[] f = line.split("\t");
-                String at = text.substring(Integer.parseInt(f[2]), Integer.parseInt(f[3]));
-                out.computeIfAbsent(f[1], k -> new ArrayList<>()).add(f[0] + ":" + at + "@" + f[4]);
+                String symbol = symbols.get(Integer.parseInt(f[0].substring(1)));
+                start += Integer.parseInt(f[1]);
+                String name = simpleName(symbol);
+                String at = text.substring(start, start + name.length());
+                assertThat(at)
+                        .as("the source spells the symbol's name where it is recorded")
+                        .isEqualTo(name);
+                long lineNo =
+                        text.substring(0, start).chars().filter(c -> c == '\n').count() + 1;
+                out.computeIfAbsent(symbol, k -> new ArrayList<>()).add(f[0].charAt(0) + ":" + at + "@" + lineNo);
             }
         }
         return out;
+    }
+
+    /** The name a symbol is spelled with in source: what a reader takes as a span's length. */
+    private static String simpleName(String symbol) {
+        int hash = symbol.indexOf('#');
+        if (hash >= 0) {
+            int paren = symbol.indexOf('(', hash);
+            return symbol.substring(hash + 1, paren < 0 ? symbol.length() : paren);
+        }
+        String binary = symbol.substring(2);
+        String simple = binary.substring(binary.lastIndexOf('.') + 1);
+        return simple.substring(simple.lastIndexOf('$') + 1);
     }
 
     private static Path write(Path root, String rel, String text) throws Exception {

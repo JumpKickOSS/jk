@@ -30,6 +30,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -60,15 +61,20 @@ import org.jspecify.annotations.Nullable;
  * only for a compile that passed; a failure to index is logged by the caller and never fails the
  * compile.
  *
- * <p>Format, tab-separated after the header line {@code # jk-refs 1 <sha256>}: {@code <kind> <symbol>
- * <start> <end> <line>}. Kind is {@code d} (the declaration's own name; a constructor's name records
- * its class), {@code r} (a reference in code, imports included) or {@code j} (a Javadoc reference).
- * Symbols: {@code T <binary name>}, {@code M <owner>#<name><descriptor>} (constructors as {@code
- * <init>}), {@code F <owner>#<name>}. Offsets are characters of the source as javac read it.
+ * <p>Format, after the header line {@code # jk-refs 2 <sha256>}: one line per name, in source order,
+ * {@code <kind><id>\t<delta>} — kind {@code d} (the declaration's own name; a constructor's name
+ * records its class), {@code r} (a reference in code, imports included) or {@code j} (a Javadoc
+ * reference); {@code id} the symbol's number in the file; {@code delta} the name's start, in
+ * characters of the source as javac read it, after the previous line's start. A symbol's first use
+ * is preceded by its line {@code =<symbol>}, which gives it the next number. Symbols: {@code T
+ * <binary name>}, {@code M <owner>#<name><descriptor>} (constructors as {@code <init>}), {@code F
+ * <owner>#<name>}. Nothing a reader can rebuild is written: a name's end is its start plus the
+ * symbol's simple name, which the source spells there (nothing else is recorded), and its line comes
+ * from the source.
  */
 final class References implements TaskListener {
 
-    static final String HEADER = "# jk-refs 1 ";
+    static final String HEADER = "# jk-refs 2 ";
 
     /** On unless {@code jk.java.references=false}: what its cost is measured against. */
     static final boolean ENABLED =
@@ -140,17 +146,27 @@ final class References implements TaskListener {
             StringBuilder out = new StringBuilder(HEADER)
                     .append(sha256(Files.readAllBytes(source)))
                     .append('\n');
-            for (Ref r : unit.getValue()) {
+            Map<String, Integer> ids = new HashMap<>();
+            int previous = 0;
+            List<Ref> refs = new ArrayList<>(unit.getValue());
+            refs.sort(Comparator.comparingInt(Ref::start));
+            String last = null;
+            for (Ref r : refs) {
+                // The same name reached twice (a tree visited from two paths) is written once.
+                if (r.start() == previous && r.symbol().equals(last)) continue;
+                last = r.symbol();
+                Integer id = ids.get(r.symbol());
+                if (id == null) {
+                    id = ids.size();
+                    ids.put(r.symbol(), id);
+                    out.append('=').append(r.symbol()).append('\n');
+                }
                 out.append(r.kind())
+                        .append(id)
                         .append('\t')
-                        .append(r.symbol())
-                        .append('\t')
-                        .append(r.start())
-                        .append('\t')
-                        .append(r.end())
-                        .append('\t')
-                        .append(r.line())
+                        .append(r.start() - previous)
                         .append('\n');
+                previous = r.start();
             }
             Files.createDirectories(target.getParent());
             Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
@@ -266,7 +282,14 @@ final class References implements TaskListener {
             return text;
         }
 
-        private void add(char kind, @Nullable Element el, int start, int end) {
+        private void add(char kind, @Nullable Element candidate, int start, int end) {
+            // A constructor is spelled with its class's name, so it is recorded as the class: a
+            // reader takes a span's length from the symbol's name, and `<init>` is not spelled.
+            Element el = candidate != null
+                            && candidate.getKind() == ElementKind.CONSTRUCTOR
+                            && candidate.getEnclosingElement() instanceof TypeElement type
+                    ? type
+                    : candidate;
             if (el == null || start < 0 || end <= start) return;
             String symbol = symbol(el);
             if (symbol == null) return;
