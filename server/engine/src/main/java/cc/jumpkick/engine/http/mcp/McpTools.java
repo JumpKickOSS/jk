@@ -59,11 +59,12 @@ public final class McpTools {
     public static final String BIND = "bind";
 
     /**
-     * The default {@code tools/list}: what one fix-and-rerun loop needs, in reading order, and {@code
+     * The default {@code tools/list}: what one fix-and-rerun loop needs, in reading order, {@code
      * callers}, the one graph question that answers in a call what grep and reads take turns to
-     * approximate. Every card is paid on every turn.
+     * approximate, and {@code rename}, which makes in one call the edits a rename takes a turn each
+     * for. Every card is paid on every turn.
      */
-    public static final List<String> LOOP = List.of("run", "diagnostics", "deps", "callers", "skill");
+    public static final List<String> LOOP = List.of("run", "diagnostics", "deps", "callers", "rename", "skill");
 
     /** Which rows {@code tools/list} answers. */
     public enum Surface {
@@ -188,6 +189,7 @@ public final class McpTools {
                 new GraphTool(),
                 new DoctorTool(),
                 CodeGraphTool.callers(),
+                CodeGraphTool.rename(),
                 CodeGraphTool.query(),
                 CodeGraphTool.read(),
                 CodeGraphTool.find()));

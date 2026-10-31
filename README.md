@@ -54,7 +54,8 @@ day. Every surface is built for that loop:
   your `AGENTS.md` current.
 - **`jk graph`** — a code graph built in: nothing to install, indexed in seconds, with call and
   override edges from the compiled classes. Answers name each symbol `Owner.member()` at
-  `file:line`, and `jk graph callers` lists every caller of a method, complete.
+  `file:line`, `jk graph callers` lists every caller of a method, complete, and `jk graph rename`
+  renames a method with every override, call and doc link in one step.
 - **Named test rungs** — `jk test` is the cheap unit suite, `--guard` the bar before sharing,
   `--all` the nightly; the report says what was not run.
 

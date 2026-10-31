@@ -31,6 +31,7 @@ public final class AgentsGuide {
             - Before handing work back: `jk guard`.
             - Who calls `T.m`: MCP `callers` (`transitive=true`: all that reach it), or `jk graph callers T.m`.
               Its list is complete: use it as is; do not grep or read to check it.
+            - Rename `T.m` with every override, call and doc link: MCP `rename`, or `jk graph rename T.m new`.
             - `jk add g:a` / `jk remove g:a` (MCP `deps`) edit `jk.toml` and relock `jk-lock.toml`.
             - Never add `pom.xml` or Gradle files, run `mvn` or `./gradlew`, or edit
               `jk-guards-baseline.toml` (`jk guard explain <id>` says what to do).

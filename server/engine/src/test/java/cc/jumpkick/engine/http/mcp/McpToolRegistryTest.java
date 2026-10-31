@@ -91,10 +91,10 @@ class McpToolRegistryTest {
     void the_default_list_is_the_loop() {
         McpTools tools = McpTools.standard();
         List<String> listed = names(tools.listing(McpTools.Surface.LOOP));
-        assertThat(listed).containsExactly("run", "diagnostics", "deps", "callers", "skill");
+        assertThat(listed).containsExactly("run", "diagnostics", "deps", "callers", "rename", "skill");
         assertThat(listed).isEqualTo(tools.loopNames());
         assertThat(listed).doesNotContain("bind", "history", "manifest", "query", "read", "find");
-        assertThat(tools.names()).contains("callers", "query", "read", "find");
+        assertThat(tools.names()).contains("callers", "rename", "query", "read", "find");
     }
 
     @Test
