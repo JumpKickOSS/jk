@@ -145,7 +145,7 @@ import java.util.List;
         return GraphBuild.refresh(
                 root,
                 root.resolve("target/graph"),
-                root.resolve(".jk/graph"),
+                root.resolve(".jk-graph"),
                 indexes(root, stale),
                 Modules.NONE,
                 NO_NODE,
@@ -388,7 +388,7 @@ import java.util.List;
     }
 
     /**
-     * The graph is committed: one line per file under .jk/graph/, with the attributes that merge
+     * The graph is committed: one line per file under .jk-graph/, with the attributes that merge
      * it by lines, and a refresh with nothing changed leaves the committed bytes alone.
      */
     @Test
@@ -396,10 +396,10 @@ import java.util.List;
         GraphMemory.clear();
         Path root = workspace(dir);
         refresh(root, false);
-        Path store = root.resolve(".jk/graph/" + FragmentStore.FILE);
+        Path store = root.resolve(".jk-graph/" + FragmentStore.FILE);
         assertThat(store).exists();
-        assertThat(Files.readString(root.resolve(".jk/graph/.gitattributes"))).isEqualTo(FragmentStore.ATTRIBUTES_TEXT);
-        assertThat(Files.readString(root.resolve(".jk/graph/.ignore"))).isEqualTo("graph.jsonl\n");
+        assertThat(Files.readString(root.resolve(".jk-graph/.gitattributes"))).isEqualTo(FragmentStore.ATTRIBUTES_TEXT);
+        assertThat(Files.readString(root.resolve(".jk-graph/.ignore"))).isEqualTo("graph.jsonl\n");
         List<String> lines = Files.readAllLines(store);
         assertThat(lines.getFirst()).isEqualTo(FragmentStore.HEADER);
         assertThat(lines)
@@ -443,7 +443,7 @@ import java.util.List;
         GraphBuild.Result r = GraphBuild.refresh(
                 fresh,
                 fresh.resolve("target/graph"),
-                fresh.resolve(".jk/graph"),
+                fresh.resolve(".jk-graph"),
                 List.of(),
                 Modules.NONE,
                 NO_NODE,
@@ -457,8 +457,8 @@ import java.util.List;
                 .isEqualTo(compiled.extra().get(Linker.DESCRIPTORS));
         assertThat(edge(r.graph(), "orderservice_audit", "baseservice_log", "calls"))
                 .isTrue();
-        assertThat(Files.readAllBytes(fresh.resolve(".jk/graph/" + FragmentStore.FILE)))
-                .isEqualTo(Files.readAllBytes(built.resolve(".jk/graph/" + FragmentStore.FILE)));
+        assertThat(Files.readAllBytes(fresh.resolve(".jk-graph/" + FragmentStore.FILE)))
+                .isEqualTo(Files.readAllBytes(built.resolve(".jk-graph/" + FragmentStore.FILE)));
     }
 
     /**
@@ -471,7 +471,7 @@ import java.util.List;
         GraphMemory.clear();
         Path root = workspace(dir);
         refresh(root, false);
-        Path store = root.resolve(".jk/graph/" + FragmentStore.FILE);
+        Path store = root.resolve(".jk-graph/" + FragmentStore.FILE);
         String line = Files.readAllLines(store).stream()
                 .filter(l -> l.contains("\"p\":\"src/main/java/com/acme/shop/PriceCalculator.java\""))
                 .findFirst()
@@ -484,7 +484,7 @@ import java.util.List;
         GraphBuild.Result r = GraphBuild.refresh(
                 root,
                 root.resolve("target/graph"),
-                root.resolve(".jk/graph"),
+                root.resolve(".jk-graph"),
                 indexes(root, Set.of("src/main/java/com/acme/shop/PriceCalculator.java")),
                 Modules.NONE,
                 NO_NODE,
@@ -667,7 +667,7 @@ import java.util.List;
         return new GraphService.Workspace(
                 root,
                 root.resolve("target/graph"),
-                root.resolve(".jk/graph"),
+                root.resolve(".jk-graph"),
                 indexes(root, Set.of()),
                 Modules.NONE,
                 NO_NODE,

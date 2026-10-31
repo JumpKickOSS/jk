@@ -94,7 +94,7 @@ public final class GraphRunner {
 
     /** Where a project commits its graph, shared by everyone who checks it out. */
     public static Path sharedDir(Path root) {
-        return root.resolve(".jk").resolve("graph");
+        return root.resolve(".jk-graph");
     }
 
     /** Whether the project has a graph: one it committed, or one the first graph question made here. */

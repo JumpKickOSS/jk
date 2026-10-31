@@ -102,7 +102,7 @@ class GraphRunnerTest {
 
     /**
      * A build keeps an existing graph current and makes none: the first graph question makes one,
-     * and deleting .jk/graph/ is how a project stops.
+     * and deleting .jk-graph/ is how a project stops.
      */
     @Test
     void aBuildRefreshesOnlyAGraphTheProjectHas(@TempDir Path tmp) throws Exception {
@@ -114,7 +114,9 @@ class GraphRunnerTest {
         assertThat(GraphRunner.run(request(root, "build", List.of()), p -> {}).error())
                 .isNull();
         assertThat(GraphRunner.hasGraph(root)).isTrue();
-        Path store = root.resolve(".jk/graph/" + GraphRunner.STORE);
+        // Not under .jk/: that is build logic, which the build memo hashes and the journal snapshots.
+        assertThat(root.resolve(".jk")).doesNotExist();
+        Path store = root.resolve(".jk-graph/" + GraphRunner.STORE);
         Files.writeString(
                 root.resolve("src/main/java/com/acme/shop/PriceCalculator.java"),
                 Files.readString(root.resolve("src/main/java/com/acme/shop/PriceCalculator.java")) + "// edited\n");
@@ -122,7 +124,7 @@ class GraphRunnerTest {
         GraphRunner.refreshExisting(root);
         assertThat(Files.readString(store)).isNotEqualTo(before);
 
-        PathUtil.deleteRecursively(root.resolve(".jk/graph"));
+        PathUtil.deleteRecursively(root.resolve(".jk-graph"));
         GraphRunner.refreshExisting(root);
         assertThat(GraphRunner.hasGraph(root)).isFalse();
     }
@@ -137,7 +139,7 @@ class GraphRunnerTest {
         assertThat(built.classes()).isEqualTo(2);
         assertThat(built.extracted()).isEqualTo(4);
         assertThat(progress).isNotEmpty();
-        assertThat(root.resolve(".jk/graph/" + GraphRunner.STORE)).isRegularFile();
+        assertThat(root.resolve(".jk-graph/" + GraphRunner.STORE)).isRegularFile();
         assertThat(GraphRunner.hasGraph(root)).isTrue();
 
         GraphAck query = GraphRunner.run(request(root, "query", List.of("order service total")), p -> {});

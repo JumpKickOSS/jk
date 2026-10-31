@@ -45,7 +45,7 @@ public final class GraphCommand extends GroupCommand {
     }
 
     private final GraphOpCommand build = new GraphOpCommand(
-            "build", "Build or refresh the graph in .jk/graph/ (-r re-reads every file)", List.of(), List.of());
+            "build", "Build or refresh the graph in .jk-graph/ (-r re-reads every file)", List.of(), List.of());
 
     @Override
     public List<CliCommand> subcommands() {
