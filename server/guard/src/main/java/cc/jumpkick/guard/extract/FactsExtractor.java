@@ -280,9 +280,11 @@ public final class FactsExtractor {
                 for (Object a : args) {
                     if (a instanceof Handle h) {
                         refInternal(h.getOwner());
-                        // A method reference or lambda body is a call the rule must still see.
+                        // A method reference or lambda body is a call the rule must still see. A
+                        // lambda body of this class is not: its calls are already its method's.
+                        // A reference to one of this class's own methods is (this::helper).
                         String key = h.getOwner() + '#' + h.getName() + h.getDesc();
-                        if (!h.getOwner().equals(Collector.this.name)) {
+                        if (!h.getOwner().equals(Collector.this.name) || !lambdaBody(h.getName())) {
                             CallSite prior = calls.get(key);
                             calls.put(
                                     key,
@@ -371,6 +373,11 @@ public final class FactsExtractor {
     }
 
     /** Collects string-shaped attribute values; nested annotations are walked for their refs only. */
+    /** A synthetic method a compiler made of a lambda body: javac's {@code lambda$m$0}, Kotlin's {@code m$lambda$0}. */
+    static boolean lambdaBody(String method) {
+        return method.startsWith("lambda$") || method.contains("$lambda");
+    }
+
     private static final class AnnotationCollector extends AnnotationVisitor {
         private final String desc;
         private final boolean visible;
