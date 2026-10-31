@@ -12,13 +12,16 @@ import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.wire.protocol.GraphAck;
 import cc.jumpkick.wire.protocol.GraphProgress;
 import cc.jumpkick.wire.protocol.GraphRequest;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import javax.tools.ToolProvider;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -30,6 +33,81 @@ class GraphRunnerTest {
     @AfterAll
     static void stopWorkers() {
         WarmWorkers.shutdown();
+    }
+
+    @AfterEach
+    void noCompiler() {
+        GraphRunner.compiler(null);
+    }
+
+    /**
+     * What a compile job leaves: every main source compiled into target/classes and the record of
+     * which sources those classes are of. Counts its runs; a source that does not compile is refused
+     * the way the engine's job reports it.
+     */
+    private static final class Javac implements GraphRunner.Compiler {
+        final List<List<String>> runs = new ArrayList<>();
+
+        @Override
+        public @Nullable String compile(Path root, List<String> modules) {
+            runs.add(modules);
+            try {
+                List<String> args = new ArrayList<>(
+                        List.of("-g", "-d", root.resolve("target/classes").toString()));
+                PathUtil.forEachRegularFile(root.resolve("src/main/java"), (f, attrs) -> {
+                    if (f.toString().endsWith(".java")) args.add(f.toString());
+                });
+                int exit = ToolProvider.getSystemJavaCompiler()
+                        .run(
+                                null,
+                                OutputStream.nullOutputStream(),
+                                OutputStream.nullOutputStream(),
+                                args.toArray(String[]::new));
+                if (exit != 0) return "the code does not compile";
+                BuildGraph.Result graph =
+                        BuildGraph.resolve(root, JkBuildParser.parse(Files.readString(root.resolve("jk.toml"))));
+                ModuleInputProvenance.recordClasses(
+                        root, graph, Set.of(root.toAbsolutePath().normalize()));
+                return null;
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        }
+    }
+
+    /**
+     * A question after an edit answers for the code as edited, without a build: the stale module is
+     * compiled first. An edit that does not compile is answered as before, with the reason said, and
+     * an unchanged tree compiles nothing.
+     */
+    @Test
+    void aQuestionAfterAnEditCompilesTheStaleModuleFirst(@TempDir Path tmp) throws Exception {
+        Path root = workspace(tmp);
+        Javac javac = new Javac();
+        GraphRunner.compiler(javac);
+        GraphAck before = GraphRunner.run(request(root, "callers", List.of("PriceCalculator.sum")), p -> {});
+        assertThat(before.error()).isNull();
+        assertThat(javac.runs).as("an unchanged tree: nothing to compile").isEmpty();
+
+        Path order = root.resolve("src/main/java/com/acme/shop/OrderService.java");
+        Files.writeString(order, Files.readString(order).replace("""
+                    public long total(long a, long b) {""", """
+                    public long twice(long a) {
+                        return calculator.sum(a, a);
+                    }
+
+                    public long total(long a, long b) {"""));
+        GraphAck after = GraphRunner.run(request(root, "callers", List.of("PriceCalculator.sum")), p -> {});
+        assertThat(javac.runs).hasSize(1);
+        assertThat(after.text()).contains("OrderService.twice()");
+        assertThat(String.valueOf(after.note())).doesNotContain("edited since the build", "compile skipped");
+
+        Files.writeString(order, Files.readString(order).replace("return calculator.sum(a, a);", "return nope(;"));
+        GraphAck broken = GraphRunner.run(request(root, "callers", List.of("PriceCalculator.sum")), p -> {});
+        assertThat(broken.error()).as("mid-edit code never fails the question").isNull();
+        assertThat(broken.note())
+                .contains("compile skipped: the code does not compile; answering from the last build's classes")
+                .contains("OrderService.java");
     }
 
     private static Path workspace(Path dir) throws Exception {

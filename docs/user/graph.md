@@ -49,7 +49,7 @@ first sentence of its doc comment. `read`, `find` and the search use them.
 
 A project has a graph once the first `jk graph` command or MCP `callers` call makes one; nothing
 builds it before that. From then on it is kept current: every `jk graph` command refreshes it before
-answering, and a build or `jk guard` that succeeds refreshes it before it reports done, so the graph
+answering, and a build or `jk guard` that succeeds refreshes it right after it reports, so the graph
 an agent reads, and the one committed with a change, is the tree as it stands. To stop, delete
 `.jk/graph/`: a project without one gets none until the next graph question. Files are compared by their stat identity (size, modification and change time, file id),
 then by content hash; only changed files are read again, and a file that will not read contributes
@@ -57,9 +57,14 @@ nothing, its earlier facts included. A refresh that fails leaves the previous gr
 as they were.
 
 A class's compiled facts (calls, overrides, exact lines) are read only while its source is the one
-the module's last successful build compiled. A source edited since contributes what its text
-declares, and every other file of the module keeps its compiled facts, so the callers of the method
-being changed are still there mid-edit; the answer names the edited files. A module whose class
+the module's last successful build compiled. A question asked after an edit to a module's main
+sources compiles that module first (a `compile` job, in the history like any other; a second or
+two on a typical module), so its calls and overrides are the code's as edited, with no `jk build`.
+When the edit does not compile yet, or a build of the checkout is running, the question is answered
+without it and says why in one line: an edited source contributes what its text declares, and every
+other file of the module keeps its compiled facts, so the callers of the method being changed are
+still there mid-edit; the answer names the edited files. Test sources are not compiled for a
+question; an edited test is named the same way. A module whose class
 files the build did not write, or that is being built while the graph refreshes, contributes what
 its sources declare, and the answer says which modules those are. `jk build` brings the compiled
 facts back. An unchanged tree answers from

@@ -8,19 +8,24 @@ import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.WireWriter;
+import cc.jumpkick.engine.graph.GraphCompiles;
+import cc.jumpkick.engine.graph.GraphRunner;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.HttpEvents;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobRow;
 import cc.jumpkick.engine.jobs.JobSessions;
+import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.ShelfPins;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
+import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.engine.verbs.VerbShape;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.runtime.base.BuildMetrics;
@@ -28,6 +33,7 @@ import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
+import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.channels.ClosedChannelException;
@@ -322,6 +328,9 @@ public final class EngineServer implements AutoCloseable {
         this.listeners = new EngineListeners(sessions, sse, journalWriter, inFlightBuilds, this::eventRequestId);
         this.jobs = newJobEnvelope();
         this.verbs = newVerbRegistry();
+        // A graph question compiles stale modules as a job of this engine, like any other.
+        GraphRunner.compiler(new GraphCompiles(
+                this::submitJob, liveRuns::snapshot, journal::rawFinishedRecordByRequestId, Clock.SYSTEM));
         this.http = newHttpFront();
         this.vitals = newVitals();
     }
@@ -419,6 +428,15 @@ public final class EngineServer implements AutoCloseable {
                 historyConfig,
                 () -> metricsFile,
                 inFlightBuilds));
+    }
+
+    /** Starts a job the way {@code POST /api/build} does: the verb's request line, stamped with its origin. */
+    private long submitJob(JobSpec spec) {
+        HostedVerb verb = verbs.forJobKind(spec.kind());
+        if (verb == null) throw new IllegalArgumentException("kind not hosted: " + spec.kind());
+        String line = ProtoSession.withOrigin(
+                verb.decodeJob(spec), spec.origin().trigger(), spec.origin().session());
+        return jobs.submit(line, verb.toJobRequest(line), spec.transport());
     }
 
     private EngineHttpFront newHttpFront() {

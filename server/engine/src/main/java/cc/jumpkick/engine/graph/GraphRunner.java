@@ -117,18 +117,86 @@ public final class GraphRunner {
             } catch (IOException | RuntimeException refused) {
                 return GraphAck.error(String.valueOf(refused.getMessage()));
             }
+            String skipped = req.noRefresh() ? null : compileStale(root);
             ClassIndexes indexes = req.noRefresh() ? ClassIndexes.NONE : classIndexes(root);
             List<String> modules = req.noRefresh() ? List.of() : moduleRows(root);
             GraphScripts.Tools scripts = req.noRefresh() ? null : GraphScripts.of(root);
             Path spec = spec(root, req, indexes.rows(), modules, prefixes, scripts);
             try {
-                return withNote(forkWithHeap(root, spec, progress), indexes.leftOut(), indexes.edited());
+                GraphAck ack = withNote(forkWithHeap(root, spec, progress), indexes.leftOut(), indexes.edited());
+                return skipped == null ? ack : withLine(ack, skipped);
             } finally {
                 Files.deleteIfExists(spec);
             }
         } finally {
             lock.unlock();
         }
+    }
+
+    /**
+     * Brings stale classes up to their sources before a question reads them: what a graph question
+     * runs when a module's main sources moved since its classes. {@code null} means nothing to do or
+     * done; otherwise one line, why not ({@code the code does not compile (…)}, a build running).
+     */
+    public interface Compiler {
+        @Nullable
+        String compile(Path root, List<String> modules) throws InterruptedException;
+    }
+
+    /** The engine's {@link GraphCompiles}; none in a process with no jobs to submit (a test, a trainer). */
+    private static volatile @Nullable Compiler compiler;
+
+    public static void compiler(@Nullable Compiler c) {
+        compiler = c;
+    }
+
+    /**
+     * Compile the modules whose main sources were edited since their classes, so the calls and
+     * overrides an answer reads are the code's as it stands. An unchanged tree costs the check that
+     * finds nothing stale. Test sources are not compiled here ({@code compile} builds main classes):
+     * an edited test keeps the edited-files note. {@code null}, or the line saying why it did not.
+     */
+    static @Nullable String compileStale(Path root) throws InterruptedException {
+        Compiler c = compiler;
+        if (c == null) return null;
+        Map<Path, JkBuild> all = modules(root);
+        List<String> stale = new ArrayList<>();
+        for (Map.Entry<Path, JkBuild> module : all.entrySet()) {
+            BuildLayout layout = BuildLayout.of(root, module.getKey(), module.getValue());
+            if (!Files.isDirectory(layout.classesDir())) continue;
+            Set<String> edited = ModuleInputProvenance.staleSources(root, module.getKey(), module.getValue());
+            boolean compact = ModuleLayout.isCompact(module.getKey());
+            if (edited == null || edited.stream().anyMatch(rel -> mainSource(rel, compact))) {
+                stale.add(module.getValue().project().name());
+            }
+        }
+        if (stale.isEmpty()) return null;
+        // One module is the whole project: no filter, so its name need not match how -m spells it.
+        String why = c.compile(root, all.size() == 1 ? List.of() : stale);
+        return why == null ? null : "compile skipped: " + why + "; answering from the last build's classes";
+    }
+
+    /** Whether a module-relative path is a main source, as the graph sorts them into source sets. */
+    static boolean mainSource(String rel, boolean compact) {
+        String r = rel.replace('\\', '/');
+        return compact ? r.startsWith("src/") || r.startsWith("resources/") : r.startsWith("src/main/");
+    }
+
+    /** {@code ack} with {@code line} added to its note. */
+    static GraphAck withLine(GraphAck ack, String line) {
+        if (!ack.ok()) return ack;
+        String note = ack.note() == null ? line : ack.note() + "\n" + line;
+        return new GraphAck(
+                null,
+                ack.text(),
+                ack.nodes(),
+                ack.edges(),
+                ack.files(),
+                ack.extracted(),
+                ack.classes(),
+                ack.millis(),
+                ack.dir(),
+                note);
     }
 
     /**
@@ -437,19 +505,7 @@ public final class GraphRunner {
                     + " sources, so search those files for calls too; every other file keeps its compiled facts;"
                     + " jk build brings them back");
         }
-        String line = String.join("\n", lines);
-        String note = ack.note() == null ? line : ack.note() + "\n" + line;
-        return new GraphAck(
-                null,
-                ack.text(),
-                ack.nodes(),
-                ack.edges(),
-                ack.files(),
-                ack.extracted(),
-                ack.classes(),
-                ack.millis(),
-                ack.dir(),
-                note);
+        return withLine(ack, String.join("\n", lines));
     }
 
     /**
