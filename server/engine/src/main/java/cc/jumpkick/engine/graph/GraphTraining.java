@@ -56,8 +56,9 @@ final class GraphTraining {
         List<String> jvmFlags = new ArrayList<>();
         jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
         jvmFlags.addAll(JvmOptions.batchFlags(1));
-        return PluginLoader.command(
-                hostJava, workerCp, jvmFlags, List.of(spec.toAbsolutePath().toString()));
+        // Recorded under the collector the resident worker that maps it runs.
+        return JvmOptions.residentCollector(PluginLoader.command(
+                hostJava, workerCp, jvmFlags, List.of(spec.toAbsolutePath().toString())));
     }
 
     private static final Map<String, String> FILES = Map.of(

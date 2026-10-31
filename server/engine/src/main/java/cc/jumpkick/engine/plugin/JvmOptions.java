@@ -167,6 +167,30 @@ public final class JvmOptions {
         return PluginTunings.overlayProject(base, session.workingDir());
     }
 
+    /** How long a resident worker sits idle before G1 collects and gives the heap a run grew back. */
+    static final long RESIDENT_IDLE_GC_MS = 5_000;
+
+    /** The collector flags {@link #residentCollector} puts in place of the batch collector. */
+    public static final List<String> RESIDENT_GC =
+            List.of("-XX:+UseG1GC", "-XX:G1PeriodicGCInterval=" + RESIDENT_IDLE_GC_MS);
+
+    /**
+     * {@code command} for a worker that stays up between requests: the {@linkplain
+     * #BATCH_DEFAULT_GC batch collector} keeps the heap a run grew committed for the worker's whole
+     * linger (it honours no {@code SoftMaxHeapSize}), so an idle graph worker held gigabytes it was
+     * not using. G1 with a periodic collection returns it seconds after the run ends. A collector
+     * the request or {@code [jvm] gc} names is kept.
+     */
+    public static List<String> residentCollector(List<String> command) {
+        if (tuning().gc() != null) return command;
+        int at = command.indexOf("-XX:+UseParallelGC");
+        if (at < 0) return command;
+        List<String> out = new ArrayList<>(command);
+        out.remove(at);
+        out.addAll(at, RESIDENT_GC);
+        return out;
+    }
+
     /**
      * Worker-fork JVM flags for {@code concurrency} simultaneously-launched JVMs, built from the
      * request's {@linkplain #tuning() tuning} — so a {@code --ram-percent} flag or a {@code [jvm]}

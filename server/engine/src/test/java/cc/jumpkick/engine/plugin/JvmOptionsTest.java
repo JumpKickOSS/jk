@@ -464,4 +464,21 @@ class JvmOptionsTest {
         PluginTuning eff = PluginTunings.resolve(cli, dir);
         assertThat(eff.maxRamPercent()).isEqualTo(80.0);
     }
+
+    @Test
+    void a_resident_worker_runs_a_collector_that_gives_its_heap_back_while_idle() {
+        List<String> batch = List.of("java", "-Xmx2g", "-XX:+UseParallelGC", "-XX:MaxMetaspaceSize=256m", "Main");
+        assertThat(JvmOptions.residentCollector(batch))
+                .containsExactly(
+                        "java",
+                        "-Xmx2g",
+                        "-XX:+UseG1GC",
+                        "-XX:G1PeriodicGCInterval=5000",
+                        "-XX:MaxMetaspaceSize=256m",
+                        "Main");
+        List<String> named = List.of("java", "-XX:+UseZGC", "Main");
+        assertThat(JvmOptions.residentCollector(named))
+                .as("a collector already chosen is kept")
+                .isSameAs(named);
+    }
 }
