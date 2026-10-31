@@ -29,7 +29,7 @@ class TextViewTest {
         write("src/main/java/node_modules/x.js", "x\n");
         write("src/main/java/.hidden/H.java", "class H {}\n");
         write(".github/workflows/ci.yml", "on: push\n");
-        write(".jk/after-build.kts", "println(1)\n");
+        write(".jk/scripts/after-build.kts", "println(1)\n");
         write(".idea/misc.xml", "<x/>\n");
         write("target/guard/report.jsonl", "{}\n");
         write("docs/README.md", "# hi\n");
@@ -74,7 +74,7 @@ class TextViewTest {
     void the_repository_s_own_dot_directories_are_text_but_the_output_tree_is_not() {
         TextView t = new TextView(root, List.of(Path.of("")), false, "target");
         List<String> all = t.files("**");
-        assertThat(all).contains(".github/workflows/ci.yml", ".jk/after-build.kts", "docs/README.md");
+        assertThat(all).contains(".github/workflows/ci.yml", ".jk/scripts/after-build.kts", "docs/README.md");
         assertThat(all).doesNotContain(".idea/misc.xml", "target/guard/report.jsonl");
         assertThat(t.skipped("target")).isTrue();
         assertThat(t.skipped("target/x")).isTrue();

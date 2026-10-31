@@ -404,7 +404,7 @@ inherited from the shell when it sets its own). `jk engine status` shows heap an
 
 Most worker JVMs are job-scoped: test runners and plugin workers exit when their job ends.
 These stay warm between requests: the Java, Kotlin and Groovy compilers, the formatter, the
-code-graph worker and the build-script host (`.jk/*.kts`). A warm worker keeps its JIT, its
+code-graph worker and the build-script host (`.jk/scripts/*.kts`). A warm worker keeps its JIT, its
 loaded classes and what it caches (the formatter its step chains, the graph worker the loaded
 graph), and shuts
 down after 30 idle minutes (`JK_WORKER_LINGER_MIN`), or at once when a queued fork needs its

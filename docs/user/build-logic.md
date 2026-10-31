@@ -1,40 +1,43 @@
-# Project build logic (`jk/` or `.jk/`)
+# Project build logic (`.jk/scripts/`)
 
 `jk.toml` stays **data**. Custom generate / prep steps live in a **project-local
 directory**, not in TOML scripts.
 
-**Convention:** if `jk/` or `.jk/` exists next to that module's `jk.toml`, JumpKick
-runs its top-level stem scripts on build (action-cached). Same feature either way —
-`jk/` is visible in a default listing, `.jk/` is hidden. If **both** exist, **`jk/`
-wins** (the trees are not merged). Prefer plugins for heavy/reusable tools; use
-`jk/` / `.jk/` for small project-local codegen.
+**Convention:** if `.jk/scripts/` exists next to that module's `jk.toml`, JumpKick runs its
+top-level stem scripts on build (action-cached). Prefer plugins for heavy/reusable tools; use
+`.jk/scripts/` for small project-local codegen.
+
+**`.jk/` is a project's checked-in jk state, one subdirectory per concern:** `.jk/scripts/`
+holds the build scripts, `.jk/graph/` the [code graph](graph.md). Nothing in `.jk/` is
+generated output, and only `.jk/scripts/` is a build input: a file anywhere else under `.jk/`
+changes no cache key. A script left at the top of `.jk/` does not run; the build names it
+once and points at `.jk/scripts/`.
 
 A **module** needs the directory next to *its* `jk.toml`. The **workspace root** has one
-too, with its own anchor — see [Workspace build logic](#workspace-build-logic). There is
-no `.jk-build/` / `jk-build/` compatibility path — a leftover directory of either name
-fails the build on sight, even when a valid `jk/` or `.jk/` sits beside it.
+too, with its own anchor — see [Workspace build logic](#workspace-build-logic).
 
 ```text
 my-app/
   jk.toml
   src/…
-  .jk/                 # or jk/ — pick one
-    before-compile.groovy
-    after-resources.kts
+  .jk/
+    scripts/
+      before-compile.groovy
+      after-resources.kts
 ```
 
 ```toml
-# optional override — only when you do not want the jk/ / .jk/ convention
+# optional override — only when you do not want the .jk/scripts/ convention
 [build]
 logic = "tools/codegen"
-# logic = "off"                    # disable even if jk/ or .jk/ exists
+# logic = "off"                    # disable even if .jk/scripts/ exists
 ```
 
 Sample: [jk-examples `05-recipes/build-logic/line-count`](https://github.com/JumpKickOSS/jk-examples/tree/main/05-recipes/build-logic/line-count).
 
 ## Stem scripts
 
-Top-level files under `jk/` or `.jk/` (not recursive). Same stems for `.groovy` and `.kts`:
+Top-level files under `.jk/scripts/` (not recursive). Same stems for `.groovy` and `.kts`:
 
 | File | When |
 |------|------|
@@ -87,7 +90,7 @@ and generators do not want this; the key already describes their inputs.
 Scripts run **out of process**, so a script cannot take the engine down. The two languages
 differ in how much else they share — see below.
 
-Compiled `.java` / `.kt` under `jk/` / `.jk/` is rejected. Put reusable tools in a
+Compiled `.java` / `.kt` under `.jk/scripts/` is rejected. Put reusable tools in a
 [plugin](plugins.md).
 
 ## How `.kts` scripts run
@@ -126,7 +129,7 @@ paying to compile several.
 
 ## Workspace build logic
 
-A `jk/` or `.jk/` beside the **workspace root's** `jk.toml` runs these stems (and only
+A `.jk/scripts/` beside the **workspace root's** `jk.toml` runs these stems (and only
 these):
 
 | File | When |
@@ -153,7 +156,7 @@ not use `guard`.
 `--scripts-only` runs the guard stem without JUnit (legal with or without `--guard`).
 `--no-scripts` runs `--guard` tests without the extra scripts. Combining the two flags is
 a config error. `--scripts-only` with no `guard` stem is a config error naming the paths
-looked for (`jk/guard.{kts,groovy}`, `.jk/guard.{kts,groovy}` at the root).
+looked for (`.jk/scripts/guard.{kts,groovy}` at the root).
 `jk build -g -S` packages, then runs guard scripts (no JUnit).
 `--guard --scripts-only` is the same as `--scripts-only`.
 

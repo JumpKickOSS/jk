@@ -42,7 +42,7 @@ The branch merges to `main` only when `:cli`'s classpath contains **zero** JLine
 
 `:cli` depends on `jk-cli-terminal` (`clients/cli/jk.toml`, workspace edge). There is no
 `clients/cli/build.gradle.kts` and no root `gradle/libs.versions.toml`: the workspace is the
-root `jk.toml`, and `.jk/after-build-dist.kts` assembles `target/dist`. `:cli` production
+root `jk.toml`, and `.jk/scripts/after-build-dist.kts` assembles `target/dist`. `:cli` production
 code imports no `org.jline` type (`SelfHostingTomlTest` asserts the merged main graph does
 not contain `org.jline:jline-terminal-ffm`). `jk-lock.toml` still records `org.jline` through
 Zinc (`org.scala-sbt.jline`). The catalog aliases `jline` and `jline-terminal-ffm` stay in

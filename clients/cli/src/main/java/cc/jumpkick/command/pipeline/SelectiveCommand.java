@@ -56,7 +56,8 @@ public final class SelectiveCommand implements CliCommand {
         this.reentry = reentry;
     }
 
-    public static final String PLAN_REL = ".jk/selective-plan.json";
+    /** Regenerable, so build output: never under {@code .jk/}, which is checked in. */
+    public static final String PLAN_REL = "target/selective-plan.json";
 
     @Override
     public String name() {

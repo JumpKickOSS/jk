@@ -27,9 +27,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The graph a project commits, under {@code .jk-graph/}: every file's fragment, and the facts its
+ * The graph a project commits, under {@code .jk/graph/}: every file's fragment, and the facts its
  * compiled classes gave, keyed by the file's content hash and path. One {@code graph.jsonl} per
- * module, at the module's own path below {@code .jk-graph/}, one line per file in path order, so a
+ * module, at the module's own path below {@code .jk/graph/}, one line per file in path order, so a
  * change to one file changes one line and two branches merge line by line ({@code merge=union} in
  * the {@code .gitattributes} written beside them: the line whose hash matches the tree is used, and
  * the next write drops the other). A file whose hash matches is never extracted again, on this

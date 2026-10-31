@@ -87,8 +87,8 @@ class BuildLogicScriptsTest {
     /** Two modules with the same misspelled stem are two silent no-ops, and both are reported. */
     @Test
     void the_same_unknown_stem_in_two_modules_warns_for_each(@TempDir Path ws) throws Exception {
-        Path a = Files.createDirectories(ws.resolve("a/.jk"));
-        Path b = Files.createDirectories(ws.resolve("b/.jk"));
+        Path a = Files.createDirectories(ws.resolve("a/.jk/scripts"));
+        Path b = Files.createDirectories(ws.resolve("b/.jk/scripts"));
         Files.writeString(a.resolve("befor-compile.groovy"), "// typo\n");
         Files.writeString(b.resolve("befor-compile.groovy"), "// typo\n");
         List<String> warned = new ArrayList<>();
@@ -98,8 +98,8 @@ class BuildLogicScriptsTest {
             BuildLogicScripts.discover(a);
             BuildLogicScripts.discover(b);
             assertThat(warned).hasSize(2);
-            assertThat(warned).anySatisfy(w -> assertThat(w).contains("a/.jk/befor-compile.groovy"));
-            assertThat(warned).anySatisfy(w -> assertThat(w).contains("b/.jk/befor-compile.groovy"));
+            assertThat(warned).anySatisfy(w -> assertThat(w).contains("a/.jk/scripts/befor-compile.groovy"));
+            assertThat(warned).anySatisfy(w -> assertThat(w).contains("b/.jk/scripts/befor-compile.groovy"));
         } finally {
             RunNotices.clear();
         }

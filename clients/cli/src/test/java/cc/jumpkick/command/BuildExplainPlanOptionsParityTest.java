@@ -42,9 +42,9 @@ class BuildExplainPlanOptionsParityTest {
 
     static Stream<List<String>> plan_affecting_argv() throws Exception {
         Files.writeString(project.resolve("jk.toml"), "name = \"parity\"\ngroup = \"demo\"\nversion = \"0.1.0\"\n");
-        Files.createDirectories(project.resolve(BuildLogicToml.VISIBLE_DIR));
+        Files.createDirectories(project.resolve(BuildLogicToml.DEFAULT_DIR));
         Files.writeString(
-                project.resolve(BuildLogicToml.VISIBLE_DIR).resolve("guard.kts"),
+                project.resolve(BuildLogicToml.DEFAULT_DIR).resolve("guard.kts"),
                 "// a guard script, so --scripts-only resolves\n");
         List<List<String>> cases = new ArrayList<>();
         cases.add(List.of());

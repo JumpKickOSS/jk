@@ -657,7 +657,7 @@ class PreflightMemoTest {
     @Test
     void editing_a_module_script_dirties_that_module(@TempDir Path tmp) throws Exception {
         writeProject(tmp);
-        Path script = tmp.resolve("jk/before-compile.kts");
+        Path script = tmp.resolve(".jk/scripts/before-compile.kts");
         Files.createDirectories(script.getParent());
         Files.writeString(script, "println(1)\n");
         BuildGraph.Result graph =
@@ -679,7 +679,7 @@ class PreflightMemoTest {
     @Test
     void an_always_script_stays_dirty_when_sources_match(@TempDir Path tmp) throws Exception {
         writeProject(tmp);
-        Path script = tmp.resolve("jk/before-compile.kts");
+        Path script = tmp.resolve(".jk/scripts/before-compile.kts");
         Files.createDirectories(script.getParent());
         Files.writeString(script, "// jk: always\nprintln(1)\n");
         BuildGraph.Result graph =
@@ -696,7 +696,7 @@ class PreflightMemoTest {
     @Test
     void editing_a_non_source_file_dirties_a_root_anchor(@TempDir Path tmp) throws Exception {
         writeProject(tmp);
-        Path script = tmp.resolve("jk/after-build.kts");
+        Path script = tmp.resolve(".jk/scripts/after-build.kts");
         Files.createDirectories(script.getParent());
         Files.writeString(script, "println(1)\n");
         Path readme = tmp.resolve("README.md");

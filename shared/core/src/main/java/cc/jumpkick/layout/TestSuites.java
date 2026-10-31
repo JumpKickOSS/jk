@@ -69,7 +69,6 @@ public final class TestSuites {
             "node_modules",
             ".git",
             ".jk",
-            "jk",
             ".idea",
             ".vscode");
 

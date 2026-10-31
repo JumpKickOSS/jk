@@ -36,8 +36,8 @@ class BuildLogicSupportTest {
     @Test
     void convention_jk_dir_runs_and_cache_hits(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
-        writeLineCountGroovy(project.resolve(".jk/after-resources.groovy"));
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        writeLineCountGroovy(project.resolve(".jk/scripts/after-resources.groovy"));
         runTwice(project, dir.resolve("cache"));
     }
 
@@ -48,9 +48,9 @@ class BuildLogicSupportTest {
     @Test
     void an_always_script_runs_on_identical_inputs_and_never_cache_hits(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
+        Files.createDirectories(project.resolve(".jk/scripts"));
         Path runs = project.resolve("sweep-runs.txt");
-        Files.writeString(project.resolve(".jk/after-resources.groovy"), """
+        Files.writeString(project.resolve(".jk/scripts/after-resources.groovy"), """
                 // jk: always
                 new File(projectDir.toFile(), 'sweep-runs.txt') << 'ran\\n'
                 """);
@@ -67,35 +67,6 @@ class BuildLogicSupportTest {
     }
 
     @Test
-    void visible_jk_dir_runs_and_cache_hits(@TempDir Path dir) throws Exception {
-        Path project = scaffold(dir);
-        Files.createDirectories(project.resolve("jk"));
-        writeLineCountGroovy(project.resolve("jk/after-resources.groovy"));
-        runTwice(project, dir.resolve("cache"));
-    }
-
-    @Test
-    void visible_jk_wins_over_hidden_when_both_exist(@TempDir Path dir) throws Exception {
-        Path project = scaffold(dir);
-        Files.createDirectories(project.resolve("jk"));
-        Files.createDirectories(project.resolve(".jk"));
-        Files.writeString(
-                project.resolve("jk/after-resources.groovy"),
-                "outDir.resolve('which.txt').toFile().text = 'visible'\n");
-        Files.writeString(
-                project.resolve(".jk/after-resources.groovy"),
-                "outDir.resolve('which.txt').toFile().text = 'hidden'\n");
-
-        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
-        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
-        Path classes = layout.classesDir();
-        Files.createDirectories(classes);
-
-        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, s -> {}));
-        assertEquals("visible", Files.readString(classes.resolve("which.txt")).trim());
-    }
-
-    @Test
     void logic_path_override(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
         Files.writeString(project.resolve("jk.toml"), """
@@ -108,16 +79,16 @@ class BuildLogicSupportTest {
                 """);
         Files.createDirectories(project.resolve("custom-logic"));
         writeLineCountGroovy(project.resolve("custom-logic/after-resources.groovy"));
-        assertTrue(Files.notExists(project.resolve(".jk")));
+        assertTrue(Files.notExists(project.resolve(".jk/scripts")));
         runTwice(project, dir.resolve("cache"));
     }
 
     @Test
     void two_scripts_are_independently_cached(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
-        writeLineCountGroovy(project.resolve(".jk/after-resources.groovy"));
-        writeStampGroovy(project.resolve(".jk/after-resources-stamp.groovy"));
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        writeLineCountGroovy(project.resolve(".jk/scripts/after-resources.groovy"));
+        writeStampGroovy(project.resolve(".jk/scripts/after-resources-stamp.groovy"));
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
@@ -144,15 +115,15 @@ class BuildLogicSupportTest {
     @Test
     void scripts_run_at_two_anchors(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
+        Files.createDirectories(project.resolve(".jk/scripts"));
         Files.writeString(
-                project.resolve(".jk/before-compile.groovy"),
+                project.resolve(".jk/scripts/before-compile.groovy"),
                 "outDir.resolve('before-compile.txt').toFile().text = 'g'\n");
         Files.writeString(
-                project.resolve(".jk/after-compile.groovy"),
+                project.resolve(".jk/scripts/after-compile.groovy"),
                 "outDir.resolve('after-compile.txt').toFile().text = 'c'\n");
         Files.writeString(
-                project.resolve(".jk/before-package.groovy"),
+                project.resolve(".jk/scripts/before-package.groovy"),
                 "outDir.resolve('before-package.txt').toFile().text = 'p'\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
@@ -195,8 +166,8 @@ class BuildLogicSupportTest {
     @Test
     void every_produced_file_survives_a_cache_hit(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
-        Files.writeString(project.resolve(".jk/after-compile.groovy"), """
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        Files.writeString(project.resolve(".jk/scripts/after-compile.groovy"), """
                 outDir.resolve('root.txt').toFile().text = 'r'
                 new File(outDir.toFile(), 'nested/deep').mkdirs()
                 new File(outDir.toFile(), 'nested/deep/leaf.txt').text = 'l'
@@ -228,15 +199,15 @@ class BuildLogicSupportTest {
     @Test
     void multiple_anchors_in_one_build_share_a_single_project_hash(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
+        Files.createDirectories(project.resolve(".jk/scripts"));
         Files.writeString(
-                project.resolve(".jk/before-compile.groovy"),
+                project.resolve(".jk/scripts/before-compile.groovy"),
                 "outDir.resolve('before-compile.txt').toFile().text = 'g'\n");
         Files.writeString(
-                project.resolve(".jk/after-compile.groovy"),
+                project.resolve(".jk/scripts/after-compile.groovy"),
                 "outDir.resolve('after-compile.txt').toFile().text = 'c'\n");
         Files.writeString(
-                project.resolve(".jk/before-package.groovy"),
+                project.resolve(".jk/scripts/before-package.groovy"),
                 "outDir.resolve('before-package.txt').toFile().text = 'p'\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
@@ -272,7 +243,7 @@ class BuildLogicSupportTest {
         Path root = workspace(dir);
         Path ran = dir.resolve("root-ran.log");
         Files.writeString(
-                root.resolve(".jk/after-build.groovy"),
+                root.resolve(".jk/scripts/after-build.groovy"),
                 "// jk: always\nnew File('" + ran.toString().replace("\\", "\\\\") + "').append('x')\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
@@ -294,8 +265,8 @@ class BuildLogicSupportTest {
     @Test
     void a_cache_consulting_module_script_keys_on_the_module_as_before(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
-        Path script = project.resolve(".jk/after-resources.groovy");
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        Path script = project.resolve(".jk/scripts/after-resources.groovy");
         writeStampGroovy(script);
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
@@ -326,8 +297,8 @@ class BuildLogicSupportTest {
                 """);
         Path bar = Files.createDirectories(project.resolve("gen/java")).resolve("Bar.java");
         Files.writeString(bar, "class Bar { int x = 1; }\n");
-        Files.createDirectories(project.resolve(".jk"));
-        Path script = project.resolve(".jk/after-resources.groovy");
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        Path script = project.resolve(".jk/scripts/after-resources.groovy");
         writeStampGroovy(script);
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
@@ -378,7 +349,7 @@ class BuildLogicSupportTest {
     @Test
     void a_cache_consulting_root_script_keys_on_the_workspace_as_before(@TempDir Path dir) throws Exception {
         Path root = workspace(dir);
-        Path script = root.resolve(".jk/after-build.groovy");
+        Path script = root.resolve(".jk/scripts/after-build.groovy");
         Files.writeString(script, "outDir.resolve('verdict.txt').toFile().text = 'clean'\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
@@ -386,7 +357,7 @@ class BuildLogicSupportTest {
         assertTrue(BuildLogicSupport.run(root, layout, ac, null, BuildLogicAnchor.AFTER_BUILD, s -> {}));
 
         String expected =
-                expectedKey(root, script, BuildLogicAnchor.AFTER_BUILD, BuildLogicSupport.workspaceInputTokens(root));
+                expectedKey(root, script, BuildLogicAnchor.AFTER_BUILD, BuildLogicSupport.scriptWorkspaceTokens(root));
         assertTrue(ac.lookup(expected).isPresent(), "the record sits under today's key");
     }
 
@@ -398,14 +369,14 @@ class BuildLogicSupportTest {
     @Test
     void a_mixed_anchor_walks_the_scope_exactly_once(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
-        writeStampGroovy(project.resolve(".jk/after-resources.groovy"));
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        writeStampGroovy(project.resolve(".jk/scripts/after-resources.groovy"));
         Path ran = dir.resolve("sweep-ran.log");
         Files.writeString(
-                project.resolve(".jk/after-resources-sweep.groovy"),
+                project.resolve(".jk/scripts/after-resources-sweep.groovy"),
                 "// jk: always\nnew File('" + ran.toString().replace("\\", "\\\\") + "').append('x')\n");
         Files.writeString(
-                project.resolve(".jk/before-package.groovy"),
+                project.resolve(".jk/scripts/before-package.groovy"),
                 "outDir.resolve('before-package.txt').toFile().text = 'p'\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
@@ -440,8 +411,8 @@ class BuildLogicSupportTest {
     @Test
     void a_product_source_edit_invalidates_a_task_that_reads_the_project(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
-        writeLineCountGroovy(project.resolve(".jk/after-compile.groovy"));
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        writeLineCountGroovy(project.resolve(".jk/scripts/after-compile.groovy"));
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
@@ -465,8 +436,8 @@ class BuildLogicSupportTest {
     @Test
     void a_jk_toml_edit_invalidates_a_task_that_reads_the_project_file(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
-        Files.writeString(project.resolve(".jk/after-compile.groovy"), """
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        Files.writeString(project.resolve(".jk/scripts/after-compile.groovy"), """
                 outDir.resolve('version.txt').toFile().text = projectDir.resolve('jk.toml').toFile().text
                 """);
 
@@ -496,7 +467,7 @@ class BuildLogicSupportTest {
     @Test
     void logic_off_skips_even_if_jk_exists(@TempDir Path dir) throws Exception {
         Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve(".jk"));
+        Files.createDirectories(project.resolve(".jk/scripts"));
         Files.writeString(project.resolve("jk.toml"), """
                 group = "t"
                 name = "t"
@@ -506,17 +477,17 @@ class BuildLogicSupportTest {
                 logic = "off"
                 """);
         Files.writeString(
-                project.resolve(".jk/after-resources.groovy"), "outDir.resolve('x.txt').toFile().text = 'x'\n");
+                project.resolve(".jk/scripts/after-resources.groovy"), "outDir.resolve('x.txt').toFile().text = 'x'\n");
         assertTrue(BuildLogicToml.resolve(project).isEmpty());
     }
 
     @Test
     void compiled_java_under_jk_is_rejected(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
+        Files.createDirectories(project.resolve(".jk/scripts"));
         Files.writeString(
-                project.resolve(".jk/after-resources.groovy"), "outDir.resolve('x.txt').toFile().text = 'x'\n");
-        Files.writeString(project.resolve(".jk/X.java"), "class X {}");
+                project.resolve(".jk/scripts/after-resources.groovy"), "outDir.resolve('x.txt').toFile().text = 'x'\n");
+        Files.writeString(project.resolve(".jk/scripts/X.java"), "class X {}");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
@@ -537,7 +508,7 @@ class BuildLogicSupportTest {
     @Test
     void workspace_root_anchor_runs_with_no_sources_and_merges_nothing(@TempDir Path dir) throws Exception {
         Path root = dir.resolve("ws");
-        Files.createDirectories(root.resolve(".jk"));
+        Files.createDirectories(root.resolve(".jk/scripts"));
         Files.writeString(root.resolve("jk.toml"), """
                 group = "t"
                 name = "ws"
@@ -548,7 +519,8 @@ class BuildLogicSupportTest {
                 modules = []
                 """);
         Files.writeString(
-                root.resolve(".jk/after-build.groovy"), "outDir.resolve('verdict.txt').toFile().text = 'clean'\n");
+                root.resolve(".jk/scripts/after-build.groovy"),
+                "outDir.resolve('verdict.txt').toFile().text = 'clean'\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
@@ -570,7 +542,7 @@ class BuildLogicSupportTest {
     @Test
     void a_module_stem_at_the_workspace_root_is_rejected(@TempDir Path dir) throws Exception {
         Path root = dir.resolve("ws");
-        Files.createDirectories(root.resolve(".jk"));
+        Files.createDirectories(root.resolve(".jk/scripts"));
         Files.writeString(root.resolve("jk.toml"), """
                 group = "t"
                 name = "ws"
@@ -580,7 +552,7 @@ class BuildLogicSupportTest {
                 [workspace]
                 modules = []
                 """);
-        Files.writeString(root.resolve(".jk/before-compile.groovy"), "// nothing to be before\n");
+        Files.writeString(root.resolve(".jk/scripts/before-compile.groovy"), "// nothing to be before\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
@@ -596,7 +568,7 @@ class BuildLogicSupportTest {
     void the_root_stem_inside_a_module_is_rejected(@TempDir Path dir) throws Exception {
         Path root = dir.resolve("ws");
         Path core = root.resolve("core");
-        Files.createDirectories(core.resolve(".jk"));
+        Files.createDirectories(core.resolve(".jk/scripts"));
         Files.createDirectories(core.resolve("src/main/java/demo"));
         Files.writeString(root.resolve("jk.toml"), """
                 group = "t"
@@ -612,7 +584,7 @@ class BuildLogicSupportTest {
                 version = "0.0.1"
                 """);
         Files.writeString(core.resolve("src/main/java/demo/A.java"), "package demo; class A {}\n");
-        Files.writeString(core.resolve(".jk/after-build.groovy"), "// wrong scope\n");
+        Files.writeString(core.resolve(".jk/scripts/after-build.groovy"), "// wrong scope\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(core, JkBuildParser.parse(core.resolve("jk.toml")));
@@ -634,10 +606,10 @@ class BuildLogicSupportTest {
     @Test
     void a_script_that_writes_nothing_caches_its_verdict(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
+        Files.createDirectories(project.resolve(".jk/scripts"));
         Path ran = dir.resolve("ran.log");
         Files.writeString(
-                project.resolve(".jk/after-resources.groovy"),
+                project.resolve(".jk/scripts/after-resources.groovy"),
                 "new File('" + ran.toString().replace("\\", "\\\\") + "').append('x')\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
@@ -665,7 +637,7 @@ class BuildLogicSupportTest {
 
         // …and so is the script itself.
         Files.writeString(
-                project.resolve(".jk/after-resources.groovy"),
+                project.resolve(".jk/scripts/after-resources.groovy"),
                 "new File('" + ran.toString().replace("\\", "\\\\") + "').append('y')\n");
         assertTrue(BuildLogicSupport.run(project, layout, ac, classes, s -> {}));
         assertEquals(3, Files.readString(ran).length(), "an edited script re-runs it");
@@ -675,8 +647,9 @@ class BuildLogicSupportTest {
     @Test
     void a_failing_script_is_not_cached(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
-        Files.writeString(project.resolve(".jk/after-resources.groovy"), "throw new IllegalStateException('nope')\n");
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        Files.writeString(
+                project.resolve(".jk/scripts/after-resources.groovy"), "throw new IllegalStateException('nope')\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
@@ -696,7 +669,7 @@ class BuildLogicSupportTest {
     @Test
     void a_root_script_re_runs_when_any_member_changes(@TempDir Path dir) throws Exception {
         Path root = dir.resolve("ws");
-        Files.createDirectories(root.resolve(".jk"));
+        Files.createDirectories(root.resolve(".jk/scripts"));
         Files.writeString(root.resolve("jk.toml"), """
                 group = "t"
                 name = "ws"
@@ -716,7 +689,7 @@ class BuildLogicSupportTest {
         Files.writeString(root.resolve("core/src/main/java/demo/A.java"), "package demo; class A {}\n");
         Path ran = dir.resolve("root-ran.log");
         Files.writeString(
-                root.resolve(".jk/after-build.groovy"),
+                root.resolve(".jk/scripts/after-build.groovy"),
                 "new File('" + ran.toString().replace("\\", "\\\\") + "').append('x')\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
@@ -748,7 +721,7 @@ class BuildLogicSupportTest {
     @Test
     void gate_stem_runs_at_a_workspace_root(@TempDir Path dir) throws Exception {
         Path root = dir.resolve("ws");
-        Files.createDirectories(root.resolve(".jk"));
+        Files.createDirectories(root.resolve(".jk/scripts"));
         Files.writeString(root.resolve("jk.toml"), """
                 group = "t"
                 name = "ws"
@@ -758,7 +731,8 @@ class BuildLogicSupportTest {
                 [workspace]
                 modules = []
                 """);
-        Files.writeString(root.resolve(".jk/guard.groovy"), "outDir.resolve('verdict.txt').toFile().text = 'guard'\n");
+        Files.writeString(
+                root.resolve(".jk/scripts/guard.groovy"), "outDir.resolve('verdict.txt').toFile().text = 'guard'\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
@@ -772,7 +746,7 @@ class BuildLogicSupportTest {
     void gate_stem_inside_a_member_is_rejected(@TempDir Path dir) throws Exception {
         Path root = dir.resolve("ws");
         Path core = root.resolve("core");
-        Files.createDirectories(core.resolve(".jk"));
+        Files.createDirectories(core.resolve(".jk/scripts"));
         Files.createDirectories(core.resolve("src/main/java/demo"));
         Files.writeString(root.resolve("jk.toml"), """
                 group = "t"
@@ -790,7 +764,7 @@ class BuildLogicSupportTest {
                 jdk = 25
                 """);
         Files.writeString(core.resolve("src/main/java/demo/A.java"), "package demo; class A {}\n");
-        Files.writeString(core.resolve(".jk/guard.groovy"), "// wrong scope\n");
+        Files.writeString(core.resolve(".jk/scripts/guard.groovy"), "// wrong scope\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(core, JkBuildParser.parse(core.resolve("jk.toml")));
@@ -807,10 +781,10 @@ class BuildLogicSupportTest {
     @Test
     void gate_on_a_standalone_is_legal_and_does_not_run_on_module_anchors(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
+        Files.createDirectories(project.resolve(".jk/scripts"));
         Path ran = dir.resolve("gate-ran.log");
         Files.writeString(
-                project.resolve(".jk/guard.groovy"),
+                project.resolve(".jk/scripts/guard.groovy"),
                 "new File('" + ran.toString().replace("\\", "\\\\") + "').append('x')\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
@@ -835,8 +809,8 @@ class BuildLogicSupportTest {
     @Test
     void a_standalone_root_keeps_its_module_stems_through_the_guard_anchor(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
-        writeStampGroovy(project.resolve(".jk/after-resources.groovy"));
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        writeStampGroovy(project.resolve(".jk/scripts/after-resources.groovy"));
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
@@ -855,7 +829,7 @@ class BuildLogicSupportTest {
     @Test
     void a_module_stem_at_a_workspace_root_is_refused_on_the_guard_anchor_too(@TempDir Path dir) throws Exception {
         Path root = dir.resolve("ws");
-        Files.createDirectories(root.resolve(".jk"));
+        Files.createDirectories(root.resolve(".jk/scripts"));
         Files.writeString(root.resolve("jk.toml"), """
                 group = "t"
                 name = "ws"
@@ -865,7 +839,7 @@ class BuildLogicSupportTest {
                 [workspace]
                 modules = []
                 """);
-        writeStampGroovy(root.resolve(".jk/after-resources.groovy"));
+        writeStampGroovy(root.resolve(".jk/scripts/after-resources.groovy"));
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
@@ -875,7 +849,7 @@ class BuildLogicSupportTest {
                 () -> BuildLogicSupport.run(root, layout, ac, null, BuildLogicAnchor.GUARD, s -> {}));
         assertThat(ex.getMessage())
                 .startsWith(
-                        "[build] .jk/after-resources.groovy is not a valid stem for a workspace root. Use after-build or gate");
+                        "[build] .jk/scripts/after-resources.groovy is not a valid stem for a workspace root. Use after-build or gate");
     }
 
     /**
@@ -885,8 +859,8 @@ class BuildLogicSupportTest {
     @Test
     void after_build_on_a_standalone_is_refused_rather_than_silently_skipped(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
-        Files.writeString(project.resolve(".jk/after-build.groovy"), "// nothing runs this here\n");
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        Files.writeString(project.resolve(".jk/scripts/after-build.groovy"), "// nothing runs this here\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
@@ -906,10 +880,10 @@ class BuildLogicSupportTest {
         // What the fork host throws for a syntax error: the compiler dump, verbatim (its second
         // line names file and line — that is groovyc's own shape, not jk's).
         String dump = "org.codehaus.groovy.control.MultipleCompilationErrorsException: startup failed:\n"
-                + ".jk/before-compile.groovy: 2: Unexpected input: '(' @ line 2, column 1.\n"
+                + ".jk/scripts/before-compile.groovy: 2: Unexpected input: '(' @ line 2, column 1.\n"
                 + "1 error";
-        IllegalStateException wrapped =
-                BuildLogicSupport.scriptFailure(Path.of(".jk/before-compile.groovy"), new IllegalStateException(dump));
+        IllegalStateException wrapped = BuildLogicSupport.scriptFailure(
+                Path.of(".jk/scripts/before-compile.groovy"), new IllegalStateException(dump));
 
         assertEquals("[build] logic script before-compile.groovy failed:\n" + dump, wrapped.getMessage());
         RuntimeException rendered = BuildLogicSupport.taskFailure("before-compile", wrapped);
@@ -922,8 +896,8 @@ class BuildLogicSupportTest {
         // The .kts host hands back the compiler output bare; the one prefix names the file, and
         // the very next line is the script's own file:line (made it trustworthy).
         String dump = "before-compile.kts:5: Unresolved reference 'thisSymbolDoesNotExist'.";
-        IllegalStateException wrapped =
-                BuildLogicSupport.scriptFailure(Path.of(".jk/before-compile.kts"), new IllegalStateException(dump));
+        IllegalStateException wrapped = BuildLogicSupport.scriptFailure(
+                Path.of(".jk/scripts/before-compile.kts"), new IllegalStateException(dump));
 
         String[] lines = requireNonNull(wrapped.getMessage()).split("\n", 2);
         assertEquals("[build] logic script before-compile.kts failed:", lines[0]);
@@ -937,7 +911,7 @@ class BuildLogicSupportTest {
     void a_host_lifecycle_failure_keeps_its_own_single_prefix() {
         IllegalStateException died =
                 new IllegalStateException("[build] logic: the .kts host died running guard.kts (exit 137)");
-        IllegalStateException wrapped = BuildLogicSupport.scriptFailure(Path.of(".jk/guard.kts"), died);
+        IllegalStateException wrapped = BuildLogicSupport.scriptFailure(Path.of(".jk/scripts/guard.kts"), died);
         assertEquals(died.getMessage(), wrapped.getMessage());
         assertEquals(
                 1,
@@ -964,7 +938,7 @@ class BuildLogicSupportTest {
     /** A sourceless workspace root with one member and an empty {@code .jk/}. */
     private static Path workspace(Path dir) throws Exception {
         Path root = dir.resolve("ws");
-        Files.createDirectories(root.resolve(".jk"));
+        Files.createDirectories(root.resolve(".jk/scripts"));
         Files.writeString(root.resolve("jk.toml"), """
                 group = "t"
                 name = "ws"

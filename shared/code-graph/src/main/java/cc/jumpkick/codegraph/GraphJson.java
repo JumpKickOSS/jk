@@ -11,7 +11,7 @@ import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A {@link Fragment} in the form a project commits under {@code .jk-graph/}: rows in a fixed order,
+ * A {@link Fragment} in the form a project commits under {@code .jk/graph/}: rows in a fixed order,
  * so equal fragments are equal bytes.
  */
 public final class GraphJson {

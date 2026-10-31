@@ -33,8 +33,8 @@ class BuildLogicScriptLanguageTest {
     @Test
     void groovy_stem_script_before_compile_and_cache_hit(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
-        Files.writeString(project.resolve(".jk/before-compile.groovy"), """
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        Files.writeString(project.resolve(".jk/scripts/before-compile.groovy"), """
                 def stamp = outDir.resolve("from-groovy.txt")
                 stamp.toFile().parentFile.mkdirs()
                 stamp.toFile().text = "hello-from-script\\n"
@@ -66,7 +66,7 @@ class BuildLogicScriptLanguageTest {
     @Test
     void scripts_only_jk_no_other_files_ok(@TempDir Path dir) throws Exception {
         Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve(".jk"));
+        Files.createDirectories(project.resolve(".jk/scripts"));
         Files.writeString(project.resolve("jk.toml"), """
                 group = "t"
                 name = "t"
@@ -74,7 +74,7 @@ class BuildLogicScriptLanguageTest {
                 jdk = 25
                 """);
         Files.writeString(
-                project.resolve(".jk/after-resources.groovy"),
+                project.resolve(".jk/scripts/after-resources.groovy"),
                 "outDir.resolve('script-only.txt').toFile().text = 'ok\\n'\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
@@ -89,8 +89,8 @@ class BuildLogicScriptLanguageTest {
     @Test
     void kts_stem_script_before_compile_and_cache_hit(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
-        Files.writeString(project.resolve(".jk/before-compile.kts"), """
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        Files.writeString(project.resolve(".jk/scripts/before-compile.kts"), """
                 // SPDX-License-Identifier: Apache-2.0
                 import java.nio.file.Files
                 Files.createDirectories(outDir)
@@ -123,11 +123,11 @@ class BuildLogicScriptLanguageTest {
     @Test
     void kts_wins_over_groovy_same_stem(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
+        Files.createDirectories(project.resolve(".jk/scripts"));
         Files.writeString(
-                project.resolve(".jk/before-compile.groovy"),
+                project.resolve(".jk/scripts/before-compile.groovy"),
                 "outDir.resolve('from-groovy.txt').toFile().text = 'groovy'\n");
-        Files.writeString(project.resolve(".jk/before-compile.kts"), """
+        Files.writeString(project.resolve(".jk/scripts/before-compile.kts"), """
                 import java.nio.file.Files
                 Files.writeString(outDir.resolve("from-kts.txt"), "kts")
                 """);
@@ -145,8 +145,8 @@ class BuildLogicScriptLanguageTest {
     @Test
     void groovy_system_exit_zero_does_not_kill_the_engine_jvm(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
-        Files.writeString(project.resolve(".jk/after-resources.groovy"), """
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        Files.writeString(project.resolve(".jk/scripts/after-resources.groovy"), """
                 outDir.resolve('survived.txt').toFile().text = 'ok'
                 System.exit(0)
                 """);
@@ -163,8 +163,8 @@ class BuildLogicScriptLanguageTest {
     @Test
     void groovy_system_exit_nonzero_fails_the_task(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
-        Files.writeString(project.resolve(".jk/after-resources.groovy"), "System.exit(1)\n");
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        Files.writeString(project.resolve(".jk/scripts/after-resources.groovy"), "System.exit(1)\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));

@@ -155,8 +155,8 @@ jobs:
   # jk, not by the release that bootstrapped it. No step here runs a second build system: the `ci-cadence` guard fails the
   # build on a `gradlew` in this job.
   #
-  # scripts/ci-bootstrap.sh installs the bootstrap: the release .jk/ci-bootstrap-version names, or
-  # the bridge commit .jk/ci-bootstrap-reader names built by it, for every workflow alike
+  # scripts/ci-bootstrap.sh installs the bootstrap: the release .jk/ci/ci-bootstrap-version names, or
+  # the bridge commit .jk/ci/ci-bootstrap-reader names built by it, for every workflow alike
   # (docs/contributors/self-host.md, "The bootstrap pin" and "The bootstrap chain").
   #
   # Everything the job installs lands in a scratch JK_HOME inside the workspace, never the

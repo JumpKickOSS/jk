@@ -103,8 +103,8 @@ class GuardStandaloneStemsE2eTest {
                 instead = "another word"
                 why     = "a test rule"
                 """);
-        Files.createDirectories(project.resolve(".jk"));
-        Path stem = project.resolve(".jk/after-resources.groovy");
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        Path stem = project.resolve(".jk/scripts/after-resources.groovy");
         BuildLogicFixtures.writeStampGroovy(stem);
         if (stemRuns != null) {
             Files.writeString(

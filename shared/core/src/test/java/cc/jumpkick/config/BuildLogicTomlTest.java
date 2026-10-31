@@ -28,23 +28,8 @@ class BuildLogicTomlTest {
     @Test
     void default_directory_when_the_key_is_absent() throws IOException {
         manifest("name = \"demo\"\n");
-        Files.createDirectory(dir.resolve(BuildLogicToml.DEFAULT_DIR));
+        Files.createDirectories(dir.resolve(BuildLogicToml.DEFAULT_DIR));
         assertThat(BuildLogicToml.resolve(dir).orElseThrow().dir()).isEqualTo(dir.resolve(BuildLogicToml.DEFAULT_DIR));
-    }
-
-    @Test
-    void visible_jk_dir_when_the_key_is_absent() throws IOException {
-        manifest("name = \"demo\"\n");
-        Files.createDirectory(dir.resolve(BuildLogicToml.VISIBLE_DIR));
-        assertThat(BuildLogicToml.resolve(dir).orElseThrow().dir()).isEqualTo(dir.resolve(BuildLogicToml.VISIBLE_DIR));
-    }
-
-    @Test
-    void visible_jk_wins_when_both_convention_dirs_exist() throws IOException {
-        manifest("name = \"demo\"\n");
-        Files.createDirectory(dir.resolve(BuildLogicToml.VISIBLE_DIR));
-        Files.createDirectory(dir.resolve(BuildLogicToml.DEFAULT_DIR));
-        assertThat(BuildLogicToml.resolve(dir).orElseThrow().dir()).isEqualTo(dir.resolve(BuildLogicToml.VISIBLE_DIR));
     }
 
     @Test
@@ -70,7 +55,7 @@ class BuildLogicTomlTest {
      */
     @Test
     void every_off_spelling_disables_even_when_the_directory_exists() throws IOException {
-        Files.createDirectory(dir.resolve(BuildLogicToml.DEFAULT_DIR));
+        Files.createDirectories(dir.resolve(BuildLogicToml.DEFAULT_DIR));
         for (String off : new String[] {"false", "no", "0", "off", "none", "disable", "OFF", " None "}) {
             manifest("[build]\nlogic = \"" + off.strip() + "\"\n");
             assertThat(BuildLogicToml.resolve(dir))
@@ -100,47 +85,43 @@ class BuildLogicTomlTest {
     void an_inline_build_table_reads_as_absent_and_defaults() throws IOException {
         manifest("build = { logic = \"buildsrc\" }\n");
         Files.createDirectory(dir.resolve("buildsrc"));
-        Files.createDirectory(dir.resolve(BuildLogicToml.DEFAULT_DIR));
+        Files.createDirectories(dir.resolve(BuildLogicToml.DEFAULT_DIR));
         assertThat(BuildLogicToml.resolve(dir).orElseThrow().dir()).isEqualTo(dir.resolve(BuildLogicToml.DEFAULT_DIR));
-    }
-
-    @Test
-    void leftover_jk_build_dir_is_refused() throws IOException {
-        manifest("name = \"demo\"\n");
-        Files.createDirectory(dir.resolve(".jk-build"));
-        assertThatThrownBy(() -> BuildLogicToml.resolve(dir))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining(".jk/")
-                .hasMessageContaining(".jk-build");
-    }
-
-    @Test
-    void leftover_jk_build_without_dot_is_refused() throws IOException {
-        manifest("name = \"demo\"\n");
-        Files.createDirectory(dir.resolve("jk-build"));
-        assertThatThrownBy(() -> BuildLogicToml.resolve(dir))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("jk-build");
-    }
-
-    @Test
-    void declared_retired_name_is_refused_even_if_the_dir_is_missing() throws IOException {
-        manifest("""
-                [build]
-                logic = ".jk-build"
-                """);
-        assertThatThrownBy(() -> BuildLogicToml.resolve(dir))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("no compatibility path");
     }
 
     @Test
     void has_stem_sees_gate_kts_and_suffixes() throws IOException {
         manifest("name = \"demo\"\n");
-        Files.createDirectory(dir.resolve(".jk"));
+        Files.createDirectories(dir.resolve(".jk/scripts"));
         assertThat(BuildLogicToml.hasStem(dir, "guard")).isFalse();
-        Files.writeString(dir.resolve(".jk/guard.groovy"), "//\n");
+        Files.writeString(dir.resolve(".jk/scripts/guard.groovy"), "//\n");
         assertThat(BuildLogicToml.hasStem(dir, "guard")).isTrue();
         assertThat(BuildLogicToml.hasStem(dir, "after-build")).isFalse();
+    }
+
+    @Test
+    void only_jk_scripts_is_build_logic_and_jk_alone_is_not() throws IOException {
+        manifest("name = \"demo\"\n");
+        Files.createDirectories(dir.resolve(".jk/graph"));
+        Files.createDirectories(dir.resolve("jk"));
+        assertThat(BuildLogicToml.resolve(dir)).isEmpty();
+        assertThat(BuildLogicToml.dirs(dir)).isEmpty();
+        Files.createDirectories(dir.resolve(".jk/scripts"));
+        assertThat(BuildLogicToml.dirs(dir)).containsExactly(dir.resolve(".jk/scripts"));
+    }
+
+    @Test
+    void a_script_left_at_the_top_of_jk_is_named_and_not_read() throws IOException {
+        manifest("name = \"demo\"\n");
+        assertThat(BuildLogicToml.strayScriptsNote(dir)).isNull();
+        Files.createDirectories(dir.resolve(".jk/scripts"));
+        Files.writeString(dir.resolve(".jk/guard.groovy"), "//\n");
+        Files.writeString(dir.resolve(".jk/before-compile.kts"), "//\n");
+        Files.writeString(dir.resolve(".jk/notes.txt"), "not a script\n");
+        assertThat(BuildLogicToml.hasStem(dir, "guard")).isFalse();
+        assertThat(BuildLogicToml.strayScripts(dir)).containsExactly("before-compile.kts", "guard.groovy");
+        assertThat(BuildLogicToml.strayScriptsNote(dir))
+                .isEqualTo("before-compile.kts, guard.groovy are at the top of .jk/ and will not run:"
+                        + " build scripts live in .jk/scripts/");
     }
 }

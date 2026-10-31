@@ -42,7 +42,7 @@ final class BuildLogicInputTokens {
     List<String> workspace(Path rootDir) throws IOException {
         List<String> tokens = workspace.get();
         if (tokens != null) return tokens;
-        workspace.compareAndSet(null, BuildLogicSupport.workspaceInputTokens(rootDir));
+        workspace.compareAndSet(null, BuildLogicSupport.scriptWorkspaceTokens(rootDir));
         return requireNonNull(workspace.get());
     }
 }

@@ -99,7 +99,7 @@ pin behavior (`JdkFloorTest`, `FirstBuildJdkTest`, …). Elsewhere prefer `java 
 | Layer | Choice |
 |---|---|
 | Language | Java 25 |
-| Build of jk itself | jk (root `jk.toml` workspace, `jk-lock.toml`, `.jk/*.kts` build scripts) |
+| Build of jk itself | jk (root `jk.toml` workspace, `jk-lock.toml`, `.jk/scripts/*.kts` build scripts) |
 | Native CLI | GraalVM native-image (`clients/cli`) |
 | Engine | JVM fat jar (`server/engine` + `server/*`) — never native |
 | Config / lock | TOML (`jk.toml`), canonical `jk-lock.toml` (workspace root only) |

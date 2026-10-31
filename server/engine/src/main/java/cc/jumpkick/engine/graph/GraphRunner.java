@@ -3,6 +3,7 @@ package cc.jumpkick.engine.graph;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.GraphConfig;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleSelection;
@@ -95,7 +96,7 @@ public final class GraphRunner {
 
     /** Where a project commits its graph, shared by everyone who checks it out. */
     public static Path sharedDir(Path root) {
-        return root.resolve(".jk-graph");
+        return root.resolve(BuildLogicToml.JK_DIR).resolve("graph");
     }
 
     /** Whether the project has a graph: one it committed, or one the first graph question made here. */

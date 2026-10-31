@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -51,9 +52,6 @@ public final class RunSnapshots {
 
     /** Files beside the root manifest that the build reads: the lock and the guard rules. */
     static final List<String> ROOT_FILES = List.of(ManifestPaths.LOCK, "jk-guards.toml");
-
-    /** The build scripts' directory beside the root manifest: hidden, so named here rather than walked into. */
-    static final String SCRIPTS_DIR = ".jk";
 
     // ------------------------------------------------------------------ tests
 
@@ -174,8 +172,8 @@ public final class RunSnapshots {
         LinkedHashSet<Path> dirs = new LinkedHashSet<>();
         files.add(ManifestPaths.manifestIn(root));
         for (String name : ROOT_FILES) files.add(root.resolve(name));
-        Path scripts = root.resolve(SCRIPTS_DIR);
-        if (Files.isDirectory(scripts)) dirs.add(scripts);
+        // The build scripts' directory: hidden, so named here rather than walked into.
+        dirs.addAll(BuildLogicToml.dirs(root));
         List<Path> members = WorkspaceModules.memberDirs(root);
         addExisting(dirs, ModuleLayout.fingerprintDirs(root, !members.isEmpty()));
         for (Path member : members) {

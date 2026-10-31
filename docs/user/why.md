@@ -260,7 +260,7 @@ JumpKick’s bet is a **pyramid for writing tests** and a **named ladder for run
 Cost is a **tag**, not a fourth directory: `@Tag("slow")`, `@Tag("network")`. A 90-second
 Kafka test is still integration *scope*; it is the wrong *budget* for `--guard`.
 
-House-rule / check scripts (the things JumpKick itself runs from `.jk/` today on every
+House-rule / check scripts (the things JumpKick itself runs from `.jk/scripts/` today on every
 build) belong on that same named bar: runnable **with** `--guard`, **alone**
 (`--scripts-only`), or **skipped** (`--no-scripts`). They are not a surprise tax on
 `jk test` while you fix `assertEquals`.

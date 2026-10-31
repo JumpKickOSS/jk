@@ -86,8 +86,8 @@ class RunSnapshotsTest {
         Files.writeString(root.resolve("jk.toml"), "name = \"ws\"\n[workspace]\nmodules = [\"app\"]\n");
         Files.writeString(root.resolve("jk-lock.toml"), "version = 1\n");
         Files.writeString(root.resolve("jk-guards.toml"), "");
-        Files.createDirectories(root.resolve(".jk"));
-        Files.writeString(root.resolve(".jk/after-build.kts"), "// script\n");
+        Files.createDirectories(root.resolve(".jk/scripts"));
+        Files.writeString(root.resolve(".jk/scripts/after-build.kts"), "// script\n");
         Files.createDirectories(root.resolve("app/src/com"));
         Files.writeString(root.resolve("app/jk.toml"), "name = \"app\"\n");
         Files.writeString(root.resolve("app/src/com/A.java"), "class A {}\n");
@@ -110,7 +110,7 @@ class RunSnapshotsTest {
                         "jk.toml",
                         "jk-lock.toml",
                         "jk-guards.toml",
-                        ".jk/after-build.kts",
+                        ".jk/scripts/after-build.kts",
                         "app/jk.toml",
                         "app/src/com/A.java",
                         "app/resources/app.properties",

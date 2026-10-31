@@ -63,7 +63,6 @@ public final class JkSourceRoots {
             "node_modules",
             ".git",
             ".jk",
-            "jk",
             ".idea",
             ".vscode");
 

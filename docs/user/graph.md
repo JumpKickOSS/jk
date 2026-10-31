@@ -6,7 +6,7 @@ and call edges from the compiled classes. Every answer names a symbol as `Owner.
 it at `file:line`.
 
 ```bash
-jk graph                                   # build or refresh the graph (.jk-graph/, committed)
+jk graph                                   # build or refresh the graph (.jk/graph/, committed)
 jk graph query "how is the order total computed"
 jk graph read OrderService.total           # that method's source, not the whole file
 jk graph read OrderService -w structure    # the type's declarations without bodies
@@ -51,7 +51,7 @@ A project has a graph once the first `jk graph` command or MCP `callers` call ma
 builds it before that. From then on it is kept current: every `jk graph` command refreshes it before
 answering, and a build or `jk guard` that succeeds refreshes it before it reports done, so the graph
 an agent reads, and the one committed with a change, is the tree as it stands. To stop, delete
-`.jk-graph/`: a project without one gets none until the next graph question. Files are compared by their stat identity (size, modification and change time, file id),
+`.jk/graph/`: a project without one gets none until the next graph question. Files are compared by their stat identity (size, modification and change time, file id),
 then by content hash; only changed files are read again, and a file that will not read contributes
 nothing, its earlier facts included. A refresh that fails leaves the previous graph and its state
 as they were.
@@ -192,10 +192,10 @@ per line with its `file:line`. It follows edge direction; `-U` ignores it, and `
 
 ## Outputs
 
-`.jk-graph/` at the workspace root is the graph the project commits, shared by everyone who checks
-it out: one `graph.jsonl` per module, at the module's path below `.jk-graph/`, with one line per file
-in path order. It is not under `.jk/`, which holds build logic: the build would hash the graph
-as part of its own inputs. A line holds what the file declares and, once someone has built it, the facts its
+`.jk/graph/` at the workspace root is the graph the project commits, shared by everyone who checks
+it out: one `graph.jsonl` per module, at the module's path below `.jk/graph/`, with one line per file
+in path order. It sits beside the build scripts (`.jk/scripts/`) and is never one of the build's
+inputs. A line holds what the file declares and, once someone has built it, the facts its
 compiled classes gave, keyed by the file's content hash. A fresh checkout answers from those lines
 without reading a file again or compiling: a line whose hash matches the file is used as is, and a
 file that changed is read again. One edit changes one line. The `.gitattributes` jk writes beside

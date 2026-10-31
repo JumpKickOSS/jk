@@ -237,8 +237,8 @@ class PreflightGraphMemoTest {
         PreflightMemo.storeGraph(tmp, full);
         assertThat(PreflightMemo.tryLoadGraph(tmp)).isPresent();
 
-        Files.createDirectories(tmp.resolve("jk"));
-        Files.writeString(tmp.resolve("jk/after-build.kts"), "println(1)\n");
+        Files.createDirectories(tmp.resolve(".jk/scripts"));
+        Files.writeString(tmp.resolve(".jk/scripts/after-build.kts"), "println(1)\n");
         assertThat(PreflightMemo.tryLoadGraph(tmp)).isEmpty();
 
         PreflightMemo.storeGraph(tmp, BuildGraph.resolve(tmp, entry));
@@ -249,8 +249,8 @@ class PreflightGraphMemoTest {
         PreflightMemo.storeGraph(tmp, BuildGraph.resolve(tmp, entry));
         assertThat(PreflightMemo.tryLoadGraph(tmp)).isPresent();
         Files.delete(tmp.resolve("jk-guards.toml"));
-        Files.delete(tmp.resolve("jk/after-build.kts"));
-        Files.delete(tmp.resolve("jk"));
+        Files.delete(tmp.resolve(".jk/scripts/after-build.kts"));
+        Files.delete(tmp.resolve(".jk/scripts"));
         assertThat(PreflightMemo.tryLoadGraph(tmp)).isEmpty();
     }
 }
