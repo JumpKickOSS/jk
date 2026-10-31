@@ -90,7 +90,7 @@ final class GraphOpCommand implements CliCommand {
             return 0;
         }
         CliOutput.out(ack.text().stripTrailing());
-        return ack.text().startsWith("No ") ? 1 : 0;
+        return ack.text().startsWith("No ") || ack.text().startsWith("Not renamed") ? 1 : 0;
     }
 
     GraphRequest request(Path dir, Invocation in, boolean rebuild) {

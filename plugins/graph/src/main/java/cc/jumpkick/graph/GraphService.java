@@ -32,7 +32,7 @@ public final class GraphService {
 
     /** The operations {@link #run} answers. */
     public static final List<String> OPS =
-            List.of("build", "query", "path", "neighbors", "callers", "read", "find", "rules");
+            List.of("build", "query", "path", "neighbors", "callers", "rename", "read", "find", "rules");
 
     /**
      * One operation's arguments, as the CLI and MCP surfaces collect them. {@code modulePrefixes} are
@@ -158,7 +158,7 @@ public final class GraphService {
         return new GraphBuild.Result(graph, key.files(), 0, 0, out, 0, false, key.commit());
     }
 
-    static String text(Workspace w, GraphBuild.Result build, Request r) {
+    static String text(Workspace w, GraphBuild.Result build, Request r) throws IOException {
         CodeGraph g = build.graph();
         Scope scope = Scope.of(r.scope(), r.modulePrefixes(), r.sourceSet(), g.modules());
         GraphTools tools = new GraphTools(g, scope, rel -> source(w.root(), rel));
@@ -177,6 +177,9 @@ public final class GraphService {
                         arg(a, 0, "a method"),
                         EnvValues.parseBool(r.options().get("transitive")).orElse(false) ? r.maxHops() : 1,
                         r.budget());
+            case "rename" ->
+                GraphRename.rename(
+                        w.root(), g, w.indexes(), arg(a, 0, "a method"), arg(a, 1, "the new name"), r.budget());
             case "rules" -> RulesFor.answer(g, w.root(), arg(a, 0, "a file"), w.guardRules());
             case "find" -> find(w, g, scope, r, a);
             case "read" ->

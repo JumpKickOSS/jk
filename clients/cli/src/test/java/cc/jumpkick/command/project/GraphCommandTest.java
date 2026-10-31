@@ -29,7 +29,7 @@ class GraphCommandTest {
                 .isEqualTo("build");
         assertThat(new GraphCommand().subcommands())
                 .extracting(CliCommand::name)
-                .containsExactly("build", "query", "path", "neighbors", "callers", "read", "find", "rules");
+                .containsExactly("build", "query", "path", "neighbors", "callers", "rename", "read", "find", "rules");
         assertThat(op("build").options()).isEmpty();
     }
 

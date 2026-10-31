@@ -20,6 +20,7 @@ Run, read the verdict, edit, rerun. The verdict is the whole answer; scrape noth
 | why this version | `jk why g:a` | `why` (extended list) |
 | every problem, with lines | `jk results -A` | `diagnostics()` |
 | who calls a method, complete (`-t`: all that reach it) | `jk graph callers T.m` | `callers(address=T.m)` |
+| rename a method with every override, call and doc link | `jk graph rename T.m new` | `rename(address=T.m, to=new)` |
 | one skill topic | `jk skill <topic>` | `skill(topic=…)` |
 
 A sibling project that must see your edits to a library gets them through `jk -a snapshot`: the project is installed to `~/.m2` as `<version>-SNAPSHOT`, replaced each run, like a Maven snapshot; the sibling depends on `g:a:<version>-SNAPSHOT`. `jk install` is for apps; `jk release` cuts a library.
