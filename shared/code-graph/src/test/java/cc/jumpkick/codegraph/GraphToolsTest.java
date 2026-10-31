@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -314,6 +315,38 @@ class GraphToolsTest {
                 .as("a call to Iface.m(B) never dispatches to Impl.m(A)")
                 .contains("S.s()  src/main/java/o/O.java:5  through Iface.m()")
                 .doesNotContain("R.r()");
+    }
+
+    /**
+     * {@code Y.y(A)} calls {@code X.x}; {@code Y.y(B)} calls {@code y(A)}, and {@code Z.z} calls
+     * {@code y(B)}: Z is three calls from X, but it is listed right below Y.y(), the name it calls,
+     * so the hops run without a gap a reader would go and check.
+     */
+    @Test
+    void a_caller_of_an_overload_reached_later_is_listed_right_below_the_name_it_calls() {
+        String f = "src/main/java/o/O.java";
+        List<GraphNode> nodes = new ArrayList<>();
+        List<GraphEdge> edges = new ArrayList<>();
+        for (String t : List.of("x", "y", "z")) {
+            nodes.add(type(t, t.toUpperCase(Locale.ROOT), "o." + t.toUpperCase(Locale.ROOT), f));
+            nodes.add(new GraphNode(t + "_m", "." + t + "()", "code", f, "L2"));
+            edges.add(GraphEdge.of(t, t + "_m", Relations.METHOD, Confidence.EXTRACTED, f, 2));
+        }
+        edges.add(call("y_m", "x_m", "(A)>()"));
+        edges.add(call("y_m", "y_m", "(B)>(A)"));
+        edges.add(call("z_m", "y_m", "()>(B)"));
+        String out = new GraphTools(CodeGraph.merge(List.of(new Fragment(nodes, edges)))).callers("X.x", 8, 2000);
+        assertThat(out)
+                .contains("the chain ends after 2 hops.")
+                .contains("  hop 2:\n  Z.z()  src/main/java/o/O.java:5  -> Y.y()")
+                .doesNotContain("hop 3");
+    }
+
+    /** A nested type's binary name, as a stack trace or a class file spells it, names the same member. */
+    @Test
+    void callers_take_a_nested_type_by_its_binary_name() {
+        assertThat(new GraphTools(release()).callers("a.Release$Plan.label", 1, 2000))
+                .startsWith("Callers of Release.Plan.label(): ");
     }
 
     @Test

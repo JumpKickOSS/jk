@@ -42,8 +42,8 @@ public final class CodeGraphTool implements McpTool {
         return new CodeGraphTool(
                 spec(
                         "callers",
-                        "Who calls Type.method (every overload), complete from the compiled classes: Owner.method at "
-                                + "file:line. transitive=true: all that reach it. Use it, not grep.",
+                        "Who calls Type.method, every overload, at file:line, complete from the compiled classes."
+                                + " transitive=true: all that reach it. Call it first, before any search.",
                         scoped(Map.of(
                                 "address", McpSchemas.string(),
                                 "transitive", McpSchemas.bool(),

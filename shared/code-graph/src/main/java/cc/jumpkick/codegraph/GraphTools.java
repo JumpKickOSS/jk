@@ -179,6 +179,16 @@ public final class GraphTools {
                 .anyMatch(r -> !targets.contains(r.caller())
                         && scope.contains(graph.node(r.caller()))
                         && !covered(reached.get(r.caller()), r.overloads()));
+        // Listed one hop past the method it is listed under, so the hops run without a gap: a caller
+        // of an overload first reached a hop after its name was listed sits right below that name.
+        Map<String, Integer> shown = new HashMap<>();
+        Map<String, Caller> listed = new LinkedHashMap<>();
+        for (Caller c : found.values()) {
+            int hop = targets.contains(c.callee()) ? 1 : shown.getOrDefault(c.callee(), c.hop() - 1) + 1;
+            shown.put(c.id(), hop);
+            listed.put(c.id(), new Caller(c.id(), hop, c.callee(), c.through(), c.edge()));
+        }
+        found = listed;
         int deepest = found.values().stream().mapToInt(Caller::hop).max().orElse(0);
         Comparator<Caller> order = Comparator.comparingInt(Caller::hop).thenComparing(c -> graph.display(c.id()));
         List<Caller> main = new ArrayList<>();
@@ -399,7 +409,8 @@ public final class GraphTools {
         String wanted = address.endsWith("()") ? address.substring(0, address.length() - 2) : address;
         int dot = wanted.lastIndexOf('.');
         if (dot <= 0 || dot == wanted.length() - 1) return List.of();
-        String owner = wanted.substring(0, dot);
+        // A nested type's binary name, Outer$Inner, is the same type as Outer.Inner.
+        String owner = wanted.substring(0, dot).replace('$', '.');
         String member = GraphText.fold(wanted.substring(dot + 1));
         String typeName = GraphText.fold(owner.substring(owner.lastIndexOf('.') + 1));
         String qualifier =
