@@ -6,6 +6,7 @@ import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.ForkedJavac;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -139,6 +141,7 @@ public final class JavaCompile {
             if (hit.isPresent()) {
                 ActionCache.ActionRecord cached = MirroredOutputs.omitting(out, hit.get());
                 if (actionCache.restore(cached, out)) {
+                    restoreReferences(actionCache, key, out);
                     Files.createDirectories(stateDir);
                     LangCompile.recordTree(stateDir, key, cached.outputs());
                     return new Result(
@@ -218,6 +221,7 @@ public final class JavaCompile {
         }
         if (persist) {
             actionCache.storeWithOutputs(taskId, key, inputs, outputs);
+            storeReferences(actionCache, cas, taskId, key, out);
             // The state's ledger names the compile that produced it, so the forecast reads this
             // checkout's own last compile rather than the shared pointer's.
             Files.createDirectories(stateDir);
@@ -227,6 +231,56 @@ public final class JavaCompile {
         }
         WorkCounters.compiled(wr.compiledSources().size());
         return new Result(true, "compiled", key, wr.diagnostics(), wr.compiledSources(), List.of(), wr.waitMillis());
+    }
+
+    /**
+     * Where jk's javac writes the reference index of {@code out}'s sources, beside the facts index:
+     * {@code target/incremental/classes-refs} for {@code target/classes}. The Java compiler plugin's
+     * {@code References.dirFor} writes there; this is the same rule, read from the engine side.
+     */
+    static Path referencesDir(Path out) {
+        Path classes = out.toAbsolutePath().normalize();
+        Path target = Objects.requireNonNull(classes.getParent(), "a class output has a parent");
+        return target.resolve("incremental").resolve(classes.getFileName() + "-refs");
+    }
+
+    /** The key the reference index of the compile keyed {@code key} is cached under. */
+    static String referencesKey(String key) {
+        return key + ":references";
+    }
+
+    /**
+     * Caches the reference index beside the classes the compile keyed {@code key} wrote: it lives
+     * outside the class output, so without this a compile served from the cache left the index
+     * describing whatever javac last compiled, and a rename lost its exact spans exactly when the
+     * build was fastest. Best-effort: an index that is not cached is one a reader re-derives or
+     * passes over, never a failed build.
+     */
+    static void storeReferences(ActionCache cache, Cas cas, String taskId, String key, Path out) {
+        Path dir = referencesDir(out);
+        if (!Files.isDirectory(dir)) return;
+        try {
+            Map<String, String> files = new TreeMap<>();
+            PathUtil.forEachRegularFile(dir, (file, attrs) -> {
+                if (!file.getFileName().toString().endsWith(".refs")) return;
+                String hex = FileHashMemo.contentHash(file, attrs);
+                if (!cas.contains(hex)) cas.putFile(file, hex);
+                files.put(dir.relativize(file).toString().replace('\\', '/'), hex);
+            });
+            if (!files.isEmpty()) cache.storeWithOutputs(taskId + ":references", referencesKey(key), Map.of(), files);
+        } catch (IOException | RuntimeException unstored) {
+            Log.debug("reference index not cached for " + out, unstored);
+        }
+    }
+
+    /** Lays back the reference index cached with the compile keyed {@code key}, when there is one. */
+    static void restoreReferences(ActionCache cache, String key, Path out) {
+        try {
+            Optional<ActionCache.ActionRecord> refs = cache.lookup(referencesKey(key));
+            if (refs.isPresent()) cache.restore(refs.get(), referencesDir(out));
+        } catch (IOException | RuntimeException unrestored) {
+            Log.debug("reference index not restored for " + out, unrestored);
+        }
     }
 
     public static Prediction predict(
