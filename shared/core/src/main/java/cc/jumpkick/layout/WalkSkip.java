@@ -24,16 +24,31 @@ public final class WalkSkip {
     public static final String ID_FORMAT = "format";
 
     /**
-     * {@code target}, {@code .git}, {@code .gradle}, {@code .idea}, {@code node_modules} by name, and
+     * {@code target}, {@code .git}, {@code .gradle}, {@code .idea}, {@code node_modules} by name,
      * Gradle's {@code build/} by position ({@link OutputDirs#isBuildOutputDir}): a package named
-     * {@code build} under {@code src/} is walked.
+     * {@code build} under {@code src/} is walked. Also {@code .jk/graph/} ({@link #jkGraph}).
      */
     private static final Set<String> WORKSPACE_KEY =
             Set.of(BuildLayout.TARGET, ".git", ".gradle", ".idea", "node_modules");
 
     public static boolean workspaceKey(Path dir) {
         Path name = dir.getFileName();
-        return name != null && (WORKSPACE_KEY.contains(name.toString()) || OutputDirs.isBuildOutputDir(dir));
+        return name != null
+                && (WORKSPACE_KEY.contains(name.toString()) || OutputDirs.isBuildOutputDir(dir) || jkGraph(dir));
+    }
+
+    /**
+     * {@code .jk/graph/}: jk's index of the checkout's code, rewritten whenever the graph refreshes,
+     * so never an input of a key over that checkout (guard's text view skips it too).
+     */
+    static boolean jkGraph(Path dir) {
+        Path name = dir.getFileName();
+        Path parent = dir.getParent();
+        return name != null
+                && name.toString().equals("graph")
+                && parent != null
+                && parent.getFileName() != null
+                && parent.getFileName().toString().equals(".jk");
     }
 
     /** {@link #workspaceKey} plus {@code out}. */
@@ -55,17 +70,13 @@ public final class WalkSkip {
     }
 
     /**
-     * Format collect, by segment name: {@code target}, {@code .jk}, {@code jk}, {@code .git},
+     * Format collect, by segment name: {@code target}, {@code .jk}, {@code .git},
      * {@code node_modules}, {@code *.g8}/{@code g8}, {@code $…$}. Does not skip {@code .gradle},
      * {@code .idea}, or {@code out}. A name alone cannot tell Gradle's {@code build/} from a package
      * named {@code build}; the walk asks {@link #formatSkip} with the directory.
      */
     public static boolean formatSegment(String s) {
-        if (s.equals(BuildLayout.TARGET)
-                || s.equals(".jk")
-                || s.equals("jk")
-                || s.equals(".git")
-                || s.equals("node_modules")) {
+        if (s.equals(BuildLayout.TARGET) || s.equals(".jk") || s.equals(".git") || s.equals("node_modules")) {
             return true;
         }
         if (s.endsWith(".g8") || s.equals("g8")) return true;

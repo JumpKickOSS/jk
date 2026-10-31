@@ -1,6 +1,5 @@
 # --- jk build outputs ---
 target/
-.jk/selective-plan.json
 
 # --- Gradle (the IntelliJ plugin's own build) ---
 .gradle/

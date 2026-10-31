@@ -1107,7 +1107,7 @@ public final class PreflightMemo {
     /** True when a build-logic script in this module asks to run on every build. */
     private static boolean logicAlways(Path moduleDir) {
         try {
-            for (Path dir : List.of(moduleDir.resolve("jk"), moduleDir.resolve(".jk"))) {
+            for (Path dir : BuildLogicToml.dirs(moduleDir)) {
                 for (BuildLogicScripts.ScriptTask task : BuildLogicScripts.discover(dir)) {
                     if (task.always()) return true;
                 }

@@ -349,9 +349,9 @@ final class ParityRules {
     private static final List<String> SCOREBOARD =
             List.of("scripts/dogfood-wall-measure.sh", "bench/scoreboard", "scoreboard.toml");
     /** The one place the release CI bootstraps jk from is written; every workflow step reads it. */
-    private static final String BOOTSTRAP_PIN = ".jk/ci-bootstrap-version";
+    private static final String BOOTSTRAP_PIN = ".jk/ci/ci-bootstrap-version";
     /** The bridge commit the pinned release builds while it cannot build the tree itself. */
-    private static final String BOOTSTRAP_READER = ".jk/ci-bootstrap-reader";
+    private static final String BOOTSTRAP_READER = ".jk/ci/ci-bootstrap-reader";
     /** The one script every workflow bootstraps through: the pin, then the bridge when one is named. */
     private static final String BOOTSTRAP_SCRIPT = "scripts/ci-bootstrap.sh";
     /** The script the self-host job's takeover runs: both install passes and the proof of the home. */
@@ -543,7 +543,7 @@ final class ParityRules {
     // ---- G112 --------------------------------------------------------------------------------
 
     /** What the jk CI builds this tree with reads at the top of the lock, from scripts/bootstrap-reads.sh. */
-    private static final String BOOTSTRAP_READS = ".jk/bootstrap-reads.txt";
+    private static final String BOOTSTRAP_READS = ".jk/ci/bootstrap-reads.txt";
 
     private static final Pattern READS_SOURCE = Pattern.compile("(?m)^source\\s*=\\s*([0-9a-f]{40})\\s*$");
     private static final Pattern LOCK_TABLE = Pattern.compile("^\\[\\[?([A-Za-z0-9_-]+)");

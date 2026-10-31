@@ -66,9 +66,9 @@ class TestCommandTest {
         Files.writeString(
                 project.resolve("src/main/java/example/App.java"),
                 "package example; public class App { public static void main(String[] a) {} }\n");
-        Files.createDirectories(project.resolve(".jk"));
+        Files.createDirectories(project.resolve(".jk/scripts"));
         Files.writeString(
-                project.resolve(".jk/guard.groovy"),
+                project.resolve(".jk/scripts/guard.groovy"),
                 "new File('" + ran.toString().replace("\\", "\\\\") + "').append('x')\n");
         String c = cache.toString();
         String p = project.toString();
@@ -98,8 +98,9 @@ class TestCommandTest {
         Files.writeString(
                 tempDir.resolve("src/main/java/example/App.java"),
                 "package example; public class App { public static void main(String[] a) {} }\n");
-        Files.createDirectories(tempDir.resolve(".jk"));
-        Files.writeString(tempDir.resolve(".jk/guard.groovy"), "throw new IllegalStateException('planted-gate')\n");
+        Files.createDirectories(tempDir.resolve(".jk/scripts"));
+        Files.writeString(
+                tempDir.resolve(".jk/scripts/guard.groovy"), "throw new IllegalStateException('planted-gate')\n");
         String cache = tempDir.resolve("cache").toString();
         assertThat(run("test", "--scripts-only", "-C", tempDir.toString(), "--cache-dir", cache))
                 .isNotEqualTo(0);
@@ -134,9 +135,9 @@ class TestCommandTest {
                 "package example; public class App { public static void main(String[] a) {} }\n");
         ScaffoldTestSupport.writeEmptyLock(project);
         ScaffoldTestSupport.writeEmptyLock(project.resolve("core"));
-        Files.createDirectories(project.resolve(".jk"));
+        Files.createDirectories(project.resolve(".jk/scripts"));
         Files.writeString(
-                project.resolve(".jk/guard.groovy"),
+                project.resolve(".jk/scripts/guard.groovy"),
                 "new File('" + ran.toString().replace("\\", "\\\\") + "').append('x')\n");
         String c = cache.toString();
         String p = project.toString();

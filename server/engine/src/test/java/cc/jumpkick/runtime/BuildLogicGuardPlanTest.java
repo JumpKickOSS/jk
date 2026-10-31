@@ -111,8 +111,8 @@ class BuildLogicGuardPlanTest {
         Files.createDirectories(project.resolve("src/test/java/demo"));
         Files.writeString(project.resolve("src/test/java/demo/AppTest.java"), "package demo; class AppTest {}\n");
         if (withGate) {
-            Files.createDirectories(project.resolve(".jk"));
-            Files.writeString(project.resolve(".jk/guard.groovy"), "// gate\n");
+            Files.createDirectories(project.resolve(".jk/scripts"));
+            Files.writeString(project.resolve(".jk/scripts/guard.groovy"), "// gate\n");
         }
         return project;
     }

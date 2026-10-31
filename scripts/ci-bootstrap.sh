@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install, into $JK_HOME, the jk that CI builds this tree with: the hosted release that
-# .jk/ci-bootstrap-version pins, or, while .jk/ci-bootstrap-reader names a bridge commit, that
+# .jk/ci/ci-bootstrap-version pins, or, while .jk/ci/ci-bootstrap-reader names a bridge commit, that
 # commit built by the pinned release (docs/contributors/self-host.md, "The bootstrap chain").
 #
 # Usage: scripts/ci-bootstrap.sh
@@ -20,7 +20,7 @@ windows=0
 case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) windows=1 ;; esac
 if ((windows)); then JK_HOME="$(cygpath -u "$JK_HOME")"; export JK_HOME; fi
 
-version="$(tr -d '[:space:]' < "$ROOT/.jk/ci-bootstrap-version")"
+version="$(tr -d '[:space:]' < "$ROOT/.jk/ci/ci-bootstrap-version")"
 echo "bootstrapping jk $version from https://jumpkick.build"
 if ((windows)); then
   JK_VERSION="$version" pwsh -NoProfile -Command 'Invoke-RestMethod https://jumpkick.build/install.ps1 | Invoke-Expression'
@@ -33,7 +33,7 @@ if [[ -n "${GITHUB_PATH:-}" ]]; then
   if ((windows)); then cygpath -w "$JK_HOME/bin" >> "$GITHUB_PATH"; else echo "$JK_HOME/bin" >> "$GITHUB_PATH"; fi
 fi
 
-reader_file="$ROOT/.jk/ci-bootstrap-reader"
+reader_file="$ROOT/.jk/ci/ci-bootstrap-reader"
 if [[ ! -f "$reader_file" ]]; then
   jk --version
   exit 0

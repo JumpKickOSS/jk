@@ -30,7 +30,7 @@ class BuildLogicEffortTest {
                 group = "ex"
                 version = "1.0"
                 """);
-        Path logic = Files.createDirectories(dir.resolve(".jk"));
+        Path logic = Files.createDirectories(dir.resolve(".jk/scripts"));
         for (String stem : stems) {
             Files.writeString(logic.resolve(stem), "// script\n");
         }
@@ -135,7 +135,7 @@ class BuildLogicEffortTest {
     @Test
     void a_cold_anchor_is_priced_from_the_scripts_it_will_run(@TempDir Path dir) throws Exception {
         project(dir);
-        Path logic = dir.resolve(".jk");
+        Path logic = dir.resolve(".jk/scripts");
         Files.writeString(logic.resolve("after-build.kts"), "println(projectDir)\n");
 
         long one = BuildLogicEffort.rootMillis(dir, null, false);
@@ -153,7 +153,7 @@ class BuildLogicEffortTest {
         Path project = dir.resolve("p");
         Files.createDirectories(project);
         project(project);
-        Files.writeString(project.resolve(".jk/after-build.kts"), "println(projectDir)\n".repeat(500));
+        Files.writeString(project.resolve(".jk/scripts/after-build.kts"), "println(projectDir)\n".repeat(500));
 
         long cold = BuildLogicEffort.rootMillis(project, null, false);
         BuildMetrics measured = metricsWith(

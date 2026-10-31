@@ -52,7 +52,7 @@ session reads as three runs, each strip naming what that attempt changed and whe
 The strip and the `## Since the previous run` section of `target/jk-results.md` are one
 computation: the engine compares the two journal records at
 the end of the run. Files come from a content-hash snapshot of the build's inputs each run leaves
-in its journal entry (`sources.tsv`: the manifests, the lock, the guard rules, the `.jk/` scripts
+in its journal entry (`sources.tsv`: the manifests, the lock, the guard rules, the `.jk/scripts/` scripts
 and every module's source, test and resource roots — nothing else in the checkout — with a tree
 past 20,000 files leaving the file comparison out); tests from every test's
 outcome (`test-outcomes.tsv`). A run with no earlier run from its origin, or one whose previous

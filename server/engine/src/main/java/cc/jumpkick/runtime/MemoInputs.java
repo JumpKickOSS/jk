@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.SessionContext;
@@ -104,7 +105,7 @@ final class MemoInputs {
                 .get(new ScopeKey(moduleDir.toAbsolutePath().normalize()), key -> {
                     try {
                         MessageDigest md = Hashing.newSha256();
-                        for (String token : BuildLogicSupport.workspaceInputTokens(key.root()))
+                        for (String token : BuildLogicSupport.scriptWorkspaceTokens(key.root()))
                             PreflightMemo.feed(md, token);
                         return Hashing.hex(md.digest());
                     } catch (IOException unreadable) {
@@ -118,7 +119,7 @@ final class MemoInputs {
     private record ScopeKey(Path root) {}
 
     private static void feedLogic(MessageDigest md, Path moduleDir) throws IOException {
-        for (Path dir : List.of(moduleDir.resolve("jk"), moduleDir.resolve(".jk"))) {
+        for (Path dir : BuildLogicToml.dirs(moduleDir)) {
             if (!Files.isDirectory(dir)) continue;
             List<Path> files = new ArrayList<>();
             PathUtil.forEachRegularFile(dir, (file, attrs) -> files.add(file));
@@ -128,7 +129,7 @@ final class MemoInputs {
     }
 
     private static boolean hasWorkspaceScopedScript(Path moduleDir) throws IOException {
-        for (Path dir : List.of(moduleDir.resolve("jk"), moduleDir.resolve(".jk"))) {
+        for (Path dir : BuildLogicToml.dirs(moduleDir)) {
             for (BuildLogicScripts.ScriptTask task : BuildLogicScripts.discover(dir)) {
                 if (task.anchor().workspaceScoped()) return true;
             }

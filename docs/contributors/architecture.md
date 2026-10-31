@@ -318,7 +318,7 @@ does not have, so a misspelt or retired key is an error, not a silent default.
 
 ## Repository layout
 
-Build: **jk** (the root `jk.toml` workspace; `jk-lock.toml`; `.jk/*.kts` build scripts). Runtime modules:
+Build: **jk** (the root `jk.toml` workspace; `jk-lock.toml`; `.jk/scripts/*.kts` build scripts). Runtime modules:
 
 | Area | Modules | Role |
 |---|---|---|
@@ -681,11 +681,12 @@ module costs (`RemainingWork` / `WorkSchedule`). Seed `R0` ≡ `jk explain`; liv
 as modules progress/finish. Bar ≈ `elapsed / (elapsed + R(t))` (cap 99%); countdown re-anchors
 to residual so both end on time with `R → 0`. See [progress-contract.md](progress-contract.md).
 
-### Project build logic (`.jk/`)
+### Project build logic (`.jk/scripts/`)
 
-Convention directories **`jk/`** (visible) or **`.jk/`** (hidden) next to that module's
-`jk.toml` hold project-local stem scripts (overridable via `[build].logic`):
-`before-compile.groovy` / `.kts` and sibling stems. If both dirs exist, `jk/` wins.
+`.jk/` is a project's checked-in jk state, one subdirectory per concern (`scripts/`, `graph/`);
+only `.jk/scripts/` next to a module's `jk.toml` is build logic (overridable via `[build].logic`):
+`before-compile.groovy` / `.kts` and sibling stems. Scripts left at the top of `.jk/` do not run;
+the build names them once (`BuildLogicToml.strayScripts`).
 `.kts` wins a same-stem `.groovy`. Groovy scripts fork one process per script. Every `.kts`
 runs in one resident child JVM per engine (`KtsSession` ↔ `JkKtsHost.kt`, a line protocol on
 its stdin/stdout): requests are serialised on one lock, a script compiles once into

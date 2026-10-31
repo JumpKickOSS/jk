@@ -3,6 +3,7 @@ package cc.jumpkick.engine.graph;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.plugin.WarmWorkers;
 import cc.jumpkick.host.PathUtil;
@@ -102,21 +103,20 @@ class GraphRunnerTest {
 
     /**
      * A build keeps an existing graph current and makes none: the first graph question makes one,
-     * and deleting .jk-graph/ is how a project stops.
+     * and deleting .jk/graph/ is how a project stops.
      */
     @Test
     void aBuildRefreshesOnlyAGraphTheProjectHas(@TempDir Path tmp) throws Exception {
         Path root = workspace(tmp);
         GraphRunner.refreshExisting(root);
         assertThat(GraphRunner.hasGraph(root)).isFalse();
-        assertThat(root.resolve(".jk")).doesNotExist();
 
         assertThat(GraphRunner.run(request(root, "build", List.of()), p -> {}).error())
                 .isNull();
         assertThat(GraphRunner.hasGraph(root)).isTrue();
-        // Not under .jk/: that is build logic, which the build memo hashes and the journal snapshots.
-        assertThat(root.resolve(".jk")).doesNotExist();
-        Path store = root.resolve(".jk-graph/" + GraphRunner.STORE);
+        // Beside the build scripts, never one of them: only .jk/scripts/ is build-logic input.
+        assertThat(BuildLogicToml.dirs(root)).isEmpty();
+        Path store = root.resolve(".jk/graph/" + GraphRunner.STORE);
         Files.writeString(
                 root.resolve("src/main/java/com/acme/shop/PriceCalculator.java"),
                 Files.readString(root.resolve("src/main/java/com/acme/shop/PriceCalculator.java")) + "// edited\n");
@@ -136,7 +136,7 @@ class GraphRunnerTest {
         }
         assertThat(Files.readString(store)).isNotEqualTo(refreshed);
 
-        PathUtil.deleteRecursively(root.resolve(".jk-graph"));
+        PathUtil.deleteRecursively(root.resolve(".jk/graph"));
         GraphRunner.refreshExisting(root);
         assertThat(GraphRunner.hasGraph(root)).isFalse();
     }
@@ -151,7 +151,7 @@ class GraphRunnerTest {
         assertThat(built.classes()).isEqualTo(2);
         assertThat(built.extracted()).isEqualTo(4);
         assertThat(progress).isNotEmpty();
-        assertThat(root.resolve(".jk-graph/" + GraphRunner.STORE)).isRegularFile();
+        assertThat(root.resolve(".jk/graph/" + GraphRunner.STORE)).isRegularFile();
         assertThat(GraphRunner.hasGraph(root)).isTrue();
 
         GraphAck query = GraphRunner.run(request(root, "query", List.of("order service total")), p -> {});

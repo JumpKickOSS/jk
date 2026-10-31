@@ -33,10 +33,10 @@ class BuildLogicScopeKeysTest {
     @Test
     void a_standalone_keys_its_module_stem_and_its_guard_stem_on_their_own_scopes(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
-        Path moduleScript = project.resolve(".jk/after-resources.groovy");
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        Path moduleScript = project.resolve(".jk/scripts/after-resources.groovy");
         writeStampGroovy(moduleScript);
-        Path guardScript = project.resolve(".jk/guard.groovy");
+        Path guardScript = project.resolve(".jk/scripts/guard.groovy");
         Files.writeString(guardScript, "outDir.resolve('verdict.txt').toFile().text = 'clean'\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
@@ -53,7 +53,11 @@ class BuildLogicScopeKeysTest {
                 BuildLogicAnchor.AFTER_RESOURCES,
                 BuildLogicSupport.projectInputTokens(project));
         String guardKey = expectedKey(
-                project, scripts, guardScript, BuildLogicAnchor.GUARD, BuildLogicSupport.workspaceInputTokens(project));
+                project,
+                scripts,
+                guardScript,
+                BuildLogicAnchor.GUARD,
+                BuildLogicSupport.scriptWorkspaceTokens(project));
         assertTrue(ac.lookup(moduleKey).isPresent(), "the module stem keys on the module's inputs");
         assertTrue(ac.lookup(guardKey).isPresent(), "the guard stem keys on the whole checkout");
 
@@ -67,13 +71,39 @@ class BuildLogicScopeKeysTest {
                 BuildLogicAnchor.AFTER_RESOURCES,
                 BuildLogicSupport.projectInputTokens(project));
         String guardKeyAfter = expectedKey(
-                project, scripts, guardScript, BuildLogicAnchor.GUARD, BuildLogicSupport.workspaceInputTokens(project));
+                project,
+                scripts,
+                guardScript,
+                BuildLogicAnchor.GUARD,
+                BuildLogicSupport.scriptWorkspaceTokens(project));
         assertEquals(moduleKey, moduleKeyAfter, "a file outside the module scope leaves the module key alone");
         assertNotEquals(guardKey, guardKeyAfter, "and moves the guard key");
         assertTrue(ac.lookup(guardKeyAfter).isPresent(), "the guard stem re-ran and recorded under the new key");
         assertThat(labels.toString())
                 .contains("build-logic:after-resources: cache hit")
                 .doesNotContain("build-logic:guard: cache hit");
+    }
+
+    /**
+     * {@code .jk/} beside the scripts is jk's own state: a code graph refreshed, a CI pin bumped, a
+     * script left at the top of {@code .jk/}. None of it is a build-logic input of either scope.
+     */
+    @Test
+    void files_under_jk_outside_scripts_move_no_key(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        writeStampGroovy(project.resolve(".jk/scripts/after-resources.groovy"));
+        String module = String.join("\n", BuildLogicSupport.projectInputTokens(project));
+        String workspace = String.join("\n", BuildLogicSupport.scriptWorkspaceTokens(project));
+
+        Files.createDirectories(project.resolve(".jk/graph"));
+        Files.writeString(project.resolve(".jk/graph/graph.jsonl"), "{\"jk-graph\":1}\n");
+        Files.createDirectories(project.resolve(".jk/ci"));
+        Files.writeString(project.resolve(".jk/ci/ci-bootstrap-version"), "0.50.0\n");
+        Files.writeString(project.resolve(".jk/after-build.groovy"), "// at the top: not read\n");
+
+        assertEquals(module, String.join("\n", BuildLogicSupport.projectInputTokens(project)));
+        assertEquals(workspace, String.join("\n", BuildLogicSupport.scriptWorkspaceTokens(project)));
     }
 
     /** The two anchors a standalone runs over its one directory, sharing the build's token holder. */

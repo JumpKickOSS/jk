@@ -307,7 +307,7 @@
         },
         "logic": {
           "type": "string",
-          "description": "Build-logic directory (default jk/ or .jk/), or \"off\"."
+          "description": "Build-logic directory (default .jk/scripts), or \"off\"."
         }
       },
       "additionalProperties": false

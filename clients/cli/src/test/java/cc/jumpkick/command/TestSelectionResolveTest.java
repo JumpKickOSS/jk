@@ -269,7 +269,7 @@ class TestSelectionResolveTest {
         assertThatThrownBy(() -> BuildFlags.testSelection(parse("-C", dir.toString(), "--scripts-only")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("no guard scripts")
-                .hasMessageContaining("jk/guard");
+                .hasMessageContaining(".jk/scripts/guard");
     }
 
     @Test
@@ -306,7 +306,7 @@ class TestSelectionResolveTest {
     }
 
     private static void writeGate(Path dir) throws Exception {
-        Files.createDirectories(dir.resolve(".jk"));
-        Files.writeString(dir.resolve(".jk/guard.groovy"), "// gate\n");
+        Files.createDirectories(dir.resolve(".jk/scripts"));
+        Files.writeString(dir.resolve(".jk/scripts/guard.groovy"), "// gate\n");
     }
 }

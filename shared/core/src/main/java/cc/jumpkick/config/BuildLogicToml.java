@@ -1,17 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Where a project's build logic lives: {@code [build].logic}, else the convention directories
- * {@value #VISIBLE_DIR}/ then {@value #DEFAULT_DIR}/ ({@value #VISIBLE_DIR}/ wins when both exist).
+ * Where a project's build logic lives: {@code [build].logic}, else {@value #DEFAULT_DIR}/.
+ *
+ * <p>{@value #JK_DIR}/ holds a project's checked-in jk state, one subdirectory per concern; only
+ * {@value #DEFAULT_DIR}/ is build logic. A script left at the top of {@value #JK_DIR}/ is not
+ * read ({@link #strayScripts}).
  *
  * <h2>Why this is a {@link TomlScan} reader and not a {@link JkBuildParser} table</h2>
  *
@@ -26,7 +32,7 @@ import org.jspecify.annotations.Nullable;
  * rather than hidden: a {@code logic} key written as part of an inline {@code build = { … }} table
  * reads as absent and the convention directories apply. {@code TomlScan}'s contract is that exotic
  * TOML degrades to absent, never to a wrong value, so the failure mode is "jk uses {@value
- * #VISIBLE_DIR}/ or {@value #DEFAULT_DIR}/", identically on both sides.
+ * #DEFAULT_DIR}/", identically on both sides.
  *
  * <p>Nothing else in {@code [build]} comes through here. The rest of the table feeds compile and
  * package action keys and stays with the full parser, where a misread would be a correctness bug
@@ -34,24 +40,20 @@ import org.jspecify.annotations.Nullable;
  */
 public final class BuildLogicToml {
 
-    /** Visible convention directory (listed in a default {@code ls}). */
-    public static final String VISIBLE_DIR = "jk";
+    /** A project's checked-in jk state: one subdirectory per concern, none of it generated. */
+    public static final String JK_DIR = ".jk";
 
-    /** Hidden convention directory. Used when {@link #VISIBLE_DIR} is absent. */
-    public static final String DEFAULT_DIR = ".jk";
-
-    /** {@link #VISIBLE_DIR} first: it wins when both convention dirs exist. */
-    private static final List<String> CONVENTION_DIRS = List.of(VISIBLE_DIR, DEFAULT_DIR);
+    /** The build scripts' directory, the default {@code [build].logic}. */
+    public static final String DEFAULT_DIR = JK_DIR + "/scripts";
 
     private static final String LOGIC = "build.logic";
-    private static final List<String> RETIRED_DIRS = List.of(".jk-build", "jk-build");
 
     /**
      * {@code --scripts-only} with no {@code guard} stem at the invocation root. Canonical paths the
      * lookup covers; {@code [build].logic} still resolves first when set.
      */
     public static final String NO_GUARD_SCRIPTS =
-            "no guard scripts in this project (looked for jk/guard.{kts,groovy} / .jk/guard.{kts,groovy} at the root)";
+            "no guard scripts in this project (looked for .jk/scripts/guard.{kts,groovy} at the root)";
 
     private BuildLogicToml() {}
 
@@ -61,15 +63,13 @@ public final class BuildLogicToml {
     /**
      * Resolve build logic for {@code projectDir}: empty when it is switched off
      * ({@code logic = false} / {@code no} / {@code 0} / {@code off} / {@code none} / {@code
-     * disable}) or when no convention directory exists and none is declared.
+     * disable}) or when the directory does not exist.
      *
-     * @throws IllegalStateException when {@code [build].logic} points outside the project root,
-     *     names a retired directory, or a leftover {@code .jk-build}/ {@code jk-build} dir exists
+     * @throws IllegalStateException when {@code [build].logic} points outside the project root
      */
     public static Optional<Logic> resolve(Path projectDir) {
         if (projectDir == null) return Optional.empty();
         Path root = projectDir.toAbsolutePath().normalize();
-        rejectRetiredDirs(root);
         TomlScan scan = TomlScan.scan(ManifestPaths.manifestIn(root), LOGIC);
 
         String declared = scan.get(LOGIC);
@@ -77,11 +77,60 @@ public final class BuildLogicToml {
             if (isOff(declared)) return Optional.empty();
             return Optional.ofNullable(declaredDir(root, declared.trim()));
         }
-        for (String name : CONVENTION_DIRS) {
-            Path dir = root.resolve(name);
-            if (Files.isDirectory(dir)) return Optional.of(new Logic(dir));
+        Path dir = root.resolve(DEFAULT_DIR);
+        return Files.isDirectory(dir) ? Optional.of(new Logic(dir)) : Optional.empty();
+    }
+
+    /** {@code logicDir} as a project spells it: {@code .jk/scripts} for the default, else its own name. */
+    public static String shown(Path logicDir) {
+        Path parent = logicDir.getParent();
+        String name = String.valueOf(logicDir.getFileName());
+        boolean underJk = parent != null
+                && parent.getFileName() != null
+                && parent.getFileName().toString().equals(JK_DIR);
+        return underJk ? JK_DIR + "/" + name : name;
+    }
+
+    /**
+     * The script files at the top of {@code projectDir}'s {@value #JK_DIR}/, which no build reads:
+     * scripts live in {@value #DEFAULT_DIR}/. Sorted names; empty when there are none.
+     */
+    public static List<String> strayScripts(Path projectDir) {
+        Path dir = projectDir.toAbsolutePath().normalize().resolve(JK_DIR);
+        if (!Files.isDirectory(dir)) return List.of();
+        List<String> out = new ArrayList<>();
+        try {
+            PathUtil.forEachChild(dir, (f, attrs) -> {
+                String n = f.getFileName().toString();
+                if (attrs.isRegularFile() && (n.endsWith(".kts") || n.endsWith(".groovy"))) out.add(n);
+                return true;
+            });
+        } catch (IOException unreadable) {
+            return List.of();
         }
-        return Optional.empty();
+        out.sort(null);
+        return out;
+    }
+
+    /** The one line a build says about {@link #strayScripts}, or {@code null} when there are none. */
+    public static @Nullable String strayScriptsNote(Path projectDir) {
+        List<String> stray = strayScripts(projectDir);
+        if (stray.isEmpty()) return null;
+        return String.join(", ", stray) + (stray.size() == 1 ? " is" : " are") + " at the top of " + JK_DIR
+                + "/ and will not run: build scripts live in " + DEFAULT_DIR + "/";
+    }
+
+    /**
+     * The build-logic directory of {@code moduleDir} as a list: the one {@link #resolve} finds, or
+     * none. For a reader that hashes or scans it; a {@code [build].logic} that {@link #resolve}
+     * refuses is refused by the build itself, with its message.
+     */
+    public static List<Path> dirs(Path moduleDir) {
+        try {
+            return resolve(moduleDir).map(l -> List.of(l.dir())).orElse(List.of());
+        } catch (IllegalStateException refused) {
+            return List.of();
+        }
     }
 
     /**
@@ -115,39 +164,11 @@ public final class BuildLogicToml {
     }
 
     private static @Nullable Logic declaredDir(Path root, String logicRel) {
-        rejectRetiredName(logicRel);
         Path dir = root.resolve(logicRel).normalize();
         if (!dir.startsWith(root)) {
             throw new IllegalStateException("[build].logic must stay under the project root: " + logicRel);
         }
         if (!Files.isDirectory(dir)) return null;
         return new Logic(dir);
-    }
-
-    private static void rejectRetiredDirs(Path root) {
-        for (String name : RETIRED_DIRS) {
-            if (Files.isDirectory(root.resolve(name))) {
-                throw new IllegalStateException("project build logic lives in "
-                        + VISIBLE_DIR
-                        + "/ or "
-                        + DEFAULT_DIR
-                        + "/ — rename "
-                        + name
-                        + "/ (no compatibility path)");
-            }
-        }
-    }
-
-    private static void rejectRetiredName(String logicRel) {
-        Path name = Path.of(logicRel).getFileName();
-        if (name != null && RETIRED_DIRS.contains(name.toString())) {
-            throw new IllegalStateException("[build].logic cannot be "
-                    + logicRel
-                    + " — use "
-                    + VISIBLE_DIR
-                    + "/ or "
-                    + DEFAULT_DIR
-                    + "/ (no compatibility path)");
-        }
     }
 }

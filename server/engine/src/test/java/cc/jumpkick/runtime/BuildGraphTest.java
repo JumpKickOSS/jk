@@ -185,8 +185,8 @@ class BuildGraphTest {
                     java = 25
                     """.formatted(m));
         }
-        Files.createDirectories(tmp.resolve(".jk"));
-        Files.writeString(tmp.resolve(".jk/after-build.groovy"), "// workspace check\n");
+        Files.createDirectories(tmp.resolve(".jk/scripts"));
+        Files.writeString(tmp.resolve(".jk/scripts/after-build.groovy"), "// workspace check\n");
 
         BuildGraph.Result r = resolve(tmp);
 

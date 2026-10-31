@@ -109,9 +109,9 @@ class FixtureCheckTest {
         Files.createDirectories(fx.resolve(".github/workflows"));
         Files.writeString(fx.resolve(".github/workflows/ci.yml"), "jobs:\n  self-host:\n    run: jk test\n");
         Files.writeString(fx.resolve("scoreboard.toml"), "[noop.jk]\nmedian-s = 1.0\n");
-        Files.createDirectories(fx.resolve("Ok-live/.jk"));
+        Files.createDirectories(fx.resolve("Ok-live/.jk/ci"));
         Files.writeString(fx.resolve("Ok-live/jk.toml"), "version = \"1.4.0\"\n");
-        Files.writeString(fx.resolve("Ok-live/.jk/ci-bootstrap-version"), "1.3.2\n");
+        Files.writeString(fx.resolve("Ok-live/.jk/ci/ci-bootstrap-version"), "1.3.2\n");
         Files.createDirectories(fx.resolve("Bad-missing-verb/.github/workflows"));
         Files.writeString(fx.resolve("Bad-missing-verb/jk.toml"), "version = \"1.4.0\"\n");
         Files.writeString(
@@ -131,7 +131,7 @@ class FixtureCheckTest {
                 .as("the file beside the cases is the tree every case starts from")
                 .contains("jk test");
         assertThat(tree.resolve("scoreboard.toml")).exists();
-        assertThat(tree.resolve(".jk/ci-bootstrap-version")).exists();
+        assertThat(tree.resolve(".jk/ci/ci-bootstrap-version")).exists();
         assertThat(tree.resolve("Ok-live"))
                 .as("case directories are not part of any tree")
                 .doesNotExist();
@@ -142,7 +142,7 @@ class FixtureCheckTest {
                 .as("the case's own file is laid over the shared one")
                 .contains("run: true")
                 .doesNotContain("jk test");
-        assertThat(tree.resolve(".jk/ci-bootstrap-version"))
+        assertThat(tree.resolve(".jk/ci/ci-bootstrap-version"))
                 .as("the previous case's files are gone: the tree is rebuilt per case")
                 .doesNotExist();
         assertThat(tree.resolve("Bad.java")).exists();

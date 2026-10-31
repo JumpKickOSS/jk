@@ -143,7 +143,7 @@ _vs #12 (failed, 8.4s) · this run 6.1s (−2.3s)_
 ```
 
 Files are compared by content hash between the two runs' `sources.tsv` snapshots of the build's
-inputs — `jk.toml`, `jk-lock.toml`, `jk-guards.toml`, the `.jk/` scripts, and every module's
+inputs — `jk.toml`, `jk-lock.toml`, `jk-guards.toml`, the `.jk/scripts/` scripts, and every module's
 manifest and source, test and resource roots; the rest of the checkout is not an input and is not
 walked (absent when either side has none);
 diagnostics by severity, step, site and message (a changed stack trace is the same diagnostic);

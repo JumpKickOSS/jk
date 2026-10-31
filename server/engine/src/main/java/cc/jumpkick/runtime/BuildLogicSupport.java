@@ -81,7 +81,7 @@ public final class BuildLogicSupport {
     /**
      * A script's transcript on the output channel: one header line naming the script, then its
      * lines indented under it, so a reader of the Ctrl-O ring or a {@code -v} run knows which
-     * {@code .jk/*.kts} said what. Split on any line terminator — the Kotlin host captures
+     * {@code .jk/scripts/*.kts} said what. Split on any line terminator — the Kotlin host captures
      * {@code println} with the platform separator and the Groovy host reads the forked process
      * raw, so on Windows every line would otherwise keep its {@code \r}. A trailing blank from the
      * script's final newline adds nothing.
@@ -140,7 +140,7 @@ public final class BuildLogicSupport {
 
     private static IllegalStateException misplaced(
             Path logicDir, BuildLogicScripts.ScriptTask s, String where, String use) {
-        return new IllegalStateException("[build] " + logicDir.getFileName() + "/"
+        return new IllegalStateException("[build] " + BuildLogicToml.shown(logicDir) + "/"
                 + s.file().getFileName()
                 + " is not a valid stem for "
                 + where
@@ -195,7 +195,7 @@ public final class BuildLogicSupport {
             if (anchor == BuildLogicAnchor.AFTER_RESOURCES
                     || anchor == BuildLogicAnchor.AFTER_BUILD
                     || anchor == BuildLogicAnchor.GUARD) {
-                label.accept("build-logic: no scripts in " + c.dir().getFileName());
+                label.accept("build-logic: no scripts in " + BuildLogicToml.shown(c.dir()));
             }
             return true;
         }
@@ -412,7 +412,7 @@ public final class BuildLogicSupport {
                 throw new IllegalStateException("[build] logic is stem scripts only (.groovy / .kts) — found "
                         + logicDir.relativize(banned.getFirst())
                         + " under "
-                        + logicDir.getFileName()
+                        + BuildLogicToml.shown(logicDir)
                         + "/");
             }
         }
@@ -480,6 +480,17 @@ public final class BuildLogicSupport {
             tokens.add("ws:" + slashed(root.relativize(abs)) + ":" + FileHashMemo.contentHash(abs, attrs));
         });
         Collections.sort(tokens);
+        return tokens;
+    }
+
+    /**
+     * {@link #workspaceInputTokens} as a workspace-root script's key sees them: of {@code .jk/},
+     * only the scripts. The rest of {@code .jk/} is jk's own state (CI pins, a script left at its
+     * top that no build runs), which guard rules may read but build logic does not.
+     */
+    static List<String> scriptWorkspaceTokens(Path rootDir) throws IOException {
+        List<String> tokens = new ArrayList<>(workspaceInputTokens(rootDir));
+        tokens.removeIf(t -> t.startsWith("ws:.jk/") && !t.startsWith("ws:.jk/scripts/"));
         return tokens;
     }
 

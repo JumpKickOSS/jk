@@ -118,7 +118,7 @@ jobs:
       fail-fast: false
       matrix:
         # One row per platform jumpkick.build serves a native client for at the release
-        # .jk/ci-bootstrap-version pins. jk is installed the way a user installs it, the same
+        # .jk/ci/ci-bootstrap-version pins. jk is installed the way a user installs it, the same
         # bootstrap as ci.yml's self-host job, and builds this commit's dist.
         # macOS on Intel has no client.
         include:
@@ -161,8 +161,8 @@ jobs:
           echo "Building release $VER (${{ matrix.arch_label }})"
 
       # The shipped artifacts are what jk builds of itself. The jk that builds them is the one
-      # scripts/ci-bootstrap.sh installs: the hosted release .jk/ci-bootstrap-version pins, or the
-      # bridge commit .jk/ci-bootstrap-reader names, built by it. JK_VERSION in this job's
+      # scripts/ci-bootstrap.sh installs: the hosted release .jk/ci/ci-bootstrap-version pins, or the
+      # bridge commit .jk/ci/ci-bootstrap-reader names, built by it. JK_VERSION in this job's
       # environment is the release being cut; the script hands the pin's version to the installer alone.
       # Every row bootstraps a native client, so a platform the pin stops serving fails here.
       - name: Bootstrap jk from the hosted release

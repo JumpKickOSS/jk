@@ -369,7 +369,7 @@ Also in this release (from 0.15.3):
 - Workers start from an environment allow-list; `[env] inherit` opts a module back in.
 - Every jk-built Java module compiles under NullAway with JSpecify null-marking, in jk's own build.
 - The release workflow ships what jk builds of itself, bootstrapped from the hosted release
-  `.jk/ci-bootstrap-version` pins.
+  `.jk/ci/ci-bootstrap-version` pins.
 
 ## Benchmarks each release
 
@@ -454,7 +454,7 @@ copies it there). All three jars are platform-neutral, built by every platform j
 byte-identical. That identity assumes one bootstrap: the embedded SBOM
 (`META-INF/sbom/application.cdx.json`) names the jk that packaged the jar as its tool, and nothing
 else in an assembly varies between builds of one commit, so every lane packaging with the pinned
-`.jk/ci-bootstrap-version` writes the same bytes, while a dogfood tree whose install re-shelved
+`.jk/ci/ci-bootstrap-version` writes the same bytes, while a dogfood tree whose install re-shelved
 under the newly built engine writes a jar that differs by that one field. A release directory is
 assembled from one build, never from a native binary of one and a jar of another. Every artifact
 name carries the version: the
@@ -568,7 +568,7 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
 1. CI is green on the tag `v0.14.0` (`jk release --push`). The version must equal what `jk.toml` declares;
    `scripts/release-version.sh` refuses any other tag before anything is built.
 2. Matrix builds native client + engine jar per OS/arch — with jk itself (`jk build`, the layout
-   under `target/dist`). The jk that builds is the hosted release `.jk/ci-bootstrap-version` pins,
+   under `target/dist`). The jk that builds is the hosted release `.jk/ci/ci-bootstrap-version` pins,
    installed as a user installs it: the native client on every row. The linux-x86_64
    lane also runs `jk install`, so the first-party plugins it stages for `repo/` are the commit's
    own.
@@ -602,7 +602,7 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
     release page announces nothing before the installers can fetch it. A re-run updates the
     release and replaces the assets, as the rsync replaced the tree. The very last step waits for
     the SDK to resolve from repo1.maven.org.
-11. Bump `.jk/ci-bootstrap-version` to the new release
+11. Bump `.jk/ci/ci-bootstrap-version` to the new release
     ([self-host](self-host.md#the-bootstrap-pin)). When the release shipped a first native client
     for a platform, that platform's row joins the matrix and `JK_RELEASE_PLATFORMS`.
 
@@ -616,7 +616,7 @@ lets the checkout's own jk take over ([self-host](self-host.md#bootstrap)).
 
 Users on those hosts — and on every host no native client will ever be built for — install the
 **JVM client** instead: `jk-<version>.jar` is the CLI module's assembly (`[application] assembly =
-true` in `clients/cli/jk.toml`), shipped under that name by `.jk/after-build-dist.kts` and
+true` in `clients/cli/jk.toml`), shipped under that name by `.jk/scripts/after-build-dist.kts` and
 `scripts/assemble-release-dir.sh`, installed by both installers as `~/.jk/lib/jk/jk-<version>.jar`
 with a launcher (`bin/jk`, `bin/jk.bat`) that `jk self write-launcher` writes over the JDK the
 installer verified ([user install](../user/install.md#the-jvm-client)). It pairs with the engine

@@ -8,6 +8,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -202,9 +203,18 @@ public final class BuildGraph {
         final List<String> errors = new ArrayList<>();
 
         void addUnit(Path canonicalDir, JkBuild m, Origin origin) {
+            noteStrayScripts(canonicalDir);
             String coord = m.project().group() + ":" + m.project().name();
             units.putIfAbsent(canonicalDir, new BuildUnit(canonicalDir, m, coord, origin));
             edges.putIfAbsent(canonicalDir, new LinkedHashSet<>());
+        }
+
+        /** Scripts at the top of {@code dir}'s .jk/ run no more: the build says so, once. */
+        private static void noteStrayScripts(Path dir) {
+            RunNotices.warnOnce("build-logic-stray:" + dir, () -> {
+                String note = BuildLogicToml.strayScriptsNote(dir);
+                return note == null ? null : "[build] " + note;
+            });
         }
 
         void addEdge(Path from, Path prereq) {
@@ -223,8 +233,11 @@ public final class BuildGraph {
             // collision set). A pure coordinator root (no src/) is not built; its merged
             // deps are still validated up front by the whole-workspace lock check.
             Path rootDir = canonical(wsRoot);
+            // Before the root is known to be a unit: a root whose scripts were left at the top of
+            // .jk/ has no build logic any more, and is exactly the root that would never say so.
+            noteStrayScripts(rootDir);
             boolean rootHasSources = CompileSupport.hasSources(rootDir);
-            // A sourceless root with `jk/` or `.jk/` is a unit too. Its plan compiles and packages
+            // A sourceless root with `.jk/scripts/` is a unit too. Its plan compiles and packages
             // nothing, but it has an `after-build` script to run, and the only way to run that
             // once — after every member, with the scheduler and the report it already has — is to
             // be in the graph. Without this the directory is silently ignored.

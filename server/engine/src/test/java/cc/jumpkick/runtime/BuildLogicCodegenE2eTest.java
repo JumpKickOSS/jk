@@ -60,8 +60,8 @@ class BuildLogicCodegenE2eTest {
                 }
                 """);
 
-        Files.createDirectories(project.resolve(".jk"));
-        Files.writeString(project.resolve(".jk/before-compile.groovy"), """
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        Files.writeString(project.resolve(".jk/scripts/before-compile.groovy"), """
                 def pkg = outDir.resolve('com/example')
                 pkg.toFile().mkdirs()
                 pkg.resolve('Generated.java').toFile().text = '''

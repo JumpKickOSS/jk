@@ -124,13 +124,15 @@ public final class TextView implements Text {
 
     /**
      * Dot-directories and foreign build output are not the source tree — except {@code .github} and
-     * {@code .jk}, which are the repository's own text. jk's own output tree at the root is skipped by
+     * {@code .jk}, which are the repository's own text; {@code .jk/graph/} is jk's index of that text,
+     * not more of it. jk's own output tree at the root is skipped by
      * where the report lives, not by a name this library would have to know; a module's {@code target/}
      * and Gradle's {@code build/} by the manifest or script beside it ({@link OutputDirs#isBuildOutputDir}),
      * so a package named {@code build} or {@code target} is read like any other.
      */
     boolean skipped(String rel) {
         if (outputDir != null && (rel.equals(outputDir) || rel.startsWith(outputDir + "/"))) return true;
+        if (rel.equals(".jk/graph") || rel.startsWith(".jk/graph/")) return true;
         Path dir = root;
         for (String seg : rel.split("/")) {
             dir = dir.resolve(seg);

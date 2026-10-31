@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.BuildLogicStems;
+import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
 import cc.jumpkick.task.RunNotices;
@@ -170,11 +171,13 @@ public final class BuildLogicScripts {
      * per-run once-only notice keyed on the name alone reported the first and swallowed the second.
      */
     private static String moduleRelative(Path logicDir, Path file) {
-        Path module = logicDir.toAbsolutePath().normalize().getParent();
+        String shown = BuildLogicToml.shown(logicDir);
+        Path module = logicDir.toAbsolutePath().normalize();
+        for (int up = shown.split("/").length; up > 0 && module != null; up--) module = module.getParent();
         String owner = module == null || module.getFileName() == null
                 ? "."
                 : module.getFileName().toString();
-        return owner + "/" + logicDir.getFileName() + "/" + logicDir.relativize(file);
+        return owner + "/" + shown + "/" + logicDir.relativize(file);
     }
 
     private static void warnUnknownStem(Path logicDir, Path file, String stem) {
@@ -204,7 +207,7 @@ public final class BuildLogicScripts {
                         () -> "[build] "
                                 + moduleRelative(logicDir, p)
                                 + " will not run: build-logic scripts are discovered at the top level of "
-                                + logicDir.getFileName() + "/ only — move it up a level.");
+                                + BuildLogicToml.shown(logicDir) + "/ only — move it up a level.");
                 return true;
             });
         } catch (IOException ignored) {

@@ -351,7 +351,9 @@ class NewScaffolderTest {
         String body = Files.readString(gitignore);
         assertThat(body).contains("target/");
 
-        assertThat(body).contains(".jk/selective-plan.json");
+        assertThat(body.lines().filter(line -> !line.startsWith("#")))
+                .as(".jk/ is checked in, all of it")
+                .noneMatch(line -> line.contains(".jk"));
         assertThat(body.lines().filter(line -> line.matches("\\* ?\\..*")))
                 .as("glob patterns, no stray space after the star")
                 .containsExactly("*.iml", "*.ipr", "*.iws", "*.code-workspace");

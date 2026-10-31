@@ -100,7 +100,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 - [Aliases](aliases.md)
 - [Migration](migration.md)
 - [Wrapper](wrapper.md)
-- [Build logic](build-logic.md) — `jk/` or `.jk/`
+- [Build logic](build-logic.md) — `.jk/scripts/`
 - [Examples](examples/)
 
 JumpKick is **pre-1.0 (alpha)**. Commands and `jk.toml` keys in these pages describe current
