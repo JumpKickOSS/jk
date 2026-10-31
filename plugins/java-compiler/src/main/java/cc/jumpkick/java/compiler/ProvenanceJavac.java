@@ -130,8 +130,11 @@ final class ProvenanceJavac implements JavaCompiler {
                 task.setProcessors(provenance.wrap(ZincJavaCompiler.freshProcessors(loader)));
             }
             if (constants != null) constants.listen(task);
+            References refs = References.ENABLED ? new References(task) : null;
+            if (refs != null) task.addTaskListener(refs);
             boolean ok = task.call();
             fileOps.write(classOut);
+            if (ok && refs != null) writeReferences(refs, classOut);
             if (!ok) explainFailure(diags, written.toString());
             if (keyed != null) {
                 diags.drainTo(keyed::report);
@@ -142,6 +145,22 @@ final class ProvenanceJavac implements JavaCompiler {
             return ok && !bridge.hasErrors();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
+        }
+    }
+
+    /**
+     * The compile's reference index, beside its classes: {@code <module>/target/classes} is the class
+     * output, so the module is two levels up. An index that cannot be written is logged and the
+     * compile still passes; a reader checks each file's hash and passes over what is missing.
+     */
+    private static void writeReferences(References refs, Path classOut) {
+        Path target = classOut.toAbsolutePath().normalize().getParent();
+        Path module = target == null ? null : target.getParent();
+        if (module == null) return;
+        try {
+            refs.write(classOut, module);
+        } catch (IOException | RuntimeException failed) {
+            System.err.println("jk: the reference index was not written: " + failed);
         }
     }
 
