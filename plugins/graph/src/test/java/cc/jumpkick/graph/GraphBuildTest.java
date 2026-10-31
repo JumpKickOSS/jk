@@ -572,6 +572,48 @@ import java.util.List;
                 .isTrue();
     }
 
+    /**
+     * The stored graph vouches for itself: a stat index that names other contents than the graph
+     * was built from (written by another refresh, or edited) costs a rebuild, never a stale answer.
+     */
+    @Test
+    void aStatIndexThatVouchesForOtherContentsThanTheGraphRebuildsIt(@TempDir Path dir) throws IOException {
+        GraphMemory.clear();
+        Path root = workspace(dir);
+        refresh(root, false);
+        Path stats = root.resolve("target/graph/" + StatIndex.FILE);
+        List<String> lines = new ArrayList<>();
+        for (String line : Files.readAllLines(stats)) {
+            lines.add(line.endsWith("\tREADME.md") ? "0".repeat(64) + line.substring(line.indexOf('\t')) : line);
+        }
+        Files.write(stats, lines);
+        GraphMemory.clear();
+
+        GraphBuild.Result r = refresh(root, false);
+        assertThat(r.changed()).as("rebuilt, not served").isTrue();
+        assertThat(edge(r.graph(), "readme_shop", "orderservice_orderservice", "references"))
+                .isTrue();
+    }
+
+    /** A graph a crash or a race left from the refresh before the stats' is rebuilt, never served. */
+    @Test
+    void aGraphFromAnEarlierRefreshThanItsStatsIsRebuilt(@TempDir Path dir) throws IOException {
+        GraphMemory.clear();
+        Path root = workspace(dir);
+        refresh(root, false);
+        Path bin = root.resolve("target/graph/" + GraphOutputs.SNAPSHOT);
+        byte[] earlier = Files.readAllBytes(bin);
+        Files.writeString(root.resolve("README.md"), "# Shop\n\nSee `PriceCalculator`.\n");
+        refresh(root, false);
+        Files.write(bin, earlier);
+        GraphMemory.clear();
+
+        GraphBuild.Result r = refresh(root, false);
+        assertThat(r.changed()).isTrue();
+        assertThat(edge(r.graph(), "readme_shop", "pricecalculator_pricecalculator", "references"))
+                .isTrue();
+    }
+
     /** {@code cp -p}, {@code touch -r}: new bytes behind the old size and mtime are read again. */
     @Test
     void anEditThatRestoresSizeAndMtimeIsExtracted(@TempDir Path dir) throws Exception {

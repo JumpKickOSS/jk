@@ -31,6 +31,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -152,8 +153,9 @@ public final class GraphBuild {
         String classDigest = classDigest(indexes, modules);
         String commit = GitHead.read(base);
         String extractors = Extractors.VERSION + (scripts.active() ? "+oxc" : "");
+        String inputs = inputs(shas);
         GraphSnapshot.Key key = new GraphSnapshot.Key(
-                extractors, sources.size(), linkedFrom(classDigest, FragmentStore.stamp(shared)), commit);
+                extractors, sources.size(), linkedFrom(classDigest, FragmentStore.stamp(shared)), inputs, commit);
         boolean sameFiles = changed.isEmpty() && unreadable.isEmpty() && stats.size() == sources.size();
         if (!rebuild && sameFiles) {
             CodeGraph stored = snapshot(out, key);
@@ -222,7 +224,7 @@ public final class GraphBuild {
         store.save(shared, rows, modules);
         GraphMemory.savedStore(out, shared, store);
         GraphSnapshot.Key written = new GraphSnapshot.Key(
-                extractors, sources.size(), linkedFrom(classDigest, FragmentStore.stamp(shared)), commit);
+                extractors, sources.size(), linkedFrom(classDigest, FragmentStore.stamp(shared)), inputs, commit);
         write(out, graph, written);
         GraphMemory.sawGraph(out, graph, written);
         stats.save(out, sources);
@@ -247,6 +249,18 @@ public final class GraphBuild {
     /** The store key of a file's fragment: an oxc read is kept apart from a scanner read of the same bytes. */
     private static String key(String rel, String sha, ScriptReader scripts) {
         return FragmentStore.key(rel, sha, scripts.flavor(rel));
+    }
+
+    /**
+     * The digest of every file a refresh read, by path and content hash, in path order: what a
+     * stored graph must have been built from to answer for the tree as it is.
+     */
+    static String inputs(Map<String, String> shas) {
+        StringBuilder all = new StringBuilder();
+        for (Map.Entry<String, String> e : new TreeMap<>(shas).entrySet()) {
+            all.append(e.getKey()).append('\t').append(e.getValue()).append('\n');
+        }
+        return Hashing.sha256Hex(all.toString());
     }
 
     /** What a graph was linked from: the class indexes and modules, and the committed store's files as they stood. */
@@ -274,7 +288,8 @@ public final class GraphBuild {
     private static boolean sameKey(GraphSnapshot.Key had, GraphSnapshot.Key key) {
         return had.extractors().equals(key.extractors())
                 && had.files() == key.files()
-                && had.classes().equals(key.classes());
+                && had.classes().equals(key.classes())
+                && had.inputs().equals(key.inputs());
     }
 
     private static void write(Path out, CodeGraph graph, GraphSnapshot.Key key) throws IOException {

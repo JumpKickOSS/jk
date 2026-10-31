@@ -56,9 +56,9 @@ class GraphJsonTest {
     void aSnapshotRoundTripsTheGraph() throws IOException {
         CodeGraph g = ShopFixture.graph();
         var bytes = new ByteArrayOutputStream();
-        GraphSnapshot.write(g, new GraphSnapshot.Key("x", 7, "c", "abc123"), bytes);
+        GraphSnapshot.write(g, new GraphSnapshot.Key("x", 7, "c", "i", "abc123"), bytes);
         var loaded = Objects.requireNonNull(GraphSnapshot.read(new ByteArrayInputStream(bytes.toByteArray())));
-        assertThat(loaded.key()).isEqualTo(new GraphSnapshot.Key("x", 7, "c", "abc123"));
+        assertThat(loaded.key()).isEqualTo(new GraphSnapshot.Key("x", 7, "c", "i", "abc123"));
         assertThat(loaded.graph().nodes())
                 .extracting(GraphNode::id)
                 .containsExactlyInAnyOrderElementsOf(
@@ -74,7 +74,7 @@ class GraphJsonTest {
     @Test
     void aSnapshotThatDoesNotParseIsAbsent() throws IOException {
         var bytes = new ByteArrayOutputStream();
-        GraphSnapshot.write(ShopFixture.graph(), new GraphSnapshot.Key("x", 7, "c", null), bytes);
+        GraphSnapshot.write(ShopFixture.graph(), new GraphSnapshot.Key("x", 7, "c", "i", null), bytes);
         byte[] whole = bytes.toByteArray();
         byte[] longer = Arrays.copyOf(whole, whole.length + 4);
         byte[] shorter = Arrays.copyOf(whole, whole.length / 2);
