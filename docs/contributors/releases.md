@@ -8,9 +8,9 @@ What a release may change in the formats projects depend on: [Compatibility](com
 
 | Line | Meaning |
 |------|---------|
-| **`0.41.1`** | The root `jk.toml` version: the next release, never written with `-SNAPSHOT` |
-| Tag **`v0.41.1`** | Cut from that line when it is released |
-| Prior | **`0.41.0`** — previous release; **`0.10.1`** first public |
+| **`0.50.0`** | The root `jk.toml` version: the next release, never written with `-SNAPSHOT` |
+| Tag **`v0.50.0`** | Cut from that line when it is released |
+| Prior | **`0.41.1`** — previous release; **`0.10.1`** first public |
 | Later | Semver-ish: `0.30.1`, `0.31.0`, … |
 
 The root `jk.toml` `version` is the one place the version is written, and it always names the
@@ -30,6 +30,29 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 <version>` puts the entry at the top of the GitHub Release notes, ahead of the commit list since the
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
+
+### 0.50.0
+
+- **jk updates itself.** The engine checks for a new release, downloads it and installs it between
+  builds; `self-update = "auto" | "ask" | "never"` in `~/.jk/config.toml` (or `JK_SELF_UPDATE`)
+  decides (unset, it asks at a terminal and updates everywhere else), and a release older than the
+  installed jk is held rather than installed. `jk self update` checks, downloads and installs as separate steps.
+- **`jk graph callers`** (MCP `callers`, on the default list) answers who calls a method, complete,
+  from the compiled classes: overload by overload, through the supertype methods it overrides, and
+  with `-t` everything that can end up running it. Asked those questions, agents answered every one
+  and took a fifth to two fifths of the turns they took without the graph
+  ([Asking about the code](../user/why.md#asking-about-the-code)).
+- **The code graph is jk's own**: answers name each symbol `Owner.member()` at `file:line`, `find`
+  lists every override in one call, and an edited source drops only its own compiled facts. The
+  graphify format, mirror and commands are gone.
+- **`[format] enforce = true`** makes formatting a step of `jk guard`: it formats what changed, and
+  under CI fails naming each unformatted file.
+- **`[nullness]`** turns on compile-time null checking (JSpecify, Error Prone and NullAway) in one
+  table, with `include` and `exclude` for packages.
+- **Builds see the caller's environment**: every request carries the shell it came from, and child
+  processes get it wherever it cannot change what is cached.
+- A run whose sources change while it runs says so on its verdict, and agent results list every
+  folded compile error's location.
 
 ### 0.41.1
 
