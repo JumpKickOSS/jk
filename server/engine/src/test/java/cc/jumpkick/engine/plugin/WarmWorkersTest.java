@@ -294,4 +294,20 @@ class WarmWorkersTest {
         WarmWorkers.run(launch("a"), spec, new Seen(), () -> false);
         assertThat(Files.readAllLines(spec)).hasSizeGreaterThan(1);
     }
+
+    @Test
+    void a_lease_asked_back_while_its_worker_starts_is_given_back_once_the_worker_exists() {
+        List<String> calls = new ArrayList<>();
+        WarmWorkers.YieldHook early = new WarmWorkers.YieldHook();
+        early.run();
+        assertThat(calls).as("no worker yet: the request is kept, not dropped").isEmpty();
+        early.bind(() -> calls.add("early"));
+        assertThat(calls).containsExactly("early");
+
+        WarmWorkers.YieldHook late = new WarmWorkers.YieldHook();
+        late.bind(() -> calls.add("late"));
+        assertThat(calls).as("not asked: nothing happens at start").containsExactly("early");
+        late.run();
+        assertThat(calls).containsExactly("early", "late");
+    }
 }

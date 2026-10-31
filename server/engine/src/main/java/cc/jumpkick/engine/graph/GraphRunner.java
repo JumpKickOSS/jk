@@ -13,6 +13,7 @@ import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.plugin.HeapLadder;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
+import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
@@ -204,13 +205,15 @@ public final class GraphRunner {
         Path jar = PluginJar.GRAPH.locate(JkStores.storeCas());
         Path hostJava = JavaHomes.runningJavaHome();
         String workerCp = WorkerLaunchClasspath.resolve(jar);
+        // Resident between questions: a collector that gives the heap back while it idles, and a
+        // startup cache recorded under that same collector.
         List<String> aot = WorkerAotCache.flags(
                 "graph",
                 hostJava,
                 workerCp,
-                List.of(),
+                JvmOptions.RESIDENT_GC,
                 (aotOutput, scratch) -> GraphTraining.command(hostJava, workerCp, aotOutput, scratch));
-        List<String> command = scoped(key, () -> PluginLaunch.serveCommand(jar, aot));
+        List<String> command = JvmOptions.residentCollector(scoped(key, () -> PluginLaunch.serveCommand(jar, aot)));
         List<Long> ranOut = new ArrayList<>();
         while (true) {
             List<String> attemptCommand = command;

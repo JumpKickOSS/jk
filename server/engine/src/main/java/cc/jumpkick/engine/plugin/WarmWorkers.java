@@ -263,25 +263,54 @@ public final class WarmWorkers {
         ProcessBuilder pb = new ProcessBuilder(WorkerSession.detached(launch.command())).redirectErrorStream(true);
         pb.environment().clear();
         pb.environment().putAll(launch.env().environment());
-        Worker[] started = new Worker[1];
+        YieldHook hook = new YieldHook();
         // Bound for the start only: the scope is what files the worker's peak when it exits.
         HeapScope.Key heapKey = launch.heapKey();
         HeapScope.@Nullable Key previous = heapKey != null ? HeapScope.bind(heapKey) : HeapScope.get();
         Process process;
         try {
-            process = JobWorkers.startResident(pb, new WorkerLeases.Resident(launch.name(), () -> {
-                Worker w = started[0];
-                if (w != null) w.yieldLease();
-            }));
+            process = JobWorkers.startResident(pb, new WorkerLeases.Resident(launch.name(), hook));
         } finally {
             HeapScope.restore(previous);
         }
         Worker w = new Worker(launch.name(), key, launch.heap(), process);
-        started[0] = w;
         LIVE.add(w);
+        hook.bind(w::yieldLease);
         registerShutdownHook();
         HostPressure.register("warm plugin workers", WarmWorkers::shedIdle);
         return w;
+    }
+
+    /**
+     * The ledger's request that a worker give its lease back, which can come while the worker is
+     * still starting: the lease is granted before the JVM is up. Asked before {@link #bind}, the
+     * request is kept and made the moment the worker exists. Dropped, the ledger (which asks a lease
+     * once) would wait for that memory for as long as the worker lingered.
+     */
+    static final class YieldHook implements Runnable {
+
+        private @Nullable Runnable yield;
+        private boolean asked;
+
+        @Override
+        public void run() {
+            Runnable now;
+            synchronized (this) {
+                asked = true;
+                now = yield;
+            }
+            if (now != null) now.run();
+        }
+
+        /** The worker exists: {@code yield} is how it gives its lease back, now if it was already asked. */
+        void bind(Runnable yield) {
+            boolean now;
+            synchronized (this) {
+                this.yield = yield;
+                now = asked;
+            }
+            if (now) yield.run();
+        }
     }
 
     private static void registerShutdownHook() {
