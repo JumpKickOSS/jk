@@ -914,31 +914,167 @@ def agy(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int, 
         return AgentResult(claimed, turns, usage, _agy_cost(result), summary, finding, extra)
 
 
+# ----------------------------------------------------------------------------------- cursor
+
+# cursor-agent's tool calls, by the key of the call in its stream, under the names the other drivers use.
+CURSOR_TOOLS = {
+    "readToolCall": "Read",
+    "grepToolCall": "Grep",
+    "globToolCall": "Glob",
+    "lsToolCall": "list_dir",
+    "editToolCall": "Edit",
+    "writeToolCall": "Write",
+    "deleteToolCall": "Delete",
+    "shellToolCall": "Bash",
+    "getMcpToolsToolCall": "mcp_schema",
+}
+CURSOR_ALLOWED = {"Read", "Grep", "Glob", "list_dir", "Edit", "Write", "Delete", "mcp_schema"}
+
+
+def _write_cursor_home(home: Path, tool: str, sandbox: Path) -> str:
+    """A copied login, a CLI config that denies the shell, and the run's MCP servers in the sandbox.
+
+    cursor-agent reads its login from ``~/.config/cursor/auth.json`` and its permissions from
+    ``~/.cursor/cli-config.json``; MCP servers come from the workspace's ``.cursor/mcp.json``,
+    which is kept out of the sandbox's git status so a diff shows the agent's edits only.
+    """
+    auth = Path.home() / ".config" / "cursor" / "auth.json"
+    if not auth.is_file():
+        raise RuntimeError("cursor-agent has no credentials: run `cursor-agent login`")
+    (home / ".config" / "cursor").mkdir(parents=True)
+    dest = home / ".config" / "cursor" / "auth.json"
+    shutil.copy2(auth, dest)
+    dest.chmod(0o600)
+    (home / ".cursor").mkdir()
+    (home / ".cursor" / "cli-config.json").write_text(
+        json.dumps({"version": 1, "permissions": {"allow": [], "deny": ["Shell(*)"]}}) + "\n", encoding="utf-8")
+    server, registered = servers(tool, sandbox)
+    mcp = {name: {"command": cfg["command"], "args": list(cfg.get("args", []))} for name, cfg in registered.items()}
+    (sandbox / ".cursor").mkdir(exist_ok=True)
+    (sandbox / ".cursor" / "mcp.json").write_text(json.dumps({"mcpServers": mcp}, indent=2) + "\n", encoding="utf-8")
+    exclude = sandbox / ".git" / "info" / "exclude"
+    if exclude.parent.is_dir():
+        with exclude.open("a", encoding="utf-8") as f:
+            f.write("/.cursor/\n")
+    return server
+
+
+def _cursor_call(ev: dict) -> tuple[str, dict]:
+    """The harness name and the input of a ``tool_call`` event: ``mcp__<server>__<tool>`` for MCP."""
+    call = ev.get("tool_call") or {}
+    for key, body in call.items():
+        if not isinstance(body, dict):
+            continue
+        args = body.get("args") or {}
+        if key == "mcpToolCall":
+            name = str(args.get("name") or "")
+            server, _, tool_name = name.partition("-")
+            return f"mcp__{server}__{tool_name}", args.get("args") or {}
+        return CURSOR_TOOLS.get(key, key), args
+    return "unknown", {}
+
+
+def _cursor_summary(events: list[dict]) -> list[dict]:
+    out: list[dict] = []
+    for ev in events:
+        if ev.get("type") == "tool_call" and ev.get("subtype") == "started":
+            name, args = _cursor_call(ev)
+            out.append({"tool_use": name, "input": json.dumps(args)[:200]})
+        elif ev.get("type") == "assistant":
+            for block in (ev.get("message") or {}).get("content") or []:
+                if block.get("type") == "text" and block.get("text", "").strip():
+                    out.append({"text": block["text"][:300]})
+    return out
+
+
+def _cursor_turns(events: list[dict]) -> int:
+    calls = {ev.get("model_call_id") for ev in events if ev.get("model_call_id")}
+    return len(calls) or sum(1 for ev in events if ev.get("type") == "assistant")
+
+
+def cursor(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int, transcript_path: Path,
+           effort: str = "medium") -> AgentResult:
+    """`cursor-agent -p` with a throwaway ``HOME``, no shell, the run's MCP servers, and the same prompt.
+
+    cursor-agent takes no system prompt, so the system prompt leads the user prompt. There is no
+    turn-cap flag: the harness kills the run when model calls reach ``max_turns``. ``effort`` is
+    part of the model id (``claude-sonnet-5-5-medium``), so it is recorded and not passed.
+    """
+    if not shutil.which("cursor-agent"):
+        raise RuntimeError("the `cursor-agent` CLI is not on PATH")
+    with tempfile.TemporaryDirectory(prefix="jk-agent-loop-cursor-") as tmp:
+        home = Path(tmp)
+        server = _write_cursor_home(home, tool, sandbox)
+        env = dict(os.environ)
+        env["HOME"] = str(home)
+        env["GRADLE_USER_HOME"] = str(_gradle_user_home())
+        env.pop("CURSOR_API_KEY", None)
+        calls: set[str] = set()
+
+        def on_event(ev: dict) -> str | None:
+            if ev.get("model_call_id"):
+                calls.add(ev["model_call_id"])
+                if len(calls) > max_turns:
+                    return "kill"
+            return None
+
+        prompt = system_prompt(tool, sandbox, server) + "\n\n" + user_prompt()
+        cmd = [
+            "cursor-agent", "-p", prompt,
+            "--output-format", "stream-json",
+            "--model", model,
+            "--force",
+            "--approve-mcps",
+            "--trust",
+            "--workspace", str(sandbox),
+        ]
+        events, stderr, stop = _run_streaming(cmd, sandbox, env, max_seconds, transcript_path, on_event)
+        result = next((ev for ev in reversed(events) if ev.get("type") == "result"), None)
+        raw = (result or {}).get("usage") or {}
+        usage = {
+            "input_tokens": int(raw.get("inputTokens") or 0),
+            "output_tokens": int(raw.get("outputTokens") or 0),
+            "cache_read_input_tokens": int(raw.get("cacheReadTokens") or 0),
+            "cache_creation_input_tokens": int(raw.get("cacheWriteTokens") or 0),
+        }
+        turns = _cursor_turns(events)
+        summary = _cursor_summary(events)
+        used = [step["tool_use"] for step in summary if step.get("tool_use")]
+        outside = sorted({n for n in used if n not in CURSOR_ALLOWED and not n.startswith("mcp__")})
+        extra = {"effort": effort, "file_tools_only": not outside, "server": server, "model_usage": None}
+        if outside:
+            return AgentResult(False, turns, usage, None, summary,
+                               f"agent used a tool outside the file and MCP set: {', '.join(outside)}", extra)
+        if result is None:
+            finding = "cursor-agent exited without a result event" + (f": {stderr[:300]}" if stderr else "")
+            if stop == "wall":
+                finding = f"time budget exhausted ({max_seconds}s)"
+            elif stop == "turns":
+                finding = f"turn budget exhausted ({max_turns})"
+            if _startup_failure(finding) or _startup_failure(stderr):
+                extra["abort"] = True
+                finding = (stderr or finding)[:300]
+            return AgentResult(False, turns, usage, None, summary, finding, extra)
+        text = str(result.get("result") or "")
+        if result.get("is_error"):
+            extra["abort"] = bool(_startup_failure(text))
+            return AgentResult(False, turns, usage, None, summary, text[:300], extra)
+        claimed = bool(re.match(r"\s*GREEN\b", text))
+        finding = "" if claimed else (f"agent stopped: {text.strip()[:200]}" if text.strip() else "agent stopped")
+        return AgentResult(claimed, turns, usage, None, summary, finding, extra)
+
+
 # ----------------------------------------------------------------------------------- muse
 
-MUSE_FILE_TOOLS = ("read_file", "search", "write_file", "edit_file")
 # Shell names muse still exposes when ``--disable-shell`` is ignored. A used one flags the row.
 MUSE_SHELL_TOOLS = {"bash", "shell", "exec_command", "run_command"}
 
 
-def _muse_mcp_entry(tool: str, sandbox: Path) -> tuple[str, dict]:
-    server = "jk" if tool == "jk" else "results"
-    cfg = mcp_server_config(tool, sandbox)
-    if cfg["type"] == "http":
-        entry = {
-            "type": "streamable-http",
-            "url": cfg["url"],
-            "headers": cfg["headers"],
-            "mode": "optional",
-        }
-    else:
-        entry = {
-            "type": "stdio",
-            "command": cfg["command"],
-            "args": cfg["args"],
-            "mode": "optional",
-        }
-    return server, entry
+def _muse_mcp_entry(cfg: dict) -> dict:
+    """One registered MCP server, as muse's ``mcpServers`` spells it."""
+    if cfg.get("type") == "http":
+        return {"type": "streamable-http", "url": cfg["url"], "headers": cfg["headers"], "mode": "optional"}
+    return {"type": "stdio", "command": cfg["command"], "args": list(cfg.get("args", [])), "mode": "optional"}
 
 
 def _write_muse_home(config: Path, data: Path, tool: str, sandbox: Path, model: str, effort: str) -> str:
@@ -946,8 +1082,8 @@ def _write_muse_home(config: Path, data: Path, tool: str, sandbox: Path, model: 
 
     Muse reads ``$XDG_CONFIG_HOME/muse/settings.json`` (else ``~/.config/muse``) and sessions
     under ``$XDG_DATA_HOME/muse``. The system prompt, the file toolset, and the MCP server live
-    in that settings file. The model catalog is copied so a short id resolves the same way it
-    does for an ordinary launch.
+    in that settings file, the file tools muse's defaults; the model catalog is copied so a short
+    id resolves the same way it does for an ordinary launch.
     """
     real_config = Path.home() / ".config" / "muse"
     auth = real_config / "auth.json"
@@ -962,18 +1098,20 @@ def _write_muse_home(config: Path, data: Path, tool: str, sandbox: Path, model: 
     if catalog.is_dir():
         (data / "muse").mkdir(parents=True, exist_ok=True)
         shutil.copytree(catalog, data / "muse" / "model-catalog")
-    server, entry = _muse_mcp_entry(tool, sandbox)
+    # Every server the run registers, as the other drivers do: an arm's filtered jk mcp included.
+    server, registered = servers(tool, sandbox)
     settings = {
         "schema_version": 1,
         "provider": "meta",
         "model": model,
         "reasoning_effort": effort,
+        # No run.toolset: it names built-in tools only, and setting it drops every MCP tool. The
+        # command line's --disable-shell and --disable-web-tools take the shell and the web away.
         "run": {
             "system_prompt": system_prompt(tool, sandbox, server),
-            "toolset": list(MUSE_FILE_TOOLS),
             "subagent_delegation_mode": "off",
         },
-        "mcpServers": {server: entry},
+        "mcpServers": {name: _muse_mcp_entry(cfg) for name, cfg in registered.items()},
     }
     path = muse / "settings.json"
     path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
@@ -1207,7 +1345,7 @@ def muse(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int,
             "--disable-shell",
             "--disable-web-tools",
             "--no-foreign-personal-context",
-            USER_PROMPT,
+            user_prompt(),
         ]
         events, stderr, stop = _run_streaming(cmd, sandbox, env, max_seconds, transcript_path)
         main_session, all_sessions = _muse_session_events(data)
@@ -1221,7 +1359,7 @@ def muse(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int,
         shell_used = [name for name in used if name.split(".")[-1].split("__")[-1] in MUSE_SHELL_TOOLS]
         extra = {
             "effort": effort,
-            "tools": list(MUSE_FILE_TOOLS),
+            "tools": "muse defaults, no shell or web tools",
             "file_tools_only": not shell_used,
             "server": server,
             "shell_disabled": True,
@@ -1319,7 +1457,7 @@ def api(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int, 
     mcp_names = {t["name"] for t in mcp.tools()}
     tools = anthropic_tools(mcp) + FILE_TOOLS
     client = anthropic.Anthropic()
-    messages: list[dict] = [{"role": "user", "content": USER_PROMPT}]
+    messages: list[dict] = [{"role": "user", "content": user_prompt()}]
     usage = {
         "input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0,
         "reasoning_tokens": 0,
