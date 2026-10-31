@@ -219,7 +219,8 @@ and its calls are missing until `jk build`.
 
 `-t` (MCP `transitive=true`) lists everything that reaches the method instead: its callers, theirs,
 and so on up to `-L` hops (default 8), grouped by hop, each with the method it calls on the way.
-That is the change-impact question grep answers one hop and one file at a time.
+That is the change-impact question grep answers one hop and one file at a time. A direct answer whose callers are called in turn says how many are, and that `-t` gives the
+whole chain in one answer.
 
 Ask it before changing a method's signature or behaviour, and trust the list: it is complete, so
 there is no need to grep for the name afterwards. A method reached only by reflection or named in

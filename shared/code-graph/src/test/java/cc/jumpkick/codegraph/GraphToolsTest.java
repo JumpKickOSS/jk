@@ -315,4 +315,18 @@ class GraphToolsTest {
                 .contains("S.s()  src/main/java/o/O.java:5  through Iface.m()")
                 .doesNotContain("R.r()");
     }
+
+    @Test
+    void a_direct_answer_whose_callers_are_called_in_turn_points_at_transitive() {
+        assertThat(new GraphTools(release()).callers("Info.name", 1, 2000))
+                .as("Release.publish is called by Cli.run; Release.Plan.label and InfoTest.names are not called")
+                .endsWith("1 of them is called in turn: transitive=true (-t) lists every method that reaches it in one"
+                        + " answer, instead of a callers call per method.");
+        assertThat(new GraphTools(release()).callers("Release.publish", 1, 2000))
+                .as("Cli.run, its one caller, is called by nothing")
+                .doesNotContain("called in turn");
+        assertThat(new GraphTools(release()).callers("Info.name", 8, 2000))
+                .as("a transitive answer already holds the chain")
+                .doesNotContain("called in turn");
+    }
 }
