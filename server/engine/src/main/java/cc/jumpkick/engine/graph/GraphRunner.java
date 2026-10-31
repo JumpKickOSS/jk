@@ -81,12 +81,25 @@ public final class GraphRunner {
         }
     }
 
-    /** The graph file the worker writes under {@link #outputDir}: a workspace with one has a graph. */
-    static final String SNAPSHOT = "graph.bin";
+    /**
+     * The file the worker always writes at the top of {@link #sharedDir}: a workspace with one has
+     * a graph, and keeps it current. Deleting the directory is how a project stops.
+     */
+    static final String STORE = "graph.jsonl";
 
-    /** Where a workspace's graph lives. */
+    /** Where this checkout keeps the linked graph and its file stats: build output, gone with {@code jk clean}. */
     public static Path outputDir(Path root) {
         return BuildLayout.moduleTargetDir(root).resolve("graph");
+    }
+
+    /** Where a project commits its graph, shared by everyone who checks it out. */
+    public static Path sharedDir(Path root) {
+        return root.resolve(".jk").resolve("graph");
+    }
+
+    /** Whether the project has a graph: one it committed, or one the first graph question made here. */
+    public static boolean hasGraph(Path root) {
+        return Files.isRegularFile(sharedDir(root).resolve(STORE));
     }
 
     public static GraphAck run(GraphRequest req, Consumer<GraphProgress> progress)
@@ -117,13 +130,13 @@ public final class GraphRunner {
 
     /**
      * Refresh the workspace's graph when it has one, after a build that succeeded: the graph an
-     * agent reads next is the tree the build just compiled, not the one before it. A workspace
-     * with no graph gets none. Best-effort: a refresh that fails is logged, and the next graph
-     * operation refreshes anyway.
+     * agent reads next, and the one committed with the change, is the tree the build just compiled,
+     * not the one before it. A workspace with no graph gets none: the first graph question makes
+     * one. Best-effort: a refresh that fails is logged, and the next graph operation refreshes anyway.
      */
     public static void refreshExisting(Path dir) {
         Path root = rootOf(dir);
-        if (!Files.isRegularFile(outputDir(root).resolve(SNAPSHOT))) return;
+        if (!hasGraph(root)) return;
         GraphRequest build = new GraphRequest(
                 root.toString(),
                 "build",
@@ -295,6 +308,7 @@ public final class GraphRunner {
                 .op(PluginProtocol.OP_COMMAND, "graph", "jk-graph")
                 .configString("root", root.toString())
                 .configString("out", outputDir(root).toString())
+                .configString("shared", sharedDir(root).toString())
                 .configString("op", Objects.requireNonNull(r.op()))
                 .configList("args", r.args())
                 .configString("mode", r.mode() == null ? "bfs" : r.mode())

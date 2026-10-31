@@ -6,7 +6,7 @@ and call edges from the compiled classes. Every answer names a symbol as `Owner.
 it at `file:line`.
 
 ```bash
-jk graph                                   # build or refresh target/graph/
+jk graph                                   # build or refresh the graph (.jk/graph/, committed)
 jk graph query "how is the order total computed"
 jk graph read OrderService.total           # that method's source, not the whole file
 jk graph read OrderService -w structure    # the type's declarations without bodies
@@ -47,9 +47,11 @@ first sentence of its doc comment. `read`, `find` and the search use them.
 
 ## How it stays current
 
-Every `jk graph` command refreshes the graph before answering, and a build that succeeds refreshes
-an existing `target/graph/` before it reports done, so the graph an agent reads is the tree as it
-stands. Files are compared by their stat identity (size, modification and change time, file id),
+A project has a graph once the first `jk graph` command or MCP `callers` call makes one; nothing
+builds it before that. From then on it is kept current: every `jk graph` command refreshes it before
+answering, and a build or `jk guard` that succeeds refreshes it before it reports done, so the graph
+an agent reads, and the one committed with a change, is the tree as it stands. To stop, delete
+`.jk/graph/`: a project without one gets none until the next graph question. Files are compared by their stat identity (size, modification and change time, file id),
 then by content hash; only changed files are read again, and a file that will not read contributes
 nothing, its earlier facts included. A refresh that fails leaves the previous graph and its state
 as they were.
@@ -190,9 +192,20 @@ per line with its `file:line`. It follows edge direction; `-U` ignores it, and `
 
 ## Outputs
 
-`target/graph/` at the workspace root holds jk's own state, read by `jk graph` and the MCP tools:
-`graph.bin` (the graph), and `files.tsv` and `fragments.jsonl` (per-file state that makes the next
-refresh incremental). None of it is an exchange format.
+`.jk/graph/` at the workspace root is the graph the project commits, shared by everyone who checks
+it out: one `graph.jsonl` per module, at the module's path below `.jk/graph/`, with one line per file
+in path order. A line holds what the file declares and, once someone has built it, the facts its
+compiled classes gave, keyed by the file's content hash. A fresh checkout answers from those lines
+without reading a file again or compiling: a line whose hash matches the file is used as is, and a
+file that changed is read again. One edit changes one line. The `.gitattributes` jk writes beside
+them merges them line by line (`merge=union`), hides them from text diffs and marks them generated, and
+its `.ignore` keeps them out of ripgrep and the agent search tools built on it;
+after a merge the line that matches the tree is used and the next refresh drops the other. A refresh
+that changes nothing leaves the files untouched.
+
+`target/graph/` holds this checkout's state, gone with `jk clean`: `graph.bin` (the linked graph)
+and `files.tsv` (each file's stat, so a refresh reads only what moved). None of it is an exchange
+format.
 
 ## Settings
 

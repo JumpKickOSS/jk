@@ -94,7 +94,8 @@ public final class GraphService {
     }
 
     /**
-     * What the engine knows about the workspace: its root, where its graph lives, every module's
+     * What the engine knows about the workspace: its root, where this checkout keeps its linked
+     * graph ({@code out}) and where the project commits its store ({@code shared}), every module's
      * class facts index, its modules, the script reader, the {@code [graph.aliases]} (term → outside words), for {@code rules} the guard rules
      * the engine matched to the file (one JSON object each), and for {@code read} and {@code find} the
      * locked jars and where their API indexes are kept.
@@ -102,6 +103,7 @@ public final class GraphService {
     public record Workspace(
             Path root,
             Path out,
+            Path shared,
             List<GraphBuild.ClassIndex> indexes,
             Modules modules,
             ScriptReader scripts,
@@ -130,7 +132,8 @@ public final class GraphService {
             throw new IllegalArgumentException("no graph has been built here yet: run jk graph without -n first");
         }
         if (build == null) {
-            build = GraphBuild.refresh(w.root(), w.out(), w.indexes(), w.modules(), w.scripts(), r.rebuild(), progress);
+            build = GraphBuild.refresh(
+                    w.root(), w.out(), w.shared(), w.indexes(), w.modules(), w.scripts(), r.rebuild(), progress);
         }
         return new Answer(text(w, build, r), build);
     }

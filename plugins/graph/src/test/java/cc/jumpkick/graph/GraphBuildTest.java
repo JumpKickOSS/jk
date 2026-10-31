@@ -145,6 +145,7 @@ import java.util.List;
         return GraphBuild.refresh(
                 root,
                 root.resolve("target/graph"),
+                root.resolve(".jk/graph"),
                 indexes(root, stale),
                 Modules.NONE,
                 NO_NODE,
@@ -308,6 +309,11 @@ import java.util.List;
         assertThat(new GraphTools(g).callers("Two.put", 8, 2000)).contains("Printer.print()", "Printer.render()");
     }
 
+    /** Edits {@code file} after its classes were built: new bytes, so no compiled facts are of them. */
+    private static void edit(Path file) throws IOException {
+        Files.writeString(file, Files.readString(file) + "// edited\n");
+    }
+
     private static List<String> overloads(CodeGraph g, String from, String to, String relation) {
         return g.edges().stream()
                 .filter(e -> e.source().endsWith(from)
@@ -321,6 +327,7 @@ import java.util.List;
     @Test
     void aStaleSourceLosesOnlyItsOwnCompiledFacts(@TempDir Path dir) throws IOException {
         Path root = workspace(dir);
+        edit(root.resolve("src/main/java/com/acme/shop/PriceCalculator.java"));
         CodeGraph calc = refresh(root, false, Set.of("src/main/java/com/acme/shop/PriceCalculator.java"))
                 .graph();
         assertThat(edge(calc, "orderservice_total", "pricecalculator_sum", "calls"))
@@ -328,6 +335,7 @@ import java.util.List;
                 .isTrue();
         assertThat(edge(calc, "orderservice_audit", "baseservice_log", "calls")).isTrue();
 
+        edit(root.resolve("src/main/java/com/acme/shop/OrderService.java"));
         CodeGraph svc = refresh(root, false, Set.of("src/main/java/com/acme/shop/OrderService.java"))
                 .graph();
         assertThat(edge(svc, "orderservice_total", "pricecalculator_sum", "calls"))
@@ -356,6 +364,123 @@ import java.util.List;
         assertThat(Decl.vis(log)).isEqualTo("protected");
         GraphNode auditable = Objects.requireNonNull(g.node("src_main_java_com_acme_shop_auditable_auditable"));
         assertThat(Decl.kind(auditable)).isEqualTo("interface");
+    }
+
+    /**
+     * The graph is committed: one line per file under .jk/graph/, with the attributes that merge
+     * it by lines, and a refresh with nothing changed leaves the committed bytes alone.
+     */
+    @Test
+    void theStoreIsCommittedUnderDotJkAndAnUnchangedTreeLeavesItAlone(@TempDir Path dir) throws IOException {
+        GraphMemory.clear();
+        Path root = workspace(dir);
+        refresh(root, false);
+        Path store = root.resolve(".jk/graph/" + FragmentStore.FILE);
+        assertThat(store).exists();
+        assertThat(Files.readString(root.resolve(".jk/graph/.gitattributes"))).isEqualTo(FragmentStore.ATTRIBUTES_TEXT);
+        assertThat(Files.readString(root.resolve(".jk/graph/.ignore"))).isEqualTo("graph.jsonl\n");
+        List<String> lines = Files.readAllLines(store);
+        assertThat(lines.getFirst()).isEqualTo(FragmentStore.HEADER);
+        assertThat(lines)
+                .anyMatch(l -> l.startsWith("{\"p\":\"src/main/java/com/acme/shop/OrderService.java\"")
+                        && l.contains("\"c\":"));
+        List<String> paths = lines.stream()
+                .skip(1)
+                .map(l -> l.substring(6, l.indexOf('"', 6)))
+                .toList();
+        assertThat(paths).isSorted();
+        FileTime written = Files.getLastModifiedTime(store);
+        byte[] before = Files.readAllBytes(store);
+        GraphMemory.clear();
+        refresh(root, true);
+        assertThat(Files.readAllBytes(store)).isEqualTo(before);
+        assertThat(Files.getLastModifiedTime(store)).isEqualTo(written);
+    }
+
+    /**
+     * A checkout that has never been built answers from the committed store: no file is extracted
+     * again, and the compiled facts whoever committed it built come with it.
+     */
+    @Test
+    void aFreshCheckoutAnswersFromTheCommittedStoreWithItsCompiledFacts(@TempDir Path dir) throws IOException {
+        GraphMemory.clear();
+        Path built = workspace(Files.createDirectories(dir.resolve("built")));
+        GraphNode compiled = Objects.requireNonNull(
+                refresh(built, false).graph().node("src_main_java_com_acme_shop_orderservice_orderservice_total"));
+        assertThat(compiled.extra()).containsKey(Linker.DESCRIPTORS);
+        Path fresh = dir.resolve("fresh");
+        try (var walk = Files.walk(built)) {
+            for (Path p : walk.toList()) {
+                Path rel = built.relativize(p);
+                if (rel.startsWith("target")) continue;
+                Path to = fresh.resolve(rel.toString());
+                if (Files.isDirectory(p)) Files.createDirectories(to);
+                else Files.copy(p, to);
+            }
+        }
+        GraphMemory.clear();
+        GraphBuild.Result r = GraphBuild.refresh(
+                fresh,
+                fresh.resolve("target/graph"),
+                fresh.resolve(".jk/graph"),
+                List.of(),
+                Modules.NONE,
+                NO_NODE,
+                false,
+                GraphBuild.Progress.NONE,
+                LATER);
+        assertThat(r.extracted()).isZero();
+        GraphNode total =
+                Objects.requireNonNull(r.graph().node("src_main_java_com_acme_shop_orderservice_orderservice_total"));
+        assertThat(total.extra().get(Linker.DESCRIPTORS))
+                .isEqualTo(compiled.extra().get(Linker.DESCRIPTORS));
+        assertThat(edge(r.graph(), "orderservice_audit", "baseservice_log", "calls"))
+                .isTrue();
+        assertThat(Files.readAllBytes(fresh.resolve(".jk/graph/" + FragmentStore.FILE)))
+                .isEqualTo(Files.readAllBytes(built.resolve(".jk/graph/" + FragmentStore.FILE)));
+    }
+
+    /**
+     * Two branches that each changed a file merge by keeping both lines; the line whose hash
+     * matches the tree is the one read, and the next write keeps only it. Compiled facts of bytes
+     * the tree no longer holds are not used.
+     */
+    @Test
+    void aUnionMergedStoreUsesTheLineThatMatchesTheTree(@TempDir Path dir) throws IOException {
+        GraphMemory.clear();
+        Path root = workspace(dir);
+        refresh(root, false);
+        Path store = root.resolve(".jk/graph/" + FragmentStore.FILE);
+        String line = Files.readAllLines(store).stream()
+                .filter(l -> l.contains("\"p\":\"src/main/java/com/acme/shop/PriceCalculator.java\""))
+                .findFirst()
+                .orElseThrow();
+        String other = line.replaceFirst("\"s\":\"[0-9a-f]+\"", "\"s\":\"0000000000000000\"");
+        Files.writeString(store, Files.readString(store) + other + "\n");
+        GraphMemory.clear();
+        Path cut = root.resolve("src/main/java/com/acme/shop/PriceCalculator.java");
+        Files.writeString(cut, Files.readString(cut).replace("public long sum(", "public long add("));
+        GraphBuild.Result r = GraphBuild.refresh(
+                root,
+                root.resolve("target/graph"),
+                root.resolve(".jk/graph"),
+                indexes(root, Set.of("src/main/java/com/acme/shop/PriceCalculator.java")),
+                Modules.NONE,
+                NO_NODE,
+                false,
+                GraphBuild.Progress.NONE,
+                LATER);
+        assertThat(r.extracted()).isEqualTo(1);
+        assertThat(r.graph().node("src_main_java_com_acme_shop_pricecalculator_pricecalculator_add"))
+                .isNotNull();
+        assertThat(Objects.requireNonNull(
+                                r.graph().node("src_main_java_com_acme_shop_pricecalculator_pricecalculator_add"))
+                        .extra())
+                .doesNotContainKey(Linker.DESCRIPTORS);
+        assertThat(Files.readAllLines(store))
+                .filteredOn(l -> l.contains("\"p\":\"src/main/java/com/acme/shop/PriceCalculator.java\""))
+                .hasSize(1)
+                .allMatch(l -> !l.contains("\"c\":"));
     }
 
     /** -n answers from what was written; with nothing written it says so rather than build one. */
@@ -521,6 +646,7 @@ import java.util.List;
         return new GraphService.Workspace(
                 root,
                 root.resolve("target/graph"),
+                root.resolve(".jk/graph"),
                 indexes(root, Set.of()),
                 Modules.NONE,
                 NO_NODE,

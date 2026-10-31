@@ -37,7 +37,7 @@ final class GraphMemory {
     private static @Nullable StatIndex stats;
     private static @Nullable Stamp statsStamp;
     private static @Nullable FragmentStore store;
-    private static @Nullable Stamp storeStamp;
+    private static @Nullable String storeStamp;
     private static @Nullable Graph graph;
     private static @Nullable Stamp graphStamp;
 
@@ -59,22 +59,25 @@ final class GraphMemory {
         statsStamp = Stamp.of(out.resolve(StatIndex.FILE));
     }
 
-    /** The fragment store of {@code out}: the one in memory while {@code fragments.jsonl} is unchanged. */
-    static synchronized FragmentStore store(Path out) {
+    /**
+     * The fragment store committed at {@code shared}: the one in memory while none of its module
+     * files changed. Kept for {@code out}'s workspace like the rest.
+     */
+    static synchronized FragmentStore store(Path out, Path shared) {
         own(out);
-        Stamp now = Stamp.of(out.resolve(FragmentStore.FILE));
-        if (store == null || now == null || !now.equals(storeStamp)) {
-            store = FragmentStore.open(out);
+        String now = FragmentStore.stamp(shared);
+        if (store == null || !now.equals(storeStamp)) {
+            store = FragmentStore.open(shared);
             storeStamp = now;
         }
         return store;
     }
 
-    /** {@code fragments} was just saved to {@code out}. */
-    static synchronized void savedStore(Path out, FragmentStore fragments) {
+    /** {@code fragments} was just saved to {@code shared}. */
+    static synchronized void savedStore(Path out, Path shared, FragmentStore fragments) {
         own(out);
         store = fragments;
-        storeStamp = Stamp.of(out.resolve(FragmentStore.FILE));
+        storeStamp = FragmentStore.stamp(shared);
     }
 
     /** The graph in memory while {@code graph.bin} is the one it came from, else {@code null}. */
