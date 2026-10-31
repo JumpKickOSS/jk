@@ -27,9 +27,14 @@ public final class LiveRuns {
     private final ReentrantReadWriteLock sseConnect;
     private final LongSupplier clock;
 
-    /** Whether {@code requestId} is in flight — the membership fact without the snapshot's copies. */
+    /**
+     * Whether {@code requestId} is not done yet — the membership fact without the snapshot's copies.
+     * Its session counts as well as its hold: a build gives up its hold as it finishes, before its
+     * record is written, and retires its session only after; a wait that took the hold for the job
+     * read no record and answered FAIL for a build that passed.
+     */
     public boolean isLive(long requestId) {
-        return inFlight.get(requestId).isPresent();
+        return inFlight.get(requestId).isPresent() || sessions.get(requestId) != null;
     }
 
     public List<HttpLive.Run> snapshot() {

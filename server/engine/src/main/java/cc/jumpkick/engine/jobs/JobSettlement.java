@@ -92,8 +92,9 @@ final class JobSettlement {
             // In a finally so a throwing journal can never strand the client.
             // A no-op says so: its run has no directory, so the client keeps no transcript for it.
             if (writer != null) WireWriter.sendQuiet(writer, ProtoLifecycle.jobFinish(jid, noop));
+            // Also in the finally: an MCP wait counts the job live until its session retires.
+            events.clearProgress(jid);
         }
-        events.clearProgress(jid);
         // Idle boundary after finish side-effects so prune/GC see journal + event garbage too.
         // Cache maintenance (plan=false) only GCs when nothing else is in flight.
         if (plan) runtime.maybeIdleBoundary();
