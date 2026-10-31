@@ -146,6 +146,24 @@ class FactsExtractorTest {
     }
 
     @Test
+    void a_reference_to_an_own_method_is_a_call_and_an_own_lambda_body_is_not() throws IOException {
+        ClassFacts c = sample();
+        MethodFacts own = c.methods().stream()
+                .filter(m -> m.name().equals("ownReference"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(own.calls()).anySatisfy(s -> assertThat(s.target()).startsWith(Sample.class.getName() + "#hidden"));
+        MethodFacts lambda = c.methods().stream()
+                .filter(m -> m.name().equals("lambda"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(lambda.calls()).noneSatisfy(s -> assertThat(s.target()).contains("#lambda$"));
+        assertThat(FactsExtractor.lambdaBody("lambda$run$0")).isTrue();
+        assertThat(FactsExtractor.lambdaBody("run$lambda$0")).isTrue();
+        assertThat(FactsExtractor.lambdaBody("hidden")).isFalse();
+    }
+
+    @Test
     void method_references_inside_lambdas_are_calls_and_type_refs_feed_package_edges() throws IOException {
         ClassFacts c = sample();
         MethodFacts lambda = c.methods().stream()

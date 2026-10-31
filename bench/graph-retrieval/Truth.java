@@ -10,7 +10,8 @@
 // One JSON object per line: {"class", "source", "super", "interfaces", "interface", "synthetic",
 // "outer", "methods": [{"name", "desc", "first", "last", "synthetic", "abstract", "calls":
 // [{"owner", "name", "desc", "line"}]}]}. Lines are source lines from LineNumberTable; a method
-// without one has first = last = 0.
+// without one has first = last = 0. A method reference (`Type::method`) is a call of the method it
+// names, as the same call inside a lambda is: invokedynamic hands it over as a bootstrap argument.
 
 import java.io.IOException;
 import java.lang.classfile.Attributes;
@@ -18,8 +19,10 @@ import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.CodeElement;
 import java.lang.classfile.MethodModel;
+import java.lang.classfile.instruction.InvokeDynamicInstruction;
 import java.lang.classfile.instruction.InvokeInstruction;
 import java.lang.classfile.instruction.LineNumber;
+import java.lang.constant.DirectMethodHandleDesc;
 import java.lang.reflect.AccessFlag;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -100,6 +103,16 @@ public class Truth {
                             + ",\"name\":" + str(inv.name().stringValue())
                             + ",\"desc\":" + str(inv.type().stringValue())
                             + ",\"line\":" + line + "}");
+                } else if (e instanceof InvokeDynamicInstruction indy) {
+                    for (var arg : indy.bootstrapArgs()) {
+                        if (arg instanceof DirectMethodHandleDesc h && invokes(h.kind())) {
+                            String owner = h.owner().descriptorString();
+                            calls.add("{\"owner\":" + str(owner.substring(1, owner.length() - 1))
+                                    + ",\"name\":" + str(h.methodName())
+                                    + ",\"desc\":" + str(h.lookupDescriptor())
+                                    + ",\"line\":" + line + "}");
+                        }
+                    }
                 }
             }
         }
@@ -111,6 +124,14 @@ public class Truth {
                 .append(m.flags().has(AccessFlag.SYNTHETIC) || m.flags().has(AccessFlag.BRIDGE));
         out.append(",\"abstract\":").append(m.flags().has(AccessFlag.ABSTRACT));
         out.append(",\"calls\":[").append(String.join(",", calls)).append("]}");
+    }
+
+    /** A handle that runs a method or constructor, not one that reads or writes a field. */
+    private static boolean invokes(DirectMethodHandleDesc.Kind kind) {
+        return switch (kind) {
+            case GETTER, SETTER, STATIC_GETTER, STATIC_SETTER -> false;
+            default -> true;
+        };
     }
 
     private static String str(String s) {
