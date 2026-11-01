@@ -246,6 +246,18 @@ def install_hooks(kind: str | None, sandbox: Path, run_dir: Path) -> None:
             raise RuntimeError(f"graphify claude install failed: {out[-300:]}")
 
 
+def write_agents_md(sandbox: Path) -> None:
+    """jk's AGENTS.md section and nothing else: no agent's files (JK_AGENTS=none), whatever shell
+    launched the bench. A sandbox without the section is a broken arm, so it raises."""
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+    env["JK_AGENTS"] = "none"
+    p = subprocess.run(["jk", "-u", "-x", "agents"], cwd=sandbox, capture_output=True, text=True, env=env,
+                       timeout=300)
+    agents_md = sandbox / "AGENTS.md"
+    if p.returncode != 0 or "<!-- BEGIN:jumpkick -->" not in (agents_md.read_text() if agents_md.exists() else ""):
+        raise RuntimeError(f"jk agents wrote no AGENTS.md section (exit {p.returncode}): {(p.stdout + p.stderr)[-300:]}")
+
+
 def sh_env(cmd: list[str], cwd: Path, env: dict, timeout: int) -> tuple[int, str, float]:
     import os
     start = time.monotonic()
@@ -377,7 +389,7 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
             sh(["jk", "-u", "-x", "graph", "build"], sandbox, 1800)
             # What a jk user's repository holds: jk's AGENTS.md section. Claude Code reads AGENTS.md
             # itself; a CLAUDE.md import of it adds context and nothing else.
-            sh(["jk", "-u", "-x", "skill", "agents"], sandbox, 300)
+            write_agents_md(sandbox)
             if spec.get("agents_line"):
                 agents_md = sandbox / "AGENTS.md"
                 text = agents_md.read_text()

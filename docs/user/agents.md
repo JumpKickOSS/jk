@@ -27,7 +27,7 @@ never edits it. A file jk cannot parse as strict JSON is left as it was, with a 
 | `jk agents --remove` | jk's entries out of all of the above; a file left empty is deleted. |
 | Any build verb (`jk build`, `jk test`, …) | A section that differs from this jk's guide is rewritten. A file without the section is left alone. |
 
-`JK_AGENTS=none` makes `new`, `init` and `import` write `AGENTS.md` only; `JK_AGENTS=all` wires every
+`JK_AGENTS=none` makes `jk agents`, `new`, `init` and `import` write `AGENTS.md` only; `JK_AGENTS=all` wires every
 agent. An agent is in use when its marker exists (`.claude/`, `CLAUDE.md`) or the calling shell
 belongs to it.
 

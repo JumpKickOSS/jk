@@ -58,7 +58,7 @@ public final class AgentsCommand implements CliCommand {
         try {
             List<String> lines = in.isSet("remove")
                     ? AgentWiring.remove(dir)
-                    : AgentWiring.run(dir, in.isSet("all") ? AgentSetup.Mode.ALL : AgentSetup.Mode.DETECT);
+                    : in.isSet("all") ? AgentWiring.run(dir, AgentSetup.Mode.ALL) : AgentWiring.run(dir);
             String none =
                     in.isSet("remove") ? "nothing of jk's in " + dir : dir.resolve(AgentsGuide.FILE) + " is current";
             CliOutput.outRaw((lines.isEmpty() ? none : String.join("\n", lines)) + "\n");
