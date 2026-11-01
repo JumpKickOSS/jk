@@ -858,8 +858,8 @@ final class ParityRules {
      * The blocks {@code bench/scoreboard --render} writes: from the banked rows ({@code wall-}) and
      * from the checked-in graph retrieval results ({@code graph-}).
      */
-    private static final Pattern GENERATED =
-            Pattern.compile("<!-- (?:wall-(?:table|claims|strip)|graph-(?:table|claims)):(begin|end) -->");
+    private static final Pattern GENERATED = Pattern.compile(
+            "<!-- (?:wall-(?:table|claims|strip)|graph-(?:table|claims)|agents-(?:claims|questions|renames|curve)):(begin|end) -->");
 
     /** The agent-loop table, banked by hand from {@code bench/agent-loop}, not by the scoreboard. */
     private static final Pattern AGENT_TABLE = Pattern.compile("agents-reach-green");

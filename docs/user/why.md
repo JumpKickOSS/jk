@@ -39,9 +39,11 @@ Every claim links what backs it. Where JumpKick loses, the linked page says so.
 | Guards and hooks | House rules as data: each violation names the rule, the sanctioned alternative and why, so the fix is mechanical; git hooks refuse banned commit trailers and hand-edited guard files | [Guards](guards.md) · [Agents](agents.md#hooks-and-protected-files) |
 
 The measure is turns, tokens and wall time to green on broken builds, against Maven and Gradle
-given the same agent tooling: [Agents reach green](#agents-reach-green). Asked who calls a method
-or what can end up running it, agents from three vendors answered every question with the graph,
-in a fifth to two fifths of the turns they took without it: [Asking about the code](#asking-about-the-code).
+given the same agent tooling: [Agents reach green](#agents-reach-green).
+
+<!-- agents-claims:begin -->
+Asked who calls a method or what can end up running it, agents from 5 vendors answered from the graph in 60%–86% fewer turns and 78%–94% fewer tokens than with no graph; renaming a method and every caller took 66%–85% fewer turns and 73%–82% fewer tokens; down to the smallest repository measured, spring-petclinic at 3,635 lines. ([The tables](#asking-about-the-code).)
+<!-- agents-claims:end -->
 
 ### 2. Never type `clean` again
 
@@ -351,31 +353,63 @@ tokens. The table is re-run each release ([Releases](../contributors/releases.md
 
 ### Asking about the code
 
-Before an agent changes a method it asks who calls it and what can end up running it. Four such
-questions, on commons-lang and on jk itself, one of them through dynamic dispatch, were graded
+Before an agent changes a method it asks who calls it and what can end up running it. Seven such
+questions, on commons-lang and on jk itself, two of them through dynamic dispatch, are graded
 against the compiler's answer: correct means an F1 of at least 0.9. Each agent ran jk as installed,
 whose default MCP list carries `callers`, and the same jk with every graph tool removed
-([change tasks](../../bench/agent-loop/README.md#change-tasks), measured 2026-10-29/30 on jk 0.49
-snapshots, 3–5 runs per question and arm). Turns, tokens (input, output, cache read and write)
-and wall are the per-question medians summed over the four:
+([change tasks](../../bench/agent-loop/README.md#change-tasks), 3 or more runs per question and
+arm). Turns, tokens (input, output, cache read and write) and wall are the per-question medians
+summed over the questions each agent ran both ways:
 
-| Agent, jk / jk without the graph | Correct | Turns | Tokens | Wall |
+<!-- agents-questions:begin -->
+| Agent (questions) | Correct, jk / without the graph | Turns | Tokens | Wall |
 |---|---|---|---|---|
-| Vendor A, mid-tier | 12 of 12 / 17 of 20 | 13 / 65 | 151k / 994k | 42 / 132 s |
-| Vendor B, frontier | 12 of 12 / 12 of 12 | 30 / 155 | 463k / 10.2M | 220 / 1,507 s |
-| Vendor C, fast | 12 of 12 / 3 of 12 | 87 / 215 | 1.9M / 12.4M | 501 / 1,051 s |
+| Vendor A, mid-tier (7) | 21 of 21 / 65 of 72 | 22 / 130.5 | 283k / 2.3M | 54 / 326 s |
+| Vendor B, frontier (4) | 4 of 4 / 12 of 12 | 36 / 155 | 2.3M / 10.2M | 334 / 1,507 s |
+| Vendor C, fast (4) | 14 of 14 / 3 of 12 | 87 / 215 | 2.0M / 12.4M | 434 / 1,051 s |
+| Vendor D (4) | 16 of 16 / 10 of 12 | 12 / 87 | 241k / 4.2M | 83 / 270 s |
+| Vendor E (4) | 15 of 15 / 12 of 12 | 27 / 133 | 775k / 11.2M | 227 / 731 s |
 
-With the graph every agent answered every question, Vendor A's and Vendor B's agents in about a
-fifth of the turns and Vendor C's in two fifths. Without it Vendor C's agent hit its 60-turn
-budget on three of the four questions and missed them, so its row understates the gap; Vendor A's
-stopped short of the far end of a call chain and claimed done. The answer is `callers` (`-t` for
-everything that reaches the method): complete from the compiled classes, where grep finds names
-one file at a time.
+Medians per task, summed over the tasks each agent ran on both arms; results: `2026-10-31-change-tasks`, `agy-questions`, `cursor-composer-questions`, `graph-native-questions`, `graph-native-shell`, `graph-nav-v2`, `grok-questions`, `muse-questions`.
+<!-- agents-questions:end -->
 
-On edit tasks (rename a method and its callers, add a field through the layers, find a bug from
-its symptom) the graph is not yet a clear win: Vendor A's agent reaches green on all seven either
-way, in the same turns give or take two, with fewer tokens on three tasks, more on two and about
-the same on two.
+The answer is `callers` (`transitive=true` for everything that reaches the method): complete from
+the compiled classes, where grep finds names one file at a time and an agent then reads each file
+to rule out the overloads, the other types with a method of that name, and the calls through an
+interface. Java and Kotlin make that search long: dispatch, overloads, lambdas and method
+references hide the call from a text search. Without the graph the fast-tier agent hit its turn
+budget on most questions and missed them, so its row understates the gap.
+
+### Changing code
+
+Renaming a method is the edit where the search costs most: every override, every call and every
+doc link, in main and test sources, across modules. `rename` does it in one call from the compiled
+classes and says which modules to test; without it the agent greps, reads and edits file by file,
+and rebuilds until the compiler stops naming a site. Hidden acceptance tests check the result:
+
+<!-- agents-renames:begin -->
+| Agent (renames) | Correct, jk / without the graph | Turns | Tokens | Wall |
+|---|---|---|---|---|
+| Vendor A, mid-tier (4) | 12 of 12 / 24 of 24 | 11 / 73.5 | 84k / 461k | 34 / 204 s |
+| Vendor D (4) | 12 of 12 / 12 of 12 | 31 / 90 | 787k / 2.9M | 361 / 692 s |
+
+Medians per task, summed over the tasks each agent ran on both arms; results: `2026-10-31-change-tasks`.
+<!-- agents-renames:end -->
+
+### How small a repository
+
+On a small repository grep is cheap and an agent reads every file anyway, so the graph's per-turn
+cost could outweigh what it saves. The same rename on repositories from a two-module Spring guide
+to jk itself, each with and without the graph (medians, 3 or more runs each):
+
+<!-- agents-curve:begin -->
+| Repository | Lines | Rename | Vendor A, mid-tier: turns · tokens, jk / without | Vendor D: turns · tokens, jk / without |
+|---|---:|---|---|---|
+| spring-petclinic | 3,635 | `Owner.addVisit` | 3 / 7 · 18k / 28k | 4 / 6 · 59k / 92k |
+| commons-lang | 188,332 | `CharSequenceUtils.indexOf` | 3 / 18.5 · 18k / 45k | 4 / 40 · 65k / 1.5M |
+| commons-lang | 188,332 | `includes` | 3 / 39.5 · 19k / 284k | 7 / 24 · 133k / 1.0M |
+| jk | 679,533 | `edgesBetween` | 2 / 8.5 · 29k / 104k | 16 / 20 · 529k / 276k |
+<!-- agents-curve:end -->
 
 ## What is still open
 

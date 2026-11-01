@@ -291,11 +291,13 @@ On jk (679,533 lines), asked who calls a method, what implements or overrides it
 ## MCP
 
 jk's MCP server lists one graph tool by default, `callers`: every card an agent's host shows is paid
-on every turn, and in measured agent runs caller questions are the ones that repay it. Asked who
-calls a method or what can end up running it, agents from three vendors answered every question
-with `callers` and took a fifth to two fifths of the turns they took without the graph; without
-it the fast-tier agent missed three of the four ([Asking about the code](why.md#asking-about-the-code)).
-On edit tasks the graph does not yet save turns. `query`, `read` and `find` answer as their
+on every turn, and in measured agent runs `callers` and `rename` are the ones that repay it.
+
+<!-- agents-claims:begin -->
+Asked who calls a method or what can end up running it, agents from 5 vendors answered from the graph in 60%–86% fewer turns and 78%–94% fewer tokens than with no graph; renaming a method and every caller took 66%–85% fewer turns and 73%–82% fewer tokens; down to the smallest repository measured, spring-petclinic at 3,635 lines. ([The tables](why.md#asking-about-the-code).)
+<!-- agents-claims:end -->
+
+`query`, `read` and `find` answer as their
 `jk graph` subcommands do and are on the extended list (`tools/list` with `extended: true`, or
 `[mcp] tools = "all"`); every tool is callable by name either way. `neighbors`, `path` and `rules`
 are `jk graph` in a shell. See [MCP](mcp.md).

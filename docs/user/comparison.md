@@ -89,9 +89,11 @@ The agent loop is measured: over 165 broken-build scenarios, five coding agents 
 vendors, the same prompt and budget for each tool. On the four agents that fix every scenario jk
 takes 5–6 turns against 5–8, 23–46k input tokens against 25–69k, and 11–19 s against 14–32 s
 (medians; one host, Gradle single-module guides — [the table](why.md#agents-reach-green)).
-Asked who calls a method or what can end up running it, three vendors' agents answered every
-question with jk's graph, in a fifth to two fifths of the turns they took without it
-([the table](why.md#asking-about-the-code)); Maven and Gradle have no first-party graph to ask.
+Maven and Gradle have no first-party graph to ask; with jk's:
+
+<!-- agents-claims:begin -->
+Asked who calls a method or what can end up running it, agents from 5 vendors answered from the graph in 60%–86% fewer turns and 78%–94% fewer tokens than with no graph; renaming a method and every caller took 66%–85% fewer turns and 73%–82% fewer tokens; down to the smallest repository measured, spring-petclinic at 3,635 lines. ([The tables](why.md#asking-about-the-code).)
+<!-- agents-claims:end -->
 See [Why JumpKick](why.md) and [Agents](agents.md).
 
 ## Speed and memory
