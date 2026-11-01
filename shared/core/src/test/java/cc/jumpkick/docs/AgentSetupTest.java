@@ -170,5 +170,8 @@ class AgentSetupTest {
     void an_installed_cursor_gets_its_mcp_file_without_a_cursor_directory(@TempDir Path dir) throws Exception {
         AgentSetup.install(dir, AgentSetup.Mode.DETECT, Set.of(AgentSetup.Host.CURSOR));
         assertThat(dir.resolve(".cursor/mcp.json")).isRegularFile();
+        assertThat(Files.readString(dir.resolve(".cursor/rules/jk.mdc")))
+                .startsWith("---\n")
+                .contains("alwaysApply: true");
     }
 }
