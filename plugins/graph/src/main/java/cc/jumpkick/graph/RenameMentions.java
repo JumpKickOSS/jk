@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -21,6 +22,9 @@ final class RenameMentions {
 
     /** Docs and config whose lines a rename lists when they name the method beside its type. */
     private static final Pattern PROSE = Pattern.compile("\\.(?:md|adoc|txt|html|xml|properties|ya?ml|toml)$");
+
+    /** A quoted line's characters at most. */
+    private static final int WIDTH = 160;
 
     /** Mentions listed before the rest are counted. */
     private static final int SHOWN = 12;
@@ -41,7 +45,7 @@ final class RenameMentions {
             for (int i = 0; i < lines.length; i++) {
                 String t = lines[i].strip();
                 boolean comment = t.startsWith("//") || t.startsWith("*") || t.startsWith("/*");
-                if (comment && word.matcher(t).find()) out.add(e.getKey() + ":" + (i + 1) + "| " + t);
+                if (comment && word.matcher(t).find()) out.add(e.getKey() + ":" + (i + 1) + "| " + clip(t, word));
             }
         }
         if (types.isEmpty()) return out;
@@ -58,11 +62,21 @@ final class RenameMentions {
             String[] lines = text.split("\n", -1);
             for (int i = 0; i < lines.length; i++) {
                 if (word.matcher(lines[i]).find() && type.matcher(lines[i]).find()) {
-                    out.add(rel + ":" + (i + 1) + "| " + lines[i].strip());
+                    out.add(rel + ":" + (i + 1) + "| " + clip(lines[i].strip(), word));
                 }
             }
         }
         return out;
+    }
+
+    /** {@code line} cut to {@link #WIDTH} characters around the first match: one long line must not fill the budget. */
+    static String clip(String line, Pattern word) {
+        if (line.length() <= WIDTH) return line;
+        Matcher m = word.matcher(line);
+        int at = m.find() ? m.start() : 0;
+        int from = Math.max(0, Math.min(at - WIDTH / 3, line.length() - WIDTH));
+        int to = Math.min(line.length(), from + WIDTH);
+        return (from > 0 ? "…" : "") + line.substring(from, to) + (to < line.length() ? "…" : "");
     }
 
     /** The answer's lines for {@code mentions}: the list, or that there is none. */

@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Pattern;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
@@ -126,6 +127,14 @@ class GraphRenameTest {
                 .contains("CHANGES.md:1| - Range.contains no longer accepts NaN.")
                 .doesNotContain("Shop contains it");
         assertThat(Files.readString(root.resolve("CHANGES.md"))).contains("Range.contains");
+    }
+
+    @Test
+    void aLongProseLineIsQuotedAroundTheMatch() {
+        String line = "x".repeat(500) + " Range.contains " + "y".repeat(500);
+        String clipped = RenameMentions.clip(line, Pattern.compile("\\bcontains\\b"));
+        assertThat(clipped).contains("Range.contains").startsWith("…").endsWith("…");
+        assertThat(clipped.length()).isLessThanOrEqualTo(162);
     }
 
     @Test
