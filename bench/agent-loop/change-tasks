@@ -71,7 +71,8 @@ jk's MCP tools are on the `jk` server: call them with use_tool, tool_name `jk__c
 AGY_RULES = """---
 trigger: always_on
 ---
-jk's MCP answers are compiled facts; they are final.
+jk's MCP answers are compiled facts; they are final. `callers` and `rename` take `Type.method` as
+the task names it: no file needs finding or opening first.
 
 - Who calls `T.m`: call_mcp_tool jk `callers` once and write its list as the answer. Opening the
   files it names costs turns and changes nothing: do not.
