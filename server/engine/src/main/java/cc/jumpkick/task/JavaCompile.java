@@ -6,6 +6,7 @@ import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.ForkedJavac;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
@@ -244,9 +245,12 @@ public final class JavaCompile {
         return target.resolve("incremental").resolve(classes.getFileName() + "-refs");
     }
 
-    /** The key the reference index of the compile keyed {@code key} is cached under. */
+    /**
+     * The key the reference index of the compile keyed {@code key} is cached under: hex like every
+     * action key, since it names a file in the cache (a {@code :} is illegal there on Windows).
+     */
     static String referencesKey(String key) {
-        return key + ":references";
+        return Hashing.sha256Hex(key + "\nreferences");
     }
 
     /**
