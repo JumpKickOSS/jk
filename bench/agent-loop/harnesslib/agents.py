@@ -374,6 +374,10 @@ def _write_grok_config(home: Path, tool: str, sandbox: Path) -> str:
     path = home / "config.toml"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     path.chmod(0o600)
+    # grok loads a project's AGENTS.md only in a folder the user has trusted. A user trusts their own
+    # repository once; a throwaway GROK_HOME has no trust store, so without this the run never sees it.
+    (home / "trusted_folders.toml").write_text(
+        f"[folders.{_toml_basic(str(sandbox))}]\ntrusted = true\ndecided_at = {int(time.time())}\n", encoding="utf-8")
     return server
 
 
@@ -537,7 +541,8 @@ def grok(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int,
     `--system-prompt-override` but, since 2026-10-31, the model never sees it, and passing it drops
     `--rules` as well: a run told to write ANSWER.txt answered in chat instead.
 
-    Config, sessions and memory live in a throwaway directory (`GROK_HOME`) that this function deletes.
+    Config, sessions and memory live in a throwaway directory (`GROK_HOME`) that this function deletes;
+    its trust store trusts the sandbox, as a user trusts their own repository, so grok loads AGENTS.md.
     A copy of the login is passed as `GROK_AUTH_PATH`. File tools run under `--sandbox agent-loop`.
     """
     if not shutil.which("grok"):
@@ -1344,6 +1349,8 @@ def muse(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int,
             # requests tools. Tool tasks are not steps, so this cap is the harness turn budget.
             "--max-model-steps", str(max_turns),
             "--workspace", str(sandbox),
+            # muse skips a workspace's AGENTS.md until the workspace is trusted, as a user trusts their own repository.
+            "--trust-workspace",
             "--approval-mode", "never",
             "--disable-sandbox",
             "--disable-shell",
