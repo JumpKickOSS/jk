@@ -101,7 +101,7 @@ class TasksCommandTest {
     @Test
     void tasks_list_includes_jk_build_logic_names(@TempDir Path tempDir) throws Exception {
         run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
-        Path logic = tempDir.resolve(".jk");
+        Path logic = tempDir.resolve(".jk/scripts");
         Files.createDirectories(logic);
         Files.writeString(logic.resolve("after-compile.groovy"), "outDir.resolve('x.txt').toFile().text = 'x'\n");
         Files.writeString(logic.resolve("before-compile.kts"), "val x = 1\n");

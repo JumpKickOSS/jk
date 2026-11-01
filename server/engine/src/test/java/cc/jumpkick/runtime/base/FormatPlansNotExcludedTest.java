@@ -41,10 +41,11 @@ class FormatPlansNotExcludedTest {
         assertThat(FormatSources.notExcluded(Path.of("proj/.git/Gen.java"))).isFalse();
         assertThat(FormatSources.notExcluded(Path.of("proj/node_modules/Gen.java")))
                 .isFalse();
-        assertThat(FormatSources.notExcluded(Path.of("proj/.jk/after-resources.groovy")))
+        assertThat(FormatSources.notExcluded(Path.of("proj/.jk/scripts/after-resources.groovy")))
                 .isFalse();
-        assertThat(FormatSources.notExcluded(Path.of("proj/jk/after-resources.groovy")))
-                .isFalse();
+        // jk/ is no longer jk's: a package or directory of that name is formatted like any other.
+        assertThat(FormatSources.notExcluded(Path.of("proj/src/main/java/acme/jk/Gen.java")))
+                .isTrue();
     }
 
     @Test

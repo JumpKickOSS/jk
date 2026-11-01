@@ -8,7 +8,7 @@
 | 200–202 | same | Sonnet 5.5 through cursor-agent (question tasks) |
 | 300–301 | same | grok checks: 300 before the `--rules` fix (no system prompt reached the model), 301 after |
 | 400 | same | Claude Code checks of the no-run-record fix on two edit tasks |
-| 500–502 | final graph-shared (JK-4359, 4357, 4358, 4355, reference index, scoped rename hint) | Claude Code, all 15 tasks: 45/45 green |
+| 500–502 | final graph-shared (.jk/scripts layout, idle graph worker memory, test-home engines, graph accuracy, reference index, scoped rename hint) | Claude Code, all 15 tasks: 45/45 green |
 
 grok runs from before the `--rules` fix (runs 1–3 of the first attempt) were removed: the harness had
 passed the system prompt through `--system-prompt-override`, which grok 1.0.70 no longer shows the
