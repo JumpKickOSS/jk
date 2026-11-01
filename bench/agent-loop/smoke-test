@@ -66,13 +66,10 @@ MUSE_LINE = ("- `callers` and `rename` take `Type.method` as the task names it: 
 
 
 def skill_files() -> dict:
-    """jk's skill as `jk skill install` lays it out, under .agents/skills/ (muse loads project skills there)."""
-    import tempfile
-    with tempfile.TemporaryDirectory() as tmp:
-        subprocess.run(["jk", "skill", "install", tmp], capture_output=True, check=True)
-        root = Path(tmp)
-        return {str(Path(".agents/skills") / f.relative_to(root)): f.read_text()
-                for f in root.rglob("*") if f.is_file()}
+    """jk's skill as `jk skill install` lays it out, under .agents/skills/jk (muse loads project skills
+    there), read from this checkout so a skill edit is measured before it is installed."""
+    root = HERE.parents[1] / "shared/core/src/main/resources/cc/jumpkick/docs/skill"
+    return {f".agents/skills/jk/{f.name}": f.read_text() for f in sorted(root.glob("*.md"))}
 
 
 ct.ARMS.update({

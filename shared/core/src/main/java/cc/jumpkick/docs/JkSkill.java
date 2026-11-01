@@ -18,6 +18,7 @@ public final class JkSkill {
 
     /** Topic names, in reading order. Each is a sibling of {@code SKILL.md}. */
     public static final List<String> TOPICS = List.of(
+            "graph",
             "dependencies",
             "tests",
             "workspaces",
