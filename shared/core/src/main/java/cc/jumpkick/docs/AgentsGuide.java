@@ -26,12 +26,12 @@ public final class AgentsGuide {
             This project builds with **JumpKick** (`jk`), not Maven or Gradle; `jk skill <topic>` has
             details. jk rewrites this section; put project rules outside the markers.
 
-            - Loop: `jk -a test` (MCP `run`) → edit what the verdict names (file, line, source line) →
-              rerun. Ignore the terminal and `target/jk-results.md`.
-            - Before handing work back: `jk guard`.
+            - Loop: `jk -a test` (MCP `run(kind=test)`) → edit what the verdict names → rerun. Ignore the
+              terminal and `target/jk-results.md`.
+            - Before handing work back: `jk guard` (MCP `run(kind=guard)`).
             - Who calls `T.m`: MCP `callers` (`transitive=true`: all that reach it), or `jk graph callers T.m`.
               Its list is complete: use it as is; do not grep or read to check it.
-            - Rename `T.m` with every override, call and doc link: MCP `rename`, or `jk graph rename T.m new`.
+            - Rename `T.m` (overrides, calls, doc links): MCP `rename`, or `jk graph rename T.m new`.
             - `jk add g:a` / `jk remove g:a` (MCP `deps`) edit `jk.toml` and relock `jk-lock.toml`.
             - Never add `pom.xml` or Gradle files, run `mvn` or `./gradlew`, or edit
               `jk-guards-baseline.toml` (`jk guard explain <id>` says what to do).
@@ -40,8 +40,8 @@ public final class AgentsGuide {
 
     /** {@link #SECTION} for a project whose {@code [format] enforce} has {@code jk guard} format. */
     public static final String ENFORCED_SECTION = SECTION.replace(
-            "- Before handing work back: `jk guard`.",
-            "- Before handing work back: `jk guard`; it formats what you changed.");
+            "- Before handing work back: `jk guard` (MCP `run(kind=guard)`).",
+            "- Before handing work back: `jk guard` (MCP `run(kind=guard)`); it formats what you changed.");
 
     /** What a sync did to the file. */
     public enum Change {
