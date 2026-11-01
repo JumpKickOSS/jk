@@ -38,11 +38,11 @@ belongs to it.
 | A project that existed before this | `jk agents` |
 | Wire every supported agent, not only the ones here | `jk agents --all` |
 | Codex, or any agent jk does not write files for | `codex mcp add jk -- jk mcp`, or `jk mcp` in the client's MCP settings |
-| Commit the generated files | `git add AGENTS.md CLAUDE.md .mcp.json .claude/settings.json .jk/graph` |
+| Commit the generated files | `git add AGENTS.md CLAUDE.md .mcp.json .claude .cursor .vscode .gemini opencode.json .jk/graph` (only the ones that exist) |
 | Undo it | `jk agents --remove` |
 
-Only Claude Code has project files written for it today; other agents read `AGENTS.md` and need the
-one MCP command above.
+Claude Code, Cursor, VS Code, Gemini CLI and opencode have project files written for them (below).
+Any other agent reads `AGENTS.md` and needs the one MCP command above.
 
 ### Claude Code
 
@@ -56,6 +56,19 @@ The hook is `jk agent-hook`, so its behaviour changes with jk, not with the file
 `gradle` (with the jk command to use instead) and answers a grep for a symbol, such as `OrderService`
 or `Order.total`, with a pointer to `jk graph callers` / `read` / `rename`. It never blocks a grep.
 Text searches pass untouched.
+
+### Cursor, VS Code, Gemini CLI, opencode
+
+| Agent (in use when) | File | jk's entry |
+|---|---|---|
+| Cursor (`.cursor/` exists) | `.cursor/mcp.json` | `mcpServers.jk`, the `jk mcp` server |
+| VS Code (`.vscode/` exists) | `.vscode/mcp.json` | `servers.jk`, a `stdio` server running `jk mcp` |
+| Gemini CLI (`.gemini/` or `GEMINI.md` exists) | `.gemini/settings.json` | `mcpServers.jk` with `trust` set, and `AGENTS.md` added to `context.fileName` so Gemini reads the guide |
+| opencode (`opencode.json`, `opencode.jsonc` or `.opencode/` exists) | `opencode.json` | `mcp.jk`, a local server running `jk mcp` |
+
+Only Claude Code gets the hook and an allow-list written; the others get the MCP server and the
+guide. `jk agents --remove` leaves `AGENTS.md` in Gemini's `context.fileName`, since a project may
+list it for its own reasons.
 
 Commit these files after a refresh as you would any generated change. Markers that do not pair up
 (a begin with no end, or either one twice) are refused by `jk agents` and skipped by the build; fix

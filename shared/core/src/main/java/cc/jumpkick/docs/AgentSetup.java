@@ -30,6 +30,12 @@ public final class AgentSetup {
     static final String CLAUDE_SETTINGS = "settings.json";
     static final String SERVER = "jk";
     static final String HOOK_MATCHER = "Bash|Grep";
+    static final String CURSOR_MCP = ".cursor/mcp.json";
+    static final String VSCODE_MCP = ".vscode/mcp.json";
+    static final String GEMINI_DIR = ".gemini";
+    static final String GEMINI_SETTINGS = ".gemini/settings.json";
+    static final String OPENCODE_JSON = "opencode.json";
+    static final String OPENCODE_JSONC = "opencode.jsonc";
 
     /** Which agents get project files. */
     public enum Mode {
@@ -65,11 +71,29 @@ public final class AgentSetup {
         AgentsGuide.Change guide = AgentsGuide.sync(dir);
         if (guide != AgentsGuide.Change.UNCHANGED) lines.add(guideLine(guide, dir.resolve(AgentsGuide.FILE)));
         if (mode == Mode.NONE) return lines;
-        boolean claude = mode == Mode.ALL
+        boolean all = mode == Mode.ALL;
+        if (all
                 || claudeRunning
                 || Files.isDirectory(dir.resolve(CLAUDE_DIR))
-                || Files.exists(dir.resolve(CLAUDE_MD));
-        if (claude) claudeCode(dir, lines);
+                || Files.exists(dir.resolve(CLAUDE_MD))) {
+            claudeCode(dir, lines);
+        }
+        if (all || Files.isDirectory(dir.resolve(".cursor"))) {
+            Path file = dir.resolve(CURSOR_MCP);
+            step(file, lines, () -> mergeJson(file, AgentSetup::mcpServer));
+        }
+        if (all || Files.isDirectory(dir.resolve(".vscode"))) {
+            Path file = dir.resolve(VSCODE_MCP);
+            step(file, lines, () -> mergeJson(file, root -> vscodeServer(root)));
+        }
+        if (all || Files.isDirectory(dir.resolve(GEMINI_DIR)) || Files.exists(dir.resolve("GEMINI.md"))) {
+            Path file = dir.resolve(GEMINI_SETTINGS);
+            step(file, lines, () -> mergeJson(file, AgentSetup::geminiSettings));
+        }
+        Path opencode = opencodeFile(dir);
+        if (all || Files.exists(opencode) || Files.isDirectory(dir.resolve(".opencode"))) {
+            step(opencode, lines, () -> mergeJson(opencode, AgentSetup::opencodeConfig));
+        }
         return lines;
     }
 
@@ -89,6 +113,15 @@ public final class AgentSetup {
         step(mcp, lines, () -> mergeJson(mcp, AgentSetup::dropMcpServer), "removed jk's entries from ");
         Path settings = dir.resolve(CLAUDE_DIR).resolve(CLAUDE_SETTINGS);
         step(settings, lines, () -> mergeJson(settings, AgentSetup::dropClaudeSettings), "removed jk's entries from ");
+        String done = "removed jk's entries from ";
+        Path cursor = dir.resolve(CURSOR_MCP);
+        step(cursor, lines, () -> mergeJson(cursor, AgentSetup::dropMcpServer), done);
+        Path vscode = dir.resolve(VSCODE_MCP);
+        step(vscode, lines, () -> mergeJson(vscode, root -> dropServer(root, "servers")), done);
+        Path gemini = dir.resolve(GEMINI_SETTINGS);
+        step(gemini, lines, () -> mergeJson(gemini, AgentSetup::dropMcpServer), done);
+        Path opencode = opencodeFile(dir);
+        step(opencode, lines, () -> mergeJson(opencode, AgentSetup::dropOpencode), done);
         return lines;
     }
 
@@ -154,10 +187,7 @@ public final class AgentSetup {
     }
 
     private static void dropMcpServer(Map<String, Object> root) throws IOException {
-        Map<String, Object> servers = existingObject(root, "mcpServers");
-        if (servers == null) return;
-        servers.remove(SERVER);
-        if (servers.isEmpty()) root.remove("mcpServers");
+        dropServer(root, "mcpServers");
     }
 
     private static void dropClaudeSettings(Map<String, Object> root) throws IOException {
@@ -186,10 +216,66 @@ public final class AgentSetup {
         }
     }
 
+    private static Map<String, Object> entry(Object... keyValues) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        for (int i = 0; i < keyValues.length; i += 2) m.put((String) keyValues[i], keyValues[i + 1]);
+        return m;
+    }
+
+    private static List<Object> list(Object... values) {
+        return new ArrayList<>(List.of(values));
+    }
+
+    /** {@code mcpServers.jk}: the shape Claude Code ({@code .mcp.json}) and Cursor read. */
     private static void mcpServer(Map<String, Object> root) throws IOException {
-        Map<String, Object> servers = object(root, "mcpServers");
-        servers.putIfAbsent(
-                SERVER, new LinkedHashMap<>(Map.of("command", "jk", "args", new ArrayList<>(List.of("mcp")))));
+        object(root, "mcpServers").putIfAbsent(SERVER, entry("command", "jk", "args", list("mcp")));
+    }
+
+    /** VS Code's {@code servers.jk}; it requires the transport named. */
+    private static void vscodeServer(Map<String, Object> root) throws IOException {
+        object(root, "servers").putIfAbsent(SERVER, entry("type", "stdio", "command", "jk", "args", list("mcp")));
+    }
+
+    /**
+     * Gemini CLI: the server (its tool calls trusted, as the Claude Code allow-list does) and
+     * {@code AGENTS.md} among the context files it reads.
+     */
+    private static void geminiSettings(Map<String, Object> root) throws IOException {
+        object(root, "mcpServers")
+                .putIfAbsent(SERVER, entry("command", "jk", "args", list("mcp"), "trust", Boolean.TRUE));
+        Map<String, Object> context = object(root, "context");
+        Object names = context.get("fileName");
+        if (names == null) {
+            context.put("fileName", list(AgentsGuide.FILE, "GEMINI.md"));
+        } else if (names instanceof String one) {
+            if (!one.equals(AgentsGuide.FILE)) context.put("fileName", list(AgentsGuide.FILE, one));
+        } else {
+            addAll(array(context, "fileName"), List.of(AgentsGuide.FILE));
+        }
+    }
+
+    /** opencode's {@code mcp.jk}: a local server whose command is one array. */
+    private static void opencodeConfig(Map<String, Object> root) throws IOException {
+        if (root.isEmpty()) root.put("$schema", "https://opencode.ai/config.json");
+        object(root, "mcp")
+                .putIfAbsent(SERVER, entry("type", "local", "command", list("jk", "mcp"), "enabled", Boolean.TRUE));
+    }
+
+    private static Path opencodeFile(Path dir) {
+        Path jsonc = dir.resolve(OPENCODE_JSONC);
+        return Files.exists(jsonc) ? jsonc : dir.resolve(OPENCODE_JSON);
+    }
+
+    private static void dropServer(Map<String, Object> root, String key) throws IOException {
+        Map<String, Object> servers = existingObject(root, key);
+        if (servers == null) return;
+        servers.remove(SERVER);
+        if (servers.isEmpty()) root.remove(key);
+    }
+
+    private static void dropOpencode(Map<String, Object> root) throws IOException {
+        dropServer(root, "mcp");
+        if (root.size() == 1 && root.containsKey("$schema")) root.clear();
     }
 
     private static void claudeSettings(Map<String, Object> root) throws IOException {
