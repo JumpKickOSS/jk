@@ -55,6 +55,23 @@ public final class AgentSetup {
             - jk `skill` only when a verdict names a topic.
             """;
 
+    /** Cursor's always-on rule, as measured: without it Cursor greps before it calls {@code rename}. */
+    static final String CURSOR_RULES_FILE = ".cursor/rules/jk.mdc";
+
+    static final String CURSOR_RULES = """
+            ---
+            description: JumpKick (jk) code graph
+            alwaysApply: true
+            ---
+            This project's Java code is indexed by jk's code graph, on the `jk` MCP server. For a question about
+            or a change to a Java method, use it, not Grep or file reads:
+
+            - Rename `T.m`: call `rename` first, before any search or read. It edits the method, its overrides
+              and every caller in one call, and lists any comment or doc line still naming the old method. Then
+              call `run` with the `only` it names. Do not grep for the old name afterwards.
+            - Who calls `T.m`: `callers` once. Its list is complete, from the compiled classes.
+            """;
+
     /** An agent jk can tell is on this machine, by its CLI on {@code PATH} (or, for Claude Code, its shell). */
     public enum Host {
         CLAUDE("claude"),
@@ -118,6 +135,8 @@ public final class AgentSetup {
         if (all || hosts.contains(Host.CURSOR) || Files.isDirectory(dir.resolve(".cursor"))) {
             Path file = dir.resolve(CURSOR_MCP);
             step(file, lines, () -> mergeJson(file, AgentSetup::mcpServer));
+            Path rules = dir.resolve(CURSOR_RULES_FILE);
+            step(rules, lines, () -> ownedFile(rules, CURSOR_RULES));
         }
         if (all || Files.isDirectory(dir.resolve(".vscode"))) {
             Path file = dir.resolve(VSCODE_MCP);
@@ -185,6 +204,8 @@ public final class AgentSetup {
         step(gemini, lines, () -> mergeJson(gemini, AgentSetup::dropMcpServer), done);
         Path opencode = opencodeFile(dir);
         step(opencode, lines, () -> mergeJson(opencode, AgentSetup::dropOpencode), done);
+        Path cursorRules = dir.resolve(CURSOR_RULES_FILE);
+        step(cursorRules, lines, () -> dropOwnedFile(cursorRules, CURSOR_RULES), "removed ");
         Path agy = dir.resolve(AGY_RULES_FILE);
         step(agy, lines, () -> dropOwnedFile(agy, AGY_RULES), "removed ");
         return lines;

@@ -62,7 +62,7 @@ Text searches pass untouched.
 
 | Agent (in use when) | File | jk's entry |
 |---|---|---|
-| Cursor (`.cursor/` exists) | `.cursor/mcp.json` | `mcpServers.jk`, the `jk mcp` server |
+| Cursor (`cursor-agent` on `PATH`, or `.cursor/` exists) | `.cursor/mcp.json`, `.cursor/rules/jk.mdc` | `mcpServers.jk`, the `jk mcp` server; an always-on rule, owned by jk: call `rename` first, never grep after it |
 | VS Code (`.vscode/` exists) | `.vscode/mcp.json` | `servers.jk`, a `stdio` server running `jk mcp` |
 | Gemini CLI (`.gemini/` or `GEMINI.md` exists) | `.gemini/settings.json` | `mcpServers.jk` with `trust` set, and `AGENTS.md` added to `context.fileName` so Gemini reads the guide |
 | opencode (`opencode.json`, `opencode.jsonc` or `.opencode/` exists) | `opencode.json` | `mcp.jk`, a local server running `jk mcp` |
