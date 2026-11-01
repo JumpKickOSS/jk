@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -22,6 +23,15 @@ public final class McpJobRuns {
 
     /** How long a call parks when it names no {@code timeout_s}. */
     public static final int DEFAULT_WAIT_S = 240;
+
+    /**
+     * The park for a client that gives up on a request after about a minute and then cancels it:
+     * answering {@code TIMEOUT … run(jid=N)} first keeps the job, where its cancel would end it.
+     */
+    static final int SHORT_CLIENT_WAIT_S = 45;
+
+    /** {@code clientInfo.name}s of hosts with that short request timeout. */
+    private static final Set<String> SHORT_CLIENTS = Set.of("Cursor");
 
     private McpJobRuns() {}
 
@@ -115,8 +125,11 @@ public final class McpJobRuns {
     }
 
     /** {@code timeout_s}: how long one call parks before it answers {@code TIMEOUT}. */
-    private static int timeoutS(McpCall in) {
-        return in.count("timeout_s", DEFAULT_WAIT_S, 1, MAX_WAIT_S);
+    static int timeoutS(McpCall in) {
+        McpConnection connection = in.connection();
+        String client = connection == null ? null : connection.client();
+        int fallback = client != null && SHORT_CLIENTS.contains(client) ? SHORT_CLIENT_WAIT_S : DEFAULT_WAIT_S;
+        return in.count("timeout_s", fallback, 1, MAX_WAIT_S);
     }
 
     /**
