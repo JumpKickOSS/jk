@@ -36,6 +36,7 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 import benchtools  # noqa: E402
 from harnesslib import agents  # noqa: E402
+from harnesslib.mcp import StdioMcp  # noqa: E402
 from harnesslib.session import mcp_server_config  # noqa: E402
 
 TASKS = HERE / "tasks.toml"
@@ -258,6 +259,50 @@ def write_agents_md(sandbox: Path) -> None:
         raise RuntimeError(f"jk agents wrote no AGENTS.md section (exit {p.returncode}): {(p.stdout + p.stderr)[-300:]}")
 
 
+def graph_edges(build_output: str) -> int | None:
+    """The edge count `jk graph build` reports (`4,812 nodes · 11,903 edges from …`), or None."""
+    m = re.search(r"([\d,]+) edges", build_output)
+    return int(m.group(1).replace(",", "")) if m else None
+
+
+def preflight(spec: dict, tool: str, sandbox: Path, server: dict | None, edges: int | None) -> None:
+    """Refuse to start the agent unless the sandbox is the arm its row names: jk's AGENTS.md section,
+    a graph with edges, the arm's own files, and an MCP tools/list that carries the graph tools the arm
+    offers and none of those it hides. A setup that went wrong is then a finding, never a measurement."""
+    problems = []
+    if tool == "jk":
+        agents_md = sandbox / "AGENTS.md"
+        if "<!-- BEGIN:jumpkick -->" not in (agents_md.read_text() if agents_md.exists() else ""):
+            problems.append("AGENTS.md has no jk section")
+        if not (sandbox / "target" / "graph" / "graph.bin").exists():
+            problems.append("no graph at target/graph/graph.bin")
+        if edges == 0:
+            problems.append("the graph has 0 edges")
+    for rel, text in spec.get("files", {}).items():
+        target = sandbox / rel
+        if not target.exists() or target.read_text() != text:
+            problems.append(f"arm file {rel} missing or changed")
+    if tool == "jk" and server is not None:
+        try:
+            client = StdioMcp([server["command"], *server["args"]], cwd=sandbox)
+            try:
+                names = {t.get("name") for t in client.tools()}
+            finally:
+                client.close()
+        except Exception as e:  # noqa: BLE001 - an unreachable server is the finding
+            problems.append(f"MCP server did not answer tools/list: {e}")
+        else:
+            shown = names & set(JK_GRAPH_TOOLS)
+            if spec["hide_graph"] and shown:
+                problems.append(f"tools/list shows hidden graph tools {sorted(shown)}")
+            elif spec.get("extended") and shown != set(JK_GRAPH_TOOLS):
+                problems.append(f"tools/list lacks graph tools {sorted(set(JK_GRAPH_TOOLS) - shown)}")
+            elif not spec["hide_graph"] and "callers" not in names:
+                problems.append("tools/list has no callers")
+    if problems:
+        raise RuntimeError("preflight: " + "; ".join(problems))
+
+
 def sh_env(cmd: list[str], cwd: Path, env: dict, timeout: int) -> tuple[int, str, float]:
     import os
     start = time.monotonic()
@@ -386,7 +431,10 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
             row["finding"] = f"baseline is {state} before the agent, expected {task.get('baseline', 'green')}: {out[-300:]}"
             return row
         if tool == "jk":
-            sh(["jk", "-u", "-x", "graph", "build"], sandbox, 1800)
+            gcode, gout, _ = sh(["jk", "-u", "-x", "graph", "build"], sandbox, 1800)
+            if gcode != 0:
+                raise RuntimeError(f"jk graph build failed: {gout[-300:]}")
+            row["graph_edges"] = graph_edges(gout)
             # What a jk user's repository holds: jk's AGENTS.md section. Claude Code reads AGENTS.md
             # itself; a CLAUDE.md import of it adds context and nothing else.
             write_agents_md(sandbox)
@@ -421,6 +469,7 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
                 return row
         install_hooks(spec["hooks"], sandbox, run_dir)
         server, servers = mcp_servers(tool, extra, hide_graph, sandbox, spec.get("extended", False))
+        preflight(spec, tool, sandbox, servers.get(server), row.get("graph_edges"))
         transcript = run_dir / "transcript.jsonl"
         agents.TASK = agents.Task(
             system=(QUESTION_PROMPT if question else SHELL_PROMPT if ns.shell else SYSTEM_PROMPT).format(

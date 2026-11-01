@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""Tier 0: does an agent reach for jk's graph at all? A two-task smoke over a 127-line fixture,
+a few minutes per agent, so a prescription (rules file, permission, hook) can be tuned by
+re-running one command and reading one line per run.
+
+    bench/agent-loop/smoke-test                                  # claude-code, arm jk, both tasks
+    bench/agent-loop/smoke-test --driver cursor --driver grok --arm jk --arm jk-grokrules
+    bench/agent-loop/smoke-test --task smoke-callers --runs 3
+
+Each line says PASS or FAIL, whether the first code-reading call was a jk graph tool, the graph's
+share of code-reading calls, the grep/read calls, and a plain diagnosis of a failure. Exit status
+is 0 only when every run passed. Arms, drivers and grading are change-tasks' own (this loads it);
+only the repository is replaced by smoke/fixture and the tasks by smoke/tasks.toml. Rows and
+sandboxes go under $AGENT_LOOP_HOME/smoke/<date>/, never into results/.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import importlib.machinery
+import importlib.util
+import json
+import shutil
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+FIXTURE = HERE / "smoke" / "fixture"
+SMOKE_TASKS = HERE / "smoke" / "tasks.toml"
+
+
+def load_change_tasks():
+    loader = importlib.machinery.SourceFileLoader("change_tasks", str(HERE / "change-tasks"))
+    spec = importlib.util.spec_from_loader("change_tasks", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+ct = load_change_tasks()
+
+CLI = {"claude-code": "claude", "grok": "grok", "agy": "agy", "cursor": "cursor-agent", "muse": "muse"}
+
+
+def materialise(task: dict, tool: str, sandbox: Path) -> None:
+    """The fixture as a fresh git repository, in place of a corpus checkout."""
+    shutil.copytree(FIXTURE, sandbox)
+    subprocess.run(["git", "init", "-q"], cwd=sandbox, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=sandbox, check=True)
+    subprocess.run(["git", "-c", "user.name=bench", "-c", "user.email=bench@localhost", "commit", "-q", "-m",
+                    "baseline"], cwd=sandbox, check=True)
+
+
+def family(entry: dict) -> str | None:
+    """`graph`, `text` (grep, glob, file read, shell text tools) or None, as change-tasks counts them."""
+    if "tool_use" not in entry:
+        return None
+    name = ct.called(entry)
+    short = name.split("__")[-1]
+    command = ""
+    if short == "Bash":
+        try:
+            command = str(json.loads(entry.get("input") or "{}").get("command") or "")
+        except json.JSONDecodeError:
+            command = str(entry.get("input") or "")
+    if short in ct.GRAPH or ct.SHELL_GRAPH.search(command):
+        return "graph"
+    if ct.SHELL_TEXT.search(command) or short in ct.NAV_TEXT:
+        return "text"
+    return None
+
+
+def diagnose(summary: list[dict]) -> dict:
+    seq = [(family(e), ct.called(e).split("__")[-1]) for e in summary if "tool_use" in e]
+    nav = [(f, n) for f, n in seq if f]
+    graph = sum(1 for f, _ in nav if f == "graph")
+    text = len(nav) - graph
+    first = nav[0][1] if nav else None
+    graph_first = bool(nav) and nav[0][0] == "graph"
+    after_graph = 0
+    if graph:
+        at = next(i for i, (f, _) in enumerate(nav) if f == "graph")
+        after_graph = sum(1 for f, _ in nav[at + 1:] if f == "text")
+    names = [n for _, n in seq]
+    if not nav:
+        why = "read no code" + (" (called skill only)" if "skill" in names else "")
+    elif not graph:
+        why = "never called a jk graph tool" + (" (called skill)" if "skill" in names else "")
+    elif not graph_first:
+        why = f"searched with {first} before the graph"
+    elif after_graph >= 2:
+        why = f"called the graph, then re-read {after_graph} times"
+    else:
+        why = ""
+    return {"graph_first": graph_first, "first_nav": first, "graph_calls": graph, "text_calls": text,
+            "text_after_graph": after_graph, "diagnosis": why}
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--driver", action="append", choices=sorted(ct.DRIVERS))
+    ap.add_argument("--arm", action="append", choices=sorted(ct.ARMS))
+    ap.add_argument("--task", action="append")
+    ap.add_argument("--runs", type=int, default=1)
+    ap.add_argument("--model", help="default per driver")
+    ap.add_argument("--effort", help="default per driver")
+    ap.add_argument("--max-turns", type=int, default=20)
+    ap.add_argument("--max-minutes", type=int, default=4)
+    ns = ap.parse_args()
+
+    smoke_tasks = tomllib.loads(SMOKE_TASKS.read_text())["tasks"]
+    for name, t in smoke_tasks.items():
+        t["name"] = name
+    ct.materialise = materialise
+    ct.TASK_FILES = HERE / "smoke" / "tasks"
+
+    date = dt.date.today().isoformat()
+    run_root = ct.benchtools.scratch("AGENT_LOOP_HOME", "agent-loop") / "smoke" / date
+    run_root.mkdir(parents=True, exist_ok=True)
+    rows_path = run_root / "rows.jsonl"
+    names = ns.task or list(smoke_tasks)
+    all_ok = True
+    with rows_path.open("a") as rows:
+        for driver in ns.driver or ["claude-code"]:
+            if not shutil.which(CLI[driver]):
+                print(f"SKIP {driver}: the `{CLI[driver]}` CLI is not on PATH")
+                all_ok = False
+                continue
+            run_ns = argparse.Namespace(date=date, driver=driver, shell=False, max_turns=ns.max_turns,
+                                        max_minutes=ns.max_minutes, model=ns.model or ct.DEFAULT_MODEL[driver],
+                                        effort=ns.effort or ct.DEFAULT_EFFORT[driver])
+            captured: list = []
+            real = ct.DRIVERS[driver]
+
+            def capture(*args, _real=real, **kwargs):
+                res = _real(*args, **kwargs)
+                captured.append(res.transcript)
+                return res
+
+            ct.DRIVERS[driver] = capture
+            try:
+                for run_no in range(1, ns.runs + 1):
+                    for name in names:
+                        for arm in ns.arm or ["jk"]:
+                            captured.clear()
+                            row = ct.run_one(name, smoke_tasks[name], arm, run_no, run_ns, run_root)
+                            row["tier"] = "smoke"
+                            row.update(diagnose(captured[0] if captured else []))
+                            ok = row["outcome"] == "green" and row["graph_first"]
+                            all_ok &= ok
+                            rows.write(json.dumps(row) + "\n")
+                            rows.flush()
+                            share = row.get("graph_share")
+                            if row["outcome"] == "error":
+                                why = f"setup: {row['finding']}"[:200]
+                            else:
+                                why = row["diagnosis"] or (row["finding"] if row["outcome"] != "green" else "")
+                            if row["outcome"] != "green" and not row["finding"]:
+                                why = (why + "; " if why else "") + f"answer {row['outcome']}"
+                            print(f"{'PASS' if ok else 'FAIL'} {driver} {arm} {name} #{run_no}: "
+                                  f"first={row['first_nav'] or '-'} share={'-' if share is None else f'{share:.2f}'} "
+                                  f"text={row['text_calls']} turns={row.get('turns', '-')} "
+                                  f"tokens={row.get('tokens', '-')} {row.get('wall_s', '-')}s"
+                                  + (f"  [{why}]" if why else ""), flush=True)
+            finally:
+                ct.DRIVERS[driver] = real
+    print(f"rows: {rows_path}")
+    return 0 if all_ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

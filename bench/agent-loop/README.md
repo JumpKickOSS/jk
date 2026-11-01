@@ -247,6 +247,28 @@ Output+reasoning, uncached input, and cache-read are medians over the tool's run
 the sum of `cost_usd` on green runs divided by the number of green runs. `reasoning_tokens` is 0
 when the API reports reasoning only inside `output_tokens`.
 
+## Tiers: smoke before the long runs
+
+A prescription (a rules file, a permission, a hook, a line of wording) is tuned in the smallest loop
+that can show it failing, and only what passes moves on:
+
+| Tier | Command | Budget | Question |
+|---|---|---|---|
+| 0 smoke | `smoke-test --driver <agent> --arm <arm>` | about 2 minutes per agent | Does the agent reach for the graph at all, and first? |
+| 1 screen | `change-tasks` on 3 tasks x 3 runs, two small repositories | about 10 minutes per agent | Is it reliably so, across tasks? |
+| 2 proof | `change-tasks` on every task, 5+ runs | hours | Does the gain hold, with median and spread? |
+
+`smoke-test` runs change-tasks' own arms, drivers and grading over `smoke/fixture`, a 127-line
+project where `Ledger.post` has three callers and `Journal.post` is a same-name decoy, with a caller
+question and a rename (`smoke/tasks.toml`). Each run prints one line: PASS when the answer is right
+and the first code-reading call was a jk graph tool, else FAIL with a diagnosis ("never called a jk
+graph tool", "searched with Grep before the graph", "called the graph, then re-read N times").
+Rows and sandboxes go under `$AGENT_LOOP_HOME/smoke/<date>/`.
+
+Every run at every tier passes a preflight first: jk's AGENTS.md section, a graph with edges, the
+arm's own files, and an MCP `tools/list` that offers the graph tools the arm keeps and none it hides.
+A sandbox that is not the arm its row names becomes a `preflight:` finding, never a measurement.
+
 ## Change tasks
 
 The scenarios above are build-fix loops on small repositories, where no code graph can help. The
