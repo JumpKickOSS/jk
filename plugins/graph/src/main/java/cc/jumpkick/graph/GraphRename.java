@@ -182,6 +182,7 @@ final class GraphRename {
                     + " file.";
         }
         run.docLinks();
+        run.mentions = RenameMentions.find(run.root, run.old, run.familyTypes, run.edited, run.textFiles);
         for (Map.Entry<String, String> e : run.edited.entrySet()) {
             Files.writeString(root.resolve(e.getKey()), e.getValue(), StandardCharsets.UTF_8);
         }
@@ -209,6 +210,10 @@ final class GraphRename {
         final Map<String, List<String>> unsettled = new TreeMap<>();
         /** Files edited from the compile's reference index; their doc links were renamed with them. */
         final Set<String> indexed = new TreeSet<>();
+        /** Prose that still names the old method: comment lines in edited files, doc lines naming its type. */
+        List<String> mentions = List.of();
+
+        final Set<String> textFiles = new TreeSet<>();
 
         int overriding;
         int annotated;
@@ -234,6 +239,7 @@ final class GraphRename {
             this.to = to;
             for (GraphNode n : graph.nodes()) {
                 String rel = n.sourceFile();
+                if (RenameMentions.prose(rel)) textFiles.add(rel);
                 if (rel.isEmpty() || !Extractors.isJvmSource(rel) || !jvmFiles.add(rel)) continue;
                 byName.computeIfAbsent(rel.substring(rel.lastIndexOf('/') + 1), k -> new ArrayList<>())
                         .add(rel);
@@ -410,6 +416,7 @@ final class GraphRename {
             for (Map.Entry<String, List<Integer>> e : changedLines.entrySet()) {
                 lines.add("  " + e.getKey() + ":" + numbers(e.getValue()));
             }
+            lines.addAll(RenameMentions.lines(mentions, old, display(target)));
             if (unsettled.isEmpty() && unplaced.isEmpty() && unchecked.isEmpty()) {
                 lines.add("Every use the compiled classes record is renamed; no search needed. " + testNext());
             }

@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
@@ -104,6 +105,35 @@ class GraphRenameTest {
                 .as("other types' contains stay, and the method that calls both is listed, not guessed at")
                 .contains("name.contains(\"x\") && letters.contains(name)", "names.contains(\"shop\")");
         assertThat(answer).contains("Not renamed", "Shop.java", "letters.contains(name)");
+    }
+
+    @Test
+    void proseThatStillNamesTheMethodIsListedNotEdited(@TempDir Path dir) throws IOException {
+        Map<String, String> sources = new LinkedHashMap<>(RANGES);
+        sources.put(
+                "Range.java",
+                Objects.requireNonNull(RANGES.get("Range.java"))
+                        .replace(
+                                "    public boolean contains(T t) {",
+                                "    // contains() fails open on NaN\n    public boolean contains(T t) {"));
+        Path root = workspace(dir, sources);
+        Files.writeString(root.resolve("CHANGES.md"), "- Range.contains no longer accepts NaN.\n- Shop contains it.\n");
+        String answer = rename(root, "Range.contains", "includes");
+
+        assertThat(answer)
+                .contains("Not renamed, prose that names contains (comments, docs)")
+                .contains(PKG + "Range.java:", "| // contains() fails open on NaN")
+                .contains("CHANGES.md:1| - Range.contains no longer accepts NaN.")
+                .doesNotContain("Shop contains it");
+        assertThat(Files.readString(root.resolve("CHANGES.md"))).contains("Range.contains");
+    }
+
+    @Test
+    void anAnswerWithNoProseLeftSaysSo(@TempDir Path dir) throws IOException {
+        Path root = workspace(dir, RANGES);
+        assertThat(rename(root, "Range.contains", "includes"))
+                .contains(
+                        "No comment in the edited files, and no doc or config line naming its type, mentions contains.");
     }
 
     @Test
