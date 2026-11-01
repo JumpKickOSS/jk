@@ -50,6 +50,22 @@ JK_LOOP_TOOLS = ["run", "diagnostics", "deps", "skill"]
 # graphify's MCP server (`graphify-mcp`, from the `graphifyy[mcp]` tool install).
 GRAPHIFY_MCP = Path.home() / ".local/share/uv/tools/graphifyy/bin/graphify-mcp"
 
+# What jk writes for grok: its MCP tools sit behind use_tool, and grok otherwise asks skill first and
+# checks every answer by hand.
+GROK_RULES = """---
+description: JumpKick (jk) and its MCP tools
+alwaysApply: true
+---
+jk's MCP tools are on the `jk` server: call them with use_tool, tool_name `jk__callers`,
+`jk__rename`, `jk__run`, `jk__diagnostics`. No search_tool or skill call is needed first.
+
+- Who calls `T.m`: `jk__callers` once. Its list is complete; write it as it is.
+- Rename `T.m`: `jk__rename` once, nothing before it. Its answer lists every edit and any comment
+  or doc line still naming the old method; change only those you judge refer to it, without
+  searching for more, then `jk__run` with the `only` it names.
+- Read `jk__skill` only when a verdict names a topic.
+"""
+
 # arm: build tool, extra MCP servers, jk graph tools hidden, hooks installed in the sandbox, prompt addition
 ARMS = {
     # jk as it ships: the default MCP list carries one graph card, callers.
@@ -63,6 +79,9 @@ ARMS = {
     "jk-agentsline": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", agents_line=(
         "- Who calls `Type.method`: MCP `callers` (`transitive=true` for everything that reaches it). Its answer"
         " is complete, from the compiled classes: write it as it is, without checking it by hand.")),
+    # jk as shipped plus grok's own rules file (.grok/rules/, which only grok reads): the grok prescription.
+    "jk-grokrules": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", files={
+        ".grok/rules/jk.md": GROK_RULES}),
     # jk as shipped, its AGENTS.md section without the callers line: what that line costs or saves.
     "jk-noline": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", strip_callers=True),
     "jk-nograph-noline": dict(tool="jk", extra=[], hide_graph=True, hooks=None, prompt="", strip_callers=True),
@@ -350,6 +369,10 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
                 at = text.index(anchor)
                 end = text.index("\n", at) + 1
                 agents_md.write_text(text[:end] + spec["agents_line"] + "\n" + text[end:])
+            for rel, text in spec.get("files", {}).items():
+                target = sandbox / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(text)
             if spec.get("strip_callers"):
                 agents_md = sandbox / "AGENTS.md"
                 # The whole bullet: its first line names jk graph callers, and its indented lines continue it.
