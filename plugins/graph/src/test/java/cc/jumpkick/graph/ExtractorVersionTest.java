@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -54,13 +55,18 @@ class ExtractorVersionTest {
                 if (file.getFileName().toString().endsWith(".java")) files.add(file);
             });
         }
-        files.sort(null);
+        // Ordered by the '/' form as a String: Windows paths compare case-insensitively.
+        files.sort(Comparator.comparing(ExtractorVersionTest::slashed));
         StringBuilder all = new StringBuilder();
         for (Path file : files) {
             // Line endings as a checkout writes them are not a change to what the code does.
             String text = Files.readString(file, StandardCharsets.UTF_8).replace("\r\n", "\n");
-            all.append(file.toString().replace('\\', '/')).append('\n').append(text);
+            all.append(slashed(file)).append('\n').append(text);
         }
         return Hashing.sha256Hex(all.toString());
+    }
+
+    private static String slashed(Path file) {
+        return file.toString().replace('\\', '/');
     }
 }
