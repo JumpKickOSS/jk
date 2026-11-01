@@ -65,10 +65,9 @@ fewer input tokens and less wall time. On Gradle-built Kotlin repositories the a
 spend more turns on jk; that gap is open
 ([the table](docs/user/why.md#agents-reach-green)).
 
-Asked who calls a method or what can end up running it, the same three vendors' agents answered
-every question with `jk graph callers` and took a fifth to two fifths of the turns they took
-without the graph; without it the fast-tier agent missed three of the four questions
-([the table](docs/user/why.md#asking-about-the-code)).
+<!-- agents-claims:begin -->
+Asked who calls a method or what can end up running it, agents from 5 vendors answered from the graph in 60%–86% fewer turns and 78%–94% fewer tokens than with no graph; renaming a method and every caller took 66%–85% fewer turns and 73%–82% fewer tokens; down to the smallest repository measured, spring-petclinic at 3,635 lines. ([The tables](docs/user/why.md#asking-about-the-code).)
+<!-- agents-claims:end -->
 
 ### 2. Never type `clean` again
 
