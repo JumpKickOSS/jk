@@ -8,9 +8,9 @@ What a release may change in the formats projects depend on: [Compatibility](com
 
 | Line | Meaning |
 |------|---------|
-| **`0.50.0`** | The root `jk.toml` version: the next release, never written with `-SNAPSHOT` |
-| Tag **`v0.50.0`** | Cut from that line when it is released |
-| Prior | **`0.41.1`** — previous release; **`0.10.1`** first public |
+| **`0.50.1`** | The root `jk.toml` version: the next release, never written with `-SNAPSHOT` |
+| Tag **`v0.50.1`** | Cut from that line when it is released |
+| Prior | **`0.50.0`** — previous release; **`0.10.1`** first public |
 | Later | Semver-ish: `0.30.1`, `0.31.0`, … |
 
 The root `jk.toml` `version` is the one place the version is written, and it always names the
@@ -59,6 +59,12 @@ has nothing to say. This section is the one home for release highlights; there i
   its memory while still starting gives it back; engines a test suite started stop when it ends.
 - `callers` takes a nested type's binary name (`Outer$Inner.m`), numbers transitive hops without gaps,
   and counts a class's own method references (`this::step`) as calls.
+- **`jk graph callers` no longer misses callers of an override of an inherited overload.** A method
+  overriding an overload its supertype inherits without declaring linked to nothing, so every call
+  through the supertype was lost. Stored graphs rebuild on the first query.
+- A direct callers answer says how many of its callers are called in turn and that one transitive
+  answer (`-t`, MCP `transitive=true`) lists the whole chain; a transitive answer says every method
+  it lists reaches the subject, those reached by dispatch included.
 
 ### 0.50.0
 
