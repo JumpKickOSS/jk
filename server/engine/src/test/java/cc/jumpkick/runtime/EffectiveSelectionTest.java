@@ -48,6 +48,27 @@ class EffectiveSelectionTest {
     }
 
     @Test
+    void a_member_without_its_own_tags_takes_the_workspace_roots(@TempDir Path ws) throws Exception {
+        Files.writeString(ws.resolve("jk.toml"), """
+                group = "t"
+                version = "0.0.1"
+                java = 25
+
+                [workspace]
+                modules = ["lib"]
+
+                [test]
+                exclude-tags = ["integration", "bench"]
+                """);
+        Path lib = Files.createDirectories(ws.resolve("lib"));
+        Files.writeString(lib.resolve("jk.toml"), """
+                name = "lib"
+                """);
+        var eff = PlannerSupport.effectiveSelection(TestSelection.DEFAULT, lib);
+        assertThat(eff.excludeTags()).containsExactly("integration", "bench");
+    }
+
+    @Test
     void tags_resolved_survives_the_wire_round_trip(@TempDir Path dir) throws Exception {
         moduleWithExcludes(dir);
         var cleared = TestSelection.of(List.of(), false, List.of(), List.of(), true);
