@@ -151,7 +151,8 @@ public final class GraphTools {
      * the compiled classes record it.
      */
     public String callers(String name, int depth, int budget) {
-        String wanted = name.strip();
+        // Type.m(Entry), the form rename takes, names the method: callers answers every overload.
+        String wanted = name.strip().replaceFirst("^([^(]+)\\([^()]+\\)$", "$1");
         List<String> targets = graph.has(wanted) ? List.of(wanted) : members(wanted);
         if (targets.isEmpty()) return noMethod(wanted);
         Map<String, Caller> found = new LinkedHashMap<>();

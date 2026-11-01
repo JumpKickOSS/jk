@@ -138,6 +138,14 @@ class GraphRenameTest {
     }
 
     @Test
+    void recordIsAMethodNameButYieldAndKotlinKeywordsAreNot() {
+        assertThat(GraphRename.identifier("record")).isTrue();
+        assertThat(GraphRename.identifier("yield")).isFalse();
+        assertThat(GraphRename.identifier("when")).isFalse();
+        assertThat(GraphRename.identifier("class")).isFalse();
+    }
+
+    @Test
     void anAnswerWithNoProseLeftSaysSo(@TempDir Path dir) throws IOException {
         Path root = workspace(dir, RANGES);
         assertThat(rename(root, "Range.contains", "includes"))

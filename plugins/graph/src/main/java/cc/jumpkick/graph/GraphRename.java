@@ -112,7 +112,8 @@ final class GraphRename {
             "false",
             "null",
             "var",
-            "record",
+            // Not record: Java restricts it only as a type name, and it is no Kotlin keyword. A
+            // method may be called record. yield stays: an unqualified call of it does not compile.
             "yield",
             "fun",
             "val",
