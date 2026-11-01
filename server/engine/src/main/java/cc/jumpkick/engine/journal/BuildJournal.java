@@ -333,6 +333,9 @@ public final class BuildJournal {
         if (entry == null || Files.exists(entry.planned)) return false;
         pending.written(finished.requestId());
         PendingRuns.logNoop(entry.planned, finished);
+        // A no-op has no run directory to read back: an MCP run that waits on its jid finds it here.
+        if (noopsByRequestId.size() >= 256) noopsByRequestId.clear();
+        noopsByRequestId.put(finished.requestId(), Json.write(finished));
         return true;
     }
 
@@ -673,13 +676,30 @@ public final class BuildJournal {
      */
     private final ConcurrentHashMap<Long, Path> runDirsByRequestId = new ConcurrentHashMap<>();
 
+    /** The highest request id among the newest records: where a starting engine numbers on from. */
+    public long newestRequestId() {
+        long max = 0;
+        try {
+            for (RawLoaded l : loadNewestRaw(200, null)) max = Math.max(max, scanLong(l.head(), "requestId"));
+        } catch (RuntimeException e) {
+            Log.debug("newest request id: best-effort", e);
+        }
+        return max;
+    }
+
+    /** Recent no-ops' finished records by request id: they leave a run-log line, not a directory. */
+    private final ConcurrentHashMap<Long, String> noopsByRequestId = new ConcurrentHashMap<>();
+
     /**
      * Raw JSON of the <em>finished</em> record stamped with {@code requestId}, or empty while the
-     * run is absent or still {@code running}. The run dir is found with one newest-first scan of
-     * record heads and memoized, so a poll reads one head until the run finishes.
+     * run is absent or still {@code running}. A no-op's comes from memory; a run dir is found with
+     * one newest-first scan of record heads and memoized, so a poll reads one head until the run
+     * finishes.
      */
     public Optional<String> rawFinishedRecordByRequestId(long requestId) {
         if (requestId <= 0) return Optional.empty();
+        String noop = noopsByRequestId.get(requestId);
+        if (noop != null) return Optional.of(noop);
         Path dir = runDirsByRequestId.get(requestId);
         if (dir != null) {
             if (Files.isDirectory(dir)) return readFinished(dir, requestId);

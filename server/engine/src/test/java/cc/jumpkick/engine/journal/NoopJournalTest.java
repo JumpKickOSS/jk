@@ -58,6 +58,9 @@ class NoopJournalTest {
                 .singleElement()
                 .satisfies(l -> assertThat(l).startsWith("3\t").contains("\tbuild\t90\tcli"));
         assertThat(journal.runDir("g:a", project.toString(), 3)).isEmpty();
+        assertThat(journal.rawFinishedRecordByRequestId(11))
+                .as("a wait on the no-op's request id still finds its finished record")
+                .hasValueSatisfying(r -> assertThat(r).containsPattern("\"requestId\"\\s*:\\s*11\\b"));
     }
 
     @Test
@@ -73,6 +76,9 @@ class NoopJournalTest {
         assertThat(dir.resolve(ProjectBuilds.RECORD)).exists();
         assertThat(dir.resolve(BuildJournal.ENGINE_OWNER)).doesNotExist();
         assertThat(journal.get(locator).orElseThrow().running()).isFalse();
+        assertThat(new BuildJournal(tmp.resolve("builds"), HOUR).newestRequestId())
+                .as("a new engine numbers its requests on from the journal's")
+                .isEqualTo(12);
     }
 
     @Test
