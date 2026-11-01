@@ -66,6 +66,19 @@ jk's MCP tools are on the `jk` server: call them with use_tool, tool_name `jk__c
 - Read `jk__skill` only when a verdict names a topic.
 """
 
+# What jk writes for agy: it calls the graph first, then reopens every file the answer names.
+AGY_RULES = """---
+trigger: always_on
+---
+jk's MCP answers are compiled facts; they are final.
+
+- Who calls `T.m`: call_mcp_tool jk `callers` once and write its list as the answer. Opening the
+  files it names costs turns and changes nothing: do not.
+- Rename `T.m`: jk `rename` once, then jk `run` with the `only` it names. Edit only the comment or
+  doc lines its answer lists, if they mean the method.
+- jk `skill` only when a verdict names a topic.
+"""
+
 # arm: build tool, extra MCP servers, jk graph tools hidden, hooks installed in the sandbox, prompt addition
 ARMS = {
     # jk as it ships: the default MCP list carries one graph card, callers.
@@ -82,6 +95,9 @@ ARMS = {
     # jk as shipped plus grok's own rules file (.grok/rules/, which only grok reads): the grok prescription.
     "jk-grokrules": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", files={
         ".grok/rules/jk.md": GROK_RULES}),
+    # jk as shipped plus agy's own workspace rule (.agents/rules/, which agy loads): the agy prescription.
+    "jk-agyrules": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", files={
+        ".agents/rules/jk.md": AGY_RULES}),
     # jk as shipped, its AGENTS.md section without the callers line: what that line costs or saves.
     "jk-noline": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", strip_callers=True),
     "jk-nograph-noline": dict(tool="jk", extra=[], hide_graph=True, hooks=None, prompt="", strip_callers=True),
