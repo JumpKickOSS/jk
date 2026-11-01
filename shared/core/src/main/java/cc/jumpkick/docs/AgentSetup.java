@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -37,9 +38,44 @@ public final class AgentSetup {
     static final String OPENCODE_JSON = "opencode.json";
     static final String OPENCODE_JSONC = "opencode.jsonc";
 
+    /** agy's always-on workspace rule, as measured: without it agy reads every file the graph names. */
+    static final String AGY_RULES_FILE = ".agents/rules/jk.md";
+
+    static final String AGY_RULES = """
+            ---
+            trigger: always_on
+            ---
+            jk's MCP answers are compiled facts; they are final. `callers` and `rename` take `Type.method` as
+            the task names it: no file needs finding or opening first.
+
+            - Who calls `T.m`: call_mcp_tool jk `callers` once and write its list as the answer. Opening the
+              files it names costs turns and changes nothing: do not.
+            - Rename `T.m`: jk `rename` once, then jk `run` with the `only` it names. Edit only the comment or
+              doc lines its answer lists, if they mean the method.
+            - jk `skill` only when a verdict names a topic.
+            """;
+
+    /** An agent jk can tell is on this machine, by its CLI on {@code PATH} (or, for Claude Code, its shell). */
+    public enum Host {
+        CLAUDE("claude"),
+        CURSOR("cursor-agent"),
+        GEMINI("gemini"),
+        OPENCODE("opencode"),
+        GROK("grok"),
+        AGY("agy"),
+        MUSE("muse");
+
+        /** The executable whose presence on {@code PATH} means the agent is installed. */
+        public final String cli;
+
+        Host(String cli) {
+            this.cli = cli;
+        }
+    }
+
     /** Which agents get project files. */
     public enum Mode {
-        /** Agents already in use here: their marker exists, or the calling shell belongs to one. */
+        /** Agents in use here or installed: a project marker, the calling shell, or the agent's CLI. */
         DETECT,
         /** Every supported agent. */
         ALL,
@@ -62,23 +98,24 @@ public final class AgentSetup {
     /**
      * Bring {@code dir} up to date for its agents.
      *
-     * @param claudeRunning whether the calling shell belongs to Claude Code
-     * @return one line per file written or skipped; empty when everything was already current
+     * @param hosts the agents present on this machine; in {@link Mode#DETECT} each gets its files
+     * @return one line per file written or skipped, then one per step only the user can take (a
+     *     {@code next:} line); empty when everything was already current
      * @throws IOException when {@code AGENTS.md} cannot be written or has malformed markers
      */
-    public static List<String> install(Path dir, Mode mode, boolean claudeRunning) throws IOException {
+    public static List<String> install(Path dir, Mode mode, Set<Host> hosts) throws IOException {
         List<String> lines = new ArrayList<>();
         AgentsGuide.Change guide = AgentsGuide.sync(dir);
         if (guide != AgentsGuide.Change.UNCHANGED) lines.add(guideLine(guide, dir.resolve(AgentsGuide.FILE)));
         if (mode == Mode.NONE) return lines;
         boolean all = mode == Mode.ALL;
         if (all
-                || claudeRunning
+                || hosts.contains(Host.CLAUDE)
                 || Files.isDirectory(dir.resolve(CLAUDE_DIR))
                 || Files.exists(dir.resolve(CLAUDE_MD))) {
             claudeCode(dir, lines);
         }
-        if (all || Files.isDirectory(dir.resolve(".cursor"))) {
+        if (all || hosts.contains(Host.CURSOR) || Files.isDirectory(dir.resolve(".cursor"))) {
             Path file = dir.resolve(CURSOR_MCP);
             step(file, lines, () -> mergeJson(file, AgentSetup::mcpServer));
         }
@@ -86,15 +123,41 @@ public final class AgentSetup {
             Path file = dir.resolve(VSCODE_MCP);
             step(file, lines, () -> mergeJson(file, root -> vscodeServer(root)));
         }
-        if (all || Files.isDirectory(dir.resolve(GEMINI_DIR)) || Files.exists(dir.resolve("GEMINI.md"))) {
+        if (all
+                || hosts.contains(Host.GEMINI)
+                || Files.isDirectory(dir.resolve(GEMINI_DIR))
+                || Files.exists(dir.resolve("GEMINI.md"))) {
             Path file = dir.resolve(GEMINI_SETTINGS);
             step(file, lines, () -> mergeJson(file, AgentSetup::geminiSettings));
         }
         Path opencode = opencodeFile(dir);
-        if (all || Files.exists(opencode) || Files.isDirectory(dir.resolve(".opencode"))) {
+        if (all
+                || hosts.contains(Host.OPENCODE)
+                || Files.exists(opencode)
+                || Files.isDirectory(dir.resolve(".opencode"))) {
             step(opencode, lines, () -> mergeJson(opencode, AgentSetup::opencodeConfig));
         }
+        if (all || hosts.contains(Host.AGY) || Files.isDirectory(dir.resolve(".agents/rules"))) {
+            Path file = dir.resolve(AGY_RULES_FILE);
+            step(file, lines, () -> ownedFile(file, AGY_RULES));
+        }
+        if (all || hosts.contains(Host.GROK)) {
+            lines.add("next: grok reads AGENTS.md only in a folder you trust: accept grok's trust prompt here once");
+        }
+        if (all || hosts.contains(Host.MUSE)) {
+            lines.add("next: muse reads AGENTS.md only in a trusted workspace: trust it when muse asks, or run"
+                    + " muse with --trust-workspace");
+        }
         return lines;
+    }
+
+    /** A file jk owns outright: written when absent or different from {@code text}. */
+    private static boolean ownedFile(Path file, String text) throws IOException {
+        if (Files.exists(file) && Files.readString(file, StandardCharsets.UTF_8).equals(text)) return false;
+        Path parent = file.getParent();
+        if (parent != null) Files.createDirectories(parent);
+        Files.writeString(file, text, StandardCharsets.UTF_8);
+        return true;
     }
 
     /**
@@ -122,6 +185,8 @@ public final class AgentSetup {
         step(gemini, lines, () -> mergeJson(gemini, AgentSetup::dropMcpServer), done);
         Path opencode = opencodeFile(dir);
         step(opencode, lines, () -> mergeJson(opencode, AgentSetup::dropOpencode), done);
+        Path agy = dir.resolve(AGY_RULES_FILE);
+        step(agy, lines, () -> dropOwnedFile(agy, AGY_RULES), "removed ");
         return lines;
     }
 
@@ -170,6 +235,14 @@ public final class AgentSetup {
         String eol = text.contains("\r\n") ? "\r\n" : "\n";
         String sep = text.isEmpty() ? "" : text.endsWith("\n") ? eol : eol + eol;
         Files.writeString(file, text + sep + line + eol, StandardCharsets.UTF_8);
+        return true;
+    }
+
+    /** Deletes a file jk owns, unless the project has changed it. */
+    private static boolean dropOwnedFile(Path file, String text) throws IOException {
+        if (!Files.exists(file)
+                || !Files.readString(file, StandardCharsets.UTF_8).equals(text)) return false;
+        Files.delete(file);
         return true;
     }
 

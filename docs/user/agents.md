@@ -28,8 +28,9 @@ never edits it. A file jk cannot parse as strict JSON is left as it was, with a 
 | Any build verb (`jk build`, `jk test`, …) | A section that differs from this jk's guide is rewritten. A file without the section is left alone. |
 
 `JK_AGENTS=none` makes `jk agents`, `new`, `init` and `import` write `AGENTS.md` only; `JK_AGENTS=all` wires every
-agent. An agent is in use when its marker exists (`.claude/`, `CLAUDE.md`) or the calling shell
-belongs to it.
+agent. An agent counts as present when its marker exists in the project (`.claude/`, `.cursor/`, …),
+when the calling shell belongs to it, or when its CLI is on `PATH` (`claude`, `cursor-agent`,
+`gemini`, `opencode`, `grok`, `agy`, `muse`).
 
 ### What you still do by hand
 
@@ -65,6 +66,16 @@ Text searches pass untouched.
 | VS Code (`.vscode/` exists) | `.vscode/mcp.json` | `servers.jk`, a `stdio` server running `jk mcp` |
 | Gemini CLI (`.gemini/` or `GEMINI.md` exists) | `.gemini/settings.json` | `mcpServers.jk` with `trust` set, and `AGENTS.md` added to `context.fileName` so Gemini reads the guide |
 | opencode (`opencode.json`, `opencode.jsonc` or `.opencode/` exists) | `opencode.json` | `mcp.jk`, a local server running `jk mcp` |
+
+| agy (`agy` on `PATH`, or `.agents/rules/` exists) | `.agents/rules/jk.md` | an always-on rule, owned by jk: take `callers` and `rename` answers as final instead of re-opening the files they name |
+
+Two agents read `AGENTS.md` only in a folder the user has trusted, which jk cannot do on your behalf,
+so `jk agents` prints the step as a `next:` line instead:
+
+| Agent | Step |
+|---|---|
+| grok | accept grok's trust prompt in the project once |
+| muse | trust the workspace when muse asks, or run muse with `--trust-workspace` |
 
 Only Claude Code gets the hook and an allow-list written; the others get the MCP server and the
 guide. `jk agents --remove` leaves `AGENTS.md` in Gemini's `context.fileName`, since a project may

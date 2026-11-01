@@ -4,6 +4,8 @@ package cc.jumpkick.command.project;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.docs.AgentSetup;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.GraphAck;
@@ -11,7 +13,9 @@ import cc.jumpkick.wire.protocol.GraphRequest;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * What a new or imported project gets for its coding agents: {@link AgentSetup}'s files for the
@@ -37,9 +41,7 @@ public final class AgentWiring {
 
     /** As {@link #run(Path)} for an explicit {@code mode}. */
     public static List<String> run(Path dir, AgentSetup.Mode mode) throws IOException {
-        String claudeCode = System.getenv("CLAUDECODE");
-        boolean claude = claudeCode != null && !claudeCode.isEmpty();
-        List<String> lines = AgentSetup.install(dir, mode, claude);
+        List<String> lines = AgentSetup.install(dir, mode, hosts());
         boolean project = Files.isRegularFile(ManifestPaths.manifestIn(dir));
         if (mode != AgentSetup.Mode.NONE
                 && project
@@ -52,6 +54,24 @@ public final class AgentWiring {
     /** Take jk's entries out of {@code dir}; the lines say what changed. */
     public static List<String> remove(Path dir) throws IOException {
         return AgentSetup.remove(dir);
+    }
+
+    /** The agents on this machine: Claude Code's shell, and every agent CLI on {@code PATH}. */
+    static Set<AgentSetup.Host> hosts() {
+        Set<AgentSetup.Host> found = EnumSet.noneOf(AgentSetup.Host.class);
+        String claudeCode = System.getenv("CLAUDECODE");
+        if (claudeCode != null && !claudeCode.isEmpty()) found.add(AgentSetup.Host.CLAUDE);
+        List<String> entries = SearchPath.entries(System.getenv("PATH"));
+        for (AgentSetup.Host host : AgentSetup.Host.values()) {
+            for (String entry : entries) {
+                Path dir = SearchPath.path(entry);
+                if (dir != null && PathUtil.isRunnable(dir.resolve(host.cli))) {
+                    found.add(host);
+                    break;
+                }
+            }
+        }
+        return found;
     }
 
     private static void seedGraph(Path dir) {

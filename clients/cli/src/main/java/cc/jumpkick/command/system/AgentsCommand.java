@@ -13,6 +13,7 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -61,7 +62,9 @@ public final class AgentsCommand implements CliCommand {
                     : in.isSet("all") ? AgentWiring.run(dir, AgentSetup.Mode.ALL) : AgentWiring.run(dir);
             String none =
                     in.isSet("remove") ? "nothing of jk's in " + dir : dir.resolve(AgentsGuide.FILE) + " is current";
-            CliOutput.outRaw((lines.isEmpty() ? none : String.join("\n", lines)) + "\n");
+            List<String> out = new ArrayList<>(lines);
+            if (out.stream().allMatch(l -> l.startsWith("next: "))) out.addFirst(none);
+            CliOutput.outRaw(String.join("\n", out) + "\n");
             CliOutput.stdout().flush();
             return Exit.SUCCESS;
         } catch (IOException e) {

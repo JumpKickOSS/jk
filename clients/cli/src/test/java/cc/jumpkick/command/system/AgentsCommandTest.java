@@ -25,7 +25,7 @@ class AgentsCommandTest {
         Files.writeString(file, Files.readString(file) + "\n## Project rules\n");
         String current = Capture.stdout(
                 () -> assertThat(Jk.execute("agents", dir.toString())).isEqualTo(Exit.SUCCESS));
-        assertThat(current.strip()).isEqualTo(file + " is current");
+        assertThat(current.lines().findFirst()).contains(file + " is current");
         assertThat(Files.readString(file)).endsWith("\n## Project rules\n");
     }
 
