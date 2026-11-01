@@ -161,6 +161,9 @@ class GraphToolsTest {
                         + "test:\n  InfoTest.names()  src/test/java/a/InfoTest.java:10")
                 .as("direct callers only: the caller's caller waits for depth > 1")
                 .doesNotContain("Cli.run()");
+        assertThat(new GraphTools(release()).callers("Info.name(String)", 1, 2000))
+                .as("the parameter list rename takes names the same method")
+                .isEqualTo(out);
     }
 
     @Test
