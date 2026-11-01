@@ -1,0 +1,14 @@
+# Tier-0 smoke tasks over smoke/fixture: one caller question and one rename, each a few turns
+# for an agent that uses jk's graph. A decoy `Journal.post` makes a text search over-answer.
+
+[tasks.smoke-callers]
+kind = "question"
+repo = "smoke"
+prompt = "Which methods call `Ledger.post(Entry)`? Count calls from Ledger's own methods too."
+answer = ["Billing.charge", "Refunds.refund", "Ledger.transfer"]
+
+[tasks.smoke-rename]
+kind = "change"
+repo = "smoke"
+prompt = "Rename the method `Ledger.post(Entry)` to `record`, keeping its behaviour, and update every caller. `Journal.post` is a different method and stays as it is."
+test = ["jk", "-u", "-x", "-a", "build", "-S"]
