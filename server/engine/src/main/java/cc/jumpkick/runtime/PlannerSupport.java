@@ -709,8 +709,9 @@ public final class PlannerSupport {
     /**
      * The selection the runner actually executes: the session's, with this module's {@code [test]
      * include-tags} / {@code exclude-tags} folded in when the session carries no tags at all (jk
-     * build / BSP without data). {@code jk test} resolves tags CLI-side and its selection already
-     * carries them.
+     * build / BSP / an MCP run without data), or the workspace root's when the module has none: a
+     * member inherits the root's tiers, so an MCP {@code run(only=member)} skips what {@code jk test
+     * -m member} skips. {@code jk test} resolves tags CLI-side and its selection already carries them.
      */
     static TestSelection effectiveSelection(TestSelection sel, Path moduleDir) {
         // tagsResolved: the CLI already applied baseline/profile/flag layers — an empty list may
@@ -718,6 +719,10 @@ public final class PlannerSupport {
         if (sel.tagsResolved()) return sel;
         if (!sel.includeTags().isEmpty() || !sel.excludeTags().isEmpty()) return sel;
         var fromToml = JkBuildParser.parseTestTags(ManifestPaths.manifestIn(moduleDir));
+        if (fromToml.isEmpty()) {
+            Path root = rootOf(moduleDir);
+            if (root != null) fromToml = JkBuildParser.parseTestTags(ManifestPaths.manifestIn(root));
+        }
         if (fromToml.isEmpty()) return sel;
         return TestSelection.of(
                 sel.suites(),
@@ -729,6 +734,21 @@ public final class PlannerSupport {
                 sel.scriptsOnly(),
                 sel.noScripts(),
                 sel.classes());
+    }
+
+    /** The workspace root above {@code moduleDir}, or null when it is not a member of one. */
+    private static @Nullable Path rootOf(Path moduleDir) {
+        try {
+            Path root = WorkspaceLocator.findRoot(moduleDir).orElse(null);
+            return root == null
+                            || root.toAbsolutePath()
+                                    .normalize()
+                                    .equals(moduleDir.toAbsolutePath().normalize())
+                    ? null
+                    : root;
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     /**
