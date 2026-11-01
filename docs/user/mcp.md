@@ -9,9 +9,9 @@ Fix a failing build: [Troubleshooting](troubleshooting.md).
 
 ## Connect
 
-**Claude Code needs nothing by hand:** `jk new`, `jk init`, `jk import` and `jk agents` write the
-registration (`.mcp.json`) and the permissions for you ([Agents](agents.md#wiring-a-project-for-agents)).
-Any other client registers jk once, below.
+**Claude Code, Cursor, VS Code, Gemini CLI and opencode need nothing by hand:** `jk new`, `jk init`,
+`jk import` and `jk agents` write the registration for the ones in use
+([Agents](agents.md#wiring-a-project-for-agents)). Any other client registers jk once, below.
 
 **Per project (preferred): `jk mcp`.** Register jk as a stdio server whose command is `jk mcp`.
 MCP clients start a stdio server in the project they are working on; `jk mcp` finds the project
@@ -24,8 +24,7 @@ claude mcp add jk -- jk mcp                  # Claude Code
 codex mcp add jk -- jk mcp                   # Codex
 ```
 
-Other clients take the same command, `jk mcp`, in their own MCP settings (Cursor: `.cursor/mcp.json`,
-VS Code: `.vscode/mcp.json`, Gemini: `.gemini/settings.json`).
+Other clients take the same command, `jk mcp`, in their own MCP settings.
 
 Or in a project's `.mcp.json`: `{"mcpServers": {"jk": {"command": "jk", "args": ["mcp"]}}}`.
 Outside a project `jk mcp` still serves, and the tools take `dir` as over HTTP.

@@ -17,7 +17,8 @@ curl -fsSL https://jumpkick.build/install.sh | bash     # Windows: irm https://j
 jk new my-app && cd my-app
 jk add jackson3-databind
 jk test
-# agents: jk new already wired them (AGENTS.md, MCP, hook, code graph).
+# agents: jk new already wired them (AGENTS.md, MCP, hook, code graph) for Claude Code,
+# Cursor, VS Code, Gemini CLI and opencode.
 # An existing project: jk agents
 ```
 

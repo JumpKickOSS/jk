@@ -83,4 +83,64 @@ class AgentSetupTest {
     private static List<String> strings(List<?> values) {
         return values.stream().map(String::valueOf).toList();
     }
+
+    @Test
+    void all_writes_each_agents_own_shape(@TempDir Path dir) throws Exception {
+        AgentSetup.install(dir, AgentSetup.Mode.ALL, false);
+        Object cursor = MiniJson.parse(Files.readString(dir.resolve(".cursor/mcp.json")));
+        assertThat(MiniJson.str(MiniJson.get(MiniJson.get(cursor, "mcpServers"), "jk"), "command"))
+                .isEqualTo("jk");
+        Object vscode = MiniJson.get(
+                MiniJson.get(MiniJson.parse(Files.readString(dir.resolve(".vscode/mcp.json"))), "servers"), "jk");
+        assertThat(MiniJson.str(vscode, "type")).isEqualTo("stdio");
+        Object gemini = MiniJson.parse(Files.readString(dir.resolve(".gemini/settings.json")));
+        assertThat(MiniJson.get(MiniJson.get(gemini, "mcpServers"), "jk")).isNotNull();
+        assertThat(strings(MiniJson.list(MiniJson.get(gemini, "context"), "fileName")))
+                .containsExactly("AGENTS.md", "GEMINI.md");
+        Object opencode = MiniJson.parse(Files.readString(dir.resolve("opencode.json")));
+        Object server = MiniJson.get(MiniJson.get(opencode, "mcp"), "jk");
+        assertThat(MiniJson.str(server, "type")).isEqualTo("local");
+        assertThat(strings(MiniJson.list(server, "command"))).containsExactly("jk", "mcp");
+        assertThat(AgentSetup.install(dir, AgentSetup.Mode.ALL, false)).isEmpty();
+    }
+
+    @Test
+    void detect_follows_each_agents_marker(@TempDir Path dir) throws Exception {
+        Files.createDirectories(dir.resolve(".cursor"));
+        Files.createDirectories(dir.resolve(".vscode"));
+        AgentSetup.install(dir, AgentSetup.Mode.DETECT, false);
+        assertThat(dir.resolve(".cursor/mcp.json")).isRegularFile();
+        assertThat(dir.resolve(".vscode/mcp.json")).isRegularFile();
+        assertThat(dir.resolve(".gemini/settings.json")).doesNotExist();
+        assertThat(dir.resolve("opencode.json")).doesNotExist();
+        assertThat(dir.resolve(".mcp.json")).doesNotExist();
+    }
+
+    @Test
+    void gemini_keeps_the_context_files_it_already_reads(@TempDir Path dir) throws Exception {
+        Files.createDirectories(dir.resolve(".gemini"));
+        Path file = dir.resolve(".gemini/settings.json");
+        Files.writeString(file, "{\"context\":{\"fileName\":\"CONTEXT.md\"},\"theme\":\"dark\"}");
+        AgentSetup.install(dir, AgentSetup.Mode.DETECT, false);
+        Object root = MiniJson.parse(Files.readString(file));
+        assertThat(strings(MiniJson.list(MiniJson.get(root, "context"), "fileName")))
+                .containsExactly("AGENTS.md", "CONTEXT.md");
+        assertThat(MiniJson.str(root, "theme")).isEqualTo("dark");
+    }
+
+    @Test
+    void remove_undoes_all_and_keeps_other_keys(@TempDir Path dir) throws Exception {
+        Files.createDirectories(dir.resolve(".vscode"));
+        Path vscode = dir.resolve(".vscode/mcp.json");
+        Files.writeString(vscode, "{\"servers\":{\"other\":{\"type\":\"stdio\",\"command\":\"x\"}}}");
+        AgentSetup.install(dir, AgentSetup.Mode.ALL, false);
+        AgentSetup.remove(dir);
+        Object servers = MiniJson.get(MiniJson.parse(Files.readString(vscode)), "servers");
+        assertThat(MiniJson.get(servers, "other")).isNotNull();
+        assertThat(MiniJson.get(servers, "jk")).isNull();
+        assertThat(dir.resolve(".cursor/mcp.json")).doesNotExist();
+        assertThat(dir.resolve("opencode.json")).doesNotExist();
+        assertThat(dir.resolve(".mcp.json")).doesNotExist();
+        assertThat(dir.resolve("AGENTS.md")).doesNotExist();
+    }
 }
