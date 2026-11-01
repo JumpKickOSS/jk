@@ -1,6 +1,6 @@
 ---
 name: jk
-description: Build and fix Java, Kotlin, and Groovy with JumpKick. Use when the tree has jk.toml or the task is a build, test, lockfile, or dependency.
+description: Build, fix, and navigate Java, Kotlin, and Groovy with JumpKick. Use when the tree has jk.toml: a build, test, lockfile, or dependency task, or who calls a method or renaming one.
 ---
 
 # jk
@@ -40,4 +40,4 @@ One line per problem: `E path:line:col message` (project-relative), `T Class#met
 
 ## Topics
 
-dependencies, tests, workspaces, lockfile, imports, plugins, guards, layout, jdk, engine.
+graph, dependencies, tests, workspaces, lockfile, imports, plugins, guards, layout, jdk, engine.
