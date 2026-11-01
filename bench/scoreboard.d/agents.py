@@ -62,7 +62,8 @@ def cells() -> dict[tuple[str, str, str], list[dict]]:
             if not line.strip():
                 continue
             r = json.loads(line)
-            if r.get("task") not in tasks or r.get("model") != models.get(r.get("driver")):
+            # A row with no verdict is a run that never started (its baseline was red): not a series.
+            if r.get("task") not in tasks or r.get("model") != models.get(r.get("driver")) or "accepted" not in r:
                 continue
             r["kind"] = tasks[r["task"]].get("kind", r.get("kind", ""))
             r["results"] = f.parent.name
