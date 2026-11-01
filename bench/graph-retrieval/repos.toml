@@ -3,6 +3,20 @@
 # read by Truth.java for the ground truth. `lang` is the main source language; `loc` is filled in
 # by `bench setup` (non-blank lines of main and test sources) and printed in the table.
 
+# The two smallest points are Spring guides, the project in `subdir`; `bench setup` commits that
+# directory as a repository of its own under the corpus.
+[repos.gs-multi-module]
+url    = "https://github.com/spring-guides/gs-multi-module"
+commit = "d88a2b721bda3798a6a934987157498e66da06c5"
+subdir = "complete"
+lang   = "java"
+
+[repos.gs-uploading-files]
+url    = "https://github.com/spring-guides/gs-uploading-files"
+commit = "d3f432cac961edfd39a9be157f2cdc258ed1ac65"
+subdir = "complete"
+lang   = "java"
+
 [repos.spring-petclinic]
 url    = "https://github.com/spring-projects/spring-petclinic"
 commit = "f3c74834e31079f69855e9c9eddb34fceb40a8d9"

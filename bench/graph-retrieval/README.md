@@ -49,7 +49,7 @@ generated members) is never a subject.
 |---|---|
 | `grep-read` | `grep -rnE` for the name (a call `name(`, a declaration, an `implements`/`extends`/`:` line), then reads each matching file in full with line numbers, most hits first, up to 15 files: what an agent with only a search and a file reader does |
 | `jk-query` | `jk graph query "<question>"` at the default budget |
-| `jk-tool` | The jk command the skill points at for that kind: `neighbors -R calls`, `find -I`, `find <name> -t method -I`, `read -w headline` |
+| `jk-tool` | The jk command the skill points at for that kind: `callers <Type.method>` (every overload, each call's `file:line`), `find -I`, `find <name> -t method -I`, `read -w headline` |
 | `graphify-query` | `graphify query "<question>"` |
 | `graphify-tool` | `graphify explain <subject>` |
 | `rql` | RepoQL's `explore` with the question |
@@ -66,8 +66,12 @@ answer *names* a truth entity when it cites the entity's file at a line inside t
 nodes lower it on purpose, so it is reported, not ranked. **Tokens per found** is all tokens over
 all named entities: the cost of one correct fact.
 
-`edges` compares each graph's `calls` edges with the compiler's, both mapped to (file, method span):
-precision and recall per repo.
+`edges` compares each graph's `calls` edges with the compiler's, both mapped to (file, type, member;
+a constructor or initializer is the type): precision and recall per repo. jk's are read from
+`target/graph/graph.bin` after a `jk graph build`: the linked graph every `jk graph` command loads,
+so the edges `callers` walks. `.jk/graph/graph.jsonl` is not read: it holds each file's unlinked
+fragment and compiled `Type#member` mentions, which only the linker binds. graphify's are its
+`graphify-out/graph.json`.
 
 `index` times a full index and an incremental one after a one-line edit to one main source file:
 `jk graph build -r` and `jk graph build`, `graphify update .` from an empty `graphify-out/` and

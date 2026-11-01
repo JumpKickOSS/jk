@@ -23,6 +23,7 @@ import random
 import re
 import shutil
 import statistics
+import struct
 import subprocess
 import sys
 import time
@@ -88,14 +89,27 @@ def setup(name: str, spec: dict) -> None:
     tree = tree_of(name)
     tree.parent.mkdir(parents=True, exist_ok=True)
     url = os.path.expanduser(spec["url"])
-    if not tree.exists():
-        subprocess.run(["git", "clone", "-q", url, str(tree)], check=True)
+    # A project in a subdirectory (a Spring guide's complete/) is cloned beside the corpus and its
+    # directory committed as a repository of its own, so every reader sees the project at its root.
+    clone = HOME / "sources" / name if spec.get("subdir") else tree
+    clone.parent.mkdir(parents=True, exist_ok=True)
+    if not clone.exists():
+        subprocess.run(["git", "clone", "-q", url, str(clone)], check=True)
     rev = spec.get("commit") or spec.get("ref")
-    subprocess.run(["git", "-C", str(tree), "fetch", "-q", "--tags", "origin"], check=False)
-    subprocess.run(["git", "-C", str(tree), "checkout", "-q", "--detach", rev if spec.get("commit") else
+    subprocess.run(["git", "-C", str(clone), "fetch", "-q", "--tags", "origin"], check=False)
+    subprocess.run(["git", "-C", str(clone), "checkout", "-q", "--detach", rev if spec.get("commit") else
                     (f"origin/{rev}" if spec.get("native") else rev)], check=True)
-    commit = subprocess.run(["git", "-C", str(tree), "rev-parse", "HEAD"], capture_output=True, text=True,
+    commit = subprocess.run(["git", "-C", str(clone), "rev-parse", "HEAD"], capture_output=True, text=True,
                             check=True).stdout.strip()
+    if spec.get("subdir") and not tree.exists():
+        tree.mkdir(parents=True)
+        archive = subprocess.run(["git", "-C", str(clone), "archive", f"HEAD:{spec['subdir']}"], capture_output=True,
+                                 check=True).stdout
+        subprocess.run(["tar", "-x", "-C", str(tree)], input=archive, check=True)
+        subprocess.run(["git", "-C", str(tree), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(tree), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(tree), "-c", "user.name=bench", "-c", "user.email=bench@localhost", "commit",
+                        "-q", "-m", f"{url} {commit}:{spec['subdir']}"], check=True)
     if not spec.get("native") and not (tree / "jk.toml").exists():
         build_file = next((f for f in ("pom.xml", "build.gradle.kts", "build.gradle") if (tree / f).exists()), None)
         rc, out, _ = sh(["jk", "-u", "-x", "-a", "import", build_file], tree, timeout=1800)
@@ -423,7 +437,8 @@ def jk_tool(q: dict, tree: Path) -> tuple[str, list[list[str]], set[str]]:
     else:
         owner, name = member(q)
         cmd = {
-            "callers": jk("graph", "neighbors", f"{owner}.{name}", "-R", "calls"),
+            # Every overload, with each call site's file:line; a nested type's `Outer.Inner.m` resolves as is.
+            "callers": jk("graph", "callers", f"{owner}.{name}"),
             "overrides": jk("graph", "find", name, "-t", "method", "-I", owner),
             "definition": jk("graph", "read", f"{owner}.{name}", "-w", "headline"),
         }[q["kind"]]
@@ -671,13 +686,61 @@ def index(names: list[str], out_dir: Path, runs: int) -> None:
                     print(row)
 
 
+def jk_snapshot(path: Path) -> dict:
+    """jk's linked graph, read from the `graph.bin` every `jk graph` command loads, as node-link JSON.
+
+    `.jk/graph/graph.jsonl` holds each file's unlinked fragment and its compiled facts' mentions
+    (`Type#member` strings); the linker binds those to nodes and writes the result here, so reading
+    this file is reading the edges `jk graph callers` walks, without re-implementing the linker or
+    paying a CLI call per method. Layout (GraphSnapshot.java): magic JKGS, format 1, the key, a
+    string table, nodes (id, label, file_type, source_file, source_location, extra), edges (source,
+    target as node indices; relation, confidence, source_file, source_location, context, extra; then
+    score and weight as floats), all big-endian ints, -1 for none."""
+    b, pos = path.read_bytes(), 0
+
+    def ints(n: int) -> tuple:
+        nonlocal pos
+        out = struct.unpack_from(f">{n}i", b, pos)
+        pos += 4 * n
+        return out
+
+    def utf() -> None:  # DataOutputStream.writeUTF: a 2-byte length; the key is not needed
+        nonlocal pos
+        pos += 2 + struct.unpack_from(">H", b, pos)[0]
+
+    def string() -> str:
+        nonlocal pos
+        (n,) = ints(1)
+        pos += n
+        return b[pos - n:pos].decode("utf-8", "replace")
+
+    if ints(2) != (0x4A4B4753, 1):
+        raise ValueError(f"{path}: not a format-1 jk graph snapshot")
+    utf(), ints(1), utf(), utf(), utf()
+    table = [string() for _ in range(ints(1)[0])]
+    nodes = []
+    for _ in range(ints(1)[0]):
+        i, label, _, src, loc, _ = ints(6)
+        nodes.append({"id": table[i], "label": table[label], "source_file": table[src],
+                      "source_location": table[loc]})
+    links = []
+    for _ in range(ints(1)[0]):
+        a, z, rel, _, _, loc, _, _ = ints(8)
+        pos += 8
+        links.append({"source": nodes[a]["id"], "target": nodes[z]["id"], "relation": table[rel],
+                      "source_location": table[loc]})
+    return {"nodes": nodes, "links": links}
+
+
 def edges(names: list[str], out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
-    graphs = {"jk": "target/graph/graph.json", "graphify": "graphify-out/graph.json"}
+    graphs = {"jk": "target/graph/graph.bin", "graphify": "graphify-out/graph.json"}
     with (out_dir / "edges.jsonl").open("a") as f:
         for name in names:
             tree = tree_of(name)
             model = Model(HOME / "truth" / f"{name}.jsonl", tree)
+            # Refresh first, so the snapshot is the tree's (a no-op when nothing moved).
+            sh(jk("graph", "build"), tree, timeout=1800)
 
             # One entity per (file, type, member): graphify's ids give overloads one node, and a
             # constructor call or initializer is an edge to or from the type.
@@ -694,7 +757,7 @@ def edges(names: list[str], out_dir: Path) -> None:
                 path = tree / rel
                 if not path.exists():
                     continue
-                g = json.loads(path.read_text())
+                g = jk_snapshot(path) if tool == "jk" else json.loads(path.read_text())
                 nodes = {n["id"]: n for n in g["nodes"]}
                 links = g.get("links", g.get("edges", []))
                 owner = {l["target"]: l["source"] for l in links if l.get("relation") == "method"}
@@ -708,8 +771,10 @@ def edges(names: list[str], out_dir: Path) -> None:
                         t = nodes.get(owner.get(node_id, ""))
                         if not t:
                             return None
+                        simple = str(t.get("label", "")).split(".")[-1]
                         member = label[1:].removesuffix("()")
-                        return n["source_file"], str(t.get("label", "")).split(".")[-1], member
+                        # jk hangs a constructor's calls off the type; a source-scan constructor node is it too.
+                        return n["source_file"], simple, "<type>" if tool == "jk" and member == simple else member
                     return n["source_file"], label.split(".")[-1], "<type>"
 
                 predicted = set()

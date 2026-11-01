@@ -26,6 +26,34 @@ Rename `Owner.addVisit` to `recordVisit`, keeping its parameters and behaviour, 
 caller, tests included.
 """
 
+# The savings curve by repository size: one method rename per size point, smallest first.
+[tasks.gs-multi-module-rename-message]
+repo   = "gs-multi-module"
+kind   = "rename"
+tools  = ["jk", "mvn"]
+prompt = """
+Rename `MyService.message` to `greeting`, keeping its behaviour, and update every caller in both
+modules, tests included.
+"""
+
+[tasks.gs-uploading-rename-loadasresource]
+repo   = "gs-uploading-files"
+kind   = "rename"
+tools  = ["jk", "mvn"]
+prompt = """
+Rename `StorageService.loadAsResource` to `openResource`, keeping its parameters and behaviour, in the
+interface and its implementation, and update every caller, tests included.
+"""
+
+[tasks.cli-rename-strip-hyphens]
+repo   = "commons-cli"
+kind   = "rename"
+tools  = ["jk", "mvn"]
+prompt = """
+Rename `Util.stripLeadingHyphens` to `withoutLeadingHyphens`, keeping its parameters and behaviour,
+and update every caller, tests included.
+"""
+
 [tasks.commons-lang-rename-indexof]
 repo   = "commons-lang"
 kind   = "rename"
