@@ -163,6 +163,8 @@ These commands intentionally emit only machine-consumable stdout. Every row but 
 | `jk show` / `jk tasks show` | Absolute path (or `coord\tpath`) | command substitution |
 | `jk tool dir` / `jk cache dir` / `jk storage dir` | Path | scripts / installers |
 | `jk skill` | Playbook markdown | agents / MCP |
+| `jk agents` | One line per file written or removed | people / scripts |
+| `jk agent-hook` | Hook reply JSON on stdout | agent hook |
 | `jk --version` / `-V` | `jk <version>` | CI |
 | `jk explain -U dot\|mermaid` | Graph source | `dot` / editors |
 | `jk selective resolve` (+ `--json`) | Paths or JSON | CI selective plans |

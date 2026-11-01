@@ -7,7 +7,7 @@ import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.tui.CommandWedge;
-import cc.jumpkick.docs.AgentsGuide;
+import cc.jumpkick.command.project.AgentWiring;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -168,13 +168,10 @@ public final class ImportCommand implements CliCommand {
         return exit;
     }
 
-    /** An imported project gets jk's section of {@code AGENTS.md}, as a scaffolded one does. */
+    /** An imported project is wired for its agents, as a scaffolded one is. */
     private static void agentsGuide(Path projectDir) {
         try {
-            AgentsGuide.Change change = AgentsGuide.sync(projectDir);
-            if (change == AgentsGuide.Change.CREATED || change == AgentsGuide.Change.INSERTED) {
-                CommandWedge.printOk("Import", "Wrote jk's section of " + projectDir.resolve(AgentsGuide.FILE));
-            }
+            AgentWiring.report(projectDir);
         } catch (IOException e) {
             CommandWedge.printFail("Import", e.getMessage());
         }

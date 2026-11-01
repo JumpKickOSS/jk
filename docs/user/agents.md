@@ -10,21 +10,56 @@ system prompt for JumpKick — models have not been trained on this tool. A proj
 Product stance and event names: [Machine output](machine-output.md). MCP tool reference:
 [MCP](mcp.md). The “fix my failing build” recipe: [Troubleshooting](troubleshooting.md).
 
-## jk's section of AGENTS.md
+## Wiring a project for agents
 
-jk owns one section of the project's `AGENTS.md`, between `<!-- BEGIN:jumpkick -->` and
-`<!-- END:jumpkick -->`. Everything outside the markers is the project's: its own rules, a
-generator's block, anything else. jk never edits it.
+`jk agents` wires a project for the coding agents that work in it, and `jk agents --remove` takes
+jk's entries back out. It is idempotent, so it is also the command to run after upgrading jk.
+
+jk owns one section of `AGENTS.md`, between `<!-- BEGIN:jumpkick -->` and `<!-- END:jumpkick -->`,
+and its own entries in the agent files below. Everything else in those files is the project's; jk
+never edits it. A file jk cannot parse as strict JSON is left as it was, with a note.
 
 | When | What happens |
 |------|--------------|
-| `jk new`, `jk init`, `jk import` | No `AGENTS.md`: written with a title and jk's section. One without the section: the section goes in below its title. |
-| `jk skill agents [dir]` | The same, on demand, at the workspace root (or `dir`). Prints what it did. |
-| Any build verb (`jk build`, `jk test`, …) | A section that differs from this jk's guide is rewritten, so upgrading jk updates what agents read. A file without the section is left alone. |
+| `jk new`, `jk init`, `jk import` | `AGENTS.md` with jk's section, the files of each agent in use, and a first code graph (`.jk/graph/`). |
+| `jk agents [dir]` | The same, on demand, at the workspace root (or `dir`). Prints what it did. |
+| `jk agents --all` | Every supported agent, not only those in use here. |
+| `jk agents --remove` | jk's entries out of all of the above; a file left empty is deleted. |
+| Any build verb (`jk build`, `jk test`, …) | A section that differs from this jk's guide is rewritten. A file without the section is left alone. |
 
-Commit the file after a refresh as you would any generated change. Markers that do not pair up
-(a begin with no end, or either one twice) are refused by `jk skill agents` and skipped by the
-build; fix them by hand.
+`JK_AGENTS=none` makes `new`, `init` and `import` write `AGENTS.md` only; `JK_AGENTS=all` wires every
+agent. An agent is in use when its marker exists (`.claude/`, `CLAUDE.md`) or the calling shell
+belongs to it.
+
+### What you still do by hand
+
+| Situation | Command |
+|-----------|---------|
+| A project that existed before this | `jk agents` |
+| Wire every supported agent, not only the ones here | `jk agents --all` |
+| Codex, or any agent jk does not write files for | `codex mcp add jk -- jk mcp`, or `jk mcp` in the client's MCP settings |
+| Commit the generated files | `git add AGENTS.md CLAUDE.md .mcp.json .claude/settings.json .jk/graph` |
+| Undo it | `jk agents --remove` |
+
+Only Claude Code has project files written for it today; other agents read `AGENTS.md` and need the
+one MCP command above.
+
+### Claude Code
+
+| File | jk's entry |
+|------|-----------|
+| `CLAUDE.md` | `@AGENTS.md`, so Claude Code reads the same guide as every other agent |
+| `.mcp.json` | the `jk` server (`jk mcp`) |
+| `.claude/settings.json` | `mcp__jk` and `Bash(jk *)` allowed, the `jk` server pre-approved, and one `PreToolUse` hook on `Bash` and `Grep` |
+
+The hook is `jk agent-hook`, so its behaviour changes with jk, not with the file. It denies `mvn` and
+`gradle` (with the jk command to use instead) and answers a grep for a symbol, such as `OrderService`
+or `Order.total`, with a pointer to `jk graph callers` / `read` / `rename`. It never blocks a grep.
+Text searches pass untouched.
+
+Commit these files after a refresh as you would any generated change. Markers that do not pair up
+(a begin with no end, or either one twice) are refused by `jk agents` and skipped by the build; fix
+them by hand.
 
 ## Default recipe
 

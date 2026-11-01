@@ -3,7 +3,6 @@ package cc.jumpkick.command.system;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.config.WorkspaceScan;
-import cc.jumpkick.docs.AgentsGuide;
 import cc.jumpkick.docs.JkSkill;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
@@ -18,9 +17,8 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * {@code jk skill} — print the JumpKick skill, one topic, install the folder, or bring jk's section of
- * the project's {@code AGENTS.md} up to date. Same bytes as MCP {@code skill} / {@code jk://skill}. No
- * engine round-trip.
+ * {@code jk skill} — print the JumpKick skill, one topic, or install the folder. Same bytes as MCP
+ * {@code skill} / {@code jk://skill}. No engine round-trip.
  */
 public final class SkillCommand implements CliCommand {
 
@@ -31,7 +29,7 @@ public final class SkillCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Print or install the agent skill; update AGENTS.md";
+        return "Print or install the agent skill";
     }
 
     @Override
@@ -39,10 +37,10 @@ public final class SkillCommand implements CliCommand {
         return List.of(Opt.flag("List topic names", "-l", "--list"));
     }
 
-    /** A topic name, or {@code install} / {@code agents} and an optional directory. */
+    /** A topic name, or or {@code install} and an optional directory. */
     @Override
     public List<Param> parameters() {
-        return List.of(Param.of("topic", Arity.ZERO_OR_MORE, "Topic, install [dir], or agents [dir]"));
+        return List.of(Param.of("topic", Arity.ZERO_OR_MORE, "Topic, or install [dir]"));
     }
 
     /** The skill is a document (and install prints a path), so stdout is byte-exact. */
@@ -72,19 +70,6 @@ public final class SkillCommand implements CliCommand {
                 return Exit.CONFIG;
             }
         }
-        if (!pos.isEmpty() && "agents".equals(pos.get(0))) {
-            Path dir = pos.size() > 1 ? Path.of(pos.get(1)) : projectRoot();
-            dir = Path.of("").toAbsolutePath().resolve(dir).normalize();
-            try {
-                AgentsGuide.Change change = AgentsGuide.sync(dir);
-                CliOutput.outRaw(agentsLine(change, dir.resolve(AgentsGuide.FILE)) + "\n");
-                CliOutput.stdout().flush();
-                return Exit.SUCCESS;
-            } catch (IOException e) {
-                CliOutput.err(e.getMessage() == null ? "AGENTS.md update failed" : e.getMessage());
-                return Exit.CONFIG;
-            }
-        }
         if (pos.isEmpty()) {
             CliOutput.outRaw(JkSkill.core());
             CliOutput.stdout().flush();
@@ -99,15 +84,6 @@ public final class SkillCommand implements CliCommand {
         CliOutput.outRaw(text);
         CliOutput.stdout().flush();
         return Exit.SUCCESS;
-    }
-
-    static String agentsLine(AgentsGuide.Change change, Path file) {
-        return switch (change) {
-            case CREATED -> "created " + file;
-            case INSERTED -> "added jk's section to " + file;
-            case UPDATED -> "updated jk's section of " + file;
-            case UNCHANGED, ABSENT -> file + " is current";
-        };
     }
 
     /** The workspace root owning the nearest {@code jk.toml} above the cwd, that project, else the cwd. */

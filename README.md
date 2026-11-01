@@ -17,7 +17,8 @@ curl -fsSL https://jumpkick.build/install.sh | bash     # Windows: irm https://j
 jk new my-app && cd my-app
 jk add jackson3-databind
 jk test
-# agents: read target/jk-results.md, or connect to the MCP server — never scrape the TTY
+# agents: jk new already wired them (AGENTS.md, MCP, hook, code graph).
+# An existing project: jk agents
 ```
 
 ```toml
@@ -50,6 +51,10 @@ day. Every surface is built for that loop:
 - **MCP built into the engine** — `run` returns a verdict, `diagnostics` the failures, `deps` and
   `manifest` edit the project and relock. Several agents share one engine, each bound to its own
   project.
+- **`jk agents`** — one command wires a project for the agents that work in it: jk's section of
+  `AGENTS.md`, the MCP server, tool permissions, a hook that keeps them off Maven and Gradle and
+  points symbol searches at the graph, and a first code graph. `jk new`, `jk init` and `jk import`
+  run it for you; `jk agents --remove` undoes it.
 - **`jk skill`** — the playbook for a tool models were not trained on; jk keeps its section of
   your `AGENTS.md` current.
 - **`jk graph`** — a code graph built in: nothing to install, indexed in seconds, with call and

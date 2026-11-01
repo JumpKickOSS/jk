@@ -10,12 +10,11 @@ jk skill dependencies
 jk skill -l
 jk skill install            # <project>/.agents/skills/jk/
 jk skill install <dir>      # <dir>/jk/SKILL.md and the topic files
-jk skill agents             # create or update jk's section of AGENTS.md
+jk agents                   # wire this project for agents (see agents.md)
 ```
 
-`jk skill agents` writes [jk's section of `AGENTS.md`](agents.md#jks-section-of-agentsmd) at the
-workspace root: the file is created when missing, the section inserted when absent, and rewritten
-when it is stale. Text outside the section is never touched.
+`jk agents` wires a project for the coding agents that work in it: [jk's section of `AGENTS.md`](agents.md#wiring-a-project-for-agents)
+and each agent's MCP, permission and hook files.
 
 The same bytes are the MCP tool **`skill`** (`topic` optional) and the resource **`jk://skill`**
 (`jk://skill/<topic>` is one page).

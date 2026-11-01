@@ -52,6 +52,8 @@ import cc.jumpkick.command.project.UpdateCommand;
 import cc.jumpkick.command.project.VerifyBuildCommand;
 import cc.jumpkick.command.project.WhyCommand;
 import cc.jumpkick.command.system.ActivityCommand;
+import cc.jumpkick.command.system.AgentHookCommand;
+import cc.jumpkick.command.system.AgentsCommand;
 import cc.jumpkick.command.system.AuthCommand;
 import cc.jumpkick.command.system.CacheCommand;
 import cc.jumpkick.command.system.CancelCommand;
@@ -147,6 +149,8 @@ public final class CommandDispatch {
             new DeactivateCommand(),
             new ShellCommand(),
             new HookEnvCommand(),
+            new AgentHookCommand(),
+            new AgentsCommand(),
             new EnvCommand(),
             new LockCommand(),
             new SyncCommand(),
