@@ -131,6 +131,27 @@ public final class AgentsGuide {
         return Change.UPDATED;
     }
 
+    /**
+     * Remove jk's section from {@code dir/AGENTS.md}; the file goes too when only its title is left.
+     * Absent or unpaired markers leave the file alone.
+     */
+    public static Change remove(Path dir) throws IOException {
+        Path file = dir.resolve(FILE);
+        if (!Files.isRegularFile(file)) return Change.ABSENT;
+        String text = Files.readString(file, StandardCharsets.UTF_8);
+        int begin = text.indexOf(BEGIN);
+        int end = text.indexOf(END, Math.max(begin, 0));
+        if (begin < 0 || end < 0) return Change.ABSENT;
+        String eol = text.contains("\r\n") ? "\r\n" : "\n";
+        int after = end + END.length();
+        if (text.startsWith(eol, after)) after += eol.length();
+        if (text.startsWith(eol, after)) after += eol.length();
+        String rest = (text.substring(0, begin) + text.substring(after)).strip();
+        if (rest.isEmpty() || rest.equals("# " + FILE)) Files.delete(file);
+        else Files.writeString(file, rest + eol, StandardCharsets.UTF_8);
+        return Change.UPDATED;
+    }
+
     /** {@code text} with jk's section current: replaced between the markers, or inserted. */
     static String apply(String text, Path file, boolean enforce) throws IOException {
         String eol = text.contains("\r\n") ? "\r\n" : "\n";

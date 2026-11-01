@@ -624,6 +624,7 @@ public final class NewCommand implements CliCommand {
         if (ack.error() != null && !ack.error().isBlank()) {
             throw new IOException(ack.error());
         }
+        if (parent == null) AgentWiring.report(target);
         if (parent != null) {
             Path root = parent.root();
             String rel = root.relativize(inputs.directory()).toString().replace('\\', '/');

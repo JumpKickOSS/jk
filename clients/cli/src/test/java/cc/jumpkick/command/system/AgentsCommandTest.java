@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.command.system;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.docs.AgentsGuide;
+import cc.jumpkick.model.command.Exit;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+class AgentsCommandTest {
+
+    @Test
+    void agents_creates_then_reports_current_and_keeps_project_text(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve(AgentsGuide.FILE);
+        String created = Capture.stdout(
+                () -> assertThat(Jk.execute("agents", dir.toString())).isEqualTo(Exit.SUCCESS));
+        assertThat(created.lines().findFirst()).contains("created " + file);
+        assertThat(Files.readString(file)).isEqualTo(AgentsGuide.newFile());
+
+        Files.writeString(file, Files.readString(file) + "\n## Project rules\n");
+        String current = Capture.stdout(
+                () -> assertThat(Jk.execute("agents", dir.toString())).isEqualTo(Exit.SUCCESS));
+        assertThat(current.strip()).isEqualTo(file + " is current");
+        assertThat(Files.readString(file)).endsWith("\n## Project rules\n");
+    }
+
+    @Test
+    void agents_refuses_unpaired_markers(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve(AgentsGuide.FILE), AgentsGuide.BEGIN + "\n");
+        assertThat(Jk.execute("agents", dir.toString())).isEqualTo(Exit.CONFIG);
+    }
+
+    @Test
+    void remove_takes_back_what_all_wrote_and_keeps_project_text(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve(AgentsGuide.FILE), "# Mine\n\nrules\n");
+        Capture.stdout(
+                () -> assertThat(Jk.execute("agents", "--all", dir.toString())).isEqualTo(Exit.SUCCESS));
+        assertThat(dir.resolve(".mcp.json")).isRegularFile();
+        Capture.stdout(() ->
+                assertThat(Jk.execute("agents", "--remove", dir.toString())).isEqualTo(Exit.SUCCESS));
+        assertThat(dir.resolve(".mcp.json")).doesNotExist();
+        assertThat(dir.resolve("CLAUDE.md")).doesNotExist();
+        assertThat(dir.resolve(".claude/settings.json")).doesNotExist();
+        assertThat(Files.readString(dir.resolve(AgentsGuide.FILE))).isEqualTo("# Mine\n\nrules\n");
+    }
+}
