@@ -543,6 +543,17 @@ class McpHandlerTest {
     }
 
     @Test
+    void skill_topic_that_names_a_tool_points_at_the_tool() {
+        String tool = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":35,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"skill\",\"arguments\":{\"topic\":\"callers\"}}}");
+        assertThat(tool).contains("`callers` is an MCP tool", "Topics: dependencies");
+        assertThat(tool).doesNotContain("\"isError\":true", "\"error\"");
+        String none = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":36,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"skill\",\"arguments\":{\"topic\":\"nope\"}}}");
+        assertThat(none).contains("No skill topic `nope`", "Topics: dependencies");
+    }
+
+    @Test
     void results_with_no_file_is_a_tool_error() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":29,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"run\",\"arguments\":{\"run\":\"latest\"}}}");
