@@ -47,11 +47,9 @@ Medians over runs. Tokens are input + output + cache read + cache write as the A
 | cursor | jk-rename-codegraph-between | jk-nograph | 3 | 3 | 275947 | 22992 | 1947 | 20 | 249 | 0.00 | - |
 | cursor | petclinic-rename-addvisit | jk | 3 | 3 | 58960 | 7788 | 516 | 4 | 27 | 1.00 | - |
 | cursor | petclinic-rename-addvisit | jk-nograph | 3 | 3 | 92333 | 9934 | 1386 | 6 | 30 | 0.00 | - |
-| grok | cl-callers-csu-indexof | jk | 8 | 4 | 36064 | 10480 | 1296 | 4 | 19 | 0.38 | 0.5 |
-| grok | cl-callers-csu-indexof | jk-nograph | 1 | 1 | 1629688 | 96064 | 11960 | 35 | 183 | 0.04 | 1.0 |
-| grok | cl-callers-csu-indexof | jk-noline | 1 | 0 | 18678 | 4851 | 643 | 3 | 11 | 1.00 | 0.0 |
+| grok | cl-callers-csu-indexof | jk | 4 | 4 | 48656 | 10480 | 1574 | 5 | 23 | 0.25 | 1.0 |
 | grok | cl-impact-dispatch-appendto | jk | 3 | 3 | 104390 | 57740 | 8122 | 7 | 110 | 0.25 | 1.0 |
-| grok | cl-impact-ispackage | jk | 8 | 4 | 38551 | 13386 | 1938 | 4 | 24 | 0.50 | 0.5 |
+| grok | cl-impact-ispackage | jk | 4 | 4 | 40496 | 14280 | 2254 | 5 | 29 | 0.75 | 1.0 |
 | grok | cl-subtypes-daterule | jk | 3 | 3 | 164409 | 46252 | 3834 | 10 | 50 | 0.00 | 1.0 |
 | grok | jk-callers-projectinfo-name | jk | 3 | 3 | 30073 | 7109 | 1598 | 4 | 23 | 1.00 | 1.0 |
 | grok | jk-callers-sidecar-name | jk | 3 | 3 | 94039 | 23120 | 5044 | 7 | 76 | 0.12 | 1.0 |
