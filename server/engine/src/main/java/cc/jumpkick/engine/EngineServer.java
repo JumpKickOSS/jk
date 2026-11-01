@@ -184,8 +184,12 @@ public final class EngineServer implements AutoCloseable {
     /** Dashboard SSE fan-out; non-null only when {@link #httpConfig} is set. */
     private final @Nullable HttpEvents httpEvents;
 
-    /** Ids for {@code request-start}/{@code request-finish} events and {@code POST /api/build} acks. */
-    private final AtomicLong requestIds = new AtomicLong();
+    /**
+     * Ids for {@code request-start}/{@code request-finish} events and {@code POST /api/build} acks.
+     * They go on from the journal's newest, so a wait on a new engine's id never reads an earlier
+     * engine's run that had the same one.
+     */
+    private final AtomicLong requestIds = new AtomicLong(BuildJournal.current().newestRequestId());
 
     /**
      * One row per request: progress, accumulator, emit throttle. Retired ids cannot
