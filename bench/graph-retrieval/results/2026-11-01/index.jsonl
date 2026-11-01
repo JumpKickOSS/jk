@@ -1,0 +1,54 @@
+{"repo": "gs-multi-module", "loc": 83, "tool": "jk", "mode": "full", "runs": [0.3291967479744926, 4.783814663998783, 4.603306381963193], "median_s": 4.603306381963193}
+{"repo": "gs-multi-module", "loc": 83, "tool": "jk", "mode": "incremental", "runs": [7.735963483923115, 4.763005901942961, 4.873351386981085], "median_s": 4.873351386981085}
+{"repo": "gs-multi-module", "loc": 83, "tool": "graphify", "mode": "full", "runs": [0.29842259001452476, 0.24974409001879394, 0.24840009701438248], "median_s": 0.24974409001879394}
+{"repo": "gs-multi-module", "loc": 83, "tool": "graphify", "mode": "incremental", "runs": [0.2435499980347231, 0.22742841904982924, 0.2198934300104156], "median_s": 0.22742841904982924}
+{"repo": "gs-multi-module", "loc": 83, "tool": "rql", "mode": "full", "runs": [31.759317117976025], "median_s": 31.759317117976025}
+{"repo": "gs-multi-module", "loc": 83, "tool": "rql", "mode": "incremental", "runs": [32.345077301957645], "median_s": 32.345077301957645}
+{"repo": "gs-uploading-files", "loc": 416, "tool": "jk", "mode": "full", "runs": [0.23602110496722162, 4.851025199983269, 4.6615439869929105], "median_s": 4.6615439869929105}
+{"repo": "gs-uploading-files", "loc": 416, "tool": "jk", "mode": "incremental", "runs": [5.992517336970195, 4.915324162924662, 4.940353921032511], "median_s": 4.940353921032511}
+{"repo": "gs-uploading-files", "loc": 416, "tool": "graphify", "mode": "full", "runs": [0.9014399900333956, 0.27313462598249316, 0.27147412090562284], "median_s": 0.27313462598249316}
+{"repo": "gs-uploading-files", "loc": 416, "tool": "graphify", "mode": "incremental", "runs": [0.23113844997715205, 0.2355886090081185, 0.2346888119354844], "median_s": 0.2346888119354844}
+{"repo": "gs-uploading-files", "loc": 416, "tool": "rql", "mode": "full", "runs": [23.384869132074527], "median_s": 23.384869132074527}
+{"repo": "gs-uploading-files", "loc": 416, "tool": "rql", "mode": "incremental", "runs": [31.428602596977726], "median_s": 31.428602596977726}
+{"repo": "spring-petclinic", "loc": 3635, "tool": "jk", "mode": "full", "runs": [0.3438817010028288, 4.916568835033104, 5.188752067042515], "median_s": 4.916568835033104}
+{"repo": "spring-petclinic", "loc": 3635, "tool": "jk", "mode": "incremental", "runs": [5.8960526689188555, 5.477067559026182, 4.903834893950261], "median_s": 5.477067559026182}
+{"repo": "spring-petclinic", "loc": 3635, "tool": "graphify", "mode": "full", "runs": [1.1020033879904076, 1.028067218954675, 0.9633271739585325], "median_s": 1.028067218954675}
+{"repo": "spring-petclinic", "loc": 3635, "tool": "graphify", "mode": "incremental", "runs": [0.45567003008909523, 0.42783201206475496, 0.4280001500155777], "median_s": 0.4280001500155777}
+{"repo": "spring-petclinic", "loc": 3635, "tool": "rql", "mode": "full", "runs": [13.624680918990634], "median_s": 13.624680918990634}
+{"repo": "spring-petclinic", "loc": 3635, "tool": "rql", "mode": "incremental", "runs": [20.474953460041434], "median_s": 20.474953460041434}
+{"repo": "spring-petclinic-kotlin", "loc": 1889, "tool": "jk", "mode": "full", "runs": [0.218693810980767, 4.711630747071467, 4.887449700036086], "median_s": 4.711630747071467}
+{"repo": "spring-petclinic-kotlin", "loc": 1889, "tool": "jk", "mode": "incremental", "runs": [10.058242217055522, 4.998967259074561, 5.0382483509602025], "median_s": 5.0382483509602025}
+{"repo": "spring-petclinic-kotlin", "loc": 1889, "tool": "graphify", "mode": "full", "runs": [0.8048962560715154, 0.7276907849591225, 0.7324978630058467], "median_s": 0.7324978630058467}
+{"repo": "spring-petclinic-kotlin", "loc": 1889, "tool": "graphify", "mode": "incremental", "runs": [0.3359919770155102, 0.3321206569671631, 0.342303597019054], "median_s": 0.3359919770155102}
+{"repo": "spring-petclinic-kotlin", "loc": 1889, "tool": "rql", "mode": "full", "runs": [13.935355490073562], "median_s": 13.935355490073562}
+{"repo": "spring-petclinic-kotlin", "loc": 1889, "tool": "rql", "mode": "incremental", "runs": [15.145479329046793], "median_s": 15.145479329046793}
+{"repo": "commons-cli", "loc": 17862, "tool": "jk", "mode": "full", "runs": [0.4303379990160465, 5.142584846005775, 5.271644410910085], "median_s": 5.142584846005775}
+{"repo": "commons-cli", "loc": 17862, "tool": "jk", "mode": "incremental", "runs": [5.377802981063724, 5.069737462908961, 4.791411577956751], "median_s": 5.069737462908961}
+{"repo": "commons-cli", "loc": 17862, "tool": "graphify", "mode": "full", "runs": [1.4025056179380044, 1.3604329719673842, 1.26708502008114], "median_s": 1.3604329719673842}
+{"repo": "commons-cli", "loc": 17862, "tool": "graphify", "mode": "incremental", "runs": [0.8612464740872383, 0.7987380609847605, 0.8019392689457163], "median_s": 0.8019392689457163}
+{"repo": "commons-cli", "loc": 17862, "tool": "rql", "mode": "full", "runs": [13.543165688985027], "median_s": 13.543165688985027}
+{"repo": "commons-cli", "loc": 17862, "tool": "rql", "mode": "incremental", "runs": [13.892527660937048], "median_s": 13.892527660937048}
+{"repo": "commons-io", "loc": 105209, "tool": "jk", "mode": "full", "runs": [1.470246889977716, 6.9226737670833245, 6.196083831018768], "median_s": 6.196083831018768}
+{"repo": "commons-io", "loc": 105209, "tool": "jk", "mode": "incremental", "runs": [5.899203210021369, 5.511046816944145, 5.546724644955248], "median_s": 5.546724644955248}
+{"repo": "commons-io", "loc": 105209, "tool": "graphify", "mode": "full", "runs": [5.1407265230081975, 5.033771608024836, 5.0357113720383495], "median_s": 5.0357113720383495}
+{"repo": "commons-io", "loc": 105209, "tool": "graphify", "mode": "incremental", "runs": [3.335507874027826, 3.426983608980663, 3.449721078039147], "median_s": 3.426983608980663}
+{"repo": "commons-io", "loc": 105209, "tool": "rql", "mode": "full", "runs": [25.100153186009265], "median_s": 25.100153186009265}
+{"repo": "commons-io", "loc": 105209, "tool": "rql", "mode": "incremental", "runs": [19.32838774600532], "median_s": 19.32838774600532}
+{"repo": "commons-lang", "loc": 188332, "tool": "jk", "mode": "full", "runs": [2.0212472019484267, 6.896286234026775, 7.020465658977628], "median_s": 6.896286234026775}
+{"repo": "commons-lang", "loc": 188332, "tool": "jk", "mode": "incremental", "runs": [6.004222578019835, 5.253830136964098, 6.036123397992924], "median_s": 6.004222578019835}
+{"repo": "commons-lang", "loc": 188332, "tool": "graphify", "mode": "full", "runs": [8.373870280920528, 8.018182854051702, 8.154002998955548], "median_s": 8.154002998955548}
+{"repo": "commons-lang", "loc": 188332, "tool": "graphify", "mode": "incremental", "runs": [5.475838553975336, 5.536740052048117, 5.439711341983639], "median_s": 5.475838553975336}
+{"repo": "commons-lang", "loc": 188332, "tool": "rql", "mode": "full", "runs": [24.77540287503507], "median_s": 24.77540287503507}
+{"repo": "commons-lang", "loc": 188332, "tool": "rql", "mode": "incremental", "runs": [25.09542844898533], "median_s": 25.09542844898533}
+{"repo": "commons-collections", "loc": 129244, "tool": "jk", "mode": "full", "runs": [1.6649649300379679, 6.508281555958092, 6.347136182943359], "median_s": 6.347136182943359}
+{"repo": "commons-collections", "loc": 129244, "tool": "jk", "mode": "incremental", "runs": [6.091260986984707, 5.448379851062782, 5.917570827994496], "median_s": 5.917570827994496}
+{"repo": "commons-collections", "loc": 129244, "tool": "graphify", "mode": "full", "runs": [7.284771568025462, 6.974291943013668, 6.883059715968557], "median_s": 6.974291943013668}
+{"repo": "commons-collections", "loc": 129244, "tool": "graphify", "mode": "incremental", "runs": [4.51922358898446, 4.637912065023556, 4.5899276490090415], "median_s": 4.5899276490090415}
+{"repo": "commons-collections", "loc": 129244, "tool": "rql", "mode": "full", "runs": [19.798599170986563], "median_s": 19.798599170986563}
+{"repo": "commons-collections", "loc": 129244, "tool": "rql", "mode": "incremental", "runs": [21.790427328902297], "median_s": 21.790427328902297}
+{"repo": "jk", "loc": 679533, "tool": "jk", "mode": "full", "runs": [9.102686495054513, 8.92194968892727, 8.284797378000803], "median_s": 8.92194968892727}
+{"repo": "jk", "loc": 679533, "tool": "jk", "mode": "incremental", "runs": [2.116455459035933, 2.0629703579470515, 1.9113073089392856], "median_s": 2.0629703579470515}
+{"repo": "jk", "loc": 679533, "tool": "graphify", "mode": "full", "runs": [59.20396809198428, 59.779328614939004, 58.907835293910466], "median_s": 59.20396809198428}
+{"repo": "jk", "loc": 679533, "tool": "graphify", "mode": "incremental", "runs": [72.14092476002406, 72.06382834992837, 72.99718108703382], "median_s": 72.14092476002406}
+{"repo": "jk", "loc": 679533, "tool": "rql", "mode": "full", "runs": [88.22720079892315], "median_s": 88.22720079892315}
+{"repo": "jk", "loc": 679533, "tool": "rql", "mode": "incremental", "runs": [95.79556501295883], "median_s": 95.79556501295883}
