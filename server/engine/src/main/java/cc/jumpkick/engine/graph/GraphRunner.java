@@ -167,13 +167,24 @@ public final class GraphRunner {
             Set<String> edited = ModuleInputProvenance.staleSources(root, module.getKey(), module.getValue());
             boolean compact = ModuleLayout.isCompact(module.getKey());
             if (edited == null || edited.stream().anyMatch(rel -> mainSource(rel, compact))) {
-                stale.add(module.getValue().project().name());
+                stale.add(moduleArg(
+                        root, module.getKey(), module.getValue().project().name()));
             }
         }
         if (stale.isEmpty()) return null;
         // One module is the whole project: no filter, so its name need not match how -m spells it.
         String why = c.compile(root, all.size() == 1 ? List.of() : stale);
         return why == null ? null : "compile skipped: " + why + "; answering from the last build's classes";
+    }
+
+    /**
+     * How a compile names {@code dir}: by its path, since two modules may share a name
+     * (plugins/quarkus, server/guard/packs/quarkus) and a name that matches both refuses the whole
+     * compile. The root module has no path and goes by its name.
+     */
+    static String moduleArg(Path root, Path dir, String name) {
+        String rel = root.relativize(dir).toString().replace('\\', '/');
+        return rel.isEmpty() ? name : rel;
     }
 
     /** Whether a module-relative path is a main source, as the graph sorts them into source sets. */

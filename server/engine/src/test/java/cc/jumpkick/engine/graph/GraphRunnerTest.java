@@ -184,6 +184,15 @@ class GraphRunnerTest {
      * and deleting .jk/graph/ is how a project stops.
      */
     @Test
+    void aStaleModuleIsCompiledByItsPathSoTwoOfOneNameAreNotAmbiguous(@TempDir Path tmp) {
+        assertThat(GraphRunner.moduleArg(tmp, tmp.resolve("plugins/quarkus"), "quarkus"))
+                .isEqualTo("plugins/quarkus");
+        assertThat(GraphRunner.moduleArg(tmp, tmp.resolve("server/guard/packs/quarkus"), "quarkus"))
+                .isEqualTo("server/guard/packs/quarkus");
+        assertThat(GraphRunner.moduleArg(tmp, tmp, "root")).isEqualTo("root");
+    }
+
+    @Test
     void aBuildRefreshesOnlyAGraphTheProjectHas(@TempDir Path tmp) throws Exception {
         Path root = workspace(tmp);
         GraphRunner.refreshExisting(root);
