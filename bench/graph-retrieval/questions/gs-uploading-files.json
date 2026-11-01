@@ -1,0 +1,240 @@
+{
+ "repo": "gs-uploading-files",
+ "commit": "d3f432cac961edfd39a9be157f2cdc258ed1ac65",
+ "loc": 416,
+ "classes": 7,
+ "lint_dropped": false,
+ "javadoc_dropped": false,
+ "questions": [
+  {
+   "id": "definition-0",
+   "kind": "definition",
+   "question": "Where is FileSystemStorageService.loadAsResource defined?",
+   "subject": {
+    "label": "FileSystemStorageService.loadAsResource",
+    "path": "src/main/java/com/example/uploadingfiles/storage/FileSystemStorageService.java",
+    "lines": [
+     74,
+     93
+    ]
+   },
+   "truth": [
+    {
+     "label": "FileSystemStorageService.loadAsResource",
+     "lines": [
+      74,
+      93
+     ],
+     "path": "src/main/java/com/example/uploadingfiles/storage/FileSystemStorageService.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-1",
+   "kind": "definition",
+   "question": "Where is StorageService.deleteAll defined?",
+   "subject": {
+    "label": "StorageService.deleteAll",
+    "path": "src/main/java/com/example/uploadingfiles/storage/StorageService.java",
+    "lines": [
+     19,
+     22
+    ]
+   },
+   "truth": [
+    {
+     "label": "StorageService.deleteAll",
+     "lines": [
+      19,
+      22
+     ],
+     "path": "src/main/java/com/example/uploadingfiles/storage/StorageService.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-2",
+   "kind": "definition",
+   "question": "Where is FileSystemStorageService.init defined?",
+   "subject": {
+    "label": "FileSystemStorageService.init",
+    "path": "src/main/java/com/example/uploadingfiles/storage/FileSystemStorageService.java",
+    "lines": [
+     98,
+     110
+    ]
+   },
+   "truth": [
+    {
+     "label": "FileSystemStorageService.init",
+     "lines": [
+      98,
+      110
+     ],
+     "path": "src/main/java/com/example/uploadingfiles/storage/FileSystemStorageService.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-3",
+   "kind": "definition",
+   "question": "Where is StorageService.loadAsResource defined?",
+   "subject": {
+    "label": "StorageService.loadAsResource",
+    "path": "src/main/java/com/example/uploadingfiles/storage/StorageService.java",
+    "lines": [
+     17,
+     20
+    ]
+   },
+   "truth": [
+    {
+     "label": "StorageService.loadAsResource",
+     "lines": [
+      17,
+      20
+     ],
+     "path": "src/main/java/com/example/uploadingfiles/storage/StorageService.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-4",
+   "kind": "definition",
+   "question": "Where is StorageService.store defined?",
+   "subject": {
+    "label": "StorageService.store",
+    "path": "src/main/java/com/example/uploadingfiles/storage/StorageService.java",
+    "lines": [
+     11,
+     14
+    ]
+   },
+   "truth": [
+    {
+     "label": "StorageService.store",
+     "lines": [
+      11,
+      14
+     ],
+     "path": "src/main/java/com/example/uploadingfiles/storage/StorageService.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-5",
+   "kind": "definition",
+   "question": "Where is StorageProperties.setLocation defined?",
+   "subject": {
+    "label": "StorageProperties.setLocation",
+    "path": "src/main/java/com/example/uploadingfiles/storage/StorageProperties.java",
+    "lines": [
+     12,
+     20
+    ]
+   },
+   "truth": [
+    {
+     "label": "StorageProperties.setLocation",
+     "lines": [
+      12,
+      20
+     ],
+     "path": "src/main/java/com/example/uploadingfiles/storage/StorageProperties.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-6",
+   "kind": "definition",
+   "question": "Where is FileSystemStorageService.load defined?",
+   "subject": {
+    "label": "FileSystemStorageService.load",
+    "path": "src/main/java/com/example/uploadingfiles/storage/FileSystemStorageService.java",
+    "lines": [
+     68,
+     75
+    ]
+   },
+   "truth": [
+    {
+     "label": "FileSystemStorageService.load",
+     "lines": [
+      68,
+      75
+     ],
+     "path": "src/main/java/com/example/uploadingfiles/storage/FileSystemStorageService.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-7",
+   "kind": "definition",
+   "question": "Where is FileUploadController.handleStorageFileNotFound defined?",
+   "subject": {
+    "label": "FileUploadController.handleStorageFileNotFound",
+    "path": "src/main/java/com/example/uploadingfiles/FileUploadController.java",
+    "lines": [
+     65,
+     72
+    ]
+   },
+   "truth": [
+    {
+     "label": "FileUploadController.handleStorageFileNotFound",
+     "lines": [
+      65,
+      72
+     ],
+     "path": "src/main/java/com/example/uploadingfiles/FileUploadController.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-8",
+   "kind": "definition",
+   "question": "Where is FileSystemStorageService.store defined?",
+   "subject": {
+    "label": "FileSystemStorageService.store",
+    "path": "src/main/java/com/example/uploadingfiles/storage/FileSystemStorageService.java",
+    "lines": [
+     32,
+     58
+    ]
+   },
+   "truth": [
+    {
+     "label": "FileSystemStorageService.store",
+     "lines": [
+      32,
+      58
+     ],
+     "path": "src/main/java/com/example/uploadingfiles/storage/FileSystemStorageService.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-9",
+   "kind": "definition",
+   "question": "Where is UploadingFilesApplication.init defined?",
+   "subject": {
+    "label": "UploadingFilesApplication.init",
+    "path": "src/main/java/com/example/uploadingfiles/UploadingFilesApplication.java",
+    "lines": [
+     16,
+     23
+    ]
+   },
+   "truth": [
+    {
+     "label": "UploadingFilesApplication.init",
+     "lines": [
+      16,
+      23
+     ],
+     "path": "src/main/java/com/example/uploadingfiles/UploadingFilesApplication.java"
+    }
+   ]
+  }
+ ]
+}

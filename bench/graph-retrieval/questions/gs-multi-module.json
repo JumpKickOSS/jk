@@ -1,0 +1,102 @@
+{
+ "repo": "gs-multi-module",
+ "commit": "d88a2b721bda3798a6a934987157498e66da06c5",
+ "loc": 83,
+ "classes": 3,
+ "lint_dropped": false,
+ "javadoc_dropped": false,
+ "questions": [
+  {
+   "id": "definition-0",
+   "kind": "definition",
+   "question": "Where is ServiceProperties.getMessage defined?",
+   "subject": {
+    "label": "ServiceProperties.getMessage",
+    "path": "library/src/main/java/com/example/multimodule/service/ServiceProperties.java",
+    "lines": [
+     8,
+     15
+    ]
+   },
+   "truth": [
+    {
+     "label": "ServiceProperties.getMessage",
+     "lines": [
+      8,
+      15
+     ],
+     "path": "library/src/main/java/com/example/multimodule/service/ServiceProperties.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-1",
+   "kind": "definition",
+   "question": "Where is MyService.message defined?",
+   "subject": {
+    "label": "MyService.message",
+    "path": "library/src/main/java/com/example/multimodule/service/MyService.java",
+    "lines": [
+     11,
+     18
+    ]
+   },
+   "truth": [
+    {
+     "label": "MyService.message",
+     "lines": [
+      11,
+      18
+     ],
+     "path": "library/src/main/java/com/example/multimodule/service/MyService.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-2",
+   "kind": "definition",
+   "question": "Where is DemoApplication.home defined?",
+   "subject": {
+    "label": "DemoApplication.home",
+    "path": "application/src/main/java/com/example/multimodule/application/DemoApplication.java",
+    "lines": [
+     15,
+     22
+    ]
+   },
+   "truth": [
+    {
+     "label": "DemoApplication.home",
+     "lines": [
+      15,
+      22
+     ],
+     "path": "application/src/main/java/com/example/multimodule/application/DemoApplication.java"
+    }
+   ]
+  },
+  {
+   "id": "definition-3",
+   "kind": "definition",
+   "question": "Where is ServiceProperties.setMessage defined?",
+   "subject": {
+    "label": "ServiceProperties.setMessage",
+    "path": "library/src/main/java/com/example/multimodule/service/ServiceProperties.java",
+    "lines": [
+     12,
+     20
+    ]
+   },
+   "truth": [
+    {
+     "label": "ServiceProperties.setMessage",
+     "lines": [
+      12,
+      20
+     ],
+     "path": "library/src/main/java/com/example/multimodule/service/ServiceProperties.java"
+    }
+   ]
+  }
+ ]
+}
