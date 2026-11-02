@@ -120,6 +120,16 @@ and update every caller. Methods named `between` on other types stay as they are
 # Picked where a name search is weak: a method name many types declare, a chain of calls several
 # hops deep, a type hierarchy more than one level deep. No build or test run decides these.
 
+# Tier 1's caller question: a small repository, an answer grep can also find.
+[tasks.petclinic-callers-addpet]
+repo   = "spring-petclinic"
+kind   = "question"
+tools  = ["jk"]
+prompt = """
+Which methods call `org.springframework.samples.petclinic.owner.Owner.addPet` directly?
+"""
+answer = ["PetController.initCreationForm", "PetController.processCreationForm", "PetController.updatePetDetails"]
+
 [tasks.cl-callers-csu-indexof]
 repo   = "commons-lang"
 kind   = "question"
