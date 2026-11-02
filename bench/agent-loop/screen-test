@@ -29,6 +29,9 @@ PRESCRIPTIONS = {
     "agy": "jk-agyrules",
     "muse": "jk-musemd",
 }
+# The AGENTS.md section under test: callers and rename merged into one line that also says "first, with
+# T.m as the task names it, before opening or searching a file" (what muse needed), within 1000 bytes.
+SECTION_FILE = HERE / "screen" / "agents-section.md"
 TASKS = ["petclinic-callers-addpet", "petclinic-rename-addvisit", "gs-uploading-rename-loadasresource"]
 
 
@@ -45,6 +48,8 @@ def main() -> int:
     ap.add_argument("--agent", action="append", choices=sorted(PRESCRIPTIONS))
     ap.add_argument("--runs", type=int, default=3)
     ap.add_argument("--first-run", type=int, default=1200)
+    ap.add_argument("--section", action="store_true",
+                    help="each prescription with AGENTS.md written from screen/agents-section.md")
     ns = ap.parse_args()
     # smoke-test adds the tier-0 arms to the change-tasks module it loads; its main is not run.
     ct = load("smoke_test", HERE / "smoke-test").ct
@@ -52,13 +57,24 @@ def main() -> int:
     if missing:
         raise SystemExit(f"screen-test: no arm {', '.join(missing)} in change-tasks or smoke-test; "
                          "a prescription moved or was renamed")
+    arms = dict(PRESCRIPTIONS)
+    if ns.section:
+        agents_md = (f"# AGENTS.md\n\n<!-- BEGIN:jumpkick -->\n{SECTION_FILE.read_text()}"
+                     "<!-- END:jumpkick -->\n")
+        # muse's prescription was its AGENTS.md line, which the section now carries: plain jk with it.
+        for agent, arm in PRESCRIPTIONS.items():
+            base = dict(ct.ARMS["jk" if arm == "jk-musemd" else arm])
+            base.pop("agents_line", None)
+            base["files"] = {**base.get("files", {}), "AGENTS.md": agents_md}
+            ct.ARMS[arm + "+section"] = base
+            arms[agent] = arm + "+section"
     status = 0
     for agent in ns.agent or list(PRESCRIPTIONS):
-        argv = ["change-tasks", "--driver", agent, "--arm", PRESCRIPTIONS[agent], "--runs", str(ns.runs),
+        argv = ["change-tasks", "--driver", agent, "--arm", arms[agent], "--runs", str(ns.runs),
                 "--first-run", str(ns.first_run)]
         for task in TASKS:
             argv += ["--task", task]
-        print(f"== {agent} ({PRESCRIPTIONS[agent]})", flush=True)
+        print(f"== {agent} ({arms[agent]})", flush=True)
         sys.argv = argv
         status |= ct.main() or 0
     return status
