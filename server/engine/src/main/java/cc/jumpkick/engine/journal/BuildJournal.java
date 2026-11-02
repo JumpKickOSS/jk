@@ -674,14 +674,6 @@ public final class BuildJournal {
      */
     private final ConcurrentHashMap<Long, Path> runDirsByRequestId = new ConcurrentHashMap<>();
 
-    /** The highest request id among the newest records: where a starting engine numbers on from. */
-    public long newestRequestId() {
-        return loadNewestRaw(200, null).stream()
-                .mapToLong(l -> scanLong(l.head(), "requestId"))
-                .max()
-                .orElse(0);
-    }
-
     private final NoopRecords noops = new NoopRecords();
 
     /**
