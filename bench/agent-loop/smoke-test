@@ -93,25 +93,10 @@ def materialise(task: dict, tool: str, sandbox: Path) -> None:
                     "baseline"], cwd=sandbox, check=True)
 
 
-def outside(entry: dict, sandbox: Path | None) -> bool:
-    """Whether a file tool's call names only paths outside the sandbox (the agent's own home, its MCP
-    tool descriptors): the agent's housekeeping, not reading the project's code."""
-    if sandbox is None:
-        return False
-    try:
-        args = json.loads(entry.get("input") or "{}")
-    except json.JSONDecodeError:
-        return False
-    if not isinstance(args, dict):
-        return False
-    paths = [v for v in args.values() if isinstance(v, str) and v.startswith(("/", "~", "file:"))]
-    root = str(sandbox)
-    return bool(paths) and not any(p.removeprefix("file://").startswith(root) for p in paths)
-
-
 def family(entry: dict, sandbox: Path | None = None) -> str | None:
-    """`graph`, `text` (grep, glob, file read, shell text tools) or None, as change-tasks counts them;
-    a file tool aimed outside the sandbox is None."""
+    """`graph`, `text` (grep, glob, file read, shell text tools) or None, in change-tasks' families:
+    its `outside` rule makes a file tool aimed outside the sandbox None. diagnose() needs the order
+    of calls, which change-tasks' navigation() counts but does not keep."""
     if "tool_use" not in entry:
         return None
     name = ct.called(entry)
@@ -124,7 +109,7 @@ def family(entry: dict, sandbox: Path | None = None) -> str | None:
             command = str(entry.get("input") or "")
     if short in ct.GRAPH or ct.SHELL_GRAPH.search(command):
         return "graph"
-    if short in ct.NAV_TEXT and outside(entry, sandbox):
+    if short in ct.NAV_TEXT and ct.outside(entry, sandbox):
         return None
     if ct.SHELL_TEXT.search(command) or short in ct.NAV_TEXT:
         return "text"
