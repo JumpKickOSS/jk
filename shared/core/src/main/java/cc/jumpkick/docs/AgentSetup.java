@@ -51,7 +51,9 @@ public final class AgentSetup {
             - Who calls `T.m`: call_mcp_tool jk `callers` once and write its list as the answer. Opening the
               files it names costs turns and changes nothing: do not.
             - Rename `T.m`: jk `rename` once, then jk `run` with the `only` it names. Edit only the comment or
-              doc lines its answer lists, if they mean the method.
+              doc lines its answer lists, if they mean the method. When that run and `run(kind=guard)` say OK,
+              the task is done: reply, without searching for the old name or re-reading files (another type's
+              method of the same name is not this one).
             - jk `skill` only when a verdict names a topic.
             """;
 
