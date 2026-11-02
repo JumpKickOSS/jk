@@ -146,6 +146,23 @@ class GraphRenameTest {
     }
 
     @Test
+    void outsideTheTypesOwnFilesOnlyAQualifiedMentionIsListed(@TempDir Path dir) throws IOException {
+        String shop = Objects.requireNonNull(RANGES.get("Shop.java"));
+        Map<String, String> sources = new LinkedHashMap<>(RANGES);
+        sources.put(
+                "Shop.java",
+                shop.replace(
+                        "    boolean listed(",
+                        "    // as Range.contains() does\n    // the list contains it\n    boolean listed("));
+        String answer = rename(workspace(dir, sources), "Range.contains", "includes");
+        assertThat(answer)
+                .contains("| // as Range.contains() does")
+                .as("a bare contains in another type's file is that type's")
+                .doesNotContain("the list contains it");
+        assertThat(RenameMentions.home(PKG + "RangeTest.java", Set.of("Range"))).isTrue();
+    }
+
+    @Test
     void anAnswerWithNoProseLeftSaysSo(@TempDir Path dir) throws IOException {
         Path root = workspace(dir, RANGES);
         assertThat(rename(root, "Range.contains", "includes"))
