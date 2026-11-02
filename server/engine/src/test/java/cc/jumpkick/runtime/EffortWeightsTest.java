@@ -362,6 +362,7 @@ class EffortWeightsTest {
         BuildMetrics.clearSessionAggregatesMemo();
         try {
             Path moduleDir = Files.createDirectories(state.resolve("app"));
+            Files.writeString(moduleDir.resolve("jk.toml"), "name = \"app\"\n");
             Path home = ProjectBuilds.projectHome(JkDirs.builds(), null, moduleDir);
             Files.createDirectories(home);
             String key = "module." + AggregatedMetrics.sanitize(moduleDir.toString()) + ".task.native-image.wall-ms";

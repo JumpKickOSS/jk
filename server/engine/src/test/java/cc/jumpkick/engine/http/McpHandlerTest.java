@@ -546,11 +546,11 @@ class McpHandlerTest {
     void skill_topic_that_names_a_tool_points_at_the_tool() {
         String tool = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":35,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"skill\",\"arguments\":{\"topic\":\"callers\"}}}");
-        assertThat(tool).contains("`callers` is an MCP tool", "Topics: dependencies");
+        assertThat(tool).contains("`callers` is an MCP tool", "Topics: graph, dependencies");
         assertThat(tool).doesNotContain("\"isError\":true", "\"error\"");
         String none = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":36,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"skill\",\"arguments\":{\"topic\":\"nope\"}}}");
-        assertThat(none).contains("No skill topic `nope`", "Topics: dependencies");
+        assertThat(none).contains("No skill topic `nope`", "Topics: graph, dependencies");
     }
 
     @Test

@@ -41,8 +41,11 @@ class SessionMetricsFoldTest {
         else System.setProperty("jk.env.JK_STATE_DIR", previousStateDir);
     }
 
-    private static void harvest(Path state) throws Exception {
-        Path home = state.resolve("builds").resolve("projects").resolve("demo-home");
+    /** A project's ledger as the harvest leaves it; the returned checkout is where its session runs. */
+    private static Path harvest(Path state) throws Exception {
+        Path work = Files.createDirectories(state.resolve("ws"));
+        Files.writeString(work.resolve("jk.toml"), "name = \"demo\"\n");
+        Path home = ProjectBuilds.projectHome(state.resolve("builds"), null, work);
         Files.createDirectories(home);
         Files.writeString(home.resolve(ProjectBuilds.PROJECT_METRICS), """
                 [mean]
@@ -64,14 +67,14 @@ class SessionMetricsFoldTest {
                 [mean]
                 task.compile-java.wall-ms = 750
                 """);
+        return work;
     }
 
     @Test
     void each_view_is_folded_once_per_aggregate_window(@TempDir Path state) throws Exception {
-        harvest(state);
+        Path work = harvest(state);
         System.setProperty("jk.env.JK_STATE_DIR", state.toString());
-        Path engineCwd = Files.createDirectories(state.resolve("engine"));
-        SessionContext.install(Session.defaults().withWorkingDir(engineCwd));
+        SessionContext.install(Session.defaults().withWorkingDir(work));
         BuildMetrics.clearSessionAggregatesMemo();
         BuildMetrics.clearMemo();
         BuildMetrics.resetSessionFoldCount();
@@ -99,9 +102,9 @@ class SessionMetricsFoldTest {
 
     @Test
     void the_class_wall_index_answers_a_module_it_never_saw_with_nothing(@TempDir Path state) throws Exception {
-        harvest(state);
+        Path work = harvest(state);
         System.setProperty("jk.env.JK_STATE_DIR", state.toString());
-        SessionContext.install(Session.defaults().withWorkingDir(Files.createDirectories(state.resolve("engine"))));
+        SessionContext.install(Session.defaults().withWorkingDir(work));
         BuildMetrics.clearSessionAggregatesMemo();
 
         assertThat(EffortWeights.loadClassWalls("/ws/nowhere")).isEmpty();
