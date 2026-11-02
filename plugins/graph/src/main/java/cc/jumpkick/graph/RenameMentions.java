@@ -39,13 +39,18 @@ final class RenameMentions {
     static List<String> find(
             Path root, String old, Set<String> types, Map<String, String> edited, Set<String> textFiles) {
         Pattern word = Pattern.compile("\\b" + Pattern.quote(old) + "\\b");
+        // Outside the type's own files a bare indexOf is some other type's: only Type.m or #m there.
+        Pattern qualified = Pattern.compile("(?:\\b(?:"
+                + String.join("|", types.stream().map(Pattern::quote).toList()) + ")[.#]|#)" + Pattern.quote(old)
+                + "\\b");
         List<String> out = new ArrayList<>();
         for (Map.Entry<String, String> e : edited.entrySet()) {
+            Pattern wanted = home(e.getKey(), types) ? word : qualified;
             String[] lines = e.getValue().split("\n", -1);
             for (int i = 0; i < lines.length; i++) {
                 String t = lines[i].strip();
                 boolean comment = t.startsWith("//") || t.startsWith("*") || t.startsWith("/*");
-                if (comment && word.matcher(t).find()) out.add(e.getKey() + ":" + (i + 1) + "| " + clip(t, word));
+                if (comment && wanted.matcher(t).find()) out.add(e.getKey() + ":" + (i + 1) + "| " + clip(t, word));
             }
         }
         if (types.isEmpty()) return out;
@@ -67,6 +72,20 @@ final class RenameMentions {
             }
         }
         return out;
+    }
+
+    /** A source named after one of the method's types, or its test: where a bare name means the method. */
+    static boolean home(String rel, Set<String> types) {
+        String file = rel.substring(rel.lastIndexOf('/') + 1);
+        int dot = file.lastIndexOf('.');
+        String stem = dot < 0 ? file : file.substring(0, dot);
+        for (String suffix : List.of("Tests", "Test")) {
+            if (stem.endsWith(suffix) && stem.length() > suffix.length()) {
+                stem = stem.substring(0, stem.length() - suffix.length());
+                break;
+            }
+        }
+        return types.contains(stem);
     }
 
     /** {@code line} cut to {@link #WIDTH} characters around the first match: one long line must not fill the budget. */
