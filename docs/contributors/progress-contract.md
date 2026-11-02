@@ -136,11 +136,13 @@ see [docs/perf/README.md](../perf/README.md).
 
 ### Metrics hygiene
 
-- `AggregatedMetrics.loadAll` / harvest use **one project home per checkout path** (prefer
-  `source=lock`, higher run count); a home whose `identity.toml` lists several checkouts —
-  worktrees sharing one lock id — claims each, and its module keys expand against every one.  
-- Merge-by-higher-count when keys still collide.  
-- Session workspace loads project-scoped metrics for live ETA.  
+- Harvest uses **one project home per checkout path** (prefer `source=lock`, higher run count); a
+  home whose `identity.toml` lists several checkouts (worktrees sharing one lock id) claims each.
+- **Memory is bounded by the build, not the host.** A session in a project loads that project's
+  ledger, expanded against its own root only. Any other session (the engine's working dir, a
+  dashboard) reads the host tier: per-kind means and `[count]` in `host-metrics.toml`, written by
+  the harvest. Nothing in a request loads every project, and `identity.toml` keeps the 32 most
+  recently built checkouts, so a CI host's thousands of workspaces cost no heap.  
 - **Heavy-step floors:** native-image &lt; 5s and write-image &lt; 3s walls are dropped at journal
   write and harvest (cache-restore noise).  
 - Cancelled / failed builds do not train.

@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.tomlj.Toml;
 import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
@@ -203,10 +204,12 @@ final class HostMetricsFile {
             try {
                 String existing = Files.readString(file);
                 splitMeanLines(existing, harvestKeys, continuousKeys);
-                // Keep every section this writer does not own. The list is MetricsHarvest's, not
-                // a second copy of it — [calibration] is absent because this writer regenerates it
-                // below, and that is the only difference between the two writers' views.
-                for (String section : MetricsHarvest.FOREIGN_SECTIONS) {
+                // Keep every section this writer does not own: the shared ones and the harvest's own
+                // ([count]). The lists are MetricsHarvest's, not a second copy; [calibration] is
+                // absent because this writer regenerates it below.
+                for (String section : Stream.concat(
+                                MetricsHarvest.FOREIGN_SECTIONS.stream(), MetricsHarvest.HARVEST_SECTIONS.stream())
+                        .toList()) {
                     int idx = existing.indexOf("\n[" + section + "]");
                     if (idx < 0) idx = existing.startsWith("[" + section + "]") ? 0 : -1;
                     if (idx >= 0) {

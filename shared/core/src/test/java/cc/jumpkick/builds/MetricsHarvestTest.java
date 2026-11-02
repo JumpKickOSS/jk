@@ -42,7 +42,23 @@ class MetricsHarvestTest {
         assertThat(Files.isRegularFile(host)).isTrue();
         String hm = Files.readString(host);
         assertThat(hm).contains("host.run-tests-per-method-ms").contains("task.compile-java.wall-ms");
-        assertThat(hm).doesNotContain("workspace.wall-ms");
+        assertThat(hm).contains("workspace.wall-ms").doesNotContain("module.");
+        assertThat(hm.substring(hm.indexOf("[count]"))).contains("task.compile-java.wall-ms = 1");
+    }
+
+    /** The host tier carries each kind's sample count, and the calibration writer keeps it. */
+    @Test
+    void host_counts_survive_a_calibration_rewrite(@TempDir Path root) throws Exception {
+        for (int i = 0; i < 3; i++) {
+            ProjectBuilds.RunDir run = ProjectBuilds.openRun(root, "g:demo", root.resolve("proj"));
+            Files.writeString(run.metricsFile(), "invocation.build.wall-ms = 4000\n");
+        }
+        MetricsHarvest.get().configure(50, 90);
+        MetricsHarvest.get().runOnce(root);
+        AggregatedMetrics host = AggregatedMetrics.hostOnly(root);
+        assertThat(host.count("invocation.build.wall-ms")).isEqualTo(3);
+        assertThat(host.mean("invocation.build.wall-ms")).hasValue(4000.0);
+        assertThat(host.meanMap()).isEmpty();
     }
 
     /** A module task's wall keeps its mean and count but writes no last copy; other rows keep all three. */
@@ -189,7 +205,11 @@ class MetricsHarvestTest {
         assertThat(MetricsHarvest.isHostKey("run-tests-per-method-ms")).isTrue();
         assertThat(MetricsHarvest.isHostKey("native-image-ms-per-mib")).isTrue();
         assertThat(MetricsHarvest.isHostKey("native-image-floor-ms")).isTrue();
-        assertThat(MetricsHarvest.isHostKey("workspace.wall-ms")).isFalse();
+        assertThat(MetricsHarvest.isHostKey("workspace.wall-ms")).isTrue();
+        assertThat(MetricsHarvest.isHostKey("invocation.build.wall-ms")).isTrue();
+        assertThat(MetricsHarvest.isHostKey("invocation.build._#d2.wall-ms")).isFalse();
+        assertThat(MetricsHarvest.isHostKey("invocation.test./home/u/p.wall-ms"))
+                .isFalse();
         assertThat(MetricsHarvest.isHostKey("module./p.task.x.wall-ms")).isFalse();
         // The step.* key family was renamed to task.*; a row in the retired shape is not read.
         assertThat(MetricsHarvest.isHostKey("step.compile-java.wall-ms")).isFalse();

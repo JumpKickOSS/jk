@@ -27,7 +27,8 @@ import org.jspecify.annotations.Nullable;
  * table is an LRU bounded by {@link #MAX_BYTES}.
  *
  * <p>Only a checkout with a {@code jk.toml} is a project session; the engine's own CWD (its
- * state dir) and other directories read the host-wide merge instead.
+ * state dir) and other directories read the host's per-kind means and counts instead, so no
+ * session ever holds more than one project's ledger.
  */
 public final class SessionAggregates {
 
@@ -58,7 +59,7 @@ public final class SessionAggregates {
 
     private SessionAggregates() {}
 
-    /** The session's aggregates: the working dir's project ledger when it is a checkout, else every project's. */
+    /** The session's aggregates: the working dir's project ledger when it is a checkout, else the host's. */
     public static AggregatedMetrics current() {
         return memo().agg();
     }
@@ -120,8 +121,9 @@ public final class SessionAggregates {
         synchronized (MEMOS) {
             Memo memo = MEMOS.get(key);
             if (memo != null && memo.agg().fresh()) return memo;
-            AggregatedMetrics agg =
-                    project != null ? AggregatedMetrics.load(builds, null, project) : AggregatedMetrics.loadAll(builds);
+            AggregatedMetrics agg = project != null
+                    ? AggregatedMetrics.load(builds, null, project)
+                    : AggregatedMetrics.hostOnly(builds);
             Memo fresh = new Memo(agg, agg.retainedBytes(), new ConcurrentHashMap<>());
             MEMOS.put(key, fresh);
             trim(fresh);

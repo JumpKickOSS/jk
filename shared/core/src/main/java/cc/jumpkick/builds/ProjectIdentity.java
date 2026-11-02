@@ -574,6 +574,13 @@ public record ProjectIdentity(
          * from {@code identity}, the checkout set keeps every other live checkout the file already
          * listed, and the writer's own entry is stamped with the clock's instant.
          */
+        /**
+         * Checkouts an id keeps: the writer's own and the most recently built after it. A CI host or a
+         * bench makes a new checkout of the same project per job, and the list is read on every
+         * identity recovery, so it is bounded however many have existed.
+         */
+        static final int MAX_CHECKOUTS = 32;
+
         /** How stale a checkout's {@code last-built} may read before a build moves it: a listing's precision. */
         static final Duration LAST_BUILT_GRAIN = Duration.ofMinutes(5);
 
@@ -608,6 +615,11 @@ public record ProjectIdentity(
                 }
                 if (!c.live(identity.id())) continue;
                 merged.add(c);
+            }
+            if (merged.size() >= MAX_CHECKOUTS) {
+                merged.sort(Comparator.comparing((Checkout c) -> c.lastBuilt() == null ? Instant.MIN : c.lastBuilt())
+                        .reversed());
+                merged = new ArrayList<>(merged.subList(0, MAX_CHECKOUTS - 1));
             }
             merged.add(new Checkout(own, built));
             StringBuilder b = new StringBuilder();
