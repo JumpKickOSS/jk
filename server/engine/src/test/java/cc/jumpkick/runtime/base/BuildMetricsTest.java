@@ -73,8 +73,8 @@ class BuildMetricsTest {
     /**
      * Admin / {@code GET /api/metrics} loads the default metrics path with ambient
      * {@link cc.jumpkick.config.Session#defaults()}. The engine process CWD is the state dir (no
-     * {@code jk.toml}); that must still surface harvested project invocations via loadAll — not an
-     * empty single-project fold that leaves KPI tiles at zero.
+     * {@code jk.toml}); its machine-wide tiles come from the host tier the harvest writes, never from
+     * loading every project's ledger.
      */
     @Test
     void default_path_with_engine_like_cwd_uses_machine_wide_aggregates(@TempDir Path state) throws Exception {
@@ -97,7 +97,11 @@ class BuildMetricsTest {
                     """);
             Files.writeString(builds.resolve(ProjectBuilds.HOST_METRICS), """
                     [mean]
+                    invocation.build.wall-ms = 4100
                     task.compile-java.wall-ms = 750
+                    [count]
+                    invocation.build.wall-ms = 9
+                    task.compile-java.wall-ms = 9
                     """);
             // Engine-like ambient session: CWD is a real directory but not a jk checkout.
             Path engineCwd = state.resolve("engine");
@@ -107,7 +111,7 @@ class BuildMetricsTest {
 
             BuildMetrics m = BuildMetrics.load(BuildMetrics.defaultFile());
             assertThat(m.invocation("build", ""))
-                    .as("global build tier from harvested project-metrics")
+                    .as("global build tier from the host tier")
                     .isPresent();
             assertThat(m.invocation("build", "").orElseThrow().ok().count()).isEqualTo(9);
             assertThat(m.step("", "compile-java")).isPresent();

@@ -184,4 +184,32 @@ class SessionAggregatesTest {
 
         assertThat(AggregatedMetrics.parseCount()).isEqualTo(parses);
     }
+
+    /**
+     * Outside any project the session reads the host's means only: a project ledger is never
+     * loaded there, so a host with any number of projects and checkouts holds the same few rows.
+     */
+    @Test
+    void outside_a_project_the_session_holds_host_rows_only(@TempDir Path state) throws Exception {
+        System.setProperty("jk.env.JK_STATE_DIR", state.toString());
+        Path work = checkout(state, "a");
+        StringBuilder rows = new StringBuilder("[mean]\n");
+        for (int i = 0; i < 2_000; i++) rows.append("module.m").append(i).append(".task.compile-java.wall-ms = 800\n");
+        ledger(state, work, rows.toString());
+        Files.writeString(state.resolve("builds").resolve(ProjectBuilds.HOST_METRICS), """
+                [mean]
+                task.compile-java.wall-ms = 750
+                [count]
+                task.compile-java.wall-ms = 12
+                """);
+        Path engineCwd = Files.createDirectories(state.resolve("engine"));
+        SessionContext.install(Session.defaults().withWorkingDir(engineCwd));
+        SessionAggregates.clear();
+
+        AggregatedMetrics agg = SessionAggregates.current();
+        assertThat(agg.meanMap()).isEmpty();
+        assertThat(agg.mean("task.compile-java.wall-ms")).hasValue(750.0);
+        assertThat(agg.count("task.compile-java.wall-ms")).isEqualTo(12);
+        assertThat(agg.retainedBytes()).isLessThan(1_000);
+    }
 }

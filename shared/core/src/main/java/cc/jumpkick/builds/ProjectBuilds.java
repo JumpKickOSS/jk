@@ -244,7 +244,7 @@ public final class ProjectBuilds {
     }
 
     /**
-     * Project homes to use for metrics harvest / global loadAll — at most one home per absolute
+     * Project homes to use for metrics harvest — at most one home per absolute
      * checkout path. When lock re-key left a stale sibling home for the same path (different id),
      * keep the preferred one (source=lock, then most runs, then newest identity) so one-sample
      * outliers cannot re-enter aggregates. A home listing several checkouts claims each of them.

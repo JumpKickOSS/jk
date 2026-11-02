@@ -52,6 +52,9 @@ public final class MetricsHarvest {
      */
     public static final List<String> FOREIGN_SECTIONS = List.of("bootstrap", "lock", "fetch");
 
+    /** The {@code host-metrics.toml} sections this writer regenerates and the other writer must keep. */
+    public static final List<String> HARVEST_SECTIONS = List.of("count");
+
     /** {@link #FOREIGN_SECTIONS} plus {@code [calibration]}, the table the other writer owns. */
     private static final List<String> HARVEST_PRESERVES =
             Stream.concat(FOREIGN_SECTIONS.stream(), Stream.of("calibration")).toList();
@@ -265,6 +268,13 @@ public final class MetricsHarvest {
         if (key.startsWith("lock.") || key.startsWith("fetch.") || key.startsWith("probe.")) return true;
         if (key.startsWith("task.") && !key.contains("module.")) return true;
         if (key.startsWith("phase.") && !key.contains("module.")) return true;
+        // A whole invocation of one kind (`invocation.build.wall-ms`), not one directory's: the
+        // machine-wide build tier a caller outside any project reads.
+        if (key.equals("workspace.wall-ms")) return true;
+        if (key.startsWith("invocation.") && key.endsWith(".wall-ms")) {
+            String kind = key.substring("invocation.".length(), key.length() - ".wall-ms".length());
+            if (!kind.isEmpty() && kind.indexOf('.') < 0) return true;
+        }
         // Absolute host rate keys from continuous learning
         return key.endsWith("-per-method-ms")
                 || key.endsWith("-per-source-ms")
@@ -443,6 +453,15 @@ public final class MetricsHarvest {
             if (samples.containsKey(e.getKey())) return;
             sb.append(e.getKey()).append(" = ").append(fmt(e.getValue())).append('\n');
         });
+        // Samples behind each run mean: the host tier's confidence, as [count] is a project's.
+        sb.append("\n[count]\n");
+        samples.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .filter(e -> !e.getValue().isEmpty())
+                .forEach(e -> sb.append(e.getKey())
+                        .append(" = ")
+                        .append(e.getValue().size())
+                        .append('\n'));
         if (!preserved.isBlank()) sb.append(preserved);
         if (!byLanguage.isBlank()) sb.append(byLanguage);
         AtomicWrites.replace(file, sb.toString());

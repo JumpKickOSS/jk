@@ -10,7 +10,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalDouble;
@@ -25,8 +24,10 @@ import org.jspecify.annotations.Nullable;
  * Prefer {@code [last]} then {@code [mean]} for ETA ladders; {@code [count]} for confidence.
  *
  * <p>Module keys are absolute in this view: the ledger spells a module relative to its project
- * root ({@link ModuleKeys}) and {@link #load} expands them against the directory it was asked for,
- * so a worktree reads the rows its siblings wrote. Per-class test walls come from the ledger's
+ * root ({@link ModuleKeys}) and {@link #load} expands them against the one directory it was asked
+ * for, so a worktree reads the rows its siblings wrote. A view holds one project's ledger at most,
+ * so its size follows that project, never the number of projects or checkouts on the host; a
+ * caller outside any project gets {@link #hostOnly}, the host's per-kind means and counts. Per-class test walls come from the ledger's
  * {@code [test-class."<dir>"]} tables ({@link MetricsFile}) and are read by module through
  * {@link #classWalls()}. The files read are stamped (mtime and size); {@link #fresh()} is two
  * stats, which is what lets a memo hold a parsed view until a write lands.
@@ -40,6 +41,8 @@ public final class AggregatedMetrics {
     private final Map<String, Double> last;
     private final Map<String, Long> count;
     private final Map<String, Double> hostMean;
+    /** Host-wide sample counts per key, the confidence of {@link #hostMean}. */
+    private final Map<String, Long> hostCount;
     /** Sanitized absolute module dir → test class → wall ms. */
     private final Map<String, Map<String, Long>> classWalls;
 
@@ -62,7 +65,7 @@ public final class AggregatedMetrics {
     }
 
     public static AggregatedMetrics empty() {
-        return new AggregatedMetrics(Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), List.of());
+        return new AggregatedMetrics(Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), List.of());
     }
 
     /** Heap one map entry holds besides its key's characters: the node, the key's header, a boxed value. */
@@ -70,7 +73,8 @@ public final class AggregatedMetrics {
 
     /** Estimated heap this view holds: per entry {@link #ENTRY_BYTES} plus a byte per key character. */
     public long retainedBytes() {
-        long bytes = entryBytes(mean) + entryBytes(last) + entryBytes(count) + entryBytes(hostMean);
+        long bytes =
+                entryBytes(mean) + entryBytes(last) + entryBytes(count) + entryBytes(hostMean) + entryBytes(hostCount);
         for (var e : classWalls.entrySet()) bytes += ENTRY_BYTES + e.getKey().length() + entryBytes(e.getValue());
         return bytes;
     }
@@ -115,106 +119,24 @@ public final class AggregatedMetrics {
         stamps.add(FileStamp.of(project));
         parseProjectFile(project, rootKey(projectDir), mean, last, count, classWalls);
         Map<String, Double> hostMean = new LinkedHashMap<>();
+        Map<String, Long> hostCount = new LinkedHashMap<>();
         Path host = ProjectBuilds.hostMetricsFile(buildsRoot);
         stamps.add(FileStamp.of(host));
-        parseHostMean(host, hostMean);
-        return new AggregatedMetrics(mean, last, count, hostMean, classWalls, List.copyOf(stamps));
+        parseHost(host, hostMean, hostCount);
+        return new AggregatedMetrics(mean, last, count, hostMean, hostCount, classWalls, List.copyOf(stamps));
     }
 
     /**
-     * Scan every project's metrics (for global step tiers / dashboards).
-     *
-     * <p>Module paths are absolute, so the same checkout can appear under multiple project
-     * identity keys (stale re-key, old hash). Naïve last-wins would let a one-sample outlier
-     * (e.g. 126s {@code run-tests}) overwrite a well-sampled ~33s mean and inflate ETA. Merge
-     * prefers the row with the higher {@code [count]}.
+     * The host's means and counts only: the view for a caller outside any project (the engine's own
+     * working dir, a dashboard). Its size is the number of host keys, a few per task kind.
      */
-    public static AggregatedMetrics loadAll(Path buildsRoot) {
-        Map<String, Double> mean = new LinkedHashMap<>();
-        Map<String, Double> last = new LinkedHashMap<>();
-        Map<String, Long> count = new LinkedHashMap<>();
-        Map<String, Map<String, Long>> classWalls = new LinkedHashMap<>();
-        List<FileStamp> stamps = new ArrayList<>();
-        // Prefer one home per checkout path so stale re-keyed identities do not re-enter.
-        for (Path home : ProjectBuilds.listProjectHomesForMetrics(buildsRoot)) {
-            Map<String, Double> m = new LinkedHashMap<>();
-            Map<String, Double> l = new LinkedHashMap<>();
-            Map<String, Long> c = new LinkedHashMap<>();
-            Map<String, Map<String, Long>> w = new LinkedHashMap<>();
-            Path project = home.resolve(ProjectBuilds.PROJECT_METRICS);
-            stamps.add(FileStamp.of(project));
-            // The ledger keys modules relative to a checkout root; expand it against every live
-            // checkout of the id so each worktree's absolute module dirs find their rows. One read
-            // serves every root.
-            String text = readLedger(project);
-            if (text != null) for (String root : identityRoots(home)) parseProjectText(text, root, m, l, c, w);
-            mergePreferHigherCount(mean, last, count, m, l, c);
-            // The preferred home's walls win; a later home fills in only classes it alone saw.
-            for (var e : w.entrySet()) {
-                Map<String, Long> into = classWalls.computeIfAbsent(e.getKey(), k -> new LinkedHashMap<>());
-                for (var cw : e.getValue().entrySet()) into.putIfAbsent(cw.getKey(), cw.getValue());
-            }
-        }
+    public static AggregatedMetrics hostOnly(Path buildsRoot) {
         Map<String, Double> hostMean = new LinkedHashMap<>();
+        Map<String, Long> hostCount = new LinkedHashMap<>();
         Path host = ProjectBuilds.hostMetricsFile(buildsRoot);
-        stamps.add(FileStamp.of(host));
-        parseHostMean(host, hostMean);
-        return new AggregatedMetrics(mean, last, count, hostMean, classWalls, List.copyOf(stamps));
-    }
-
-    /**
-     * The checkouts a project home records, as key roots; a home that records none yields one
-     * {@code null} root so its relative keys still load.
-     */
-    private static List<@Nullable String> identityRoots(Path home) {
-        var idf = ProjectIdentity.IdentityFile.read(home);
-        List<ProjectIdentity.Checkout> checkouts =
-                idf.map(ProjectIdentity.IdentityFile::liveCheckouts).orElse(List.of());
-        if (checkouts.isEmpty()) {
-            List<@Nullable String> none = new ArrayList<>(1);
-            none.add(null);
-            return none;
-        }
-        List<@Nullable String> roots = new ArrayList<>(checkouts.size());
-        for (ProjectIdentity.Checkout c : checkouts) roots.add(rootKey(c.path()));
-        return roots;
-    }
-
-    /**
-     * Fold one project's scalars into the global maps. Prefer higher sample {@code count} so a
-     * stale project identity cannot poison ETA with a single long wall.
-     */
-    static void mergePreferHigherCount(
-            Map<String, Double> mean,
-            Map<String, Double> last,
-            Map<String, Long> count,
-            Map<String, Double> srcMean,
-            Map<String, Double> srcLast,
-            Map<String, Long> srcCount) {
-        // Per-key merge over the union of source keys. mean/last/count move together; a row
-        // with a real mean outranks a mean-less row (count is the mean's sample size).
-        LinkedHashSet<String> keys = new LinkedHashSet<>();
-        if (srcMean != null) keys.addAll(srcMean.keySet());
-        if (srcLast != null) keys.addAll(srcLast.keySet());
-        for (String key : keys) {
-            Double newMean = srcMean != null ? srcMean.get(key) : null;
-            Double newLast = srcLast != null ? srcLast.get(key) : null;
-            boolean newHasMean = newMean != null && newMean > 0;
-            boolean newHasLast = newLast != null && newLast > 0;
-            if (!newHasMean && !newHasLast) continue;
-            long newC = Math.max(1L, srcCount != null ? srcCount.getOrDefault(key, 1L) : 1L);
-            long oldC = count.getOrDefault(key, 0L);
-            boolean oldHasMean = mean.containsKey(key);
-            boolean win = newC > oldC || oldC == 0;
-            if (newHasMean && !oldHasMean) win = true;
-            if (!newHasMean && oldHasMean) win = false;
-            if (!win) continue;
-            if (newHasMean) mean.put(key, newMean);
-            else mean.remove(key);
-            if (newHasLast) last.put(key, newLast);
-            else last.remove(key);
-            count.put(key, newC);
-        }
+        parseHost(host, hostMean, hostCount);
+        return new AggregatedMetrics(
+                Map.of(), Map.of(), Map.of(), hostMean, hostCount, Map.of(), List.of(FileStamp.of(host)));
     }
 
     /**
@@ -256,7 +178,8 @@ public final class AggregatedMetrics {
     }
 
     public long count(String key) {
-        return count.getOrDefault(key, 0L);
+        Long c = count.get(key);
+        return c != null ? c : hostCount.getOrDefault(key, 0L);
     }
 
     public OptionalLong stepWallMs(String dir, String step) {
@@ -408,7 +331,7 @@ public final class AggregatedMetrics {
         }
     }
 
-    private static void parseHostMean(Path file, Map<String, Double> hostMean) {
+    private static void parseHost(Path file, Map<String, Double> hostMean, Map<String, Long> hostCount) {
         if (!Files.isRegularFile(file)) return;
         try {
             String text = Files.readString(file, StandardCharsets.UTF_8);
@@ -417,11 +340,13 @@ public final class AggregatedMetrics {
                     (section, key, v) -> {
                         if ("mean".equals(section) || section.isEmpty() || "calibration".equals(section)) {
                             hostMean.putIfAbsent(key, v);
+                        } else if ("count".equals(section)) {
+                            hostCount.putIfAbsent(key, Math.round(v));
                         }
                     },
                     (dir, fqcn, ms) -> {});
         } catch (IOException | RuntimeException e) {
-            Log.debug("parseHostMean: IOException|RuntimeException ignored", e);
+            Log.debug("parseHost: IOException|RuntimeException ignored", e);
         }
     }
 }

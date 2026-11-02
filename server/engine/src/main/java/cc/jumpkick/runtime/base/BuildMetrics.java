@@ -248,7 +248,7 @@ public final class BuildMetrics {
 
     /**
      * The session's harvested aggregates ({@link SessionAggregates#current}): the working dir's
-     * project ledger when it is a checkout, else every project's, parsed once and held until a
+     * project ledger when it is a checkout, else the host's, parsed once and held until a
      * ledger file changes.
      */
     public static AggregatedMetrics aggregatesForSession() {

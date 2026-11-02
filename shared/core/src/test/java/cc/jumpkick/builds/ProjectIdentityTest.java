@@ -234,6 +234,32 @@ class ProjectIdentityTest {
         }
     }
 
+    /** A CI host's thousand checkouts of one project leave the newest few, the writer's own first. */
+    @Test
+    void identity_file_keeps_only_the_most_recently_built_checkouts(@TempDir Path tmp, @TempDir Path stateDir)
+            throws Exception {
+        System.setProperty("jk.env.JK_STATE_DIR", stateDir.toString());
+        try {
+            String id = "aabbccddeeff00112233445566778899";
+            Path home = ProjectBuilds.projectHome(id);
+            FakeClock clock = new FakeClock();
+            int jobs = ProjectIdentity.IdentityFile.MAX_CHECKOUTS + 20;
+            for (int i = 0; i < jobs; i++) {
+                Path job = Files.createDirectories(tmp.resolve("job-" + i));
+                ProjectIdentity.IdentityFile.write(home, identityAt(id, job), clock);
+                clock.advance(Duration.ofMinutes(10));
+            }
+            Path last = tmp.resolve("job-" + (jobs - 1));
+            var kept = ProjectIdentity.IdentityFile.read(home).orElseThrow().checkouts();
+            assertThat(kept).hasSize(ProjectIdentity.IdentityFile.MAX_CHECKOUTS);
+            assertThat(kept.stream().map(ProjectIdentity.Checkout::path))
+                    .contains(last.toAbsolutePath().normalize())
+                    .doesNotContain(tmp.resolve("job-0").toAbsolutePath().normalize());
+        } finally {
+            System.clearProperty("jk.env.JK_STATE_DIR");
+        }
+    }
+
     @Test
     void identity_file_keeps_every_live_checkout_and_prunes_dead_ones(@TempDir Path tmp, @TempDir Path stateDir)
             throws Exception {
