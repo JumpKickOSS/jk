@@ -77,7 +77,9 @@ the task names it: no file needs finding or opening first.
 - Who calls `T.m`: call_mcp_tool jk `callers` once and write its list as the answer. Opening the
   files it names costs turns and changes nothing: do not.
 - Rename `T.m`: jk `rename` once, then jk `run` with the `only` it names. Edit only the comment or
-  doc lines its answer lists, if they mean the method.
+  doc lines its answer lists, if they mean the method. When that run and `run(kind=guard)` say OK,
+  the task is done: reply, without searching for the old name or re-reading files (another type's
+  method of the same name is not this one).
 - jk `skill` only when a verdict names a topic.
 """
 
@@ -348,9 +350,30 @@ def called(entry: dict) -> str:
     return name
 
 
-def navigation(summary: list[dict]) -> dict:
-    """Tool calls by family, from a driver's transcript spine."""
-    counts = {"graph": 0, "text": 0, "edits": 0, "build": 0, "other": 0}
+ABS_PATH = re.compile(r'"((?:file://)?/[^"]*)')
+
+
+def outside(entry: dict, sandbox: Path | None) -> bool:
+    """Whether a file tool's call names only paths outside the sandbox (the agent's own home, its MCP
+    tool descriptors): the agent's housekeeping, not reading the project's code. A driver may cut a
+    call's input short, so paths are read off the text when it is not whole JSON."""
+    if sandbox is None:
+        return False
+    raw = str(entry.get("input") or "")
+    try:
+        args = json.loads(raw or "{}")
+        paths = [v for v in args.values() if isinstance(v, str) and v.startswith(("/", "~", "file:"))] \
+            if isinstance(args, dict) else []
+    except json.JSONDecodeError:
+        paths = ABS_PATH.findall(raw)
+    root = str(sandbox)
+    return bool(paths) and not any(p.removeprefix("file://").startswith(root) for p in paths)
+
+
+def navigation(summary: list[dict], sandbox: Path | None = None) -> dict:
+    """Tool calls by family, from a driver's transcript spine. A file tool aimed only outside the
+    sandbox is `outside`, neither graph nor text, so it moves no graph share."""
+    counts = {"graph": 0, "text": 0, "edits": 0, "build": 0, "outside": 0, "other": 0}
     names: dict[str, int] = {}
     for entry in summary:
         if "tool_use" not in entry:
@@ -368,6 +391,8 @@ def navigation(summary: list[dict]) -> dict:
             counts["graph"] += 1
         elif SHELL_TEXT.search(command):
             counts["text"] += 1
+        elif short in NAV_TEXT and outside(entry, sandbox):
+            counts["outside"] += 1
         elif short in NAV_TEXT:
             counts["text"] += 1
         elif short in EDITS:
@@ -496,7 +521,7 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
             reasoning_tokens=agents.reasoning_count(usage, res.extra.get("model_usage")),
             cost_usd=None if res.cost_usd is None else round(res.cost_usd, 4),
             claimed=bool(re.search(r"(?m)^\s*DONE\b", reply)), reply=reply[:300],
-            agent_finding=res.finding, **navigation(res.transcript))
+            agent_finding=res.finding, **navigation(res.transcript, sandbox))
         if res.extra.get("abort"):
             row["finding"] = f"the {ns.driver} CLI did not start: {res.finding}"[:300]
             return row

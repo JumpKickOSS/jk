@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""Tier 1: is an agent's prescription reliably graph-first across real tasks? Three tasks on two small
+repositories (a caller question and a rename on spring-petclinic, a rename on gs-uploading-files), three
+runs each, through change-tasks with smoke-test's arms (the prescriptions tier 0 passed) added.
+
+    bench/agent-loop/screen-test                         # every agent on its prescription
+    bench/agent-loop/screen-test --agent cursor --agent muse
+    bench/agent-loop/screen-test --runs 1
+
+Rows go to change-tasks' results, numbered from --first-run (default 1200), so a tier-1 screen is its own
+series. Arms and the preflight are change-tasks' own.
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.machinery
+import importlib.util
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+
+# Each agent's prescription, the arm that passed tier 0 for it.
+PRESCRIPTIONS = {
+    "claude-code": "jk",
+    "cursor": "jk-cursorrules",
+    "grok": "jk",
+    "agy": "jk-agyrules",
+    "muse": "jk-musemd",
+}
+TASKS = ["petclinic-callers-addpet", "petclinic-rename-addvisit", "gs-uploading-rename-loadasresource"]
+
+
+def load(name: str, path: Path):
+    loader = importlib.machinery.SourceFileLoader(name, str(path))
+    spec = importlib.util.spec_from_loader(name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--agent", action="append", choices=sorted(PRESCRIPTIONS))
+    ap.add_argument("--runs", type=int, default=3)
+    ap.add_argument("--first-run", type=int, default=1200)
+    ns = ap.parse_args()
+    # smoke-test adds the tier-0 arms to the change-tasks module it loads; its main is not run.
+    ct = load("smoke_test", HERE / "smoke-test").ct
+    missing = sorted(set(PRESCRIPTIONS.values()) - set(ct.ARMS))
+    if missing:
+        raise SystemExit(f"screen-test: no arm {', '.join(missing)} in change-tasks or smoke-test; "
+                         "a prescription moved or was renamed")
+    status = 0
+    for agent in ns.agent or list(PRESCRIPTIONS):
+        argv = ["change-tasks", "--driver", agent, "--arm", PRESCRIPTIONS[agent], "--runs", str(ns.runs),
+                "--first-run", str(ns.first_run)]
+        for task in TASKS:
+            argv += ["--task", task]
+        print(f"== {agent} ({PRESCRIPTIONS[agent]})", flush=True)
+        sys.argv = argv
+        status |= ct.main() or 0
+    return status
+
+
+if __name__ == "__main__":
+    sys.exit(main())
