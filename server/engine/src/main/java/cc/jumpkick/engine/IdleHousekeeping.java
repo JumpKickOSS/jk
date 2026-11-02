@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.JkHistoryConfig;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.LastBuiltRoot;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.verbs.CacheMaintenanceLocks;
@@ -20,12 +21,14 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.CachePruneScheduler;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.BooleanSupplier;
@@ -43,6 +46,12 @@ import org.jspecify.annotations.Nullable;
  */
 @RequiredArgsConstructor
 public final class IdleHousekeeping {
+
+    /**
+     * How long an engine whose home is a test-home slot may sit idle before it exits. Its suite
+     * stops it when the slot closes; a suite that was killed never does, and nothing else would.
+     */
+    static final Duration TEST_HOME_IDLE = Duration.ofMinutes(30);
 
     /** How long an OutOfMemoryError heap dump stays beside the engine log before the boundary deletes it. */
     static final Duration HEAP_DUMP_RETENTION = Duration.ofDays(7);
@@ -63,6 +72,7 @@ public final class IdleHousekeeping {
     private final AtomicBoolean pendingWarmup = new AtomicBoolean();
     private final AtomicBoolean warmupRunning = new AtomicBoolean();
     private final AtomicBoolean running = new AtomicBoolean();
+    private final AtomicLong testHomeIdle = new AtomicLong();
 
     /**
      * After a plan slot was released: all idle housekeeping when nothing remains in flight.
@@ -73,6 +83,28 @@ public final class IdleHousekeeping {
         run();
         if (draining.getAsBoolean()) onDrainIdle.run();
         else HeapTrim.later(this::idle, this::settledTrim, HeapTrim.SETTLE);
+        armTestHomeExit();
+    }
+
+    /**
+     * For an engine in a test-home slot, exit once it has stayed idle for {@link #TEST_HOME_IDLE}:
+     * each call restarts the wait. Armed at startup and at every idle boundary; no-op elsewhere.
+     */
+    public void armTestHomeExit() {
+        if (!TestHomes.contains(engineDir)) return;
+        long mine = testHomeIdle.incrementAndGet();
+        // Engine-lifetime chore: it reads no request's session.
+        SessionContext.startVirtual("jk-test-home-idle", () -> {
+            try {
+                Thread.sleep(TEST_HOME_IDLE);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            if (testHomeIdle.get() != mine || !idle()) return;
+            log.accept("jk engine: test-home engine idle for " + TEST_HOME_IDLE.toMinutes() + " min; exiting");
+            onDrainIdle.run();
+        });
     }
 
     private boolean idle() {

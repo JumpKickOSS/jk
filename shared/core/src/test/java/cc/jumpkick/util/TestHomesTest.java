@@ -571,4 +571,13 @@ class TestHomesTest {
         assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), NO_CAP).removed())
                 .isEqualTo(1);
     }
+
+    @Test
+    void contains_names_a_path_inside_a_slot(@TempDir Path tmp) {
+        assertThat(TestHomes.contains(tmp.resolve("test-homes/ab12/home/state/engine")))
+                .isTrue();
+        assertThat(TestHomes.contains(tmp.resolve("state/engine"))).isFalse();
+        assertThat(TestHomes.contains(tmp.resolve("my-test-homes-notes/engine")))
+                .isFalse();
+    }
 }

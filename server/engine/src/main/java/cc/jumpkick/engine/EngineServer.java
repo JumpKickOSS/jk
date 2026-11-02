@@ -314,6 +314,7 @@ public final class EngineServer implements AutoCloseable {
         this.drain = newDrainReporter();
         this.watchdog = newDisplacementWatchdog();
         this.idle = newIdleHousekeeping();
+        idle.armTestHomeExit();
         this.selfUpdate = SelfUpdateScheduler.forEngine(
                         this.version, activeBuildPlans::get, () -> draining || shuttingDown, this.log)
                 .orElse(null);

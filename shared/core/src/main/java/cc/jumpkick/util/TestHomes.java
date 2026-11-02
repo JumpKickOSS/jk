@@ -107,6 +107,13 @@ public final class TestHomes {
      */
     static final String SIZE = ".bytes";
 
+    /**
+     * How long an unheld slot's use stamp must sit before the reaper stops the engines in it. A
+     * suite whose test JVM was killed never closes its hold, so its engine outlives it; a launch
+     * that could not write its hold is protected by this window instead.
+     */
+    static final long ENGINE_IDLE_MILLIS = 10L * 60 * 1000;
+
     /** {@code <slot>/.holds/<pid>-<n>}, body {@code <pid> <start epoch millis>}: one per live launch. */
     private static final String HOLDS = ".holds";
 
@@ -236,6 +243,14 @@ public final class TestHomes {
         TestHomeEngines.stop(slot);
         PathUtil.deleteRecursively(slot);
         return !Files.exists(slot);
+    }
+
+    /** Whether {@code path} lies inside a test-home slot: one of its names is {@value #DIR}. */
+    public static boolean contains(Path path) {
+        for (Path name : path.toAbsolutePath().normalize()) {
+            if (name.toString().equals(DIR)) return true;
+        }
+        return false;
     }
 
     /** The nested {@code test-homes} root a sandboxed suite's own fixtures take their slots in. */
@@ -431,8 +446,10 @@ public final class TestHomes {
     static Pass reapStale(Path root, long nowMillis, long capBytes, long slotCapBytes) {
         long cutoff = nowMillis - KEEP_DAYS * 24L * 60 * 60 * 1000;
         long held = nowMillis - HOLD_HOURS * 60L * 60 * 1000;
+        long engineIdle = nowMillis - ENGINE_IDLE_MILLIS;
         int removed = 0;
         List<Slot> fresh = new ArrayList<>();
+        List<Path> orphaned = new ArrayList<>();
         long total = 0;
         try {
             List<Path> stale = new ArrayList<>();
@@ -448,9 +465,12 @@ public final class TestHomes {
                     stale.add(slot);
                 } else {
                     fresh.add(new Slot(slot, used, size(slot, used), inUse));
+                    if (!inUse && used <= engineIdle) orphaned.add(slot);
                 }
                 return true;
             });
+            // A kept slot nobody holds has no suite left to stop its engines.
+            for (Path slot : orphaned) TestHomeEngines.stop(slot);
             for (Path slot : stale) {
                 if (delete(slot)) removed++;
             }
