@@ -333,9 +333,7 @@ public final class BuildJournal {
         if (entry == null || Files.exists(entry.planned)) return false;
         pending.written(finished.requestId());
         PendingRuns.logNoop(entry.planned, finished);
-        // A no-op has no run directory to read back: an MCP run that waits on its jid finds it here.
-        if (noopsByRequestId.size() >= 256) noopsByRequestId.clear();
-        noopsByRequestId.put(finished.requestId(), Json.write(finished));
+        noops.put(finished);
         return true;
     }
 
@@ -678,17 +676,13 @@ public final class BuildJournal {
 
     /** The highest request id among the newest records: where a starting engine numbers on from. */
     public long newestRequestId() {
-        long max = 0;
-        try {
-            for (RawLoaded l : loadNewestRaw(200, null)) max = Math.max(max, scanLong(l.head(), "requestId"));
-        } catch (RuntimeException e) {
-            Log.debug("newest request id: best-effort", e);
-        }
-        return max;
+        return loadNewestRaw(200, null).stream()
+                .mapToLong(l -> scanLong(l.head(), "requestId"))
+                .max()
+                .orElse(0);
     }
 
-    /** Recent no-ops' finished records by request id: they leave a run-log line, not a directory. */
-    private final ConcurrentHashMap<Long, String> noopsByRequestId = new ConcurrentHashMap<>();
+    private final NoopRecords noops = new NoopRecords();
 
     /**
      * Raw JSON of the <em>finished</em> record stamped with {@code requestId}, or empty while the
@@ -698,8 +692,8 @@ public final class BuildJournal {
      */
     public Optional<String> rawFinishedRecordByRequestId(long requestId) {
         if (requestId <= 0) return Optional.empty();
-        String noop = noopsByRequestId.get(requestId);
-        if (noop != null) return Optional.of(noop);
+        Optional<String> noop = noops.get(requestId);
+        if (noop.isPresent()) return noop;
         Path dir = runDirsByRequestId.get(requestId);
         if (dir != null) {
             if (Files.isDirectory(dir)) return readFinished(dir, requestId);
