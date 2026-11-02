@@ -42,7 +42,14 @@ class StepWallLadderTest {
         BuildMetrics.clearSessionAggregatesMemo();
     }
 
+    /** A project directory: a session there reads its own ledger. */
+    private static Path project(Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), "name = \"m\"\n");
+        return dir;
+    }
+
     private long priced(Path moduleDir, String mean, String last, String count) throws Exception {
+        project(moduleDir);
         Path home = ProjectBuilds.projectHome(JkDirs.builds(), null, moduleDir);
         Files.createDirectories(home);
         String key = "module." + AggregatedMetrics.sanitize(moduleDir.toString()) + ".task.compile-test.wall-ms";
@@ -74,7 +81,7 @@ class StepWallLadderTest {
 
     @Test
     void a_last_without_a_mean_still_prices() throws Exception {
-        Path module = Files.createDirectories(state.resolve("lastonly"));
+        Path module = project(Files.createDirectories(state.resolve("lastonly")));
         Path home = ProjectBuilds.projectHome(JkDirs.builds(), null, module);
         Files.createDirectories(home);
         String key = "module." + AggregatedMetrics.sanitize(module.toString()) + ".task.compile-test.wall-ms";
