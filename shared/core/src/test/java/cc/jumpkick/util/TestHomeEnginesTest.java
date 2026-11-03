@@ -14,12 +14,16 @@ import org.junit.jupiter.api.io.TempDir;
 @DisabledOnOs(OS.WINDOWS)
 class TestHomeEnginesTest {
 
-    /** A stand-in engine: a process whose command line names {@code home}, as an engine's jar path does. */
+    /**
+     * A stand-in engine: a process whose command line names {@code home}, as an engine's jar path does.
+     * The trailing {@code :} stops the shell from replacing itself with {@code sleep}, which would drop
+     * the path from the command line.
+     */
     private static Process engine(Path home) throws Exception {
         return new ProcessBuilder(
                         "sh",
                         "-c",
-                        "sleep 60",
+                        "sleep 60; :",
                         home.resolve("lib/jk-engine.jar").toString())
                 .start();
     }
