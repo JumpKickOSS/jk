@@ -79,6 +79,7 @@ test-plugin-jars = [
   "protobuf",
   "generator",
   "openapi",
+  "jooq",
   "minified",
   "grails",
   "groovy-compiler",
