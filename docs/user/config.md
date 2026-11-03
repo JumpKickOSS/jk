@@ -84,7 +84,7 @@ When `auto` is not enough, confirm what you see:
 ```bash
 jk self setup-terminal        # shows the glyphs, asks, remembers the answer for this terminal
 jk self setup-terminal -e     # why auto concluded what it did, and the state of that answer
-jk self setup-terminal -r     # forget the remembered answer
+jk self setup-terminal -f     # forget the remembered answer
 ```
 
 The answer is saved in `~/.jk/terminal-caps.toml` for that terminal (and, over SSH, that client).
