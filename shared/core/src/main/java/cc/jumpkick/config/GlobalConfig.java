@@ -133,14 +133,18 @@ public final class GlobalConfig {
     private static volatile NerdFontDetect.@Nullable Result lastAutoDetection;
 
     /**
-     * One-line advice when the terminal's stored glyph confirmation went stale, once per change.
-     * Empty when detection was pinned, found nothing stale, or the hint was already shown.
+     * What changed since the terminal's stored glyph confirmation, such as "terminal font and installed
+     * fonts", reported once per change. Empty when detection was pinned, found nothing stale, or the
+     * change was already reported.
      */
-    public static Optional<String> nerdFontStaleHint() {
+    public static Optional<String> nerdFontStaleChange() {
         NerdFontDetect.Result r = lastAutoDetection;
         if (r == null || r.stale() == null || !NerdFontDetect.claimStaleHint(r)) return Optional.empty();
-        return Optional.of("your " + String.join(" and ", r.stale().changed())
-                + " changed since you confirmed terminal glyphs; run `jk self setup-terminal` to confirm again");
+        List<String> changed = r.stale().changed();
+        return Optional.of(
+                changed.size() < 2
+                        ? String.join("", changed)
+                        : String.join(", ", changed.subList(0, changed.size() - 1)) + " and " + changed.getLast());
     }
 
     /**

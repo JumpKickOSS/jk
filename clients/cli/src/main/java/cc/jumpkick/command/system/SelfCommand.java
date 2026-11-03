@@ -50,6 +50,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -208,7 +209,7 @@ public final class SelfCommand extends GroupCommand {
         public int run(Invocation in) throws Exception {
             var detected = NerdFontDetect.detect();
             if (in.isSet("explain")) {
-                CommandWedge.printOk("Self", explain(detected));
+                CommandWedge.printOk("Self", SetupTerminalReport.body(SetupTerminalReport.explain(detected)));
                 return 0;
             }
             if (in.isSet("forget")) {
@@ -221,10 +222,10 @@ public final class SelfCommand extends GroupCommand {
             if (Interactivity.canPrompt()) return confirmAtTerminal(detected);
             Path cfg = JkDirs.userConfigFile();
             UserConfigEditor.setNerdFont(cfg, NerdFontMode.AUTO);
-            CommandWedge.printOk(
-                    "Self",
-                    "nerd-font = " + NerdFontMode.AUTO.toToml() + " → " + cfg + "\n  " + explain(detected)
-                            + "\n  run `jk self setup-terminal` at a terminal to confirm the glyphs");
+            var lines = new ArrayList<String>();
+            lines.add("nerd-font = " + NerdFontMode.AUTO.toToml());
+            lines.addAll(SetupTerminalReport.explain(detected));
+            CommandWedge.printOk("Self", SetupTerminalReport.body(lines) + "\n  saved in " + cfg);
             return 0;
         }
 
@@ -237,7 +238,9 @@ public final class SelfCommand extends GroupCommand {
             Path cfg = JkDirs.userConfigFile();
             UserConfigEditor.setNerdFont(cfg, mode.get());
             String msg = "nerd-font = " + mode.get().toToml() + " → " + cfg;
-            if (mode.get() == NerdFontMode.AUTO) msg += "\n  " + explain(detected);
+            if (mode.get() == NerdFontMode.AUTO) {
+                msg += "\n  " + SetupTerminalReport.body(SetupTerminalReport.explain(detected));
+            }
             CommandWedge.printOk("Self", msg);
             return 0;
         }
@@ -247,15 +250,17 @@ public final class SelfCommand extends GroupCommand {
             var tty = Terminals.controlling();
             var findings = GlyphProbe.run(tty);
             var out = CliOutput.stdout();
-            out.println("Detection: " + explain(detected));
-            findings.reportedFont()
-                    .ifPresent(f -> out.println(
-                            "The terminal reports its font as " + f + " (" + describe(NerdFontNames.caps(f)) + ")."));
+            SetupTerminalReport.explain(detected).forEach(l -> out.println("  " + l));
+            findings.reportedFont().ifPresent(f -> SetupTerminalReport.wrap(
+                            "The terminal reports its font as " + f + " ("
+                                    + SetupTerminalReport.describe(NerdFontNames.caps(f)) + ").",
+                            SetupTerminalReport.WIDTH)
+                    .forEach(l -> out.println("  " + l)));
             findings.glyphCells()
                     .ifPresent(c -> out.println(
                             c == 1
-                                    ? "A powerline glyph takes one cell."
-                                    : "A powerline glyph takes " + c + " cells; a missing glyph is often drawn wide."));
+                                    ? "  A powerline glyph takes one cell."
+                                    : "  A powerline glyph takes " + c + " cells; a missing one is often wide."));
             out.println();
             out.println("  triangles:  \uE0B0 \uE0B2     (two arrow-shaped caps)");
             out.println("  rounded:    \uE0B6 \uE0B4     (two half-circle caps)");
@@ -273,13 +278,11 @@ public final class SelfCommand extends GroupCommand {
             boolean saved = NerdFontDetect.confirm(caps, "confirmed");
             CommandWedge.printOk(
                     "Self",
-                    "glyphs: " + describe(caps) + (saved ? " — remembered for this terminal" : " — could not be saved")
-                            + "\n  jk asks again only if its font, config, or the installed fonts change");
+                    "glyphs: " + SetupTerminalReport.describe(caps)
+                            + (saved ? ", remembered for this terminal" : ", could not be saved")
+                            + "\n  jk asks again only if the terminal's font, config, or the"
+                            + "\n  installed fonts change");
             return saved ? 0 : Exit.FAILURE;
-        }
-
-        private static String describe(NerdFontCaps caps) {
-            return !caps.any() ? "none" : caps.wedge() && caps.pill() ? "wedge+pill" : caps.wedge() ? "wedge" : "pill";
         }
 
         /**
@@ -289,11 +292,6 @@ public final class SelfCommand extends GroupCommand {
          */
         private static Optional<NerdFontMode> parseMode(String raw) {
             return NerdFontMode.parse(raw);
-        }
-
-        private static String explain(NerdFontDetect.Result r) {
-            return "detected " + describe(r.caps()) + " — " + r.reason() + " [" + r.source() + ", "
-                    + r.confidence().name().toLowerCase(Locale.ROOT) + "; confirmation: " + r.cache() + "]";
         }
     }
 
