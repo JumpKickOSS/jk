@@ -579,7 +579,7 @@ main() {
   fi
   if [ -n "$LOCAL_FILE" ]; then
     # Seed root-level nerd-font = "auto"; detection then runs per launch. Never fail install.
-    run_jk self setup-terminal >/dev/null 2>&1 \
+    run_jk self setup-terminal --mode auto >/dev/null 2>&1 \
       || note "terminal setup skipped (run 'jk self setup-terminal' later)"
   fi
 

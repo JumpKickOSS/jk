@@ -86,6 +86,7 @@ public final class Jk {
         try {
             code = execute(args);
             SelfUpdatePrompt.afterCommand(commandName(args), List.of(args), code);
+            NerdFontHint.afterCommand(commandName(args), List.of(args), code);
         } catch (JkDirs.InvalidOverrideException e) {
             System.err.println("jk: invalid environment: " + e.getMessage());
             code = Exit.USAGE;

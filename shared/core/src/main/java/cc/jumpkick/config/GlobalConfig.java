@@ -123,7 +123,24 @@ public final class GlobalConfig {
             Path configFile, @Nullable String jkEnv, @Nullable String hostEnv, boolean colorEnabled) {
         if (!colorEnabled) return NerdFontCaps.NONE;
         NerdFontMode mode = nerdFontMode(configFile, jkEnv, hostEnv);
-        return mode == NerdFontMode.AUTO ? NerdFontDetect.detect().caps() : mode.fixedCaps();
+        if (mode != NerdFontMode.AUTO) return mode.fixedCaps();
+        NerdFontDetect.Result detected = NerdFontDetect.detect();
+        lastAutoDetection = detected;
+        return detected.caps();
+    }
+
+    /** The most recent {@code auto} detection in this process; null when none ran. */
+    private static volatile NerdFontDetect.@Nullable Result lastAutoDetection;
+
+    /**
+     * One-line advice when the terminal's stored glyph confirmation went stale, once per change.
+     * Empty when detection was pinned, found nothing stale, or the hint was already shown.
+     */
+    public static Optional<String> nerdFontStaleHint() {
+        NerdFontDetect.Result r = lastAutoDetection;
+        if (r == null || r.stale() == null || !NerdFontDetect.claimStaleHint(r)) return Optional.empty();
+        return Optional.of("your " + String.join(" and ", r.stale().changed())
+                + " changed since you confirmed terminal glyphs; run `jk self setup-terminal` to confirm again");
     }
 
     /**
@@ -217,6 +234,7 @@ public final class GlobalConfig {
         SCAN_CACHE.clear();
         NETWORK_CACHE.clear();
         resolvedNerdFont = null;
+        lastAutoDetection = null;
     }
 
     /**

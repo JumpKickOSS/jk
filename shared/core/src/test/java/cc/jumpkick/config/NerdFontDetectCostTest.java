@@ -3,9 +3,9 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.TerminalIdentity.Terminal;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
@@ -33,7 +33,6 @@ class NerdFontDetectCostTest {
             new Case("ssh", env("SSH_TTY", "/dev/ttys001")),
             new Case("apple terminal", env("TERM_PROGRAM", "Apple_Terminal")),
             new Case("unknown", env()),
-            new Case("no resolver", env("TERM_PROGRAM", "Hyper")),
         }) {
             Counting fonts = new Counting();
             NerdFontDetect.detect(c.env()::get, fonts);
@@ -78,24 +77,14 @@ class NerdFontDetectCostTest {
     void detection_never_throws_whatever_the_sources_do() {
         TerminalFonts hostile = new TerminalFonts() {
             @Override
-            public Optional<String> itermFont() {
-                throw new IllegalStateException("boom");
-            }
-
-            @Override
-            public Optional<String> alacrittyFont() {
-                throw new OutOfMemoryError("boom");
-            }
-
-            @Override
             @SuppressWarnings("NullAway") // the null is deliberate: a contract violation, not just a failure
-            public Optional<String> vscodeFont() {
-                return null;
-            }
-
-            @Override
-            public Optional<String> zedFont() {
-                return Optional.empty();
+            public Lookup lookup(Terminal terminal) {
+                return switch (terminal) {
+                    case ITERM2 -> throw new IllegalStateException("boom");
+                    case ALACRITTY -> throw new OutOfMemoryError("boom");
+                    case VSCODE -> null;
+                    default -> Lookup.EMPTY;
+                };
             }
         };
         // A broken source must degrade to the terminal's floor, never propagate. Nerd-font detection
@@ -128,29 +117,10 @@ class NerdFontDetectCostTest {
             return calls.get();
         }
 
-        private Optional<String> tick() {
+        @Override
+        public Lookup lookup(Terminal terminal) {
             calls.incrementAndGet();
-            return Optional.empty();
-        }
-
-        @Override
-        public Optional<String> itermFont() {
-            return tick();
-        }
-
-        @Override
-        public Optional<String> alacrittyFont() {
-            return tick();
-        }
-
-        @Override
-        public Optional<String> vscodeFont() {
-            return tick();
-        }
-
-        @Override
-        public Optional<String> zedFont() {
-            return tick();
+            return Lookup.EMPTY;
         }
     }
 }

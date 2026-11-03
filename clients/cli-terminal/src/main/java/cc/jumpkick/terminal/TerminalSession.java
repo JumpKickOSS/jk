@@ -24,6 +24,13 @@ public sealed interface TerminalSession extends AutoCloseable permits NativeTerm
      */
     Optional<Key> readKey(Duration timeout);
 
+    /**
+     * The raw bytes of a reply to a query just written to {@link #ttyOut}, as Latin-1 chars: waits up
+     * to {@code first} for the first byte, then reads until {@code idle} passes with none. Empty when
+     * the terminal said nothing. Escape sequences are returned verbatim, not decoded as keys.
+     */
+    String readReply(Duration first, Duration idle);
+
     /** Discard pending input for up to {@code max}. */
     void drain(Duration max);
 

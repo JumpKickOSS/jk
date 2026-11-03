@@ -250,6 +250,41 @@ chrome at all.
 `nerd-font` accepts `false`, `true`, `"auto"` (default), `"wedge"`, or `"pill"`.
 Precedence: color/ANSI gate > `JK_NERD_FONT` > `NERD_FONT` > config > `auto` detection.
 
+### How `auto` resolves
+
+`NerdFontDetect` runs once per process and may not spawn a process or query the terminal. Tiers, in
+order, each short-circuiting:
+
+1. **Gates:** CI or `TERM=dumb` give no glyphs.
+2. **Bundled glyphs:** Ghostty, kitty, WezTerm and Windows Terminal draw all four codepoints
+   whatever font is set. Recognised from the environment alone, no file is read.
+3. **Confirmation:** the answer saved by `jk self setup-terminal` in `~/.jk/terminal-caps.toml`,
+   while its fingerprint still matches.
+4. **Heuristics:** the terminal's configured font (`TerminalFonts`), then Nerd Fonts installed on
+   disk (`InstalledFonts`). iTerm2, VS Code and Zed draw from the configured font only; Alacritty,
+   Konsole, VTE terminals, foot, Rio, Warp, Tabby and Hyper fall back to any installed font, so an
+   installed Nerd Font grants them everything. A terminal nothing identifies gets the triangles
+   only when a Nerd Font is installed. Terminal.app and SSH sessions get nothing until confirmed.
+
+`TerminalIdentity` names the terminal. `TERM_PROGRAM` wins when it names one; multiplexers overwrite
+it, so the variables a terminal exports to its children (`GHOSTTY_RESOURCES_DIR`, `KITTY_WINDOW_ID`,
+`WEZTERM_PANE`, `ITERM_SESSION_ID`, `ALACRITTY_*`, `KONSOLE_VERSION`, `VTE_VERSION`) come next, then
+`TERM`. Over SSH only `TERM` and `LC_TERMINAL` are trusted, since the other variables describe the
+server.
+
+Each result carries a `Confidence` (`CONFIRMED`, `KNOWN`, `INFERRED`, `UNKNOWN`) and a `source`.
+`jk self setup-terminal --explain` prints both, plus the confirmation's state.
+
+**Fingerprint.** A confirmation is stored with the terminal's version, configured font, config file
+(`path:mtime:size`) and the installed-font directories' stamp. A launch recomputes these with
+environment reads and a few `stat` calls. If any differ, the confirmation is ignored, detection falls
+back to the heuristics, and `NerdFontHint` prints one line per change naming what moved. Entries are
+keyed per terminal (and per client address over SSH). A font changed inside a terminal whose font jk
+cannot read (Terminal.app, a remote client) is invisible; re-run `jk self setup-terminal` there.
+
+`setup-terminal` itself may ask the terminal questions (`GlyphProbe`: `OSC 50` font query, glyph
+cell width), each time-bounded. They only seed the defaults; the user's answer is what is stored.
+
 Rules:
 
 - Prefer `Glyphs.check()` / `cross()` / `pulse()` (and friends) over hardcoding a check mark when emitting markers outside wedges.

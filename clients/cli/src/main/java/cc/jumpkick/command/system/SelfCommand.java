@@ -14,10 +14,16 @@ import cc.jumpkick.cli.engine.JvmClient;
 import cc.jumpkick.cli.engine.ReleaseArtifacts;
 import cc.jumpkick.cli.engine.ReleaseDownloadView;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Confirm;
+import cc.jumpkick.cli.tui.GlyphProbe;
+import cc.jumpkick.cli.tui.Interactivity;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.NerdFontDetect;
 import cc.jumpkick.config.NerdFontMode;
+import cc.jumpkick.config.NerdFontNames;
 import cc.jumpkick.config.SelfUpdateState;
+import cc.jumpkick.config.TerminalCapsCache;
 import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
@@ -31,6 +37,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.repo.ReleaseVerifier;
+import cc.jumpkick.terminal.Terminals;
 import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.version.Versions;
@@ -170,12 +177,12 @@ public final class SelfCommand extends GroupCommand {
     }
 
     /**
-     * {@code jk self setup-terminal} — persist root-level {@code nerd-font} in {@code
-     * ~/.jk/config.toml}. Also invoked from install.sh.
+     * {@code jk self setup-terminal} — settle which Nerd Font glyphs this terminal draws. With
+     * {@code --mode} it pins root-level {@code nerd-font} in {@code ~/.jk/config.toml}; without, at a
+     * terminal, it shows the glyphs, asks what the user sees, and remembers the answer for this
+     * terminal until its font, config or installed fonts change. Also invoked from install.sh.
      *
-     * <p>Writing {@code auto} is the useful default: detection now runs cheaply on every launch, so
-     * pinning a value is only for overriding it. {@code --explain} reports what detection currently
-     * concludes and why, without writing anything.
+     * <p>{@code --explain} reports what detection concludes and why, without writing anything.
      */
     static final class SetupTerminalSub implements CliCommand {
 
@@ -186,14 +193,15 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Write nerd-font in config.toml (default: auto)";
+            return "Confirm which Nerd Font glyphs this terminal draws (or pin nerd-font)";
         }
 
         @Override
         public List<Opt> options() {
             return List.of(
-                    Opt.value("<MODE>", "auto (default), on, off, wedge, or pill", "-m", "--mode"),
-                    Opt.flag("Report what detection concludes; write nothing.", "-e", "--explain"));
+                    Opt.value("<MODE>", "pin nerd-font: auto, on, off, wedge, or pill", "-m", "--mode"),
+                    Opt.flag("Report what detection concludes; write nothing.", "-e", "--explain"),
+                    Opt.flag("Forget the glyph answer remembered for this terminal.", "-r", "--reset"));
         }
 
         @Override
@@ -203,7 +211,24 @@ public final class SelfCommand extends GroupCommand {
                 CommandWedge.printOk("Self", explain(detected));
                 return 0;
             }
-            String raw = in.value("mode").orElse("auto");
+            if (in.isSet("reset")) {
+                TerminalCapsCache.real().remove(TerminalCapsCache.currentSlot());
+                CommandWedge.printOk("Self", "forgot the remembered glyph answer for this terminal");
+                return 0;
+            }
+            Optional<String> rawMode = in.value("mode");
+            if (rawMode.isPresent()) return pin(rawMode.get(), detected);
+            if (Interactivity.canPrompt()) return confirmAtTerminal(detected);
+            Path cfg = JkDirs.userConfigFile();
+            UserConfigEditor.setNerdFont(cfg, NerdFontMode.AUTO);
+            CommandWedge.printOk(
+                    "Self",
+                    "nerd-font = " + NerdFontMode.AUTO.toToml() + " → " + cfg + "\n  " + explain(detected)
+                            + "\n  run `jk self setup-terminal` at a terminal to confirm the glyphs");
+            return 0;
+        }
+
+        private static int pin(String raw, NerdFontDetect.Result detected) throws IOException {
             var mode = parseMode(raw);
             if (mode.isEmpty()) {
                 CommandWedge.printFail("Self", "unknown --mode " + raw + " (expected auto|on|off|wedge|pill)");
@@ -217,6 +242,46 @@ public final class SelfCommand extends GroupCommand {
             return 0;
         }
 
+        /** Show the glyphs, ask what the user sees, and remember it for this terminal. */
+        private static int confirmAtTerminal(NerdFontDetect.Result detected) throws IOException {
+            var tty = Terminals.controlling();
+            var findings = GlyphProbe.run(tty);
+            var out = CliOutput.stdout();
+            out.println("Detection: " + explain(detected));
+            findings.reportedFont()
+                    .ifPresent(f -> out.println(
+                            "The terminal reports its font as " + f + " (" + describe(NerdFontNames.caps(f)) + ")."));
+            findings.glyphCells()
+                    .ifPresent(c -> out.println(
+                            c == 1
+                                    ? "A powerline glyph takes one cell."
+                                    : "A powerline glyph takes " + c + " cells; a missing glyph is often drawn wide."));
+            out.println();
+            out.println("  triangles:  \uE0B0 \uE0B2     (two arrow-shaped caps)");
+            out.println("  rounded:    \uE0B6 \uE0B4     (two half-circle caps)");
+            out.println();
+            NerdFontCaps hint = detected.caps()
+                    .max(NerdFontNames.caps(findings.reportedFont().orElse("")));
+            boolean wedge = Confirm.of("Do you see two arrow-shaped caps on the triangles line?", hint.wedge())
+                    .ask(tty);
+            boolean pill = Confirm.of("Do you see two half-circle caps on the rounded line?", hint.pill())
+                    .ask(tty);
+            NerdFontCaps caps = new NerdFontCaps(wedge, pill);
+
+            Path cfg = JkDirs.userConfigFile();
+            UserConfigEditor.setNerdFont(cfg, NerdFontMode.AUTO);
+            boolean saved = NerdFontDetect.confirm(caps, "confirmed");
+            CommandWedge.printOk(
+                    "Self",
+                    "glyphs: " + describe(caps) + (saved ? " — remembered for this terminal" : " — could not be saved")
+                            + "\n  jk asks again only if its font, config, or the installed fonts change");
+            return saved ? 0 : Exit.FAILURE;
+        }
+
+        private static String describe(NerdFontCaps caps) {
+            return !caps.any() ? "none" : caps.wedge() && caps.pill() ? "wedge+pill" : caps.wedge() ? "wedge" : "pill";
+        }
+
         /**
          * Accepts the config spellings plus the friendlier {@code on}/{@code off} that a flag-style
          * CLI invites, which {@link cc.jumpkick.config.NerdFontMode#parse} already covers via the
@@ -227,10 +292,8 @@ public final class SelfCommand extends GroupCommand {
         }
 
         private static String explain(NerdFontDetect.Result r) {
-            var caps = r.caps();
-            String granted =
-                    !caps.any() ? "none" : caps.wedge() && caps.pill() ? "wedge+pill" : caps.wedge() ? "wedge" : "pill";
-            return "detected " + granted + " — " + r.reason() + " [" + r.source() + "]";
+            return "detected " + describe(r.caps()) + " — " + r.reason() + " [" + r.source() + ", "
+                    + r.confidence().name().toLowerCase(Locale.ROOT) + "; confirmation: " + r.cache() + "]";
         }
     }
 

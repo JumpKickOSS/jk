@@ -121,6 +121,12 @@ final class NativeTerminal implements TerminalSession {
     }
 
     @Override
+    public String readReply(Duration first, Duration idle) {
+        DeadTerminal.requireTimeout(first);
+        return Replies.collect(feed, first, idle);
+    }
+
+    @Override
     public PrintWriter ttyOut() {
         Terminals.foreground();
         return out;
