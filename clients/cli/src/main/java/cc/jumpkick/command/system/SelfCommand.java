@@ -193,7 +193,7 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Confirm which Nerd Font glyphs this terminal draws (or pin nerd-font)";
+            return "Confirm Nerd Font glyphs for this terminal";
         }
 
         @Override
@@ -201,7 +201,7 @@ public final class SelfCommand extends GroupCommand {
             return List.of(
                     Opt.value("<MODE>", "pin nerd-font: auto, on, off, wedge, or pill", "-m", "--mode"),
                     Opt.flag("Report what detection concludes; write nothing.", "-e", "--explain"),
-                    Opt.flag("Forget the glyph answer remembered for this terminal.", "-r", "--reset"));
+                    Opt.flag("Forget the remembered glyph answer.", "-f", "--forget"));
         }
 
         @Override
@@ -211,7 +211,7 @@ public final class SelfCommand extends GroupCommand {
                 CommandWedge.printOk("Self", explain(detected));
                 return 0;
             }
-            if (in.isSet("reset")) {
+            if (in.isSet("forget")) {
                 TerminalCapsCache.real().remove(TerminalCapsCache.currentSlot());
                 CommandWedge.printOk("Self", "forgot the remembered glyph answer for this terminal");
                 return 0;
