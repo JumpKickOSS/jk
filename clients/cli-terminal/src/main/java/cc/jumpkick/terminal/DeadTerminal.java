@@ -36,6 +36,12 @@ final class DeadTerminal implements TerminalSession {
     }
 
     @Override
+    public String readReply(Duration first, Duration idle) {
+        requireTimeout(first);
+        return "";
+    }
+
+    @Override
     public void drain(Duration max) {
         requireTimeout(max);
     }

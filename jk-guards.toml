@@ -365,6 +365,14 @@ in     = "shared/core/src/main/java/cc/jumpkick/config/TerminalFonts.java"
 reason = "reads another program's XDG_CONFIG_HOME to find the terminal's font"
 
 [[guards.single-home-root.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/config/InstalledFonts.java"
+reason = "lists the operating system's font directories, which are not a jk layout"
+
+[[guards.single-home-root.allow]]
+in     = "shared/core/src/test/java/cc/jumpkick/config/TerminalFontsRealTest.java"
+reason = "fixtures for the terminal config files TerminalFonts reads under another program's data directory"
+
+[[guards.single-home-root.allow]]
 in     = "clients/cli/src/main/java/cc/jumpkick/cli/engine/EngineScope.java"
 reason = "the systemd user bus is $XDG_RUNTIME_DIR/bus; that directory is not a jk layout root"
 

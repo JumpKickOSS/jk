@@ -71,13 +71,28 @@ jk self setup-terminal -m wedge     # powerline triangles only
 jk self setup-terminal -m pill      # half-circle pill caps only
 ```
 
-`auto` grants both axes on Ghostty, kitty, WezTerm, and Windows Terminal; at least the
-wedge on Alacritty, which draws the powerline triangles itself (and upgrades to both axes
-when its font is a Nerd Font); on iTerm2, VS Code, and Zed it follows the configured font.
-Nothing over SSH, under `CI`, on an unrecognised terminal, or on macOS Terminal.app —
-which draws no powerline glyph of its own and stores its font where jk cannot read it, so
-a patched font there has to be claimed with `--mode wedge` or `--mode on`. Env
-`JK_NERD_FONT` takes all five values; host-wide `NERD_FONT` takes booleans only.
+`auto` grants both axes on Ghostty, kitty, WezTerm, and Windows Terminal, including inside tmux,
+screen and zellij. On iTerm2, VS Code, and Zed it follows the configured font. On Alacritty (at
+least the wedge, which it draws itself), Konsole, GNOME Terminal and other VTE terminals, foot, Rio,
+Warp, Tabby, and Hyper, an installed Nerd Font is enough, because those terminals fall back to any
+installed font for a missing glyph. An unidentified terminal gets the powerline triangles when a Nerd
+Font is installed. Nothing over SSH, under `CI`, or on macOS Terminal.app, which draws no powerline
+glyph of its own and stores its font where jk cannot read it.
+
+When `auto` is not enough, confirm what you see:
+
+```bash
+jk self setup-terminal        # shows the glyphs, asks, remembers the answer for this terminal
+jk self setup-terminal -e     # why auto concluded what it did, and the state of that answer
+jk self setup-terminal -r     # forget the remembered answer
+```
+
+The answer is saved in `~/.jk/terminal-caps.toml` for that terminal (and, over SSH, that client).
+jk notices when the terminal's version, font, config file, or the installed fonts change, ignores
+the answer, and prints one line telling you to run the command again. Over SSH, run it on the
+server to confirm what your client shows, or forward a pin with `SendEnv`/`SetEnv JK_NERD_FONT`.
+
+Env `JK_NERD_FONT` takes all five values; host-wide `NERD_FONT` takes booleans only.
 
 Contributor TUI rules: [TUI](../contributors/tui.md).
 

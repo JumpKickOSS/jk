@@ -3,10 +3,10 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.TerminalIdentity.Terminal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -170,11 +170,12 @@ class NerdFontDetectTest {
     }
 
     @Test
-    void a_known_but_unsupported_terminal_defaults_off_and_says_so() {
+    void a_known_terminal_with_no_font_and_no_installed_nerd_font_defaults_off_and_says_so() {
         var r = detect(env("TERM_PROGRAM", "Hyper"));
         assertThat(r.caps()).isEqualTo(NerdFontCaps.NONE);
-        assertThat(r.source()).isEqualTo("no-resolver");
-        assertThat(r.reason()).contains("hyper");
+        assertThat(r.source()).isEqualTo("hyper");
+        assertThat(r.reason()).contains("Hyper");
+        assertThat(r.confidence()).isEqualTo(NerdFontDetect.Confidence.UNKNOWN);
     }
 
     @Test
@@ -233,49 +234,34 @@ class NerdFontDetectTest {
 
     /** Injectable font sources — one setter per terminal, unset reads as absent. */
     private static final class Fonts implements TerminalFonts {
-        private @Nullable String iterm;
-        private @Nullable String alacritty;
-        private @Nullable String vscode;
-        private @Nullable String zed;
+        private final Map<Terminal, String> fonts = new HashMap<>();
 
         Fonts iterm(@Nullable String f) {
-            this.iterm = f;
-            return this;
+            return set(Terminal.ITERM2, f);
         }
 
         Fonts alacritty(@Nullable String f) {
-            this.alacritty = f;
-            return this;
+            return set(Terminal.ALACRITTY, f);
         }
 
         Fonts vscode(@Nullable String f) {
-            this.vscode = f;
-            return this;
+            return set(Terminal.VSCODE, f);
         }
 
         Fonts zed(@Nullable String f) {
-            this.zed = f;
+            return set(Terminal.ZED, f);
+        }
+
+        private Fonts set(Terminal t, @Nullable String f) {
+            if (f == null) fonts.remove(t);
+            else fonts.put(t, f);
             return this;
         }
 
         @Override
-        public Optional<String> itermFont() {
-            return Optional.ofNullable(iterm);
-        }
-
-        @Override
-        public Optional<String> alacrittyFont() {
-            return Optional.ofNullable(alacritty);
-        }
-
-        @Override
-        public Optional<String> vscodeFont() {
-            return Optional.ofNullable(vscode);
-        }
-
-        @Override
-        public Optional<String> zedFont() {
-            return Optional.ofNullable(zed);
+        public Lookup lookup(Terminal terminal) {
+            String f = fonts.get(terminal);
+            return f == null ? Lookup.EMPTY : Lookup.of(f);
         }
     }
 }

@@ -55,4 +55,18 @@ class TerminalReflowTest {
         assertThat(detect(Map.of("TERM", "screen-256color"))).isFalse();
         assertThat(detect(Map.of("KONSOLE_VERSION", " "))).isFalse(); // blank export is no signal
     }
+
+    @Test
+    void a_multiplexer_clips_whatever_terminal_it_runs_in() {
+        assertThat(detect(Map.of("TMUX", "x", "TERM_PROGRAM", "tmux", "GHOSTTY_RESOURCES_DIR", "/g")))
+                .isFalse();
+        assertThat(detect(Map.of("STY", "1.pts", "VTE_VERSION", "7402"))).isFalse();
+    }
+
+    @Test
+    void terminal_markers_reflow_without_term_program() {
+        assertThat(detect(Map.of("KITTY_WINDOW_ID", "1"))).isTrue();
+        assertThat(detect(Map.of("WEZTERM_PANE", "0"))).isTrue();
+        assertThat(detect(Map.of("ITERM_SESSION_ID", "w0t0p0"))).isTrue();
+    }
 }
