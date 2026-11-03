@@ -203,10 +203,7 @@ public final class NerdFontDetect {
         if (id.remote()) {
             // The font lives on the client, so any file we can read here describes the wrong machine.
             return new Result(
-                    NerdFontCaps.NONE,
-                    "remote-session",
-                    "SSH session — client font is unknown; run `jk self setup-terminal` here to confirm it",
-                    Confidence.UNKNOWN);
+                    NerdFontCaps.NONE, "remote-session", "SSH session; the client font is unknown", Confidence.UNKNOWN);
         }
 
         if (t == Terminal.APPLE_TERMINAL) {
@@ -216,7 +213,7 @@ public final class NerdFontDetect {
             return new Result(
                     NerdFontCaps.NONE,
                     "apple-terminal",
-                    "Terminal.app — no bundled powerline glyphs; `jk self setup-terminal` can confirm a patched font",
+                    "Terminal.app draws no powerline glyphs itself",
                     Confidence.KNOWN);
         }
 
@@ -242,7 +239,7 @@ public final class NerdFontDetect {
             return new Result(
                     merged,
                     "installed-fonts",
-                    label(t) + " falls back to installed fonts; a Nerd Font is installed",
+                    label(t) + " falls back to installed fonts; one is a Nerd Font",
                     Confidence.INFERRED);
         }
 
@@ -252,15 +249,13 @@ public final class NerdFontDetect {
             return new Result(
                     NerdFontCaps.WEDGE_ONLY,
                     "installed-fonts",
-                    "terminal not identified; a Nerd Font is installed, so powerline triangles only",
+                    "terminal not identified; Nerd Font installed, triangles only",
                     Confidence.INFERRED);
         }
         return new Result(
                 NerdFontCaps.NONE,
                 t == Terminal.UNKNOWN ? "unknown-terminal" : "no-resolver",
-                t == Terminal.UNKNOWN
-                        ? "no terminal identified — defaulting to no PUA glyphs"
-                        : "no Nerd Font found for " + t.id(),
+                t == Terminal.UNKNOWN ? "no terminal identified; glyphs stay off" : "no Nerd Font found for " + t.id(),
                 Confidence.UNKNOWN);
     }
 
