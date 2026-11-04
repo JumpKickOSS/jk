@@ -74,7 +74,7 @@ public final class WindowsCredentialBackend implements SecretBackend {
 
     @Override
     public boolean daemonReachable() {
-        return true;
+        return false;
     }
 
     /**
