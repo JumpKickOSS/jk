@@ -41,8 +41,10 @@ import org.jspecify.annotations.Nullable;
  * and the other system properties, see {@link SettingsValues} — against the environment of the
  * request that asks: {@link #current()} keeps the parse while the files are unchanged and expands
  * it per request, so {@code NEXUS_PASSWORD=… jk build} is seen by a resident engine started
- * without it. {@code privateKey} / {@code configuration} on a server, password encryption, {@code
- * <pluginRepositories>} and {@code <pluginGroups>} are not read.
+ * without it. An encrypted {@code {...}} password is decrypted with the master password of {@code
+ * settings-security.xml} — for compatibility only, see {@link MavenPasswords}. {@code privateKey}
+ * / {@code configuration} on a server, {@code <pluginRepositories>} and {@code <pluginGroups>} are
+ * not read.
  */
 public final class MavenSettings {
 
@@ -229,8 +231,8 @@ public final class MavenSettings {
     }
 
     /**
-     * What reading the files found wrong for this request — an expression that did not expand —
-     * one line each, as the run's warnings say it.
+     * What reading the files found wrong for this request — an expression that did not expand, a
+     * password that did not decrypt — one line each, as the run's warnings say it.
      */
     public List<String> warnings() {
         return notices.stream().map(SettingsValues.Notice::message).toList();

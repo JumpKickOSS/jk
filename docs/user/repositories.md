@@ -389,7 +389,7 @@ installation's, and the active-profile ids are the union. `JK_M2_SETTINGS=<file>
 user file (Maven's `-s`). Both files are re-read when they change, so editing one needs no
 `jk engine stop`. `jk doctor` prints which files the engine read, every mirror with the built-in
 remotes it stands in for, the proxies and the profile repositories. Not read:
-`<pluginRepositories>`, `<pluginGroups>` and encrypted passwords.
+`<pluginRepositories>` and `<pluginGroups>`.
 
 ### `${...}` in `settings.xml`
 
@@ -410,6 +410,24 @@ as Maven leaves it, and jk warns once per run, naming the file, the element and 
 the literal will answer 401, and the warning says why. An unresolved `<localRepository>` falls
 back to `~/.m2/repository` instead. `jk doctor` shows mirror URLs expanded, with any credential in
 them removed.
+
+### Encrypted passwords
+
+A `<server>` or `<proxy>` password that `mvn --encrypt-password` wrote (`{COQLCE6DU6GtcS5P=}`) is
+decrypted the way Maven 3 decrypts it: with the master password in `~/.m2/settings-security.xml`,
+itself written by `mvn --encrypt-master-password`. `JK_M2_SETTINGS_SECURITY=<file>` names another
+security file (Maven's `-Dsettings.security`), and a `<relocation>` in the file is followed; a
+relative relocation is taken against the directory of the file that names it. Text outside the
+braces is a comment, as in Maven. A value that does not decrypt — no security file, a master that
+does not decrypt, a different master — is not sent: jk warns once per run, naming the `<server>`
+id and the file, and the repository is accessed anonymously.
+
+This is compatibility, not protection. The master password that unlocks every value sits beside
+them, under a passphrase that is the same on every machine, so anyone who can read both files can
+read the passwords. jk reads the format so a working Maven setup keeps working, and does not
+write it. To keep a credential out of plain text, use [`jk repo login`](#credentials), or a
+`${file:…}` or `${cmd:…}` reference in `~/.jk/config.toml`. Maven 4's `mvnenc` format
+(`{[name=master,cipher=…]…}`) is recognised and reported, not read.
 
 ## Related
 

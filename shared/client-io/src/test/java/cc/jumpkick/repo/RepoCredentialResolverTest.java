@@ -689,6 +689,41 @@ class RepoCredentialResolverTest {
         ResolvedSecrets.clear();
     }
 
+    /**
+     * A {@code {...}} password is decrypted before it is sent, and the plaintext is what the
+     * redactor is told. The ciphertexts are plexus-sec-dispatcher 2.0's published known answers:
+     * the master {@code testtest}, and the password {@code testtest} under it.
+     */
+    @Test
+    void a_decrypted_settings_xml_password_is_sent_and_filed(@TempDir Path dir) throws Exception {
+        ResolvedSecrets.clear();
+        Path security = dir.resolve("settings-security.xml");
+        Files.writeString(
+                security,
+                "<settingsSecurity><master>{1wQaa6S/o8MH7FnaTNL53XmhT5O0SEGXQi3gC49o6OY=}</master></settingsSecurity>");
+        Path settings = dir.resolve("settings.xml");
+        Files.writeString(settings, """
+                <settings>
+                  <servers><server><id>nexus</id><username>u</username><password>{BteqUEnqHecHM7MZfnj9FwLcYbdInWxou1C929Txa0A=}</password></server></servers>
+                  <mirrors>
+                    <mirror><id>nexus</id><mirrorOf>*</mirrorOf><url>https://nexus.corp/repo/maven-public/</url></mirror>
+                  </mirrors>
+                </settings>
+                """);
+        MavenSettings decrypted = RequestShell.where(
+                Map.of("JK_M2_SETTINGS_SECURITY", security.toString()), () -> MavenSettings.loadFrom(settings));
+        var r = resolver(env(Map.of()), decrypted, new RepoCredentialStore(dir), forge(new TokenStore(dir)));
+
+        RepoCredential sent = SessionContext.where(
+                Session.defaults().withWorkingDir(dir),
+                () -> r.resolve("nexus", URI.create("https://nexus.corp/repo/maven-public/"), Optional.empty()));
+
+        assertThat(sent).isEqualTo(new RepoCredential.Basic("u", "testtest"));
+        assertThat(ResolvedSecrets.plus(dir, SecretRedactor.none()).redact("u:testtest"))
+                .isEqualTo("u:" + SecretRedactor.MASK);
+        ResolvedSecrets.clear();
+    }
+
     /** Anonymous access has nothing to mask, and an empty redactor is what proves it. */
     @Test
     void an_anonymous_resolution_files_nothing(@TempDir Path dir) throws Exception {
