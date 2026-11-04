@@ -104,8 +104,13 @@ final class DownloadLeg {
         }
     }
 
-    /** The body landed in its temp file, and the sidecar reads started beside it when the leg asked for them. */
-    private record Streamed(Downloaded stored, @Nullable ChecksumSidecars sidecars) {}
+    /**
+     * The body landed in its temp file, and the sidecar reads started beside it when the leg asked
+     * for them. Its {@code transfer} is still open: the board counts the file only once its bytes
+     * are verified, so a body the pin or the published checksum rejects — a mirror copy Central
+     * disowns, downloaded again from Central — is not a file the run landed.
+     */
+    private record Streamed(Downloaded stored, @Nullable ChecksumSidecars sidecars, TransferBoard.Transfer transfer) {}
 
     /**
      * Download {@code uri} under its host's permit. {@code abort} is checked before the permit is
@@ -135,7 +140,7 @@ final class DownloadLeg {
         long t0 = Clock.SYSTEM.nanos();
         Files.createDirectories(shard);
         Path tmp = Files.createTempFile(shard, ".put-", ".tmp");
-        Streamed streamed;
+        Streamed streamed = null;
         long ms;
         try {
             streamed = rateLimited(uri, () -> {
@@ -147,9 +152,13 @@ final class DownloadLeg {
             if (streamed.sidecars() != null && vouch != null) {
                 verifyUpstreamChecksum(coord, streamed.sidecars(), relativePath, streamed.stored(), leg, vouch);
             }
+            streamed.transfer().finished();
         } catch (IOException | InterruptedException e) {
             Files.deleteIfExists(tmp);
             throw e;
+        } finally {
+            // Rejected bytes leave the board as they came: streamed, not landed.
+            if (streamed != null) streamed.transfer().close();
         }
         // Successful VERIFIED fetch only — a download that fails its upstream checksum must not
         // train the host fetch-duration prior.
@@ -195,8 +204,9 @@ final class DownloadLeg {
         long size;
         TransferBoard board = SessionContext.current().io().transfers();
         String label = label(coord, relativePath);
-        try (TransferBoard.Transfer transfer =
-                artifactFile(coord, relativePath) ? board.openArtifact(label) : board.open(label)) {
+        TransferBoard.Transfer transfer =
+                artifactFile(coord, relativePath) ? board.openArtifact(label) : board.open(label);
+        try {
             RepoTransport.Body body = transport
                     .fetchBody(uri, credential)
                     .orElseThrow(() -> new MavenRepo.ArtifactNotFoundException("not found in " + name + ": " + uri));
@@ -205,13 +215,14 @@ final class DownloadLeg {
                     OutputStream out = new DigestOutputStream(Files.newOutputStream(tmp), digest)) {
                 size = copy(in, out, transfer);
             }
-            transfer.finished();
-        } catch (IOException | InterruptedException e) {
+        } catch (IOException | InterruptedException | RuntimeException e) {
             // The sidecars were only ever worth reading beside a body that arrived.
             if (sidecars != null) sidecars.cancel();
+            transfer.close();
             throw e;
         }
-        return new Streamed(new Downloaded(tmp, Hashing.hex(digest.digest()), size), sidecars);
+        // Counted as landed by the caller, once the bytes verify.
+        return new Streamed(new Downloaded(tmp, Hashing.hex(digest.digest()), size), sidecars, transfer);
     }
 
     /**
