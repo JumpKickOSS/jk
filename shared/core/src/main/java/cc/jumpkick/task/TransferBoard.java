@@ -46,9 +46,10 @@ public final class TransferBoard {
     public record Row(String label, long read, long total) {}
 
     /**
-     * The board at one moment. {@code settled} of {@code planned} are the run's declared files
-     * that are downloading or downloaded — sets that moved bytes, a closed one counted in full; both 0
-     * when no step's set downloaded anything; {@code files} bodies have landed and {@code bytes} have streamed
+     * The board at one moment. {@code settled} of {@code planned} are the files the run's declared
+     * sets download: a set counts once one of its own files was downloaded, {@code planned} leaves
+     * out the files a set found already on disk, and a closed set stays counted by what it
+     * downloaded. Both 0 when no declared set downloaded anything. {@code files} bodies have landed and {@code bytes} have streamed
      * this request; {@code inflight} bodies are streaming, of which {@code rows} — at most {@link
      * #MAX_ROWS}, oldest first — ran past the dwell.
      */
@@ -90,8 +91,11 @@ public final class TransferBoard {
     /** A step's declared file set. Settle each file once; close the plan when the step ends. */
     public interface Plan extends AutoCloseable {
 
-        /** One file of the set is on disk — downloaded, already present, or given up on. */
-        void settled();
+        /**
+         * One file of the set is settled: {@code downloaded} when this step fetched its bytes, else
+         * it was already on disk or given up on. Only downloads make the set a download.
+         */
+        void settled(boolean downloaded);
 
         @Override
         void close();
@@ -104,7 +108,7 @@ public final class TransferBoard {
     private final LongAdder files = new LongAdder();
     private final LongAdder artifacts = new LongAdder();
     private final Set<String> artifactLabels = ConcurrentHashMap.newKeySet();
-    /** Files of the declared sets that closed after moving bytes; they stay in the run's count. */
+    /** Files the declared sets that closed downloaded; they stay in the run's count. */
     private final AtomicInteger closedItems = new AtomicInteger();
 
     public TransferBoard(Clock clock) {
@@ -127,6 +131,11 @@ public final class TransferBoard {
     /** Artifacts whose bodies landed this run, whichever step or caller downloaded them. */
     public long artifactsLanded() {
         return artifacts.sum();
+    }
+
+    /** Whether the artifact {@code label} ({@code g:a:v}) landed this run. */
+    public boolean landed(String label) {
+        return artifactLabels.contains(label);
     }
 
     /**
@@ -161,7 +170,7 @@ public final class TransferBoard {
 
     /** A step that will settle {@code items} files. */
     public Plan plan(int items) {
-        Planned p = new Planned(Math.max(0, items), bytes.sum());
+        Planned p = new Planned(Math.max(0, items));
         plans.put(p, Boolean.TRUE);
         return p;
     }
@@ -181,17 +190,18 @@ public final class TransferBoard {
             if (rows.size() == MAX_ROWS) break;
             rows.add(new Row(t.label, t.read, t.total));
         }
-        // A declared set counts once it downloads — bytes moved since it opened, or a body streaming:
-        // a step settling files that are all on disk is not downloading, whatever came before it. A closed set stays
-        // counted, settled in full, so a nested set (a closure's depth inside the sync) never makes
-        // the run's count go down.
-        long moved = bytes.sum();
+        // A declared set counts by its own downloads: a step settling files that are all on disk is
+        // not downloading, whatever else the run fetches beside it. A closed set stays counted by
+        // what it downloaded, so a nested set (a closure's depth inside the sync) never makes the
+        // run's count go down.
         int settled = closedItems.get();
         int planned = closedItems.get();
         for (Planned p : plans.keySet()) {
-            if (moved <= p.bytesAtOpen && inflight == 0) continue;
-            settled += Math.min(p.settled.get(), p.items);
-            planned += p.items;
+            int downloaded = p.downloaded.get();
+            if (downloaded == 0) continue;
+            int toDownload = Math.max(0, p.items - p.found.get());
+            settled += Math.min(downloaded, toDownload);
+            planned += toDownload;
         }
         return new Snapshot(settled, planned, (int) files.sum(), bytes.sum(), inflight, rows);
     }
@@ -242,22 +252,21 @@ public final class TransferBoard {
 
     private final class Planned implements Plan {
         final int items;
-        final long bytesAtOpen;
-        final AtomicInteger settled = new AtomicInteger();
+        final AtomicInteger downloaded = new AtomicInteger();
+        final AtomicInteger found = new AtomicInteger();
 
-        Planned(int items, long bytesAtOpen) {
+        Planned(int items) {
             this.items = items;
-            this.bytesAtOpen = bytesAtOpen;
         }
 
         @Override
-        public void settled() {
-            settled.incrementAndGet();
+        public void settled(boolean fetched) {
+            (fetched ? downloaded : found).incrementAndGet();
         }
 
         @Override
         public void close() {
-            if (plans.remove(this) != null && bytes.sum() > bytesAtOpen) closedItems.addAndGet(items);
+            if (plans.remove(this) != null) closedItems.addAndGet(downloaded.get());
         }
     }
 }

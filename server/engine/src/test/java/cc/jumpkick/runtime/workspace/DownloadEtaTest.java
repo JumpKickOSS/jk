@@ -45,10 +45,12 @@ class DownloadEtaTest {
         var eta = new DownloadEta(board, clock, sent::add, 120);
         var first = board.open("g:first:1");
         first.started(1_000);
+        land(1); // the set's first download: from here it is a download, priced
+        plan.settled(true);
 
         eta.sample();
 
-        assertThat(sent).containsExactly(100 * 120L);
+        assertThat(sent).containsExactly(99 * 120L);
         first.close();
         plan.close();
     }
@@ -57,7 +59,7 @@ class DownloadEtaTest {
     void a_set_settling_files_already_on_disk_is_not_priced() {
         var plan = board.plan(800);
         var eta = new DownloadEta(board, clock, sent::add, 40);
-        for (int i = 0; i < 300; i++) plan.settled();
+        for (int i = 0; i < 300; i++) plan.settled(false);
 
         eta.sample();
 
@@ -74,7 +76,7 @@ class DownloadEtaTest {
 
         clock.advance(Duration.ofSeconds(3));
         land(10, 1_000);
-        for (int i = 0; i < 10; i++) plan.settled();
+        for (int i = 0; i < 10; i++) plan.settled(true);
         eta.sample();
 
         // 10 kB in 3 s; 90 files left at the 1 kB the landed ones averaged.
@@ -85,28 +87,32 @@ class DownloadEtaTest {
     @Test
     void the_runs_own_rate_replaces_the_prior_once_enough_has_landed() {
         var plan = board.plan(50);
+        land(1, 100); // the set's first download, before the run's rate is measured
+        plan.settled(true);
         var eta = new DownloadEta(board, clock, sent::add, 1_000);
         board.open("g:streaming:1").started(-1);
-        eta.sample(); // prior: 50 s
+        eta.sample(); // prior: 49 files left, 49 s
         clock.advance(Duration.ofSeconds(2));
         land(20, 100);
-        for (int i = 0; i < 20; i++) plan.settled();
-        eta.sample(); // measured: 1 byte a ms, 30 files of 100 bytes left
+        for (int i = 0; i < 20; i++) plan.settled(true);
+        eta.sample(); // measured: 1 byte a ms; the one streaming and 28 not started, 100 bytes each
 
-        assertThat(sent).containsExactly(50_000L, 3_000L);
+        assertThat(sent).containsExactly(49_000L, 2_900L);
         plan.close();
     }
 
     @Test
     void a_small_change_is_not_sent_again() {
         var plan = board.plan(100);
+        land(1);
+        plan.settled(true);
         var eta = new DownloadEta(board, clock, sent::add, 100);
         board.open("g:streaming:1").started(-1);
         eta.sample();
-        plan.settled();
-        eta.sample(); // 9.9 s against 10 s: no news
+        plan.settled(true);
+        eta.sample(); // 9.8 s against 9.9 s: no news
 
-        assertThat(sent).containsExactly(10_000L);
+        assertThat(sent).containsExactly(9_900L);
         plan.close();
     }
 
@@ -114,11 +120,13 @@ class DownloadEtaTest {
     void artifacts_from_before_the_run_do_not_count_as_its_rate() {
         land(50);
         var plan = board.plan(10);
+        land(1);
+        plan.settled(true);
         var eta = new DownloadEta(board, clock, sent::add, 200);
         board.open("g:streaming:1").started(-1);
         eta.sample();
 
-        assertThat(sent).as("the prior, not 50 artifacts in no time").containsExactly(10 * 200L);
+        assertThat(sent).as("the prior, not 51 artifacts in no time").containsExactly(9 * 200L);
         plan.close();
     }
 
@@ -132,7 +140,7 @@ class DownloadEtaTest {
         big.advanced(500);
         clock.advance(Duration.ofSeconds(1));
         land(5, 100);
-        for (int i = 0; i < 5; i++) plan.settled();
+        for (int i = 0; i < 5; i++) plan.settled(true);
         eta.sample();
 
         // 1 kB in 1 s. The big one owes 9.5 kB; the 6 files of known size average 1.75 kB (10.5 kB

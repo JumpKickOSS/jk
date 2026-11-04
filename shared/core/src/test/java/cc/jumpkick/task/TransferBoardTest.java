@@ -112,34 +112,41 @@ class TransferBoardTest {
     }
 
     @Test
-    void declared_sets_count_their_settled_files_and_a_closed_one_stays_counted_in_full() {
+    void declared_sets_count_their_downloads_and_a_closed_one_keeps_what_it_downloaded() {
         try (var lock = board.plan(3)) {
             move("g:a:1", 10);
-            lock.settled();
-            lock.settled();
+            lock.settled(true);
+            lock.settled(true);
             try (var sync = board.plan(2)) {
                 move("g:b:1", 10);
-                sync.settled();
+                sync.settled(true);
                 assertThat(board.snapshot().settled()).isEqualTo(3);
                 assertThat(board.snapshot().planned()).isEqualTo(5);
             }
             assertThat(board.snapshot().settled())
-                    .as("the nested set closed: counted in full, never subtracted")
+                    .as("the nested set closed: what it downloaded stays counted")
+                    .isEqualTo(3);
+            assertThat(board.snapshot().planned())
+                    .as("its one file never fetched leaves")
                     .isEqualTo(4);
-            assertThat(board.snapshot().planned()).isEqualTo(5);
         }
-        assertThat(board.snapshot().settled()).isEqualTo(5);
-        assertThat(board.snapshot().planned()).isEqualTo(5);
+        assertThat(board.snapshot().settled()).isEqualTo(3);
+        assertThat(board.snapshot().planned()).isEqualTo(3);
     }
 
     @Test
-    void a_set_settling_files_already_on_disk_is_not_a_download_whatever_came_before() {
+    void a_set_of_files_already_on_disk_is_not_a_download_whatever_runs_beside_it() {
         move("g:earlier:1", 100);
-        try (var warm = board.plan(50)) {
-            for (int i = 0; i < 10; i++) warm.settled();
+        try (var warm = board.plan(50);
+                var beside = board.open("g:jdk:21")) {
+            beside.started(1_000);
+            beside.advanced(500); // another step downloads at the same time
+            for (int i = 0; i < 10; i++) warm.settled(false);
             TransferBoard.Snapshot d = board.snapshot();
-            assertThat(d.planned()).isZero();
-            assertThat(d.downloading()).as("no burst for local files").isFalse();
+            assertThat(d.planned())
+                    .as("the warm set adds nothing to the run's download count")
+                    .isZero();
+            assertThat(d.settled()).isZero();
         }
     }
 
@@ -147,8 +154,8 @@ class TransferBoardTest {
     void a_plan_never_reports_more_settled_than_planned() {
         try (var plan = board.plan(1)) {
             move("g:a:1", 1);
-            plan.settled();
-            plan.settled();
+            plan.settled(true);
+            plan.settled(true);
             assertThat(board.snapshot().settled()).isEqualTo(1);
         }
     }

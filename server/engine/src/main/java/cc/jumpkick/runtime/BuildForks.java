@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.Lockfile;
@@ -22,6 +23,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * What a build of some modules forks and loads besides their dependencies: jk's workers (the Java
@@ -42,6 +45,14 @@ public final class BuildForks {
 
     /** One thing a build forks or loads, by what it is and its version; staging it puts it on disk. */
     public record Fork(String key, ArtifactFanOut.Fetch<?> stage) {}
+
+    /** Forks this engine staged, by store and fork; see {@link #stage}. */
+    private static final Set<String> STAGED = ConcurrentHashMap.newKeySet();
+
+    /** Forget what this engine staged; tests and a store clean. */
+    public static void forgetStaged() {
+        STAGED.clear();
+    }
 
     /** The workers every JVM module's build forks: its compiler, and the runner its tests run in. */
     static final List<PluginJar> JVM_WORKERS = List.of(PluginJar.JAVA_COMPILER, PluginJar.TEST_RUNNER);
@@ -110,11 +121,17 @@ public final class BuildForks {
      * with its own message, and a build that never needs it is not stopped by it.
      */
     public static List<String> stage(List<Fork> forks) throws InterruptedException {
+        String store = JkStores.storeCas().root().toString();
         List<ArtifactFanOut.Fetch<String>> stages = new ArrayList<>(forks.size());
         for (Fork fork : forks) {
+            // Staged once in this engine, a fork is not walked again on every warm build: staging is
+            // ahead of time only, so a store cleaned since is the needing step's to refetch.
+            String memo = store + "|" + fork.key();
+            if (STAGED.contains(memo)) continue;
             stages.add(() -> {
                 try {
                     fork.stage().fetch();
+                    STAGED.add(memo);
                     return "";
                 } catch (IOException | RuntimeException e) {
                     return fork.key() + ": " + e.getMessage();

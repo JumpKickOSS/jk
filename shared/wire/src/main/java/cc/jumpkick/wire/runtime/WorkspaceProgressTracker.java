@@ -314,7 +314,12 @@ public final class WorkspaceProgressTracker {
         if (stage == null) stage = "";
         return switch (stage) {
             case "checking" -> 0.08;
-            case "lock" -> total > 0 && done >= total ? 0.30 : 0.20;
+            // A first lock downloads the project's jars: its settled files move its band.
+            case "lock" -> {
+                if (total <= 0) yield 0.20;
+                double within = Math.min(1.0, Math.max(0.0, (double) done / (double) total));
+                yield 0.20 + 0.10 * within;
+            }
             case "graph" -> total > 0 && done >= total ? 0.40 : 0.35;
             // A cold sync is most of a first build's preflight: its settled files move a band of
             // their own, between the graph and the plan.

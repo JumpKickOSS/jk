@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.net.SocketTimeoutException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -116,5 +117,13 @@ class SingleFlightTest {
             assertThatThrownBy(() -> first.get(5, TimeUnit.SECONDS)).hasCauseInstanceOf(IOException.class);
             assertThat(second.get(5, TimeUnit.SECONDS)).isEqualTo("mine");
         }
+    }
+
+    @Test
+    void a_read_timeout_is_the_repositorys_answer_and_not_a_leaders_interrupt() {
+        assertThat(SingleFlight.interrupted(new IOException("x", new InterruptedIOException())))
+                .isTrue();
+        assertThat(SingleFlight.interrupted(new IOException("x", new SocketTimeoutException())))
+                .isFalse();
     }
 }
