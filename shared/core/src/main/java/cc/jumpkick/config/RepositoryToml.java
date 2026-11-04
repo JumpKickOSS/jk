@@ -13,8 +13,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
@@ -31,9 +29,6 @@ import org.tomlj.TomlTable;
 public final class RepositoryToml {
 
     private RepositoryToml() {}
-
-    /** {@code ${NAME}} and its explicit spelling {@code ${env:NAME}}; see {@link ConfigReference}. */
-    private static final Pattern ENV_REF = Pattern.compile("\\$\\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)}");
 
     /** What a {@code ${VAR}} reference means to a layer. */
     public enum VarPolicy {
@@ -365,13 +360,8 @@ public final class RepositoryToml {
      */
     public static @Nullable String interpolate(@Nullable String raw, Function<String, String> resolveVar) {
         if (raw == null) return null;
-        Matcher m = ENV_REF.matcher(raw);
-        StringBuilder out = new StringBuilder();
-        while (m.find()) {
-            m.appendReplacement(out, Matcher.quoteReplacement(resolveVar.apply(m.group(1))));
-        }
-        m.appendTail(out);
-        return out.toString();
+        return ConfigReference.expand(
+                raw, ConfigReference::parse, ref -> ref.isEnv() ? resolveVar.apply(ref.body()) : null);
     }
 
     /**

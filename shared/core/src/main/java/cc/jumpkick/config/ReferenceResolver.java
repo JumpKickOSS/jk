@@ -6,7 +6,6 @@ import java.nio.file.Path;
 import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.regex.Matcher;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -81,15 +80,8 @@ public final class ReferenceResolver {
      * names the position ({@code repositories.<id>.<key>}) in every error.
      */
     public @Nullable String expand(@Nullable String raw, String where, Origin origin) {
-        if (raw == null || raw.indexOf('$') < 0) return raw;
-        Matcher m = ConfigReference.PATTERN.matcher(raw);
-        StringBuilder out = new StringBuilder();
-        while (m.find()) {
-            String value = value(ConfigReference.of(m), where, origin);
-            m.appendReplacement(out, Matcher.quoteReplacement(value));
-        }
-        m.appendTail(out);
-        return out.toString();
+        if (raw == null) return null;
+        return ConfigReference.expand(raw, ConfigReference::parse, ref -> value(ref, where, origin));
     }
 
     private String value(ConfigReference ref, String where, Origin origin) {

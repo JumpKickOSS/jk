@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.m2;
 
+import cc.jumpkick.config.ConfigReference;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.task.RunNotices;
@@ -13,13 +14,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
  * The values of a {@code settings.xml} as one request sees them: Maven's {@code ${...}}
- * expressions expanded the way Maven expands them.
+ * expressions expanded the way Maven expands them, read by {@link ConfigReference}'s tokenizer
+ * under its Maven grammar.
  *
  * <p>{@code ${env.NAME}} reads the request's environment, which inside the engine is the shell
  * that ran {@code jk}, not the one that started the engine. Any other expression names a system
@@ -43,9 +43,6 @@ import org.jspecify.annotations.Nullable;
  * result.
  */
 final class SettingsValues {
-
-    /** {@code ${...}}: Maven's expression syntax; the body is anything up to the first {@code }}. */
-    private static final Pattern EXPRESSION = Pattern.compile("\\$\\{([^}]+)}");
 
     /** A once-per-run warning this expansion has to say. */
     record Notice(String key, String message) {
@@ -124,18 +121,13 @@ final class SettingsValues {
 
     /** {@code raw} expanded, with what did not resolve listed rather than reported. */
     Expanded expandQuietly(String raw) {
-        if (!raw.contains("${")) return new Expanded(raw, List.of());
-        Matcher m = EXPRESSION.matcher(raw);
-        StringBuilder out = new StringBuilder();
         List<String> unresolved = new ArrayList<>();
-        while (m.find()) {
-            String expression = m.group(1);
-            String value = resolve(expression);
-            if (value == null) unresolved.add(expression);
-            m.appendReplacement(out, Matcher.quoteReplacement(value == null ? m.group() : value));
-        }
-        m.appendTail(out);
-        return new Expanded(out.toString(), List.copyOf(unresolved));
+        String value = ConfigReference.expand(raw, ConfigReference::mavenExpression, expression -> {
+            String resolved = resolve(expression);
+            if (resolved == null) unresolved.add(expression);
+            return resolved;
+        });
+        return new Expanded(value, List.copyOf(unresolved));
     }
 
     private static String why(String expression) {

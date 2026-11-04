@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.m2;
 
+import cc.jumpkick.config.ConfigReference;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.MinimalXml;
 import java.net.URI;
@@ -96,7 +97,8 @@ final class SettingsXml {
      * mistaken for ciphertext.
      */
     private @Nullable String decrypted(@Nullable String value) throws MavenPasswords.Undecryptable {
-        return value == null || value.contains("${") ? value : values.decrypt(value);
+        if (value == null) return null;
+        return ConfigReference.scan(value, ConfigReference::mavenExpression).isEmpty() ? values.decrypt(value) : value;
     }
 
     /** Once per run per entry: an encrypted value that does not decrypt, why, and what jk does instead. */
