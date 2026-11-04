@@ -3,8 +3,11 @@ package cc.jumpkick.config;
 
 import org.jspecify.annotations.Nullable;
 
-/** Raised when a {@code jk.toml} file cannot be parsed or fails minimal validation. */
-public final class JkBuildParseException extends RuntimeException {
+/**
+ * Raised when a {@code jk.toml} file cannot be parsed or fails minimal validation, or when {@code
+ * ~/.jk/config.toml} does not parse ({@link UserConfigParseException}).
+ */
+public sealed class JkBuildParseException extends RuntimeException permits UserConfigParseException {
 
     public JkBuildParseException(@Nullable String message) {
         super(message);

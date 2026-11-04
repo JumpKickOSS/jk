@@ -58,6 +58,10 @@ public final class EffectiveUserConfig {
     static List<Row> rows(
             Path userConfig, Function<String, @Nullable String> env, Supplier<JkCacheConfig.DiskSpace> disk) {
         List<Row> out = new ArrayList<>();
+        // A file that does not parse is the first thing the panel says; the rows below it fall back
+        // to their defaults, which is what a lenient reader of the file sees.
+        Optional<UserConfigParseException> problem = GlobalConfig.userConfigProblem(userConfig);
+        problem.ifPresent(e -> add(out, "config.parse-error", "", Objects.toString(e.getMessage(), "")));
         addGlobal(out, userConfig, env);
         addToolchain(out, userConfig, env);
         addHttp(out, userConfig, env);
@@ -67,7 +71,7 @@ public final class EffectiveUserConfig {
         addM2(out, userConfig, env);
         addInstall(out, userConfig, env);
         addCredentials(out, userConfig, env);
-        addTemplates(out, userConfig);
+        addTemplates(out, problem.isPresent() ? null : userConfig);
         return List.copyOf(out);
     }
 
@@ -190,9 +194,10 @@ public final class EffectiveUserConfig {
         add(out, "credentials.store", "auto", store);
     }
 
-    private static void addTemplates(List<Row> out, Path file) {
+    /** The {@code [templates]} rows; {@code file} is null when it does not parse, and the effective values are the defaults. */
+    private static void addTemplates(List<Row> out, @Nullable Path file) {
         JkTemplatesConfig d = JkTemplatesConfig.defaults();
-        JkTemplatesConfig e = JkTemplatesConfig.resolve(file);
+        JkTemplatesConfig e = file == null ? d : JkTemplatesConfig.resolve(file);
         add(out, "templates.official", d.officialUrl(), e.officialUrl());
         add(out, "templates.sources", sourcesLabel(d.sources()), sourcesLabel(e.sources()));
     }

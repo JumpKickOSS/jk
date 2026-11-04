@@ -76,9 +76,16 @@ public record JkTemplatesConfig(String officialUrl, List<Source> sources) {
         return resolve(JkDirs.userConfigFile());
     }
 
-    /** As {@link #resolve()} against an explicit config path (tests). */
+    /**
+     * As {@link #resolve()} against an explicit config path (tests).
+     *
+     * @throws UserConfigParseException when the file does not parse: its sources are where {@code
+     *     jk new} fetches from, and the official default is not a stand-in for them
+     */
     public static JkTemplatesConfig resolve(Path userConfig) {
-        return TomlValues.parse(userConfig).map(JkTemplatesConfig::fromTomlRoot).orElseGet(JkTemplatesConfig::defaults);
+        return GlobalConfig.parseConfig(userConfig)
+                .map(JkTemplatesConfig::fromTomlRoot)
+                .orElseGet(JkTemplatesConfig::defaults);
     }
 
     /** Parse from a root TOML document (tests / explicit file). */

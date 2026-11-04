@@ -146,6 +146,7 @@ class CommandJsonFrozenBytesTest {
         var noLogins = new StoredLogins.Rows(List.of(), "file", null);
         String emptyLogins = "\"logins\":{\"destination\":\"file\",\"error\":null,\"rows\":[]}";
         assertThat(DoctorCommand.reportJson(
+                        fail,
                         ok,
                         warn,
                         ok,
@@ -165,7 +166,8 @@ class CommandJsonFrozenBytesTest {
                         noRepos,
                         noSettings,
                         noLogins))
-                .isEqualTo("{\"engine\":{\"status\":\"ok\",\"detail\":\"running\"},"
+                .isEqualTo("{\"config\":{\"status\":\"fail\",\"detail\":\"missing \\\"25\\\"\"},"
+                        + "\"engine\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"cache\":{\"status\":\"warn\",\"detail\":\"large\"},"
                         + "\"state\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"jdk\":{\"status\":\"fail\",\"detail\":\"missing \\\"25\\\"\"},"
@@ -176,6 +178,7 @@ class CommandJsonFrozenBytesTest {
                         + "\"tools\":{\"healthy\":3,\"pruned\":1,\"verified\":0,\"drifted\":0,\"firstSeen\":2,\"empty\":0,\"error\":null},"
                         + "\"workers\":[],\"repos\":[]," + emptySettings + "," + emptyLogins + "}");
         assertThat(DoctorCommand.reportJson(
+                        ok,
                         ok,
                         ok,
                         ok,
@@ -233,7 +236,7 @@ class CommandJsonFrozenBytesTest {
                 "secret-service",
                 null);
         assertThat(DoctorCommand.reportJson(
-                        ok, ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos, settings, logins))
+                        ok, ok, ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos, settings, logins))
                 .endsWith(
                         "\"workers\":[{\"artifact\":\"jk-image-builder\",\"version\":\"0.13.3\",\"source\":\"jk-local\","
                                 + "\"jar\":\"/s/w.jar\",\"pom\":\"/s/w.pom\",\"declared\":2,\"classpath\":[\"/s/w.jar\"],\"error\":null,\"refused\":null,\"packagedBy\":\"ab12cd34ef56"
