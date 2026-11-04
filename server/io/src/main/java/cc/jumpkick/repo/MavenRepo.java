@@ -648,17 +648,47 @@ public final class MavenRepo {
         // warm re-lock — serve immutable GAV paths from repos/<name>/ without re-HTTP.
         // --force always revalidates from the network (checksums re-checked).
         boolean force = SessionContext.current().config().forceOr(false);
+        // A copy this look finds and declines (unconfirmed, disowned, evicted) goes to the network;
+        // only a miss lets the flight take a copy that appears meanwhile.
+        boolean missed = false;
         if (mirror && !force) {
-            Optional<Fetched> local = mirrored(coord, relativePath, leg, expectedSha256, abort);
-            if (local.isPresent()) return local.get();
+            missed = repoStore.locate(relativePath).isEmpty();
+            if (!missed) {
+                Optional<Fetched> local = mirrored(coord, relativePath, leg, expectedSha256, abort);
+                if (local.isPresent()) return local.get();
+            }
         }
         URI uri = fetchBase.resolve(relativePath);
         refuseIfUnreachable();
+        storeMissed.run();
         // The same file into the same store under the same pin and credential: one download,
         // whoever asks. Two repositories at one URL with different credentials never share one.
         List<Object> flight = Arrays.asList(repoStore.root(), uri, mirror, leg, expectedSha256, force, credential);
-        return FLIGHTS.run(
-                flight, () -> fetchRemote(coord, relativePath, uri, mirror, leg, abort, expectedSha256, force));
+        boolean lookAgain = missed;
+        return FLIGHTS.run(flight, () -> {
+            if (lookAgain) {
+                Optional<Fetched> placed = placedSinceMiss(relativePath, expectedSha256);
+                if (placed.isPresent()) return placed.get();
+            }
+            return fetchRemote(coord, relativePath, uri, mirror, leg, abort, expectedSha256, force);
+        });
+    }
+
+    /**
+     * Runs between a fetch's look in the store and its flight: the window in which another
+     * caller's flight can store the file and end. Package-visible so a test can hold a caller there.
+     */
+    static volatile Runnable storeMissed = () -> {};
+
+    /**
+     * The store copy a flight that ended after this caller looked has placed, read again by the
+     * caller that leads the next flight for it. A copy only counts with a pin or a {@code .jk}
+     * memo, which a verified download writes as it places the file: a Maven-local file with
+     * neither is the outer look's to confirm, never this one's to adopt.
+     */
+    private Optional<Fetched> placedSinceMiss(String relativePath, @Nullable String expectedSha256) {
+        if (expectedSha256 == null && repoStore.readSha256Sidecar(relativePath).isEmpty()) return Optional.empty();
+        return tryLocalMirror(relativePath, expectedSha256);
     }
 
     /** {@link #fetch}'s network leg, once the store has missed. */
