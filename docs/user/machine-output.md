@@ -173,6 +173,8 @@ export JK_OUTPUT=jsonl     # the same for every command
 **same** workspace envelope. The verb selects which stages the build includes; it is not a
 different kind of job, so a parser written against one works against all of them:
 
+- one **`job`** line per engine job, before anything else: its `jid` (the cancel handle),
+  `buildNumber` and the `detailsPath` of the run's transcript,
 - exactly one **`workspace-start`**,
 - a **`module-start`** / **`module-finish`** pair for every module entered (a module the
   failure stopped finishes with `"success":false,"stopped":true`),
@@ -319,8 +321,10 @@ since `module` names the module, and a download frame's per-transfer `rows`), ne
 Durations are `millis` everywhere.
 
 Which surface carries which event, and why one does not, is listed in one place in the source,
-`EventCatalog`; a job's own `error` frame, `job` and `preflight` reach `details.jsonl` and the
-terminal, not `-O jsonl` stdout.
+`EventCatalog`. A workspace verb's stream opens with a `job` line (the job's `jid`,
+`buildNumber`, `etaMs` and `detailsPath`, the run's `details.jsonl`), and a job the engine refuses
+or that fails before it answers still ends in `workspace-finish`, `success` false, its reason in
+`errors`.
 
 | Concept | `type` (typical) |
 |---------|------------------|
@@ -334,6 +338,7 @@ terminal, not `-O jsonl` stdout.
 | Warning / error | `warn` / `error` — `task`, `code`, `message` (+ `test`, `exceptionClass`; a test failure adds `module`, `suite`, `engine`, `testClass`, `method`, `file`, `line`, `snippetStart`, `snippet`, `worker`, `stack`, `textId` / `sameText`) |
 | Test class | `class-finish` — one per test class as it finishes, in one test JVM or many: `module`, `testClass`, `tests`, `failed`, `skipped`, `millis`, `tier` (`fast`, a profile name, `all`), and `slow` — the class's methods of 1s or more, longest first, at most five, each `{method, millis}`; absent when none. A run stopped part way still has a row for every class that finished |
 | Slowest tests | `slowest-tests` — once, as a `jk test` run settles, before `workspace-finish` (`buildplan-finish` for a lone project), only when something took 1s or more: `classes` and `methods`, the top five of each, longest first; each row `module`, `testClass`, (`method`), `tier`, `millis`. Ranked from the run's `class-finish` lines, so a suite served from cache has no row — [Test](test.md#the-slowest-tests-test-fast-method-budget) |
+| Job / preflight | `job` — `jid`, `buildNumber`, `etaMs`, `detailsPath`, once per engine job before `workspace-start`; `preflight` — `stage`, `done`, `total`, `label`, each stage's verdict (the label counts the dirty modules) |
 | Plan | `buildplan-start` — `planName`, `numerator`, `denominator`, `tasksTotal`, `tasksComplete`, `cancelled`; `buildplan-finish` — `kind`, `success`, `cancelled`, and from a plan the CLI ran, `planName`, `millis`, `warnings`, `errors`. The dashboard's `plan` frame is SSE-only |
 | ETA | `eta` — `millis` and `remainingMs` (the same figure: the work left), `fullMillis` when known |
 | Module | `module-start` / `module-finish` (paired) — `module-start` carries `dir` and `coord`; finish carries `dir`, `coord`, `success`, `exitCode`, `millis`, `didWork`, `cancelled`, what an image, install or publish module produced (`imageRef`…, `installCoord`…, `published`), and `"stopped":true` on a module another module's failure stopped before it could be judged (fail-fast): `success` is `false` but nothing of its own failed, so count it apart from the failures. Absent or `false` otherwise |

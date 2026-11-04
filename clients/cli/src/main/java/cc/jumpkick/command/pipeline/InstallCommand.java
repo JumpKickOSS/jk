@@ -521,7 +521,7 @@ public final class InstallCommand {
             view.finishBuildPlanCancelled(List.of());
             return Exit.FAILURE;
         } catch (IOException e) {
-            run.finishEvent(false, BuildTails.elapsedMsSince(start));
+            run.finishEvent(false, BuildTails.elapsedMsSince(start), e.getMessage());
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
             return Exit.SOFTWARE;
         }
@@ -533,7 +533,7 @@ public final class InstallCommand {
             try {
                 applied = applyWorkspaceInstall(pass, result);
             } catch (IOException e) {
-                run.finishEvent(false, elapsed);
+                run.finishEvent(false, elapsed, "make install failed: " + e.getMessage());
                 view.finishBuildPlanFailure("make install failed: " + e.getMessage(), run.deferredOutput());
                 return Exit.FAILURE;
             }
@@ -563,7 +563,7 @@ public final class InstallCommand {
         } catch (JobCancelledException e) {
             return cancelled(run, start, json);
         } catch (IOException e) {
-            run.finishEvent(false, BuildTails.elapsedMsSince(start));
+            run.finishEvent(false, BuildTails.elapsedMsSince(start), e.getMessage());
             CommandWedge.printFail("Install", e.getMessage());
             return Exit.SOFTWARE;
         }
@@ -571,7 +571,7 @@ public final class InstallCommand {
         // A cancel is not a failure: it names no module and deserves no error list.
         if (result.cancelled()) return cancelled(run, start, json);
         if (!result.success()) {
-            run.finishEvent(false, elapsed);
+            run.finishEvent(false, elapsed, result.errors());
             if (!json) {
                 // Graph/lock errors never reach a module listener, so they have no module to blame
                 // and nothing else prints them.

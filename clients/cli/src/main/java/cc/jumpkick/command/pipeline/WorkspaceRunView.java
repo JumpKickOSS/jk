@@ -156,6 +156,8 @@ final class WorkspaceRunView {
         this.entryDir = entryDir;
         this.session = session;
         this.toStdout = toStdout;
+        // An agent reading the stream learns the job's id and details path from it.
+        if (toStdout) JsonlShape.jobLineOnStdout(true);
     }
 
     /**
@@ -242,7 +244,7 @@ final class WorkspaceRunView {
                 agg.preflight(stage, done, totalUnits, label);
                 // The label carries the dirty-module count; mirror it so journal and explain see
                 // the same work size as the bar.
-                mirror(JsonlShape.preflight(stage, done, totalUnits, label));
+                machine(JsonlShape.preflight(stage, done, totalUnits, label));
             }
 
             @Override
@@ -328,6 +330,12 @@ final class WorkspaceRunView {
                     CliOutput.out(text);
                 }
                 mirror(JsonlShape.note(text));
+            }
+
+            @Override
+            public void onPreflight(String stage, int done, int totalUnits, String label) {
+                // The verdict that sized the run, with the dirty-module count in its label.
+                machine(JsonlShape.preflight(stage, done, totalUnits, label));
             }
 
             @Override
@@ -542,7 +550,17 @@ final class WorkspaceRunView {
 
     /** Emit the terminal {@code workspace-finish} for a run that never reached the ladder. */
     void finishEvent(boolean success, long elapsedMs) {
-        terminal(JsonlShape.workspaceFinish(success, elapsedMs, planned()));
+        finishEvent(success, elapsedMs, List.of());
+    }
+
+    /** As above, for a run that failed before the engine answered: {@code why} rides in {@code errors}. */
+    void finishEvent(boolean success, long elapsedMs, @Nullable String why) {
+        finishEvent(success, elapsedMs, why == null || why.isBlank() ? List.of() : List.of(why));
+    }
+
+    /** As above, with the errors the engine's result named. */
+    void finishEvent(boolean success, long elapsedMs, List<String> errors) {
+        terminal(JsonlShape.workspaceFinish(success, elapsedMs, planned(), errors));
     }
 
     /**
@@ -675,5 +693,15 @@ final class WorkspaceRunView {
     private void terminal(String line) {
         JsonlDownloads.sealCurrent();
         event(line);
+        if (toStdout) JsonlShape.jobLineOnStdout(false);
+    }
+
+    /**
+     * A line for machine readers: on {@code -O jsonl} stdout (and the transcript) under a JSON
+     * command, the transcript alone, without a progress rider, on a terminal.
+     */
+    private void machine(String line) {
+        if (toStdout) event(line);
+        else mirror(line);
     }
 }
