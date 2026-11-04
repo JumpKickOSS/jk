@@ -348,9 +348,6 @@ public final class InstallCommand {
             return Exit.CONFIG;
         }
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(projectDir, null, proj);
-        // A pinned JDK that is not installed downloads here, with the `jk jdk install` bar, before
-        // the build console opens — never as a silent step inside the engine.
-        if (!JdkPreflight.ensure(projectDir, proj, jdksDir, BuildPlanConsole.modeFor(global))) return Exit.FAILURE;
         if (!proj.workspaceRoot()
                 && !cwdScope.workspaceMember()
                 && proj.application()
@@ -403,7 +400,7 @@ public final class InstallCommand {
         for (Path mod : moduleDirs) infoByDir.put(mod, projectInfo(mod));
         List<String> tokens = cwdScope.scoped() ? List.of(cwdScope.modulesSpec()) : List.of();
         Set<Path> selected = cwdScope.scoped() ? Set.of(cwdScope.workingDir()) : Set.of();
-        Map<Path, Path> graalByDir = Map.of();
+        AlwaysNativeGraal.Graal graal = AlwaysNativeGraal.Graal.NONE;
         if (!reshelving) {
             List<AlwaysNativeGraal.Module> alwaysNative = new ArrayList<>();
             for (Path mod : moduleDirs) {
@@ -411,10 +408,10 @@ public final class InstallCommand {
                 if (info.error() != null || !"ALWAYS".equals(info.nativeMode())) continue;
                 alwaysNative.add(new AlwaysNativeGraal.Module(mod, info.graal(), info.javaRelease()));
             }
-            Optional<Map<Path, Path>> resolved = AlwaysNativeGraal.homes(
+            Optional<AlwaysNativeGraal.Graal> resolved = AlwaysNativeGraal.homes(
                     alwaysNative, new GraalResolver(jdksDir, global.yes, BuildPlanConsole.modeFor(global))::resolve);
             if (resolved.isEmpty()) return 1;
-            graalByDir = resolved.get();
+            graal = resolved.get();
         }
         // A workspace request carries its own client env, as jk build's does: the engine is a
         // daemon, so a member's [test] env name set in this shell rides the request or not at all.
@@ -439,7 +436,7 @@ public final class InstallCommand {
                 .withSpec(
                         reshelving
                                 ? WorkspaceSpec.reshelve(selected, m2Dir(), destinationOverride)
-                                : WorkspaceSpec.install(selected, graalByDir, m2Dir(), destinationOverride));
+                                : graal.onto(WorkspaceSpec.install(selected, Map.of(), m2Dir(), destinationOverride)));
         // The shared workspace renderer, exactly as build/test/native drive it, on the same mode
         // axis they choose on: a live region for a terminal, the append-only block for
         // -O jsonl / --verbose. A hand-rolled listener here is what made a failed workspace

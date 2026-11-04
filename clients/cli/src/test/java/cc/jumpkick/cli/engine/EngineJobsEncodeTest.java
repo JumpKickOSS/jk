@@ -69,6 +69,27 @@ class EngineJobsEncodeTest {
         assertThat(back.graalHomes()).containsEntry(appDir.toString(), graalHome.toString());
     }
 
+    /** A GraalVM the client decided to install rides the request as a spec, for the engine to install. */
+    @Test
+    void graal_installs_ride_the_package_build_request_as_specs() {
+        Path appDir = Path.of("/proj/app");
+        Path toolDir = Path.of("/proj/tool");
+        Path graalHome = Path.of("/jdks/graalvm-25");
+        WorkspaceRequest req = request()
+                .withSpec(WorkspaceSpec.DEFAULT
+                        .withGraalByDir(Map.of(appDir, graalHome))
+                        .withGraalInstalls(Map.of(toolDir, "native")));
+
+        BuildRequest back = BuildRequest.decode(EngineJobs.encodeWorkspaceRequest(req, Session.defaults()));
+
+        assertThat(back.graalHomes()).containsOnlyKeys(appDir.toString());
+        assertThat(back.graalInstalls()).containsExactly(Map.entry(toolDir.toString(), "native"));
+        assertThat(BuildRequest.decode(EngineJobs.encodeWorkspaceRequest(request(), Session.defaults()))
+                        .graalInstalls())
+                .as("none asked, none sent")
+                .isEmpty();
+    }
+
     /**
      * {@code --m2-dir} is the client's answer, like the Graal homes: a resident daemon does not
      * inherit the caller's environment, so an install spec that does not carry it has the engine

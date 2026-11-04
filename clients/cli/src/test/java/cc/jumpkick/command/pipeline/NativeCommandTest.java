@@ -48,11 +48,6 @@ class NativeCommandTest {
         assertThat(exit).isEqualTo(2);
         assertThat(tempDir.resolve("target/widget-0.1.0.jar")).doesNotExist();
         String text = err.toString(StandardCharsets.UTF_8);
-        assertThat(text)
-                .containsAnyOf(
-                        NativePreflight.GRAAL_UNSET,
-                        NativePreflight.NATIVE_IMAGE_MISSING,
-                        NativePreflight.NO_MAIN,
-                        NativePreflight.MANY_MAINS);
+        assertThat(text).containsAnyOf(NativePreflight.NO_MAIN, NativePreflight.MANY_MAINS);
     }
 }

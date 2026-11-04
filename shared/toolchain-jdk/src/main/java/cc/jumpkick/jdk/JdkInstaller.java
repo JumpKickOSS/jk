@@ -26,6 +26,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -217,12 +218,7 @@ public final class JdkInstaller {
         boolean keep = false;
         try {
             long bytes = streamingDownload(
-                    entry.url(),
-                    entry.sha256(),
-                    entry.installFolderName(),
-                    JdkProgressLabel.compactName(entry),
-                    archive,
-                    onBytesRead);
+                    entry.url(), entry.sha256(), entry.installFolderName(), downloadName(entry), archive, onBytesRead);
             keep = true;
             // Metered once off the finished archive, not per chunk (onBytesRead is a progress hook).
             SessionContext.current().io().remoteDown(bytes);
@@ -512,6 +508,19 @@ public final class JdkInstaller {
                     + " verified");
         }
         return sha256.trim();
+    }
+
+    /**
+     * How a download names this JDK beside the run's others: the vendor before the product unless
+     * the product already says it — {@code Eclipse Temurin 21}, {@code Azul Zulu Community™ 21},
+     * {@code GraalVM Community Edition 21}, {@code Oracle GraalVM 25}. The product alone
+     * ({@code Community Edition 21}) does not say what it is.
+     */
+    static String downloadName(JdkCatalog.Entry entry) {
+        String product = entry.product() == null || entry.product().isBlank() ? "JDK" : entry.product();
+        String vendor = entry.vendor() == null ? "" : entry.vendor().strip();
+        boolean named = vendor.isEmpty() || product.toLowerCase(Locale.ROOT).contains(vendor.toLowerCase(Locale.ROOT));
+        return (named ? product : vendor + " " + product) + " " + entry.majorVersion();
     }
 
     /**

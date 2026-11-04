@@ -539,6 +539,7 @@ public final class PlannerSetup {
                                         .orElseGet(() -> JavaHomes.resolveJavaHome(in.dir())));
                         // Already on disk / locked — no download work this run.
                         if (outcome.source() != JdkEnsure.Source.INSTALLED) ctx.cached();
+                        JdkInstallNotice.post(outcome);
                     } catch (Exception e) {
                         ctx.error("jdk", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
                         throw e;

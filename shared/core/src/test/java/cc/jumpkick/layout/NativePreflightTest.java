@@ -12,45 +12,8 @@ class NativePreflightTest {
 
     @Test
     void messages_are_terse() {
-        assertThat(NativePreflight.GRAAL_UNSET.length()).isLessThan(78);
-        assertThat(NativePreflight.NATIVE_IMAGE_MISSING.length()).isLessThan(78);
         assertThat(NativePreflight.NO_MAIN.length()).isLessThan(78);
         assertThat(NativePreflight.MANY_MAINS.length()).isLessThan(78);
-    }
-
-    @Test
-    void graal_unset_when_env_missing() {
-        assertThat(NativePreflight.graal(null)).isEqualTo(new NativePreflight.Graal.Fail(NativePreflight.GRAAL_UNSET));
-        assertThat(NativePreflight.graal("  ")).isEqualTo(new NativePreflight.Graal.Fail(NativePreflight.GRAAL_UNSET));
-    }
-
-    @Test
-    void graal_missing_binary(@TempDir Path dir) {
-        assertThat(NativePreflight.graal(dir.toString()))
-                .isEqualTo(new NativePreflight.Graal.Fail(NativePreflight.NATIVE_IMAGE_MISSING));
-    }
-
-    @Test
-    void graal_ok_when_native_image_exists(@TempDir Path dir) throws Exception {
-        Path bin = dir.resolve("bin");
-        Files.createDirectories(bin);
-        Files.writeString(bin.resolve("native-image"), "#!/bin/sh\n");
-        assertThat(NativePreflight.graal(dir.toString())).isEqualTo(new NativePreflight.Graal.Ok(dir));
-    }
-
-    /** Accepts the {@code lib/svm/bin} launcher layout used by Windows GraalVM and older GraalVMs. */
-    @Test
-    void graal_ok_for_the_svm_layout(@TempDir Path dir) throws Exception {
-        Path svmBin = dir.resolve("lib").resolve("svm").resolve("bin");
-        Files.createDirectories(svmBin);
-        Files.writeString(svmBin.resolve("native-image.exe"), "MZ\n");
-        assertThat(NativePreflight.graal(dir.toString())).isEqualTo(new NativePreflight.Graal.Ok(dir));
-    }
-
-    /** The message names the directories the search actually looks in, not a subset of them. */
-    @Test
-    void missing_message_names_every_searched_directory() {
-        assertThat(NativePreflight.NATIVE_IMAGE_MISSING).contains("bin", "lib/svm/bin");
     }
 
     @Test

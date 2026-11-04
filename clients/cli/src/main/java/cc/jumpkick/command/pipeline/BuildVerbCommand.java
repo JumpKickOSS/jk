@@ -180,9 +180,6 @@ public final class BuildVerbCommand implements CliCommand {
         if (scope.inferredFromCwd()) run.flags(run.flags().withModulesSpec(scope.modulesSpec()));
         int early = verb.before(run);
         if (early >= 0) return early;
-        // A pinned JDK that is not installed downloads here, with the `jk jdk install` bar, before any
-        // build console opens — never as a silent step inside the engine.
-        if (!JdkPreflight.ensure(dir, info, run.flags().jdksDir(), run.mode())) return Exit.FAILURE;
         refreshAgentsGuide(
                 info != null && info.workspaceRoot() ? dir : scope.workspaceMember() ? scope.workspaceRoot() : dir);
         if (info != null && info.workspaceRoot()) return workspace(verb, run, dir, info);

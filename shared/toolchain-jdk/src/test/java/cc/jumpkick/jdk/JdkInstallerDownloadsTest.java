@@ -27,7 +27,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** A JDK archive shows on the run's download board, named as the JDK progress label names it. */
+/** A JDK archive shows on the run's download board, named by vendor and product. */
 class JdkInstallerDownloadsTest {
 
     private final FakeClock clock = new FakeClock();
@@ -100,7 +100,7 @@ class JdkInstallerDownloadsTest {
         SessionContext.where(Session.defaults().withIo(io), () -> installer.download(entry, read -> {}));
 
         assertThat(midway.get().rows()).singleElement().satisfies(row -> {
-            assertThat(row.label()).isEqualTo(JdkProgressLabel.compactName(entry));
+            assertThat(row.label()).isEqualTo("eclipse Temurin 21");
             assertThat(row.total()).isEqualTo(archive.length);
             assertThat(row.read()).isPositive().isLessThan(archive.length);
         });
@@ -108,5 +108,36 @@ class JdkInstallerDownloadsTest {
         assertThat(after.files()).isEqualTo(1);
         assertThat(after.bytes()).isEqualTo(archive.length);
         assertThat(after.inflight()).isZero();
+    }
+
+    @Test
+    void a_download_names_the_vendor_unless_the_product_already_does() {
+        assertThat(JdkInstaller.downloadName(entry("GraalVM", "Community Edition", 21)))
+                .isEqualTo("GraalVM Community Edition 21");
+        assertThat(JdkInstaller.downloadName(entry("Oracle", "GraalVM", 25))).isEqualTo("Oracle GraalVM 25");
+        assertThat(JdkInstaller.downloadName(entry("Azul", "Zulu Community™", 21)))
+                .isEqualTo("Azul Zulu Community™ 21");
+        assertThat(JdkInstaller.downloadName(entry("GraalVM", "GraalVM CE", 21)))
+                .isEqualTo("GraalVM CE 21");
+    }
+
+    private static JdkCatalog.Entry entry(String vendor, String product, int major) {
+        return new JdkCatalog.Entry(
+                vendor,
+                product,
+                "",
+                major,
+                major + ".0.1",
+                true,
+                false,
+                List.of(),
+                "linux",
+                "x64",
+                "tar.gz",
+                URI.create("https://example.test/jdk.tar.gz"),
+                "00",
+                1,
+                "x",
+                "");
     }
 }

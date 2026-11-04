@@ -15,7 +15,6 @@ import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /** {@code jk build}: lock, sync, compile, test and package. */
@@ -27,7 +26,7 @@ final class PackageVerb implements BuildVerb {
     private boolean aotCache;
 
     /** Client-resolved GraalVM home per always-native member; empty when the workspace links none. */
-    private Map<Path, Path> graalHomes = Map.of();
+    private AlwaysNativeGraal.Graal graal = AlwaysNativeGraal.Graal.NONE;
 
     PackageVerb() {
         this("Build");
@@ -90,10 +89,10 @@ final class PackageVerb implements BuildVerb {
         if (!members.isEmpty()) {
             members = AlwaysNativeGraal.withEffectiveReleases(members, ProjectInfos.orNull(entryDir));
         }
-        Optional<Map<Path, Path>> graal = AlwaysNativeGraal.homes(
+        Optional<AlwaysNativeGraal.Graal> resolved = AlwaysNativeGraal.homes(
                 members, new GraalResolver(run.flags().jdksDir(), run.global().yes, run.mode())::resolve);
-        if (graal.isEmpty()) return Exit.FAILURE; // the resolver printed why
-        this.graalHomes = graal.get();
+        if (resolved.isEmpty()) return Exit.FAILURE; // the resolver printed why
+        this.graal = resolved.get();
         return -1;
     }
 
@@ -101,9 +100,7 @@ final class PackageVerb implements BuildVerb {
     public WorkspaceResult workspace(BuildRun run, Path entryDir, List<String> modules, WorkspaceBuildListener listener)
             throws IOException {
         return EngineClient.buildWorkspace(
-                EnginePaths.current(),
-                run.request(entryDir, modules, WorkspaceSpec.DEFAULT.withGraalByDir(graalHomes)),
-                listener);
+                EnginePaths.current(), run.request(entryDir, modules, graal.onto(WorkspaceSpec.DEFAULT)), listener);
     }
 
     @Override

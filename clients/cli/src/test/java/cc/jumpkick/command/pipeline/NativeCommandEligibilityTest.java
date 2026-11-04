@@ -7,7 +7,7 @@ import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -30,21 +30,18 @@ class NativeCommandEligibilityTest {
     void prefers_modules_with_native_table_over_bare_mains() throws Exception {
         Path plugin = module("plugin", true, false);
         Path cli = module("cli", true, true);
-        Path graal = Files.createDirectories(tmp.resolve("graal"));
 
-        Map<Path, Path> homes = NativeVerb.graalHomesForModules(List.of(plugin, cli), graal, null, NO_ENGINE);
-        assertThat(homes).containsOnlyKeys(cli);
-        assertThat(homes.get(cli)).isEqualTo(graal);
+        Set<Path> eligible = NativeVerb.nativeEligible(List.of(plugin, cli), null, NO_ENGINE);
+        assertThat(eligible).containsExactly(cli);
     }
 
     @Test
     void falls_back_to_unique_main_when_no_native_table() throws Exception {
         Path app = module("app", true, false);
         Path lib = module("lib", false, false);
-        Path graal = Files.createDirectories(tmp.resolve("graal"));
 
-        Map<Path, Path> homes = NativeVerb.graalHomesForModules(List.of(app, lib), graal, null, NO_ENGINE);
-        assertThat(homes).containsOnlyKeys(app);
+        Set<Path> eligible = NativeVerb.nativeEligible(List.of(app, lib), null, NO_ENGINE);
+        assertThat(eligible).containsExactly(app);
     }
 
     @Test
@@ -53,14 +50,12 @@ class NativeCommandEligibilityTest {
         // anywhere, the fallback must skip the disabled module even though it has a unique main.
         Path off = moduleDisabledNative("off");
         Path app = module("app", true, false);
-        Path graal = Files.createDirectories(tmp.resolve("graal"));
 
-        Map<Path, Path> homes = NativeVerb.graalHomesForModules(List.of(off, app), graal, null, NO_ENGINE);
-        assertThat(homes).containsOnlyKeys(app);
+        Set<Path> eligible = NativeVerb.nativeEligible(List.of(off, app), null, NO_ENGINE);
+        assertThat(eligible).containsExactly(app);
 
         // A lone disabled module yields nothing (jk native then fails preflight, by design).
-        assertThat(NativeVerb.graalHomesForModules(List.of(off), graal, null, NO_ENGINE))
-                .isEmpty();
+        assertThat(NativeVerb.nativeEligible(List.of(off), null, NO_ENGINE)).isEmpty();
     }
 
     private Path moduleDisabledNative(String name) throws Exception {
@@ -73,9 +68,7 @@ class NativeCommandEligibilityTest {
     @Test
     void empty_when_no_mains() throws Exception {
         Path lib = module("lib", false, false);
-        Path graal = Files.createDirectories(tmp.resolve("graal"));
-        assertThat(NativeVerb.graalHomesForModules(List.of(lib), graal, null, NO_ENGINE))
-                .isEmpty();
+        assertThat(NativeVerb.nativeEligible(List.of(lib), null, NO_ENGINE)).isEmpty();
     }
 
     private Path module(String name, boolean withMain, boolean withNativeTable) throws Exception {

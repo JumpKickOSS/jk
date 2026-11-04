@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -34,7 +35,7 @@ final class TrainVerb implements BuildVerb {
     /** The one module a run trains: the project itself, or the selection in a workspace. */
     private @Nullable Path moduleDir;
 
-    private Map<Path, Path> graalHomes = Map.of();
+    private AlwaysNativeGraal.Graal graal = AlwaysNativeGraal.Graal.NONE;
 
     @Override
     public String name() {
@@ -87,7 +88,10 @@ final class TrainVerb implements BuildVerb {
         try {
             new GraalResolver(run.flags().jdksDir(), run.global().yes, run.mode())
                     .resolve(moduleDir, null)
-                    .ifPresent(home -> graalHomes = Map.of(moduleDir, home));
+                    .ifPresent(c -> graal = c.home() != null
+                            ? new AlwaysNativeGraal.Graal(Map.of(moduleDir, c.home()), Map.of())
+                            : new AlwaysNativeGraal.Graal(
+                                    Map.of(), Map.of(moduleDir, Objects.requireNonNull(c.install()))));
         } catch (RuntimeException ignored) {
             // train fails clearly if the agent is missing
         }
@@ -100,7 +104,8 @@ final class TrainVerb implements BuildVerb {
         boolean force = SessionContext.current().force() || run.global().force;
         return EngineClient.buildWorkspace(
                 EnginePaths.current(),
-                run.request(entryDir, modules, WorkspaceSpec.train(Set.of(), graalHomes, trainProfile, force)),
+                run.request(
+                        entryDir, modules, graal.onto(WorkspaceSpec.train(Set.of(), Map.of(), trainProfile, force))),
                 listener);
     }
 

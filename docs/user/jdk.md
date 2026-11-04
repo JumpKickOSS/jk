@@ -2,11 +2,12 @@
 
 JumpKick **requires JDK 25+ to run** and will install one if needed. Project language
 level is **`java = N`** (`--release`). A `jdk =` pin is only for choosing a specific
-*install*. Read [Concepts](concepts.md) before pinning runtimes. Every JDK or GraalVM jk
-installs on your behalf — the engine's own runtime, a pinned JDK a build needs, the GraalVM a
-native build links with — renders the same progress bar and "has been installed to" line as
-`jk jdk install`, then the command that needed it continues ([machine
-output](machine-output.md#toolchain-provisioning) for the `-O jsonl` shape).
+*install*. Read [Concepts](concepts.md) before pinning runtimes. A pinned JDK a build needs, and
+the GraalVM a native build links with, install as part of the run: the download is a row in the
+run's Download block with its other downloads, and one line says where it went (`installed JDK
+azul-21.0.13.0.3 to ~/.jdks/azul-21.0.13.0.3`). The engine's own runtime, needed before any engine
+runs, installs the way `jk jdk install` does. [Machine output](machine-output.md#toolchain-provisioning)
+has the `-O jsonl` shape.
 
 Supported **project** floor: **JDK 17+** (no Java 8 or 11). 17 and 21 compile with the
 host JDK 25 via `--release` — do **not** download those obsolete runtimes for bytecode.

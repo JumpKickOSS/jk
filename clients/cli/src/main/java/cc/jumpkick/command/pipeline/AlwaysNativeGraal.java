@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.pipeline;
 
+import cc.jumpkick.cli.api.GraalResolver;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.wire.protocol.ProjectInfo;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -90,9 +92,8 @@ final class AlwaysNativeGraal {
      * <p>{@link #fromManifests} reads each member's own manifest, which is the bootstrap read and
      * knows nothing of a release the root declares for everybody. A member that inherits its
      * {@code java} would carry 0 from that read — no floor — and be served by any GraalVM at all.
-     * The summary is one engine round-trip for the whole workspace, the same one
-     * {@code JdkPreflight} makes for the JDK side. Without it (no engine answer) the manifest
-     * values stand.
+     * The summary is one engine round-trip for the whole workspace. Without it (no engine answer)
+     * the manifest values stand.
      */
     static List<Module> withEffectiveReleases(List<Module> modules, @Nullable ProjectInfo rootInfo) {
         if (rootInfo == null || modules.isEmpty()) return modules;
@@ -125,7 +126,20 @@ final class AlwaysNativeGraal {
     /** {@code GraalResolver::resolve} — a module's directory, its spec, and the release it targets. */
     @FunctionalInterface
     interface Resolve {
-        Optional<Path> apply(Path dir, @Nullable String spec, int javaRelease);
+        Optional<GraalResolver.Choice> apply(Path dir, @Nullable String spec, int javaRelease);
+    }
+
+    /**
+     * Each module's GraalVM: the {@code homes} found on this machine and the specs the engine
+     * {@code installs} as part of the run. Keyed by the module dir the engine plans.
+     */
+    record Graal(Map<Path, Path> homes, Map<Path, String> installs) {
+        static final Graal NONE = new Graal(Map.of(), Map.of());
+
+        /** {@code spec} with these GraalVM homes and installs. */
+        WorkspaceSpec onto(WorkspaceSpec spec) {
+            return spec.withGraalByDir(homes).withGraalInstalls(installs);
+        }
     }
 
     /** {@code dir} as an always-native module, or null when its build links no native image. */
@@ -142,17 +156,20 @@ final class AlwaysNativeGraal {
     }
 
     /**
-     * Every module's home, or empty when one could not be resolved: {@code resolve} (the
+     * Every module's GraalVM, found or to install, or empty when one could not be decided: {@code resolve} (the
      * {@code GraalResolver}) has already printed why, and a build that would fail at its native tail
      * minutes later stops here instead. Homes are keyed by the module dir the engine plans.
      */
-    static Optional<Map<Path, Path>> homes(List<Module> modules, Resolve resolve) {
-        Map<Path, Path> out = new LinkedHashMap<>();
+    static Optional<Graal> homes(List<Module> modules, Resolve resolve) {
+        Map<Path, Path> homes = new LinkedHashMap<>();
+        Map<Path, String> installs = new LinkedHashMap<>();
         for (Module m : modules) {
-            Optional<Path> home = resolve.apply(m.dir(), m.graalSpec(), m.javaRelease());
-            if (home.isEmpty()) return Optional.empty();
-            out.put(m.dir(), home.get());
+            Optional<GraalResolver.Choice> choice = resolve.apply(m.dir(), m.graalSpec(), m.javaRelease());
+            if (choice.isEmpty()) return Optional.empty();
+            GraalResolver.Choice c = choice.get();
+            if (c.home() != null) homes.put(m.dir(), c.home());
+            else if (c.install() != null) installs.put(m.dir(), c.install());
         }
-        return Optional.of(Map.copyOf(out));
+        return Optional.of(new Graal(Map.copyOf(homes), Map.copyOf(installs)));
     }
 }

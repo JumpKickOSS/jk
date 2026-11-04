@@ -15,21 +15,22 @@ import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * Every build-kind verb runs the JDK pre-flight before anything else it does. The observable is
- * the pre-flight's own failure: a pin no registry holds, under {@code --offline}, cannot fetch the
- * feed — so the verb stops on the {@code JDK} fail wedge naming the offline refusal, ahead of any
- * build, without a byte of network. The store is the test's own: a JDK catalog another test cached
- * would answer offline, and on a host the pinned vendor does not build for (macOS on aarch64) the
- * pre-flight would stop on "no JDK matches" instead.
+ * No build-kind verb installs a JDK on the client any more: a pinned JDK installs in the engine's
+ * ensure-jdk steps, as part of the run (G118 fences the client side). Under {@code --offline}, with
+ * a pin no registry holds and the test's own store, a verb fails inside the run, compiles nothing
+ * and leaves the JDK root empty. {@code jk explain} is read-only: it prices the install and
+ * downloads nothing. The run reaches its lock before its JDK, and an offline lock against an empty
+ * store fails first, so the refusal message is not asserted, only that nothing was installed.
  */
 @Tag("integration")
 @IsolatedStore
-class JdkPreflightVerbsTest {
+class JdkInEngineVerbsTest {
 
     @BeforeEach
     @AfterEach
@@ -38,31 +39,59 @@ class JdkPreflightVerbsTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"build", "test", "run", "install", "dev", "explain"})
-    void the_verb_pre_flights_the_pinned_jdk_before_it_builds(String verb, @TempDir Path tmp) throws IOException {
+    @ValueSource(strings = {"build", "test", "run", "install", "dev"})
+    void the_verb_installs_no_jdk_on_the_client_and_compiles_nothing_without_it(String verb, @TempDir Path tmp)
+            throws IOException {
         Path project = pinnedProject(tmp);
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         String previous = System.getProperty("jk.env.JK_JDKS_DIR");
         System.setProperty("jk.env.JK_JDKS_DIR", jdks.toString());
         int[] exit = new int[1];
-        String err;
+        Capture.Streams console;
         try {
             List<String> argv = new ArrayList<>(List.of(verb, "-C", project.toString(), "--offline"));
             if (!verb.equals("install")) argv.addAll(List.of("--jdks-dir", jdks.toString()));
             if (!verb.equals("dev"))
                 argv.addAll(List.of("--cache-dir", tmp.resolve("cache").toString()));
-            err = Capture.stderr(() -> exit[0] = run(argv.toArray(String[]::new)));
+            console = Capture.both(() -> exit[0] = run(argv.toArray(String[]::new)));
         } finally {
             if (previous == null) System.clearProperty("jk.env.JK_JDKS_DIR");
             else System.setProperty("jk.env.JK_JDKS_DIR", previous);
         }
 
         assertThat(exit[0]).as(verb + " exit").isNotEqualTo(0);
-        // The client's own JDK wedge, one line — not the engine's ensure-jdk error under a build wedge.
-        assertThat(err.lines())
-                .as(verb + " stderr")
-                .anyMatch(line -> line.contains("JDK") && line.contains("offline: refusing outbound request"));
-        assertThat(project.resolve("target")).as(verb + " built nothing").doesNotExist();
+        assertThat(console.out() + console.err()).as(verb + " output").contains("Failure");
+        assertThat(project.resolve("target/classes/example/Main.class"))
+                .as(verb + " compiled nothing")
+                .doesNotExist();
+        assertThat(jdks).as(verb + " installed nothing").isEmptyDirectory();
+    }
+
+    /** {@code jk explain} forecasts the run, JDK install included, and installs nothing itself. */
+    @Test
+    void explain_prices_the_install_and_downloads_nothing(@TempDir Path tmp) throws IOException {
+        Path project = pinnedProject(tmp);
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        String previous = System.getProperty("jk.env.JK_JDKS_DIR");
+        System.setProperty("jk.env.JK_JDKS_DIR", jdks.toString());
+        Capture.Streams console;
+        try {
+            console = Capture.both(() -> run(
+                    "explain",
+                    "-C",
+                    project.toString(),
+                    "--offline",
+                    "--jdks-dir",
+                    jdks.toString(),
+                    "--cache-dir",
+                    tmp.resolve("cache").toString()));
+        } finally {
+            if (previous == null) System.clearProperty("jk.env.JK_JDKS_DIR");
+            else System.setProperty("jk.env.JK_JDKS_DIR", previous);
+        }
+
+        assertThat(console.out() + console.err()).doesNotContain("offline: refusing outbound request");
+        assertThat(jdks).isEmptyDirectory();
     }
 
     /** An application pinned to a JDK no host is likely to carry, with one source so every verb has work. */
