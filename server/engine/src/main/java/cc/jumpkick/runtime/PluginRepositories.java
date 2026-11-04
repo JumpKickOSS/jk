@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.CentralMirror;
+import cc.jumpkick.http.ProxyEnvironment;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.build.In;
 import cc.jumpkick.plugin.build.RepositoryRoute;
@@ -42,19 +43,31 @@ record PluginRepositories(List<RepositoryRoute> routes, String token) {
     static PluginRepositories forInputs(
             List<String> inputs, JkBuild project, Cas cas, Function<String, @Nullable String> env) {
         if (!inputs.contains(In.repositories().wireName())) return NONE;
-        return of(RepoGroupBuilder.buildFor(project, null, cas, env), CentralMirror.standard()::route);
+        ProxyEnvironment proxies = ProxyEnvironment.ambient();
+        return of(
+                RepoGroupBuilder.buildFor(project, null, cas, env),
+                CentralMirror.standard()::route,
+                url -> proxies.proxyUrl(url).map(URI::create).orElse(null));
+    }
+
+    /** As below, every route going direct. */
+    static PluginRepositories of(RepoGroup group, UnaryOperator<URI> centralRoute) {
+        return of(group, centralRoute, url -> null);
     }
 
     /**
      * {@code group}'s repositories in order, each request URL passed through {@code centralRoute}
      * — the Central failover, which rewrites a Central-bound URL while the window is open and
-     * leaves every other URL alone.
+     * leaves every other URL alone — and through {@code proxyFor}, the proxy jk's own downloads
+     * take to that URL (null to go direct), so a step's resolver reaches it the same way.
      */
-    static PluginRepositories of(RepoGroup group, UnaryOperator<URI> centralRoute) {
+    static PluginRepositories of(
+            RepoGroup group, UnaryOperator<URI> centralRoute, Function<URI, @Nullable URI> proxyFor) {
         List<RepositoryRoute> routes = new ArrayList<>();
         StringBuilder declared = new StringBuilder();
         for (MavenRepo repo : group.repos()) {
-            routes.add(route(repo, centralRoute.apply(repo.fetchBase())));
+            URI url = centralRoute.apply(repo.fetchBase());
+            routes.add(route(repo, url).through(proxyFor.apply(url)));
             declared.append(repo.name()).append('|').append(repo.baseUrl()).append('\n');
         }
         return new PluginRepositories(List.copyOf(routes), Hashing.sha256Hex(declared.toString()));

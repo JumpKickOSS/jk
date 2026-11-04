@@ -158,7 +158,8 @@ public final class PluginSpec {
                             requiredString(line, "id"),
                             URI.create(requiredString(line, "url")),
                             Jsonl.str(line, "username"),
-                            Jsonl.str(line, "secret")));
+                            Jsonl.str(line, "secret"),
+                            optionalUri(Jsonl.str(line, "proxy"))));
                 case PluginProtocol.SECRET ->
                     s.secrets.put(requiredString(line, PluginProtocol.KEY), requiredString(line, PluginProtocol.VALUE));
                 case PluginProtocol.COMMAND_ARGS -> s.commandArgs.addAll(Jsonl.strArray(line, PluginProtocol.VALUES));
@@ -174,6 +175,10 @@ public final class PluginSpec {
 
     private static @Nullable Path path(@Nullable String s) {
         return s == null ? null : Path.of(s);
+    }
+
+    private static @Nullable URI optionalUri(@Nullable String value) {
+        return value == null ? null : URI.create(value);
     }
 
     private static String requiredString(String line, String key) {

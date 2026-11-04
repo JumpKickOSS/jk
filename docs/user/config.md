@@ -159,7 +159,10 @@ each request from the shell running `jk`, so exporting new ones in a terminal is
 engine falls back to the values of the shell that spawned it only for a request that carries
 none. Every worker a build forks — compilers, plugin workers, test JVMs — is handed the same six
 variables, the request's values over the engine's, so a test that downloads goes the same way the
-engine does ([Build § Worker environment](build.md#worker-environment-env)). A credential in a
+engine does ([Build § Worker environment](build.md#worker-environment-env)). A plugin step whose
+own Maven resolver fetches outside the lock (Quarkus's build-time closure) is handed each
+repository with the proxy jk chose for its URL, `[network]` and the shell included, so it does not
+fall back to reading `settings.xml` alone. A credential in a
 proxy URL is never printed; an unusable value is reported
 by the name that set it (`ignoring https_proxy: …`) and the request goes direct. For a proxy that
 wants Basic on an https `CONNECT`, jk clears the JDK's `jdk.http.auth.tunneling.disabledSchemes`

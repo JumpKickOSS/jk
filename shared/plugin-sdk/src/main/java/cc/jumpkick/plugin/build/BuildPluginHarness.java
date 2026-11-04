@@ -504,11 +504,13 @@ public final class BuildPluginHarness {
 
         /** A {@code repository} line: one routed remote, its credential riding as written. */
         private static RepositoryRoute repositoryRoute(String line) throws IOException {
+            String proxy = Jsonl.str(line, "proxy");
             return new RepositoryRoute(
                     required(Jsonl.str(line, "id"), "repository.id"),
                     URI.create(required(Jsonl.str(line, "url"), "repository.url")),
                     Jsonl.str(line, "username"),
-                    Jsonl.str(line, "secret"));
+                    Jsonl.str(line, "secret"),
+                    proxy == null ? null : URI.create(proxy));
         }
 
         /** A {@code sibling-files} line: one dependency sibling's directory under its config key. */

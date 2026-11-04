@@ -20,12 +20,22 @@ import org.jspecify.annotations.Nullable;
  * @param username the basic-auth user, or null when the credential is a bearer token or none
  * @param secret the basic-auth password when {@code username} is set, the bearer token when it is
  *     not, or null for an anonymous repository
+ * @param proxy the proxy requests to {@code url} go through, as {@code http://[user:password@]host[:port]},
+ *     or null when they go direct: jk's own choice for that URL ({@code [network]} proxy, then
+ *     {@code settings.xml}, then the shell's {@code HTTPS_PROXY}, with their bypass lists), so a
+ *     step's resolver reaches the repository the way jk's own downloads do
  */
 public record RepositoryRoute(
         String id,
         URI url,
         @Nullable String username,
-        @Nullable String secret) {
+        @Nullable String secret,
+        @Nullable URI proxy) {
+
+    /** A route that goes direct. */
+    public RepositoryRoute(String id, URI url, @Nullable String username, @Nullable String secret) {
+        this(id, url, username, secret, null);
+    }
 
     public RepositoryRoute {
         Objects.requireNonNull(id, "id");
@@ -38,6 +48,11 @@ public record RepositoryRoute(
     /** An anonymous route. */
     public static RepositoryRoute anonymous(String id, URI url) {
         return new RepositoryRoute(id, url, null, null);
+    }
+
+    /** This route through {@code proxy}, or direct when it is null. */
+    public RepositoryRoute through(@Nullable URI proxy) {
+        return new RepositoryRoute(id, url, username, secret, proxy);
     }
 
     /** True when requests carry no credential. */

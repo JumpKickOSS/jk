@@ -59,6 +59,28 @@ class PluginRepositoriesTest {
         assertThat(routed.routes().get(1).bearer()).isTrue();
     }
 
+    /** Each route carries the proxy jk's own downloads take to the URL it opens, so a step's resolver goes the same way. */
+    @Test
+    void each_route_carries_the_proxy_for_the_url_it_opens(@TempDir Path tmp) {
+        Http http = new Http();
+        Cas cas = new Cas(tmp.resolve("cache"));
+        RepoGroup group = new RepoGroup(
+                List.of(new MavenRepo("central", CENTRAL, http, cas), new MavenRepo("internal", INTERNAL, http, cas)));
+        URI corp = URI.create("http://corp:p%40ss@proxy.acme.test:3128");
+
+        // The internal host is on the bypass list; Central, rewritten to its mirror, goes through.
+        PluginRepositories routed =
+                PluginRepositories.of(group, WINDOW_OPEN, url -> "repo.acme.test".equals(url.getHost()) ? null : corp);
+
+        assertThat(routed.routes())
+                .containsExactly(
+                        RepositoryRoute.anonymous("central", MIRROR).through(corp),
+                        RepositoryRoute.anonymous("internal", INTERNAL));
+        assertThat(routed.token())
+                .as("the proxy is routing, not the declared set: it re-runs nothing")
+                .isEqualTo(PluginRepositories.of(group, WINDOW_OPEN).token());
+    }
+
     @Test
     void central_is_rewritten_to_its_mirror_while_the_window_is_open_and_nothing_else_moves(@TempDir Path tmp) {
         Http http = new Http();

@@ -172,24 +172,10 @@ public final class QuarkusAugmentMain {
             String quarkusVersion,
             @Nullable ResolvedArtifacts record)
             throws Exception {
-        // A private local repository, over the closure repository the engine built from the store.
-        var cfg = BootstrapMavenContext.config()
-                .setLocalRepository(localRepo.toString())
-                .setLocalRepositoryTail(closureRepo == null ? new String[0] : new String[] {closureRepo.toString()})
-                .setRemoteRepositories(routes.remoteRepositories())
-                .setWorkspaceDiscovery(false);
-        if (offline) {
-            // Only ever forced ON — left unset, the user's Maven settings stay in charge. Offline
-            // resolution serves the warm store and fails loudly on a miss; it never quietly
-            // reaches Central behind an offline build's back.
-            cfg.setOffline(true);
-        }
-        MavenArtifactResolver mvn = new MavenArtifactResolver(new BootstrapMavenContext(cfg));
-        routes.attachMirrors(mvn.getSession());
+        MavenArtifactResolver mvn = resolver(localRepo, closureRepo, offline, routes);
         // What this resolver downloads is the run's, on its board like every other body.
         AetherTransfers.attach(mvn.getSession());
         if (record != null) record.attach(mvn.getSession());
-        routes.attachBearerTokens(mvn.getSession());
         System.err.println(LOG_PREFIX + ": remote repositories: " + routes.describe());
         BootstrapAppModelResolver modelResolver = new BootstrapAppModelResolver(mvn);
         ArtifactCoords appCoords = ArtifactCoords.jar(group, artifact, version);
@@ -418,4 +404,29 @@ public final class QuarkusAugmentMain {
     }
 
     private QuarkusAugmentMain() {}
+
+    /**
+     * The fork's resolver: a private local repository over the closure repository the engine built
+     * from the store, and the engine's routed remotes — their URLs, credentials and proxies — for
+     * whatever the closure lacks.
+     */
+    static MavenArtifactResolver resolver(
+            Path localRepo, @Nullable Path closureRepo, boolean offline, RepositoryRoutes routes) throws Exception {
+        var cfg = BootstrapMavenContext.config()
+                .setLocalRepository(localRepo.toString())
+                .setLocalRepositoryTail(closureRepo == null ? new String[0] : new String[] {closureRepo.toString()})
+                .setRemoteRepositories(routes.remoteRepositories())
+                .setWorkspaceDiscovery(false);
+        if (offline) {
+            // Only ever forced ON — left unset, the user's Maven settings stay in charge. Offline
+            // resolution serves the warm store and fails loudly on a miss; it never quietly
+            // reaches Central behind an offline build's back.
+            cfg.setOffline(true);
+        }
+        MavenArtifactResolver mvn = new MavenArtifactResolver(new BootstrapMavenContext(cfg));
+        routes.attachMirrors(mvn.getSession());
+        routes.attachProxies(mvn.getSession());
+        routes.attachBearerTokens(mvn.getSession());
+        return mvn;
+    }
 }
