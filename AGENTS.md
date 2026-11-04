@@ -191,6 +191,8 @@ Prefer a small WIP limit (a few claimed tickets). If blocked: `ka set-status JK-
   local `main` you are about to push (the test classpath and the installed jk must report the same
   `-SNAPSHOT` version; `jk test -p integration` against a snapshot-installed jk does not). One run covers every branch merged since the last push, so
   worktrees merge on the fast gate and pay for integration once per push, not once per merge.
+  A push whose commits since `origin/main` touch nothing jk builds (Markdown, the website under
+  `hosting/`, scripts and results under `bench/`) needs no push gate: `jk guard docs` is enough.
 
 | Command | What runs | When |
 |---------|-----------|------|
