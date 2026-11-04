@@ -4,6 +4,7 @@ package cc.jumpkick.engine.listen;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.FailureTextRefs;
+import cc.jumpkick.wire.protocol.ModuleStartEvent;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import java.io.BufferedWriter;
 import org.jspecify.annotations.Nullable;
@@ -99,7 +100,8 @@ public final class WireEventSink implements EventSink {
                 ProtoEvents.planModule(e.dir(), e.coord(), e.planName(), (int) e.weight(), e.fullyCached());
             case EngineEvent.PlanStep e -> ProtoEvents.planStep(e.dir(), e.name(), e.label(), e.phase());
             case EngineEvent.PlanDone e -> ProtoEvents.planDone(e.modules());
-            case EngineEvent.ModuleStart e -> ProtoEvents.moduleStart(e.dir());
+            case EngineEvent.ModuleStart e ->
+                new ModuleStartEvent(e.dir(), e.coord() == null ? "" : e.coord()).encode();
             case EngineEvent.ModuleFinish e ->
                 ProtoEvents.moduleFinish(
                         e.dir(),

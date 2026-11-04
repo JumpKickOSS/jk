@@ -255,6 +255,10 @@ blocks the shell before the panel opens.
 
 `api.js` opens one `EventSource` on `/api/events` (see [http.md](http.md#live-updates-get-apievents)).
 
+A build event's frame is the event's wire record under `schema`, `type` and `jid` — the fields the
+CLI's wire and `-O jsonl` carry, spelled the same (`millis`, `waitMillis`, `testClass`, …). A fold
+that needs a field reads it from `d` under the record's name; there are no per-surface aliases.
+
 | Path | Handler |
 | --- | --- |
 | Build activity | `fold.js` → activity cards (hard bounds: `MAX_CARDS`, `MAX_OUTPUT_LINES`, `MAX_DIAGNOSTICS`); `label` events drive the live detail after the running phase node (CLI tree-row parity) |

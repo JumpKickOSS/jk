@@ -13,9 +13,9 @@ import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.listen.EventRedaction;
+import cc.jumpkick.engine.listen.SseFrame;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.base.LiveUnits;
@@ -34,7 +34,6 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -807,10 +806,7 @@ public final class JobEnvelope {
      * with its job: one encoding (DownloadsEvent) for every surface, so none can drift.
      */
     private void publishDownloads(String wireLine, long rid) {
-        if (!(MiniJson.parse(wireLine) instanceof Map<?, ?> parsed)) return;
-        Map<String, Object> fields = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> e : parsed.entrySet()) fields.put(String.valueOf(e.getKey()), e.getValue());
-        fields.put("jid", rid);
-        host.publishEvent(EngineProtocol.DOWNLOADS, host.withProgress(JsonOut.rawObject(fields), rid));
+        host.publishEvent(
+                EngineProtocol.DOWNLOADS, host.withProgress(SseFrame.of(EngineProtocol.DOWNLOADS, rid, wireLine), rid));
     }
 }

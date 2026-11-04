@@ -13,13 +13,15 @@ import cc.jumpkick.engine.http.HttpEvents;
 import cc.jumpkick.engine.jobs.JobSession;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildAccumulator;
-import cc.jumpkick.engine.listen.EventRedaction;
+import cc.jumpkick.engine.listen.SseFrame;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ErrorLineEvent;
+import cc.jumpkick.wire.protocol.EventCatalog;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.runtime.RemainingWork;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
@@ -27,6 +29,7 @@ import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.LongSupplier;
@@ -281,26 +284,16 @@ public final class SsePublisher implements SseEvents {
             long den = snap.denominator();
             long rem = snap.remainingMs();
             long r0 = snap.R0ms();
-            // Held percent on both wire surfaces (JSONL and SSE).
+            // Held percent on both surfaces: SSE sends the line the wire does.
             double pct = heldPct;
             String line = ProtoEvents.workspaceProgress(
                     dir, num, den, snap.phase(), snap.modulesComplete(), snap.modulesTotal(), rem, r0, pct);
             if (writer != null) WireWriter.sendQuiet(writer, line);
             if (eventsWanted()) {
-                var body = JsonOut.object()
-                        .put("schema", 1)
-                        .put("type", EngineProtocol.WORKSPACE_PROGRESS)
-                        .put("jid", requestId)
-                        .put("dir", dir)
-                        .put("numerator", num)
-                        .put("denominator", den)
-                        .put("phase", snap.phase())
-                        .put("modulesComplete", snap.modulesComplete())
-                        .put("modulesTotal", snap.modulesTotal())
-                        .put("remainingMs", rem)
-                        .put("R0", r0);
-                if (!Double.isNaN(pct)) body.put("progress", pct);
-                publishEvent(EngineProtocol.WORKSPACE_PROGRESS, withProgress(body, requestId), dashboardOnly);
+                publishEvent(
+                        EngineProtocol.WORKSPACE_PROGRESS,
+                        withProgress(SseFrame.of(EngineProtocol.WORKSPACE_PROGRESS, requestId, line), requestId),
+                        dashboardOnly);
             }
             Double held = lastProgress(requestId);
             long pctMillis = held != null
@@ -399,90 +392,6 @@ public final class SsePublisher implements SseEvents {
         publishEvent("request-start", withProgress(payload, requestId), dashboardOnly);
     }
 
-    public void publishStepStart(long requestId, String dir, String step, String phase) {
-        publishStepStart(requestId, dir, step, phase, false);
-    }
-
-    public void publishStepStart(long requestId, String dir, String step, String phase, boolean dashboardOnly) {
-        acc.stepStart(requestId, dir, step, phase);
-        if (!eventsWanted()) return;
-        // Field names align with CLI JsonlShape (schema + type + task + group).
-        publishEvent(
-                EngineProtocol.TASK_START,
-                withProgress(
-                        JsonOut.object()
-                                .put("schema", 1)
-                                .put("type", EngineProtocol.TASK_START)
-                                .put("jid", requestId)
-                                .put("dir", dir)
-                                .put("task", step)
-                                .put("stage", phase),
-                        requestId),
-                dashboardOnly);
-    }
-
-    public void publishStepFinish(long requestId, String dir, String step, String phase, String status, long millis) {
-        publishStepFinish(requestId, dir, step, phase, status, millis, false);
-    }
-
-    public void publishStepFinish(
-            long requestId, String dir, String step, String phase, String status, long millis, boolean dashboardOnly) {
-        if (!eventsWanted()) return;
-        publishEvent(
-                EngineProtocol.TASK_FINISH,
-                withProgress(
-                        JsonOut.object()
-                                .put("schema", 1)
-                                .put("type", EngineProtocol.TASK_FINISH)
-                                .put("jid", requestId)
-                                .put("dir", dir)
-                                .put("task", step)
-                                .put("stage", phase)
-                                .put("status", status)
-                                .put("millis", millis),
-                        requestId),
-                dashboardOnly);
-    }
-
-    /**
-     * Live step detail (test class.method, "shrinking jar", …) — same payload as the socket
-     * {@code label} line. The SPA paints it after the running phase node (CLI tree-row parity).
-     */
-    public void publishLabel(long requestId, String dir, String step, String label) {
-        if (!eventsWanted()) return;
-        publishEvent(
-                EngineProtocol.LABEL,
-                withProgress(
-                        JsonOut.object()
-                                .put("schema", 1)
-                                .put("type", EngineProtocol.LABEL)
-                                .put("jid", requestId)
-                                .put("dir", dir)
-                                .put("task", step)
-                                .put("label", EventRedaction.redactEnv(dir, label)),
-                        requestId));
-    }
-
-    public void publishOutput(long requestId, String dir, String step, String line) {
-        if (!eventsWanted()) return;
-        // Rate is owned by CoalescingBuildPlanListener (JK_WIRE_PROGRESS_MS) on both CLI wire and
-        // HTTP hub paths — do not double-throttle here.
-        // Redact here, not per caller: the HTTP/MCP job listener feeds raw step output and the
-        // SSE stream is readable token-free on loopback. Idempotent for callers that
-        // already masked.
-        publishEvent(
-                EngineProtocol.OUTPUT,
-                withProgress(
-                        JsonOut.object()
-                                .put("schema", 1)
-                                .put("type", EngineProtocol.OUTPUT)
-                                .put("jid", requestId)
-                                .put("dir", dir)
-                                .put("task", step)
-                                .put("line", EventRedaction.redactEnv(dir, line)),
-                        requestId));
-    }
-
     /**
      * Which diagnostics to put on the live SSE card. {@code test-failure} diagnostics are kept up
      * to {@link #MAX_TEST_FAILURE_EVENTS}; other codes (javac, resolve, …) are capped at
@@ -534,51 +443,98 @@ public final class SsePublisher implements SseEvents {
     }
 
     /**
-     * The SSE {@code error} event body for one diagnostic. The event name equals the payload type
-     * ("error"), same as CLI JsonlShape; the test class rides {@link EngineProtocol#TEST_CLASS_FIELD},
-     * the journal's persisted spelling.
+     * The SSE {@code error} event body for one diagnostic: its {@code error-line} record under the
+     * name the dashboard has always known it by.
      */
     static JsonOut errorEventJson(long requestId, String dir, BuildPlanResult.Diagnostic d) {
-        var o = JsonOut.object()
-                .put("schema", 1)
-                .put("type", "error")
-                .put("jid", requestId)
-                .put("dir", dir)
-                .put("task", d.step())
-                .put("code", d.code())
-                .put("message", EventRedaction.redactEnv(dir, d.message()));
-        if (d.module() != null && !d.module().isEmpty()) o.put("module", d.module());
-        if (d.engine() != null && !d.engine().isEmpty()) o.put("engine", d.engine());
-        if (d.className() != null && !d.className().isEmpty()) o.put(EngineProtocol.TEST_CLASS_FIELD, d.className());
-        if (d.method() != null && !d.method().isEmpty()) o.put("method", d.method());
-        if (d.exceptionClass() != null && !d.exceptionClass().isEmpty()) o.put("exceptionClass", d.exceptionClass());
-        if (d.stack() != null && !d.stack().isEmpty()) o.put("stack", EventRedaction.redactEnv(dir, d.stack()));
-        if (d.file() != null && !d.file().isEmpty()) o.put("file", d.file());
-        if (d.line() > 0) o.put("line", d.line());
-        if (d.snippetStart() > 0) o.put("snippetStart", d.snippetStart());
-        if (d.snippet() != null && !d.snippet().isEmpty()) o.putStrings("snippet", d.snippet());
-        if (d.worker() > 0) o.put("worker", d.worker());
-        if (d.test() != null && !d.test().isEmpty()) o.put("test", d.test());
-        return o;
+        return SseFrame.of(
+                EventCatalog.JSONL_ERROR,
+                requestId,
+                new ErrorLineEvent(
+                                dir,
+                                d.step(),
+                                d.code(),
+                                orEmpty(d.message()),
+                                orEmpty(d.test()),
+                                orEmpty(d.module()),
+                                d.suite(),
+                                orEmpty(d.engine()),
+                                orEmpty(d.className()),
+                                orEmpty(d.method()),
+                                orEmpty(d.exceptionClass()),
+                                orEmpty(d.file()),
+                                d.line(),
+                                d.snippetStart(),
+                                d.worker(),
+                                d.snippet() == null ? List.of() : d.snippet(),
+                                orEmpty(d.stack()),
+                                0,
+                                0)
+                        .encode());
     }
 
     /** A single request-level failure line (bad jk.toml, workspace orchestration error, …). */
     public void publishRequestError(long requestId, @Nullable String dir, String message) {
         if (!eventsWanted() || message == null || message.isBlank()) return;
+        String record = new ErrorLineEvent(
+                        dir == null ? "" : dir,
+                        "request",
+                        "error",
+                        message,
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        0,
+                        0,
+                        0,
+                        List.of(),
+                        "",
+                        0,
+                        0)
+                .encode();
         publishEvent(
-                "error",
-                withProgress(
-                        JsonOut.object()
-                                .put("schema", 1)
-                                .put("type", "error")
-                                .put("jid", requestId)
-                                .put("dir", dir)
-                                .put("task", "request")
-                                .put("code", "error")
-                                .put("message", EventRedaction.redactEnv(dir, message))
-                                .put("test", "")
-                                .put("exceptionClass", ""),
-                        requestId));
+                EventCatalog.JSONL_ERROR,
+                withProgress(SseFrame.of(EventCatalog.JSONL_ERROR, requestId, record), requestId));
+    }
+
+    private static String orEmpty(@Nullable String s) {
+        return s == null ? "" : s;
+    }
+
+    /**
+     * A plan's progress as the dashboard's {@code progress} frame. Aggregate % on SSE/MCP: workspace
+     * builds use {@link cc.jumpkick.wire.runtime.WorkspaceProgressTracker}; single-plan jobs
+     * (build/test/compile) have no tracker — the plan <em>is</em> the whole request, so feed
+     * last-progress on the session from these counts. The frame's {@code progress} is the run's.
+     */
+    @Override
+    public void publishPlanProgress(long requestId, String dir, long numerator, long denominator, String record) {
+        if (requestId > 0 && trackerOrNull(requestId) == null && denominator > 0) {
+            double p = WorkspaceProgressTracker.percentOf(numerator, denominator);
+            if (!Double.isNaN(p)) setLastProgress(requestId, p);
+        }
+        if (!eventsWanted()) return;
+        publishEvent(
+                EngineProtocol.PROGRESS,
+                withProgress(SseFrame.of(EngineProtocol.PROGRESS, requestId, record), requestId));
+    }
+
+    @Override
+    public void publishStepStart(long requestId, String dir, String step, String phase, String record) {
+        acc.stepStart(requestId, dir, step, phase);
+        publishRecord(requestId, record);
+    }
+
+    @Override
+    public void publishRecord(long requestId, String record) {
+        if (!eventsWanted()) return;
+        String type = Objects.requireNonNull(EngineProtocol.typeOf(record), record);
+        publishEvent(type, withProgress(SseFrame.of(type, requestId, record), requestId));
     }
 
     /**
@@ -587,6 +543,7 @@ public final class SsePublisher implements SseEvents {
      * sends the CLI as per-module {@code plan-module} weights. Weight is the same abstract unit the
      * CLI bar uses ({@code EffortWeights}, ≈150 ms/unit); the dashboard only needs the ratio.
      */
+    @Override
     public void publishPlan(long requestId, long totalWeight) {
         if (!eventsWanted()) return;
         // Plan seeds the bar denominator; progress is still preflight-only until execute ticks.
@@ -602,135 +559,12 @@ public final class SsePublisher implements SseEvents {
     }
 
     /**
-     * Fine-grained module plan ticks for the dashboard (step detail). Aggregate % on SSE/MCP:
-     * workspace builds use {@link cc.jumpkick.wire.runtime.WorkspaceProgressTracker}; single-plan
-     * jobs (build/test/compile) have no tracker yet — the plan <em>is</em> the whole request, so
-     * feed last-progress on the session from this view.
-     */
-    public void publishPlanProgress(long requestId, String dir, long numerator, long denominator) {
-        if (requestId > 0 && trackerOrNull(requestId) == null && denominator > 0) {
-            double p = WorkspaceProgressTracker.percentOf(numerator, denominator);
-            if (!Double.isNaN(p)) setLastProgress(requestId, p);
-        }
-        if (!eventsWanted()) return;
-        publishEvent(
-                EngineProtocol.PROGRESS,
-                withProgress(
-                        JsonOut.object()
-                                .put("schema", 1)
-                                .put("type", EngineProtocol.PROGRESS)
-                                .put("jid", requestId)
-                                .put("dir", dir)
-                                .put("numerator", numerator)
-                                .put("denominator", denominator),
-                        requestId));
-    }
-
-    /**
-     * The calibrated ETA in millis — the same value {@code jk build}'s countdown and {@code jk
-     * explain}'s estimate show ({@code BuildService.seedEta} + live re-projections). Emitted for the
-     * seed and every re-projection, exactly where the socket path sends {@code EngineProtocol.eta}.
-     */
-    public void publishEta(long requestId, long millis) {
-        if (!eventsWanted()) return;
-        publishEvent(
-                EngineProtocol.ETA,
-                withProgress(
-                        JsonOut.object()
-                                .put("schema", 1)
-                                .put("type", EngineProtocol.ETA)
-                                .put("jid", requestId)
-                                .put("millis", millis),
-                        requestId));
-    }
-
-    /**
      * Guard for event publishers: build the payload only when someone is listening. Split from
      * {@link #publishEvent} so hot listener callbacks (per-plan, per-module) pay one boolean check,
      * not a {@code JsonOut} allocation, when no dashboard is open.
      */
+    @Override
     public boolean eventsWanted() {
         return events != null && events.hasSubscribers();
-    }
-
-    public void publishModuleStart(long requestId, String dir, @Nullable String coord) {
-        publishModuleStart(requestId, dir, coord, false);
-    }
-
-    public void publishModuleStart(long requestId, String dir, @Nullable String coord, boolean dashboardOnly) {
-        if (!eventsWanted()) return;
-        publishEvent(
-                EngineProtocol.MODULE_START,
-                withProgress(
-                        JsonOut.object()
-                                .put("schema", 1)
-                                .put("type", EngineProtocol.MODULE_START)
-                                .put("jid", requestId)
-                                .put("dir", dir)
-                                .put("coord", coord),
-                        requestId),
-                dashboardOnly);
-    }
-
-    public void publishModuleFinish(
-            long requestId, String dir, String coord, boolean success, long millis, boolean didWork) {
-        publishModuleFinish(requestId, dir, coord, success, millis, didWork, false, false, false);
-    }
-
-    public void publishModuleFinish(
-            long requestId,
-            String dir,
-            String coord,
-            boolean success,
-            long millis,
-            boolean didWork,
-            boolean cancelled,
-            boolean stopped) {
-        publishModuleFinish(requestId, dir, coord, success, millis, didWork, cancelled, stopped, false);
-    }
-
-    public void publishModuleFinish(
-            long requestId,
-            String dir,
-            String coord,
-            boolean success,
-            long millis,
-            boolean didWork,
-            boolean cancelled,
-            boolean stopped,
-            boolean dashboardOnly) {
-        if (!eventsWanted()) return;
-        publishEvent(
-                EngineProtocol.MODULE_FINISH,
-                withProgress(
-                        JsonOut.object()
-                                .put("schema", 1)
-                                .put("type", EngineProtocol.MODULE_FINISH)
-                                .put("jid", requestId)
-                                .put("dir", dir)
-                                .put("coord", coord)
-                                .put("success", success)
-                                .put("millis", millis)
-                                .put("didWork", didWork)
-                                .put("cancelled", cancelled)
-                                .put("stopped", stopped),
-                        requestId),
-                dashboardOnly);
-    }
-
-    public void publishBuildPlanFinish(long requestId, String dir, boolean success) {
-        if (!eventsWanted()) return;
-        // Do not clear the workspace tracker here — modules finish many times per request.
-        // Request teardown / finish owns final 100% and clearProgress.
-        publishEvent(
-                EngineProtocol.BUILDPLAN_FINISH,
-                withProgress(
-                        JsonOut.object()
-                                .put("schema", 1)
-                                .put("type", EngineProtocol.BUILDPLAN_FINISH)
-                                .put("jid", requestId)
-                                .put("dir", dir)
-                                .put("success", success),
-                        requestId));
     }
 }

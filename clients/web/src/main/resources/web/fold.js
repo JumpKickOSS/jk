@@ -189,7 +189,7 @@ export function foldEvent(cards, event) {
       const card = resolveCard(cards, d);
       if (card) {
         const row = stepRow(card, d.dir, d.task, d.stage, event.at);
-        // Engine carries millis (additive); duration_ms is the CLI jsonl alias; else receipt delta.
+        // The record carries millis (every surface spells it so); else the receipt delta.
         row.millis = stepMillisOf(d, row, event.at);
         row.state = stepState(d.status, row.millis);
         // Keep last message for a moment of context only while running rows use it; finished

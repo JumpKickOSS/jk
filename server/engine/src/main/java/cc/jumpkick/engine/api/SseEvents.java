@@ -1,39 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.api;
 
-import org.jspecify.annotations.Nullable;
-
 /**
  * The dashboard/MCP event surface an engine event sink publishes through — the part of the SSE
  * publisher the {@code listen} package needs, so it depends on this leaf and not on the publisher's
  * home in the engine root.
  */
 public interface SseEvents {
-    void publishPlanProgress(long requestId, String dir, long numerator, long denominator);
+    /**
+     * A plan's progress — its start, a tick, a tick's re-weighting — as the dashboard's {@code
+     * progress} frame: {@code record} is the event's wire record; the counts feed a single-plan job's
+     * own percent.
+     */
+    void publishPlanProgress(long requestId, String dir, long numerator, long denominator, String record);
 
-    void publishStepStart(long requestId, String dir, String step, String phase);
+    /** A step starts: the journal's accumulator hears of it, and the frame is its wire {@code record}. */
+    void publishStepStart(long requestId, String dir, String step, String phase, String record);
 
-    void publishStepFinish(long requestId, String dir, String step, String phase, String status, long millis);
-
-    void publishLabel(long requestId, String dir, String step, String label);
-
-    void publishOutput(long requestId, String dir, String step, String line);
-
-    void publishModuleStart(long requestId, String dir, @Nullable String coord);
-
-    void publishModuleFinish(
-            long requestId,
-            String dir,
-            String coord,
-            boolean success,
-            long millis,
-            boolean didWork,
-            boolean cancelled,
-            boolean stopped);
-
-    void publishEta(long requestId, long millis);
+    /** Any other event SSE carries as the engine sent it: its wire {@code record}, under its own type. */
+    void publishRecord(long requestId, String record);
 
     void publishPlan(long requestId, long totalWeight);
 
-    void publishBuildPlanFinish(long requestId, String dir, boolean success);
+    /** Whether anyone listens: with no one, a sink need not encode a frame's record. */
+    boolean eventsWanted();
 }
