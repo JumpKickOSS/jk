@@ -10,6 +10,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.BuildLogicScripts;
 import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.TaskForecaster;
@@ -278,6 +279,13 @@ public final class BuildForecasting {
             if (entryDir != null && memoWritable && persistMemo) {
                 // Store input-dirty only — restoreNeeded is re-derived from missing outputs on load.
                 PreflightMemo.storeDirty(entryDir, graph, skipTests, profile, dirty, fps);
+            }
+            // A module whose build logic runs on every build (`jk: always`, the root's dist copy)
+            // runs in this build too, as a memo hit already has it: its own inputs may be unchanged
+            // while what it copies is what the dirty modules are about to produce. After the store,
+            // which keeps input-dirty modules only and adds these back when it is read.
+            for (BuildGraph.BuildUnit u : graph.topoOrder()) {
+                if (!dirty.contains(u.dir()) && BuildLogicScripts.anyAlways(u.dir())) dirty.add(u.dir());
             }
             return new Preflight(dirty, restoreNeeded, fps, modules, reasons);
         } catch (CancellationException cancelled) {

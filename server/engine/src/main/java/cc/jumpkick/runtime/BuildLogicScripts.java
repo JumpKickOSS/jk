@@ -99,6 +99,25 @@ public final class BuildLogicScripts {
         }
     }
 
+    /**
+     * True when a build-logic script of the module at {@code moduleDir} carries the {@code jk:
+     * always} pragma, or the scripts cannot be read (run rather than skip): its plan runs on every
+     * build, whatever the forecast says about its inputs — the script judges state the inputs do
+     * not show, such as what other modules just produced.
+     */
+    public static boolean anyAlways(Path moduleDir) {
+        try {
+            for (Path dir : BuildLogicToml.dirs(moduleDir)) {
+                for (ScriptTask task : discover(dir)) {
+                    if (task.always()) return true;
+                }
+            }
+        } catch (IOException unreadable) {
+            return true;
+        }
+        return false;
+    }
+
     private BuildLogicScripts() {}
 
     /**

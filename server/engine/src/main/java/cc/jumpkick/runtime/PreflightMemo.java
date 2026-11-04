@@ -265,7 +265,7 @@ public final class PreflightMemo {
                 if (logic == null) return miss("unreadable-logic", "module", rel);
                 seen.add(rel);
                 fps.put(dir, row.fp());
-                if (!logic.equals(row.logic()) || row.dirty() || logicAlways(dir)) {
+                if (!logic.equals(row.logic()) || row.dirty() || BuildLogicScripts.anyAlways(dir)) {
                     // Scripts, member rules, and a root anchor's checkout scope schedule this
                     // module alone. A build-logic step is bookkeeping, so the dirty bit is what
                     // puts the anchor on the plan.
@@ -1099,20 +1099,6 @@ public final class PreflightMemo {
         String gotJdk = memo.got("jdkRelease");
         if (wantJdk == null || gotJdk == null || !wantJdk.equals(gotJdk)) {
             miss("jdk", "want", String.valueOf(wantJdk), "got", String.valueOf(gotJdk));
-            return true;
-        }
-        return false;
-    }
-
-    /** True when a build-logic script in this module asks to run on every build. */
-    private static boolean logicAlways(Path moduleDir) {
-        try {
-            for (Path dir : BuildLogicToml.dirs(moduleDir)) {
-                for (BuildLogicScripts.ScriptTask task : BuildLogicScripts.discover(dir)) {
-                    if (task.always()) return true;
-                }
-            }
-        } catch (IOException ignored) {
             return true;
         }
         return false;
