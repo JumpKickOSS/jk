@@ -19,6 +19,7 @@ import cc.jumpkick.command.toolchain.ShellInstallerBlock;
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
 import cc.jumpkick.compat.ToolRegistry;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.discovery.SymlinkProvisioner;
 import cc.jumpkick.host.time.Clock;
@@ -46,6 +47,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -96,6 +98,7 @@ public final class DoctorCommand implements CliCommand {
         // Collect checks first so JSON and human share the same facts. Tools are scanned (and
         // repaired — broken links unlinked, fingerprints written) exactly once, here, so
         // `-O jsonl` performs the same repair the human view does instead of only reporting it.
+        Check config = checkConfig(JkDirs.userConfigFile());
         Check engine = withHeapDump(checkEngine(), EngineHeapDump.find(EnginePaths.current()));
         Check cache = checkDirs();
         Check state = checkStateMode();
@@ -130,7 +133,8 @@ public final class DoctorCommand implements CliCommand {
                 ? MavenSettingsRows.query(() -> queryInventory("m2-settings", ifRunning))
                 : MavenSettingsRows.Rows.none(ROWS_SKIPPED);
 
-        boolean hasFail = engine.status == Status.FAIL
+        boolean hasFail = config.status == Status.FAIL
+                || engine.status == Status.FAIL
                 || cache.status == Status.FAIL
                 || state.status == Status.FAIL
                 || jdk.status == Status.FAIL
@@ -138,6 +142,7 @@ public final class DoctorCommand implements CliCommand {
 
         if (global.outputIsJson()) {
             CliOutput.out(reportJson(
+                    config,
                     engine,
                     cache,
                     state,
@@ -164,6 +169,7 @@ public final class DoctorCommand implements CliCommand {
         CommandWedge.envelopeStart();
         CliOutput.out(CommandWedge.menu("Doctor"));
 
+        printCheck(config, t);
         printCheck(engine, t);
         printCheck(cache, t);
         printCheck(state, t);
@@ -474,6 +480,18 @@ public final class DoctorCommand implements CliCommand {
             }
             return new Tally(healthy, pruned, verified, drifted, firstSeen, empty);
         }
+    }
+
+    /**
+     * Whether {@code ~/.jk/config.toml} parses. A file that does not fails every command that
+     * resolves, fetches or authenticates, so it is a failure here too, with the position to fix;
+     * doctor itself keeps running so the rest of the report still helps.
+     */
+    static Check checkConfig(Path file) {
+        if (!Files.exists(file)) return new Check(Status.OK, "config", "no " + file + " (defaults)");
+        return GlobalConfig.userConfigProblem(file)
+                .map(e -> new Check(Status.FAIL, "config", Objects.toString(e.getMessage(), file.toString())))
+                .orElseGet(() -> new Check(Status.OK, "config", file + " parses"));
     }
 
     private static Check checkEngine() {
@@ -887,6 +905,7 @@ public final class DoctorCommand implements CliCommand {
      * the stored logins with where each keeps its secret.
      */
     public static String reportJson(
+            Check config,
             Check engine,
             Check cache,
             Check state,
@@ -907,6 +926,7 @@ public final class DoctorCommand implements CliCommand {
             MavenSettingsRows.Rows settings,
             StoredLogins.Rows logins) {
         return JsonFields.object()
+                .token("config", checkJson(config))
                 .token("engine", checkJson(engine))
                 .token("cache", checkJson(cache))
                 .token("state", checkJson(state))

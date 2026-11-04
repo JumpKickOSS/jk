@@ -7,7 +7,9 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.RepositoryMirror;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.JkDirs;
+import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -17,7 +19,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
+import org.tomlj.Toml;
+import org.tomlj.TomlParseError;
 import org.tomlj.TomlParseResult;
+import org.tomlj.TomlPosition;
 import org.tomlj.TomlTable;
 
 /**
@@ -231,20 +236,73 @@ public final class GlobalConfig {
     private static final StampedMemo<String, StampedMemo.FileStamp, String> SCAN_CACHE = StampedMemo.create();
 
     /** One entry per path (the file is process-stable, and {@code nerd-font} hits this often). */
-    private static final StampedMemo<String, StampedMemo.FileStamp, TomlParseResult> CONFIG_CACHE =
-            StampedMemo.create();
+    private static final StampedMemo<String, StampedMemo.FileStamp, Parsed> CONFIG_CACHE = StampedMemo.create();
 
-    private static Optional<TomlParseResult> parseConfig(Path file) {
+    /** One read of the file: its document, or why it has none. Both null when the file is absent. */
+    private record Parsed(
+            @Nullable TomlParseResult toml, @Nullable UserConfigParseException error) {
+        static final Parsed ABSENT = new Parsed(null, null);
+    }
+
+    /**
+     * The document of {@code file}, or empty when there is no file. A file that is there and does
+     * not parse is never read as empty: that would drop its repositories, mirrors, proxy and
+     * credentials, and send every request around them.
+     *
+     * <p>Memoized per version of the file, the error included, so a resident engine answers the
+     * next request with the file as it is now: a fix needs no restart, and a break is reported
+     * rather than served from the last good copy.
+     *
+     * @throws UserConfigParseException when the file exists and is not valid TOML
+     */
+    static Optional<TomlParseResult> parseConfig(@Nullable Path file) {
         if (file == null) return Optional.empty();
+        Parsed parsed = parsed(file);
+        if (parsed.error() != null) throw parsed.error();
+        return Optional.ofNullable(parsed.toml());
+    }
+
+    /**
+     * Why {@code ~/.jk/config.toml} cannot be read, or empty when it parses or is absent. For the
+     * reports that must keep running on a broken file — {@code jk doctor}, the dashboard's
+     * configuration panel — and say so.
+     */
+    public static Optional<UserConfigParseException> userConfigProblem() {
+        return userConfigProblem(JkDirs.userConfigFile());
+    }
+
+    /** As {@link #userConfigProblem()} but against an explicit config file — for tests. */
+    public static Optional<UserConfigParseException> userConfigProblem(@Nullable Path file) {
+        return file == null
+                ? Optional.empty()
+                : Optional.ofNullable(parsed(file).error());
+    }
+
+    private static Parsed parsed(Path file) {
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(file);
-        if (stamp == null) {
-            // No stamp is either "no file" (no config) or a stat failure on a file that is there,
-            // and only the second one is worth an uncached read.
-            return Files.exists(file) ? TomlValues.parse(file) : Optional.empty();
+        // No stamp is either "no file" (no config) or a stat failure on a file that is there, and
+        // only the second one is worth an uncached read. An unsettled stamp may not tell this
+        // version from the next, so it is read again too.
+        if (stamp == null) return Files.exists(file) ? read(file) : Parsed.ABSENT;
+        if (!stamp.settled()) return read(file);
+        return CONFIG_CACHE.get(file.toAbsolutePath().toString(), stamp, () -> read(file));
+    }
+
+    private static Parsed read(Path file) {
+        TomlParseResult toml;
+        try {
+            toml = Toml.parse(file);
+        } catch (NoSuchFileException gone) {
+            return Parsed.ABSENT;
+        } catch (IOException e) {
+            String why = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            return new Parsed(null, new UserConfigParseException(file, 0, 0, "cannot be read: " + why));
         }
-        return Optional.ofNullable(
-                CONFIG_CACHE.get(file.toAbsolutePath().toString(), stamp, () -> TomlValues.parse(file)
-                        .orElse(null)));
+        if (!toml.hasErrors()) return new Parsed(toml, null);
+        TomlParseError first = toml.errors().getFirst();
+        TomlPosition at = first.position();
+        String reason = first.getMessage() == null ? "not valid TOML" : first.getMessage();
+        return new Parsed(null, new UserConfigParseException(file, at.line(), at.column(), reason));
     }
 
     /** Clear the memoized config parse. For tests that rewrite {@code ~/.jk/config.toml} in one JVM. */
@@ -270,6 +328,8 @@ public final class GlobalConfig {
     static ImageTable image(Path configFile) {
         try {
             return parseConfig(configFile).map(ManifestImage::parse).orElse(ImageTable.EMPTY);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed;
         } catch (RuntimeException e) {
             return ImageTable.EMPTY;
         }
@@ -314,6 +374,8 @@ public final class GlobalConfig {
             return parseConfig(configFile)
                     .map(toml -> NetworkConfig.parse(toml.getTable("network")))
                     .orElse(NetworkConfig.EMPTY);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed;
         } catch (RuntimeException e) {
             return NetworkConfig.EMPTY;
         }
@@ -345,6 +407,8 @@ public final class GlobalConfig {
                     .map(toml -> toml.getTable("node"))
                     .map(t -> new NodeSources(blankToNull(t.getString("registry")), nodeScopes(t.getTable("scopes"))))
                     .orElse(NodeSources.EMPTY);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed;
         } catch (RuntimeException e) {
             return NodeSources.EMPTY;
         }
@@ -373,6 +437,8 @@ public final class GlobalConfig {
                         return Map.copyOf(out);
                     })
                     .orElse(Map.of());
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed;
         } catch (RuntimeException e) {
             return Map.of();
         }
