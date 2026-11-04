@@ -9,18 +9,20 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
- * The Secret Service backend against this machine's real keyring. Opt-in, because it writes to the
- * user's keyring and a locked one prompts: set {@code JK_TEST_SECRET_SERVICE=1} in a desktop
- * session with {@code secret-tool} installed.
+ * The Secret Service backend against this machine's real keyring. It writes to the user's keyring,
+ * so it runs only in the {@code live} tier, whose profile sets {@code JK_TEST_SECRET_SERVICE=1}:
+ * {@code jk test -p live} in a desktop session with {@code secret-tool} installed. Anywhere else
+ * (an unset switch, no session bus, a locked keyring) it is skipped.
  */
-@Tag("integration")
+@Tag("live")
 class SecretServiceLiveTest {
 
     @Test
     void a_secret_round_trips_through_the_real_secret_service_and_is_removed() {
-        assumeTrue("1".equals(System.getenv("JK_TEST_SECRET_SERVICE")), "opt-in: JK_TEST_SECRET_SERVICE=1");
+        assumeTrue("1".equals(System.getenv("JK_TEST_SECRET_SERVICE")), "opt-in: jk test -p live");
         SecretServiceBackend backend = new SecretServiceBackend(SecretCommand.REAL);
-        assumeTrue(backend.probe().available(), "no Secret Service here");
+        SecretBackend.Probe probe = backend.probe();
+        assumeTrue(probe.available(), () -> "no Secret Service answers here: " + probe.reason());
         String item = "test/" + UUID.randomUUID();
         try {
             backend.write(item, "jk test item", "p@ss w0rd \"x\"");

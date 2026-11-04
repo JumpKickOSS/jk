@@ -187,6 +187,7 @@ for f in scripts/test-*.sh; do bash "$f"; done  # CI's shell fixtures (installer
 actionlint .github/workflows/*.yml
 jk test -p slow                                 # nightly framework / language e2e
 jk test -p network                              # nightly, talks to real remotes
+jk test -p live                                 # on demand on a desktop: the real OS keychain
 jk test -p bench                                # nightly microbenchmarks
 jk test --coverage && jk guard               # nightly coverage ratchet (G91)
 ./scripts/ci-product-smoke.sh                # nightly macOS smoke (jk on PATH)

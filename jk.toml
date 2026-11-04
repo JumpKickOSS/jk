@@ -123,11 +123,12 @@ modules = [
 #   jk test -p integration         engine / e2e / worker suites. The push gate.
 #   jk test -p slow                framework and language e2e. Nightly, never gating.
 #   jk test -p network             talks to a real remote. Nightly, never gating.
+#   jk test -p live                talks to this machine's own services (the OS keychain). On demand.
 #   jk test -p bench               microbenchmarks. On demand, gates nothing.
 #   jk test --all                  everything, every suite, no tag filter.
 # ---------------------------------------------------------------------------
 [test]
-exclude-tags = ["integration", "slow", "network", "bench"]
+exclude-tags = ["integration", "slow", "network", "live", "bench"]
 # Every member's fast tier: a method slower than this is a warning naming it. The slowest fast
 # methods take under 2.5s alone; a method that needs more belongs in a slower tier.
 fast-method-budget = "5s"
@@ -137,7 +138,7 @@ fast-method-budget = "5s"
 # published until it ships.
 [profiles.integration]
 include-tags = ["integration"]
-exclude-tags = ["slow", "network", "bench"]
+exclude-tags = ["slow", "network", "live", "bench"]
 env = { JK_HTTP_DENY_HOSTS = "jumpkick.build" }
 
 # Framework / language end-to-end: does an Android / Grails / Scala / KSP / Protobuf
@@ -145,13 +146,21 @@ env = { JK_HTTP_DENY_HOSTS = "jumpkick.build" }
 # plugin or a toolchain moves, not when the change under review does.
 [profiles.slow]
 include-tags = ["slow"]
-exclude-tags = ["network", "bench"]
+exclude-tags = ["network", "live", "bench"]
 
 # Talks to a real remote. Off the gate: Maven Central enforces a per-IP quota, so a gate
 # that needs the network fails for reasons the change did not cause.
 [profiles.network]
 include-tags = ["network"]
+exclude-tags = ["live", "bench"]
+
+# Talks to a service of the machine it runs on and writes to it: the user's OS keychain. Off
+# every gate and every CI run, which have no desktop session; on demand on a desktop. The env
+# entries are each live test's own opt-in, so `jk test --all` leaves the user's keychain alone.
+[profiles.live]
+include-tags = ["live"]
 exclude-tags = ["bench"]
+env = { JK_TEST_SECRET_SERVICE = "1" }
 
 # Microbenchmarks print medians and assert nothing about deltas, so gating on them would
 # gate on CI noise. They still need a tier, or nothing runs them at all.
@@ -162,4 +171,4 @@ exclude-tags = []
 # Auto-selected when CI is set. CI runs the fast tier with the same filters as a
 # developer's `jk test`; the slow tiers are separate scheduled runs, by profile name.
 [profiles.ci]
-exclude-tags = ["integration", "slow", "network", "bench"]
+exclude-tags = ["integration", "slow", "network", "live", "bench"]

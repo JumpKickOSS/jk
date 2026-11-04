@@ -289,6 +289,7 @@ jk test                          # fast tier, untagged only
 jk test -p integration           # the push gate
 jk test -p slow                  # framework / language e2e (nightly)
 jk test -p network               # talks to a real remote (nightly)
+jk test -p live                  # this machine's OS keychain (on demand, desktop only)
 jk test -p bench                 # microbenchmarks (nightly)
 jk test -A                    # everything, no tag filter
 ```
