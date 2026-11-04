@@ -51,12 +51,49 @@ class ClientEnvForwardTest {
     void it_reports_only_what_the_caller_actually_has() {
         var resolved = ClientEnvForward.resolve();
         for (var e : resolved.entrySet()) {
-            if (e.getKey().startsWith(ClientEnvForward.REPO_PREFIX)) continue; // by prefix, tested below
-            if (BuildEnv.PROXY.contains(e.getKey())) continue; // by name, tested below
-            if (BuildEnv.DISPLAY.contains(e.getKey())) continue; // by name, tested below
-            if (BuildEnv.JDK_ROOT.contains(e.getKey())) continue; // by name, tested below
+            if (forwardedByCategory(e.getKey())) continue; // each category is tested below
             assertThat(ClientEnvForward.names()).contains(e.getKey());
             assertThat(e.getValue()).as(e.getKey()).isEqualTo(System.getenv(e.getKey()));
+        }
+    }
+
+    /**
+     * Whether {@code name} rides by one of the categories beside {@link ClientEnvForward#names()}:
+     * the shell's proxy, display and container runtime ({@link BuildEnv#SHELL}), the JDK root, a
+     * front-end build's variables, or the repository prefix. Whatever this host's shell has set
+     * for one of them, it is not a machine-list name.
+     */
+    private static boolean forwardedByCategory(String name) {
+        if (name.startsWith(ClientEnvForward.REPO_PREFIX)) return true;
+        if (BuildEnv.SHELL.contains(name) || BuildEnv.JDK_ROOT.contains(name) || BuildEnv.NODE.contains(name)) {
+            return true;
+        }
+        for (String prefix : BuildEnv.NODE_PREFIXES) {
+            if (name.startsWith(prefix)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * The container runtime is the one the terminal running {@code jk} names — a Podman socket, a
+     * remote daemon. Left to the daemon's inherited value, a Testcontainers suite or {@code jk
+     * image} would talk to whichever runtime the shell that spawned the engine had.
+     */
+    @Test
+    void it_forwards_the_container_runtime_so_the_running_shell_decides_it() {
+        System.setProperty("jk.env.DOCKER_HOST", "unix:///run/user/1000/podman/podman.sock");
+        System.setProperty("jk.env.TESTCONTAINERS_RYUK_DISABLED", "true");
+        System.setProperty("jk.env.DOCKER_BUILDKIT", "1");
+        try {
+            assertThat(ClientEnvForward.resolve())
+                    .containsEntry("DOCKER_HOST", "unix:///run/user/1000/podman/podman.sock")
+                    .containsEntry("TESTCONTAINERS_RYUK_DISABLED", "true")
+                    .doesNotContainKey("DOCKER_BUILDKIT");
+            assertThat(ClientEnvForward.names()).doesNotContainAnyElementsOf(BuildEnv.CONTAINER);
+        } finally {
+            System.clearProperty("jk.env.DOCKER_HOST");
+            System.clearProperty("jk.env.TESTCONTAINERS_RYUK_DISABLED");
+            System.clearProperty("jk.env.DOCKER_BUILDKIT");
         }
     }
 
