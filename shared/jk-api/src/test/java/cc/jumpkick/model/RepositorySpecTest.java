@@ -4,6 +4,7 @@ package cc.jumpkick.model;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /** The written form of a repository URL: one spelling per origin, so two manifests agree by text. */
@@ -70,5 +71,45 @@ class RepositorySpecTest {
                 .isFalse();
         assertThat(RepositorySpec.sameOrigin(URI.create("file:///srv/repo"), URI.create("https://repo.example/")))
                 .isFalse();
+    }
+
+    @Test
+    void loopback_is_decided_by_spelling_and_covers_every_form_of_127_8_and_the_ipv6_loopback() {
+        for (String host : List.of(
+                "localhost",
+                "LOCALHOST",
+                "127.0.0.1",
+                "127.1.2.3",
+                "127.255.255.254",
+                "::1",
+                "[::1]",
+                "0:0:0:0:0:0:0:1",
+                "[0:0:0:0:0:0:0:1]",
+                "::ffff:127.0.0.1",
+                "[::ffff:127.0.0.1]",
+                "[::FFFF:127.0.0.1]",
+                "::ffff:7f00:1",
+                "[::ffff:7f00:1]",
+                "[::ffff:7f12:3456]",
+                "0:0:0:0:0:ffff:127.0.0.1")) {
+            assertThat(RepositorySpec.loopback(host)).as(host).isTrue();
+        }
+        for (String host : List.of(
+                "",
+                "10.0.0.1",
+                "128.0.0.1",
+                "::2",
+                "[::ffff:10.0.0.1]",
+                "::ffff:a00:1",
+                "[::ffff:c0a8:101]",
+                "::ffff:8000:1",
+                "127.example.com",
+                "localhost.example.com",
+                "repo.maven.apache.org",
+                "[::1",
+                "not a host")) {
+            assertThat(RepositorySpec.loopback(host)).as(host).isFalse();
+        }
+        assertThat(RepositorySpec.loopback(null)).isFalse();
     }
 }
