@@ -613,7 +613,8 @@ installation's, and the active-profile ids are the union. `JK_M2_SETTINGS=<file>
 user file (Maven's `-s`). Both files are re-read when they change, so editing one needs no
 `jk engine stop`. `jk doctor` prints which files the engine read, every mirror with the built-in
 remotes it stands in for, the proxies and the profile repositories. Not read:
-`<pluginRepositories>` and `<pluginGroups>`.
+`<pluginRepositories>`, `<pluginGroups>`, and a `<server>`'s `<privateKey>`, `<passphrase>` and
+`<configuration>` (a private key serves scp and sftp repositories, which jk does not speak).
 
 ### `${...}` in `settings.xml`
 
@@ -627,7 +628,7 @@ keeps the password out of the file:
   `MAVEN_HOME` names.
 - `${settings.*}` and `${project.*}` are not expanded, as in Maven.
 
-This covers `<server>` usernames, passwords and passphrases, `<mirror>`, `<proxy>` and profile
+This covers `<server>` usernames and passwords, `<mirror>`, `<proxy>` and profile
 repository URLs, and `<localRepository>`. An expression that does not resolve stays as written,
 as Maven leaves it, and jk warns once per run, naming the file, the element and the expression
 (`` <server> `nexus` <password> names ${env.NEXUS_PASSWORD} ``) —

@@ -62,7 +62,9 @@ final class SettingsXml {
     }
 
     /**
-     * The servers with usable credentials. A {@code <password>} that is encrypted and does not
+     * The servers with usable credentials: {@code <username>} and {@code <password>}, which is all
+     * an HTTP repository takes; {@code <privateKey>} and {@code <passphrase>} are for transports jk
+     * does not speak and are not read. A {@code <password>} that is encrypted and does not
      * decrypt drops its server, after a warning, so the repository is asked anonymously rather
      * than with the ciphertext; an id is decided by its first entry either way.
      */
@@ -75,7 +77,6 @@ final class SettingsXml {
             String where = "<server> `" + id + "`";
             String username = text(server, "username", where);
             String password = text(server, "password", where);
-            String passphrase = text(server, "passphrase", where);
             if (username == null && password == null) continue; // no usable creds
             if (!decided.add(id)) continue;
             try {
@@ -84,13 +85,7 @@ final class SettingsXml {
                 undecryptable(where, "<password>", e, "the repository is accessed anonymously");
                 continue;
             }
-            try {
-                passphrase = decrypted(passphrase);
-            } catch (MavenPasswords.Undecryptable e) {
-                undecryptable(where, "<passphrase>", e, "it is not used");
-                passphrase = null;
-            }
-            byId.put(id, new MavenSettings.Server(id, username, password, passphrase));
+            byId.put(id, new MavenSettings.Server(id, username, password));
         }
         return byId;
     }

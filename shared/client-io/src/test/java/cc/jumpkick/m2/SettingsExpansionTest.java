@@ -60,17 +60,18 @@ class SettingsExpansionTest {
     @Test
     void env_expressions_in_a_server_entry_expand_from_the_environment(@TempDir Path dir) throws Exception {
         Path xml = write(dir, SERVER);
-        Map<String, String> env =
-                Map.of("NEXUS_USER", "deployer", "NEXUS_PASSWORD", "s3cr3t-pw", "NEXUS_PASSPHRASE", "key-phrase");
+        Map<String, String> env = Map.of("NEXUS_USER", "deployer", "NEXUS_PASSWORD", "s3cr3t-pw");
 
         MavenSettings settings = MavenSettings.loadFrom(xml, env::get);
 
         assertThat(settings.server("nexus")).hasValueSatisfying(s -> {
             assertThat(s.username()).isEqualTo("deployer");
             assertThat(s.password()).isEqualTo("s3cr3t-pw");
-            assertThat(s.passphrase()).isEqualTo("key-phrase");
         });
-        assertThat(settings.warnings()).isEmpty();
+        assertThat(settings.warnings())
+                .as("<passphrase> serves key-based transports jk does not speak, so its unset ${env.NEXUS_PASSPHRASE}"
+                        + " is not read and not reported")
+                .isEmpty();
     }
 
     @Test
