@@ -644,6 +644,16 @@ public final class JkBuildEditor {
     }
 
     /**
+     * The manifest key a dependency gets when none is named: {@code artifactId} with each character
+     * a bare key cannot hold written as {@code -} ({@code spark-sql_2.13} → {@code spark-sql_2-13}),
+     * and {@code lib-} in front of one that does not start with a letter.
+     */
+    public static String handleFor(String artifactId) {
+        String key = artifactId.replaceAll("[^A-Za-z0-9_-]", "-");
+        return !key.isEmpty() && Character.isLetter(key.charAt(0)) && key.charAt(0) < 128 ? key : "lib-" + key;
+    }
+
+    /**
      * Set {@code [application].assembly} and {@code minified} surgically. Artifacts are additive,
      * so both keys are written independently; a minified build also carries {@code assembly = true}
      * because the R8 jar is built beside the fat one. Requires an existing {@code [application]}

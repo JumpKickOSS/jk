@@ -12,6 +12,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.command.EngineEdits;
+import cc.jumpkick.config.JkBuildEditor;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.library.LibraryCatalog;
@@ -444,8 +445,9 @@ public final class AddCommand implements CliCommand {
             if (classifier.indexOf(':') >= 0) {
                 throw new IllegalArgumentException("--classifier must be a word without `:`: " + classifier);
             }
-            String library =
-                    (libraryFlag == null || libraryFlag.isBlank()) ? plain.name() + "-" + classifier : plain.library();
+            String library = (libraryFlag == null || libraryFlag.isBlank())
+                    ? JkBuildEditor.handleFor(plain.name() + "-" + classifier)
+                    : plain.library();
             return new ParsedDep(library, plain.group(), plain.name(), plain.versionLiteral(), classifier);
         }
 
@@ -533,9 +535,10 @@ public final class AddCommand implements CliCommand {
             String groupFromCoord = moduleStr.substring(0, sep);
             String artifactFromCoord = moduleStr.substring(sep + 1);
 
-            // Flags override the parsed coord. Defaults: library → artifactId,
-            // name → artifactId (override with --name), group → groupFromCoord.
-            String library = nonBlank(libraryFlag, artifactFromCoord);
+            // Flags override the parsed coord. Defaults: library → artifactId as a manifest key
+            // (spark-sql_2.13 → spark-sql_2-13), name → artifactId (override with --name),
+            // group → groupFromCoord.
+            String library = nonBlank(libraryFlag, JkBuildEditor.handleFor(artifactFromCoord));
             String group = nonBlank(groupFlag, groupFromCoord);
             String name = nonBlank(nameFlag, artifactFromCoord);
             return new ParsedDep(library, group, name, explicitOrNull(nonBlank(versionFlag, rawVersion)), null);
