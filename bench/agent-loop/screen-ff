@@ -83,6 +83,23 @@ def verdict(agent: str, arm: str, series: int, baseline: int, tasks: list[str]) 
     return ("better" if mid < BETTER and regressed == 0 else "same"), lines
 
 
+def measured(agent: str, arm: str, task: str, run: int) -> dict | None:
+    """The cell's row with a verdict, when one was written."""
+    hits = [r for r in rows() if (r["driver"], r["arm"], r["task"], r["run"]) == (agent, arm, task, run)]
+    return hits[-1] if hits else None
+
+
+def last_finding(agent: str, arm: str, task: str, run: int) -> str:
+    """Why the cell's newest row has no verdict."""
+    for f in sorted((HERE / "results").glob("*-change-tasks/rows.jsonl"), reverse=True):
+        for line in reversed(f.read_text().splitlines()):
+            if line.strip():
+                r = json.loads(line)
+                if (r.get("driver"), r.get("arm"), r.get("task"), r.get("run")) == (agent, arm, task, run):
+                    return str(r.get("finding") or "no finding")[:200]
+    return "no row"
+
+
 def reached(agent: str, arm: str, task: str, run: int, expect: str) -> bool | None:
     """Whether the run's transcript carries the expected text in a tool answer; None when not found."""
     root = Path.home() / ".cache/jk-bench/agent-loop/change-tasks"
@@ -111,20 +128,33 @@ def main() -> int:
             if task in NEEDS_DOCKER and subprocess.run(["docker", "info"], capture_output=True).returncode != 0:
                 print(f"   {task}: skipped, Docker is down", flush=True)
                 continue
-            for agent in active:
+            for agent in list(active):
                 arm = PRESCRIPTIONS[agent]
+                if measured(agent, arm, task, run):
+                    continue
                 sys.argv = ["change-tasks", "--driver", agent, "--arm", arm, "--task", task,
                             "--first-run", str(run), "--runs", "1"]
                 try:
                     ct.main()
                 except Exception as e:  # noqa: BLE001 - one broken cell is a line, not the end of the screen
                     print(f"   {agent} {task} #{run} raised {e!r}", flush=True)
+                row = measured(agent, arm, task, run)
+                if row is None:
+                    why = last_finding(agent, arm, task, run)
+                    print(f"   {agent} {task} #{run}: not measured: {why}", flush=True)
+                    if "did not start" in why:
+                        print(f"== {agent} dropped: its CLI does not start", flush=True)
+                        active.remove(agent)
+                    continue
                 if "rename" in task:
                     seen = reached(agent, arm, task, run, ns.expect)
                     print(f"   {agent} {task} #{run}: change reached the agent: {seen}", flush=True)
                     if seen is False:
                         print(f"== stop: {task}'s rename answer did not carry the change; fix that first", flush=True)
                         return 1
+        if not active:
+            print("== stop: no agent left", flush=True)
+            return 1
         verdicts = {}
         for agent in active:
             v, lines = verdict(agent, PRESCRIPTIONS[agent], ns.series, ns.baseline, ns.task)
