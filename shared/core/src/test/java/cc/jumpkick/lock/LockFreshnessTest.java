@@ -3,9 +3,13 @@ package cc.jumpkick.lock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.plugin.manifest.PluginContributions;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -286,6 +290,79 @@ class LockFreshnessTest {
 
         // Fail closed: the re-lock surfaces LockNativePin's conflict message.
         assertThat(LockFreshness.isStale(dir, lockFile)).isTrue();
+    }
+
+    /**
+     * A closure an active plugin resolves for the lock ([quarkus] resolves its extensions'
+     * deployment closure) is pinned by a resolved row for the module's inputs: none, or one for
+     * other inputs, is a stale lock, found without forking the plugin.
+     */
+    @Test
+    void a_lock_closure_without_a_row_for_the_modules_inputs_is_stale(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group  = "g"
+                name   = "n"
+                version = "1"
+                java = 25
+
+                [quarkus]
+                version = "3.40.1"
+                """);
+        Path lockFile = dir.resolve("jk-lock.toml");
+        // Every other tool [quarkus] fetches is pinned, so the closure row is all that is asked.
+        List<ToolEntry> tools = List.of(
+                ToolEntry.closureOf(
+                        Coordinate.parse("io.quarkus:quarkus-bootstrap-core:3.40.1"),
+                        List.of(Coordinate.parse("io.quarkus:quarkus-bootstrap-maven-resolver:3.40.1")),
+                        "io.quarkus:quarkus-bootstrap-bom:3.40.1",
+                        List.of(Coordinate.parse("io.quarkus:quarkus-bootstrap-core:3.40.1"))),
+                ToolEntry.single(Coordinate.parse("io.quarkus:quarkus-bootstrap-core:3.40.1"), "1".repeat(64)),
+                ToolEntry.single(
+                        Coordinate.parse(
+                                "io.quarkus.platform:quarkus-bom-quarkus-platform-properties:3.40.1!properties"),
+                        "2".repeat(64)));
+        Lockfile lock = Lockfile.empty("test").withTools(tools);
+        LockfileWriter.write(lock, lockFile);
+        assertThat(LockFreshness.isStale(dir, lockFile)).as("no closure row").isTrue();
+
+        var build = JkBuildParser.parse(dir.resolve("jk.toml"));
+        var closure = PluginContributions.lockClosures(build, dir).getFirst();
+        String inputs = LockClosureInputs.of(closure, dir, dir, lock);
+        var row = ToolEntry.resolved(
+                "quarkus/deployment",
+                inputs,
+                Map.of(Coordinate.parse("io.quarkus:quarkus-arc-deployment:3.40.1"), "3".repeat(64)));
+        List<ToolEntry> withRow = new ArrayList<>(tools);
+        withRow.add(row);
+        LockfileWriter.write(lock.withTools(withRow), lockFile);
+        assertThat(LockFreshness.isStale(dir, lockFile))
+                .as("a row for the module's inputs")
+                .isFalse();
+
+        List<ToolEntry> otherInputs = new ArrayList<>(tools);
+        otherInputs.add(ToolEntry.resolved("quarkus/deployment", "4".repeat(64), row.files()));
+        LockfileWriter.write(lock.withTools(otherInputs), lockFile);
+        assertThat(LockFreshness.isStale(dir, lockFile))
+                .as("a row for other inputs")
+                .isTrue();
+    }
+
+    /** The module is an input: two members of one workspace reading the same rows are two answers. */
+    @Test
+    void the_module_is_an_input_of_its_lock_closure(@TempDir Path dir) throws Exception {
+        Files.writeString(
+                dir.resolve("jk.toml"),
+                "group = \"g\"\nname = \"n\"\nversion = \"1\"\n\n[quarkus]\nversion = \"3.40.1\"\n");
+        var build = JkBuildParser.parse(dir.resolve("jk.toml"));
+        var closure = PluginContributions.lockClosures(build, dir).getFirst();
+        Lockfile lock = Lockfile.empty("test");
+
+        assertThat(LockClosureInputs.of(closure, dir, dir.resolve("api"), lock))
+                .isNotEqualTo(LockClosureInputs.of(closure, dir, dir.resolve("web"), lock))
+                .isEqualTo(
+                        LockClosureInputs.of(closure, dir, dir.resolve("api/.").normalize(), lock));
+        assertThat(LockClosureInputs.module(dir, dir)).isEmpty();
+        assertThat(LockClosureInputs.module(dir, dir.resolve("services/api"))).isEqualTo("services/api");
     }
 
     @Test

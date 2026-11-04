@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
  * The augment runs in a grandchild JVM, so the engine's per-job decisions — {@code --offline} and
  * the platform-properties path the engine fetched — can only reach it as arguments. The two ends
  * of this vector are pinned together on purpose: {@code QuarkusAugmentMain.main} rejects anything
- * but twelve arguments, so a drift on either side is a startup failure rather than a silently
+ * but thirteen arguments, so a drift on either side is a startup failure rather than a silently
  * dropped policy.
  */
 class QuarkusAugmentArgsTest {
@@ -31,6 +31,7 @@ class QuarkusAugmentArgsTest {
     private static final Path PROPS =
             ShortTempDirs.path().resolve("store/cas/quarkus-bom-quarkus-platform-properties-3.38.3.properties");
     private static final Path ROUTES = ShortTempDirs.path().resolve("jk-quarkus-repositories-1.jsonl");
+    private static final Path CLOSURE = ShortTempDirs.path().resolve("store/plugin-tools/lock-closures/abc");
 
     @Test
     void the_offline_decision_is_the_last_argument_the_augment_is_given() {
@@ -40,8 +41,8 @@ class QuarkusAugmentArgsTest {
 
     @Test
     void the_vector_is_the_arity_the_augment_requires() {
-        // QuarkusAugmentMain.main exits USAGE on anything but 12.
-        assertThat(argsFor(false)).hasSize(12);
+        // QuarkusAugmentMain.main exits USAGE on anything but 13.
+        assertThat(argsFor(false)).hasSize(13);
     }
 
     /**
@@ -61,6 +62,19 @@ class QuarkusAugmentArgsTest {
     void the_repository_routes_file_is_the_argument_before_the_policy() {
         assertThat(argsFor(false)).element(10).isEqualTo(ROUTES.toString());
         assertThat(testModelArgsFor(false)).element(9).isEqualTo(ROUTES.toString());
+    }
+
+    /**
+     * The lock's {@code quarkus/deployment} closure rides just before the policy, as the repository
+     * the engine linked from the store: the forks' resolver reads it and nothing on the machine
+     * besides. Blank when the engine handed none over.
+     */
+    @Test
+    void the_closure_repository_is_the_engine_supplied_extra() {
+        assertThat(argsFor(false)).element(11).isEqualTo(CLOSURE.toString());
+        assertThat(testModelArgsFor(false)).element(10).isEqualTo(CLOSURE.toString());
+        assertThat(QuarkusAugmentMain.closureRepository("")).isNull();
+        assertThat(QuarkusAugmentMain.closureRepository(CLOSURE.toString())).isEqualTo(CLOSURE);
     }
 
     /** A launch without the fetched artifact fails naming the step-dependency, not silently. */
@@ -96,7 +110,7 @@ class QuarkusAugmentArgsTest {
     void the_test_model_vector_carries_the_same_decisions() {
         List<String> offline = testModelArgsFor(true);
         List<String> online = testModelArgsFor(false);
-        assertThat(offline).hasSize(11).last().isEqualTo("true");
+        assertThat(offline).hasSize(12).last().isEqualTo("true");
         assertThat(online).last().isEqualTo("false");
         assertThat(offline).element(8).isEqualTo(PROPS.toString());
         assertThat(offline).element(2).isEqualTo(TEST_MODEL.toString());
@@ -181,6 +195,7 @@ class QuarkusAugmentArgsTest {
 
         @Override
         public Optional<Path> extra(String name) {
+            if (QuarkusPlugin.CLOSURE_EXTRA.equals(name)) return Optional.of(CLOSURE);
             return QuarkusPlugin.PLATFORM_PROPS_EXTRA.equals(name)
                     ? Optional.ofNullable(platformProps)
                     : Optional.empty();

@@ -318,6 +318,7 @@ public final class PluginDescriptors {
                 parseProvidedClasspath(contribute, displayPath, schemaKeys, stepDeps, commandDeps);
         String jvmEnvironment = parseJvmEnvironment(contribute, displayPath);
         PluginDescriptor.JvmModules jvmModules = parseJvmModules(contribute, schemaKeys, displayPath);
+        List<PluginDescriptor.LockClosure> lockClosures = parseLockClosures(contribute, displayPath);
         return new PluginDescriptor.Contributions(
                 platformDeps,
                 compilerArgs,
@@ -329,7 +330,26 @@ public final class PluginDescriptors {
                 provided,
                 sourceRoots,
                 jvmEnvironment,
-                jvmModules);
+                jvmModules,
+                lockClosures);
+    }
+
+    /** {@code [[contribute.lock-closure]]}: a {@code name} each, unique within the plugin. */
+    private static List<PluginDescriptor.LockClosure> parseLockClosures(TomlTable contribute, String displayPath) {
+        List<PluginDescriptor.LockClosure> out = new ArrayList<>();
+        for (TomlTable t : tableArray(contribute, "lock-closure", displayPath)) {
+            String where = displayPath + ".contribute.lock-closure";
+            String name = requireString(t, "name", where);
+            if (!name.matches("[a-z][a-z0-9-]*")) {
+                throw new JkBuildParseException(
+                        where + ".name must be lower-case letters, digits and `-` — got: " + name);
+            }
+            if (out.stream().anyMatch(c -> c.name().equals(name))) {
+                throw new JkBuildParseException(where + ": `" + name + "` is declared twice");
+            }
+            out.add(new PluginDescriptor.LockClosure(name));
+        }
+        return out;
     }
 
     private static List<PluginDescriptor.PlatformDependency> parsePlatformDependencies(

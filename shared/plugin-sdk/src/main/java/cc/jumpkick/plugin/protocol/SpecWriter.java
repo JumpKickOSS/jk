@@ -223,7 +223,36 @@ public final class SpecWriter {
             String group,
             String artifact,
             String version) {
+        return entry(fileName, jar, snapshot, container, group, artifact, version, null);
+    }
+
+    /**
+     * One entry of the test runtime closure, beside the production entries: what a {@link
+     * PluginProtocol#OP_LOCK_CLOSURE} spec carries.
+     */
+    public SpecWriter testEntry(
+            String fileName,
+            @Nullable Path jar,
+            boolean snapshot,
+            @Nullable Path container,
+            String group,
+            String artifact,
+            String version) {
+        return entry(fileName, jar, snapshot, container, group, artifact, version, PluginProtocol.ROLE_TEST);
+    }
+
+    private SpecWriter entry(
+            String fileName,
+            @Nullable Path jar,
+            boolean snapshot,
+            @Nullable Path container,
+            String group,
+            String artifact,
+            String version,
+            @Nullable String role) {
         StringBuilder b = new StringBuilder("{\"t\":\"entry\",\"file\":").append(Jsonl.quote(fileName));
+        if (role != null)
+            b.append(",\"").append(PluginProtocol.ROLE).append("\":").append(Jsonl.quote(role));
         if (!group.isEmpty()) {
             b.append(",\"group\":")
                     .append(Jsonl.quote(group))

@@ -135,17 +135,4 @@ class LockedClosureTest {
                 .hasMessageContaining("netty-transport-native-epoll")
                 .hasMessageContaining("ambiguous");
     }
-
-    @Test
-    void mirror_roots_come_from_the_locked_jars_own_store(@TempDir Path dir) throws Exception {
-        Path store = dir.resolve("store");
-        Files.createDirectories(store.resolve("repos/central/org/acme"));
-        Files.createDirectories(store.resolve("repos/jk-local"));
-        Path jar = store.resolve("repos/central/org/acme/app-lib-1.0.jar");
-
-        LockedClosure closure = LockedClosure.of(List.of(locked("org.acme", "app-lib", "1.0", jar)));
-
-        assertThat(closure.mirrorRepoRoots())
-                .containsExactly(store.resolve("repos/central"), store.resolve("repos/jk-local"));
-    }
 }

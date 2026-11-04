@@ -31,6 +31,11 @@ public final class PluginProtocol {
 
     public static final String OP_IMAGE = "image";
     public static final String OP_PUBLISH = "publish";
+    /**
+     * Answer the files one of the plugin's {@code [[contribute.lock-closure]]} closures needs
+     * ({@code name} on the op line), each a {@link #PIN} reply, for {@code jk lock} to pin.
+     */
+    public static final String OP_LOCK_CLOSURE = "lock-closure";
 
     // ---- spec line types (engine → plugin) ------------------------------------------------
 
@@ -82,6 +87,9 @@ public final class PluginProtocol {
 
     public static final String LABEL = "label"; // free-text progress label
     public static final String COMMAND_OUT = "command-out"; // user-facing output line (command ops)
+    /** One file a lock closure needs: {@code coordinate} is {@code group:artifact:version[:classifier][!type]}. */
+    public static final String PIN = "pin";
+
     public static final String DIAGNOSTIC = "diagnostic"; // {sev,file?,line?,col?,key?,msg}
     public static final String PROVENANCE = "provenance"; // {gen,src[]}
     public static final String TEST = "test"; // {event,…} test lifecycle event
@@ -126,6 +134,8 @@ public final class PluginProtocol {
     public static final String ROLE_PROCESSOR = "processor";
     public static final String ROLE_FRIEND = "friend";
     public static final String ROLE_RUNTIME = "runtime";
+    /** An {@code entry} of the test runtime closure, beside the production one ({@link #OP_LOCK_CLOSURE}). */
+    public static final String ROLE_TEST = "test";
     /** Scala 3 compiler + bridge jars for mixed Java+Scala Zinc (not the project compile CP). */
     public static final String ROLE_COMPILER = "compiler";
 

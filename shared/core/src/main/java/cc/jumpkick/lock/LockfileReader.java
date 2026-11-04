@@ -507,7 +507,7 @@ public final class LockfileReader {
 
     /**
      * The {@code [[tool]]} rows: an artifact's one digest for every host, or one per platform under
-     * {@code sha256}; a URL's digest.
+     * {@code sha256}; a URL's digest; a closure, a tool's or one a plugin resolved.
      */
     private static List<ToolEntry> readTools(LockToml result) {
         List<ToolEntry> tools = new ArrayList<>();
@@ -515,6 +515,23 @@ public final class LockfileReader {
         if (array == null) return tools;
         for (int i = 0; i < array.size(); i++) {
             LockToml t = array.getTable(i);
+            String resolvedBy = t.getString("resolved-by");
+            if (resolvedBy != null) {
+                tools.add(new ToolEntry(
+                        null,
+                        null,
+                        ToolEntry.RESOLVED,
+                        null,
+                        null,
+                        Map.of(),
+                        null,
+                        List.of(),
+                        null,
+                        stringList(t, "files"),
+                        resolvedBy,
+                        requireRowString(t, "inputs")));
+                continue;
+            }
             String url = t.getString("url");
             if (url != null) {
                 tools.add(new ToolEntry(

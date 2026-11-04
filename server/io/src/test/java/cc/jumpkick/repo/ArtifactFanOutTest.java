@@ -32,12 +32,17 @@ class ArtifactFanOutTest {
     @Test
     void a_failure_cancels_the_rest_instead_of_waiting_for_them() throws Exception {
         CountDownLatch never = new CountDownLatch(1);
+        CountDownLatch running = new CountDownLatch(1);
         CountDownLatch cancelled = new CountDownLatch(1);
+        // The failure waits for the long fetch to be running: one cancelled before it starts never
+        // runs at all, and the point here is the one in flight.
         List<ArtifactFanOut.Fetch<String>> fetches = List.of(
                 () -> {
+                    running.await();
                     throw new FileNotFoundException("gone");
                 },
                 () -> {
+                    running.countDown();
                     try {
                         never.await();
                         return "never";

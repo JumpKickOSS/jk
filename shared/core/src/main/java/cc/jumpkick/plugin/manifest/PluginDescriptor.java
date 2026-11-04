@@ -164,11 +164,13 @@ public record PluginDescriptor(
             /** GMM {@code org.gradle.jvm.environment} (e.g. {@code "android"}), or null. */
             @Nullable String jvmEnvironment,
             /** {@code [contribute.jvm-modules]}: the module path the test JVM and {@code jk run} need, or null. */
-            @Nullable JvmModules jvmModules) {
+            @Nullable JvmModules jvmModules,
+            /** {@code [[contribute.lock-closure]]}: the closures the plugin resolves for {@code jk lock} to pin. */
+            List<LockClosure> lockClosures) {
 
         public static final Contributions NONE = new Contributions(
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null,
-                null);
+                null, List.of());
 
         public Contributions {
             platformDependencies = platformDependencies == null ? List.of() : List.copyOf(platformDependencies);
@@ -180,6 +182,7 @@ public record PluginDescriptor(
             commandDependencies = commandDependencies == null ? List.of() : List.copyOf(commandDependencies);
             providedClasspath = providedClasspath == null ? List.of() : List.copyOf(providedClasspath);
             sourceRoots = sourceRoots == null ? List.of() : List.copyOf(sourceRoots);
+            lockClosures = lockClosures == null ? List.of() : List.copyOf(lockClosures);
         }
 
         public boolean isEmpty() {
@@ -191,7 +194,20 @@ public record PluginDescriptor(
                     && commandDependencies.isEmpty()
                     && providedClasspath.isEmpty()
                     && sourceRoots.isEmpty()
-                    && jvmModules == null;
+                    && jvmModules == null
+                    && lockClosures.isEmpty();
+        }
+    }
+
+    /**
+     * {@code [[contribute.lock-closure]]}: files a build of the module needs that only the plugin's
+     * own resolution can name (Quarkus's extension deployment artifacts). {@code jk lock} asks the
+     * plugin's worker for them ({@code LockExtension}) and pins every one, so {@code jk sync} stages
+     * them and an offline build has them. {@code name} tells the plugin which closure is asked for.
+     */
+    public record LockClosure(String name) {
+        public LockClosure {
+            Objects.requireNonNull(name, "name");
         }
     }
 

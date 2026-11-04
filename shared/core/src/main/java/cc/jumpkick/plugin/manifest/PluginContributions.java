@@ -284,6 +284,34 @@ public final class PluginContributions {
         return out;
     }
 
+    /**
+     * One closure an active plugin resolves for the lock ({@code [[contribute.lock-closure]]}): the
+     * plugin's manifest and the closure's name.
+     */
+    public record LockClosureDep(PluginDescriptor manifest, String name) {
+
+        /** {@code <plugin>/<name>}: what the lock row is {@code resolved-by}. */
+        public String resolvedBy() {
+            return manifest.id() + "/" + name;
+        }
+    }
+
+    /**
+     * The closures the module's active plugins resolve for the lock, in plugin order. Manifest data
+     * alone: a module whose plugins declare none answers empty without forking anything.
+     */
+    public static List<LockClosureDep> lockClosures(JkBuild build, @Nullable Path moduleDir) {
+        List<LockClosureDep> out = new ArrayList<>();
+        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
+            if (manifest.contributions().lockClosures().isEmpty()) continue;
+            if (build.pluginConfig(manifest.id()).isEmpty()) continue;
+            for (PluginDescriptor.LockClosure closure : manifest.contributions().lockClosures()) {
+                out.add(new LockClosureDep(manifest, closure.name()));
+            }
+        }
+        return out;
+    }
+
     /** The step lane, then the command lane. */
     private static List<StepDep> toolLanes(JkBuild build, Path moduleDir, Map<String, String> platformPins) {
         List<StepDep> tools = new ArrayList<>(stepDependencies(build, moduleDir, platformPins));

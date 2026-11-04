@@ -54,6 +54,14 @@ managed-by = "io.quarkus:quarkus-bootstrap-bom:^${config.version}"
 artifact   = "quarkus-platform-properties"
 coordinate = "io.quarkus.platform:quarkus-bom-quarkus-platform-properties:^${config.version}!properties"
 
+# The extensions' build-time closure — each runtime extension's `-deployment` artifact and its
+# dependencies, with every POM Quarkus's resolver reads — is Quarkus's to decide (descriptors,
+# conditional dependencies, capabilities). `jk lock` asks the worker for it (QuarkusPlugin
+# .lockClosure) and pins every file; `jk sync` stages them, so the augment and the test model read
+# them from the store and an offline build has them.
+[[contribute.lock-closure]]
+name = "deployment"
+
 # Quarkus REST / CDI reflect on parameter names.
 [[contribute.compiler-args]]
 javac  = ["-parameters"]

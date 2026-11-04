@@ -69,6 +69,15 @@ jk new -t quarkus/hello my-api
   the step's failure text opens with the fork's own `jk-quarkus-augment:` lines — the remote
   repositories it was routed to and the locked closure it resolved — above the fork's last 60
   lines, so a routing or closure problem is readable from `target/jk-results.md`.
+- **Build-time closure:** each extension's `-deployment` artifact and what it depends on — the
+  closure the augment and the test model load — is pinned by `jk lock`, which asks Quarkus's
+  own resolver for it, so jk never second-guesses Quarkus's rules (extension descriptors,
+  conditional dependencies, capabilities). It is a `quarkus/deployment` row in `jk-lock.toml`
+  ([Lockfile](lockfile.md#closures-a-plugin-resolves)). `jk sync` puts every file in the
+  store, so a clean build downloads nothing and `jk build -o` augments offline. The augment reads
+  those files and nothing else on the machine — never `~/.m2`. A file the lock does not pin (a
+  native jar for another OS, picked by a POM profile) is downloaded at build time, and an
+  offline build refuses it.
 - **Native:** `[native] enabled = "always"` (or a bare `[native]` / `enabled = true` for
   `jk native` only) builds through **Quarkus’s own** native-image command. JumpKick
   supplies the GraalVM toolchain. Nothing jk composes is added on top; `[native] args`

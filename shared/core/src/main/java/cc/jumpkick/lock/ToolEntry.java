@@ -5,6 +5,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.VersionSelector;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -23,6 +24,13 @@ import org.jspecify.annotations.Nullable;
  * resolved {@link #with} it, the BOM it is {@link #managedBy}, and every jar of the resolved
  * {@link #closure} as a coordinate ({@code group:artifact:version[:classifier][!type]}), sorted.
  * It carries no digest: each jar is an artifact row of its own.
+ *
+ * <p>A closure a plugin resolves itself ({@code [[contribute.lock-closure]]}) is a resolved row: the
+ * {@link #resolvedBy} plugin and closure name ({@code quarkus/deployment}), the {@link #inputs}
+ * digest of what the answer was resolved from, and every file of it, POMs among them ({@code
+ * !pom}), each with its digest on one line ({@code <coordinate> sha256:<hex>}, written as {@code
+ * files}, held in {@link #closure}): hundreds of files, so one line each rather than a row each.
+ * Rows of one name differ by inputs, which name the module.
  */
 public record ToolEntry(
         @Nullable String coordinate,
@@ -34,10 +42,15 @@ public record ToolEntry(
         @Nullable String url,
         List<String> with,
         @Nullable String managedBy,
-        List<String> closure) {
+        List<String> closure,
+        @Nullable String resolvedBy,
+        @Nullable String inputs) {
 
     /** The {@link #type} of a URL row. */
     public static final String FILE = "file";
+
+    /** The {@link #type} of a resolved row. */
+    public static final String RESOLVED = "resolved";
 
     public ToolEntry {
         Objects.requireNonNull(type, "type");
@@ -46,8 +59,32 @@ public record ToolEntry(
         List<String> jars = closure == null ? new ArrayList<>() : new ArrayList<>(closure);
         Collections.sort(jars);
         closure = List.copyOf(jars);
-        String name = url != null ? url : coordinate;
-        if (url != null) {
+        String name = url != null ? url : resolvedBy != null ? resolvedBy : coordinate;
+        if (resolvedBy != null) {
+            if (url != null
+                    || coordinate != null
+                    || version != null
+                    || classifier != null
+                    || checksum != null
+                    || !sha256.isEmpty()
+                    || !with.isEmpty()
+                    || managedBy != null) {
+                throw new IllegalArgumentException(
+                        "[[tool]] " + resolvedBy + " names `resolved-by`, `inputs` and `files` alone");
+            }
+            if (inputs == null || !inputs.startsWith("sha256:")) {
+                throw new IllegalArgumentException("[[tool]] " + resolvedBy + " inputs must be sha256:<hex>");
+            }
+            for (String file : closure) {
+                int at = file.indexOf(" sha256:");
+                if (at <= 0 || file.length() - at - " sha256:".length() != 64) {
+                    throw new IllegalArgumentException(
+                            "[[tool]] " + resolvedBy + " file `" + file + "` must be `<coordinate> sha256:<hex>`");
+                }
+            }
+        } else if (inputs != null) {
+            throw new IllegalArgumentException("[[tool]] " + name + " names `inputs` without `resolved-by`");
+        } else if (url != null) {
             if (coordinate != null
                     || version != null
                     || classifier != null
@@ -79,6 +116,21 @@ public record ToolEntry(
         if (checksum != null && !checksum.startsWith("sha256:")) {
             throw new IllegalArgumentException("[[tool]] " + name + " checksum must be sha256:<hex>");
         }
+    }
+
+    /** A row that is not {@linkplain #isResolved resolved}. */
+    public ToolEntry(
+            @Nullable String coordinate,
+            @Nullable String version,
+            String type,
+            @Nullable String classifier,
+            @Nullable String checksum,
+            Map<String, String> sha256,
+            @Nullable String url,
+            List<String> with,
+            @Nullable String managedBy,
+            List<String> closure) {
+        this(coordinate, version, type, classifier, checksum, sha256, url, with, managedBy, closure, null, null);
     }
 
     /** A Maven artifact row. */
@@ -123,6 +175,55 @@ public record ToolEntry(
                 jarSpecs);
     }
 
+    /**
+     * The closure {@code resolvedBy} ({@code <plugin>/<name>}) answered for {@code inputsHex}: each
+     * file ({@code group:artifact:version[:classifier][!type]}) to the hex digest of its bytes.
+     */
+    public static ToolEntry resolved(String resolvedBy, String inputsHex, Map<Coordinate, String> files) {
+        List<String> specs = new ArrayList<>();
+        for (Map.Entry<Coordinate, String> file : files.entrySet()) {
+            specs.add(file.getKey() + " sha256:" + file.getValue());
+        }
+        return new ToolEntry(
+                null,
+                null,
+                RESOLVED,
+                null,
+                null,
+                Map.of(),
+                null,
+                List.of(),
+                null,
+                specs,
+                resolvedBy,
+                "sha256:" + inputsHex);
+    }
+
+    /** The row of {@code rows} {@code resolvedBy} answered for {@code inputsHex}, or null when none is. */
+    public static @Nullable ToolEntry resolvedIn(List<ToolEntry> rows, String resolvedBy, String inputsHex) {
+        String inputs = "sha256:" + inputsHex;
+        for (ToolEntry row : rows) {
+            if (resolvedBy.equals(row.resolvedBy()) && inputs.equals(row.inputs())) return row;
+        }
+        return null;
+    }
+
+    /** True for a closure a plugin resolved ({@link #resolvedBy}). */
+    public boolean isResolved() {
+        return resolvedBy != null;
+    }
+
+    /** A resolved row's files, each to the hex digest it pins, in coordinate order; empty for any other row. */
+    public Map<Coordinate, String> files() {
+        Map<Coordinate, String> out = new LinkedHashMap<>();
+        if (resolvedBy == null) return out;
+        for (String file : closure) {
+            int at = file.indexOf(" sha256:");
+            out.put(Coordinate.parse(file.substring(0, at)), file.substring(at + " sha256:".length()));
+        }
+        return out;
+    }
+
     /** The row of {@code rows} that {@link #isClosureOf} a tool's specs, or null when none is. */
     public static @Nullable ToolEntry closureIn(
             List<ToolEntry> rows, String rootSpec, List<String> withSpecs, @Nullable String managedBySpec) {
@@ -140,9 +241,9 @@ public record ToolEntry(
         return null;
     }
 
-    /** True for a closure row. */
+    /** True for a closure row of a {@code transitive} tool; a {@linkplain #isResolved resolved} row is not one. */
     public boolean isClosure() {
-        return !closure.isEmpty();
+        return resolvedBy == null && !closure.isEmpty();
     }
 
     /**
@@ -184,6 +285,7 @@ public record ToolEntry(
     /** True when this row is {@code coord}'s module, version and type, whatever the classifier. */
     public boolean names(Coordinate coord) {
         return url == null
+                && resolvedBy == null
                 && closure.isEmpty()
                 && coord.module().equals(coordinate)
                 && coord.version().equals(version)
