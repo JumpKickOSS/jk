@@ -387,6 +387,10 @@ class GraphRenameTest {
                         + " shared/code-graph." + EditedTests.DONE);
         assertThat(EditedTests.next(modules, List.of("src/main/java/Root.java")))
                 .isEqualTo("Test next: run(kind=test), or jk test." + EditedTests.DONE);
+        assertThat(EditedTests.next(modules, List.of("src/main/java/Root.java", "src/test/java/RootTest.java")))
+                .as("a single-module project names its edited tests too")
+                .isEqualTo("Test the test classes it edited: run(kind=test, classes=RootTest), or jk test -S RootTest."
+                        + EditedTests.DONE);
     }
 
     private static final Map<String, String> SIZES = sources(
