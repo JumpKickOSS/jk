@@ -9,11 +9,13 @@ import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.base.DokkaResolver;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -111,5 +113,22 @@ class BuildForksTest {
         assertThat(keys(both))
                 .as("its Java member")
                 .containsExactly("worker:jk-java-compiler", "worker:jk-test-runner");
+    }
+
+    @Test
+    void a_fork_that_cannot_be_staged_stops_none_of_the_others_and_is_named() throws Exception {
+        AtomicBoolean staged = new AtomicBoolean();
+        List<String> failed = BuildForks.stage(List.of(
+                new BuildForks.Fork("worker:jk-java-compiler", () -> {
+                    Thread.sleep(50);
+                    staged.set(true);
+                    return "ok";
+                }),
+                new BuildForks.Fork("dokka:javadoc:2.2.0", () -> {
+                    throw new IOException("offline");
+                })));
+
+        assertThat(failed).containsExactly("dokka:javadoc:2.2.0: offline");
+        assertThat(staged).as("the other fork was staged all the same").isTrue();
     }
 }

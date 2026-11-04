@@ -102,25 +102,51 @@ class TransferBoardTest {
         assertThat(snap.bytes()).as("bytes that crossed the wire still count").isEqualTo(60);
     }
 
+    /** One body of {@code n} bytes, landed: what makes a declared set a download. */
+    private void move(String label, long n) {
+        try (var t = board.open(label)) {
+            t.started(n);
+            t.advanced(n);
+            t.finished();
+        }
+    }
+
     @Test
-    void open_plans_count_their_settled_files_and_a_closed_plan_leaves() {
+    void declared_sets_count_their_settled_files_and_a_closed_one_stays_counted_in_full() {
         try (var lock = board.plan(3)) {
+            move("g:a:1", 10);
             lock.settled();
             lock.settled();
             try (var sync = board.plan(2)) {
+                move("g:b:1", 10);
                 sync.settled();
                 assertThat(board.snapshot().settled()).isEqualTo(3);
                 assertThat(board.snapshot().planned()).isEqualTo(5);
             }
-            assertThat(board.snapshot().settled()).isEqualTo(2);
-            assertThat(board.snapshot().planned()).isEqualTo(3);
+            assertThat(board.snapshot().settled())
+                    .as("the nested set closed: counted in full, never subtracted")
+                    .isEqualTo(4);
+            assertThat(board.snapshot().planned()).isEqualTo(5);
         }
-        assertThat(board.snapshot()).isEqualTo(TransferBoard.Snapshot.EMPTY);
+        assertThat(board.snapshot().settled()).isEqualTo(5);
+        assertThat(board.snapshot().planned()).isEqualTo(5);
+    }
+
+    @Test
+    void a_set_settling_files_already_on_disk_is_not_a_download_whatever_came_before() {
+        move("g:earlier:1", 100);
+        try (var warm = board.plan(50)) {
+            for (int i = 0; i < 10; i++) warm.settled();
+            TransferBoard.Snapshot d = board.snapshot();
+            assertThat(d.planned()).isZero();
+            assertThat(d.downloading()).as("no burst for local files").isFalse();
+        }
     }
 
     @Test
     void a_plan_never_reports_more_settled_than_planned() {
         try (var plan = board.plan(1)) {
+            move("g:a:1", 1);
             plan.settled();
             plan.settled();
             assertThat(board.snapshot().settled()).isEqualTo(1);

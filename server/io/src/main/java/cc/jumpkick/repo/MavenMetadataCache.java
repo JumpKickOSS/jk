@@ -156,7 +156,7 @@ public final class MavenMetadataCache {
         Path body = dir.resolve(Hashing.sha256Hex(uri.toString()));
         boolean force = SessionContext.current().config().forceOr(false) || forceRevalidate();
         // Two graphs of one lock read the same catalog at once: one request, and each caller its own copy.
-        return FLIGHTS.run(body + "|" + force, () -> read(uri, credential, body, force))
+        return FLIGHTS.run(body + "|" + force + "|" + credential.hashCode(), () -> read(uri, credential, body, force))
                 .clone();
     }
 

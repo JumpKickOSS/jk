@@ -72,8 +72,14 @@ public final class ArtifactFanOut {
         return join(pending);
     }
 
+    /**
+     * The answers in order. On the first failure in order, or an interrupt, every fetch still
+     * running is cancelled (interrupted) at once: a cancelled sync must not wait out tens of MB it
+     * will never use, and a failed set has no use for the rest of it.
+     */
     private static <T> List<T> join(List<Future<T>> pending) throws IOException, InterruptedException {
         List<T> done = new ArrayList<>(pending.size());
+        boolean complete = false;
         try {
             for (Future<T> f : pending) {
                 try {
@@ -87,20 +93,12 @@ public final class ArtifactFanOut {
                     throw new IOException(cause);
                 }
             }
+            complete = true;
+            return done;
         } finally {
-            for (Future<T> f : pending) {
-                if (f.isDone()) continue;
-                try {
-                    f.get();
-                } catch (ExecutionException ignored) {
-                    // the first failure in order is already on its way out
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    for (Future<T> g : pending) g.cancel(true);
-                    break;
-                }
+            if (!complete) {
+                for (Future<T> f : pending) f.cancel(true);
             }
         }
-        return done;
     }
 }

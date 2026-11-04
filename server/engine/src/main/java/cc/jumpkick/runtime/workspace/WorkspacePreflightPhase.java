@@ -83,9 +83,14 @@ public final class WorkspacePreflightPhase {
 
     /** {@link #run(WorkspaceRequest, WorkspaceBuildListener)} on {@code clock}, which times the lock freshen. */
     static Outcome run(WorkspaceRequest request, WorkspaceBuildListener listener, Clock clock) {
-        // A cold lock or sync is mostly downloads: priced in time while they run, so the header
-        // moves through them instead of holding at a few percent.
-        AutoCloseable eta = DownloadEta.start(listener);
+        // A `jk sync` is its downloads: priced in time while they run, they are the run's remaining
+        // work, so the header moves through them. A build is not — its compile and tests follow,
+        // and a download estimate standing for the whole run would carry the bar to the top before
+        // the work it exists for began. A build's downloads move the sync stage instead
+        // (WorkspaceSyncPhase), and its own work model prices the rest.
+        WorkspaceSpec spec = request.spec();
+        boolean syncGoal = spec != null && spec.target() == WorkspaceTarget.SYNC;
+        AutoCloseable eta = syncGoal ? DownloadEta.start(listener) : () -> {};
         try {
             return preflight(request, listener, clock);
         } finally {
@@ -99,7 +104,7 @@ public final class WorkspacePreflightPhase {
 
     private static Outcome preflight(WorkspaceRequest request, WorkspaceBuildListener listener, Clock clock) {
         // Artifacts landed so far: the run's own downloads (the lock's included) are counted from here.
-        long landedBefore = SessionContext.current().io().transfers().artifactsLanded();
+        Set<String> landedBefore = SessionContext.current().io().transfers().artifactLabelsLanded();
         JkBuild entryBuild;
         try {
             entryBuild = JkBuildParser.parse(ManifestPaths.manifestIn(request.entryDir()));

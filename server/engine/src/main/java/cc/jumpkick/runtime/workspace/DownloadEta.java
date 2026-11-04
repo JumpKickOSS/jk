@@ -46,9 +46,9 @@ final class DownloadEta {
     private final long priorMsPerFile;
     private final long artifactsBefore;
 
-    private long planStartNanos = -1;
-    private long bytesAtStart;
-    private int filesAtStart;
+    private final long planStartNanos;
+    private final long bytesAtStart;
+    private final int filesAtStart;
     private long lastSentMs = -1;
 
     DownloadEta(TransferBoard board, Clock clock, LongConsumer eta, long priorMsPerFile) {
@@ -57,6 +57,11 @@ final class DownloadEta {
         this.eta = Objects.requireNonNull(eta, "eta");
         this.priorMsPerFile = Math.max(0, priorMsPerFile);
         this.artifactsBefore = board.artifactsLanded();
+        // The run's rate is measured from here: the preflight's start, before its first download.
+        TransferBoard.Snapshot at = board.snapshot();
+        this.planStartNanos = clock.nanos();
+        this.bytesAtStart = at.bytes();
+        this.filesAtStart = at.files();
     }
 
     /** What one file costs before the run has measured its own: the recorded fetch time over the downloads at once. */
@@ -102,11 +107,9 @@ final class DownloadEta {
         int remaining = d.planned() - d.settled();
         if (d.planned() <= 0 || remaining <= 0) return;
         long now = clock.nanos();
-        if (planStartNanos < 0) {
-            planStartNanos = now;
-            bytesAtStart = d.bytes();
-            filesAtStart = d.files();
-        }
+        // A set settling files already on disk downloads nothing, and is priced at nothing: a warm
+        // sync of 800 jars must not announce 800 downloads' worth of countdown.
+        if (d.bytes() - bytesAtStart <= 0 && d.inflight() == 0) return;
         long remainingMs = measured(d, remaining, now);
         if (remainingMs < 0) remainingMs = priorMsPerFile > 0 ? remaining * priorMsPerFile : -1;
         if (remainingMs < 0) return;

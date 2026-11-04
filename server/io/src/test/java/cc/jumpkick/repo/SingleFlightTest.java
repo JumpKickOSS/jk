@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -94,6 +95,25 @@ class SingleFlightTest {
             awaitWaiter();
             release.countDown();
             assertThatThrownBy(() -> first.get(5, TimeUnit.SECONDS)).hasCauseInstanceOf(AbortedHere.class);
+            assertThat(second.get(5, TimeUnit.SECONDS)).isEqualTo("mine");
+        }
+    }
+
+    @Test
+    void a_leaders_interrupt_wrapped_by_the_body_stream_is_its_own_and_the_waiter_fetches() throws Exception {
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch leading = new CountDownLatch(1);
+        try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<String> first = pool.submit(() -> flights.run("k", () -> {
+                leading.countDown();
+                release.await();
+                throw new IOException("stream closed", new InterruptedIOException("interrupted"));
+            }));
+            assertThat(leading.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<String> second = pool.submit(() -> flights.run("k", () -> "mine"));
+            awaitWaiter();
+            release.countDown();
+            assertThatThrownBy(() -> first.get(5, TimeUnit.SECONDS)).hasCauseInstanceOf(IOException.class);
             assertThat(second.get(5, TimeUnit.SECONDS)).isEqualTo("mine");
         }
     }

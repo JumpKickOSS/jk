@@ -103,19 +103,33 @@ public final class BuildForks {
         return List.copyOf(forks.values());
     }
 
-    /** Put every fork on disk at once; a failure names the fork that met it. */
-    public static void stage(List<Fork> forks) throws IOException, InterruptedException {
-        List<ArtifactFanOut.Fetch<Object>> stages = new ArrayList<>(forks.size());
+    /**
+     * Put every fork on disk at once, each on its own: one that cannot be staged (offline, a
+     * repository refusing) stops none of the others. Returns a line per fork that failed, naming
+     * it; staging is ahead-of-time only, so the step that needs a fork still fetches it, or fails
+     * with its own message, and a build that never needs it is not stopped by it.
+     */
+    public static List<String> stage(List<Fork> forks) throws InterruptedException {
+        List<ArtifactFanOut.Fetch<String>> stages = new ArrayList<>(forks.size());
         for (Fork fork : forks) {
             stages.add(() -> {
                 try {
-                    return fork.stage().fetch();
+                    fork.stage().fetch();
+                    return "";
                 } catch (IOException | RuntimeException e) {
-                    throw new IOException("could not stage " + fork.key() + ": " + e.getMessage(), e);
+                    return fork.key() + ": " + e.getMessage();
                 }
             });
         }
-        ArtifactFanOut.concurrently(stages);
+        List<String> failures = new ArrayList<>();
+        try {
+            for (String failure : ArtifactFanOut.concurrently(stages)) {
+                if (!failure.isEmpty()) failures.add(failure);
+            }
+        } catch (IOException e) {
+            failures.add(e.getMessage()); // every stage catches its own; unreachable in practice
+        }
+        return failures;
     }
 
     private static void worker(Map<String, Fork> forks, PluginJar worker) {
