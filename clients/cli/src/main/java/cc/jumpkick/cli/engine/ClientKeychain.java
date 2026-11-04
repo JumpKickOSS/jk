@@ -18,9 +18,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The keychain secrets this {@code jk} command sends with its requests: those of the stored logins
- * whose keychain the engine cannot reach itself ({@link SecretBackend#daemonReachable()} — the
- * Secret Service, which is found through this shell's D-Bus variables; the daemon has those of
- * whichever shell started it, if any).
+ * whose keychain the engine cannot reach itself ({@link SecretBackend#daemonReachable()}: a
+ * resident engine keeps the session of whichever shell started it, and this command may run in
+ * another).
  *
  * <p>Read once per command, when the first request goes out, and only when a record points into
  * such a keychain: a machine with no keychain logins pays one directory listing. Each item is read

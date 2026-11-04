@@ -21,9 +21,18 @@ import org.jspecify.annotations.Nullable;
  * session has no window server to unlock it ({@code errSecInteractionNotAllowed}, "User interaction
  * is not allowed": SSH, launchd), 51 when the keychain denied jk ({@code errSecAuthFailed}).
  *
- * <p>Every call is preceded by the probe, {@code show-keychain-info} on the default keychain, which
- * reads its settings and so fails the same way a locked keychain would, before anything asks for
- * an item.
+ * <p>Every call is preceded by the probe. It reads the default keychain's lock status in process
+ * ({@link MacKeychainLock}), which shows nothing and takes microseconds; a locked keychain is a
+ * refusal before {@code security} runs, since a search of a locked keychain over SSH answers "not
+ * found" and in a desktop session may ask to unlock it. Where the status cannot be read (no native
+ * access), the probe is {@code show-keychain-info} on the default keychain, which reads its
+ * settings and so fails the same way a locked keychain would.
+ *
+ * <p>Items stay with {@code security} rather than {@code SecItemAdd}/{@code SecItemCopyMatching}
+ * in process: a login keychain item's access list names the program that created it, so an item
+ * the native {@code jk} wrote would refuse (or, in a desktop session, prompt) the engine's JVM and
+ * every later {@code jk} binary. Through {@code /usr/bin/security}, writer and readers are the
+ * same Apple-signed program.
  */
 public final class MacKeychainBackend implements SecretBackend {
 
@@ -43,9 +52,16 @@ public final class MacKeychainBackend implements SecretBackend {
     private static final Duration PROBE_CAP = Duration.ofSeconds(1);
 
     private final SecretCommand command;
+    private final MacKeychainLock lock;
 
     public MacKeychainBackend(SecretCommand command) {
+        this(command, MacKeychainLock.HOST);
+    }
+
+    /** Over {@code command}, with the lock status from {@code lock}: tests. */
+    MacKeychainBackend(SecretCommand command, MacKeychainLock lock) {
         this.command = Objects.requireNonNull(command, "command");
+        this.lock = Objects.requireNonNull(lock, "lock");
     }
 
     @Override
@@ -60,11 +76,26 @@ public final class MacKeychainBackend implements SecretBackend {
 
     @Override
     public boolean daemonReachable() {
-        return true;
+        return false;
     }
 
     @Override
     public Probe probe() {
+        MacKeychainLock.Status status = lock.status();
+        switch (status.state()) {
+            case UNLOCKED -> {
+                return Probe.AVAILABLE;
+            }
+            case LOCKED -> {
+                return Probe.refused(Objects.requireNonNullElse(status.reason(), "the default keychain is locked"));
+            }
+            case NO_KEYCHAIN -> {
+                return Probe.unavailable(Objects.requireNonNullElse(status.reason(), "no default keychain"));
+            }
+            case UNKNOWN -> {
+                // Ask security below.
+            }
+        }
         try {
             SecretCommand.Result r = command.run(List.of(TOOL, "show-keychain-info"), null, PROBE_CAP);
             if (r.exit() == 0) return Probe.AVAILABLE;

@@ -3,7 +3,9 @@ package cc.jumpkick.secret;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
+import cc.jumpkick.host.Os;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -14,6 +16,7 @@ import java.util.Deque;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -217,13 +220,73 @@ class KeychainBackendsTest {
 
     // ---- macOS Keychain (security) ----
 
+    /** The backend where the lock status cannot be read in process, so {@code security} is the probe. */
+    private static MacKeychainBackend viaCli(SecretCommand cmd) {
+        return new MacKeychainBackend(cmd, MacKeychainLock.UNKNOWN);
+    }
+
+    private static MacKeychainLock lockSays(MacKeychainLock.State state) {
+        return () -> new MacKeychainLock.Status(
+                state,
+                state == MacKeychainLock.State.UNLOCKED
+                        ? null
+                        : "the default keychain is " + state.name().toLowerCase(Locale.ROOT));
+    }
+
+    @Test
+    void an_unlocked_status_lets_security_run_with_no_probe_of_its_own() {
+        Scripted cmd = new Scripted().answer(0, "s3cret\n", "").answer(0, "", "");
+        MacKeychainBackend backend = new MacKeychainBackend(cmd, lockSays(MacKeychainLock.State.UNLOCKED));
+
+        assertThat(backend.probe().available()).isTrue();
+        assertThat(backend.read("repo/nexus")).contains("s3cret");
+        backend.write("repo/nexus", "l", "s3cret");
+        assertThat(cmd.argv).hasSize(2);
+        assertThat(cmd.argv.get(0)).contains("find-generic-password");
+        assertThat(cmd.argv.get(1)).containsExactly("/usr/bin/security", "-i");
+    }
+
+    @Test
+    void a_locked_status_is_a_refusal_before_security_runs_so_a_locked_read_is_never_absent() {
+        Scripted cmd = new Scripted();
+        MacKeychainBackend backend = new MacKeychainBackend(cmd, lockSays(MacKeychainLock.State.LOCKED));
+
+        SecretBackend.Probe probe = backend.probe();
+        assertThat(probe.available()).isFalse();
+        assertThat(probe.refused()).isTrue();
+        assertThat(probe.reason()).contains("locked");
+        assertThatThrownBy(() -> backend.read("repo/nexus"))
+                .isInstanceOf(SecretBackendException.class)
+                .hasMessageContaining("refused to read repo/nexus")
+                .hasMessageContaining("locked");
+        assertThatThrownBy(() -> backend.write("repo/nexus", "l", "s")).hasMessageContaining("refused to store");
+        assertThatThrownBy(() -> backend.delete("repo/nexus")).hasMessageContaining("refused to remove");
+        assertThat(cmd.argv).isEmpty();
+    }
+
+    @Test
+    void no_default_keychain_is_no_keychain_here_rather_than_a_refusal() {
+        SecretBackend.Probe probe =
+                new MacKeychainBackend(new Scripted(), lockSays(MacKeychainLock.State.NO_KEYCHAIN)).probe();
+        assertThat(probe.available()).isFalse();
+        assertThat(probe.refused()).isFalse();
+    }
+
+    @Test
+    void off_macos_the_lock_status_is_unknown_and_names_why() {
+        assumeFalse(Os.isDarwin(), "off macOS only");
+        MacKeychainLock.Status status = MacKeychainLock.HOST.status();
+        assertThat(status.state()).isEqualTo(MacKeychainLock.State.UNKNOWN);
+        assertThat(status.reason()).contains("only on macOS");
+    }
+
     private static final String UNLOCKED =
             "Keychain \"/Users/u/Library/Keychains/login.keychain-db\" lock-on-sleep timeout=21600s\n";
 
     @Test
     void security_adds_through_its_interactive_mode_so_the_secret_is_never_an_argument() {
         Scripted cmd = new Scripted().answer(0, UNLOCKED, "").answer(0, "", "");
-        new MacKeychainBackend(cmd).write("repo/nexus", "ignored label", "p@ss w0rd\"");
+        viaCli(cmd).write("repo/nexus", "ignored label", "p@ss w0rd\"");
 
         assertThat(cmd.argv.get(0)).containsExactly("/usr/bin/security", "show-keychain-info");
         assertThat(cmd.argv.get(1)).containsExactly("/usr/bin/security", "-i");
@@ -238,7 +301,7 @@ class KeychainBackendsTest {
         Scripted cmd = new Scripted()
                 .answer(0, UNLOCKED, "")
                 .answer(0, "", "SecKeychainItemCreateFromContent: User interaction is not allowed.");
-        assertThatThrownBy(() -> new MacKeychainBackend(cmd).write("repo/nexus", "l", "s"))
+        assertThatThrownBy(() -> viaCli(cmd).write("repo/nexus", "l", "s"))
                 .isInstanceOf(SecretBackendException.class)
                 .hasMessageContaining("locked and this session cannot unlock it")
                 .hasMessageContaining("User interaction is not allowed");
@@ -256,7 +319,7 @@ class KeychainBackendsTest {
                         51,
                         "",
                         "security: SecKeychainSearchCopyNext: The user name or passphrase you entered is not correct.");
-        MacKeychainBackend backend = new MacKeychainBackend(cmd);
+        MacKeychainBackend backend = viaCli(cmd);
 
         assertThat(backend.read("repo/nexus")).contains("s3cret");
         assertThat(cmd.argv.get(1))
@@ -273,7 +336,7 @@ class KeychainBackendsTest {
         String said = "security: SecKeychainCopySettings /Users/u/Library/Keychains/login.keychain-db: User"
                 + " interaction is not allowed.";
         Scripted cmd = new Scripted().answer(36, "", said).answer(36, "", said).answer(36, "", said);
-        MacKeychainBackend backend = new MacKeychainBackend(cmd);
+        MacKeychainBackend backend = viaCli(cmd);
 
         SecretBackend.Probe probe = backend.probe();
         assertThat(probe.available()).isFalse();
@@ -297,7 +360,8 @@ class KeychainBackendsTest {
         assertThat(MacKeychainBackend.noWindowServer(new SecretCommand.Result(51, "", "denied")))
                 .isFalse();
 
-        SecretBackend.Probe denied = new MacKeychainBackend(new Scripted().answer(51, "", "security: denied")).probe();
+        SecretBackend.Probe denied =
+                viaCli(new Scripted().answer(51, "", "security: denied")).probe();
         assertThat(denied.refused()).isTrue();
         assertThat(denied.reason()).contains("denied access");
     }
@@ -305,7 +369,7 @@ class KeychainBackendsTest {
     @Test
     void security_delete_treats_44_as_removed() {
         Scripted cmd = new Scripted().answer(0, UNLOCKED, "").answer(44, "", "could not be found");
-        new MacKeychainBackend(cmd).delete("forge/github.com");
+        viaCli(cmd).delete("forge/github.com");
         assertThat(cmd.argv.get(1))
                 .containsExactly("/usr/bin/security", "delete-generic-password", "-s", "jk", "-a", "forge/github.com");
     }
@@ -313,12 +377,12 @@ class KeychainBackendsTest {
     @Test
     void every_backend_names_itself_the_way_records_and_doctor_spell_it() {
         Scripted none = new Scripted();
-        for (SecretBackend b : List.of(
-                new SecretServiceBackend(none), new MacKeychainBackend(none), WindowsCredentialBackendTest.fake())) {
+        for (SecretBackend b :
+                List.of(new SecretServiceBackend(none), viaCli(none), WindowsCredentialBackendTest.fake())) {
             assertThat(SecretVault.displayName(b.id())).isEqualTo(b.displayName());
         }
         assertThat(new SecretServiceBackend(none).daemonReachable()).isFalse();
-        assertThat(new MacKeychainBackend(none).daemonReachable()).isTrue();
-        assertThat(WindowsCredentialBackendTest.fake().daemonReachable()).isTrue();
+        assertThat(viaCli(none).daemonReachable()).isFalse();
+        assertThat(WindowsCredentialBackendTest.fake().daemonReachable()).isFalse();
     }
 }

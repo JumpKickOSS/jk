@@ -3,28 +3,55 @@
     "downcalls": [
       {
         "returnType": "jint",
-        "parameterTypes": ["void*", "jint", "jint", "void*"],
+        "parameterTypes": [
+          "void*",
+          "jint",
+          "jint",
+          "void*"
+        ],
         "options": {
           "captureCallState": true
         }
       },
       {
         "returnType": "jint",
-        "parameterTypes": ["void*", "jint"],
+        "parameterTypes": [
+          "void*",
+          "jint"
+        ],
         "options": {
           "captureCallState": true
         }
       },
       {
         "returnType": "jint",
-        "parameterTypes": ["void*", "jint", "jint"],
+        "parameterTypes": [
+          "void*",
+          "jint",
+          "jint"
+        ],
         "options": {
           "captureCallState": true
         }
       },
       {
         "returnType": "void",
-        "parameterTypes": ["void*"]
+        "parameterTypes": [
+          "void*"
+        ]
+      },
+      {
+        "returnType": "jint",
+        "parameterTypes": [
+          "void*"
+        ]
+      },
+      {
+        "returnType": "jint",
+        "parameterTypes": [
+          "void*",
+          "void*"
+        ]
       }
     ]
   }

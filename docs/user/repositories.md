@@ -387,7 +387,8 @@ a project that could name a command would run it on your machine at its first re
 ### Where a login keeps its secret
 
 On a desktop, `jk repo login` and `jk auth login` put the token or password in the OS keychain
-when one answers: the macOS Keychain (`/usr/bin/security`), the Windows Credential Manager, or the
+when one answers: the macOS Keychain (`/usr/bin/security`), the Windows Credential Manager
+(`CredWriteW` in process, a generic credential `jk:repo/<id>` that `cmdkey /list` shows), or the
 Secret Service on Linux (GNOME Keyring, KWallet, KeePassXC, through libsecret's `secret-tool`). The
 record under `~/.jk/creds/repo/<id>` keeps what is not secret: the `<scheme> <origin>` binding, the
 username, and a pointer to the keychain item (`secret-service repo/nexus`). A `jk auth login`
@@ -399,14 +400,15 @@ Everywhere else the secret stays in the owner-only record, silently:
   container (`/.dockerenv`, `/run/.containerenv`, `container` or `KUBERNETES_SERVICE_HOST`), jk asks
   no keychain at all.
 - With no keychain on the machine — no D-Bus session bus or no `secret-tool` on Linux, a macOS
-  login keychain that is locked with no window server to unlock it (SSH, launchd) — the record
-  takes the secret without a notice.
+  login keychain that is locked with no window server to unlock it (SSH, launchd), a Windows SSH
+  key logon, which has no credential set — the record takes the secret without a notice.
 - A keychain that is there and refuses (a locked GNOME Keyring collection, a denial) earns one
   notice saying why, except over SSH with no display, where nobody could have unlocked it.
 
 jk never shows or waits on an unlock prompt. Before every keychain call it checks, without
 prompting, whether the keychain is locked — on Linux by reading the default collection's `Locked`
-property with `busctl` or `gdbus` — and a locked keychain is a refusal on the spot. A check takes
+property with `busctl` or `gdbus`, on macOS by reading the default keychain's lock status from the
+Security framework — and a locked keychain is a refusal on the spot. A check takes
 at most a second and a call at most five.
 
 Choose explicitly in `~/.jk/config.toml`, or with `JK_CREDENTIALS_STORE`:
@@ -426,13 +428,14 @@ it except the next login. `jk repo logout <id>` and `jk auth logout` remove the 
 then the record; a keychain that refuses (locked) keeps the record, so the logout can be retried.
 `jk doctor` lists every login with where its secret is.
 
-The engine reads the macOS Keychain and the Windows Credential Manager itself, through the
-user's logon session. The Secret Service is found through the shell's D-Bus variables, and a
-resident engine has those of whichever shell started it, if any (none when it was started over SSH
-or by systemd), so the `jk` command reads those items and sends the secrets with its request, the
-way `JK_REPO_*` variables travel. A build started without a `jk` command — from the dashboard or an MCP client — reads
-them from the engine, which reaches the Secret Service only when it was started from a desktop
-session; an engine with no session bus never tries to reach one, and a login whose secret is in
+A resident engine keeps the session of whichever shell started it, and the next `jk` may run in
+another: the Secret Service is found through the shell's D-Bus variables (none when the engine was
+started over SSH or by systemd), a Windows engine started over SSH has no credential set, and a
+macOS engine started over SSH sees the login keychain locked while the desktop has it open. So the
+`jk` command reads the keychain items its logins point at and sends the secrets with its request,
+the way `JK_REPO_*` variables travel. A build started without a `jk` command — from the dashboard or
+an MCP client — reads them from the engine, which reaches a keychain only when it was started from a
+desktop session; an engine with no keychain never tries to reach one, and a login whose secret is in
 its record serves it as usual.
 
 ### A name is not a destination
