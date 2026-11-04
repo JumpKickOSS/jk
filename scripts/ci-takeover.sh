@@ -98,15 +98,20 @@ install_pass() {
 cd "$ROOT"
 state_log="$(mktemp)"
 install_pass jk install --skip-tests ${yes[@]+"${yes[@]}"} --no-ansi
-# On a release tag the version is a release, installed once: the first pass's build (by the older
-# client) and the tree's own differ in bytes, so the second would be refused. This home is the job's
-# own, so the first pass's slots of that version go before the tree's client installs it again.
+# The version is a release, installed once, and the second pass installs it again. Every jar is the
+# same bytes from both passes except one that embeds an SBOM written by a jk that still names its own
+# version there; those slots go, and the rest stay, since the tree's engine reads its built-in
+# plugins (jk-intellij among them) from them before it can rebuild anything.
+# TODO: drop this block once the pin is a release whose SBOM names no jk version (0.50.3 or later).
 version="$(sed -n 's/^version *= *"\(.*\)"/\1/p' jk.toml | head -1)"
 if [[ -n "$version" && "$version" != *-SNAPSHOT ]]; then
   shelf="$JK_HOME/store/repos/jk-local/cc/jumpkick"
-  if [[ -d "$shelf" ]]; then
-    find "$shelf" -mindepth 2 -maxdepth 2 -type d -name "$version" -prune -exec rm -rf {} +
-  fi
+  for slot in "$shelf"/*/"$version"; do
+    [[ -d "$slot" ]] || continue
+    if grep -aqs 'META-INF/sbom/' "$slot"/*.jar; then
+      rm -rf "$slot"
+    fi
+  done
 fi
 install_pass "$JK_HOME/bin/jk" install --skip-tests ${yes[@]+"${yes[@]}"} --no-ansi
 ((checks)) || exit 0

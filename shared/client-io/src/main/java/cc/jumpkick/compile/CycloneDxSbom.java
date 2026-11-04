@@ -3,7 +3,6 @@ package cc.jumpkick.compile;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.model.JkVersion;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -72,7 +71,8 @@ public final class CycloneDxSbom {
     /**
      * The CycloneDX JSON document for an application and its resolved runtime components. The
      * subject is {@code metadata.component}, identified by its purl; jk names itself under {@code
-     * metadata.tools} as the writer.
+     * metadata.tools} as the writer, without its own version, so the bytes depend on the artifact
+     * and its locked components alone and every jk that builds a tree embeds the same document.
      */
     public static byte[] write(String group, String artifact, String version, List<Component> components) {
         List<Component> ordered = new ArrayList<>(components);
@@ -92,8 +92,7 @@ public final class CycloneDxSbom {
         sb.append("        {\n");
         sb.append("          \"type\": \"application\",\n");
         sb.append("          \"group\": \"cc.jumpkick\",\n");
-        sb.append("          \"name\": \"jk\",\n");
-        sb.append("          \"version\": ").append(quote(JkVersion.VERSION)).append("\n");
+        sb.append("          \"name\": \"jk\"\n");
         sb.append("        }\n");
         sb.append("      ]\n");
         sb.append("    },\n");

@@ -4,7 +4,6 @@ package cc.jumpkick.compile;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Scope;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -50,12 +49,19 @@ class CycloneDxSbomTest {
                 .contains("\"$schema\": \"http://cyclonedx.org/schema/bom-1.6.schema.json\"")
                 .contains("\"specVersion\": \"1.6\"")
                 .contains("\"name\": \"jk\"")
-                .contains("\"version\": \"" + JkVersion.VERSION + "\"")
                 .contains("\"bom-ref\": \"pkg:maven/io.example/app@0.1.0\"")
                 .contains("\"purl\": \"pkg:maven/io.example/app@0.1.0\"")
                 .contains("\"components\": []")
                 .doesNotContain("serialNumber")
                 .doesNotContain("timestamp");
+    }
+
+    @Test
+    void document_does_not_depend_on_the_jk_that_writes_it() {
+        String json = new String(CycloneDxSbom.write("io.example", "app", "0.1.0", List.of()), StandardCharsets.UTF_8);
+        int tools = json.indexOf("\"tools\"");
+        String toolsBlock = json.substring(tools, json.indexOf("\"component\":", tools));
+        assertThat(toolsBlock).contains("\"name\": \"jk\"").doesNotContain("\"version\"");
     }
 
     @Test
