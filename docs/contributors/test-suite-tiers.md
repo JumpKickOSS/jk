@@ -18,10 +18,11 @@ house rules run under `jk build` and `jk guard` ([self-host](self-host.md#house-
 <!-- test-tiers:start -->
 | Command | Includes | Excludes |
 |---------|----------|----------|
-| `jk test` | untagged | `integration`, `slow`, `network`, `bench` |
-| `jk test -p integration` | `integration` | `slow`, `network`, `bench` |
-| `jk test -p slow` | `slow` | `network`, `bench` |
-| `jk test -p network` | `network` | `bench` |
+| `jk test` | untagged | `integration`, `slow`, `network`, `live`, `bench` |
+| `jk test -p integration` | `integration` | `slow`, `network`, `live`, `bench` |
+| `jk test -p slow` | `slow` | `network`, `live`, `bench` |
+| `jk test -p network` | `network` | `live`, `bench` |
+| `jk test -p live` | `live` | `bench` |
 | `jk test -p bench` | `bench` | — |
 <!-- test-tiers:end -->
 
@@ -31,6 +32,7 @@ Tag new heavy tests at class level:
 @Tag("integration") // engine/e2e / Jk.execute / workers
 @Tag("slow")        // Android / multi-minute / large downloads
 @Tag("network")     // talks to a real remote (Maven Central, a forge)
+@Tag("live")        // writes to this machine's own services (the OS keychain); desktop, on demand
 @Tag("bench")       // microbench only (never PR)
 ```
 
