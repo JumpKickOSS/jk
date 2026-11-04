@@ -102,7 +102,8 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                 "snapshot",
                 "native",
                 "publish",
-                "upload");
+                "upload",
+                "sync");
     }
 
     /**
@@ -122,6 +123,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     case "install", "snapshot" -> WorkspaceTarget.INSTALL;
                     case "native" -> WorkspaceTarget.NATIVE;
                     case "publish", "upload" -> WorkspaceTarget.PUBLISH;
+                    case "sync" -> WorkspaceTarget.SYNC;
                     default -> WorkspaceTarget.PACKAGE;
                 };
         Set<Path> selected = null;
@@ -137,6 +139,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     case IMAGE -> new TailArgs.Image(null, null, null, null, null);
                     case INSTALL -> new TailArgs.Install(null, null);
                     case NATIVE -> new TailArgs.Native(null, List.of());
+                    case SYNC -> new TailArgs.Sync(false, null);
                     case PUBLISH ->
                         "upload".equals(kind)
                                 ? UploadTail.of(entryDir)
@@ -323,7 +326,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
     private static boolean selectsByModule(WorkspaceTarget target) {
         return switch (target) {
             case COMPILE, NATIVE, IMAGE, INSTALL, RESHELVE, TRAIN, PUBLISH -> true;
-            case PACKAGE, TEST, RUN -> false;
+            case PACKAGE, TEST, RUN, SYNC -> false;
         };
     }
 

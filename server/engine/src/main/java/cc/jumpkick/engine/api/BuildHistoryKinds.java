@@ -21,7 +21,8 @@ import java.util.TreeSet;
  * {@link #GUARD}, the build with the gate lanes on, and {@code mvn}, a Maven run driven through {@code jk mvn}: what an agent ran on a Maven repo is
  * the whole story for the supervisor watching it.
  *
- * <p><strong>Not build-like (still journaled):</strong> {@code lock}, {@code update}, {@code
+ * <p><strong>Not build-like (still journaled):</strong> {@code sync} (a build goal that builds
+ * nothing: {@link WorkspaceTarget#buildsProject()}), {@code lock}, {@code update}, {@code
  * format}, {@code clean}, {@code cache}, … Client-local work ({@code jk new}/{@code init}) never
  * hits JobEnvelope.
  */
@@ -48,7 +49,9 @@ public final class BuildHistoryKinds {
     private static Set<String> all() {
         Set<String> kinds = new TreeSet<>(EXTERNAL_TOOLS);
         kinds.add(GUARD);
-        for (WorkspaceTarget target : WorkspaceTarget.values()) kinds.add(target.jobKind());
+        for (WorkspaceTarget target : WorkspaceTarget.values()) {
+            if (target.buildsProject()) kinds.add(target.jobKind());
+        }
         return Set.copyOf(kinds);
     }
 

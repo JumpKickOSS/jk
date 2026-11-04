@@ -15,6 +15,12 @@ import org.jspecify.annotations.Nullable;
  */
 public sealed interface TailArgs {
 
+    /**
+     * {@code jk sync}: also fetch every library's sources jar (for the IDE), and {@code repoUrl}, a
+     * single repository that replaces the declared ones (tests).
+     */
+    record Sync(boolean sources, @Nullable URI repoUrl) implements TailArgs {}
+
     /** {@code jk native}: the main class and extra {@code native-image} arguments. */
     record Native(@Nullable String main, List<String> extraArgs) implements TailArgs {
         public Native {

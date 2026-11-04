@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.workspace;
 import cc.jumpkick.cache.LockTimings;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockfileReader;
@@ -13,10 +14,12 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.runtime.LockFlow;
 import cc.jumpkick.runtime.base.BuildMetrics;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Workspace lock-freshness guard for {@link BuildService}: re-lock when the root lock is
@@ -38,14 +41,20 @@ public final class WorkspaceLock {
      * re-hashing every manifest.
      */
     public static BuildService.LockGuard ensureWorkspaceLockFresh(Path root, Path cache, boolean stale) {
+        return ensureWorkspaceLockFresh(root, cache, stale, null);
+    }
+
+    /** As above, resolving against {@code repoUrl} alone when given (a sync's test override). */
+    public static BuildService.LockGuard ensureWorkspaceLockFresh(
+            Path root, Path cache, boolean stale, @Nullable URI repoUrl) {
         if (!stale) return BuildService.LockGuard.OK;
-        long t0 = System.nanoTime();
+        long t0 = Clock.SYSTEM.nanos();
         try {
             // noDefaultFeatures=false: every freshen resolves with the same feature selection as
             // explicit `jk lock`, so lock content never depends on which path freshened.
-            LockFlow.Result r = LockFlow.run(root, cache, List.of(), false, null);
+            LockFlow.Result r = LockFlow.run(root, cache, List.of(), false, repoUrl);
             if (r.status() == 0) {
-                recordLockSuccess(root, (System.nanoTime() - t0) / 1_000_000L);
+                recordLockSuccess(root, (Clock.SYSTEM.nanos() - t0) / 1_000_000L);
             }
             return r.status() != 0 ? new BuildService.LockGuard(r.status(), r.error()) : BuildService.LockGuard.OK;
         } catch (UnsatisfiableException e) {

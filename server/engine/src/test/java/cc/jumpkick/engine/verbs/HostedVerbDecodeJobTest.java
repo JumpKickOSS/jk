@@ -43,7 +43,8 @@ class HostedVerbDecodeJobTest {
                         "snapshot",
                         "native",
                         "publish",
-                        "upload");
+                        "upload",
+                        "sync");
 
         String build = verb.decodeJob(JobSpec.of("build", dir.toString()));
         assertThat(EngineProtocol.typeOf(build)).isEqualTo(EngineProtocol.BUILD_REQUEST);
@@ -198,7 +199,7 @@ class HostedVerbDecodeJobTest {
 
     @Test
     void an_unexposed_verb_refuses_decode() {
-        assertThatThrownBy(() -> new SyncVerb(new InertVerbHost()).decodeJob(JobSpec.of("sync", "/p")))
+        assertThatThrownBy(() -> new GitFetchVerb(new InertVerbHost()).decodeJob(JobSpec.of("git-fetch", "/p")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("not hosted");
     }

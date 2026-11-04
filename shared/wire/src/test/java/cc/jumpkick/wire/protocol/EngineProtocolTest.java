@@ -10,6 +10,9 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.build.InvocationPhase;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.wire.runtime.TailArgs;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
+import java.net.URI;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -189,8 +192,6 @@ class EngineProtocolTest {
     @Test
     void goal_finish_carries_its_kind_discriminator() {
         assertThat(Jsonl.str(ProtoEvents.planFinish("/w", true), "kind")).isEqualTo("build");
-        assertThat(Jsonl.str(ProtoEvents.planFinishSync("/w", true, 3, 4), "kind"))
-                .isEqualTo("sync");
         assertThat(Jsonl.str(ProtoEvents.planFinishLock("/w", true, 1, 1, 2, 3, 0, List.of()), "kind"))
                 .isEqualTo("lock");
     }
@@ -345,19 +346,6 @@ class EngineProtocolTest {
     }
 
     @Test
-    void sync_request_round_trips_all_fields() {
-        String json =
-                new SyncRequest("/work", "/cache", "/jdks", "http://repo", true, false, true, true, false).encode();
-        assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.SYNC_REQUEST);
-        assertThat(Jsonl.str(json, "jdksDir")).isEqualTo("/jdks");
-        assertThat(Jsonl.str(json, "repoUrl")).isEqualTo("http://repo");
-        assertThat(Jsonl.bool(json, "sources", false)).isTrue();
-        assertThat(Jsonl.bool(json, "offline", true)).isFalse();
-        assertThat(Jsonl.bool(json, "force", false)).isTrue();
-        assertThat(Jsonl.bool(json, "refresh", false)).isTrue();
-    }
-
-    @Test
     void lock_module_and_package_events_round_trip() {
         String module = ProtoEvents.lockModule("/work/api", "com.example:api");
         assertThat(EngineProtocol.typeOf(module)).isEqualTo(EngineProtocol.LOCK_MODULE);
@@ -391,11 +379,19 @@ class EngineProtocolTest {
     }
 
     @Test
-    void goal_finish_sync_variant_carries_the_summary_counts() {
-        String json = ProtoEvents.planFinishSync("", true, 7, 42);
-        assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
-        assertThat(Jsonl.longValue(json, "syncFetched", -1)).isEqualTo(7);
-        assertThat(Jsonl.longValue(json, "syncUpToDate", -1)).isEqualTo(42);
+    void a_sync_runs_workspace_finish_carries_what_it_settled() {
+        WorkspaceFinishEvent synced =
+                new WorkspaceFinishEvent(true, 0, List.of(), false, new WorkspaceResult.SyncCounts(7, 42));
+        assertThat(WorkspaceFinishEvent.decode(synced.encode())).isEqualTo(synced);
+        WorkspaceFinishEvent build = new WorkspaceFinishEvent(true, 0, List.of(), false);
+        assertThat(build.encode()).doesNotContain("\"sync\"");
+        assertThat(WorkspaceFinishEvent.decode(build.encode()).sync()).isNull();
+    }
+
+    @Test
+    void a_sync_tail_round_trips_its_sources_flag_and_repository() {
+        var tail = new TailArgs.Sync(true, URI.create("http://repo.test/m2"));
+        assertThat(TailArgsJson.decode(TailArgsJson.encode(tail))).isEqualTo(tail);
     }
 
     @Test

@@ -163,8 +163,10 @@ final class DownloadLeg {
         ChecksumSidecars sidecars = withSidecars ? ChecksumSidecars.start(transport, credential, uri) : null;
         MessageDigest digest = Hashing.newSha256();
         long size;
+        TransferBoard board = SessionContext.current().io().transfers();
+        String label = label(coord, relativePath);
         try (TransferBoard.Transfer transfer =
-                SessionContext.current().io().transfers().open(label(coord, relativePath))) {
+                artifactFile(coord, relativePath) ? board.openArtifact(label) : board.open(label)) {
             RepoTransport.Body body = transport
                     .fetchBody(uri, credential)
                     .orElseThrow(() -> new MavenRepo.ArtifactNotFoundException("not found in " + name + ": " + uri));
@@ -204,12 +206,25 @@ final class DownloadLeg {
      * extension beside it when the leg fetches another of its files ({@code g:a:v · pom}).
      */
     static String label(Coordinate coord, String relativePath) {
+        String gav = coord.toString();
+        return artifactFile(coord, relativePath) ? gav : gav + " · " + extension(relativePath);
+    }
+
+    /**
+     * Whether {@code relativePath} is {@code coord}'s own file (its jar or aar), not its POM, Gradle
+     * module or metadata. A parent POM or a BOM is fetched under a {@code pom}-typed coordinate, so
+     * a matching type alone does not make a file an artifact.
+     */
+    static boolean artifactFile(Coordinate coord, String relativePath) {
+        String ext = extension(relativePath);
+        if ("pom".equals(ext) || "module".equals(ext) || "xml".equals(ext)) return false;
+        return ext.isEmpty() || "jar".equals(ext) || ext.equals(coord.type());
+    }
+
+    private static String extension(String relativePath) {
         String file = relativePath.substring(relativePath.lastIndexOf('/') + 1);
         int dot = file.lastIndexOf('.');
-        String ext = dot < 0 ? "" : file.substring(dot + 1);
-        String gav = coord.toString();
-        if (ext.isEmpty() || "jar".equals(ext) || ext.equals(coord.type())) return gav;
-        return gav + " · " + ext;
+        return dot < 0 ? "" : file.substring(dot + 1);
     }
 
     /**

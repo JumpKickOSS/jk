@@ -22,8 +22,6 @@ import cc.jumpkick.wire.protocol.OutdatedProgressEvent;
 import cc.jumpkick.wire.protocol.OutdatedReport;
 import cc.jumpkick.wire.protocol.OutdatedRequest;
 import cc.jumpkick.wire.protocol.PlanFinishLockEvent;
-import cc.jumpkick.wire.protocol.PlanFinishSyncEvent;
-import cc.jumpkick.wire.protocol.SyncRequest;
 import cc.jumpkick.wire.protocol.UpdateChangeEvent;
 import cc.jumpkick.wire.protocol.UpdateRequest;
 import cc.jumpkick.wire.protocol.UpdateRewriteEvent;
@@ -39,7 +37,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -168,79 +165,6 @@ final class EngineResolveAdapter {
                         req.major(),
                         false)
                 .encode());
-    }
-
-    /**
-     * Run {@code jk sync}'s single plan against the engine — the same listener-factory contract as
-     * {@link EngineJobs#runTest}. {@code fetchedOut}/{@code upToDateOut} (single-slot
-     * holders) are populated from the terminal plan-finish <em>before</em> it reaches the factory's
-     * listener, exactly mirroring how the in-process path's counters are already settled by the time
-     * the console listener's own {@code planFinish} renders the summary line.
-     */
-    static BuildPlanResult runSync(
-            EnginePaths.Paths paths,
-            EngineRequests.SyncRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory,
-            long[] fetchedOut,
-            long[] upToDateOut)
-            throws IOException {
-        EngineClient.ensureRunning(paths, JkVersion.VERSION);
-
-        try (SocketChannel ch = EngineWire.connect(EnginePaths.activeSocket(paths))) {
-            BufferedWriter writer =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader = EngineWire.protocolReader(ch);
-
-            send(
-                    writer,
-                    EngineJobs.envelope(new SyncRequest(
-                                    req.entryDir().toString(),
-                                    req.cache().toString(),
-                                    req.jdksDir() != null ? req.jdksDir().toString() : null,
-                                    req.repoUrl() != null ? req.repoUrl().toString() : null,
-                                    req.sources(),
-                                    req.offline(),
-                                    req.force(),
-                                    req.refresh(),
-                                    req.verbose())
-                            .encode()));
-
-            return WireStream.pumpJob(reader, ch, syncDecoder(listenerFactory, fetchedOut, upToDateOut));
-        }
-    }
-
-    /** The {@code jk sync} plan reader: ends on the sync terminal, refuses on the engine's error frame. */
-    static WireStream.Decoder<BuildPlanResult> syncDecoder(
-            Function<List<Task>, BuildPlanListener> listenerFactory, long[] fetchedOut, long[] upToDateOut) {
-        return new WireStream.Decoder<>() {
-            private final List<Task> steps = new ArrayList<>();
-            private final List<BuildPlanResult.Diagnostic> warnings = new ArrayList<>();
-            private final List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
-            private final FailureTextRefs texts = new FailureTextRefs();
-            private @Nullable BuildPlanListener listener;
-
-            @Override
-            public @Nullable BuildPlanResult onLine(String type, String line) throws IOException {
-                switch (type) {
-                    case EngineProtocol.PLAN_TASK -> steps.add(EngineEventDecoder.taskFromWire(line));
-                    case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
-                    case EngineProtocol.BUILDPLAN_FINISH -> {
-                        PlanFinishSyncEvent e = PlanFinishSyncEvent.decode(line);
-                        if (fetchedOut != null) fetchedOut[0] = e.fetched();
-                        if (upToDateOut != null) upToDateOut[0] = e.upToDate();
-                        BuildPlanResult result = new BuildPlanResult(
-                                "sync", e.success(), Duration.ZERO, List.of(), warnings, diagnostics, false, false);
-                        if (listener != null) listener.planFinish(result);
-                        return result;
-                    }
-                    case EngineProtocol.ERROR ->
-                        throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
-                    default ->
-                        EngineEventDecoder.dispatch(type, line, listener, diagnostics::add, warnings::add, texts);
-                }
-                return null;
-            }
-        };
     }
 
     /** Send a cascade request and replay its stream into {@code handler} until the terminal arrives. */

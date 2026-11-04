@@ -21,7 +21,7 @@ import java.util.List;
  * supplies only what differs.
  */
 sealed interface BuildVerb
-        permits CompileVerb, TestVerb, PackageVerb, NativeVerb, ImageVerb, TrainVerb, RunVerb, PublishVerb {
+        permits CompileVerb, TestVerb, PackageVerb, NativeVerb, ImageVerb, TrainVerb, RunVerb, PublishVerb, SyncVerb {
 
     /** The words a run is told in: {@code Build}, {@code building}, {@code build}, {@code Building}. */
     record Words(String name, String gerund, String infinitive, String title) {}

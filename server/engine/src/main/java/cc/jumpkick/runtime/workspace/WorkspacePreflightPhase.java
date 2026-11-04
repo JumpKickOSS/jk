@@ -31,12 +31,14 @@ import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -81,6 +83,8 @@ public final class WorkspacePreflightPhase {
 
     /** {@link #run(WorkspaceRequest, WorkspaceBuildListener)} on {@code clock}, which times the lock freshen. */
     static Outcome run(WorkspaceRequest request, WorkspaceBuildListener listener, Clock clock) {
+        // Artifacts landed so far: the run's own downloads (the lock's included) are counted from here.
+        long landedBefore = SessionContext.current().io().transfers().artifactsLanded();
         JkBuild entryBuild;
         try {
             entryBuild = JkBuildParser.parse(ManifestPaths.manifestIn(request.entryDir()));
@@ -109,8 +113,10 @@ public final class WorkspacePreflightPhase {
         if (graphMemoHit) Perf.note("preflight-graph-memo structure-match", "units", units.size());
         listener.onPreflight("graph", 1, 1, units.size() + " modules" + (graphMemoHit ? " (memo)" : ""));
         WorkspaceSpec requested = request.spec();
-        String nothing =
-                requested != null && requested.hasSelection() ? null : NothingToBuild.verdict(units, entryBuild);
+        boolean syncOnly = requested != null && requested.target() == WorkspaceTarget.SYNC;
+        String nothing = syncOnly || (requested != null && requested.hasSelection())
+                ? null
+                : NothingToBuild.verdict(units, entryBuild);
         if (nothing != null) {
             return completed(false, Exit.CONFIG, List.of(nothing));
         }
@@ -132,8 +138,12 @@ public final class WorkspacePreflightPhase {
         List<String> selectionErrors = selectionErrors(units, request);
         if (!selectionErrors.isEmpty()) return completed(false, Exit.CONFIG, selectionErrors);
 
-        Optional<List<String>> syncErrors = WorkspaceSyncPhase.run(request, listener, clock);
-        if (syncErrors.isPresent()) return completed(false, Exit.FAILURE, syncErrors.orElseThrow());
+        WorkspaceSyncPhase.Synced synced = WorkspaceSyncPhase.run(request, listener, clock, landedBefore);
+        if (synced.failed()) return completed(false, Exit.FAILURE, synced.errors());
+        // `jk sync` is this far and no further: the lock and the sync are the whole goal.
+        if (syncOnly) {
+            return new Completed(new WorkspaceResult(true, 0, List.of(), List.of()).withSync(synced.counts()));
+        }
 
         // Before anything fingerprints the tree: what the run reads is the formatted tree.
         GuardFormat.Result formatted =
@@ -216,8 +226,8 @@ public final class WorkspacePreflightPhase {
         }
         listener.onPreflight("lock", 0, 0, lockStale ? "Refreshing workspace lock…" : "Workspace lock ready");
         long started = clock.nanos();
-        BuildService.LockGuard guard =
-                WorkspaceLock.ensureWorkspaceLockFresh(request.entryDir(), request.cache(), lockStale);
+        BuildService.LockGuard guard = WorkspaceLock.ensureWorkspaceLockFresh(
+                request.entryDir(), request.cache(), lockStale, repoUrlOf(request));
         if (guard.status() != 0) {
             String error = guard.error() != null ? guard.error() : "dependency resolution failed";
             listener.onPreflightFailed("lock", (clock.nanos() - started) / 1_000_000L, error);
@@ -359,13 +369,13 @@ public final class WorkspacePreflightPhase {
 
     /**
      * The goal-agnostic lifecycle a goal's forecast prices: through COMPILE, TEST or PACKAGE. Null
-     * for RESHELVE, which is all tail. Every goal past PACKAGE prices the same lifecycle as {@code
+     * for RESHELVE, which is all tail, and SYNC, which ends before any module plans. Every goal past PACKAGE prices the same lifecycle as {@code
      * jk build}, so they agree on which modules are dirty; their tails are priced on their own.
      */
     static @Nullable WorkspaceTarget coreTarget(WorkspaceTarget target) {
         return switch (target) {
             case COMPILE, TEST -> target;
-            case RESHELVE -> null;
+            case RESHELVE, SYNC -> null;
             default -> WorkspaceTarget.PACKAGE;
         };
     }
@@ -425,6 +435,13 @@ public final class WorkspacePreflightPhase {
             if (error != null) errors.add(unit.coord() + ": " + error);
         }
         return errors;
+    }
+
+    /** The one repository a sync asked to resolve against instead of the declared ones (tests), or null. */
+    static @Nullable URI repoUrlOf(WorkspaceRequest request) {
+        WorkspaceSpec spec = request.spec();
+        TailArgs.Sync sync = spec == null ? null : spec.syncArgs();
+        return sync == null ? null : sync.repoUrl();
     }
 
     private static Completed completed(boolean success, int exitCode, List<String> errors) {

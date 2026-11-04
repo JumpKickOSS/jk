@@ -10,12 +10,15 @@ class BuildHistoryKindsTest {
 
     /** Every build-like goal journals as a build: a history row, a build number, exclusive admission. */
     @Test
-    void every_goal_and_the_guard_run_are_builds() {
+    void every_goal_that_builds_and_the_guard_run_are_builds() {
         for (WorkspaceTarget target : WorkspaceTarget.values()) {
             assertThat(BuildHistoryKinds.isBuildLike(target.jobKind()))
                     .as(target.name())
-                    .isTrue();
+                    .isEqualTo(target.buildsProject());
         }
+        assertThat(WorkspaceTarget.SYNC.buildsProject())
+                .as("a sync builds nothing")
+                .isFalse();
         assertThat(BuildHistoryKinds.isBuildLike(BuildHistoryKinds.GUARD)).isTrue();
         assertThat(BuildHistoryKinds.ALL)
                 .contains("build", "test", "compile", "install", "native", "image", "publish", "train", "guard");

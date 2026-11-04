@@ -8,11 +8,8 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineProcessControl;
-import cc.jumpkick.cli.engine.EngineRequests;
-import cc.jumpkick.cli.run.SilentListener;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.RichText;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.ide.IdeException;
 import cc.jumpkick.ide.IdeModel;
 import cc.jumpkick.lock.ManifestPaths;
@@ -20,6 +17,9 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.IdeWireModel;
+import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -138,24 +138,18 @@ public final class IdeSupport {
 
     private static void hostedBestEffortSync(
             Path wsRoot, Path cache, @Nullable Path jdksDir, GlobalOptions global, @Nullable IdeChrome chrome) {
-        long[] fetched = new long[1];
-        long[] upToDate = new long[1];
-        var session = SessionContext.current();
         var paths = EnginePaths.current();
-        var req = new EngineRequests.SyncRequest(
-                wsRoot, cache, jdksDir, null, false, session.offline(), session.force(), false, global.verbose);
+        // The build's own lock and sync phase, as `jk sync` runs it, with nothing drawn.
+        WorkspaceRequest req = new WorkspaceRequest(
+                        wsRoot, cache, jdksDir, 1, null, true, global.verbose, 0, null, true, true)
+                .withSpec(WorkspaceSpec.sync(false, null));
         // Time-box: best-effort must never hang the CLI. On timeout, force-stop the engine so the
         // blocked protocol read unblocks via channel close.
         AtomicReference<Exception> fail = new AtomicReference<>();
         Thread t = new Thread(
                 () -> {
                     try {
-                        EngineClient.runSync(
-                                paths,
-                                req,
-                                steps -> new SilentListener(System.out, System.err, true),
-                                fetched,
-                                upToDate);
+                        EngineClient.buildWorkspace(paths, req, WorkspaceBuildListener.NOOP);
                     } catch (Exception e) {
                         fail.set(e);
                     }

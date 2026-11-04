@@ -126,4 +126,26 @@ class TransferBoardTest {
             assertThat(board.snapshot().settled()).isEqualTo(1);
         }
     }
+
+    /** A run says how many artifacts it downloaded: their POMs and metadata land too, and do not count. */
+    @Test
+    void artifacts_are_counted_apart_from_every_other_file() {
+        try (var jar = board.openArtifact("g:a:1")) {
+            jar.started(10);
+            jar.advanced(10);
+            jar.finished();
+        }
+        try (var pom = board.open("g:a:1 · pom")) {
+            pom.started(2);
+            pom.advanced(2);
+            pom.finished();
+        }
+        try (var gaveUp = board.openArtifact("g:b:1")) {
+            gaveUp.started(10);
+            gaveUp.advanced(4);
+        }
+
+        assertThat(board.artifactsLanded()).isEqualTo(1);
+        assertThat(board.snapshot().files()).isEqualTo(2);
+    }
 }

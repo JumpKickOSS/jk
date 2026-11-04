@@ -141,7 +141,7 @@ public final class ModulePipeline {
                 yield PublishTail.of(a);
             }
             case PACKAGE, RUN -> Tail.NONE;
-            case COMPILE, TEST, RESHELVE -> throw new IllegalStateException(target + " does not package");
+            case COMPILE, TEST, RESHELVE, SYNC -> throw new IllegalStateException(target + " does not package");
         };
     }
 

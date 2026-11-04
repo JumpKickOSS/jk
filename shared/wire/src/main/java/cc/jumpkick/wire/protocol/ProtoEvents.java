@@ -9,6 +9,7 @@ import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
@@ -372,10 +373,6 @@ public final class ProtoEvents {
                 .encode();
     }
 
-    public static String planFinishSync(String dir, boolean success, long fetched, long upToDate) {
-        return new PlanFinishSyncEvent(dir, success, fetched, upToDate).encode();
-    }
-
     public static String lockModule(String dir, String coord) {
         return new LockModuleEvent(dir, coord).encode();
     }
@@ -535,8 +532,18 @@ public final class ProtoEvents {
     }
 
     public static String workspaceFinish(boolean success, int exitCode, List<Redacted> errors, boolean cancelled) {
+        return workspaceFinish(success, exitCode, errors, cancelled, null);
+    }
+
+    /** As above, with what a {@code jk sync} run settled. */
+    public static String workspaceFinish(
+            boolean success,
+            int exitCode,
+            List<Redacted> errors,
+            boolean cancelled,
+            WorkspaceResult.@Nullable SyncCounts sync) {
         return new WorkspaceFinishEvent(
-                        success, exitCode, errors.stream().map(Redacted::text).toList(), cancelled)
+                        success, exitCode, errors.stream().map(Redacted::text).toList(), cancelled, sync)
                 .encode();
     }
 

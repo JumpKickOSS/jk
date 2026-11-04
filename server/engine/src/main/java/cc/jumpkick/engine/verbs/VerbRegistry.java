@@ -36,7 +36,6 @@ public final class VerbRegistry {
                 new WorkspaceBuildVerb(host),
                 new LockVerb(host),
                 new UpdateVerb(host),
-                new SyncVerb(host),
                 new AuditVerb(host),
                 new FormatVerb(host),
                 new ImportVerb(host),

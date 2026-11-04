@@ -100,6 +100,7 @@ public final class TransferBoard {
     private final ConcurrentHashMap<Planned, Boolean> plans = new ConcurrentHashMap<>();
     private final LongAdder bytes = new LongAdder();
     private final LongAdder files = new LongAdder();
+    private final LongAdder artifacts = new LongAdder();
 
     public TransferBoard(Clock clock) {
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -107,7 +108,20 @@ public final class TransferBoard {
 
     /** A transfer labeled {@code label}; nothing shows until {@link Transfer#started}. */
     public Transfer open(String label) {
-        return new Live(Objects.requireNonNull(label, "label"));
+        return new Live(Objects.requireNonNull(label, "label"), false);
+    }
+
+    /**
+     * As {@link #open}, for a dependency's own file (its jar or aar, not its POM or metadata): the
+     * run counts those apart, so it can say how many artifacts it downloaded.
+     */
+    public Transfer openArtifact(String label) {
+        return new Live(Objects.requireNonNull(label, "label"), true);
+    }
+
+    /** Artifacts whose bodies landed this run, whichever step or caller downloaded them. */
+    public long artifactsLanded() {
+        return artifacts.sum();
     }
 
     /** A step that will settle {@code items} files. */
@@ -143,12 +157,14 @@ public final class TransferBoard {
 
     private final class Live implements Transfer {
         final String label;
+        final boolean artifact;
         volatile long startedNanos;
         volatile long total = -1L;
         volatile long read;
 
-        Live(String label) {
+        Live(String label, boolean artifact) {
             this.label = label;
+            this.artifact = artifact;
         }
 
         @Override
@@ -168,7 +184,10 @@ public final class TransferBoard {
 
         @Override
         public void finished() {
-            if (live.remove(this) != null) files.increment();
+            if (live.remove(this) != null) {
+                files.increment();
+                if (artifact) artifacts.increment();
+            }
         }
 
         @Override
