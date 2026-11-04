@@ -246,8 +246,13 @@ public final class WorkspacePreflightPhase {
         }
         listener.onPreflight("lock", 0, 0, lockStale ? "Refreshing workspace lock…" : "Workspace lock ready");
         long started = clock.nanos();
-        BuildService.LockGuard guard = WorkspaceLock.ensureWorkspaceLockFresh(
-                request.entryDir(), request.cache(), lockStale, repoUrlOf(request));
+        BuildService.LockGuard guard;
+        // A first lock is where a cold project's jars come down: the lock stage moves with them.
+        try (StageProgress ignored =
+                lockStale ? StageProgress.start(listener, "lock", "Refreshing workspace lock…") : null) {
+            guard = WorkspaceLock.ensureWorkspaceLockFresh(
+                    request.entryDir(), request.cache(), lockStale, repoUrlOf(request));
+        }
         if (guard.status() != 0) {
             String error = guard.error() != null ? guard.error() : "dependency resolution failed";
             listener.onPreflightFailed("lock", (clock.nanos() - started) / 1_000_000L, error);

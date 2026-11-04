@@ -3,6 +3,7 @@ package cc.jumpkick.repo;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.net.SocketTimeoutException;
 import java.nio.channels.ClosedByInterruptException;
 import java.util.Objects;
 import java.util.concurrent.CancellationException;
@@ -30,7 +31,7 @@ final class SingleFlight<V> {
         V call() throws IOException, InterruptedException;
     }
 
-    private final ConcurrentHashMap<String, CompletableFuture<V>> flights = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Object, CompletableFuture<V>> flights = new ConcurrentHashMap<>();
     private final Predicate<Throwable> retried;
 
     /** {@code retried}: a leader failure the waiter does not share, so it fetches itself. */
@@ -38,8 +39,11 @@ final class SingleFlight<V> {
         this.retried = Objects.requireNonNull(retried, "retried");
     }
 
-    /** {@code call}'s answer, from this caller's own fetch or from the one already running for {@code key}. */
-    V run(String key, Call<V> call) throws IOException, InterruptedException {
+    /**
+     * {@code call}'s answer, from this caller's own fetch or from the one already running for
+     * {@code key}: a value (a record or a list), compared by equals, so no two keys collide.
+     */
+    V run(Object key, Call<V> call) throws IOException, InterruptedException {
         while (true) {
             CompletableFuture<V> mine = new CompletableFuture<>();
             CompletableFuture<V> theirs = flights.putIfAbsent(key, mine);
@@ -77,6 +81,9 @@ final class SingleFlight<V> {
      */
     static boolean interrupted(@Nullable Throwable failure) {
         for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            // A read timeout is an InterruptedIOException too, but it is the repository's answer,
+            // and every waiter would only meet it again.
+            if (t instanceof SocketTimeoutException) return false;
             if (t instanceof InterruptedException
                     || t instanceof InterruptedIOException
                     || t instanceof ClosedByInterruptException) {
@@ -87,7 +94,7 @@ final class SingleFlight<V> {
     }
 
     /** Callers parked on {@code key}'s fetch now; tests wait on it. */
-    int waiters(String key) {
+    int waiters(Object key) {
         CompletableFuture<V> flight = flights.get(key);
         return flight == null ? 0 : flight.getNumberOfDependents();
     }

@@ -3,6 +3,7 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.layout.BuildLayout;
@@ -663,16 +664,19 @@ public final class PomRuntimeClasspath {
     private record Fetched(
             Optional<RepoGroup.RepoFetched> art,
             @Nullable EffectivePom pom,
-            MavenRepo.@Nullable ArtifactNotFoundException pomMissing) {}
+            MavenRepo.@Nullable ArtifactNotFoundException pomMissing,
+            boolean downloaded) {}
 
     private static Fetched fetchOne(Coordinate coord, EffectivePomBuilder builder, RepoGroup repos)
             throws IOException, InterruptedException {
         Optional<RepoGroup.RepoFetched> art = repos.tryFetchArtifact(coord);
-        if (art.isEmpty()) return new Fetched(art, null, null);
+        if (art.isEmpty()) return new Fetched(art, null, null, false);
+        // Whether this jar came down the wire this run, or the store already held it.
+        boolean downloaded = SessionContext.current().io().transfers().landed(coord.toString());
         try {
-            return new Fetched(art, builder.build(coord), null);
+            return new Fetched(art, builder.build(coord), null, downloaded);
         } catch (MavenRepo.ArtifactNotFoundException e) {
-            return new Fetched(art, null, e);
+            return new Fetched(art, null, e, downloaded);
         }
     }
 
@@ -681,7 +685,7 @@ public final class PomRuntimeClasspath {
             throws IOException, InterruptedException {
         List<ArtifactFanOut.Fetch<Fetched>> fetches = new ArrayList<>(claims.size());
         for (Claim c : claims) fetches.add(() -> fetchOne(c.coord(), builder, repos));
-        return ArtifactFanOut.all(fetches);
+        return ArtifactFanOut.all(fetches, Fetched::downloaded);
     }
 
     /** What one claim's fetch means for the walk: its jar on the classpath and its POM for the next depth. */

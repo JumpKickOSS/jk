@@ -17,11 +17,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /** What a build forks, as the planner reads the modules: nothing is staged that the build would not use. */
 class BuildForksTest {
+
+    @AfterEach
+    void forgetFakeForks() {
+        BuildForks.forgetStaged(); // the fakes below must not stand for real forks in later tests
+    }
 
     @TempDir
     Path tmp;

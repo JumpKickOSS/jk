@@ -136,25 +136,25 @@ public final class CacheSync {
         return new ProgressObserver() {
             @Override
             public void upToDate(Lockfile.Artifact pkg) {
-                plan.settled();
+                plan.settled(false);
                 observer.upToDate(pkg);
             }
 
             @Override
             public void fetched(Lockfile.Artifact pkg) {
-                plan.settled();
+                plan.settled(true);
                 observer.fetched(pkg);
             }
 
             @Override
             public void skipped(Lockfile.Artifact pkg) {
-                plan.settled();
+                plan.settled(false);
                 observer.skipped(pkg);
             }
 
             @Override
             public void failed(Lockfile.Artifact pkg, @Nullable String error) {
-                plan.settled();
+                plan.settled(false);
                 observer.failed(pkg, error);
             }
         };

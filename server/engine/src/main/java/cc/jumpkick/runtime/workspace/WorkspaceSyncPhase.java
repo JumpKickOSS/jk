@@ -38,7 +38,7 @@ final class WorkspaceSyncPhase {
     static Synced run(
             WorkspaceRequest request, WorkspaceBuildListener listener, Clock clock, Set<String> landedBefore) {
         Path owner = LockPaths.lockOwnerDir(request.entryDir());
-        listener.onPreflight("sync", 0, 0, SyncStageProgress.LABEL);
+        listener.onPreflight("sync", 0, 0, StageProgress.SYNC_LABEL);
         long started = clock.nanos();
         // `jk sync` is this phase as a goal of its own; its arguments reach the same plan.
         TailArgs.Sync args = request.spec() == null ? null : request.spec().syncArgs();
@@ -58,7 +58,7 @@ final class WorkspaceSyncPhase {
         BuildPlanResult result;
         // The sync stage moves with the files it settles, so a cold build's header advances through
         // its downloads; stopped before the stage's last word below.
-        try (SyncStageProgress ignored = SyncStageProgress.start(listener)) {
+        try (StageProgress ignored = StageProgress.start(listener, "sync", StageProgress.SYNC_LABEL)) {
             result = plan.run();
         }
         Perf.end("ws-sync", perf, "success", result.success());

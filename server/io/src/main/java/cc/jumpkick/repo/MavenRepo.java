@@ -20,6 +20,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -561,8 +562,7 @@ public final class MavenRepo {
         refuseIfUnreachable();
         // The same file into the same store under the same pin and credential: one download,
         // whoever asks. Two repositories at one URL with different credentials never share one.
-        String flight = (repoStore.root() == null ? "" : repoStore.root().toString()) + "|" + uri + "|" + mirror + "|"
-                + leg + "|" + expectedSha256 + "|" + force + "|" + credential.hashCode();
+        List<Object> flight = Arrays.asList(repoStore.root(), uri, mirror, leg, expectedSha256, force, credential);
         return FLIGHTS.run(
                 flight, () -> fetchRemote(coord, relativePath, uri, mirror, leg, abort, expectedSha256, force));
     }
