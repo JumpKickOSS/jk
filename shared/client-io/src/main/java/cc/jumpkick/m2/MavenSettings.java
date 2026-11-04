@@ -43,9 +43,10 @@ import org.jspecify.annotations.Nullable;
  * request that asks: {@link #current()} keeps the parse while the files are unchanged and expands
  * it per request, so {@code NEXUS_PASSWORD=… jk build} is seen by a resident engine started
  * without it. An encrypted {@code {...}} password is decrypted with the master password of {@code
- * settings-security.xml} — for compatibility only, see {@link MavenPasswords}. {@code privateKey}
- * / {@code configuration} on a server, {@code <pluginRepositories>} and {@code <pluginGroups>} are
- * not read.
+ * settings-security.xml} — for compatibility only, see {@link MavenPasswords}. A server's {@code
+ * <privateKey>} and {@code <passphrase>} are not read: they serve key-based transports (scp, sftp)
+ * that jk does not speak. Nor are a server's {@code <configuration>}, {@code <pluginRepositories>}
+ * and {@code <pluginGroups>}.
  */
 public final class MavenSettings {
 
@@ -55,17 +56,9 @@ public final class MavenSettings {
     /** The environment variable naming the user settings file: Maven's {@code -s} for jk. */
     public static final String SETTINGS_ENV = "JK_M2_SETTINGS";
 
-    /** A server entry: a username/password keyed by repository id, and the key passphrase it names. */
+    /** A server entry: a username/password keyed by repository id. */
     public record Server(
-            String id,
-            @Nullable String username,
-            @Nullable String password,
-            @Nullable String passphrase) {
-
-        public Server(String id, @Nullable String username, @Nullable String password) {
-            this(id, username, password, null);
-        }
-    }
+            String id, @Nullable String username, @Nullable String password) {}
 
     /**
      * A {@code <mirror>}: the repositories {@code mirrorOf} matches are fetched from {@code url}
