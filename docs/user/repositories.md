@@ -651,8 +651,27 @@ This is compatibility, not protection. The master password that unlocks every va
 them, under a passphrase that is the same on every machine, so anyone who can read both files can
 read the passwords. jk reads the format so a working Maven setup keeps working, and does not
 write it. To keep a credential out of plain text, use [`jk repo login`](#credentials), or a
-`${file:…}` or `${cmd:…}` reference in `~/.jk/config.toml`. Maven 4's `mvnenc` format
-(`{[name=master,cipher=…]…}`) is recognised and reported, not read.
+`${file:…}` or `${cmd:…}` reference in `~/.jk/config.toml`.
+
+Maven 4's `mvnenc` format (`{[name=master,cipher=AES/GCM/NoPadding,version=…]…}`) is decrypted
+too, with the master password that the `master` configuration of `~/.m2/settings-security4.xml`
+names a source for (`JK_M2_SETTINGS_SECURITY4=<file>` names another file, Maven's
+`-Dmaven.settings.security`). jk reads the sources that need nobody at the keyboard:
+
+| Source | Read as |
+|---|---|
+| `env:NAME` | the variable in the shell that ran `jk`, like `${env.NAME}` |
+| `file:/absolute/path` | the file's first line that does not start with `#` |
+| `gpg-agent:socket` | the passphrase the agent has cached for Maven; jk always asks with `--no-ask`, so the agent never opens a pinentry, `?non-interactive` or not |
+
+`console-prompt`, `pinentry-prompt:` and `onepassword:` ask someone for the password, and
+`system-property:` reads Maven's own JVM, so jk does not read them: the value is dropped with a
+warning naming the source, as for any password that does not decrypt. A `masterSourceLookup`
+value (`{[name=masterSourceLookup,…]env:NAME}`) reads its source the same way, and a `legacy` one
+is Maven 3's format above. When gpg-agent has nothing cached, let a `mvn` run ask for it once
+(without `?non-interactive`, Maven's pinentry caches it), or preset it with `gpg-preset-passphrase`
+under the cache id `plexus:secDispatcherMasterPassword`; jk asks the agent again on every
+command.
 
 ## Related
 

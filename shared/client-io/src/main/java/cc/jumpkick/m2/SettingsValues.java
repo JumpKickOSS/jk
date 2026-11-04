@@ -36,7 +36,9 @@ import org.jspecify.annotations.Nullable;
  * <p>An encrypted password ({@code {...}}, see {@link MavenPasswords}) is decrypted after
  * expansion, as Maven decrypts it, with the master password of {@code settings-security.xml}: the
  * file {@code JK_M2_SETTINGS_SECURITY} names in the request's environment, else {@code
- * ~/.m2/settings-security.xml}. The file is read only when a value is encrypted.
+ * ~/.m2/settings-security.xml}. A Maven 4 value ({@code mvnenc}) is decrypted with the master
+ * password {@code ~/.m2/settings-security4.xml} names a source for, see {@link MvnencPasswords}.
+ * The files are read only when a value is encrypted.
  *
  * <p>Every lookup is remembered, the security files too, so a later request can ask {@link
  * #stillHolds} whether the values it would see are the ones this expansion saw and reuse its
@@ -70,6 +72,12 @@ final class SettingsValues {
     private @Nullable String master;
 
     private MavenPasswords.@Nullable Undecryptable noMaster;
+
+    /**
+     * Whether a value was decrypted with an answer no lookup or stamp can vouch for — a gpg-agent's
+     * cache — so a later request asks again rather than reuse it.
+     */
+    private boolean unstable;
 
     SettingsValues(Function<String, @Nullable String> env, Function<String, @Nullable String> properties) {
         this.env = Objects.requireNonNull(env, "env");
@@ -155,6 +163,7 @@ final class SettingsValues {
 
     /** Whether every lookup this expansion made answers the same through {@code other}. */
     boolean stillHolds(SettingsValues other) {
+        if (unstable) return false;
         for (Map.Entry<String, @Nullable String> e : seen.entrySet()) {
             if (!Objects.equals(other.lookup(e.getKey()), e.getValue())) return false;
         }
@@ -171,9 +180,49 @@ final class SettingsValues {
      * @throws MavenPasswords.Undecryptable with the reason, never the value
      */
     String decrypt(String value) throws MavenPasswords.Undecryptable {
+        if (MvnencPasswords.encrypted(value)) return MvnencPasswords.decrypt(value, mvnenc());
         String payload = MavenPasswords.payload(value);
         if (payload == null) return value;
         return MavenPasswords.decrypt(payload, master());
+    }
+
+    /**
+     * What a Maven 4 value needs from this expansion: an {@code env:} master source is a lookup like
+     * any {@code ${env.NAME}}, a file it reads is stamped like the security files, and an agent's
+     * answer makes the expansion one-off.
+     */
+    private MvnencPasswords.Request mvnenc() {
+        return new MvnencPasswords.Request() {
+            @Override
+            public @Nullable String env(String name) {
+                return resolve("env." + name);
+            }
+
+            @Override
+            public Path home() throws MavenPasswords.Undecryptable {
+                return SettingsValues.this.home();
+            }
+
+            @Override
+            public Path securityFile() throws MavenPasswords.Undecryptable {
+                return SettingsValues.this.securityFile(MvnencPasswords.SECURITY_ENV, MvnencPasswords.SECURITY_FILE);
+            }
+
+            @Override
+            public void read(Path file) {
+                securityFiles.put(file, StampedMemo.FileStamp.of(file));
+            }
+
+            @Override
+            public void unstable() {
+                unstable = true;
+            }
+
+            @Override
+            public String legacyMaster() throws MavenPasswords.Undecryptable {
+                return master();
+            }
+        };
     }
 
     /** The master password of the request's security file, read once per expansion. */
@@ -194,14 +243,21 @@ final class SettingsValues {
 
     /** {@code JK_M2_SETTINGS_SECURITY} as the request has it, else {@code ~/.m2/settings-security.xml}. */
     private Path securityFile() throws MavenPasswords.Undecryptable {
-        String named = resolve("env." + MavenPasswords.SECURITY_ENV);
+        return securityFile(MavenPasswords.SECURITY_ENV, "settings-security.xml");
+    }
+
+    /**
+     * The file the variable {@code env} names in the request's shell, relative to its working
+     * directory; else {@code ~/.m2/<name>}.
+     */
+    private Path securityFile(String env, String name) throws MavenPasswords.Undecryptable {
+        String named = resolve("env." + env);
         Path home = home();
         if (named != null && !named.isBlank()) {
             String cwd = resolve("user.dir");
-            return MavenPasswords.resolve(
-                    cwd == null ? null : Path.of(cwd), named.strip(), home, MavenPasswords.SECURITY_ENV);
+            return MavenPasswords.resolve(cwd == null ? null : Path.of(cwd), named.strip(), home, env);
         }
-        return home.resolve(".m2").resolve("settings-security.xml");
+        return home.resolve(".m2").resolve(name);
     }
 
     private Path home() throws MavenPasswords.Undecryptable {
