@@ -87,7 +87,8 @@ public final class AgentSetup {
         OPENCODE("opencode"),
         GROK("grok"),
         AGY("agy"),
-        MUSE("muse");
+        MUSE("muse"),
+        CODEX("codex");
 
         /** The executable whose presence on {@code PATH} means the agent is installed. */
         public final String cli;
@@ -169,6 +170,9 @@ public final class AgentSetup {
         }
         if (all || hosts.contains(Host.GROK)) {
             lines.add("next: grok reads AGENTS.md only in a folder you trust: accept grok's trust prompt here once");
+        }
+        if (all || hosts.contains(Host.CODEX)) {
+            lines.add("next: codex reads AGENTS.md; give it jk's tools once: codex mcp add jk -- jk mcp");
         }
         if (all || hosts.contains(Host.MUSE)) {
             lines.add("next: muse reads AGENTS.md only in a trusted workspace: trust it when muse asks, or run"
