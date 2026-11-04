@@ -51,14 +51,17 @@ def median(rs: list[dict], key: str) -> float | None:
     return statistics.median(vals) if vals else None
 
 
-def verdict(agent: str, arm: str, series: int, baseline: int, tasks: list[str]) -> tuple[str, list[str]]:
-    """better, worse or same, and one line per task: the new medians against the baseline's."""
+def verdict(agent: str, arm: str, series: int, baseline: int, tasks: list[str],
+            baseline_arm: str | None = None) -> tuple[str, list[str]]:
+    """better, worse or same, and one line per task: the new medians against the baseline's, whose
+    arm is the agent's prescription unless given."""
+    baseline_arm = baseline_arm or arm
     all_rows = rows()
     lines, ratios, lost, regressed = [], [], False, 0
     for task in tasks:
         new = [r for r in all_rows if (r["driver"], r["arm"], r["task"]) == (agent, arm, task)
                and r["run"] // 100 == series]
-        old = [r for r in all_rows if (r["driver"], r["arm"], r["task"]) == (agent, arm, task)
+        old = [r for r in all_rows if (r["driver"], r["arm"], r["task"]) == (agent, baseline_arm, task)
                and r["run"] // 100 == baseline]
         if not new or not old:
             continue
@@ -116,10 +119,18 @@ def main() -> int:
     ap.add_argument("--agent", action="append", choices=sorted(PRESCRIPTIONS))
     ap.add_argument("--task", action="append", required=True, help="cheapest first")
     ap.add_argument("--rounds", type=int, default=3)
+    ap.add_argument("--arm", action="append", default=[], metavar="AGENT=ARM",
+                    help="run an agent on another arm than its prescription (compared with the baseline's same arm)")
     ap.add_argument("--expect", default="A rename changes no behaviour",
                     help="text a rename answer must carry for the run to test the change")
     ns = ap.parse_args()
     ct = load("smoke_test", HERE / "smoke-test").ct
+    arms = dict(PRESCRIPTIONS)
+    for pair in ns.arm:
+        agent, _, arm = pair.partition("=")
+        if agent not in arms or arm not in ct.ARMS:
+            raise SystemExit(f"screen-ff: no agent or arm in {pair!r}")
+        arms[agent] = arm
     active = list(ns.agent or PRESCRIPTIONS)
     for rnd in range(1, ns.rounds + 1):
         run = ns.series * 100 + rnd - 1
@@ -129,7 +140,7 @@ def main() -> int:
                 print(f"   {task}: skipped, Docker is down", flush=True)
                 continue
             for agent in list(active):
-                arm = PRESCRIPTIONS[agent]
+                arm = arms[agent]
                 if measured(agent, arm, task, run):
                     continue
                 sys.argv = ["change-tasks", "--driver", agent, "--arm", arm, "--task", task,
@@ -157,7 +168,7 @@ def main() -> int:
             return 1
         verdicts = {}
         for agent in active:
-            v, lines = verdict(agent, PRESCRIPTIONS[agent], ns.series, ns.baseline, ns.task)
+            v, lines = verdict(agent, arms[agent], ns.series, ns.baseline, ns.task, PRESCRIPTIONS[agent])
             verdicts[agent] = v
             print(f"== after round {rnd}: {agent} {v}", flush=True)
             print("\n".join(lines), flush=True)
