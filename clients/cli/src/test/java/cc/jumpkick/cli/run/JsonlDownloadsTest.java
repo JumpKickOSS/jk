@@ -4,9 +4,9 @@ package cc.jumpkick.cli.run;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
-import cc.jumpkick.cli.run.jsonl.DownloadsLine;
 import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.testing.FakeClock;
+import cc.jumpkick.wire.protocol.DownloadsEvent;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -27,10 +27,10 @@ class JsonlDownloadsTest {
         return new TransferBoard.Snapshot(settled, 183, settled, bytes, 3, List.of());
     }
 
-    private List<DownloadsLine> lines() {
+    private List<DownloadsEvent> lines() {
         return buf.toString(StandardCharsets.UTF_8)
                 .lines()
-                .map(DownloadsLine::decode)
+                .map(DownloadsEvent::decode)
                 .toList();
     }
 
@@ -44,9 +44,9 @@ class JsonlDownloadsTest {
 
         assertThat(buf.toString(StandardCharsets.UTF_8)).contains("\"type\":\"" + EngineProtocol.DOWNLOADS + "\"");
         assertThat(lines())
-                .extracting(DownloadsLine::settled, DownloadsLine::bytes, DownloadsLine::done)
+                .extracting(e -> e.snapshot().settled(), e -> e.snapshot().bytes(), DownloadsEvent::done)
                 .containsExactly(tuple(3, 1_000L, false), tuple(90, 70_000L, false), tuple(0, 150_000L, true));
-        assertThat(lines().getLast().files()).isEqualTo(183);
+        assertThat(lines().getLast().snapshot().files()).isEqualTo(183);
     }
 
     @Test
@@ -65,8 +65,8 @@ class JsonlDownloadsTest {
 
         assertThat(lines()).singleElement().satisfies(line -> {
             assertThat(line.done()).isTrue();
-            assertThat(line.files()).isEqualTo(2);
-            assertThat(line.bytes()).isEqualTo(4_096);
+            assertThat(line.snapshot().files()).isEqualTo(2);
+            assertThat(line.snapshot().bytes()).isEqualTo(4_096);
         });
     }
 
@@ -75,6 +75,6 @@ class JsonlDownloadsTest {
         view.downloads(streaming(3, 1_000));
         view.finish();
 
-        assertThat(lines()).extracting(DownloadsLine::done).containsExactly(false, true);
+        assertThat(lines()).extracting(DownloadsEvent::done).containsExactly(false, true);
     }
 }

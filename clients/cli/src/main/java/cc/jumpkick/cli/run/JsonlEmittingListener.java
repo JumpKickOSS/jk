@@ -9,6 +9,7 @@ import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.EventEnvelope;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -104,10 +105,10 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
 
     @Override
     public void stepFinish(String step, @Nullable String group, TaskStatus s, Duration d, Duration waited) {
-        String finish = JsonlShape.stepFinish(step, wire(group), s, d, waited);
         String said = labels.remove(step);
-        if (said != null) finish = Jsonl.append(finish, "\"label\":" + Jsonl.quote(said));
-        line(finish, EngineProtocol.TASK_FINISH);
+        line(
+                JsonlShape.stepFinish(step, wire(group), s, d, waited, said == null ? "" : said),
+                EngineProtocol.TASK_FINISH);
     }
 
     @Override
@@ -116,7 +117,10 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
     }
 
     private void line(String raw, String type) {
-        String tagged = module == null ? raw : Jsonl.append(raw, "\"module\":" + Jsonl.quote(module));
+        // A record that names its module itself (a test class, a diagnostic) keeps its own field.
+        String tagged = module == null || EventEnvelope.keys(raw).contains("module")
+                ? raw
+                : Jsonl.append(raw, "\"module\":" + Jsonl.quote(module));
         emit(JsonlShape.withProgress(tagged), !JsonlShape.HOT_TYPES.contains(type));
     }
 

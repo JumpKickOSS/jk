@@ -8,6 +8,7 @@ import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.wire.protocol.FailureTextRefs;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -69,7 +70,7 @@ class JsonlShapeTest {
         assertThat(line).contains("\"type\":\"task-finish\"");
         assertThat(line).contains("\"ts\":");
         assertThat(line).contains("\"task\":\"run-tests\"");
-        assertThat(line).contains("\"duration_ms\":12");
+        assertThat(line).contains("\"millis\":12");
     }
 
     @Test
@@ -136,7 +137,7 @@ class JsonlShapeTest {
         String finish = JsonlShape.sessionFinish(0, 42, "ok", List.of("a:b"));
         assertThat(finish).contains("\"type\":\"session-finish\"");
         assertThat(finish).contains("\"exit\":0");
-        assertThat(finish).contains("\"duration_ms\":42");
+        assertThat(finish).contains("\"millis\":42");
         assertThat(finish).contains("\"wedge\":\"ok\"");
         assertThat(finish).contains("\"modules\":[\"a:b\"]");
     }
@@ -157,7 +158,7 @@ class JsonlShapeTest {
         assertThat(one).contains("\"textId\":1").contains("a.Rule.before");
         assertThat(two)
                 .contains("\"sameText\":1")
-                .contains("\"class\":\"a.BarTest\"")
+                .contains("\"testClass\":\"a.BarTest\"")
                 .doesNotContain("a.Rule.before")
                 .doesNotContain("war missing");
     }
@@ -191,7 +192,7 @@ class JsonlShapeTest {
         assertThat(line).contains("\"worker\":2");
         assertThat(line).contains("\"module\":\"cc.jumpkick:jk-engine\"");
         assertThat(line).contains("\"engine\":\"junit-jupiter\"");
-        assertThat(line).contains("\"class\":\"cc.jumpkick.runtime.LockFreshenConservativeTest\"");
+        assertThat(line).contains("\"testClass\":\"cc.jumpkick.runtime.LockFreshenConservativeTest\"");
         assertThat(line)
                 .contains("\"method\":\"freshen_preserves_pins_while_explicit_lock_floats(java.nio.file.Path)\"");
         assertThat(line).contains("\"exceptionClass\":\"org.opentest4j.AssertionFailedError\"");
@@ -219,10 +220,11 @@ class JsonlShapeTest {
         assertThat(start).contains("\"type\":\"module-start\"");
         assertThat(start).contains("\"dir\":\"/w/core\"");
         assertThat(start).contains("\"coord\":\"com.example:core\"");
-        String finish = JsonlShape.moduleFinish("/w/core", "com.example:core", true, false, 42);
+        String finish = JsonlShape.moduleFinish(new ModuleOutcome(
+                "com.example:core", Path.of("/w/core"), true, 0, 42, true, false, false, null, null, null));
         assertThat(finish).contains("\"type\":\"module-finish\"");
         assertThat(finish).contains("\"success\":true");
-        assertThat(finish).contains("\"duration_ms\":42");
+        assertThat(finish).contains("\"millis\":42");
         String ws = JsonlShape.workspaceStart(3);
         assertThat(ws).contains("\"type\":\"workspace-start\"");
         assertThat(ws).contains("\"modules\":3");

@@ -9,7 +9,13 @@ import java.util.List;
 import java.util.Objects;
 
 /** A run's downloads in flight (see {@link EngineProtocol#DOWNLOADS}). */
-public record DownloadsEvent(TransferBoard.Snapshot snapshot) {
+public record DownloadsEvent(TransferBoard.Snapshot snapshot, boolean done) {
+
+    /** A frame mid-burst. */
+    public DownloadsEvent(TransferBoard.Snapshot snapshot) {
+        this(snapshot, false);
+    }
+
     public String encode() {
         List<String> rows = new ArrayList<>(snapshot.rows().size());
         for (TransferBoard.Row r : snapshot.rows()) {
@@ -26,6 +32,7 @@ public record DownloadsEvent(TransferBoard.Snapshot snapshot) {
                 .number("bytes", snapshot.bytes())
                 .number("inflight", snapshot.inflight())
                 .token("rows", "[" + String.join(",", rows) + "]")
+                .optionalTrue("done", done)
                 .finish();
     }
 
@@ -37,12 +44,14 @@ public record DownloadsEvent(TransferBoard.Snapshot snapshot) {
                     Jsonl.longValue(row, "read", 0L),
                     Jsonl.longValue(row, "total", -1L)));
         }
-        return new DownloadsEvent(new TransferBoard.Snapshot(
-                Jsonl.intValue(json, "settled", 0),
-                Jsonl.intValue(json, "planned", 0),
-                Jsonl.intValue(json, "files", 0),
-                Jsonl.longValue(json, "bytes", 0L),
-                Jsonl.intValue(json, "inflight", 0),
-                rows));
+        return new DownloadsEvent(
+                new TransferBoard.Snapshot(
+                        Jsonl.intValue(json, "settled", 0),
+                        Jsonl.intValue(json, "planned", 0),
+                        Jsonl.intValue(json, "files", 0),
+                        Jsonl.longValue(json, "bytes", 0L),
+                        Jsonl.intValue(json, "inflight", 0),
+                        rows),
+                Jsonl.bool(json, "done", false));
     }
 }

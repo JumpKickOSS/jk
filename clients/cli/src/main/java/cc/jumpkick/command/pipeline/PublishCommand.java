@@ -7,14 +7,13 @@ import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.ProjectInfos;
-import cc.jumpkick.cli.run.jsonl.OutputLine;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.command.VariantSelection;
 import cc.jumpkick.config.RepositoriesScan;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.credential.RepoCredential;
-import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.command.CliCommand;
@@ -344,11 +343,8 @@ public final class PublishCommand implements CliCommand {
             }
         } else {
             for (String written : published.written()) {
-                CliOutput.out(new OutputLine(
-                                Clock.SYSTEM.millis(),
-                                "publish",
-                                "wrote " + displayPath(Path.of(written), workspaceRoot, projectDir))
-                        .encode());
+                CliOutput.out(JsonlShape.output(
+                        "publish", "wrote " + displayPath(Path.of(written), workspaceRoot, projectDir)));
             }
         }
     }

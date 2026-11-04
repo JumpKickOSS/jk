@@ -12,7 +12,7 @@ public record SessionFinishLine(
     public String encode() {
         return JsonlEnvelope.open(ts, "session-finish")
                 .number("exit", exit)
-                .number("duration_ms", durationMs)
+                .number("millis", durationMs)
                 .optionalNonBlankString("wedge", wedge)
                 .optionalArray("modules", modules)
                 .finish();
@@ -22,7 +22,7 @@ public record SessionFinishLine(
         return new SessionFinishLine(
                 Jsonl.longValue(json, "ts", 0),
                 Jsonl.intValue(json, "exit", 0),
-                Jsonl.longValue(json, "duration_ms", 0),
+                Jsonl.longValue(json, "millis", 0),
                 Jsonl.str(json, "wedge"),
                 Jsonl.strArray(json, "modules"));
     }
