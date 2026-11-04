@@ -10,7 +10,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.HexFormat;
@@ -311,57 +310,15 @@ class KeychainBackendsTest {
                 .containsExactly("/usr/bin/security", "delete-generic-password", "-s", "jk", "-a", "forge/github.com");
     }
 
-    // ---- Windows Credential Manager (powershell) ----
-
-    private static String script(List<String> argv) {
-        assertThat(argv.subList(0, 5))
-                .containsExactly("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand");
-        return new String(Base64.getDecoder().decode(argv.get(5)), StandardCharsets.UTF_16LE);
-    }
-
-    @Test
-    void powershell_writes_the_target_into_an_encoded_script_and_the_secret_onto_stdin() {
-        Scripted cmd = new Scripted().answer(0, "", "");
-        new WindowsCredentialBackend(cmd).write("repo/nexus", "l", "s3cret");
-
-        String script = script(cmd.argv.get(0));
-        assertThat(script)
-                .contains("$target = 'jk:repo/nexus'")
-                .contains("[JkCred]::Write($target, [Console]::In.ReadToEnd())")
-                .contains("CredWriteW")
-                .doesNotContain("s3cret");
-        assertThat(cmd.stdin.get(0)).isEqualTo("s3cret");
-    }
-
-    @Test
-    void powershell_read_returns_stdout_and_exit_3_means_absent() {
-        Scripted cmd = new Scripted().answer(0, "s3cret", "").answer(3, "", "").answer(1, "", "Win32 error 1312\r\n");
-        WindowsCredentialBackend backend = new WindowsCredentialBackend(cmd);
-
-        assertThat(backend.read("repo/nexus")).contains("s3cret");
-        assertThat(script(cmd.argv.get(0))).contains("[JkCred]::Read($target, [ref]$s)");
-        assertThat(backend.read("repo/nexus")).isEmpty();
-        assertThatThrownBy(() -> backend.read("repo/nexus")).hasMessageContaining("Win32 error 1312");
-    }
-
-    @Test
-    void powershell_delete_treats_not_found_as_removed() {
-        Scripted cmd = new Scripted().answer(3, "", "");
-        new WindowsCredentialBackend(cmd).delete("forge/github.com");
-        assertThat(script(cmd.argv.get(0)))
-                .contains("$target = 'jk:forge/github.com'")
-                .contains("[JkCred]::Delete");
-    }
-
     @Test
     void every_backend_names_itself_the_way_records_and_doctor_spell_it() {
         Scripted none = new Scripted();
         for (SecretBackend b : List.of(
-                new SecretServiceBackend(none), new MacKeychainBackend(none), new WindowsCredentialBackend(none))) {
+                new SecretServiceBackend(none), new MacKeychainBackend(none), WindowsCredentialBackendTest.fake())) {
             assertThat(SecretVault.displayName(b.id())).isEqualTo(b.displayName());
         }
         assertThat(new SecretServiceBackend(none).daemonReachable()).isFalse();
         assertThat(new MacKeychainBackend(none).daemonReachable()).isTrue();
-        assertThat(new WindowsCredentialBackend(none).daemonReachable()).isTrue();
+        assertThat(WindowsCredentialBackendTest.fake().daemonReachable()).isTrue();
     }
 }

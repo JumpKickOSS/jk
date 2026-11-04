@@ -154,7 +154,7 @@ public final class SecretVault {
     /** The keychain this OS has, in preference order. */
     public static List<SecretBackend> hostBackends(SecretCommand command, HostSession session) {
         if (Os.isDarwin()) return List.of(new MacKeychainBackend(command));
-        if (Os.isWindows()) return List.of(new WindowsCredentialBackend(command));
+        if (Os.isWindows()) return List.of(new WindowsCredentialBackend());
         if (Os.isLinux()) return List.of(new SecretServiceBackend(command, session));
         return List.of();
     }

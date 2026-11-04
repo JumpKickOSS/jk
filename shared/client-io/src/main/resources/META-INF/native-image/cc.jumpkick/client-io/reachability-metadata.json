@@ -1,0 +1,31 @@
+{
+  "foreign": {
+    "downcalls": [
+      {
+        "returnType": "jint",
+        "parameterTypes": ["void*", "jint", "jint", "void*"],
+        "options": {
+          "captureCallState": true
+        }
+      },
+      {
+        "returnType": "jint",
+        "parameterTypes": ["void*", "jint"],
+        "options": {
+          "captureCallState": true
+        }
+      },
+      {
+        "returnType": "jint",
+        "parameterTypes": ["void*", "jint", "jint"],
+        "options": {
+          "captureCallState": true
+        }
+      },
+      {
+        "returnType": "void",
+        "parameterTypes": ["void*"]
+      }
+    ]
+  }
+}
