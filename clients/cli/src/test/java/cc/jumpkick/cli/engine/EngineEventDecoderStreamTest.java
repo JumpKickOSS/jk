@@ -324,6 +324,30 @@ class EngineEventDecoderStreamTest {
         assertThat(result.modules().getFirst().installed()).isEqualTo(installed);
     }
 
+    /**
+     * A run notice posted before any module starts (the run installing a JDK while it syncs) has no
+     * module to land on: it reaches the client as a note, not nowhere.
+     */
+    @Test
+    void a_notice_no_module_owns_yet_reaches_the_client_as_a_note() throws Exception {
+        Recorder rec = new Recorder();
+        EngineEventDecoder.streamWorkspaceEvents(
+                stream(
+                        ProtoLifecycle.jobStart(54, "build", "/w", 1),
+                        ProtoEvents.warn("/w", "", "notice", "installed JDK 21-zulu to /jdks/azul-21"),
+                        ProtoEvents.planModule("/w/a", "g:a:1", "a", 10, false),
+                        ProtoEvents.planDone(1),
+                        ProtoEvents.moduleStart("/w/a"),
+                        ProtoEvents.planFinish("/w/a", true),
+                        ProtoEvents.workspaceFinish(true, 0, List.of(), false),
+                        ProtoLifecycle.jobFinish(54)),
+                rec,
+                Path.of("/cache"),
+                null);
+
+        assertThat(rec.notes).containsExactly("installed JDK 21-zulu to /jdks/azul-21");
+    }
+
     /** A module fail-fast stopped reaches the client as stopped, apart from the one that failed. */
     @Test
     void a_module_finish_carries_that_the_module_was_stopped() throws Exception {
@@ -443,6 +467,12 @@ class EngineEventDecoderStreamTest {
         final List<Duration> stepDurations = new ArrayList<>();
         final List<Duration> stepWaits = new ArrayList<>();
         final Map<String, List<String>> diagnosticsByModule = new LinkedHashMap<>();
+        final List<String> notes = new ArrayList<>();
+
+        @Override
+        public void onNote(String text) {
+            notes.add(text);
+        }
 
         @Override
         public BuildPlanListener onModuleStart(ModulePlan module) {
