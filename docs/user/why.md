@@ -42,7 +42,7 @@ The measure is turns, tokens and wall time to green on broken builds, against Ma
 given the same agent tooling: [Agents reach green](#agents-reach-green).
 
 <!-- agents-claims:begin -->
-Asked who calls a method or what can end up running it, agents from 5 vendors answered from the graph in 60%–86% fewer turns and 78%–94% fewer tokens than with no graph; renaming a method and every caller took 66%–85% fewer turns and 73%–82% fewer tokens; down to the smallest repository measured, spring-petclinic at 3,635 lines. ([The tables](#asking-about-the-code).)
+Asked who calls a method or what can end up running it, agents from 6 vendors answered from the graph in 66%–91% fewer turns and 72%–98% fewer tokens than with no graph; renaming a method and every caller took 75%–91% fewer turns and 78%–98% fewer tokens; down to the smallest repository measured, gs-multi-module at 83 lines. ([The tables](#asking-about-the-code).)
 <!-- agents-claims:end -->
 
 ### 2. Never type `clean` again
@@ -364,13 +364,14 @@ summed over the questions each agent ran both ways:
 <!-- agents-questions:begin -->
 | Agent (questions) | Correct, jk / without the graph | Turns | Tokens | Wall |
 |---|---|---|---|---|
-| Vendor A, mid-tier (7) | 21 of 21 / 65 of 72 | 22 / 130.5 | 283k / 2.3M | 54 / 326 s |
-| Vendor B, frontier (4) | 4 of 4 / 12 of 12 | 36 / 155 | 2.3M / 10.2M | 334 / 1,507 s |
-| Vendor C, fast (4) | 14 of 14 / 3 of 12 | 87 / 215 | 2.0M / 12.4M | 434 / 1,051 s |
-| Vendor D (4) | 16 of 16 / 10 of 12 | 12 / 87 | 241k / 4.2M | 83 / 270 s |
-| Vendor E (4) | 15 of 15 / 12 of 12 | 27 / 133 | 775k / 11.2M | 227 / 731 s |
+| Vendor A, mid-tier (8) | 8 of 8 / 39 of 40 | 27 / 133.5 | 341k / 2.3M | 98 / 377 s |
+| Vendor B, frontier (8) | 8 of 8 / 35 of 40 | 35 / 279.5 | 398k / 16.4M | 239 / 2,795 s |
+| Vendor C, fast (8) | 8 of 8 / 7 of 24 | 116 / 410 | 4.5M / 25.1M | 2,025 / 2,632 s |
+| Vendor D (8) | 8 of 8 / 33 of 37 | 26 / 277 | 527k / 15.0M | 199 / 787 s |
+| Vendor E (8) | 8 of 8 / 22 of 24 | 29 / 284 | 787k / 24.2M | 366 / 2,264 s |
+| Vendor F (8) | 8 of 8 / 19 of 24 | 25 / 74 | 783k / 2.7M | 194 / 301 s |
 
-Medians per task, summed over the tasks each agent ran on both arms; results: `2026-10-31-change-tasks`, `agy-questions`, `cursor-composer-questions`, `graph-native-questions`, `graph-native-shell`, `graph-nav-v2`, `grok-questions`, `muse-questions`.
+jk is each agent as `jk agents` sets it up (Vendor C and D with jk's rules file), one run per task on the current build; without the graph, three to five runs per task, the graph hidden from MCP and the shell alike. Medians per task, summed over the tasks each agent ran on both arms; results: `2026-11-01-change-tasks`, `2026-11-02-change-tasks`, `2026-11-04-change-tasks`.
 <!-- agents-questions:end -->
 
 The answer is `callers` (`transitive=true` for everything that reaches the method): complete from
@@ -390,10 +391,14 @@ and rebuilds until the compiler stops naming a site. Hidden acceptance tests che
 <!-- agents-renames:begin -->
 | Agent (renames) | Correct, jk / without the graph | Turns | Tokens | Wall |
 |---|---|---|---|---|
-| Vendor A, mid-tier (4) | 12 of 12 / 24 of 24 | 11 / 73.5 | 84k / 461k | 34 / 204 s |
-| Vendor D (4) | 12 of 12 / 12 of 12 | 31 / 90 | 787k / 2.9M | 361 / 692 s |
+| Vendor A, mid-tier (7) | 7 of 7 / 35 of 35 | 14 / 100 | 103k / 552k | 97 / 276 s |
+| Vendor B, frontier (7) | 7 of 7 / 35 of 35 | 28 / 136 | 256k / 3.4M | 180 / 742 s |
+| Vendor C, fast (7) | 7 of 7 / 17 of 21 | 27 / 310 | 255k / 12.4M | 281 / 1,950 s |
+| Vendor D (7) | 7 of 7 / 28 of 28 | 14 / 69.5 | 263k / 1.9M | 155 / 294 s |
+| Vendor E (7) | 7 of 7 / 21 of 21 | 23 / 186 | 527k / 11.8M | 359 / 720 s |
+| Vendor F (7) | 7 of 7 / 21 of 21 | 14 / 56 | 334k / 1.5M | 154 / 661 s |
 
-Medians per task, summed over the tasks each agent ran on both arms; results: `2026-10-31-change-tasks`.
+jk is each agent as `jk agents` sets it up (Vendor C and D with jk's rules file), one run per task on the current build; without the graph, three to five runs per task, the graph hidden from MCP and the shell alike. Medians per task, summed over the tasks each agent ran on both arms; results: `2026-11-01-change-tasks`, `2026-11-02-change-tasks`, `2026-11-04-change-tasks`.
 <!-- agents-renames:end -->
 
 ### How small a repository
@@ -405,10 +410,13 @@ to jk itself, each with and without the graph (medians, 3 or more runs each):
 <!-- agents-curve:begin -->
 | Repository | Lines | Rename | Vendor A, mid-tier: turns · tokens, jk / without | Vendor D: turns · tokens, jk / without |
 |---|---:|---|---|---|
-| spring-petclinic | 3,635 | `Owner.addVisit` | 3 / 7 · 18k / 28k | 4 / 6 · 59k / 92k |
-| commons-lang | 188,332 | `CharSequenceUtils.indexOf` | 3 / 18.5 · 18k / 45k | 4 / 40 · 65k / 1.5M |
-| commons-lang | 188,332 | `includes` | 3 / 39.5 · 19k / 284k | 7 / 24 · 133k / 1.0M |
-| jk | 679,533 | `edgesBetween` | 2 / 8.5 · 29k / 104k | 16 / 20 · 529k / 276k |
+| gs-multi-module | 83 | `MyService.message` | 2 / 7 · 12k / 20k | 2 / 7 · 35k / 109k |
+| gs-uploading-files | 416 | `StorageService.loadAsResource` | 2 / 8 · 12k / 29k | 2 / 5.5 · 35k / 89k |
+| spring-petclinic | 3,635 | `Owner.addVisit` | 2 / 6 · 12k / 20k | 2 / 8 · 35k / 120k |
+| commons-cli | 17,862 | `Util.stripLeadingHyphens` | 2 / 12 · 12k / 43k | 2 / 7.5 · 35k / 113k |
+| commons-lang | 188,332 | `CharSequenceUtils.indexOf` | 2 / 19 · 12k / 51k | 2 / 14 · 36k / 339k |
+| commons-lang | 188,332 | `Range.contains` | 2 / 40 · 13k / 285k | 2 / 18 · 36k / 862k |
+| jk | 679,533 | `CodeGraph.between` | 2 / 8 · 29k / 103k | 2 / 9.5 · 51k / 288k |
 <!-- agents-curve:end -->
 
 ## What is still open
