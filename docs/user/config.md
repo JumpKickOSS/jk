@@ -146,7 +146,9 @@ a `[network]` table. Failing both, the shell's
 when both are set, and both `no-proxy` lists apply. A proxy URL is
 `http://[user:password@]host[:port]` (a bare `host:port` is http); https targets tunnel through it
 with `CONNECT`, and a `user:password@` is sent to the proxy as Basic (only to the proxy — a
-redirect to a host that goes direct never carries it). A `no-proxy` entry is
+redirect to a host that goes direct never carries it). Whichever source wrote it — `[network]`,
+a `settings.xml` `<proxy>` (expanded or decrypted) or the shell — the password is masked in jk's
+output, `-o jsonl` and the build history, like a repository credential. A `no-proxy` entry is
 `*`, a host, a `.suffix` (a bare suffix covers its subdomains too), or `host:port` for one port.
 Loopback targets always go direct.
 
