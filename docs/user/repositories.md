@@ -68,10 +68,19 @@ answers HTTP 429, and Cloudflare, which fronts Central's edge, blocks a host it 
 with HTTP 403 carrying `Server: cloudflare` (curl from the next machine still gets 200). Either
 answer on a Central request opens a four-hour **mirror window**: the refused request is reissued
 against Google's Central mirror (`maven-central.storage-download.googleapis.com/maven2`) in the
-same call, and every Central-bound request for the rest of the window — POMs, `maven-metadata.xml`,
-plugin workers' closures — goes there without asking Central first. Artifact bytes prefer the
-mirror at all times, refused or not: a locked artifact is pinned by its sha256, so where the
-bytes came from does not matter, and the mirror tolerates far more concurrency than Sonatype.
+same call, and every Central-bound request for the rest of the window — `maven-metadata.xml`,
+checksums, plugin workers' closures — goes there without asking Central first.
+
+Outside the window, Central vouches and the mirror carries. Release POMs and artifacts are
+downloaded from the mirror first, refused or not, since a release file never changes: a mirror
+that has not caught up answers 404, and the file is fetched from Central instead.
+`maven-metadata.xml`, which says which versions exist, is asked of Central. A file the lock does
+not pin yet is verified against the `.sha1` Central publishes for it — one request — so the
+mirror never vouches for its own bytes; mirror bytes Central disowns are discarded and downloaded
+from Central with a checksum note. A file the lock pins is verified against its sha256 and reads
+no checksum at all, so a cold-cache build from a lockfile asks Central for none of its artifacts.
+While the window is open the mirror's own checksums stand in for Central's, and the results say
+how many files were verified that way (`N files from central verified against the mirror only`).
 
 The window is a transport fact, not a repository: the lock records `central` at Central's own URL
 and is byte-identical to one written directly. The results say what happened, once per lock,

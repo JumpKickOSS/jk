@@ -420,8 +420,10 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
   the Central mirror). `CentralMirror` is the Central failover at `Http`'s choke point: a 429, or a
   403 carrying Cloudflare's headers, from Central opens a four-hour window (a stamp file's mtime,
   under `~/.jk/cache`) during which every Central-bound request is reissued against Google's mirror;
-  artifact bytes prefer the mirror regardless, and `LockOrchestrator` raises the window's cause as a
-  lock note. A download streams through the JDK's 16 KiB copy buffer into a `.put-` temp
+  release POMs and artifacts prefer the mirror regardless (`routeForDownload`), while the checksum
+  that vouches for an unpinned one is Central's `.sha1` (`MavenRepo.vouchFor`, read where `route`
+  sends it, so the mirror vouches only inside the window and `DownloadLeg` counts it for a note); a
+  pinned file reads no sidecar. `LockOrchestrator` raises the window's cause as a lock note. A download streams through the JDK's 16 KiB copy buffer into a `.put-` temp
   in the repository's store tree (`DownloadLeg`), so a row in flight costs its connection and that
   buffer, never its payload.
 - **Budgets / anti-loop:** `JK_RESOLVE_MAX_DECISIONS` (default 100 000) caps decisions, and every

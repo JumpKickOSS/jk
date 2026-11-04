@@ -41,10 +41,11 @@ import org.jspecify.annotations.Nullable;
 public final class MavenRepo {
 
     /**
-     * Central failover + the standing download preference, the instance the transport holds. Static
-     * because the four-hour window is a fact about this machine's IP, not about a repository.
+     * Central failover + the standing download preference: {@link CentralMirror#standard()}, the
+     * instance the transport holds, since the four-hour window is a fact about this machine's IP, not
+     * about a repository. A field only so a test can hand in an isolated window.
      */
-    private static final CentralMirror CENTRAL_MIRROR = CentralMirror.standard();
+    private final CentralMirror centralMirror;
 
     /**
      * One network leg per file at a time, process-wide: two graphs of one lock, or two runs, that
@@ -181,7 +182,8 @@ public final class MavenRepo {
                 releases,
                 snapshots,
                 mirror,
-                optional);
+                optional,
+                centralMirror);
     }
 
     /**
@@ -202,7 +204,8 @@ public final class MavenRepo {
                 servesReleases,
                 servesSnapshots,
                 mirror,
-                optional);
+                optional,
+                centralMirror);
     }
 
     /**
@@ -227,7 +230,27 @@ public final class MavenRepo {
                 servesReleases,
                 servesSnapshots,
                 mirror,
-                optional);
+                optional,
+                centralMirror);
+    }
+
+    /** This repository over {@code centralMirror}'s window instead of the machine's; for tests. */
+    MavenRepo withCentralMirror(CentralMirror centralMirror) {
+        return new MavenRepo(
+                name,
+                baseUrl,
+                transport,
+                cas,
+                credential,
+                http,
+                m2integration,
+                allowUnverified,
+                allowInsecure,
+                servesReleases,
+                servesSnapshots,
+                mirror,
+                optional,
+                centralMirror);
     }
 
     /** The settings.xml mirror this repository's requests go through, when one applies. */
@@ -278,7 +301,8 @@ public final class MavenRepo {
                 true,
                 true,
                 null,
-                false);
+                false,
+                CentralMirror.standard());
     }
 
     /** As above, with the release/snapshot policy — Maven's default is both on — and the mirror, if any. */
@@ -295,8 +319,10 @@ public final class MavenRepo {
             boolean servesReleases,
             boolean servesSnapshots,
             @Nullable Mirror mirror,
-            boolean optional) {
+            boolean optional,
+            CentralMirror centralMirror) {
         this.name = Objects.requireNonNull(name, "name");
+        this.centralMirror = Objects.requireNonNull(centralMirror, "centralMirror");
         this.baseUrl = normalize(Objects.requireNonNull(baseUrl, "baseUrl"));
         this.mirror = mirror;
         this.fetchBase = mirror == null ? this.baseUrl : normalize(mirror.url());
@@ -349,7 +375,8 @@ public final class MavenRepo {
                 releases,
                 snapshots,
                 null,
-                true);
+                true,
+                centralMirror);
     }
 
     /**
@@ -519,13 +546,12 @@ public final class MavenRepo {
     }
 
     /**
-     * Which leg of the work a fetch belongs to, because the two want opposite repositories.
-     *
-     * <p>{@link #RESOLVE} — metadata and POMs — decides <em>which versions exist</em>, so it asks Central
-     * and only falls back to the mirror once refused; a lagging mirror would otherwise resolve to stale
-     * versions. {@link #ARTIFACT} is pinned bytes: the sha256 is already known, so provenance is
-     * irrelevant, and preferring the mirror spends its large concurrency budget instead of Sonatype's
-     * per-IP quota.
+     * Which leg of the work a fetch belongs to: {@link #RESOLVE} — metadata and POMs, which decide the
+     * graph — or {@link #ARTIFACT}, the bytes a lock pins. Where a file is fetched does not follow the
+     * leg: a release POM or artifact is immutable, so it is downloaded from Central's mirror first
+     * and verified against Central's checksum ({@link #vouchFor}), while {@code maven-metadata.xml}
+     * changes and stays on Central until Central refuses (see {@link CentralMirror}). The leg decides
+     * what a failure means and what is counted.
      */
     enum Leg {
         RESOLVE,
@@ -584,8 +610,12 @@ public final class MavenRepo {
         if (!force && misses.known(uri)) {
             throw new ArtifactNotFoundException("not found in " + name + ": " + uri, coord);
         }
-        // Pinned bytes prefer the mirror; enumeration stays on Central (see Leg).
-        URI primary = leg == Leg.ARTIFACT ? CENTRAL_MIRROR.routeForDownload(uri) : uri;
+        // Immutable release files prefer the mirror; metadata stays on Central (see CentralMirror).
+        URI primary = mirror ? centralMirror.routeForDownload(uri) : uri;
+        // The sidecars are read where the repository itself publishes them, so Central, not the
+        // mirror, vouches for the bytes the mirror carries. A pinned file reads none: the pin is
+        // the authority. Metadata publishes none worth reading.
+        DownloadLeg.Vouch vouch = mirror && expectedSha256 == null ? vouchFor(uri) : null;
         // The network leg runs under the host's permit (DownloadLeg). Warm mirror hits short-circuit
         // above, so re-locks stay uncapped, but a cold lock's fan-out is bounded to what the host
         // tolerates.
@@ -595,14 +625,20 @@ public final class MavenRepo {
         try (var held = StoreWriteGate.write()) {
             DownloadLeg.Downloaded stored;
             try {
-                stored = download.run(coord, primary, relativePath, mirror, leg, expectedSha256, abort);
+                stored = download.run(coord, primary, relativePath, vouch, leg, expectedSha256, abort);
             } catch (FetchAbortedException e) {
                 throw e;
             } catch (IOException e) {
                 // The mirror can lag or simply not carry something Central has. Falling back keeps a
                 // preference from becoming a dependency.
                 if (primary.equals(uri)) throw e;
-                stored = download.run(coord, uri, relativePath, mirror, leg, expectedSha256, abort);
+                if (e instanceof ChecksumMismatchException) {
+                    // Central's releases do not change, so bytes that fail the check are the
+                    // mirror's fault; Central's copy is what the check is for.
+                    download.note(coord + " from " + name + ": the mirror's copy of " + relativePath
+                            + " failed verification, so it was downloaded from Maven Central instead");
+                }
+                stored = download.run(coord, uri, relativePath, vouch, leg, expectedSha256, abort);
             }
             SessionContext.current().io().remoteDown(stored.size());
             misses.forget(uri);
@@ -626,6 +662,19 @@ public final class MavenRepo {
         } catch (IOException transport) {
             throw unreachableOr(transport);
         }
+    }
+
+    /**
+     * Where the checksum for the file at {@code uri} — this repository's own URL for it — is read.
+     * For Central, Central's {@code .sha1} alone: one request, and Central publishes one for every
+     * file. While Central is refusing this host the read goes to the mirror instead, which then
+     * vouches for its own bytes; that is counted for the run's note rather than failing a build
+     * Central cannot serve. Any other repository is read beside the file, strongest first.
+     */
+    private DownloadLeg.Vouch vouchFor(URI uri) {
+        if (!centralMirror.matches(uri)) return DownloadLeg.Vouch.beside(uri);
+        URI at = centralMirror.route(uri);
+        return new DownloadLeg.Vouch(at, true, !at.equals(uri));
     }
 
     /** The fault an earlier request met, thrown again without a request, once this repository is unreachable. */
@@ -758,10 +807,15 @@ public final class MavenRepo {
         if (SessionContext.current().config().offlineOr(false) || abort.getAsBoolean() || unreachable.get() != null) {
             return Optional.of(local);
         }
-        URI uri = CENTRAL_MIRROR.routeForDownload(fetchBase.resolve(relativePath));
         try {
             if (download.confirmStored(
-                    coord, uri, relativePath, local.cachePath(), local.sha256(), leg, requirePublished)) {
+                    coord,
+                    vouchFor(fetchBase.resolve(relativePath)),
+                    relativePath,
+                    local.cachePath(),
+                    local.sha256(),
+                    leg,
+                    requirePublished)) {
                 return Optional.of(local);
             }
             repoStore.evict(relativePath);

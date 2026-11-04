@@ -58,6 +58,12 @@ final class DownloadLeg {
     private final AtomicInteger unverifiedAllowed = new AtomicInteger();
 
     /**
+     * Central files this run whose checksum came from the mirror, because Central was refusing this
+     * host: the mirror vouched for its own bytes. Said once, as a count, in {@link #checksumNotes()}.
+     */
+    private final AtomicInteger mirrorVouched = new AtomicInteger();
+
+    /**
      * One sentence per artifact whose checksum deserved a line this run: verified against an {@code
      * .md5} sidecar alone, or a store copy the repository disowned.
      */
@@ -78,6 +84,26 @@ final class DownloadLeg {
         this.allowUnverified = allowUnverified;
     }
 
+    /**
+     * Where the checksum that vouches for a download is read, and how. {@code artifact} is the file's
+     * URL at the repository that vouches — Central's own for a file the mirror carries, so Central
+     * and not the mirror says what the bytes are. {@code sha1First} asks for the {@code .sha1} alone
+     * ({@link ChecksumSidecars#startSha1First}). {@code mirrorOnly} marks a check the mirror answers
+     * for itself because Central is refusing this host; it is counted for the run's note.
+     */
+    record Vouch(URI artifact, boolean sha1First, boolean mirrorOnly) {
+        /** The repository's own sidecars beside {@code artifact}, strongest first. */
+        static Vouch beside(URI artifact) {
+            return new Vouch(artifact, false, false);
+        }
+
+        ChecksumSidecars start(RepoTransport transport, RepoCredential credential) {
+            return sha1First
+                    ? ChecksumSidecars.startSha1First(transport, credential, artifact)
+                    : ChecksumSidecars.start(transport, credential, artifact);
+        }
+    }
+
     /** The body landed in its temp file, and the sidecar reads started beside it when the leg asked for them. */
     private record Streamed(Downloaded stored, @Nullable ChecksumSidecars sidecars) {}
 
@@ -91,12 +117,16 @@ final class DownloadLeg {
      * the leg joins them only once its own permit is released: a leg that held the host's permit
      * while it waited for reads that need one would stall the host for good once every permit was
      * held by such a leg.
+     *
+     * <p>{@code vouch} names where the published checksum is read; null reads none, for a file
+     * nothing publishes one for (metadata) and for one the lock already pins, since the pin is then
+     * the authority and a sidecar could only repeat it.
      */
     Downloaded run(
             Coordinate coord,
             URI uri,
             String relativePath,
-            boolean mirror,
+            @Nullable Vouch vouch,
             MavenRepo.Leg leg,
             @Nullable String expectedSha256,
             BooleanSupplier abort)
@@ -110,12 +140,12 @@ final class DownloadLeg {
         try {
             streamed = rateLimited(uri, () -> {
                 checkAbort(abort, coord);
-                return stream(coord, relativePath, uri, tmp, mirror);
+                return stream(coord, relativePath, uri, tmp, vouch);
             });
             ms = (Clock.SYSTEM.nanos() - t0) / 1_000_000L;
-            if (streamed.sidecars() != null) {
-                verifyUpstreamChecksum(
-                        coord, streamed.sidecars(), relativePath, streamed.stored(), leg, expectedSha256);
+            verifyPin(coord, relativePath, streamed, expectedSha256);
+            if (streamed.sidecars() != null && vouch != null) {
+                verifyUpstreamChecksum(coord, streamed.sidecars(), relativePath, streamed.stored(), leg, vouch);
             }
         } catch (IOException | InterruptedException e) {
             Files.deleteIfExists(tmp);
@@ -154,13 +184,13 @@ final class DownloadLeg {
 
     /**
      * Stream the body to {@code tmp}, hashing as it lands and reporting it to the run's {@link
-     * TransferBoard}, so every download shows whichever step asked for it; the sidecars are started
-     * beside it when {@code withSidecars}.
+     * TransferBoard}, so every download shows whichever step asked for it; the sidecars {@code
+     * vouch} names are started beside it.
      */
-    private Streamed stream(Coordinate coord, String relativePath, URI uri, Path tmp, boolean withSidecars)
+    private Streamed stream(Coordinate coord, String relativePath, URI uri, Path tmp, @Nullable Vouch vouch)
             throws IOException, InterruptedException {
         // The sidecars travel beside the body, so the check costs no round trip of its own.
-        ChecksumSidecars sidecars = withSidecars ? ChecksumSidecars.start(transport, credential, uri) : null;
+        ChecksumSidecars sidecars = vouch != null ? vouch.start(transport, credential) : null;
         MessageDigest digest = Hashing.newSha256();
         long size;
         TransferBoard board = SessionContext.current().io().transfers();
@@ -228,11 +258,25 @@ final class DownloadLeg {
     }
 
     /**
-     * Check the download against the lock pin when there is one — first, so bytes the lock rejects
-     * are discarded before anything places them — then against the checksum this repository
-     * publishes beside it: {@code .sha256}, else {@code .sha1}, else {@code .md5}; a mismatch fails
-     * closed, and an {@code .md5}-only match is accepted with a note ({@link #checksumNotes}).
-     * With no sidecar at all the bytes are accepted only when the pin vouches for them, when the
+     * Check the download against the lock pin when there is one, before anything places the bytes:
+     * bytes the lock rejects are discarded. The sidecar reads started beside the body are dropped
+     * with them.
+     */
+    private void verifyPin(Coordinate coord, String relativePath, Streamed streamed, @Nullable String expectedSha256)
+            throws MavenRepo.ChecksumMismatchException {
+        String actualSha256 = streamed.stored().sha256();
+        if (expectedSha256 != null && !expectedSha256.equalsIgnoreCase(actualSha256)) {
+            if (streamed.sidecars() != null) streamed.sidecars().cancel();
+            throw new MavenRepo.ChecksumMismatchException("checksum mismatch for " + coord + " from " + name + " ("
+                    + relativePath + "): jk-lock.toml pins sha256 " + expectedSha256 + " but got " + actualSha256);
+        }
+    }
+
+    /**
+     * Check the download against the checksum the vouching repository publishes beside it: {@code
+     * .sha256}, else {@code .sha1}, else {@code .md5} ({@code .sha1} first under {@link
+     * Vouch#sha1First}); a mismatch fails closed, and an {@code .md5}-only match is accepted with a
+     * note ({@link #checksumNotes}). With no sidecar at all the bytes are accepted only when the
      * repository is on local disk, or under {@code allow-unverified = true}; otherwise the fetch is
      * refused, because a pin taken from unverified bytes would protect every later build with a
      * checksum of whatever arrived.
@@ -243,28 +287,20 @@ final class DownloadLeg {
             String relativePath,
             Downloaded stored,
             MavenRepo.Leg leg,
-            @Nullable String expectedSha256)
+            Vouch vouch)
             throws IOException, InterruptedException {
-        String actualSha256 = stored.sha256();
-        if (expectedSha256 != null && !expectedSha256.equalsIgnoreCase(actualSha256)) {
-            throw new MavenRepo.ChecksumMismatchException("checksum mismatch for " + coord + " from " + name + " ("
-                    + relativePath + "): jk-lock.toml pins sha256 " + expectedSha256 + " but got " + actualSha256);
-        }
         Optional<ChecksumSidecars.Published> published = sidecars.strongest();
         if (published.isPresent()) {
-            Optional<String> differing = differing(published.get(), stored.path(), actualSha256);
+            Optional<String> differing = differing(published.get(), stored.path(), stored.sha256());
             if (differing.isPresent()) {
                 throw new MavenRepo.ChecksumMismatchException("upstream checksum mismatch for " + coord + " from "
                         + name + " (" + relativePath + "): expected "
                         + published.get().algorithm().label + " "
                         + published.get().hex() + " but got " + differing.get());
             }
-            accept(coord, published.get().algorithm(), leg);
+            accept(coord, published.get().algorithm(), leg, vouch);
             return;
         }
-        // Post-lock: the pin is the authority, and it was taken when the sidecar was checked; it
-        // matched above, so a sidecar-less repository needs no further vouching.
-        if (expectedSha256 != null) return;
         unpublished(coord, relativePath, leg);
     }
 
@@ -279,14 +315,14 @@ final class DownloadLeg {
      */
     boolean confirmStored(
             Coordinate coord,
-            URI uri,
+            Vouch vouch,
             String relativePath,
             Path path,
             String sha256,
             MavenRepo.Leg leg,
             boolean requirePublished)
             throws IOException, InterruptedException {
-        ChecksumSidecars sidecars = ChecksumSidecars.start(transport, credential, uri);
+        ChecksumSidecars sidecars = vouch.start(transport, credential);
         Optional<ChecksumSidecars.Published> published;
         try {
             published = sidecars.strongest();
@@ -309,7 +345,7 @@ final class DownloadLeg {
                     + " downloaded again");
             return false;
         }
-        accept(coord, published.get().algorithm(), leg);
+        accept(coord, published.get().algorithm(), leg, vouch);
         return true;
     }
 
@@ -322,8 +358,12 @@ final class DownloadLeg {
         return published.hex().equalsIgnoreCase(actual) ? Optional.empty() : Optional.of(actual);
     }
 
-    /** Bytes a published checksum matched: counted, and noted when only an {@code .md5} vouched. */
-    private void accept(Coordinate coord, ChecksumSidecars.Algorithm algorithm, MavenRepo.Leg leg) {
+    /**
+     * Bytes a published checksum matched: counted, noted when only an {@code .md5} vouched, and
+     * counted again when the mirror vouched for itself.
+     */
+    private void accept(Coordinate coord, ChecksumSidecars.Algorithm algorithm, MavenRepo.Leg leg, Vouch vouch) {
+        if (vouch.mirrorOnly()) mirrorVouched.incrementAndGet();
         if (algorithm == ChecksumSidecars.Algorithm.MD5) {
             checksumNotes.add(coord + " from " + name + " is verified against its .md5 sidecar alone: the"
                     + " repository publishes no .sha256 or .sha1 for it, and md5 is the weakest digest a"
@@ -363,9 +403,20 @@ final class DownloadLeg {
         return unverifiedAllowed.get();
     }
 
-    /** The {@link #checksumNotes} lines, sorted. */
+    /** Record one checksum line for this run, said beside the others in {@link #checksumNotes()}. */
+    void note(String line) {
+        checksumNotes.add(line);
+    }
+
+    /** The {@link #checksumNotes} lines, sorted, and the {@link #mirrorVouched} count when there is one. */
     List<String> checksumNotes() {
         List<String> out = new ArrayList<>(checksumNotes);
+        int mirrored = mirrorVouched.get();
+        if (mirrored > 0) {
+            out.add(mirrored + (mirrored == 1 ? " file" : " files") + " from " + name
+                    + " verified against the mirror only: Maven Central is refusing this host, so the"
+                    + " mirror's own checksums vouched for its bytes; the lock pins them by sha256 from here on");
+        }
         out.sort(null);
         return List.copyOf(out);
     }
