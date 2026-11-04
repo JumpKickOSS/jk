@@ -32,6 +32,7 @@ PRESCRIPTIONS = {
     "grok": "jk",
     "agy": "jk-agyrules",
     "muse": "jk",
+    "codex": "jk",
 }
 # The AGENTS.md section under test: callers and rename merged into one line that also says "first, with
 # T.m as the task names it, before opening or searching a file" (what muse needed), within 1000 bytes.

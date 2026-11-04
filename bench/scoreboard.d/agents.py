@@ -148,8 +148,11 @@ def measure(ctx) -> list[dict]:
 # ---- docs ----------------------------------------------------------------------------------------
 
 # User docs name agents by vendor and tier, never by product.
+# Each agent's arm with the graph as `jk agents` sets it up: Cursor and agy with jk's rules file.
+PRESCRIPTION = {"claude-code": "jk", "grok": "jk", "muse": "jk", "cursor": "jk-cursorrules", "agy": "jk-agyrules",
+                "codex": "jk"}
 LABELS = {"claude-code": "Vendor A, mid-tier", "grok": "Vendor B, frontier", "agy": "Vendor C, fast",
-          "cursor": "Vendor D", "muse": "Vendor E"}
+          "cursor": "Vendor D", "muse": "Vendor E", "codex": "Vendor F"}
 QUESTIONS = JK_TREE / "bench" / "graph-retrieval" / "questions"
 # Each doc that carries the agent sentences, and its link to the change-task bench.
 CLAIM_DOCS = {
@@ -178,7 +181,7 @@ def _pair(by: dict, driver: str, kind: str) -> tuple[list[str], dict, dict] | No
     def tasks(arm):
         return {t: rs for (d, a, t), rs in by.items() if d == driver and a == arm
                 and (_graph_question(t, rs[0]["kind"]) if kind == "questions" else rs[0]["kind"].startswith("rename"))}
-    jk, off = tasks("jk"), tasks("jk-nograph")
+    jk, off = tasks(PRESCRIPTION.get(driver, "jk")), tasks("jk-nograph")
     both = sorted(set(jk) & set(off))
     return (both, jk, off) if both else None
 
@@ -221,7 +224,8 @@ def comparison_table(rows: list[dict], unit: str) -> str:
                      f"{b['runs']} | {_n(a['turns'])} / {_n(b['turns'])} | {_k(a['tokens'])} / {_k(b['tokens'])} | "
                      f"{a['wall']:,.0f} / {b['wall']:,.0f} s |")
     sets = sorted({s for r in rows for s in r["results"]})
-    lines += ["", "Medians per task, summed over the tasks each agent ran on both arms; results: "
+    lines += ["", "jk is each agent as `jk agents` sets it up (Vendor C and D with jk's rules file). "
+              "Medians per task, summed over the tasks each agent ran on both arms; results: "
               + ", ".join(f"`{s}`" for s in sets) + "."]
     return "\n".join(lines)
 
@@ -241,7 +245,7 @@ def curve(by: dict) -> list[dict]:
         point = {"task": name, "repo": spec["repo"], "loc": _loc(spec["repo"]), "drivers": {},
                  "method": method.group(1) if method else name}
         for driver in ("claude-code", "cursor"):
-            jk, off = by.get((driver, "jk", name)), by.get((driver, "jk-nograph", name))
+            jk, off = by.get((driver, PRESCRIPTION.get(driver, "jk"), name)), by.get((driver, "jk-nograph", name))
             if jk and off:
                 point["drivers"][driver] = (_sums({name: jk}, [name]), _sums({name: off}, [name]))
         if point["drivers"]:

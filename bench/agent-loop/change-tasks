@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import os
 import re
@@ -117,10 +118,13 @@ ARMS = {
 }
 
 DRIVERS = {"claude-code": agents.claude_code, "grok": agents.grok, "agy": agents.agy, "cursor": agents.cursor,
-           "muse": agents.muse}
+           "muse": agents.muse, "codex": agents.codex}
+# Agents with no file tools of their own: they read and search through a shell, so they get the shell prompts.
+SHELL_DRIVERS = {"codex"}
 DEFAULT_MODEL = {"claude-code": "claude-sonnet-5-5", "grok": "grok-4.7", "agy": "gemini-3.8-flash-high",
-                 "cursor": "composer-2.5", "muse": "muse-spark-1.3-contributor"}
-DEFAULT_EFFORT = {"claude-code": "medium", "grok": "high", "agy": "high", "cursor": "medium", "muse": "xhigh"}
+                 "cursor": "composer-2.5", "muse": "muse-spark-1.3-contributor", "codex": "gpt-6.1-terra"}
+DEFAULT_EFFORT = {"claude-code": "medium", "grok": "high", "agy": "high", "cursor": "medium", "muse": "xhigh",
+                  "codex": "medium"}
 
 # Each CLI's names for the same moves.
 NAV_TEXT = {"Grep", "Glob", "Read", "read_file", "grep", "list_dir", "view_file", "grep_search", "find_by_name",
@@ -151,6 +155,12 @@ For example, an ANSWER.txt that lists two methods and a constructor:
 
 When ANSWER.txt is written, reply with one line: DONE.
 """
+
+# The question prompt for an agent whose reads and searches go through a shell.
+QUESTION_SHELL_PROMPT = QUESTION_PROMPT.replace(
+    "Use only the tools you are given (the MCP tools and the file tools), on files under {sandbox}. Do not run shell"
+    " commands and do not use git.",
+    "Use the tools you are given (the MCP tools and the shell), on files under {sandbox}. Do not use git.")
 
 SHELL_PROMPT = """You are working in a {tool_label} project at {sandbox}.
 
@@ -454,6 +464,56 @@ def grade(task: dict, sandbox: Path) -> dict:
             "missed": sorted(want - got), "extra": sorted(got - want)}
 
 
+PREPARED = HOME.parent / "prepared"
+
+
+def jk_build_id() -> str:
+    """The installed jk, client and engine, as file stats: a new install is a new build."""
+    parts = []
+    for f in [Path.home() / ".jk/bin/jk", *sorted((Path.home() / ".jk/lib/jk-engine").glob("*.jar"))]:
+        if f.exists():
+            st = f.stat()
+            parts.append(f"{f.name}:{st.st_size}:{st.st_mtime_ns}")
+    return hashlib.sha1("|".join(parts).encode()).hexdigest()[:12]
+
+
+def prepare(task: dict, tool: str, question: bool, sandbox: Path) -> dict:
+    """The sandbox up to the agent: the repository materialised, its baseline built (and tested), and
+    jk's graph built. Identical for every agent, arm and run of a repository on one jk build, so it is
+    built once into PREPARED and copied after; a new install, corpus commit or baseline command is a
+    new entry, and entries of older builds are deleted. Only a baseline that came out as the task
+    expects, with a graph, is kept."""
+    cmd = ["jk", "-u", "-x", "-a", "build", "-S"] if question else test_cmd(tool, task=task)
+    rev = subprocess.run(["git", "-C", str(CORPUS / task["repo"]), "rev-parse", "HEAD"], capture_output=True,
+                         text=True).stdout.strip()
+    build = jk_build_id()
+    key = hashlib.sha1(json.dumps([task["repo"], rev, tool, cmd, build]).encode()).hexdigest()[:16]
+    slot = PREPARED / f"{task['repo']}-{key}"
+    if (slot / "meta.json").exists():
+        sandbox.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["cp", "-a", str(slot / "sandbox"), str(sandbox)], check=True)
+        return {**json.loads((slot / "meta.json").read_text()), "prepared": "hit"}
+    materialise(task, tool, sandbox)
+    code, out, warm = sh(cmd, sandbox, 3600)
+    meta = {"code": code, "out": out[-300:], "warm": round(warm, 1), "build": build, "gcode": 0, "edges": None}
+    if tool == "jk" and (code != 0) == (task.get("baseline") == "red"):
+        gcode, gout, _ = sh(["jk", "-u", "-x", "graph", "build"], sandbox, 1800)
+        meta.update(gcode=gcode, gout=gout[-300:], edges=graph_edges(gout))
+    if (code != 0) == (task.get("baseline") == "red") and meta["gcode"] == 0:
+        for old in PREPARED.glob(f"{task['repo']}-*/meta.json"):
+            if json.loads(old.read_text()).get("build") != build:
+                shutil.rmtree(old.parent, ignore_errors=True)
+        tmp = PREPARED / f".{slot.name}.{os.getpid()}"
+        tmp.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["cp", "-a", str(sandbox), str(tmp / "sandbox")], check=True)
+        (tmp / "meta.json").write_text(json.dumps(meta))
+        if not slot.exists():
+            tmp.rename(slot)
+        else:
+            shutil.rmtree(tmp, ignore_errors=True)
+    return {**meta, "prepared": "miss"}
+
+
 def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -> dict:
     spec = ARMS[arm]
     question = task["kind"] == "question"
@@ -465,23 +525,22 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
     sandbox = run_dir / "sandbox"
     row = {"date": ns.date, "driver": ns.driver, "task": name, "kind": task["kind"], "repo": task["repo"],
            "arm": arm, "run": run_no, "model": ns.model, "effort": ns.effort, "outcome": "error", "finding": "",
-           "sandbox": str(sandbox), "host": benchtools.host_id()}
+           "sandbox": str(sandbox), "host": benchtools.host_id(), "jk_build": jk_build_id()}
     try:
-        materialise(task, tool, sandbox)
         # A question needs the classes (the graph's compiled facts), not a test run.
-        code, out, warm = sh(["jk", "-u", "-x", "-a", "build", "-S"] if question else test_cmd(tool, task=task),
-                             sandbox, 3600)
-        row["baseline_wall_s"] = round(warm, 1)
+        prep = prepare(task, tool, question, sandbox)
+        code, out = prep["code"], prep["out"]
+        row["baseline_wall_s"] = prep["warm"]
+        row["prepared"] = prep["prepared"]
         expected_red = task.get("baseline") == "red"
         if (code != 0) != expected_red:
             state = "red" if code else "green"
             row["finding"] = f"baseline is {state} before the agent, expected {task.get('baseline', 'green')}: {out[-300:]}"
             return row
         if tool == "jk":
-            gcode, gout, _ = sh(["jk", "-u", "-x", "graph", "build"], sandbox, 1800)
-            if gcode != 0:
-                raise RuntimeError(f"jk graph build failed: {gout[-300:]}")
-            row["graph_edges"] = graph_edges(gout)
+            if prep["gcode"] != 0:
+                raise RuntimeError(f"jk graph build failed: {prep.get('gout', '')}")
+            row["graph_edges"] = prep["edges"]
             # What a jk user's repository holds: jk's AGENTS.md section. Claude Code reads AGENTS.md
             # itself; a CLAUDE.md import of it adds context and nothing else.
             write_agents_md(sandbox)
@@ -518,12 +577,14 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
         server, servers = mcp_servers(tool, extra, hide_graph, sandbox, spec.get("extended", False))
         preflight(spec, tool, sandbox, servers.get(server), row.get("graph_edges"))
         transcript = run_dir / "transcript.jsonl"
+        shell = ns.shell or ns.driver in SHELL_DRIVERS
         agents.TASK = agents.Task(
-            system=(QUESTION_PROMPT if question else SHELL_PROMPT if ns.shell else SYSTEM_PROMPT).format(
+            system=((QUESTION_SHELL_PROMPT if shell else QUESTION_PROMPT) if question
+                    else SHELL_PROMPT if shell else SYSTEM_PROMPT).format(
                 tool_label=TOOL_LABEL[tool], sandbox=sandbox, server=server) + spec["prompt"],
             user=task["prompt"].strip(),
             servers=servers,
-            shell=ns.shell)
+            shell=shell)
         started = time.monotonic()
         try:
             res = DRIVERS[ns.driver](tool, sandbox, ns.model, ns.max_turns, ns.max_minutes * 60, transcript,
@@ -686,7 +747,8 @@ def main() -> int:
         benchtools.resolve(allow_stale=True, need=("maven",))
         reverify(out_dir)
         return 0
-    cli = {"claude-code": "claude", "grok": "grok", "agy": "agy", "cursor": "cursor-agent", "muse": "muse"}[ns.driver]
+    cli = {"claude-code": "claude", "grok": "grok", "agy": "agy", "cursor": "cursor-agent", "muse": "muse",
+           "codex": "codex"}[ns.driver]
     if not shutil.which(cli):
         print(f"the `{cli}` CLI is not on PATH", file=sys.stderr)
         return 2

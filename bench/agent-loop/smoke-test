@@ -100,7 +100,7 @@ ct.ARMS.update({
         ".cursor/rules/jk.mdc": CURSOR_RULES, ".cursor/cli.json": CURSOR_DENY_READ}),
 })
 
-CLI = {"claude-code": "claude", "grok": "grok", "agy": "agy", "cursor": "cursor-agent", "muse": "muse"}
+CLI = {"claude-code": "claude", "grok": "grok", "agy": "agy", "cursor": "cursor-agent", "muse": "muse", "codex": "codex"}
 
 
 def materialise(task: dict, tool: str, sandbox: Path) -> None:
