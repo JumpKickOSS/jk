@@ -53,10 +53,10 @@ public final class AgentSetup {
 
             - Who calls `T.m`: call_mcp_tool jk `callers` once and write its list as the answer. Opening the
               files it names costs turns and changes nothing: do not.
-            - Rename `T.m`: jk `rename` once, then jk `run` with the `only` it names. Edit only the comment or
-              doc lines its answer lists, if they mean the method. When that run and `run(kind=guard)` say OK,
-              the task is done: reply, without searching for the old name or re-reading files (another type's
-              method of the same name is not this one).
+            - Rename `T.m`: jk `rename` once. It runs the edited tests and guard itself; when its answer says
+              the task is done, reply, without searching for the old name or re-reading files (another type's
+              method of the same name is not this one). Edit only the comment or doc lines its answer lists, if
+              they mean the method.
             - jk `skill` only when a verdict names a topic.
             - `.jk/graph/` is jk's graph store, read by jk only: do not open or search it.
             """;
@@ -73,8 +73,8 @@ public final class AgentSetup {
             or a change to a Java method, use it, not Grep or file reads:
 
             - Rename `T.m`: call `rename` first, before any search or read. It edits the method, its overrides
-              and every caller in one call, and lists any comment or doc line still naming the old method. Then
-              call `run` with the `only` it names. Do not grep for the old name afterwards.
+              and every caller in one call, then runs the edited tests and guard: when its answer says the task
+              is done, it is. Do not grep for the old name afterwards.
             - Who calls `T.m`: `callers` once. Its list is complete, from the compiled classes.
             - `.jk/graph/` is jk's graph store, read by jk only: do not open or search it.
             """;

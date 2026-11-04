@@ -52,8 +52,8 @@ This project's Java code is indexed by jk's code graph, on the `jk` MCP server. 
 or a change to a Java method, use it, not Grep or file reads:
 
 - Rename `T.m`: call `rename` first, before any search or read. It edits the method, its overrides
-  and every caller in one call, and lists any comment or doc line still naming the old method. Then
-  call `run` with the `only` it names. Do not grep for the old name afterwards.
+  and every caller in one call, then runs the edited tests and guard: when its answer says the task
+  is done, it is. Do not grep for the old name afterwards.
 - Who calls `T.m`: `callers` once. Its list is complete, from the compiled classes.
 - `.jk/graph/` is jk's graph store, read by jk only: do not open or search it.
 """
