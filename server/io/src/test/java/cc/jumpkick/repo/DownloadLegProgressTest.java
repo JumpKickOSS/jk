@@ -106,6 +106,23 @@ class DownloadLegProgressTest {
     }
 
     @Test
+    void the_artifact_is_the_coordinates_own_file_and_not_its_pom_or_metadata() {
+        assertThat(DownloadLeg.artifactFile(LIB, "com/example/lib/1.0/lib-1.0.jar"))
+                .isTrue();
+        assertThat(DownloadLeg.artifactFile(LIB, "com/example/lib/1.0/lib-1.0.pom"))
+                .isFalse();
+        assertThat(DownloadLeg.artifactFile(LIB, "com/example/lib/maven-metadata.xml"))
+                .isFalse();
+        Coordinate aar = new Coordinate("com.example", "lib", "1.0", null, "aar");
+        assertThat(DownloadLeg.artifactFile(aar, "com/example/lib/1.0/lib-1.0.aar"))
+                .isTrue();
+        Coordinate bom = new Coordinate("com.example", "bom", "1.0", null, "pom");
+        assertThat(DownloadLeg.artifactFile(bom, "com/example/bom/1.0/bom-1.0.pom"))
+                .as("a BOM or parent POM is not an artifact")
+                .isFalse();
+    }
+
+    @Test
     void a_transport_without_a_streamed_body_declares_no_length() throws Exception {
         Optional<RepoTransport.Body> body =
                 remote.fetchBody(URI.create("https://progress.example.test" + JAR), RepoCredential.ANONYMOUS);

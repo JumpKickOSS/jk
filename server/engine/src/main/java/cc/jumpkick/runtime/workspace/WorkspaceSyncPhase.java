@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -22,22 +24,32 @@ final class WorkspaceSyncPhase {
 
     private WorkspaceSyncPhase() {}
 
-    /** The errors that failed the sync, or empty when everything the lock pins is on disk. */
-    static Optional<List<String>> run(WorkspaceRequest request, WorkspaceBuildListener listener, Clock clock) {
+    /** What the sync settled, or the errors that failed it ({@code errors} empty on success). */
+    record Synced(List<String> errors, WorkspaceResult.SyncCounts counts) {
+        boolean failed() {
+            return !errors.isEmpty();
+        }
+    }
+
+    /** Everything the lock pins put on disk, or the errors that kept it from being. */
+    static Synced run(WorkspaceRequest request, WorkspaceBuildListener listener, Clock clock, long landedBefore) {
         Path owner = LockPaths.lockOwnerDir(request.entryDir());
         listener.onPreflight("sync", 0, 0, "Syncing dependencies…");
         long started = clock.nanos();
+        // `jk sync` is this phase as a goal of its own; its arguments reach the same plan.
+        TailArgs.Sync args = request.spec() == null ? null : request.spec().syncArgs();
+        AtomicInteger fetched = new AtomicInteger();
+        AtomicInteger upToDate = new AtomicInteger();
         BuildPlan plan = SyncPlans.syncBuildPlan(
                 owner,
                 request.cache(),
                 request.jdksDir(),
+                args == null ? null : args.repoUrl(),
+                args != null && args.sources(),
+                fetched,
+                upToDate,
                 null,
-                false,
-                new AtomicInteger(),
-                new AtomicInteger(),
-                null,
-                true,
-                false);
+                true);
         long perf = Perf.start();
         BuildPlanResult result = plan.run();
         Perf.end("ws-sync", perf, "success", result.success());
@@ -45,14 +57,37 @@ final class WorkspaceSyncPhase {
             if (w.message() != null) listener.onNote(w.message());
         }
         if (result.success()) {
-            listener.onPreflight("sync", 1, 1, "Dependencies synced");
-            return Optional.empty();
+            WorkspaceResult.SyncCounts counts = runCounts(fetched.get(), upToDate.get(), landedBefore);
+            listener.onPreflight("sync", 1, 1, summary(counts.fetched(), counts.upToDate()));
+            return new Synced(List.of(), counts);
         }
         List<String> errors = result.errors().stream()
                 .map(d -> d.message() == null ? d.step() + " failed" : d.message())
                 .toList();
         if (errors.isEmpty()) errors = List.of("dependency sync failed");
         listener.onPreflightFailed("sync", (clock.nanos() - started) / 1_000_000L, String.join("\n", errors));
-        return Optional.of(errors);
+        return new Synced(errors, new WorkspaceResult.SyncCounts(fetched.get(), upToDate.get()));
+    }
+
+    /**
+     * What the run settled, counted for the run and not only this phase ({@code landedBefore} is
+     * the board's artifact count when the run's preflight began, so only this run's downloads count): {@code fetched} is every
+     * artifact the run downloaded, the ones a first lock pinned included; {@code upToDate} the rest
+     * of what the sync found on disk. A sync after a first lock found every jar the lock had just
+     * downloaded, and "0 fetched, 183 up-to-date" read as if nothing had come down the wire.
+     */
+    static WorkspaceResult.SyncCounts runCounts(int syncFetched, int syncUpToDate, long landedBefore) {
+        long landed = SessionContext.current().io().transfers().artifactsLanded() - landedBefore;
+        int fetched = (int) Math.max(syncFetched, landed);
+        int upToDate = Math.max(0, syncFetched + syncUpToDate - fetched);
+        return new WorkspaceResult.SyncCounts(fetched, upToDate);
+    }
+
+    /**
+     * The sync stage's last word: {@code 12 fetched, 171 up-to-date}, or {@code already up to date}.
+     * {@code jk sync} ends on it, and a build's sync stage says the same.
+     */
+    static String summary(int fetched, int upToDate) {
+        return fetched == 0 && upToDate == 0 ? "already up to date" : fetched + " fetched, " + upToDate + " up-to-date";
     }
 }

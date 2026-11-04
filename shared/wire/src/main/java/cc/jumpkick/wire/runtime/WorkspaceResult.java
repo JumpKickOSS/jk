@@ -2,6 +2,7 @@
 package cc.jumpkick.wire.runtime;
 
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The whole workspace build result.
@@ -13,10 +14,29 @@ import java.util.List;
  * render "cancelled" rather than "disconnected" / generic fail
  */
 public record WorkspaceResult(
-        boolean success, int exitCode, List<ModuleOutcome> modules, List<String> errors, boolean cancelled) {
+        boolean success,
+        int exitCode,
+        List<ModuleOutcome> modules,
+        List<String> errors,
+        boolean cancelled,
+        @Nullable SyncCounts sync) {
+
+    /** What a {@code jk sync} run settled: artifacts downloaded, and artifacts already on disk. */
+    public record SyncCounts(int fetched, int upToDate) {}
+
+    /** No sync counts: every goal but {@code jk sync}. */
+    public WorkspaceResult(
+            boolean success, int exitCode, List<ModuleOutcome> modules, List<String> errors, boolean cancelled) {
+        this(success, exitCode, modules, errors, cancelled, null);
+    }
 
     /** Compatibility constructor — not cancelled. */
     public WorkspaceResult(boolean success, int exitCode, List<ModuleOutcome> modules, List<String> errors) {
         this(success, exitCode, modules, errors, false);
+    }
+
+    /** This result with what the sync settled. */
+    public WorkspaceResult withSync(SyncCounts counts) {
+        return new WorkspaceResult(success, exitCode, modules, errors, cancelled, counts);
     }
 }

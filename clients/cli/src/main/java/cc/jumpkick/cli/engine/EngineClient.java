@@ -393,21 +393,6 @@ public final class EngineClient {
     }
 
     /**
-     * Run {@code jk sync}'s single plan against the engine — see {@link
-     * EngineResolveAdapter#runSync} for the exact contract (the {@code jk test} listener-factory
-     * shape, plus fetched/up-to-date count holders for the summary line).
-     */
-    public static BuildPlanResult runSync(
-            EnginePaths.Paths paths,
-            EngineRequests.SyncRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory,
-            long[] fetchedOut,
-            long[] upToDateOut)
-            throws IOException {
-        return EngineResolveAdapter.runSync(paths, req, listenerFactory, fetchedOut, upToDateOut);
-    }
-
-    /**
      * Report declared dependencies with newer versions available against the engine ({@code jk
      * outdated}): one inline read whose beats drive {@code handler}, one {@link
      * cc.jumpkick.wire.protocol.OutdatedReport} back. Read-only: the engine enumerates versions

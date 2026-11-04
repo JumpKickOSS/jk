@@ -48,7 +48,6 @@ import cc.jumpkick.command.project.LockCommand;
 import cc.jumpkick.command.project.NewCommand;
 import cc.jumpkick.command.project.OutdatedCommand;
 import cc.jumpkick.command.project.RemoveCommand;
-import cc.jumpkick.command.project.SyncCommand;
 import cc.jumpkick.command.project.TreeCommand;
 import cc.jumpkick.command.project.UpdateCommand;
 import cc.jumpkick.command.project.VerifyBuildCommand;
@@ -156,7 +155,7 @@ public final class CommandDispatch {
             new AgentsCommand(),
             new EnvCommand(),
             new LockCommand(),
-            new SyncCommand(),
+            BuildVerbCommand.sync(),
             new AddCommand(),
             new RemoveCommand(),
             new UpdateCommand(),

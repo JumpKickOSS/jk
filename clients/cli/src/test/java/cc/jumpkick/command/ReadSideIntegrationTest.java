@@ -139,31 +139,4 @@ class ReadSideIntegrationTest {
         // The package we added should show up in the freshly written lock.
         assertThat(Files.readString(lockFile)).contains("com.foo:leaf");
     }
-
-    @Test
-    void sync_accepts_offline_prepare_flag(@TempDir Path tempDir) throws Exception {
-        maven.registerMetadata("com.foo", "leaf", "1.0");
-        maven.registerPom("com.foo", "leaf", "1.0", pom("com.foo", "leaf", "1.0", ""));
-        maven.registerJar("com.foo", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
-
-        run("new", tempDir.toString());
-        run("add", "--offline", "com.foo:leaf:1.0", "-C", tempDir.toString());
-        run(
-                "lock",
-                "-C",
-                tempDir.toString(),
-                "--repo-url",
-                maven.base().toString(),
-                "--cache-dir",
-                tempDir.resolve("cache").toString());
-
-        int exit = run(
-                "sync",
-                "-C",
-                tempDir.toString(),
-                "--cache-dir",
-                tempDir.resolve("fresh").toString(),
-                "--offline-prepare");
-        assertThat(exit).isEqualTo(0);
-    }
 }

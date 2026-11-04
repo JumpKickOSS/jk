@@ -256,7 +256,7 @@ final class EngineEventDecoder {
                         // An absent exit code reads as failure here, where the record reads 0.
                         int exitCode = Jsonl.has(line, "exitCode") ? e.exitCode() : 1;
                         WorkspaceResult result = new WorkspaceResult(
-                                e.success(), exitCode, List.copyOf(outcomes), e.errors(), e.cancelled());
+                                e.success(), exitCode, List.copyOf(outcomes), e.errors(), e.cancelled(), e.sync());
                         listener.onWorkspaceFinish(result);
                         return result;
                     }

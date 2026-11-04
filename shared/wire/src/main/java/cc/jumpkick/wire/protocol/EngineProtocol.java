@@ -432,9 +432,6 @@ public final class EngineProtocol {
     /** Client → server: re-resolve {@code jk-lock.toml} ({@code jk update}); same events as lock. */
     public static final String UPDATE_REQUEST = "update-request";
 
-    /** Client → server: align CAS + toolchain with {@code jk-lock.toml} ({@code jk sync}). */
-    public static final String SYNC_REQUEST = "sync-request";
-
     /** Server → client, repeated: opens one module's event scope in a lock/update cascade. */
     public static final String LOCK_MODULE = "lock-module";
 

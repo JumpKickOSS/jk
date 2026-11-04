@@ -4,7 +4,6 @@ package cc.jumpkick.cli.ide;
 import cc.jumpkick.cli.engine.EngineCancel;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineProbe;
-import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -12,7 +11,6 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.run.BuildPlanListener;
-import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskStatus;
@@ -25,6 +23,7 @@ import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -126,30 +125,38 @@ public class IdeEngineClient {
     public SyncOutcome sync(ProgressListener listener) throws IOException {
         ProgressListener progress = listener == null ? ProgressListener.NOOP : listener;
         Path syncRoot = resolveSyncRoot();
-        long[] fetched = new long[1];
-        long[] upToDate = new long[1];
-        var session = SessionContext.current();
+        // The build's own lock and sync phase, as `jk sync` runs it: each preflight stage (lock,
+        // graph, sync) is one step of the IDE's progress.
+        WorkspaceRequest req = new WorkspaceRequest(
+                        syncRoot, cacheDir, jdksDir, 1, null, true, false, 0, null, true, true)
+                .withSpec(WorkspaceSpec.sync(false, null));
         List<String> errors = new ArrayList<>();
-        boolean success;
-        BuildPlanResult result = EngineClient.runSync(
-                EnginePaths.current(),
-                new EngineRequests.SyncRequest(
-                        syncRoot,
-                        cacheDir,
-                        jdksDir,
-                        null,
-                        false,
-                        session.offline(),
-                        session.force(),
-                        false,
-                        session.config().verboseOr(false)),
-                steps -> progressListener(progress, steps),
-                fetched,
-                upToDate);
-        success = result.success();
-        for (var d : result.errors()) errors.add(d.message());
+        WorkspaceBuildListener stages = new WorkspaceBuildListener() {
+            @Override
+            public void onPreflight(String stage, int done, int total, String label) {
+                if (total > 0 && done >= total) progress.onStepFinish(stage, true, label);
+                else progress.onStepStart(stage, "sync");
+            }
 
-        return new SyncOutcome(success, fetched[0], upToDate[0], List.copyOf(errors));
+            @Override
+            public void onPreflightFailed(String stage, long millis, String reason) {
+                progress.onStepFinish(stage, false, reason);
+            }
+
+            @Override
+            public void onNote(String text) {
+                progress.onOutput("sync", text);
+            }
+        };
+        progress.onPlan(3);
+        WorkspaceResult ws = EngineClient.buildWorkspace(EnginePaths.current(), req, stages);
+        if (ws.errors() != null) errors.addAll(ws.errors());
+        WorkspaceResult.SyncCounts counts = ws.sync();
+        return new SyncOutcome(
+                ws.success(),
+                counts == null ? 0 : counts.fetched(),
+                counts == null ? 0 : counts.upToDate(),
+                List.copyOf(errors));
     }
 
     /** A build with structured module/step events for the IDE progress UI. */

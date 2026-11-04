@@ -54,7 +54,7 @@ class BuildForecastingTargetMemoTest {
             WorkspaceTarget core = WorkspacePreflightPhase.coreTarget(target);
             switch (target) {
                 case COMPILE, TEST -> assertThat(core).as(target.name()).isEqualTo(target);
-                case RESHELVE -> assertThat(core).as(target.name()).isNull();
+                case RESHELVE, SYNC -> assertThat(core).as(target.name()).isNull();
                 default -> assertThat(core).as(target.name()).isEqualTo(WorkspaceTarget.PACKAGE);
             }
         }

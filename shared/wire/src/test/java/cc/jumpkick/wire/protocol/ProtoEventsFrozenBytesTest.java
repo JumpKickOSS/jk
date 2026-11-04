@@ -157,9 +157,6 @@ class ProtoEventsFrozenBytesTest {
         assertThat(ProtoEvents.planFinishLock("a/b", true, 210, 7, 3, 2, 4, List.of("mirror")))
                 .isEqualTo(
                         "{\"type\":\"buildplan-finish\",\"kind\":\"lock\",\"dir\":\"a/b\",\"success\":true,\"lockPackages\":210,\"lockChanged\":7,\"lockSources\":3,\"lockPlugins\":2,\"lockUnverified\":4,\"lockInsecure\":[\"mirror\"]}");
-        assertThat(ProtoEvents.planFinishSync("a/b", true, 4, 206))
-                .isEqualTo(
-                        "{\"type\":\"buildplan-finish\",\"kind\":\"sync\",\"dir\":\"a/b\",\"success\":true,\"syncFetched\":4,\"syncUpToDate\":206}");
         assertThat(ProtoEvents.planFinishFormat("a/b", true, 16, 1))
                 .isEqualTo(
                         "{\"type\":\"buildplan-finish\",\"kind\":\"format\",\"dir\":\"a/b\",\"success\":true,\"formatTotal\":16,\"formatWorkerExit\":1}");

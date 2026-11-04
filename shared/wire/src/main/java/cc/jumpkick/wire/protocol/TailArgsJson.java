@@ -57,6 +57,14 @@ public final class TailArgsJson {
                         .optionalTrue("force", t.force())
                         .body();
             case TailArgs.Publish p -> publish(p);
+            case TailArgs.Sync s ->
+                RequestJson.fields()
+                        .string("kind", "sync")
+                        .optionalTrue("sources", s.sources())
+                        .optionalNonBlankString(
+                                "repoUrl",
+                                s.repoUrl() == null ? null : s.repoUrl().toString())
+                        .body();
         };
     }
 
@@ -109,6 +117,7 @@ public final class TailArgsJson {
                         InstallDestination.parse(Jsonl.str(json, InstallDestination.KEY))
                                 .orElse(null));
             case "train" -> new TailArgs.Train(Jsonl.str(json, "profile"), Jsonl.bool(json, "force", false));
+            case "sync" -> new TailArgs.Sync(Jsonl.bool(json, "sources", false), uri(Jsonl.str(json, "repoUrl")));
             case "publish" ->
                 new TailArgs.Publish(
                         uri(Jsonl.str(json, "repoUrl")),

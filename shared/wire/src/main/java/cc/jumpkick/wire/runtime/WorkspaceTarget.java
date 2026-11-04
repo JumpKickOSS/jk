@@ -34,7 +34,13 @@ public enum WorkspaceTarget {
      * the first pass left on disk. The one goal outside the lifecycle: re-running the phases under a
      * new engine would rebuild every plugin step for nothing the shelf needs.
      */
-    RESHELVE(null, Tests.NOT_RUN);
+    RESHELVE(null, Tests.NOT_RUN),
+    /**
+     * {@code jk sync}: the lock and the sync phase every build runs first, then nothing. It is the
+     * build's own preflight, not a second implementation of it, so what a sync downloads, shows and
+     * records is what a build's first phase does.
+     */
+    SYNC(null, Tests.NOT_RUN);
 
     /** The lifecycle phases, in order. Every goal runs every phase up to its own. */
     public enum Phase {
@@ -82,6 +88,14 @@ public enum WorkspaceTarget {
             case RESHELVE -> "install";
             default -> name().toLowerCase(Locale.ROOT);
         };
+    }
+
+    /**
+     * True when a run of this goal is a project build: it takes a build number, trains the ETA
+     * model and is on the Activity feed. A sync builds nothing, so it is journaled but none of those.
+     */
+    public boolean buildsProject() {
+        return this != SYNC;
     }
 
     /** True when the goal runs PACKAGE and so may append a tail. */

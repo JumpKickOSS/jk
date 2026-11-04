@@ -72,21 +72,6 @@ class PlanReaderWarningsTest {
     }
 
     @Test
-    void the_sync_reader_carries_a_warning_on_its_result() throws IOException {
-        Recorder recorder = new Recorder();
-
-        BuildPlanResult result = WireStream.pumpJob(
-                stream(
-                        ProtoEvents.planDone(0),
-                        ProtoEvents.warn("/p", "fmt", "skipped", WARNING),
-                        ProtoEvents.planFinishSync("/p", true, 1, 2)),
-                null,
-                EngineResolveAdapter.syncDecoder(steps -> recorder, new long[1], new long[1]));
-
-        assertCarried(result, recorder);
-    }
-
-    @Test
     void the_cascade_reader_carries_each_modules_warnings_on_that_modules_result() throws IOException {
         Recorder recorder = new Recorder();
         List<BuildPlanResult> moduleResults = new ArrayList<>();

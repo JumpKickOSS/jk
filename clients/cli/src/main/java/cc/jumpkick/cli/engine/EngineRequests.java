@@ -191,18 +191,6 @@ public final class EngineRequests {
         }
     }
 
-    /** Everything an engine-hosted {@code jk sync} needs — mirrors {@code SyncCommand}'s local fields. */
-    public record SyncRequest(
-            Path entryDir,
-            Path cache,
-            @Nullable Path jdksDir,
-            @Nullable URI repoUrl,
-            boolean sources,
-            boolean offline,
-            boolean force,
-            boolean refresh,
-            boolean verbose) {}
-
     /**
      * A lock/update cascade's client-side renderer contract — see {@link EngineResolveAdapter} for
      * the wire mechanics. {@code onModuleStart} is invoked once per module (entry project first,

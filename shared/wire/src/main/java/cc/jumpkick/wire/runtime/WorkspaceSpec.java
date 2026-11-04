@@ -2,6 +2,7 @@
 package cc.jumpkick.wire.runtime;
 
 import cc.jumpkick.model.InstallDestination;
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -85,6 +86,16 @@ public record WorkspaceSpec(
     public static WorkspaceSpec train(
             Set<Path> selected, Map<Path, Path> graalByDir, @Nullable String profile, boolean force) {
         return new WorkspaceSpec(WorkspaceTarget.TRAIN, selected, graalByDir, new TailArgs.Train(profile, force));
+    }
+
+    /** {@code jk sync}: the build's lock and sync phase, with sources jars when {@code sources}. */
+    public static WorkspaceSpec sync(boolean sources, @Nullable URI repoUrl) {
+        return new WorkspaceSpec(WorkspaceTarget.SYNC, Set.of(), Map.of(), new TailArgs.Sync(sources, repoUrl));
+    }
+
+    /** The sync tail's arguments: what {@code jk sync} asked for, or none for every other goal. */
+    public TailArgs.@Nullable Sync syncArgs() {
+        return tail instanceof TailArgs.Sync sync ? sync : null;
     }
 
     public static WorkspaceSpec publish(Set<Path> selected, TailArgs.Publish args) {

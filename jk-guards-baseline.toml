@@ -759,7 +759,7 @@ population = { examined = 4 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 16, sites = 1277 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1343, sites = 90704 }
+"server/engine" = { classes = 1387, sites = 100473 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 59, sites = 3494 }
 "server/resolver" = { classes = 123, sites = 7334 }
@@ -1171,10 +1171,6 @@ reason = "pure move: the runtime split re-keyed the sites into runtime.workspace
 [[clock-owner.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.runtime.workspace.WorkspaceFinalPhase#learn(Lcc/jumpkick/runtime/workspace/WorkspaceRunPhase$Run;)V -> java.lang.System#currentTimeMillis()J"
-reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.workspace.WorkspaceLock#ensureWorkspaceLockFresh(Ljava/nio/file/Path;Ljava/nio/file/Path;Z)Lcc/jumpkick/runtime/workspace/BuildService$LockGuard; -> java.lang.System#nanoTime()J"
 reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
 [[clock-owner.entries]]
 in     = "server/engine"
@@ -1877,6 +1873,10 @@ population = { examined = 5 }
 "shared/core" = { classes = 373, sites = 21199 }
 "shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
+
+[one-env-surface]
+[one-env-surface.populations]
+"server/engine" = { classes = 1387, sites = 100473 }
 
 [one-hex-spelling]
 [one-hex-spelling.populations]

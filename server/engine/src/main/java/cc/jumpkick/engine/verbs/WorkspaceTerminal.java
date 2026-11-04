@@ -90,7 +90,7 @@ final class WorkspaceTerminal {
         if (!succeeded && !cancelled && rid > 0) {
             host.accRunErrors(rid, errors.stream().map(Redacted::text).toList());
         }
-        host.sendQuiet(writer, ProtoEvents.workspaceFinish(succeeded, exitCode, errors, cancelled));
+        host.sendQuiet(writer, ProtoEvents.workspaceFinish(succeeded, exitCode, errors, cancelled, result.sync()));
         if (!succeeded && !cancelled) {
             for (Redacted error : errors.stream().limit(PUBLISHED_ERROR_ROWS).toList()) {
                 host.publishRequestError(rid, dir, error.text());

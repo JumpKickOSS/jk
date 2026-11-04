@@ -14,7 +14,6 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.lock.LockPaths;
-import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
@@ -24,16 +23,13 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.CacheSync;
-import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.runtime.AutoLock;
 import cc.jumpkick.runtime.JdkInstallNotice;
-import cc.jumpkick.runtime.LockFlow;
 import cc.jumpkick.runtime.PlannerNodeSetup;
 import cc.jumpkick.runtime.PluginBuild;
 import cc.jumpkick.runtime.RepoGroupBuilder;
@@ -48,7 +44,6 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import org.jspecify.annotations.Nullable;
@@ -71,15 +66,11 @@ public final class SyncPlans {
             BuildPlanKey.scalar("jdk-outcome", JdkEnsure.Outcome.class);
     public static final BuildPlanKey<CacheSync.Report> CAS_REPORT =
             BuildPlanKey.scalar("cas-report", CacheSync.Report.class);
-    public static final BuildPlanKey<Integer> WORKSPACE_MODULES =
-            BuildPlanKey.scalar("workspace-modules", Integer.class);
-    public static final BuildPlanKey<Boolean> LOCKFILE_CREATED = BuildPlanKey.scalar("lockfile-created", Boolean.class);
 
     /**
-     * The SYNC phase for {@code dir}: {@code jk sync} runs it alone, every build runs it before its
-     * modules plan. {@code refresh} comes from ambient {@link SessionContext}. {@code relock} lets
-     * {@code parse-lock} write a missing or stale lock; a build has already freshened it (or was
-     * told to use it verbatim), so it reads the lock as it stands. {@code allowJdkInstall} is false
+     * The SYNC phase for {@code dir}, which every build and {@code jk sync} run after the preflight
+     * has freshened the lock (or was told to use it verbatim): it reads the lock as it stands.
+     * {@code refresh} comes from ambient {@link SessionContext}. {@code allowJdkInstall} is false
      * only where a caller must not download, such as a read-only forecast.
      */
     public static BuildPlan syncBuildPlan(
@@ -91,8 +82,7 @@ public final class SyncPlans {
             AtomicInteger totalFetched,
             AtomicInteger totalUpToDate,
             @Nullable BiFunction<String, String, String> coordLabel,
-            boolean allowJdkInstall,
-            boolean relock) {
+            boolean allowJdkInstall) {
         Path lockFile = LockPaths.lockFile(dir);
         // Plain engine path uses Artifact.displayCoord() (g:a:v, or g:a:v!aar / :classifier when
         // non-default). An explicit coordLabel overrides for themed in-process clients.
@@ -113,8 +103,8 @@ public final class SyncPlans {
         final int preScanDenominator = preScannedTotal;
 
         return BuildPlan.builder("sync")
-                .stateKeys(LOCKFILE, BUILD, JDK_OUTCOME, CAS_REPORT, WORKSPACE_MODULES, LOCKFILE_CREATED)
-                .addTask(parseLockStep(dir, cache, lockFile, repoUrl, relock))
+                .stateKeys(LOCKFILE, BUILD, JDK_OUTCOME, CAS_REPORT)
+                .addTask(parseLockStep(dir, lockFile))
                 .addTask(ensureJdkStep(dir, jdksDir, allowJdkInstall))
                 .addTask(ensureNodeStep())
                 .addTask(syncCasStep(dir, cache, repoUrl, preScanDenominator, label, totalFetched, totalUpToDate))
@@ -125,63 +115,15 @@ public final class SyncPlans {
                 .build();
     }
 
-    /**
-     * Read the lock. With {@code relock}, resolve it first when absent and re-lock when jk.toml
-     * changed.
-     */
-    private static Task parseLockStep(Path dir, Path cache, Path lockFile, @Nullable URI repoUrl, boolean relock) {
+    /** Read the lock the preflight freshened, and the project beside it. */
+    private static Task parseLockStep(Path dir, Path lockFile) {
         return Task.builder(TaskNames.PARSE_LOCK)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("parse jk-lock.toml");
-                    if (!relock) {
-                        ctx.put(LOCKFILE, LockfileReader.read(lockFile));
-                        var build = parseBuildIfPresent(dir);
-                        if (build != null) ctx.put(BUILD, build);
-                    } else if (!Files.exists(lockFile)) {
-                        ctx.label("resolve deps");
-                        var result = LockFlow.run(dir, cache, List.of(), false, repoUrl);
-                        if (result.workspaceModuleCount() > 0) {
-                            ctx.put(WORKSPACE_MODULES, result.workspaceModuleCount());
-                        }
-                        if (result.status() != 0) {
-                            ctx.error(
-                                    "lock",
-                                    result.error() != null
-                                            ? result.error()
-                                            : "lockfile resolution failed (exit " + result.status() + ")");
-                            throw new RuntimeException("lock-flow failed");
-                        }
-                        ctx.put(LOCKFILE, Objects.requireNonNull(result.lockfile(), "lockfile"));
-                        if (result.build() != null) ctx.put(BUILD, result.build());
-                        ctx.put(LOCKFILE_CREATED, true);
-                    } else if (AutoLock.isStale(dir, lockFile)) {
-                        ctx.label("jk.toml changed — updating lock");
-                        Lockfile existing = LockfileReader.read(lockFile);
-                        Lockfile updated;
-                        try {
-                            updated = AutoLock.maybeReLock(
-                                    dir,
-                                    existing,
-                                    lockFile,
-                                    cache,
-                                    repoUrl,
-                                    List.of(),
-                                    true,
-                                    ResolveObserver.NOOP,
-                                    ctx::output);
-                        } catch (LockRewriteGuard.LockRewriteRefused e) {
-                            ctx.error("verbatim", Errors.text(e));
-                            throw new RuntimeException("lock refused");
-                        }
-                        ctx.put(LOCKFILE, updated != null ? updated : existing);
-                        var build = parseBuildIfPresent(dir);
-                        if (build != null) ctx.put(BUILD, build);
-                    } else {
-                        ctx.put(LOCKFILE, LockfileReader.read(lockFile));
-                        var build = parseBuildIfPresent(dir);
-                        if (build != null) ctx.put(BUILD, build);
-                    }
+                    ctx.put(LOCKFILE, LockfileReader.read(lockFile));
+                    var build = parseBuildIfPresent(dir);
+                    if (build != null) ctx.put(BUILD, build);
                     ctx.progress(1);
                 })
                 .build();

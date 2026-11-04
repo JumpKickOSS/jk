@@ -83,6 +83,11 @@ public final class BuildVerbCommand implements CliCommand {
         return new BuildVerbCommand(ImageVerb::new);
     }
 
+    /** {@code jk sync}: the build's lock and sync phase, run on its own. */
+    public static BuildVerbCommand sync() {
+        return new BuildVerbCommand(SyncVerb::new);
+    }
+
     /** {@code jk train}. */
     public static BuildVerbCommand train() {
         return new BuildVerbCommand(TrainVerb::new);
