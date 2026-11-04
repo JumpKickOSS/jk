@@ -138,10 +138,10 @@ class AndroidReleaseTest {
         assertThat(verifyOut).contains("jar verified");
 
         // bundletool accepts the bundle: validate + the universal-APK local-deploy path.
-        // Tool closures live under the shared store's CAS root (JkStores redirects every
+        // Tool closures live under the shared store's tools (tools/plugin-tools) (JkStores redirects every
         // cache root to the store), not under the cache dir the test passes.
         Path bundletool;
-        try (var dirs = Files.list(JkStores.storeCas().root().resolve("plugin-tools"))) {
+        try (var dirs = Files.list(ToolClosures.root(JkStores.storeCas()))) {
             bundletool = dirs.filter(dir -> dir.getFileName().toString().startsWith("bundletool-1.17.2__"))
                     .findFirst()
                     .orElseThrow();

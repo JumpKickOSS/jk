@@ -31,7 +31,8 @@ class QuarkusAugmentArgsTest {
     private static final Path PROPS =
             ShortTempDirs.path().resolve("store/cas/quarkus-bom-quarkus-platform-properties-3.38.3.properties");
     private static final Path ROUTES = ShortTempDirs.path().resolve("jk-quarkus-repositories-1.jsonl");
-    private static final Path CLOSURE = ShortTempDirs.path().resolve("store/plugin-tools/lock-closures/abc");
+    private static final Path CLOSURE =
+            ShortTempDirs.path().resolve("store/tools/plugin-tools/lock-quarkus-deployment__abc");
 
     @Test
     void the_offline_decision_is_the_last_argument_the_augment_is_given() {

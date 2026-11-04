@@ -164,8 +164,8 @@ final class LockClosures {
             Cas cas,
             Supplier<RepoGroup> repos)
             throws IOException, InterruptedException {
-        Path dir = cas.root().resolve(REPOSITORIES).resolve(key(pinned));
-        if (ToolClosures.complete(dir)) return dir;
+        Path dir = ToolClosures.root(cas).resolve(key(closure, pinned));
+        if (ToolClosures.complete(dir)) return ToolClosures.used(cas, dir);
         Path staging = Files.createTempDirectory(Files.createDirectories(dir.getParent()), ".repo-");
         try {
             link(bytes(pinned, cas, repos.get(), true), staging);
@@ -176,19 +176,19 @@ final class LockClosures {
                     "the " + closure.resolvedBy() + " closure did not materialize under " + dir + ": " + e.getMessage(),
                     e);
         }
-        return dir;
+        return ToolClosures.used(cas, dir);
     }
 
-    /** Where closure repositories live under the store, beside the tool closures. */
-    private static final String REPOSITORIES = "plugin-tools/lock-closures";
-
-    /** A closure repository's directory name: a hash of every file with its digest. */
-    private static String key(Map<Coordinate, String> pinned) {
+    /**
+     * A closure repository's directory name: the plugin and closure, readable, and a hash of every
+     * file with its digest, so two answers that differ in any byte are two directories.
+     */
+    private static String key(PluginContributions.LockClosureDep closure, Map<Coordinate, String> pinned) {
         List<String> lines = new ArrayList<>();
         for (Map.Entry<Coordinate, String> file : pinned.entrySet()) lines.add(file.getKey() + "=" + file.getValue());
         Collections.sort(lines);
-        return Hashing.sha256Hex(String.join("\n", lines).getBytes(StandardCharsets.UTF_8))
-                .substring(0, 40);
+        String hash = Hashing.sha256Hex(String.join("\n", lines).getBytes(StandardCharsets.UTF_8));
+        return "lock-" + closure.manifest().id() + "-" + closure.name() + "__" + hash.substring(0, 40);
     }
 
     /**
@@ -305,7 +305,7 @@ final class LockClosures {
                 }
             }
         }
-        Path dir = Files.createTempDirectory(Files.createDirectories(cas.root().resolve(REPOSITORIES)), ".seed-");
+        Path dir = Files.createTempDirectory(Files.createDirectories(ToolClosures.root(cas)), ".seed-");
         link(bytes(known, cas, repos, false), dir);
         return dir;
     }

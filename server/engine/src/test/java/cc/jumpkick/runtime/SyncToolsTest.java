@@ -107,7 +107,7 @@ class SyncToolsTest {
 
         assertThat(result.success()).as("sync errors: %s", result.errors()).isTrue();
         Path store = JkStores.storeCas().root();
-        try (Stream<Path> closures = Files.list(store.resolve("plugin-tools"))) {
+        try (Stream<Path> closures = Files.list(ToolClosures.root(JkStores.storeCas()))) {
             Path closure = closures.filter(dir -> dir.getFileName().toString().startsWith("kit-cli-1.0__"))
                     .findFirst()
                     .orElseThrow();

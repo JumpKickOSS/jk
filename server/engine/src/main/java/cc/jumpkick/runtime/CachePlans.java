@@ -149,6 +149,9 @@ public final class CachePlans {
                         var toolsGc = ToolsGc.run(toolsRoot, toolFamilies(), toolLedger.load(), pressure, now, dryRun);
                         totalFiles += toolsGc.deleted();
                         totalBytes += toolsGc.freedBytes();
+                        SweepReport legacy = reclaimLegacyClosures(dryRun);
+                        totalFiles += legacy.files();
+                        totalBytes += legacy.bytes();
                         if (!dryRun) {
                             toolLedger.compact(key -> ToolUse.exists(toolsRoot, key));
                         }
@@ -358,6 +361,19 @@ public final class CachePlans {
         return new SweepReport(totalFiles, totalBytes);
     }
 
+    /**
+     * Closures lived at {@code <store>/plugin-tools} before the tools collector managed them
+     * ({@link ToolClosures#root}); nothing reads that tree any more, and it is all links the next
+     * use rebuilds.
+     */
+    private static SweepReport reclaimLegacyClosures(boolean dryRun) throws IOException {
+        Path legacy = JkStores.store().resolve(ToolClosures.FAMILY);
+        if (!Files.isDirectory(legacy)) return new SweepReport(0, 0);
+        var measured = PathUtil.measureTrees(List.of(legacy));
+        if (!dryRun) PathUtil.deleteRecursively(legacy);
+        return new SweepReport(measured.files(), measured.bytes());
+    }
+
     /** The tool families whose installs the collector manages: the ones the registry hands out and stamps. */
     private static Set<String> toolFamilies() {
         Set<String> slugs = new LinkedHashSet<>();
@@ -365,6 +381,8 @@ public final class CachePlans {
         // The closures and builds the resolvers keep beside them, each stamped where it is used.
         slugs.addAll(List.of("scala", "ksp", "kotlin-bta", "kts-host", "groovy", "dokka-analysis", "dokka-javadoc"));
         slugs.add("graph-oxc");
+        // Tool closures and lock-closure repositories: link farms over the store, stamped on every hand-out.
+        slugs.add(ToolClosures.FAMILY);
         return slugs;
     }
 
