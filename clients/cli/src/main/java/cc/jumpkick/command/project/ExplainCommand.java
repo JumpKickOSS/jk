@@ -176,22 +176,19 @@ public final class ExplainCommand implements CliCommand {
         // client that answers it from its own copy of the rule answers a question it cannot see.
         boolean livePrep = EnsureFreshLock.isInteractiveAuto(global) && !global.outputIsJson();
         boolean needsLock = EnsureFreshLock.needsRefresh(startDir);
-        String prepMsg = needsLock ? "Locking versions…" : "Calculating build plan…";
 
         ExplainPlan plan;
         long etaMillis;
         long fullEtaMillis;
         // [0] = current remaining ETA; [1] = full-rebuild ETA (effort denominator).
         long[] etaOut = new long[2];
-        try (Spinner prep = livePrep ? CommandWedge.analyzingStdout("Explain", prepMsg) : null) {
-            // Same starting lock as `jk build` so the dirty plan and ETA match the countdown.
-            // Pass the prep spinner so a freshen failure settles it before writing stderr.
-            if (needsLock) {
-                if (prep != null) prep.update("Locking versions…");
-                int lockCode = EnsureFreshLock.ensure(startDir, cache, global, "Explain", prep, false);
-                if (lockCode != 0) return lockCode;
-            }
-            if (prep != null) prep.update("Calculating build plan…");
+        // Same starting lock as `jk build` so the dirty plan and ETA match the countdown. It runs
+        // ahead of the prep wedge, in its own region, so a first lock's downloads are drawn.
+        if (needsLock) {
+            int lockCode = EnsureFreshLock.ensure(startDir, cache, global, "Explain");
+            if (lockCode != 0) return lockCode;
+        }
+        try (Spinner prep = livePrep ? CommandWedge.analyzingStdout("Explain", "Calculating build plan…") : null) {
             // Forecast via engine: graph + per-step plan + schedule-aware ETA. The selector tokens
             // and the entry dir are the ones `jk build` sends from this cwd — the workspace root
             // with the member as the selection when the cwd is a member — so the plan prices the
