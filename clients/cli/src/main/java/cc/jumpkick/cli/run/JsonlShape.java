@@ -37,6 +37,7 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.FailureTextRefs;
 import cc.jumpkick.wire.protocol.RequestEnvironment;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import cc.jumpkick.wire.transcript.JsonlEnvelope;
 import cc.jumpkick.wire.transcript.SessionStartLine;
 import java.time.Duration;
@@ -327,6 +328,18 @@ public final class JsonlShape {
     /** Workspace graph finished (all modules done or aborted on graph error). */
     public static String workspaceFinish(boolean success, long durationMs, int modules) {
         return new WorkspaceFinishLine(nowMillis(), success, durationMs, modules).encode();
+    }
+
+    /** As {@link #workspaceFinish(boolean, long, int)}, with what the run's sync fetched when it synced. */
+    public static String workspaceFinish(
+            boolean success, long durationMs, int modules, WorkspaceResult.@Nullable SyncCounts sync) {
+        return new WorkspaceFinishLine(
+                        nowMillis(),
+                        success,
+                        durationMs,
+                        modules,
+                        sync == null ? null : new WorkspaceFinishLine.Sync(sync.fetched(), sync.upToDate()))
+                .encode();
     }
 
     /** A workspace module is about to run its plan (brackets nested step events). */

@@ -420,7 +420,7 @@ final class WorkspaceRunView {
         if (result.cancelled()) {
             view.finishBuildPlanCancelled(above);
             if (session != null) session.wedge(chrome.planName() + " job was cancelled");
-            event(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
+            event(JsonlShape.workspaceFinish(false, elapsedMs, planned(), result.sync()));
             after.accept(Settled.CANCELLED);
             return 1;
         }
@@ -430,7 +430,7 @@ final class WorkspaceRunView {
             String tail = errorsTail(result);
             view.finishBuildPlanFailure(tail, errs);
             if (session != null) session.wedge(tail);
-            event(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
+            event(JsonlShape.workspaceFinish(false, elapsedMs, planned(), result.sync()));
             after.accept(Settled.GRAPH_ERRORS);
             // 2 for graph errors, 6 for an unsatisfiable workspace lock (the engine's freshen guard).
             return result.exitCode();
@@ -449,7 +449,7 @@ final class WorkspaceRunView {
             String failTail = tails.failure().of(result);
             view.finishBuildPlanFailure(failTail, failAbove);
             if (session != null) session.wedge(failTail);
-            event(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
+            event(JsonlShape.workspaceFinish(false, elapsedMs, planned(), result.sync()));
             after.accept(Settled.FAILED);
             return result.exitCode();
         }
@@ -459,7 +459,7 @@ final class WorkspaceRunView {
         if (launchFailure != null) {
             view.finishBuildPlanFailureCustom(launchFailure, above);
             if (session != null) session.wedge(launchFailure);
-            event(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
+            event(JsonlShape.workspaceFinish(false, elapsedMs, planned(), result.sync()));
             after.accept(Settled.FAILED);
             return Exit.DATA_ERR;
         }
@@ -467,7 +467,7 @@ final class WorkspaceRunView {
         if (tails.exec()) view.finishBuildPlanExec(okTail, above);
         else view.finishBuildPlanSuccess(okTail, above);
         if (session != null) session.wedge(okTail);
-        event(JsonlShape.workspaceFinish(true, elapsedMs, planned()));
+        event(JsonlShape.workspaceFinish(true, elapsedMs, planned(), result.sync()));
         after.accept(Settled.SUCCEEDED);
         return 0;
     }
@@ -496,7 +496,7 @@ final class WorkspaceRunView {
                 CommandWedge.printFail(chrome.planName(), tail);
             }
             if (session != null) session.wedge(tail);
-            event(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
+            event(JsonlShape.workspaceFinish(false, elapsedMs, planned(), result.sync()));
             after.accept(Settled.GRAPH_ERRORS);
             return result.exitCode();
         }
@@ -507,7 +507,7 @@ final class WorkspaceRunView {
                 CommandWedge.printFail(chrome.planName(), failTail);
             }
             if (session != null) session.wedge(failTail);
-            event(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
+            event(JsonlShape.workspaceFinish(false, elapsedMs, planned(), result.sync()));
             after.accept(Settled.FAILED);
             return result.exitCode() == 0 ? 1 : result.exitCode();
         }
@@ -517,14 +517,14 @@ final class WorkspaceRunView {
                 CommandWedge.printLine(
                         JkWedge.failureLineCustom(chrome.planName(), GlobalConfig.nerdFont(), launchFailure));
             if (session != null) session.wedge(launchFailure);
-            event(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
+            event(JsonlShape.workspaceFinish(false, elapsedMs, planned(), result.sync()));
             after.accept(Settled.FAILED);
             return Exit.DATA_ERR;
         }
         String okTail = tails.success().of(result, planned());
         if (!toStdout && !tails.exec()) CommandWedge.printOk(chrome.planName(), okTail);
         if (session != null) session.wedge(okTail);
-        event(JsonlShape.workspaceFinish(true, elapsedMs, planned()));
+        event(JsonlShape.workspaceFinish(true, elapsedMs, planned(), result.sync()));
         after.accept(Settled.SUCCEEDED);
         return 0;
     }
