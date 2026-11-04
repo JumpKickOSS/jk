@@ -3,8 +3,10 @@ package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.RequestShell;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -67,14 +69,38 @@ class M2DirsTest {
     }
 
     @Test
-    void interpolated_settings_xml_path_is_skipped(@TempDir Path dir) throws Exception {
+    void a_user_home_expression_in_local_repository_expands(@TempDir Path dir) throws Exception {
         Path settings = dir.resolve("settings.xml");
         Files.writeString(
-                settings, "<settings><localRepository>${user.home}/.m2/repository</localRepository></settings>");
+                settings, "<settings><localRepository>${user.home}/m2-from-settings</localRepository></settings>");
         System.setProperty("jk.m2.settings", settings.toString());
 
         assertThat(M2Dirs.localRepository(null))
-                .isEqualTo(Path.of(System.getProperty("user.home"), ".m2", "repository"));
+                .isEqualTo(Path.of(System.getProperty("user.home") + "/m2-from-settings"));
+    }
+
+    @Test
+    void an_env_expression_in_local_repository_reads_the_requesting_shell(@TempDir Path dir) throws Exception {
+        Path settings = dir.resolve("settings.xml");
+        Files.writeString(
+                settings, "<settings><localRepository>${env.M2_ROOT_FOR_TEST}/repo</localRepository></settings>");
+        System.setProperty("jk.m2.settings", settings.toString());
+
+        Path seen = RequestShell.where(Map.of("M2_ROOT_FOR_TEST", dir.toString()), () -> M2Dirs.localRepository(null));
+
+        assertThat(seen).isEqualTo(dir.resolve("repo"));
+    }
+
+    @Test
+    void an_unset_variable_in_local_repository_falls_back_to_the_default(@TempDir Path dir) throws Exception {
+        Path settings = dir.resolve("settings.xml");
+        Files.writeString(
+                settings, "<settings><localRepository>${env.M2_ROOT_FOR_TEST}/repo</localRepository></settings>");
+        System.setProperty("jk.m2.settings", settings.toString());
+
+        Path seen = RequestShell.where(Map.of("SOMETHING_ELSE", "x"), () -> M2Dirs.localRepository(null));
+
+        assertThat(seen).isEqualTo(Path.of(System.getProperty("user.home"), ".m2", "repository"));
     }
 
     @Test

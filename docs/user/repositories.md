@@ -389,7 +389,27 @@ installation's, and the active-profile ids are the union. `JK_M2_SETTINGS=<file>
 user file (Maven's `-s`). Both files are re-read when they change, so editing one needs no
 `jk engine stop`. `jk doctor` prints which files the engine read, every mirror with the built-in
 remotes it stands in for, the proxies and the profile repositories. Not read:
-`<pluginRepositories>`, `<pluginGroups>`, `${...}` expansion and encrypted passwords.
+`<pluginRepositories>`, `<pluginGroups>` and encrypted passwords.
+
+### `${...}` in `settings.xml`
+
+Every value is expanded the way Maven expands it, so `<password>${env.NEXUS_PASSWORD}</password>`
+keeps the password out of the file:
+
+- `${env.NAME}` is the variable as the shell that ran `jk` has it, not the shell that started the
+  engine: `NEXUS_PASSWORD=… jk build` works against a resident engine.
+- `${user.home}`, `${os.name}`, `${java.home}` and the other system properties Maven exposes;
+  `${user.dir}` is the directory `jk` ran in and `${maven.home}` the installation `M2_HOME` /
+  `MAVEN_HOME` names.
+- `${settings.*}` and `${project.*}` are not expanded, as in Maven.
+
+This covers `<server>` usernames, passwords and passphrases, `<mirror>`, `<proxy>` and profile
+repository URLs, and `<localRepository>`. An expression that does not resolve stays as written,
+as Maven leaves it, and jk warns once per run, naming the file, the element and the expression
+(`` <server> `nexus` <password> names ${env.NEXUS_PASSWORD} ``) —
+the literal will answer 401, and the warning says why. An unresolved `<localRepository>` falls
+back to `~/.m2/repository` instead. `jk doctor` shows mirror URLs expanded, with any credential in
+them removed.
 
 ## Related
 

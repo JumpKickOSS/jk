@@ -16,50 +16,73 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Reads one {@code settings.xml} into a {@link MavenSettings}. {@link MinimalXml} is DOCTYPE-free
- * by construction, so an external entity in the file cannot read anything; a file that does not
- * parse, or is not there, is empty.
+ * Reads one {@code settings.xml} into a {@link MavenSettings}, in two steps: {@link #parse} reads
+ * the file once, and {@link #read} turns the parse into values for one request, every element's
+ * text passed through {@link SettingsValues} so {@code ${env.NAME}} is the request's. {@link
+ * MinimalXml} is DOCTYPE-free by construction, so an external entity in the file cannot read
+ * anything; a file that does not parse, or is not there, is empty.
  */
 final class SettingsXml {
 
-    private SettingsXml() {}
+    /** One parsed file: what {@link #read} expands, kept while the file is unchanged. */
+    record Document(Path file, MinimalXml.Element root) {}
 
-    static MavenSettings read(Path file) {
-        if (!Files.isRegularFile(file)) return MavenSettings.empty();
+    private final Path file;
+    private final SettingsValues values;
+
+    private SettingsXml(Path file, SettingsValues values) {
+        this.file = file;
+        this.values = values;
+    }
+
+    /** The parse of {@code file}; null when it is not there or does not parse. */
+    static @Nullable Document parse(Path file) {
+        if (!Files.isRegularFile(file)) return null;
         try {
-            MinimalXml.Element doc = MinimalXml.parse(Files.readString(file));
-            return new MavenSettings(
-                    servers(doc),
-                    mirrors(doc, file),
-                    proxies(doc, file),
-                    profiles(doc),
-                    activeProfiles(doc),
-                    List.of(file));
+            return new Document(file, MinimalXml.parse(Files.readString(file)));
         } catch (Exception e) {
             // Foreign/experimental file — degrade gracefully, like the other parsers.
-            return MavenSettings.empty();
+            return null;
         }
     }
 
-    private static Map<String, MavenSettings.Server> servers(MinimalXml.Element doc) {
+    /** {@code doc}'s entries, every value expanded through {@code values}. */
+    static MavenSettings read(@Nullable Document doc, SettingsValues values) {
+        if (doc == null) return MavenSettings.empty();
+        SettingsXml reader = new SettingsXml(doc.file(), values);
+        MinimalXml.Element root = doc.root();
+        return new MavenSettings(
+                reader.servers(root),
+                reader.mirrors(root),
+                reader.proxies(root),
+                reader.profiles(root),
+                reader.activeProfiles(root),
+                List.of(doc.file()),
+                values.notices());
+    }
+
+    private Map<String, MavenSettings.Server> servers(MinimalXml.Element doc) {
         Map<String, MavenSettings.Server> byId = new LinkedHashMap<>();
         for (MinimalXml.Element server : listed(doc, "servers", "server")) {
-            String id = text(server, "id");
+            String id = text(server, "id", "<server>");
             if (id == null) continue;
-            String username = text(server, "username");
-            String password = text(server, "password");
+            String where = "<server> `" + id + "`";
+            String username = text(server, "username", where);
+            String password = text(server, "password", where);
+            String passphrase = text(server, "passphrase", where);
             if (username == null && password == null) continue; // no usable creds
-            byId.putIfAbsent(id, new MavenSettings.Server(id, username, password));
+            byId.putIfAbsent(id, new MavenSettings.Server(id, username, password, passphrase));
         }
         return byId;
     }
 
-    private static List<MavenSettings.Mirror> mirrors(MinimalXml.Element doc, Path file) {
+    private List<MavenSettings.Mirror> mirrors(MinimalXml.Element doc) {
         List<MavenSettings.Mirror> out = new ArrayList<>();
         for (MinimalXml.Element mirror : listed(doc, "mirrors", "mirror")) {
-            String id = text(mirror, "id");
-            String mirrorOf = text(mirror, "mirrorOf");
-            URI url = uri(text(mirror, "url"));
+            String id = text(mirror, "id", "<mirror>");
+            String where = "<mirror> `" + id + "`";
+            String mirrorOf = text(mirror, "mirrorOf", where);
+            URI url = uri(text(mirror, "url", where));
             if (id == null || mirrorOf == null || url == null) continue;
             out.add(new MavenSettings.Mirror(id, mirrorOf, url, file));
         }
@@ -67,19 +90,20 @@ final class SettingsXml {
     }
 
     /** Active proxies only; {@code <active>} defaults to true and {@code <protocol>} to http, as in Maven. */
-    private static List<MavenSettings.Proxy> proxies(MinimalXml.Element doc, Path file) {
+    private List<MavenSettings.Proxy> proxies(MinimalXml.Element doc) {
         List<MavenSettings.Proxy> out = new ArrayList<>();
         for (MinimalXml.Element proxy : listed(doc, "proxies", "proxy")) {
-            String active = text(proxy, "active");
+            String id = text(proxy, "id", "<proxy>");
+            String where = "<proxy> `" + (id == null ? "default" : id) + "`";
+            String active = text(proxy, "active", where);
             if (active != null && !Boolean.parseBoolean(active)) continue;
-            String host = text(proxy, "host");
+            String host = text(proxy, "host", where);
             if (host == null) continue;
-            String id = text(proxy, "id");
-            String protocol = text(proxy, "protocol");
-            int port = port(text(proxy, "port"));
+            String protocol = text(proxy, "protocol", where);
+            int port = port(text(proxy, "port", where));
             if (port < 0) continue;
             List<String> nonProxyHosts = new ArrayList<>();
-            String raw = text(proxy, "nonProxyHosts");
+            String raw = text(proxy, "nonProxyHosts", where);
             if (raw != null) {
                 for (String entry : raw.split("\\|")) {
                     if (!entry.isBlank()) nonProxyHosts.add(entry.strip());
@@ -90,8 +114,8 @@ final class SettingsXml {
                     protocol == null ? "http" : protocol,
                     host,
                     port,
-                    text(proxy, "username"),
-                    text(proxy, "password"),
+                    text(proxy, "username", where),
+                    text(proxy, "password", where),
                     nonProxyHosts,
                     file));
         }
@@ -108,16 +132,16 @@ final class SettingsXml {
         }
     }
 
-    private static List<MavenSettings.Profile> profiles(MinimalXml.Element doc) {
+    private List<MavenSettings.Profile> profiles(MinimalXml.Element doc) {
         List<MavenSettings.Profile> out = new ArrayList<>();
         for (MinimalXml.Element profile : listed(doc, "profiles", "profile")) {
-            String id = text(profile, "id");
+            String id = text(profile, "id", "<profile>");
             if (id == null) continue;
-            boolean byDefault = profile.element("activation")
-                    .flatMap(a -> a.element("activeByDefault"))
-                    .map(e -> Boolean.parseBoolean(e.text().strip()))
-                    .orElse(false);
-            out.add(new MavenSettings.Profile(id, byDefault, repositories(profile)));
+            String where = "<profile> `" + id + "`";
+            String byDefault = profile.element("activation")
+                    .map(a -> text(a, "activeByDefault", where + " <activation>"))
+                    .orElse(null);
+            out.add(new MavenSettings.Profile(id, Boolean.parseBoolean(byDefault), repositories(profile, where)));
         }
         return out;
     }
@@ -127,14 +151,15 @@ final class SettingsXml {
      * <releases>} / {@code <snapshots>} policy the entry wrote; an entry with no id, no URL, or
      * neither policy enabled is skipped.
      */
-    private static List<RepositorySpec> repositories(MinimalXml.Element profile) {
+    private List<RepositorySpec> repositories(MinimalXml.Element profile, String profileWhere) {
         List<RepositorySpec> out = new ArrayList<>();
         for (MinimalXml.Element repo : listed(profile, "repositories", "repository")) {
-            String id = text(repo, "id");
-            URI url = uri(text(repo, "url"));
+            String id = text(repo, "id", profileWhere + " <repository>");
+            String where = profileWhere + " <repository> `" + id + "`";
+            URI url = uri(text(repo, "url", where));
             if (id == null || url == null) continue;
-            boolean releases = enabled(repo, "releases");
-            boolean snapshots = enabled(repo, "snapshots");
+            boolean releases = enabled(repo, "releases", where);
+            boolean snapshots = enabled(repo, "snapshots", where);
             if (!releases && !snapshots) continue;
             out.add(new RepositorySpec(id, url).withPolicy(releases, snapshots));
         }
@@ -142,17 +167,17 @@ final class SettingsXml {
     }
 
     /** {@code <releases><enabled>} / {@code <snapshots><enabled>}: on unless written false. */
-    private static boolean enabled(MinimalXml.Element repo, String policy) {
+    private boolean enabled(MinimalXml.Element repo, String policy, String where) {
         return repo.element(policy)
-                .flatMap(p -> p.element("enabled"))
-                .map(e -> Boolean.parseBoolean(e.text().strip()))
+                .map(p -> text(p, "enabled", where + " <" + policy + ">"))
+                .map(Boolean::parseBoolean)
                 .orElse(true);
     }
 
-    private static Set<String> activeProfiles(MinimalXml.Element doc) {
+    private Set<String> activeProfiles(MinimalXml.Element doc) {
         Set<String> ids = new LinkedHashSet<>();
         for (MinimalXml.Element id : listed(doc, "activeProfiles", "activeProfile")) {
-            String text = id.text().strip();
+            String text = values.expand(file, "<activeProfile>", id.text().strip());
             if (!text.isEmpty()) ids.add(text);
         }
         return ids;
@@ -163,12 +188,16 @@ final class SettingsXml {
         return parent.element(list).map(l -> l.elements(item)).orElse(List.of());
     }
 
-    /** Stripped text of the first direct child element named {@code tag}; null when absent or blank. */
-    private static @Nullable String text(MinimalXml.Element parent, String tag) {
+    /**
+     * Stripped, expanded text of the first direct child element named {@code tag}; null when
+     * absent or blank. {@code where} names the entry for a warning ({@code <server> `nexus`}).
+     */
+    private @Nullable String text(MinimalXml.Element parent, String tag, String where) {
         return parent.element(tag)
                 .map(MinimalXml.Element::text)
                 .map(String::strip)
                 .filter(s -> !s.isEmpty())
+                .map(s -> values.expand(file, where + " <" + tag + ">", s))
                 .orElse(null);
     }
 
