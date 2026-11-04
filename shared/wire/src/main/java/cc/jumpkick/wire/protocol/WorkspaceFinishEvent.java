@@ -19,11 +19,23 @@ public record WorkspaceFinishEvent(
         int exitCode,
         List<String> errors,
         boolean cancelled,
-        WorkspaceResult.@Nullable SyncCounts sync) {
+        WorkspaceResult.@Nullable SyncCounts sync,
+        long millis,
+        int modules) {
 
     /** No sync counts: every goal but {@code jk sync}. */
     public WorkspaceFinishEvent(boolean success, int exitCode, List<String> errors, boolean cancelled) {
         this(success, exitCode, errors, cancelled, null);
+    }
+
+    /** The engine's terminal: the run's wall time and module count are the client's ({@code -1}, left out). */
+    public WorkspaceFinishEvent(
+            boolean success,
+            int exitCode,
+            List<String> errors,
+            boolean cancelled,
+            WorkspaceResult.@Nullable SyncCounts sync) {
+        this(success, exitCode, errors, cancelled, sync, -1, -1);
     }
 
     public String encode() {
@@ -40,6 +52,8 @@ public record WorkspaceFinishEvent(
                                         .number("fetched", sync.fetched())
                                         .number("upToDate", sync.upToDate())
                                         .finish())
+                .optionalNumber("millis", millis, -1)
+                .optionalNumber("modules", modules, -1)
                 .finish();
     }
 
@@ -49,7 +63,9 @@ public record WorkspaceFinishEvent(
                 Jsonl.intValue(json, "exitCode", 0),
                 Jsonl.strArray(json, "errors"),
                 Jsonl.bool(json, "cancelled", false),
-                syncOf(Jsonl.nested(json, "sync")));
+                syncOf(Jsonl.nested(json, "sync")),
+                Jsonl.longValue(json, "millis", -1),
+                Jsonl.intValue(json, "modules", -1));
     }
 
     private static WorkspaceResult.@Nullable SyncCounts syncOf(@Nullable String sync) {

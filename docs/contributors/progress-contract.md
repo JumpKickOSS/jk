@@ -211,7 +211,7 @@ in a job goes through one resident compiler worker, so on a wide build a module'
 wall is mostly its place in that queue: thirty modules summing to a minute of `compile-java`
 is a minute of machine-busy time, not a minute of javac. The wall stays the honest wall; the
 learned per-unit rates (`StepTimings`) train on `wall − wait`, so a rate never prices the queue
-as work. The wire (`task-finish` `waitMillis`, JSONL `wait_ms`) carries the same split.
+as work. `task-finish` carries the same split as `waitMillis`, on the wire and in JSONL alike.
 
 ## Out of scope
 

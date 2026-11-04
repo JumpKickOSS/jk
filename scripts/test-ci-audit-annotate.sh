@@ -12,13 +12,13 @@ trap 'rm -rf "$WORK"' EXIT
 SCRIPT="$ROOT/scripts/ci-audit-annotate.sh"
 
 cat >"$WORK/audit.jsonl" <<'EOF'
-{"schema":1,"ts":1,"type":"buildplan-start","plan":"audit","denominator":3,"tasks":3,"progress":null}
+{"schema":1,"ts":1,"type":"buildplan-start","planName":"audit","numerator":0,"denominator":3,"tasksTotal":3,"tasksComplete":0,"cancelled":false,"progress":null}
 {"schema":1,"ts":2,"type":"audit-finding","id":"GHSA-high-0001","package":"com.example:lib","version":"1.0","severity":"HIGH","summary":"Deserialization of untrusted data","fixedIn":"1.1","ignored":false}
 {"schema":1,"ts":3,"type":"audit-finding","id":"CVE-2025-0002","package":"com.example:other","version":"2.0","severity":"MEDIUM","summary":"Path traversal","ignored":false}
 {"schema":1,"ts":4,"type":"audit-finding","id":"GHSA-crit-0003","package":"com.example:core","version":"3.0","severity":"CRITICAL","summary":"RCE\twith a tab","fixedIn":"3.1","ignored":true,"reason":"test-only dependency","until":"2099-01-01"}
 {"schema":1,"ts":5,"type":"audit-finding","id":"GHSA-lapsed-0004","package":"com.example:old","version":"4.0","severity":"HIGH","summary":"Lapsed ignore","ignored":false,"reason":"was waiting on upstream","until":"2020-01-01","ignoreExpired":true}
 {"schema":1,"ts":6,"type":"audit-finding","id":"OSV-unlabelled-0005","package":"com.example:odd","version":"5.0","severity":"UNKNOWN","summary":"No severity from OSV","ignored":false}
-{"schema":1,"ts":7,"type":"buildplan-finish","plan":"audit","success":false,"duration_ms":0,"warnings":0,"errors":1,"progress":100}
+{"schema":1,"ts":7,"type":"buildplan-finish","kind":"build","success":false,"cancelled":false,"planName":"audit","millis":0,"warnings":0,"errors":1,"progress":100}
 EOF
 
 count() { grep -c -- "$1" "$2" || true; }

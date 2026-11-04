@@ -11,18 +11,43 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.task.TransferBoard;
+import cc.jumpkick.wire.protocol.ClassFinishEvent;
+import cc.jumpkick.wire.protocol.DownloadsEvent;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ErrorLineEvent;
+import cc.jumpkick.wire.protocol.EtaEvent;
 import cc.jumpkick.wire.protocol.EventCatalog;
+import cc.jumpkick.wire.protocol.EventEnvelope;
+import cc.jumpkick.wire.protocol.LabelEvent;
+import cc.jumpkick.wire.protocol.ModuleFinishEvent;
+import cc.jumpkick.wire.protocol.ModuleStartEvent;
+import cc.jumpkick.wire.protocol.NoteEvent;
+import cc.jumpkick.wire.protocol.OutputEvent;
+import cc.jumpkick.wire.protocol.PlanFinishEvent;
+import cc.jumpkick.wire.protocol.PlanStartEvent;
+import cc.jumpkick.wire.protocol.PreflightEvent;
+import cc.jumpkick.wire.protocol.ProgressEvent;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
+import cc.jumpkick.wire.protocol.TaskFinishEvent;
+import cc.jumpkick.wire.protocol.TaskStartEvent;
+import cc.jumpkick.wire.protocol.TickUpdateEvent;
+import cc.jumpkick.wire.protocol.WarnEvent;
+import cc.jumpkick.wire.protocol.WorkspaceFinishEvent;
+import cc.jumpkick.wire.protocol.WorkspaceProgressEvent;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import java.io.BufferedReader;
 import java.io.StringReader;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.lang.reflect.RecordComponent;
 import java.nio.channels.SocketChannel;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import org.junit.jupiter.api.Test;
@@ -112,6 +137,122 @@ class EventCatalogConsoleTest {
         assertThat(written)
                 .as("-O jsonl records for a stream of every wire event")
                 .isEqualTo(expected);
+        eachLineIsItsRecord(lines, out);
+    }
+
+    /**
+     * Each console line is its event's wire record under the console envelope: every field it
+     * writes is one the record defines, spelled as the record spells it, and every field the
+     * engine sent is written but those the console drops on purpose.
+     */
+    private static void eachLineIsItsRecord(List<String> sent, String out) throws ReflectiveOperationException {
+        Map<String, Set<String>> defined = new HashMap<>();
+        for (Class<?> record : RECORDS) {
+            String line = (String) record.getMethod("encode").invoke(populated(record));
+            String type = Objects.requireNonNull(EngineProtocol.typeOf(line), line);
+            defined.computeIfAbsent(consoleName(type), k -> new TreeSet<>()).addAll(EventEnvelope.keys(line));
+        }
+        Map<String, Set<String>> writtenKeys = new HashMap<>();
+        for (String line : out.lines().toList()) {
+            String type = Objects.requireNonNull(Jsonl.str(line, EngineProtocol.TYPE_FIELD), line);
+            Set<String> keys = new TreeSet<>(EventEnvelope.keys(line));
+            keys.removeAll(ENVELOPE);
+            writtenKeys.computeIfAbsent(type, k -> new TreeSet<>()).addAll(keys);
+            if (!defined.containsKey(type)) continue; // a record only the CLI writes
+            assertThat(defined.get(type))
+                    .as("`%s` on -O jsonl writes only its record's fields: %s", type, line)
+                    .containsAll(keys);
+        }
+        for (String line : sent) {
+            String type = Objects.requireNonNull(EngineProtocol.typeOf(line), line);
+            if (!EventCatalog.carries(EventCatalog.Surface.CONSOLE_JSONL, type)) continue;
+            // An event the console writes as a record of its own (plan-done's workspace-start) is
+            // not a projection of what the engine sent.
+            if (!defined.containsKey(consoleName(type))) continue;
+            Set<String> keys = new TreeSet<>(EventEnvelope.keys(line));
+            keys.removeAll(ENVELOPE);
+            keys.removeAll(DROPPED.getOrDefault(type, Set.of()));
+            assertThat(writtenKeys.getOrDefault(consoleName(type), Set.of()))
+                    .as("every field the engine sent on `%s` reaches -O jsonl under its own name: %s", type, line)
+                    .containsAll(keys);
+        }
+    }
+
+    private static String consoleName(String type) {
+        EventCatalog.Row row = EventCatalog.row(type);
+        if (row != null
+                && row.consoleJsonl() instanceof EventCatalog.Carried carried
+                && !carried.as().isEmpty()) {
+            return carried.as();
+        }
+        return type;
+    }
+
+    /** The console envelope and its riders: {@code module} names a step's module, {@code progress} is the run's. */
+    private static final Set<String> ENVELOPE = Set.of("schema", "ts", "type", "module", "progress");
+
+    /** What the console leaves out of a record on purpose. */
+    private static final Map<String, Set<String>> DROPPED = Map.ofEntries(
+            Map.entry(EngineProtocol.TASK_START, Set.of("dir")),
+            Map.entry(EngineProtocol.TASK_FINISH, Set.of("dir")),
+            Map.entry(EngineProtocol.LABEL, Set.of("dir")),
+            Map.entry(EngineProtocol.OUTPUT, Set.of("dir")),
+            Map.entry(EngineProtocol.WARN, Set.of("dir")),
+            Map.entry(EngineProtocol.ERROR_LINE, Set.of("dir")),
+            Map.entry(EngineProtocol.BUILDPLAN_DIAGNOSTIC, Set.of("dir")),
+            Map.entry(EngineProtocol.CLASS_FINISH, Set.of("dir")),
+            Map.entry(EngineProtocol.BUILDPLAN_START, Set.of("dir")),
+            Map.entry(EngineProtocol.BUILDPLAN_FINISH, Set.of("dir")),
+            Map.entry(EngineProtocol.PROGRESS, Set.of("dir")),
+            Map.entry(EngineProtocol.TICK_UPDATE, Set.of("dir")),
+            Map.entry(EngineProtocol.DOWNLOADS, Set.of("rows")));
+
+    /** The wire records of every event the console carries. */
+    private static final List<Class<?>> RECORDS = List.of(
+            ClassFinishEvent.class,
+            DownloadsEvent.class,
+            ErrorLineEvent.class,
+            EtaEvent.class,
+            LabelEvent.class,
+            ModuleFinishEvent.class,
+            ModuleStartEvent.class,
+            NoteEvent.class,
+            OutputEvent.class,
+            PlanFinishEvent.class,
+            PlanStartEvent.class,
+            PreflightEvent.class,
+            ProgressEvent.class,
+            TaskFinishEvent.class,
+            TaskStartEvent.class,
+            TickUpdateEvent.class,
+            WarnEvent.class,
+            WorkspaceFinishEvent.class,
+            WorkspaceProgressEvent.class);
+
+    /** A record with every component set, so its encoding spells every field it can. */
+    private static Object populated(Class<?> type) throws ReflectiveOperationException {
+        RecordComponent[] components = type.getRecordComponents();
+        Class<?>[] types = new Class<?>[components.length];
+        Object[] values = new Object[components.length];
+        for (int i = 0; i < components.length; i++) {
+            types[i] = components[i].getType();
+            values[i] = value(types[i]);
+        }
+        Constructor<?> ctor = type.getDeclaredConstructor(types);
+        return ctor.newInstance(values);
+    }
+
+    private static Object value(Class<?> type) throws ReflectiveOperationException {
+        if (type == String.class) return "x";
+        if (type == boolean.class) return true;
+        if (type == int.class) return 1;
+        if (type == long.class) return 1L;
+        if (type == double.class) return 1.0;
+        if (type == List.class) return List.of();
+        if (type == Path.class) return Path.of("/x");
+        if (type.isEnum()) return type.getEnumConstants()[0];
+        if (type.isRecord()) return populated(type);
+        throw new IllegalArgumentException("no value for " + type);
     }
 
     /** A job that fails: the engine's error frame ends the stream, and the console says what the catalog says. */

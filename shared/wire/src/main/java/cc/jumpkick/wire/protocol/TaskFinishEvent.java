@@ -2,9 +2,20 @@
 package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
+import java.util.Objects;
 
-/** A task's terminal: status, wall millis (queue wait included) and the part spent waiting (see {@link EngineProtocol#TASK_FINISH}). */
-public record TaskFinishEvent(String dir, String task, String stage, String status, long millis, long waitMillis) {
+/**
+ * A task's terminal: status, wall millis (queue wait included), the part spent waiting, and the
+ * task's last word on what it did ({@code label}, when it said one; see {@link
+ * EngineProtocol#TASK_FINISH}).
+ */
+public record TaskFinishEvent(
+        String dir, String task, String stage, String status, long millis, long waitMillis, String label) {
+
+    public TaskFinishEvent(String dir, String task, String stage, String status, long millis, long waitMillis) {
+        this(dir, task, stage, status, millis, waitMillis, "");
+    }
+
     public String encode() {
         return RequestJson.request(EngineProtocol.TASK_FINISH)
                 .string("dir", dir)
@@ -13,6 +24,7 @@ public record TaskFinishEvent(String dir, String task, String stage, String stat
                 .string("status", status)
                 .number("millis", millis)
                 .number("waitMillis", waitMillis)
+                .optionalNonEmptyString("label", label)
                 .finish();
     }
 
@@ -23,6 +35,7 @@ public record TaskFinishEvent(String dir, String task, String stage, String stat
                 Jsonl.requiredStr(json, "stage"),
                 Jsonl.requiredStr(json, "status"),
                 Jsonl.longValue(json, "millis", 0),
-                Jsonl.longValue(json, "waitMillis", 0));
+                Jsonl.longValue(json, "waitMillis", 0),
+                Objects.requireNonNullElse(Jsonl.str(json, "label"), ""));
     }
 }

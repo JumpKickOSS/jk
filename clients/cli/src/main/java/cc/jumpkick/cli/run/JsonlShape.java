@@ -1,29 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
-import cc.jumpkick.cli.run.jsonl.ClassFinishLine;
-import cc.jumpkick.cli.run.jsonl.DownloadsLine;
-import cc.jumpkick.cli.run.jsonl.ErrorLine;
-import cc.jumpkick.cli.run.jsonl.EtaLine;
 import cc.jumpkick.cli.run.jsonl.JobLine;
-import cc.jumpkick.cli.run.jsonl.LabelLine;
-import cc.jumpkick.cli.run.jsonl.ModuleFinishLine;
-import cc.jumpkick.cli.run.jsonl.ModuleStartLine;
-import cc.jumpkick.cli.run.jsonl.NoteLine;
-import cc.jumpkick.cli.run.jsonl.OutputLine;
-import cc.jumpkick.cli.run.jsonl.PlanFinishLine;
-import cc.jumpkick.cli.run.jsonl.PlanStartLine;
-import cc.jumpkick.cli.run.jsonl.PreflightLine;
-import cc.jumpkick.cli.run.jsonl.ProgressLine;
 import cc.jumpkick.cli.run.jsonl.SessionFinishLine;
 import cc.jumpkick.cli.run.jsonl.SlowestTestsLine;
-import cc.jumpkick.cli.run.jsonl.TaskFinishLine;
-import cc.jumpkick.cli.run.jsonl.TaskStartLine;
-import cc.jumpkick.cli.run.jsonl.TestFailureErrorLine;
-import cc.jumpkick.cli.run.jsonl.TickUpdateLine;
-import cc.jumpkick.cli.run.jsonl.WarnLine;
-import cc.jumpkick.cli.run.jsonl.WorkspaceFinishLine;
-import cc.jumpkick.cli.run.jsonl.WorkspaceProgressLine;
 import cc.jumpkick.cli.run.jsonl.WorkspaceStartLine;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanResult;
@@ -33,9 +13,31 @@ import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.task.TransferBoard;
+import cc.jumpkick.wire.protocol.ClassFinishEvent;
+import cc.jumpkick.wire.protocol.DownloadsEvent;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ErrorLineEvent;
+import cc.jumpkick.wire.protocol.EtaEvent;
+import cc.jumpkick.wire.protocol.EventCatalog;
+import cc.jumpkick.wire.protocol.EventEnvelope;
 import cc.jumpkick.wire.protocol.FailureTextRefs;
+import cc.jumpkick.wire.protocol.LabelEvent;
+import cc.jumpkick.wire.protocol.ModuleFinishEvent;
+import cc.jumpkick.wire.protocol.ModuleStartEvent;
+import cc.jumpkick.wire.protocol.NoteEvent;
+import cc.jumpkick.wire.protocol.OutputEvent;
+import cc.jumpkick.wire.protocol.PlanFinishEvent;
+import cc.jumpkick.wire.protocol.PlanStartEvent;
+import cc.jumpkick.wire.protocol.PreflightEvent;
+import cc.jumpkick.wire.protocol.ProgressEvent;
 import cc.jumpkick.wire.protocol.RequestEnvironment;
+import cc.jumpkick.wire.protocol.TaskFinishEvent;
+import cc.jumpkick.wire.protocol.TaskStartEvent;
+import cc.jumpkick.wire.protocol.TickUpdateEvent;
+import cc.jumpkick.wire.protocol.WarnEvent;
+import cc.jumpkick.wire.protocol.WorkspaceFinishEvent;
+import cc.jumpkick.wire.protocol.WorkspaceProgressEvent;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import cc.jumpkick.wire.transcript.JsonlEnvelope;
@@ -43,6 +45,7 @@ import cc.jumpkick.wire.transcript.SessionStartLine;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -80,6 +83,18 @@ public final class JsonlShape {
      * carried. One for the process: every module's listener writes the same stream.
      */
     static final FailureTextRefs STREAM_TEXTS = new FailureTextRefs();
+
+    /** A step's events name their module by the {@code module} rider; the module's dir is noise. */
+    private static final Set<String> STEP_DROPS = Set.of("dir");
+
+    /**
+     * As {@link #STEP_DROPS}, and the plan-local percent a plan's start and ticks carry: the line's
+     * {@code progress} rider is the run's.
+     */
+    private static final Set<String> PROGRESS_DROPS = Set.of("dir", "progress");
+
+    /** A download frame's per-transfer rows draw the terminal's region; the console sums them. */
+    private static final Set<String> DOWNLOAD_DROPS = Set.of("rows");
 
     private JsonlShape() {}
 
@@ -166,17 +181,17 @@ public final class JsonlShape {
      * `details.jsonl` could see every step that ran but not the verdict that chose them.
      */
     public static String preflight(String stage, int done, int totalUnits, String label) {
-        return new PreflightLine(nowMillis(), stage, done, totalUnits, label).encode();
+        return console(new PreflightEvent(stage, done, totalUnits, label).encode());
     }
 
     /** One workspace-level line the user keeps, journalled for the same reason as {@link #preflight}. */
     public static String note(String text) {
-        return new NoteLine(nowMillis(), text).encode();
+        return console(new NoteEvent(text).encode());
     }
 
-    /** ETA estimate event (ms wall). */
-    public static String eta(long etaMs) {
-        return new EtaLine(nowMillis(), etaMs).encode();
+    /** ETA estimate event: the work remaining, in ms. */
+    public static String eta(long remainingMs) {
+        return console(new EtaEvent(remainingMs, -1).encode());
     }
 
     /** Command session finished — exit code + wall duration (+ optional summary fields). */
@@ -186,31 +201,68 @@ public final class JsonlShape {
     }
 
     static String planStart(BuildPlanView v) {
-        return new PlanStartLine(nowMillis(), v.planName(), v.denominator(), v.stepsTotal()).encode();
+        return console(
+                new PlanStartEvent(
+                                "",
+                                v.planName(),
+                                v.numerator(),
+                                v.denominator(),
+                                v.stepsTotal(),
+                                v.stepsComplete(),
+                                v.cancelled())
+                        .encode(),
+                null,
+                PROGRESS_DROPS);
     }
 
     static String stepStart(String step, String group, int ticks) {
-        return new TaskStartLine(nowMillis(), step, group, ticks).encode();
+        return step(new TaskStartEvent("", step, group, ticks).encode());
     }
 
     static String progress(String step, int delta, BuildPlanView v) {
-        return new ProgressLine(nowMillis(), step, delta, v.numerator(), v.denominator()).encode();
+        return console(
+                new ProgressEvent(
+                                "",
+                                step,
+                                delta,
+                                v.numerator(),
+                                v.denominator(),
+                                v.stepsTotal(),
+                                v.stepsComplete(),
+                                v.cancelled())
+                        .encode(),
+                null,
+                PROGRESS_DROPS);
     }
 
     static String tickUpdate(String step, int delta, BuildPlanView v) {
-        return new TickUpdateLine(nowMillis(), step, delta, v.denominator()).encode();
+        return console(
+                new TickUpdateEvent(
+                                "",
+                                step,
+                                delta,
+                                v.numerator(),
+                                v.denominator(),
+                                v.stepsTotal(),
+                                v.stepsComplete(),
+                                v.cancelled())
+                        .encode(),
+                null,
+                PROGRESS_DROPS);
     }
 
     static String label(String step, String label) {
-        return new LabelLine(nowMillis(), step, label).encode();
+        return step(new LabelEvent("", step, label).encode());
     }
 
-    static String output(String step, String line) {
-        return new OutputLine(nowMillis(), step, line).encode();
+    /** One line a step printed, as {@code -O jsonl} writes it. */
+    public static String output(String step, String line) {
+        return step(new OutputEvent("", step, line).encode());
     }
 
     static String warn(String step, String code, String msg) {
-        return new WarnLine(nowMillis(), step, code, msg).encode();
+        return step(new WarnEvent("", step, code, msg, "", "", "", "", "", "", "", "", 0, 0, 0, List.of(), "", 0, 0)
+                .encode());
     }
 
     static String error(String step, String code, String msg) {
@@ -223,7 +275,31 @@ public final class JsonlShape {
      * the wire without bloating the common diagnostic shape.
      */
     static String error(String step, String code, String msg, @Nullable String test, @Nullable String exceptionClass) {
-        return new ErrorLine(nowMillis(), step, code, msg, test, exceptionClass).encode();
+        return error(new ErrorLineEvent(
+                "",
+                step,
+                code,
+                msg,
+                test == null ? "" : test,
+                "",
+                "",
+                "",
+                "",
+                "",
+                exceptionClass == null ? "" : exceptionClass,
+                "",
+                0,
+                0,
+                0,
+                List.of(),
+                "",
+                0,
+                0));
+    }
+
+    /** A diagnostic record goes out as {@code error}, the name the console has always given it. */
+    private static String error(ErrorLineEvent event) {
+        return console(event.encode(), EventCatalog.JSONL_ERROR, STEP_DROPS);
     }
 
     /**
@@ -241,41 +317,30 @@ public final class JsonlShape {
             message = "";
             stack = "";
         }
-        return new TestFailureErrorLine(
-                        nowMillis(),
-                        step,
-                        code,
-                        message,
-                        failure.module(),
-                        failure.suite(),
-                        failure.engine(),
-                        failure.className(),
-                        failure.method(),
-                        failure.exceptionClass(),
-                        failure.worker(),
-                        failure.file(),
-                        failure.line(),
-                        failure.snippetStart(),
-                        failure.snippet(),
-                        stack,
-                        ref.textId(),
-                        ref.sameText())
-                .encode();
+        return error(new ErrorLineEvent(
+                "",
+                step,
+                code,
+                message,
+                "",
+                failure.module(),
+                failure.suite(),
+                failure.engine(),
+                failure.className(),
+                failure.method(),
+                failure.exceptionClass(),
+                failure.file(),
+                failure.line(),
+                failure.snippetStart(),
+                failure.worker(),
+                failure.snippet(),
+                stack,
+                ref.textId(),
+                ref.sameText()));
     }
 
     static String classFinish(String step, TestClassResult result) {
-        return new ClassFinishLine(
-                        nowMillis(),
-                        step,
-                        result.module(),
-                        result.className(),
-                        result.tests(),
-                        result.failed(),
-                        result.skipped(),
-                        result.durationMs(),
-                        result.tier(),
-                        result.slow())
-                .encode();
+        return step(new ClassFinishEvent("", step, result).encode());
     }
 
     /** The run's slowest classes and methods, once, as the run settles; see {@link SlowestTestsLine}. */
@@ -284,67 +349,78 @@ public final class JsonlShape {
     }
 
     static String stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
-        return new TaskFinishLine(
-                        nowMillis(),
+        return stepFinish(step, group, status, duration, waited, "");
+    }
+
+    /** As above, with the step's last word on what it did. */
+    static String stepFinish(
+            String step, String group, TaskStatus status, Duration duration, Duration waited, String label) {
+        return step(new TaskFinishEvent(
+                        "",
                         step,
                         group,
                         status.name(),
                         duration.toMillis(),
-                        waited == null ? 0 : waited.toMillis())
-                .encode();
+                        waited == null ? 0 : waited.toMillis(),
+                        label)
+                .encode());
     }
 
     static String planFinish(BuildPlanResult r) {
-        return new PlanFinishLine(
-                        nowMillis(),
-                        r.planName(),
+        return step(new PlanFinishEvent(
+                        "",
                         r.success(),
+                        r.cancelled(),
+                        r.planName(),
                         r.duration().toMillis(),
                         r.warnings().size(),
                         r.errors().size())
-                .encode();
+                .encode());
     }
 
     /**
      * Engine workspace aggregate progress. Clients mirror the engine's tracker snapshot;
      * do not recompute from module ticks.
      */
-    public static String workspaceProgress(
-            String dir, long numerator, long denominator, String phase, int modulesComplete, int modulesTotal) {
-        return new WorkspaceProgressLine(nowMillis(), dir, numerator, denominator, phase, modulesComplete, modulesTotal)
-                .encode();
+    public static String workspaceProgress(String dir, WorkspaceProgressTracker.Snapshot snap) {
+        return console(new WorkspaceProgressEvent(
+                        dir,
+                        snap.numerator(),
+                        snap.denominator(),
+                        snap.percent(),
+                        snap.phase(),
+                        snap.modulesComplete(),
+                        snap.modulesTotal(),
+                        snap.remainingMs(),
+                        snap.R0ms())
+                .encode());
     }
 
-    /** The run's downloads summed up; {@code done} closes a burst. */
+    /** The run's downloads summed up, without the per-transfer rows; {@code done} closes a burst. */
     public static String downloads(TransferBoard.Snapshot d, boolean done) {
-        return new DownloadsLine(nowMillis(), d.settled(), d.planned(), d.files(), d.bytes(), d.inflight(), done)
-                .encode();
+        return console(new DownloadsEvent(d, done).encode(), null, DOWNLOAD_DROPS);
     }
 
     public static String workspaceStart(int modules) {
         return new WorkspaceStartLine(nowMillis(), modules).encode();
     }
 
-    /** Workspace graph finished (all modules done or aborted on graph error). */
-    public static String workspaceFinish(boolean success, long durationMs, int modules) {
-        return new WorkspaceFinishLine(nowMillis(), success, durationMs, modules).encode();
+    /** Workspace graph finished with no result to read (aborted before the engine answered). */
+    public static String workspaceFinish(boolean success, long millis, int modules) {
+        return console(
+                new WorkspaceFinishEvent(success, success ? 0 : 1, List.of(), false, null, millis, modules).encode());
     }
 
-    /** As {@link #workspaceFinish(boolean, long, int)}, with what the run's sync fetched when it synced. */
-    public static String workspaceFinish(
-            boolean success, long durationMs, int modules, WorkspaceResult.@Nullable SyncCounts sync) {
-        return new WorkspaceFinishLine(
-                        nowMillis(),
-                        success,
-                        durationMs,
-                        modules,
-                        sync == null ? null : new WorkspaceFinishLine.Sync(sync.fetched(), sync.upToDate()))
-                .encode();
+    /** Workspace graph finished: the engine's result, with the run's wall time and module count. */
+    public static String workspaceFinish(WorkspaceResult result, boolean success, long millis, int modules) {
+        return console(new WorkspaceFinishEvent(
+                        success, result.exitCode(), result.errors(), result.cancelled(), result.sync(), millis, modules)
+                .encode());
     }
 
     /** A workspace module is about to run its plan (brackets nested step events). */
     public static String moduleStart(String dir, String coord) {
-        return new ModuleStartLine(nowMillis(), dir, coord).encode();
+        return console(new ModuleStartEvent(dir, coord).encode());
     }
 
     /**
@@ -361,8 +437,26 @@ public final class JsonlShape {
     }
 
     /** A workspace module finished: succeeded, failed, or stopped by another module's failure. */
-    public static String moduleFinish(String dir, String coord, boolean success, boolean stopped, long durationMs) {
-        return new ModuleFinishLine(nowMillis(), dir, coord, success, stopped, durationMs).encode();
+    public static String moduleFinish(ModuleOutcome o) {
+        return console(ModuleFinishEvent.of(o).encode());
+    }
+
+    /** A record a step sent, under the console envelope; the step's module is the line's rider. */
+    private static String step(String record) {
+        return console(record, null, STEP_DROPS);
+    }
+
+    private static String console(String record) {
+        return console(record, null, Set.of());
+    }
+
+    /**
+     * {@code record} under the console envelope ({@code schema}, {@code ts}, and the type: its own,
+     * or {@code as} where the console names the event otherwise), less the {@code dropped} fields.
+     */
+    private static String console(String record, @Nullable String as, Set<String> dropped) {
+        String type = as != null ? as : Objects.requireNonNull(EngineProtocol.typeOf(record), record);
+        return EventEnvelope.project(JsonlEnvelope.open(nowMillis(), type).finish(), record, dropped);
     }
 
     static long nowMillis() {

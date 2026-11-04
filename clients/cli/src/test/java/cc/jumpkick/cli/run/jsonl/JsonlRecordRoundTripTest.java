@@ -23,29 +23,9 @@ class JsonlRecordRoundTripTest {
     private static final List<Class<?>> RECORDS = List.of(
             SessionStartLine.class,
             JobLine.class,
-            PreflightLine.class,
-            NoteLine.class,
-            EtaLine.class,
             SessionFinishLine.class,
-            PlanStartLine.class,
-            TaskStartLine.class,
-            ProgressLine.class,
-            TickUpdateLine.class,
-            LabelLine.class,
-            OutputLine.class,
-            WarnLine.class,
-            ErrorLine.class,
-            TestFailureErrorLine.class,
-            ClassFinishLine.class,
             SlowestTestsLine.class,
-            TaskFinishLine.class,
-            PlanFinishLine.class,
-            WorkspaceProgressLine.class,
-            DownloadsLine.class,
-            WorkspaceStartLine.class,
-            WorkspaceFinishLine.class,
-            ModuleStartLine.class,
-            ModuleFinishLine.class);
+            WorkspaceStartLine.class);
 
     @Test
     void every_record_round_trips_a_fully_populated_instance() throws Exception {

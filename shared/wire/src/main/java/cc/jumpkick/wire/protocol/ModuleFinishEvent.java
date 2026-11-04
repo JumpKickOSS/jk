@@ -28,6 +28,22 @@ public record ModuleFinishEvent(
         ModuleOutcome.@Nullable Image image,
         ModuleOutcome.@Nullable Installed installed,
         ModuleOutcome.@Nullable Published published) {
+    /** The terminal a finished module's outcome is sent as. */
+    public static ModuleFinishEvent of(ModuleOutcome o) {
+        return new ModuleFinishEvent(
+                o.dir().toString(),
+                o.coord(),
+                o.success(),
+                o.exitCode(),
+                o.millis(),
+                o.didWork(),
+                o.cancelled(),
+                o.stopped(),
+                o.image(),
+                o.installed(),
+                o.published());
+    }
+
     public String encode() {
         RequestJson json = RequestJson.request(EngineProtocol.MODULE_FINISH)
                 .string("dir", dir)
