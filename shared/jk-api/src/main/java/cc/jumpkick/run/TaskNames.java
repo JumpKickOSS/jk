@@ -182,6 +182,7 @@ public final class TaskNames {
     public static final String SYNC_PLUGINS = "sync-plugins";
     public static final String SYNC_SOURCES = "sync-sources";
     public static final String SYNC_TOOLS = "sync-tools";
+    public static final String SYNC_WORKERS = "sync-workers";
     public static final String WRITE_IMAGE = "write-image";
     public static final String WRITE_LOCKFILE = "write-lockfile";
     public static final String WRITE_STAMP = "write-stamp";

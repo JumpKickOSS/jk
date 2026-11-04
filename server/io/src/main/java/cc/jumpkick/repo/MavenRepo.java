@@ -562,7 +562,8 @@ public final class MavenRepo {
         // The same file into the same store under the same pin: one download, whoever asks.
         String flight = (repoStore.root() == null ? "" : repoStore.root().toString()) + "|" + uri + "|" + mirror + "|"
                 + leg + "|" + expectedSha256 + "|" + force;
-        return FLIGHTS.run(flight, () -> fetchRemote(coord, relativePath, uri, mirror, leg, abort, expectedSha256, force));
+        return FLIGHTS.run(
+                flight, () -> fetchRemote(coord, relativePath, uri, mirror, leg, abort, expectedSha256, force));
     }
 
     /** {@link #fetch}'s network leg, once the store has missed. */

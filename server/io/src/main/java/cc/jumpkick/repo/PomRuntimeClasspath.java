@@ -3,11 +3,14 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -23,6 +26,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -628,10 +633,16 @@ public final class PomRuntimeClasspath {
                     claims.add(new Claim(coord, childExcl, d.optional()));
                 }
             }
-            List<Node> next = new ArrayList<>();
+            List<Claim> due = new ArrayList<>();
             for (Claim claim : claims) {
-                if (!state.walked().add(mediationKey(claim.coord()))) continue;
-                Node child = fetch(claim, builder, repos, state, out);
+                if (state.walked().add(mediationKey(claim.coord()))) due.add(claim);
+            }
+            // A depth's jars and POMs are fetched at once; what they mean is settled in claim order,
+            // so the classpath, mediation and the first error are what a one-at-a-time walk gives.
+            List<Fetched> fetched = fetchAll(due, builder, repos);
+            List<Node> next = new ArrayList<>();
+            for (int i = 0; i < due.size(); i++) {
+                Node child = settle(due.get(i), fetched.get(i), builder, repos, state, out);
                 if (child != null) next.add(child);
             }
             level = next;
@@ -647,10 +658,102 @@ public final class PomRuntimeClasspath {
     private static @Nullable Node fetch(
             Claim claim, EffectivePomBuilder builder, RepoGroup repos, WalkState state, List<Path> out)
             throws IOException, InterruptedException {
+        return settle(claim, fetchOne(claim.coord(), builder, repos), builder, repos, state, out);
+    }
+
+    /**
+     * One claim's I/O, done ahead of deciding anything: its jar, and when there is one, its
+     * effective POM, or the miss that POM met (kept, so the claim's own turn reports it).
+     */
+    private record Fetched(
+            Optional<RepoGroup.RepoFetched> art,
+            @Nullable EffectivePom pom,
+            MavenRepo.@Nullable ArtifactNotFoundException pomMissing) {}
+
+    private static Fetched fetchOne(Coordinate coord, EffectivePomBuilder builder, RepoGroup repos)
+            throws IOException, InterruptedException {
+        Optional<RepoGroup.RepoFetched> art = repos.tryFetchArtifact(coord);
+        if (art.isEmpty()) return new Fetched(art, null, null);
+        try {
+            return new Fetched(art, builder.build(coord), null);
+        } catch (MavenRepo.ArtifactNotFoundException e) {
+            return new Fetched(art, null, e);
+        }
+    }
+
+    /**
+     * Every claim's {@link #fetchOne} at once on the I/O pool, answered in claim order. A failure
+     * is thrown as the first claim in order that met one would have thrown it, once all have ended.
+     */
+    private static List<Fetched> fetchAll(List<Claim> claims, EffectivePomBuilder builder, RepoGroup repos)
+            throws IOException, InterruptedException {
+        // The depth is a declared set on the run's board, so its downloads are priced like a sync's.
+        try (TransferBoard.Plan plan = SessionContext.current().io().transfers().plan(claims.size())) {
+            return fetchAll(claims, builder, repos, plan);
+        }
+    }
+
+    private static List<Fetched> fetchAll(
+            List<Claim> claims, EffectivePomBuilder builder, RepoGroup repos, TransferBoard.Plan plan)
+            throws IOException, InterruptedException {
+        if (claims.size() <= 1) {
+            List<Fetched> one = new ArrayList<>();
+            for (Claim c : claims) {
+                one.add(fetchOne(c.coord(), builder, repos));
+                plan.settled();
+            }
+            return one;
+        }
+        List<Future<Fetched>> pending = new ArrayList<>(claims.size());
+        for (Claim c : claims) {
+            pending.add(JkThreads.io().submit(() -> {
+                try {
+                    return fetchOne(c.coord(), builder, repos);
+                } finally {
+                    plan.settled();
+                }
+            }));
+        }
+        List<Fetched> done = new ArrayList<>(claims.size());
+        try {
+            for (Future<Fetched> f : pending) {
+                try {
+                    done.add(f.get());
+                } catch (ExecutionException e) {
+                    Throwable cause = e.getCause();
+                    if (cause instanceof IOException io) throw io;
+                    if (cause instanceof InterruptedException ie) throw ie;
+                    if (cause instanceof RuntimeException re) throw re;
+                    if (cause instanceof Error err) throw err;
+                    throw new IOException(cause);
+                }
+            }
+        } finally {
+            // Settle the rest before returning or throwing: nothing of this walk outlives it.
+            for (Future<Fetched> f : pending) {
+                if (f.isDone()) continue;
+                try {
+                    f.get();
+                } catch (ExecutionException ignored) {
+                    // the first failure in order is already on its way out
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    for (Future<Fetched> g : pending) g.cancel(true);
+                    break;
+                }
+            }
+        }
+        return done;
+    }
+
+    /** What one claim's fetch means for the walk: its jar on the classpath and its POM for the next depth. */
+    private static @Nullable Node settle(
+            Claim claim, Fetched fetched, EffectivePomBuilder builder, RepoGroup repos, WalkState state, List<Path> out)
+            throws IOException, InterruptedException {
         Coordinate coord = claim.coord();
         String key = coord.group() + ":" + coord.artifact() + ":" + coord.version();
         if (coord.classifier() != null) key = key + ":" + coord.classifier();
-        Optional<RepoGroup.RepoFetched> art = repos.tryFetchArtifact(coord);
+        Optional<RepoGroup.RepoFetched> art = fetched.art();
         if (art.isEmpty()) {
             if (claim.optional()) return null;
             String names =
@@ -659,10 +762,9 @@ public final class PomRuntimeClasspath {
                     + " repos — " + STAGING_REMEDY);
         }
         out.add(art.get().fetched().cachePath().toAbsolutePath().normalize());
-        EffectivePom child;
-        try {
-            child = builder.build(coord);
-        } catch (MavenRepo.ArtifactNotFoundException e) {
+        EffectivePom child = fetched.pom();
+        MavenRepo.ArtifactNotFoundException e = fetched.pomMissing();
+        if (child == null && e != null) {
             // A jar whose POM is not in the store is not a jar without dependencies: treating it
             // as one prunes its whole transitive subtree and the worker dies later with
             // NoClassDefFoundError. The install stages every POM the walk needs, so a miss here
@@ -679,6 +781,7 @@ public final class PomRuntimeClasspath {
                             + STAGING_REMEDY,
                     e);
         }
+        child = Objects.requireNonNull(child, "a fetched jar's POM");
         if (child.relocation() != null && child.relocation().redirects(coord)) {
             Coordinate target = state.pinned(child.relocation().applyTo(coord));
             if (!state.claim(target) || !state.walked().add(mediationKey(target))) return null;
