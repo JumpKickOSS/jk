@@ -119,6 +119,8 @@ def main() -> int:
     ap.add_argument("--agent", action="append", choices=sorted(PRESCRIPTIONS))
     ap.add_argument("--task", action="append", required=True, help="cheapest first")
     ap.add_argument("--rounds", type=int, default=3)
+    ap.add_argument("--no-stop", action="store_true",
+                    help="collect: run every round for every agent, verdicts printed but never acted on")
     ap.add_argument("--arm", action="append", default=[], metavar="AGENT=ARM",
                     help="run an agent on another arm than its prescription (compared with the baseline's same arm)")
     ap.add_argument("--expect", default="A rename changes no behaviour",
@@ -172,6 +174,8 @@ def main() -> int:
             verdicts[agent] = v
             print(f"== after round {rnd}: {agent} {v}", flush=True)
             print("\n".join(lines), flush=True)
+        if ns.no_stop:
+            continue
         if rnd == 1:
             if not any(v == "better" for v in verdicts.values()):
                 print("== stop: no agent is better than its baseline after round 1", flush=True)
