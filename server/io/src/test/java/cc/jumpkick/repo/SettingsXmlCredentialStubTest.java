@@ -174,4 +174,39 @@ class SettingsXmlCredentialStubTest {
         assertThat(fetched.sha256()).isEqualTo(Hashing.sha256Hex(POM));
         assertThat(origin.requested()).isEmpty();
     }
+
+    /**
+     * Maven 4's {@code mvnenc} form: a real {@code mvnenc encrypt} output (Maven 4.0.0-rc-7) of
+     * {@code jk-fixture-server-password}, under the master password an {@code env:} source in
+     * {@code settings-security4.xml} names, exported only in the requesting shell.
+     */
+    @Test
+    void a_maven_4_encrypted_password_authenticates(@TempDir Path dir) throws Exception {
+        requireBasic("jk-fixture-server-password");
+        Path security = dir.resolve("settings-security4.xml");
+        Files.writeString(security, """
+                <settingsSecurity xmlns="http://codehaus-plexus.github.io/plexus-sec-dispatcher/4.0.0">
+                  <modelVersion>4.0</modelVersion>
+                  <defaultDispatcher>master</defaultDispatcher>
+                  <configurations><configuration><name>master</name><properties>
+                    <property><name>source</name><value>env:JK_STUB_MAVEN_MASTER</value></property>
+                    <property><name>cipher</name><value>AES/GCM/NoPadding</value></property>
+                  </properties></configuration></configurations>
+                </settingsSecurity>
+                """);
+        System.setProperty(
+                MavenSettings.SETTINGS_PROPERTY,
+                settings(
+                                dir,
+                                "{[name=master,cipher=AES/GCM/NoPadding,version=4.2]5YUIPYP8pAMzglyrX7LALQyYLYH5OVJy5ZPRNQ"
+                                        + "Ht07HRij47b+3mWVxaYxXfLjCkQodyQUx5dAT7MXSX+vKkehaqDIXgrg==}")
+                        .toString());
+
+        MavenRepo.Fetched fetched = RequestShell.where(
+                Map.of("JK_M2_SETTINGS_SECURITY4", security.toString(), "JK_STUB_MAVEN_MASTER", "jk-fixture-master-4"),
+                () -> fetchThroughMirror(dir));
+
+        assertThat(fetched.sha256()).isEqualTo(Hashing.sha256Hex(POM));
+        assertThat(origin.requested()).isEmpty();
+    }
 }

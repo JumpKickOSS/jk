@@ -36,7 +36,7 @@ import org.jspecify.annotations.Nullable;
  * password's own passphrase is the fixed string {@code settings.security}.
  *
  * <p>Maven 4's {@code mvnenc} writes a different format ({@code {[name=master,cipher=…]…}} with
- * the master password from an external source); it is recognised and reported, not read.
+ * the master password from an external source); {@link MvnencPasswords} reads it.
  */
 final class MavenPasswords {
 
@@ -78,7 +78,8 @@ final class MavenPasswords {
                 throw new Undecryptable("it names a decryptor (" + attributes + ") that only a Maven plugin provides");
             }
             if (attributes.contains("name=") || attributes.contains("cipher=")) {
-                throw new Undecryptable("it is in Maven 4's mvnenc format, which jk does not read");
+                throw new Undecryptable("it is in Maven 4's mvnenc format with text outside the braces, which"
+                        + " Maven 4 does not decrypt either; keep only the {...} mvnenc wrote");
             }
         }
         byte[] all;

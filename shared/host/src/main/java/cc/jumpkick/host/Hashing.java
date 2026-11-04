@@ -98,6 +98,16 @@ public final class Hashing {
         return HexFormat.of().formatHex(bytes);
     }
 
+    /**
+     * The bytes {@code hex} spells, either case — the one spelling of {@code
+     * HexFormat.of().parseHex(..)}.
+     *
+     * @throws IllegalArgumentException when {@code hex} is not an even run of hex digits
+     */
+    public static byte[] unhex(String hex) {
+        return HexFormat.of().parseHex(hex);
+    }
+
     /** Hex digest of {@code data} under {@code algorithm} (one-shot). */
     public static String hashHex(String algorithm, byte[] data) {
         return hex(newDigest(algorithm).digest(data));
