@@ -14,12 +14,10 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.command.EngineEdits;
 import cc.jumpkick.config.JkBuildEditor;
 import cc.jumpkick.config.WorkspaceScan;
-import cc.jumpkick.http.Http;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
-import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.command.Arity;
@@ -28,12 +26,10 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.tool.JarManifest;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -148,7 +144,7 @@ public final class AddCommand implements CliCommand {
         }
 
         if (ping) {
-            return runPing(parsed);
+            return runPing(dir, parsed);
         }
 
         Path file = dir.resolve(ManifestPaths.MANIFEST);
@@ -567,20 +563,29 @@ public final class AddCommand implements CliCommand {
         }
     }
 
-    private int runPing(ParsedDep parsed) throws IOException, InterruptedException {
+    /**
+     * {@code --ping}: the engine looks the coordinate up through the repository group the build
+     * would use — this project's when {@code dir} holds one, else the user's repositories over the
+     * public baseline — so mirrors, credentials and group bindings apply.
+     */
+    private int runPing(Path dir, ParsedDep parsed) {
         Coordinate coord = parsed.toCoord();
-        URI repoBase = RepositorySpec.MAVEN_CENTRAL.url();
         boolean versionless = parsed.versionLiteral() == null;
-        URI probe = repoBase.resolve(versionless ? MavenLayout.metadataPath(coord) : MavenLayout.pomPath(coord));
         String coordStr = versionless ? coord.group() + ":" + coord.artifact() : Coords.gav(coord);
+        String found;
+        try {
+            found = EngineEdits.applyDetail(
+                    dir.resolve(ManifestPaths.MANIFEST),
+                    "probe-dependency",
+                    List.of(coord.group(), coord.artifact(), versionless ? "" : coord.version()));
+        } catch (IOException e) {
+            CommandWedge.printFail("Add", "could not check " + coordStr + ": " + e.getMessage());
+            return 1;
+        }
 
-        var http = new Http();
-        var response = http.get(probe);
-
-        if (response.statusCode() == 200) {
-            URI artifactUri = versionless ? probe : repoBase.resolve(MavenLayout.artifactPath(coord));
+        if (!found.isEmpty()) {
             CliOutput.out(Theme.colorize(Glyphs.CHECK, Theme.active().success()) + " " + coordStr + " is available.");
-            CliOutput.out(osc8Link(artifactUri.toString()));
+            CliOutput.out(osc8Link(found));
             return 0;
         }
 

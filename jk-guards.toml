@@ -342,10 +342,6 @@ reason = "the Apache Maven distribution's public base, a tool download DownloadO
 in     = "server/io/src/main/java/cc/jumpkick/repo/PomRuntimeClasspath.java"
 reason = "a plugin worker's closure resolves against the built-in remotes, each routed through RepoMirrors.apply"
 
-[[guards.central-through-the-group.allow]]
-in     = "clients/cli/src/main/java/cc/jumpkick/command/project/AddCommand.java"
-reason = "`jk add --ping` probes Central from the client, which holds no repository group; it goes around a mirror until the probe moves into the engine"
-
 # G28. Retired wire-key spellings have no owner by definition — there is deliberately no constant
 # left to read them from — so the ban list is written here and the live owners are named in `instead`.
 [guards.retired-wire-keys]
