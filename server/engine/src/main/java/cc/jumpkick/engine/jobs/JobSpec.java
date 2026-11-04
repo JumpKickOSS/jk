@@ -19,6 +19,7 @@ public record JobSpec(
         List<String> includeTags,
         List<String> excludeTags,
         List<String> suites,
+        List<String> classes,
         boolean skipTests,
         boolean affected,
         @Nullable Long deadlineMs,
@@ -32,6 +33,7 @@ public record JobSpec(
         includeTags = includeTags == null ? List.of() : List.copyOf(includeTags);
         excludeTags = excludeTags == null ? List.of() : List.copyOf(excludeTags);
         suites = suites == null ? List.of() : List.copyOf(suites);
+        classes = classes == null ? List.of() : List.copyOf(classes);
         if (deadlineMs != null && deadlineMs < 0) {
             throw new IllegalArgumentException("deadlineMs must be >= 0 (0 = no deadline)");
         }
@@ -44,19 +46,30 @@ public record JobSpec(
     }
 
     public static JobSpec of(String kind, String dir, JobOrigin origin) {
-        return new JobSpec(kind, dir, List.of(), List.of(), List.of(), List.of(), false, false, null, origin);
+        return new JobSpec(
+                kind, dir, List.of(), List.of(), List.of(), List.of(), List.of(), false, false, null, origin);
     }
 
     /** Same spec with a normalized absolute {@code dir} (the admission point resolves it once). */
     public JobSpec withDir(String absoluteDir) {
         return new JobSpec(
-                kind, absoluteDir, modules, includeTags, excludeTags, suites, skipTests, affected, deadlineMs, origin);
+                kind,
+                absoluteDir,
+                modules,
+                includeTags,
+                excludeTags,
+                suites,
+                classes,
+                skipTests,
+                affected,
+                deadlineMs,
+                origin);
     }
 
     /** Same spec under {@code deadlineMs} ({@code null} = engine default, {@code 0} = none). */
     public JobSpec withDeadlineMs(@Nullable Long deadlineMs) {
         return new JobSpec(
-                kind, dir, modules, includeTags, excludeTags, suites, skipTests, affected, deadlineMs, origin);
+                kind, dir, modules, includeTags, excludeTags, suites, classes, skipTests, affected, deadlineMs, origin);
     }
 
     /** The transport this spec submits on: detached, under its own deadline when it named one. */

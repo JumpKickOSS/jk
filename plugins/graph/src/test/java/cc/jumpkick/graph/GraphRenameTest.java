@@ -378,8 +378,13 @@ class GraphRenameTest {
                                 "plugins/graph/src/main/java/b/GraphTools.java",
                                 "plugins/graph/src/test/java/b/GraphToolsTest.java")))
                 .as("by directory, sorted, the whole workspace's unrelated failures left out")
-                .isEqualTo("Test the modules it edited: run(kind=test, only=plugins/graph,shared/code-graph),"
-                        + " or jk test -m plugins/graph,shared/code-graph." + EditedTests.DONE);
+                .isEqualTo("Test the test classes it edited: run(kind=test, only=plugins/graph,shared/code-graph,"
+                        + " classes=GraphToolsTest), or jk test -m plugins/graph,shared/code-graph -S GraphToolsTest."
+                        + EditedTests.DONE);
+        assertThat(EditedTests.next(modules, List.of("shared/code-graph/src/main/java/a/CodeGraph.java")))
+                .as("no test edited: the modules' suites")
+                .isEqualTo("Test the modules it edited: run(kind=test, only=shared/code-graph), or jk test -m"
+                        + " shared/code-graph." + EditedTests.DONE);
         assertThat(EditedTests.next(modules, List.of("src/main/java/Root.java")))
                 .isEqualTo("Test next: run(kind=test), or jk test." + EditedTests.DONE);
     }

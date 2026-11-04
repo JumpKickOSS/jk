@@ -12,6 +12,9 @@ import java.util.TreeSet;
  */
 final class EditedTests {
 
+    /** Test classes named one by one at most. */
+    static final int MAX_CLASSES = 12;
+
     private EditedTests() {}
 
     /**
@@ -31,6 +34,27 @@ final class EditedTests {
         }
         if (touched.isEmpty()) return "Test next: run(kind=test), or jk test." + DONE;
         String only = String.join(",", touched);
-        return "Test the modules it edited: run(kind=test, only=" + only + "), or jk test -m " + only + "." + DONE;
+        Set<String> classes = testClasses(modules, edited);
+        if (classes.isEmpty()) {
+            return "Test the modules it edited: run(kind=test, only=" + only + "), or jk test -m " + only + "." + DONE;
+        }
+        String names = String.join(",", classes);
+        return "Test the test classes it edited: run(kind=test, only=" + only + ", classes=" + names
+                + "), or jk test -m " + only + " -S " + String.join(" -S ", classes) + "." + DONE;
+    }
+
+    /**
+     * The simple names of the edited test sources: the tests that call the renamed method, which a
+     * rename's check needs to run (every test source still compiles). Empty past {@link #MAX_CLASSES},
+     * where the modules' whole suites are the shorter instruction.
+     */
+    static Set<String> testClasses(Modules modules, Collection<String> edited) {
+        Set<String> out = new TreeSet<>();
+        for (String rel : edited) {
+            if (modules.sourceSet(rel) != Modules.SourceSet.TEST || !rel.matches(".*\\.(java|kt)$")) continue;
+            String file = rel.substring(rel.lastIndexOf('/') + 1);
+            out.add(file.substring(0, file.lastIndexOf('.')));
+        }
+        return out.size() > MAX_CLASSES ? Set.of() : out;
     }
 }

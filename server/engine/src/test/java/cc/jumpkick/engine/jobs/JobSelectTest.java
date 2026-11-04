@@ -48,10 +48,14 @@ class JobSelectTest {
 
     @Test
     void tags_are_final_when_set() {
-        TestSelection sel = JobSelect.testSelection(List.of("network"), List.of(), List.of());
+        TestSelection sel = JobSelect.testSelection(List.of("network"), List.of(), List.of(), List.of());
         assertThat(sel.includeTags()).containsExactly("network");
         assertThat(sel.tagsResolved()).isTrue();
-        assertThat(JobSelect.testSelection(List.of(), List.of(), List.of())).isEqualTo(TestSelection.DEFAULT);
+        assertThat(JobSelect.testSelection(List.of(), List.of(), List.of(), List.of()))
+                .isEqualTo(TestSelection.DEFAULT);
+        assertThat(JobSelect.testSelection(List.of(), List.of(), List.of(), List.of("RangeTest"))
+                        .classes())
+                .containsExactly("RangeTest");
     }
 
     private static void writeWorkspace(Path root) throws Exception {

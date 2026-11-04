@@ -65,7 +65,17 @@ public final class GraphCompiles implements GraphRunner.Compiler {
         long jid;
         try {
             jid = submit.applyAsLong(new JobSpec(
-                    "compile", root.toString(), modules, List.of(), List.of(), List.of(), false, false, null, ORIGIN));
+                    "compile",
+                    root.toString(),
+                    modules,
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    false,
+                    false,
+                    null,
+                    ORIGIN));
         } catch (RuntimeException refused) {
             return "the compile was refused: " + refused.getMessage();
         }

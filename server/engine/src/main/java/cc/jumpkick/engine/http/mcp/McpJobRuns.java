@@ -94,6 +94,7 @@ public final class McpJobRuns {
                 in.strings("include_tags"),
                 in.strings("exclude_tags"),
                 in.strings("suites"),
+                listOrCommas(in, "classes"),
                 in.flag("skip_tests"),
                 affected,
                 deadlineMs(in),
@@ -180,9 +181,14 @@ public final class McpJobRuns {
 
     /** {@code only} is the module filter: a string ({@code a,b}) or a string array. */
     private static List<String> only(McpCall in) {
-        List<String> many = in.strings("only");
+        return listOrCommas(in, "only");
+    }
+
+    /** {@code key} as a list, or as one comma-separated string. */
+    private static List<String> listOrCommas(McpCall in, String key) {
+        List<String> many = in.strings(key);
         if (!many.isEmpty()) return many;
-        String one = in.str("only");
+        String one = in.str(key);
         if (one == null || one.isBlank()) return List.of();
         List<String> out = new ArrayList<>();
         for (String part : one.split(",", -1)) {
@@ -199,6 +205,7 @@ public final class McpJobRuns {
             fields.put("include_tags", spec.includeTags());
             fields.put("exclude_tags", spec.excludeTags());
             fields.put("suites", spec.suites());
+            if (!spec.classes().isEmpty()) fields.put("classes", spec.classes());
         }
     }
 
