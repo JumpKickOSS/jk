@@ -53,9 +53,6 @@ import org.tomlj.TomlTable;
  */
 public final class Interpolation {
 
-    /** {@code ${NAME}} — the same shape {@link RepositoryToml} expands. */
-    private static final Pattern REFERENCE = Pattern.compile("\\$\\{([A-Za-z_][A-Za-z0-9_]*)}");
-
     /** A key TOML lets stand unquoted in a dotted path. */
     private static final Pattern BARE_KEY = Pattern.compile("[A-Za-z0-9_-]+");
 
@@ -87,17 +84,35 @@ public final class Interpolation {
             // of them an environment variable; the worker expands them, the manifest never does.
             "generate.*.args[*]");
 
+    /**
+     * The positions where a {@code ${file:...}} reference may stand in a project manifest — a
+     * repository's credential and object-store keys — so the credential resolver can refuse it with
+     * its once-per-run warning and fall through to the name-keyed sources. Anywhere else it is an
+     * error at parse time.
+     */
+    private static final List<String> MACHINE_REFERENCE_POSITIONS =
+            ALLOWED.stream().filter(p -> p.startsWith("repositories.")).toList();
+
     private Interpolation() {}
 
     /**
-     * Reject {@code ${VAR}} outside {@link #ALLOWED}, naming the offending position.
+     * Reject {@code ${VAR}} outside {@link #ALLOWED}, and a {@code ${file:...}} reference outside a
+     * repository's credential and object-store keys, naming the offending position.
      *
      * <p>Called once per parse. Cheap: it only walks string values, and only those containing
      * {@code $}.
      */
     public static void guard(TomlTable root) {
-        List<String> offenders = new ArrayList<>();
-        walk(root, List.of(), offenders);
+        Offenders found = new Offenders(new ArrayList<>(), new ArrayList<>());
+        walk(root, List.of(), found);
+        List<String> machine = found.machine();
+        if (!machine.isEmpty()) {
+            throw new JkBuildParseException("file references are not allowed here: " + String.join("; ", machine)
+                    + ". A ${file:} reference reads a file of this machine, so it is honoured only in"
+                    + " ~/.jk/config.toml; in a project manifest it may stand only in a repository's credential or"
+                    + " object-store keys, where it is refused with a warning rather than read.");
+        }
+        List<String> offenders = found.env();
         if (offenders.isEmpty()) return;
         // A [test] env written as one table is a shape error first: the reference would be
         // honoured in the array it should have been.
@@ -113,7 +128,10 @@ public final class Interpolation {
                 + " a literal, or the same commit would build differently on different machines.");
     }
 
-    private static void walk(TomlTable table, List<String> prefix, List<String> offenders) {
+    /** Positions holding a reference they may not: environment ones, and file ones. */
+    private record Offenders(List<String> env, List<String> machine) {}
+
+    private static void walk(TomlTable table, List<String> prefix, Offenders offenders) {
         for (String key : table.keySet()) {
             Object value = table.get(List.of(key));
             List<String> path = append(prefix, key);
@@ -127,7 +145,7 @@ public final class Interpolation {
         }
     }
 
-    private static void walkArray(TomlArray array, List<String> path, List<String> offenders) {
+    private static void walkArray(TomlArray array, List<String> path, Offenders offenders) {
         for (int i = 0; i < array.size(); i++) {
             Object element = array.get(i);
             List<String> indexed = indexed(path, i);
@@ -156,24 +174,33 @@ public final class Interpolation {
     }
 
     /**
-     * The {@code ${NAME}} references in {@code value}, in order and without duplicates.
+     * The environment variable names {@code value} references — {@code ${NAME}} and {@code
+     * ${env:NAME}} — in order and without duplicates. {@link ConfigReference#all} has every scheme.
      *
      * <p>Public because the reference syntax has a second, distant consumer: the client has to know
      * which variables a manifest reads before it can resolve any of them, and a second copy of this
      * pattern is a second answer to "what is a reference" that nothing would keep in step.
      */
-    public static Set<String> references(String value) {
-        if (value == null || value.indexOf('$') < 0) return Set.of();
-        Matcher m = REFERENCE.matcher(value);
+    public static Set<String> references(@Nullable String value) {
         Set<String> found = new LinkedHashSet<>();
-        while (m.find()) found.add(m.group(1));
+        for (ConfigReference ref : ConfigReference.all(value)) {
+            if (ref.isEnv()) found.add(ref.body());
+        }
         return found;
     }
 
-    private static void check(String value, List<String> path, List<String> offenders) {
-        Set<String> found = references(value);
-        if (found.isEmpty() || allowed(path)) return;
-        for (String var : found) offenders.add(spell(path) + " (${" + var + "})");
+    private static void check(String value, List<String> path, Offenders offenders) {
+        List<ConfigReference> found = ConfigReference.all(value);
+        if (found.isEmpty()) return;
+        boolean envAllowed = allowed(path);
+        boolean machineAllowed = allowed(path, MACHINE_REFERENCE_POSITIONS);
+        for (ConfigReference ref : found) {
+            if (ref.isEnv()) {
+                if (!envAllowed) offenders.env().add(spell(path) + " (" + ref.spelling() + ")");
+            } else if (!machineAllowed) {
+                offenders.machine().add(spell(path) + " (" + ref.spelling() + ")");
+            }
+        }
     }
 
     /**
@@ -206,7 +233,11 @@ public final class Interpolation {
      * allowed pattern; array indices never match.
      */
     static boolean allowed(List<String> path) {
-        for (String pattern : ALLOWED) {
+        return allowed(path, ALLOWED);
+    }
+
+    private static boolean allowed(List<String> path, List<String> patterns) {
+        for (String pattern : patterns) {
             if (matches(pattern.split("\\."), path)) return true;
         }
         return false;

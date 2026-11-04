@@ -4,10 +4,10 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.ConfigReference;
 import cc.jumpkick.config.GlobalConfig;
-import cc.jumpkick.config.Interpolation;
 import cc.jumpkick.config.JkBuildParseException;
-import cc.jumpkick.config.RepositoryToml;
+import cc.jumpkick.config.ReferenceResolver;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.SafeUri;
@@ -30,7 +30,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
@@ -85,22 +84,22 @@ public final class RepoGroupBuilder {
      * carry a reference are left unset — the transport falls back to the ambient chain, or goes
      * unsigned — and the literal keys stay.
      *
-     * <p>Admitted references expand under {@link RepositoryToml.VarPolicy#STRICT}: an unset
-     * variable is a {@link JkBuildParseException} naming the {@code repositories.<name>} position,
+     * <p>Admitted references expand strictly: an unset variable, or a missing {@code ${file:}}
+     * file, is a {@link JkBuildParseException} naming the {@code repositories.<name>} position,
      * rather than a silent null that would fall through to the ambient AWS chain and fail far away
-     * from the cause.
+     * from the cause. Only the user's own declaration may read a file.
      */
     static ObjectStoreConfig expandObjectStore(
             RepositorySpec spec, RepoCredentialResolver creds, Function<String, @Nullable String> env) {
         ObjectStoreConfig declared = spec.objectStoreOpt().orElse(ObjectStoreConfig.EMPTY);
         if (declared.isEmpty()) return ObjectStoreConfig.EMPTY;
-        Set<String> references = referencesIn(declared);
+        List<ConfigReference> references = referencesIn(declared);
         if (references.isEmpty()) return declared;
         Optional<ObjectStoreConfig> own =
                 creds.userDeclaration(spec.name(), spec.url()).flatMap(RepositorySpec::objectStoreOpt);
-        if (own.isPresent()) return expandStrictly(spec.name(), own.get(), env);
+        if (own.isPresent()) return expandStrictly(spec.name(), own.get(), env, ReferenceResolver.Origin.USER_CONFIG);
         if (creds.projectMayRead(spec.name(), spec.url(), references)) {
-            return expandStrictly(spec.name(), declared, env);
+            return expandStrictly(spec.name(), declared, env, ReferenceResolver.Origin.PROJECT);
         }
         return new ObjectStoreConfig(
                 literalOrNull(declared.region()),
@@ -110,31 +109,34 @@ public final class RepoGroupBuilder {
                 literalOrNull(declared.sessionToken()));
     }
 
-    /** Every {@code ${VAR}} name the five object-store keys carry, in key order. */
-    private static Set<String> referencesIn(ObjectStoreConfig cfg) {
-        Set<String> names = new LinkedHashSet<>();
+    /** Every reference the five object-store keys carry, in key order. */
+    private static List<ConfigReference> referencesIn(ObjectStoreConfig cfg) {
+        List<ConfigReference> refs = new ArrayList<>();
         for (String value :
                 new String[] {cfg.region(), cfg.endpoint(), cfg.accessKey(), cfg.secretKey(), cfg.sessionToken()}) {
-            if (value != null) names.addAll(Interpolation.references(value));
+            refs.addAll(ConfigReference.all(value));
         }
-        return names;
+        return refs;
     }
 
-    /** {@code value} when it is written out in full; null when it references a variable that was refused. */
+    /** {@code value} when it is written out in full; null when it carries a reference that was refused. */
     private static @Nullable String literalOrNull(@Nullable String value) {
-        return value == null || Interpolation.references(value).isEmpty() ? value : null;
+        return value == null || ConfigReference.all(value).isEmpty() ? value : null;
     }
 
     private static ObjectStoreConfig expandStrictly(
-            String repoName, ObjectStoreConfig cfg, Function<String, @Nullable String> env) {
+            String repoName,
+            ObjectStoreConfig cfg,
+            Function<String, @Nullable String> env,
+            ReferenceResolver.Origin origin) {
         String where = "repositories." + repoName;
-        RepositoryToml.VarPolicy strict = RepositoryToml.VarPolicy.STRICT;
+        ReferenceResolver refs = ReferenceResolver.forUserConfig(env, where);
         return new ObjectStoreConfig(
-                RepositoryToml.interpolate(cfg.region(), strict, where, env),
-                RepositoryToml.interpolate(cfg.endpoint(), strict, where, env),
-                RepositoryToml.interpolate(cfg.accessKey(), strict, where, env),
-                RepositoryToml.interpolate(cfg.secretKey(), strict, where, env),
-                RepositoryToml.interpolate(cfg.sessionToken(), strict, where, env));
+                refs.expand(cfg.region(), where + ".region", origin),
+                refs.expand(cfg.endpoint(), where + ".endpoint", origin),
+                refs.expand(cfg.accessKey(), where + ".access-key", origin),
+                refs.expand(cfg.secretKey(), where + ".secret-key", origin),
+                refs.expand(cfg.sessionToken(), where + ".session-token", origin));
     }
 
     /**

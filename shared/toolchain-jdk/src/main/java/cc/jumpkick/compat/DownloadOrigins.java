@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compat;
 
-import cc.jumpkick.config.RepositoryToml;
+import cc.jumpkick.config.ReferenceResolver;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.RepositorySpec;
@@ -20,7 +20,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * How a configured download origin is chosen and authenticated. An origin is, first to answer: its
- * environment variable, its {@code ~/.jk/config.toml} value ({@code ${VAR}} references expanded), a
+ * environment variable, its {@code ~/.jk/config.toml} value (references expanded), a
  * Maven {@code settings.xml} {@code <mirror>} whose {@code mirrorOf} names it, then the public default.
  * Its credential comes from the repository credential chain under {@link DownloadOrigin#credentialId}.
  */
@@ -72,16 +72,21 @@ public final class DownloadOrigins {
         return false;
     }
 
-    /** {@code raw} with {@code ${VAR}} expanded from {@code env}; an unset variable names {@code key}. */
+    /**
+     * {@code raw} with its references expanded — {@code ${VAR}} from {@code env}, and the schemes
+     * {@code ~/.jk/config.toml} alone may use; an unset variable or a missing file names {@code key}.
+     */
     public static String expand(Function<String, @Nullable String> env, String raw, String key) {
-        return Objects.requireNonNull(RepositoryToml.interpolate(raw, var -> {
+        ReferenceResolver refs = ReferenceResolver.forUserConfig(var -> {
             String value = env.apply(var);
             if (value == null) {
                 throw new IllegalStateException(
                         "~/.jk/config.toml " + key + " references unset environment variable ${" + var + "}");
             }
             return value;
-        }));
+        });
+        return Objects.requireNonNull(
+                refs.expand(raw, "~/.jk/config.toml " + key, ReferenceResolver.Origin.USER_CONFIG));
     }
 
     /** The credential {@code origin} authenticates with; anonymous when the chain holds none for it. */

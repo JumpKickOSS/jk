@@ -2,20 +2,25 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.ConfigReference;
 import cc.jumpkick.config.GlobalConfig;
-import cc.jumpkick.config.Interpolation;
-import cc.jumpkick.config.RepositoryToml;
+import cc.jumpkick.config.JkBuildParseException;
+import cc.jumpkick.config.ReferenceResolver;
 import cc.jumpkick.config.ResolvedSecrets;
+import cc.jumpkick.config.SecretFiles;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.forge.ForgeIdentity;
 import cc.jumpkick.forge.ForgeKind;
 import cc.jumpkick.forge.ResolvedToken;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.task.RunNotices;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -49,8 +54,9 @@ import org.jspecify.annotations.Nullable;
  * repository's own {@code JK_REPO_<ID>_*} names, under the same origin binding as every other
  * name-keyed source; a user-config declaration of the repository at the same origin supplies its
  * own credential instead; and any other reference is refused with a warning naming the variable
- * and the remedies. A literal credential is the declaring manifest's own secret and is used as
- * written.
+ * and the remedies. A {@code ${file:...}} reference reads this machine's files, so it is honoured
+ * only from {@code ~/.jk/config.toml}; a project's is refused the same way. A literal credential is
+ * the declaring manifest's own secret and is used as written.
  */
 public final class RepoCredentialResolver {
 
@@ -129,17 +135,24 @@ public final class RepoCredentialResolver {
      * parsed — which also means a manifest may reference a private mirror whose credentials this
      * machine does not have, as long as nothing asks for it.
      */
-    private RepoCredential expand(@Nullable String repoId, RepoCredential credential) {
+    private RepoCredential expand(@Nullable String repoId, RepoCredential credential, ReferenceResolver.Origin origin) {
         return switch (credential) {
             case RepoCredential.Basic b ->
-                new RepoCredential.Basic(interp(repoId, b.username()), interp(repoId, b.password()));
-            case RepoCredential.Bearer t -> new RepoCredential.Bearer(interp(repoId, t.token()));
+                new RepoCredential.Basic(
+                        interp(repoId, "username", b.username(), origin),
+                        interp(repoId, "password", b.password(), origin));
+            case RepoCredential.Bearer t -> new RepoCredential.Bearer(interp(repoId, "token", t.token(), origin));
             default -> credential; // anonymous / anything without embedded text
         };
     }
 
-    private String interp(@Nullable String repoId, String raw) {
-        return Objects.requireNonNull(RepositoryToml.interpolate(raw, var -> {
+    /**
+     * {@code raw} expanded for {@code repositories.<repoId>.<key>}: every scheme for the user's own
+     * declaration, environment references alone for a project's ({@link #projectMayRead} has
+     * already admitted them).
+     */
+    private String interp(@Nullable String repoId, String key, String raw, ReferenceResolver.Origin origin) {
+        ReferenceResolver references = ReferenceResolver.forUserConfig(var -> {
             String value = env.apply(var);
             if (value == null) {
                 throw new IllegalStateException("repository "
@@ -147,7 +160,9 @@ public final class RepoCredentialResolver {
                         + " references unset environment variable ${" + var + "}");
             }
             return value;
-        }));
+        });
+        String where = "repositories." + (repoId == null || repoId.isBlank() ? "<unnamed>" : repoId) + "." + key;
+        return Objects.requireNonNull(references.expand(raw, where, origin));
     }
 
     /**
@@ -242,12 +257,12 @@ public final class RepoCredentialResolver {
      */
     private Optional<RepoCredential> inlineCredential(
             @Nullable String repoId, @Nullable URI url, RepoCredential declared) {
-        Set<String> references = referencesIn(declared);
+        List<ConfigReference> references = referencesIn(declared);
         if (references.isEmpty()) return Optional.of(declared);
         Optional<RepoCredential> own = userDeclaration(repoId, url).flatMap(RepositorySpec::credentialOpt);
-        if (own.isPresent()) return Optional.of(expand(repoId, own.get()));
+        if (own.isPresent()) return Optional.of(expand(repoId, own.get(), ReferenceResolver.Origin.USER_CONFIG));
         if (!projectMayRead(repoId, url, references)) return Optional.empty();
-        return Optional.of(expand(repoId, declared));
+        return Optional.of(expand(repoId, declared, ReferenceResolver.Origin.PROJECT));
     }
 
     /**
@@ -257,15 +272,17 @@ public final class RepoCredentialResolver {
      * its turn ({@link #userDeclaration}); what remains is the project's word alone.
      *
      * <p>A project may read only the repository's own {@code JK_REPO_<ID>_*} variables, and only
-     * when something binds the name to the origin. Any other variable, or an unbound name, is
-     * refused with a once-per-run warning that names the variables and the remedies — never a
-     * value. A declaration with no repository id has no convention to read and is refused quietly.
+     * when something binds the name to the origin. Any other variable, a {@code ${file:...}}
+     * reference, or an unbound name, is refused with a once-per-run warning that names the
+     * references and the remedies — never a value. A declaration with no repository id has no
+     * convention to read and is refused quietly.
      */
-    public boolean projectMayRead(@Nullable String repoId, @Nullable URI url, Set<String> references) {
+    public boolean projectMayRead(@Nullable String repoId, @Nullable URI url, Collection<ConfigReference> references) {
         if (repoId == null || repoId.isBlank()) return false;
         String prefix = envVarPrefix(repoId);
-        List<String> foreign =
-                references.stream().filter(v -> !v.startsWith(prefix)).toList();
+        List<ConfigReference> foreign = references.stream()
+                .filter(r -> !r.isEnv() || !r.body().startsWith(prefix))
+                .toList();
         if (!foreign.isEmpty()) {
             refuseProjectReference(repoId, url, foreign);
             return false;
@@ -280,23 +297,25 @@ public final class RepoCredentialResolver {
         return false;
     }
 
-    /** Every {@code ${VAR}} name the credential's text carries, in order of appearance. */
-    private static Set<String> referencesIn(RepoCredential credential) {
-        Set<String> names = new LinkedHashSet<>();
+    /** Every reference the credential's text carries, in order of appearance. */
+    private static List<ConfigReference> referencesIn(RepoCredential credential) {
+        List<ConfigReference> refs = new ArrayList<>();
         switch (credential) {
             case RepoCredential.Basic b -> {
-                names.addAll(Interpolation.references(b.username()));
-                names.addAll(Interpolation.references(b.password()));
+                refs.addAll(ConfigReference.all(b.username()));
+                refs.addAll(ConfigReference.all(b.password()));
             }
-            case RepoCredential.Bearer t -> names.addAll(Interpolation.references(t.token()));
+            case RepoCredential.Bearer t -> refs.addAll(ConfigReference.all(t.token()));
             case RepoCredential.Anonymous ignored -> {}
         }
-        return names;
+        return refs;
     }
 
-    /** {@code ${A}, ${B}} — how a reference is spelled back to the user who wrote it. */
-    private static String spelled(Set<String> references) {
-        return String.join(", ", references.stream().map(v -> "${" + v + "}").toList());
+    /** {@code ${A}, ${file:b}} — each reference spelled back as the user wrote it, once. */
+    private static String spelled(Collection<ConfigReference> references) {
+        Set<String> spellings = new LinkedHashSet<>();
+        for (ConfigReference r : references) spellings.add(r.spelling());
+        return String.join(", ", spellings);
     }
 
     /**
@@ -317,15 +336,19 @@ public final class RepoCredentialResolver {
      * the user's shell, and did not get it. Names the variable and every way the user can send a
      * credential without letting a manifest choose which one — never the value.
      */
-    private static void refuseProjectReference(String repoId, @Nullable URI url, List<String> variables) {
+    private static void refuseProjectReference(String repoId, @Nullable URI url, List<ConfigReference> references) {
         String origin = originText(url);
-        String refs = spelled(new LinkedHashSet<>(variables));
+        String refs = spelled(references);
+        boolean readsFiles = references.stream().anyMatch(r -> !r.isEnv());
+        String what = readsFiles ? "a variable of your shell or a file of this machine" : "a variable of your shell";
         RunNotices.warnOnce("repo-credential-refused:" + repoId + " " + origin + " inline " + refs, () -> {
             String prefix = envVarPrefix(repoId);
             return "jk: warning: repository `" + repoId + "` at " + origin
                     + " is accessed anonymously: its [repositories." + repoId + "] table interpolates " + refs
-                    + ", and a project manifest may not read a variable of your shell into a repository's "
-                    + "credential or object-store keys — a cloned project could name any of them. To send one, "
+                    + ", and a project manifest may not read " + what + " into a repository's "
+                    + "credential or object-store keys — a cloned project could name any of them"
+                    + (readsFiles ? " (a ${file:} reference is honoured only in ~/.jk/config.toml)" : "")
+                    + ". To send one, "
                     + "declare [repositories." + repoId
                     + "] with this URL and the ${VAR} reference in ~/.jk/config.toml, export " + prefix + "TOKEN (or "
                     + prefix + "USERNAME + " + prefix + "PASSWORD) with " + prefix + "HOST="
@@ -446,14 +469,32 @@ public final class RepoCredentialResolver {
 
     private Optional<RepoCredential> fromEnv(String repoId) {
         String prefix = envVarPrefix(repoId);
-        String token = nonBlank(env.apply(prefix + "TOKEN"));
+        String token = nonBlank(envOrFile(prefix + "TOKEN"));
         if (token != null) return Optional.of(new RepoCredential.Bearer(token));
-        String username = nonBlank(env.apply(prefix + "USERNAME"));
+        String username = nonBlank(envOrFile(prefix + "USERNAME"));
         if (username != null) {
-            String password = env.apply(prefix + "PASSWORD");
+            String password = envOrFile(prefix + "PASSWORD");
             return Optional.of(new RepoCredential.Basic(username, password == null ? "" : password));
         }
         return Optional.empty();
+    }
+
+    /**
+     * {@code name}'s value, or the contents of the file {@code <name>_FILE} names — the
+     * Docker/Kubernetes convention a CI secret mount follows. Both set is an error: neither can be
+     * said to win. The {@code _FILE} name is read from the caller's shell, as the {@code _HOST}
+     * binding is, never from a project's {@code .env}: a cloned project must not choose which of
+     * this machine's files a credential is read from. The file is held to {@link SecretFiles}'
+     * permission rule; {@code ~} expands, and a relative path is relative to the user's home.
+     */
+    private @Nullable String envOrFile(String name) {
+        String fileVar = name + "_FILE";
+        String path = nonBlank(hostBindings.apply(fileVar));
+        if (path == null) return env.apply(name);
+        if (nonBlank(env.apply(name)) != null) {
+            throw new JkBuildParseException(name + " and " + fileVar + " are both set; set one of them, not both");
+        }
+        return SecretFiles.contents(SecretFiles.resolve(path, PathUtil.userHome()), fileVar);
     }
 
     /**

