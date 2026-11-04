@@ -26,20 +26,27 @@ final class EditedTests {
 
     /** The line that says so; a single-module project, or an edit at the workspace root, is tested whole. */
     static String next(Modules modules, Collection<String> edited) {
+        Set<String> classes = testClasses(modules, edited);
         Set<String> touched = new TreeSet<>();
+        boolean whole = false;
         for (String rel : edited) {
             Modules.Module m = modules.of(rel);
-            if (m == null || m.prefix().isEmpty()) return "Test next: run(kind=test), or jk test." + DONE;
+            if (m == null || m.prefix().isEmpty()) {
+                whole = true;
+                break;
+            }
             touched.add(m.prefix().substring(0, m.prefix().length() - 1));
         }
-        if (touched.isEmpty()) return "Test next: run(kind=test), or jk test." + DONE;
+        if (whole || touched.isEmpty()) {
+            if (classes.isEmpty()) return "Test next: run(kind=test), or jk test." + DONE;
+            return "Test the test classes it edited: run(kind=test, classes=" + String.join(",", classes)
+                    + "), or jk test -S " + String.join(" -S ", classes) + "." + DONE;
+        }
         String only = String.join(",", touched);
-        Set<String> classes = testClasses(modules, edited);
         if (classes.isEmpty()) {
             return "Test the modules it edited: run(kind=test, only=" + only + "), or jk test -m " + only + "." + DONE;
         }
-        String names = String.join(",", classes);
-        return "Test the test classes it edited: run(kind=test, only=" + only + ", classes=" + names
+        return "Test the test classes it edited: run(kind=test, only=" + only + ", classes=" + String.join(",", classes)
                 + "), or jk test -m " + only + " -S " + String.join(" -S ", classes) + "." + DONE;
     }
 
