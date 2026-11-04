@@ -7,6 +7,7 @@ import cc.jumpkick.engine.api.SseEvents;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EventCatalog;
 import cc.jumpkick.wire.protocol.FailureTextRefs;
+import cc.jumpkick.wire.protocol.PlanFinishEvent;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Proxy;
 import java.lang.reflect.RecordComponent;
@@ -40,7 +41,8 @@ class EventCatalogSseTest {
                     .isNotNull();
 
             List<String> calls = new ArrayList<>();
-            new SseEventSink(recording(calls), 7L).emit(event);
+            List<String> records = new ArrayList<>();
+            new SseEventSink(recording(calls, records), 7L).emit(event);
 
             boolean expected = row.sse() instanceof EventCatalog.Carried carried
                     && carried.fromEventSink()
@@ -51,6 +53,14 @@ class EventCatalogSseTest {
                             variant.getSimpleName(), event.type(), expected ? "publishes" : "omits", calls)
                     .isEqualTo(expected);
             if (!calls.isEmpty()) publishedTypes.add(event.type());
+            if (!records.isEmpty()) {
+                String sent = event instanceof EngineEvent.PlanFinish f
+                        ? new PlanFinishEvent(f.dir(), f.success(), false).encode()
+                        : WireEventSink.encode(event, new FailureTextRefs());
+                assertThat(records)
+                        .as("%s reaches SSE as the record the wire sends", variant.getSimpleName())
+                        .containsExactly(sent);
+            }
         }
         for (EventCatalog.Row row : EventCatalog.rows()) {
             if (row.sse() instanceof EventCatalog.Carried carried && carried.fromEventSink()) {
@@ -80,12 +90,14 @@ class EventCatalogSseTest {
         }
     }
 
-    /** An {@link SseEvents} that records the name of every method called on it. */
-    private static SseEvents recording(List<String> calls) {
+    /** An {@link SseEvents} that records the name of every method called on it, and the records it was handed. */
+    private static SseEvents recording(List<String> calls, List<String> records) {
         return (SseEvents) Proxy.newProxyInstance(
                 SseEvents.class.getClassLoader(), new Class<?>[] {SseEvents.class}, (proxy, method, args) -> {
                     if (method.getDeclaringClass() == Object.class) return method.invoke(calls, args);
+                    if (method.getName().equals("eventsWanted")) return true;
                     calls.add(method.getName());
+                    if (!method.getName().equals("publishPlan")) records.add((String) args[args.length - 1]);
                     return null;
                 });
     }

@@ -3,6 +3,9 @@ package cc.jumpkick.engine.listen;
 
 import cc.jumpkick.engine.api.SseEvents;
 import cc.jumpkick.wire.protocol.EventCatalog;
+import cc.jumpkick.wire.protocol.FailureTextRefs;
+import cc.jumpkick.wire.protocol.PlanFinishEvent;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Encodes {@link EngineEvent} as dashboard/MCP SSE frames via {@link SseEvents}. The second
@@ -15,6 +18,9 @@ public final class SseEventSink implements EventSink {
 
     private final SseEvents sse;
     private final long requestId;
+
+    /** Never consulted: SSE carries no test failure, the one record that refers back to earlier text. */
+    private final FailureTextRefs texts = new FailureTextRefs();
 
     public SseEventSink(SseEvents sse, long requestId) {
         this.sse = sse;
@@ -31,33 +37,38 @@ public final class SseEventSink implements EventSink {
                 || event instanceof EngineEvent.PlanFinishLine) {
             return;
         }
+        // SSE carries what the wire sends, as the wire spells it: one record, one codec. Encoded
+        // only for a listener; with none, the publisher still keeps its books from the counts.
+        String record = !sse.eventsWanted()
+                ? ""
+                : event instanceof EngineEvent.PlanFinish e
+                        ? new PlanFinishEvent(e.dir(), e.success(), false).encode()
+                        : WireEventSink.encode(event, texts);
         switch (event) {
-            case EngineEvent.PlanStart e -> sse.publishPlanProgress(requestId, e.dir(), e.numerator(), e.denominator());
-            case EngineEvent.Progress e -> sse.publishPlanProgress(requestId, e.dir(), e.numerator(), e.denominator());
-            case EngineEvent.TickUpdate e ->
-                sse.publishPlanProgress(requestId, e.dir(), e.numerator(), e.denominator());
-            case EngineEvent.StepStart e -> sse.publishStepStart(requestId, e.dir(), e.step(), e.phase());
-            case EngineEvent.StepFinish e ->
-                sse.publishStepFinish(requestId, e.dir(), e.step(), e.phase(), e.status(), e.millis());
-            case EngineEvent.Label e -> sse.publishLabel(requestId, e.dir(), e.step(), e.text());
-            case EngineEvent.Output e -> sse.publishOutput(requestId, e.dir(), e.step(), e.line());
-            case EngineEvent.ModuleStart e -> sse.publishModuleStart(requestId, e.dir(), e.coord());
-            case EngineEvent.ModuleFinish e ->
-                sse.publishModuleFinish(
-                        requestId,
-                        e.dir(),
-                        e.coord(),
-                        e.success(),
-                        e.millis(),
-                        e.didWork(),
-                        e.cancelled(),
-                        e.stopped());
-            case EngineEvent.Eta e -> sse.publishEta(requestId, e.remainingMs());
             case EngineEvent.Plan e -> sse.publishPlan(requestId, e.totalWeight());
-            case EngineEvent.PlanFinish e -> sse.publishBuildPlanFinish(requestId, e.dir(), e.success());
+            case EngineEvent.PlanStart e ->
+                sse.publishPlanProgress(requestId, e.dir(), e.numerator(), e.denominator(), required(record, event));
+            case EngineEvent.Progress e ->
+                sse.publishPlanProgress(requestId, e.dir(), e.numerator(), e.denominator(), required(record, event));
+            case EngineEvent.TickUpdate e ->
+                sse.publishPlanProgress(requestId, e.dir(), e.numerator(), e.denominator(), required(record, event));
+            case EngineEvent.StepStart e ->
+                sse.publishStepStart(requestId, e.dir(), e.step(), e.phase(), required(record, event));
+            case EngineEvent.StepFinish e -> sse.publishRecord(requestId, required(record, event));
+            case EngineEvent.Label e -> sse.publishRecord(requestId, required(record, event));
+            case EngineEvent.Output e -> sse.publishRecord(requestId, required(record, event));
+            case EngineEvent.ModuleStart e -> sse.publishRecord(requestId, required(record, event));
+            case EngineEvent.ModuleFinish e -> sse.publishRecord(requestId, required(record, event));
+            case EngineEvent.Eta e -> sse.publishRecord(requestId, required(record, event));
+            case EngineEvent.PlanFinish e -> sse.publishRecord(requestId, required(record, event));
             default ->
                 throw new IllegalStateException(
                         "EventCatalog says the SSE event sink carries " + event.type() + ", and no case publishes it");
         }
+    }
+
+    private static String required(@Nullable String record, EngineEvent event) {
+        if (record == null) throw new IllegalStateException(event.type() + " has no wire record to publish");
+        return record;
     }
 }

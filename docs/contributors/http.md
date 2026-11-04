@@ -378,6 +378,12 @@ and the catalog tests drive each surface's real encoder against it (`WireRecordC
 until it has a row, and a surface that carries what its row omits, or drops what it carries, fails
 too. A new event is a row first, then its encoders.
 
+A build event's SSE frame is its **wire record** — the line `WireEventSink` sends the CLI — under
+`schema`, `type` (SSE's name for it: a plan's start and ticks are `progress`, a diagnostic
+`error`) and `jid`, with `progress` set to the run's aggregate and free text (`label`, `line`,
+`message`, `stack`) masked (`SsePublisher.frame`). There is no per-event payload map: a field the
+record gains reaches the dashboard and MCP as it reaches the CLI.
+
 The sampled `status`/`cache` frames are **dashboard-stream chrome**: MCP SSE subscriptions
 (`GET /mcp`) never receive them, and an MCP stream alone neither starts nor sustains the samplers
 — "while subscribed" above means dashboard (`/api/events`) subscribers.
