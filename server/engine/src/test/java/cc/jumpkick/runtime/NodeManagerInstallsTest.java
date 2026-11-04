@@ -42,6 +42,7 @@ import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.parallel.Isolated;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -78,13 +79,32 @@ class NodeManagerInstallsTest {
         for (String name : overlays) System.clearProperty("jk.env." + name);
     }
 
+    /**
+     * npm ships with Node, so nothing comes from the public registry: the registry stub holds no
+     * upstream mirror, and a request it cannot answer is a 404, never a fetch.
+     */
+    @Test
+    void a_frozen_npm_install_reaches_each_registry_with_its_own_token() throws Exception {
+        frozenInstall("npm", null);
+    }
+
+    /**
+     * pnpm, Yarn and bun are fetched once from registry.npmjs.org through the stub (bun's is a
+     * native binary of tens of megabytes) and cached under the test caches after: a cold cache, or
+     * a slow registry, is the network's to answer, so these run in the network tier, never the gate.
+     */
+    @Tag("network")
     @ParameterizedTest
-    @ValueSource(strings = {"npm", "pnpm", "yarn", "bun"})
+    @ValueSource(strings = {"pnpm", "yarn", "bun"})
     void a_frozen_install_reaches_each_registry_with_its_own_token(String manager) throws Exception {
+        frozenInstall(manager, TestCaches.dir("npm-upstream"));
+    }
+
+    private void frozenInstall(String manager, @Nullable Path upstream) throws Exception {
         List<DiscoveredNode> found = new NodeDiscovery().discover();
         assumeTrue(!found.isEmpty(), "a Node.js on this host");
         DiscoveredNode host = found.get(0);
-        main = NpmRegistryStub.start(TOKEN, TestCaches.dir("npm-upstream"));
+        main = NpmRegistryStub.start(TOKEN, upstream);
         scope = NpmRegistryStub.start(SCOPE_TOKEN, null);
         main.publish("tiny", "1.0.0", Map.of("index.js", "module.exports = 'tiny';\n"), Map.of());
         scope.publish("@acme/thing", "1.0.0", Map.of("index.js", "module.exports = 'thing';\n"), Map.of());
