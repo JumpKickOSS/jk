@@ -181,4 +181,31 @@ class TransferBoardTest {
         assertThat(board.artifactsLanded()).isEqualTo(1);
         assertThat(board.snapshot().files()).isEqualTo(2);
     }
+
+    /**
+     * A body that is all in leaves the rows at once — its checksum read may wait, and a row parked
+     * at 100% hides transfers still moving — but counts as landed only once it is kept.
+     */
+    @Test
+    void a_landed_body_leaves_the_rows_and_counts_only_once_kept() {
+        TransferBoard.Transfer kept = board.openArtifact("g:kept:1");
+        kept.started(10);
+        kept.advanced(10);
+        kept.landed();
+        assertThat(board.snapshot().inflight()).isZero();
+        assertThat(board.snapshot().files()).isZero();
+        kept.finished();
+        kept.close();
+        assertThat(board.snapshot().files()).isEqualTo(1);
+        assertThat(board.artifactsLanded()).isEqualTo(1);
+
+        TransferBoard.Transfer rejected = board.openArtifact("g:rejected:1");
+        rejected.started(10);
+        rejected.advanced(10);
+        rejected.landed();
+        rejected.close();
+        rejected.finished();
+        assertThat(board.snapshot().files()).as("rejected bytes never land").isEqualTo(1);
+        assertThat(board.snapshot().bytes()).as("but they did stream").isEqualTo(20);
+    }
 }

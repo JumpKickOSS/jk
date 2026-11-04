@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 
@@ -81,7 +82,15 @@ public final class TransferBoard {
         /** Cumulative bytes of the body read so far. */
         void advanced(long readBytes);
 
-        /** The whole body arrived; what follows (checksum, placement) moves no bytes of it. */
+        /**
+         * The whole body is in: its row leaves the board now, since what follows (a checksum read
+         * that may wait on the host's permits, placement) moves no bytes of it, and a row parked at
+         * 100% would hide transfers still moving. Whether the file counts as landed is {@link
+         * #finished}'s to say.
+         */
+        default void landed() {}
+
+        /** The file is in and kept: counted as landed. A transfer closed first is not counted. */
         void finished();
 
         @Override
@@ -217,6 +226,8 @@ public final class TransferBoard {
         volatile long startedNanos;
         volatile long total = -1L;
         volatile long read;
+        final AtomicBoolean done = new AtomicBoolean();
+        volatile boolean started;
 
         Live(String label, boolean artifact) {
             this.label = label;
@@ -228,6 +239,7 @@ public final class TransferBoard {
             read = 0;
             total = totalBytes;
             startedNanos = clock.nanos();
+            started = true;
             live.put(this, Boolean.TRUE);
         }
 
@@ -239,18 +251,24 @@ public final class TransferBoard {
         }
 
         @Override
+        public void landed() {
+            live.remove(this);
+        }
+
+        @Override
         public void finished() {
-            if (live.remove(this) != null) {
-                files.increment();
-                if (artifact) {
-                    artifacts.increment();
-                    artifactLabels.add(label);
-                }
+            if (!started || !done.compareAndSet(false, true)) return;
+            live.remove(this);
+            files.increment();
+            if (artifact) {
+                artifacts.increment();
+                artifactLabels.add(label);
             }
         }
 
         @Override
         public void close() {
+            done.set(true);
             live.remove(this);
         }
     }

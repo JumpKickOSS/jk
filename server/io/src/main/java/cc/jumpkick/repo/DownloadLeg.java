@@ -108,7 +108,9 @@ final class DownloadLeg {
      * The body landed in its temp file, and the sidecar reads started beside it when the leg asked
      * for them. Its {@code transfer} is still open: the board counts the file only once its bytes
      * are verified, so a body the pin or the published checksum rejects — a mirror copy Central
-     * disowns, downloaded again from Central — is not a file the run landed.
+     * disowns, downloaded again from Central — is not a file the run landed. Its row has already
+     * left the board: the checksum read may wait on the host's permits, and a row parked at 100%
+     * would hide transfers still moving.
      */
     private record Streamed(Downloaded stored, @Nullable ChecksumSidecars sidecars, TransferBoard.Transfer transfer) {}
 
@@ -157,7 +159,7 @@ final class DownloadLeg {
             Files.deleteIfExists(tmp);
             throw e;
         } finally {
-            // Rejected bytes leave the board as they came: streamed, not landed.
+            // Rejected bytes leave as they came: streamed, never counted as landed.
             if (streamed != null) streamed.transfer().close();
         }
         // Successful VERIFIED fetch only — a download that fails its upstream checksum must not
@@ -215,6 +217,8 @@ final class DownloadLeg {
                     OutputStream out = new DigestOutputStream(Files.newOutputStream(tmp), digest)) {
                 size = copy(in, out, transfer);
             }
+            // The row leaves now; the file is counted only once it verifies (the caller's finished).
+            transfer.landed();
         } catch (IOException | InterruptedException | RuntimeException e) {
             // The sidecars were only ever worth reading beside a body that arrived.
             if (sidecars != null) sidecars.cancel();
