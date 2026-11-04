@@ -224,7 +224,9 @@ def comparison_table(rows: list[dict], unit: str) -> str:
                      f"{b['runs']} | {_n(a['turns'])} / {_n(b['turns'])} | {_k(a['tokens'])} / {_k(b['tokens'])} | "
                      f"{a['wall']:,.0f} / {b['wall']:,.0f} s |")
     sets = sorted({s for r in rows for s in r["results"]})
-    lines += ["", "jk is each agent as `jk agents` sets it up (Vendor C and D with jk's rules file). "
+    lines += ["", "jk is each agent as `jk agents` sets it up (Vendor C and D with jk's rules file), one run per task "
+              "on the current build; without the graph, three to five runs per task, the graph hidden from MCP and "
+              "the shell alike. "
               "Medians per task, summed over the tasks each agent ran on both arms; results: "
               + ", ".join(f"`{s}`" for s in sets) + "."]
     return "\n".join(lines)
@@ -241,7 +243,7 @@ def curve(by: dict) -> list[dict]:
     for name, spec in tasks.items():
         if not spec.get("kind", "").startswith("rename") or _loc(spec["repo"]) is None:
             continue
-        method = re.search(r"`([\w.]+)`", spec["prompt"])
+        method = re.search(r"`([\w.]+)(?:\([^`]*\))?`", spec["prompt"])
         point = {"task": name, "repo": spec["repo"], "loc": _loc(spec["repo"]), "drivers": {},
                  "method": method.group(1) if method else name}
         for driver in ("claude-code", "cursor"):

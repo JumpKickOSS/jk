@@ -10,6 +10,2438 @@
 
 
 [[row]]
+dim = "agents"
+subject = "agents.agy.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0.882
+unit = "share"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-agentsline"
+kind = "count"
+value = 0.926
+unit = "share"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-agyrules+section"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1.0
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 5727337
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.tokens"
+project = "change-tasks"
+tool = "jk-agentsline"
+kind = "count"
+value = 1501455
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.tokens"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 4547397
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.tokens"
+project = "change-tasks"
+tool = "jk-agyrules+section"
+kind = "count"
+value = 41852
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 5361418
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 188
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.turns"
+project = "change-tasks"
+tool = "jk-agentsline"
+kind = "count"
+value = 59
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.turns"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 116
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.turns"
+project = "change-tasks"
+tool = "jk-agyrules+section"
+kind = "count"
+value = 5
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 110
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 6783119.5
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.tokens"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 255341
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.tokens"
+project = "change-tasks"
+tool = "jk-agyrules+section"
+kind = "count"
+value = 105710
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.tokens"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 2842043.0
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.tokens"
+project = "change-tasks"
+tool = "jk-graphify"
+kind = "count"
+value = 3757452.0
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 12373902.5
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.tokens"
+project = "change-tasks"
+tool = "mvn"
+kind = "count"
+value = 7611785
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.tokens"
+project = "change-tasks"
+tool = "mvn-graphify"
+kind = "count"
+value = 3262958.0
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 120.0
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.turns"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 27
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.turns"
+project = "change-tasks"
+tool = "jk-agyrules+section"
+kind = "count"
+value = 13
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.turns"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 60.0
+unit = "turns"
+band = 0.25
+runs = 2
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.turns"
+project = "change-tasks"
+tool = "jk-graphify"
+kind = "count"
+value = 60.0
+unit = "turns"
+band = 0.25
+runs = 2
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 310.0
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.turns"
+project = "change-tasks"
+tool = "mvn"
+kind = "count"
+value = 120
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.turns"
+project = "change-tasks"
+tool = "mvn-graphify"
+kind = "count"
+value = 60.0
+unit = "turns"
+band = 0.25
+runs = 2
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk+shipped"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 0.941
+unit = "share"
+band = 0.25
+runs = 5
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 5
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1.0
+unit = "share"
+band = 0.25
+runs = 4
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-nograph-noline"
+kind = "count"
+value = 1.0
+unit = "share"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 4
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 341017
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.tokens"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 19009
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.tokens"
+project = "change-tasks"
+tool = "jk+shipped"
+kind = "count"
+value = 19549
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.tokens"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 887033.0
+unit = "tokens"
+band = 0.25
+runs = 5
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 5
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 2345978.5
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.tokens"
+project = "change-tasks"
+tool = "jk-nograph-noline"
+kind = "count"
+value = 1199571
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.tokens"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 46070.0
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 27
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.turns"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 3
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.turns"
+project = "change-tasks"
+tool = "jk+shipped"
+kind = "count"
+value = 3
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.turns"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 62.0
+unit = "turns"
+band = 0.25
+runs = 5
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 5
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 133.5
+unit = "turns"
+band = 0.25
+runs = 4
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.turns"
+project = "change-tasks"
+tool = "jk-nograph-noline"
+kind = "count"
+value = 48
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.turns"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 3.0
+unit = "turns"
+band = 0.25
+runs = 4
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 102502
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.tokens"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 36196
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.tokens"
+project = "change-tasks"
+tool = "jk+shipped"
+kind = "count"
+value = 37165
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.tokens"
+project = "change-tasks"
+tool = "jk-graph-first"
+kind = "count"
+value = 457258
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.tokens"
+project = "change-tasks"
+tool = "jk-graphify"
+kind = "count"
+value = 324284
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.tokens"
+project = "change-tasks"
+tool = "jk-hooks"
+kind = "count"
+value = 255183
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.tokens"
+project = "change-tasks"
+tool = "jk-hooks-lean"
+kind = "count"
+value = 486255
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.tokens"
+project = "change-tasks"
+tool = "jk-hooks-replace"
+kind = "count"
+value = 890898.0
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 552328
+unit = "tokens"
+band = 0.25
+runs = 5
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.tokens"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 39142.0
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.tokens"
+project = "change-tasks"
+tool = "mvn"
+kind = "count"
+value = 113678.0
+unit = "tokens"
+band = 0.25
+runs = 6
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.tokens"
+project = "change-tasks"
+tool = "mvn-graphify"
+kind = "count"
+value = 134726
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 14
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.turns"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 6
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.turns"
+project = "change-tasks"
+tool = "jk+shipped"
+kind = "count"
+value = 6
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.turns"
+project = "change-tasks"
+tool = "jk-graph-first"
+kind = "count"
+value = 62
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.turns"
+project = "change-tasks"
+tool = "jk-graphify"
+kind = "count"
+value = 22
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.turns"
+project = "change-tasks"
+tool = "jk-hooks"
+kind = "count"
+value = 21
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.turns"
+project = "change-tasks"
+tool = "jk-hooks-lean"
+kind = "count"
+value = 66
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.turns"
+project = "change-tasks"
+tool = "jk-hooks-replace"
+kind = "count"
+value = 90.0
+unit = "turns"
+band = 0.25
+runs = 4
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 100
+unit = "turns"
+band = 0.25
+runs = 5
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.turns"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 18.0
+unit = "turns"
+band = 0.25
+runs = 4
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.turns"
+project = "change-tasks"
+tool = "mvn"
+kind = "count"
+value = 14.5
+unit = "turns"
+band = 0.25
+runs = 6
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.turns"
+project = "change-tasks"
+tool = "mvn-graphify"
+kind = "count"
+value = 12
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0.75
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 783287
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 2070023
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 25
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 59
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 334282
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1541856
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 14
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 56
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-cursorrules+section"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-cursorrules2"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0.994
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 0.34
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 480386
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.tokens"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 526715
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.tokens"
+project = "change-tasks"
+tool = "jk-cursorrules+section"
+kind = "count"
+value = 47862
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.tokens"
+project = "change-tasks"
+tool = "jk-cursorrules2"
+kind = "count"
+value = 121621
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 14972381.5
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.tokens"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 1325216
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 23
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.turns"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 26
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.turns"
+project = "change-tasks"
+tool = "jk-cursorrules+section"
+kind = "count"
+value = 3
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.turns"
+project = "change-tasks"
+tool = "jk-cursorrules2"
+kind = "count"
+value = 6
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 277.0
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.turns"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 39
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 1477788.5
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.tokens"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 262809
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.tokens"
+project = "change-tasks"
+tool = "jk-cursorrules+section"
+kind = "count"
+value = 142050
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.tokens"
+project = "change-tasks"
+tool = "jk-cursorrules2"
+kind = "count"
+value = 301578
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1919746.0
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 69.5
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.turns"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 14
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.turns"
+project = "change-tasks"
+tool = "jk-cursorrules+section"
+kind = "count"
+value = 10
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.turns"
+project = "change-tasks"
+tool = "jk-cursorrules2"
+kind = "count"
+value = 20
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 69.5
+unit = "turns"
+band = 0.25
+runs = 4
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0.961
+unit = "share"
+band = 0.25
+runs = 2
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 0.7
+unit = "share"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 397975
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.tokens"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 27527
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 16434112.0
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.tokens"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 520506
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 35
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.turns"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 4
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 279.5
+unit = "turns"
+band = 0.25
+runs = 2
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.turns"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 32
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 255844
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.tokens"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 71745
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.tokens"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 1668112
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.tokens"
+project = "change-tasks"
+tool = "jk-graphify"
+kind = "count"
+value = 2064662
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 3395274
+unit = "tokens"
+band = 0.25
+runs = 5
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.tokens"
+project = "change-tasks"
+tool = "mvn"
+kind = "count"
+value = 1630887
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.tokens"
+project = "change-tasks"
+tool = "mvn-graphify"
+kind = "count"
+value = 1462964
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 28
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.turns"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 10
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.turns"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 46
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.turns"
+project = "change-tasks"
+tool = "jk-graphify"
+kind = "count"
+value = 49
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 136
+unit = "turns"
+band = 0.25
+runs = 5
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.turns"
+project = "change-tasks"
+tool = "mvn"
+kind = "count"
+value = 35
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.turns"
+project = "change-tasks"
+tool = "mvn-graphify"
+kind = "count"
+value = 37
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-musemd"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-musemd+section"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1.0
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 787341
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.tokens"
+project = "change-tasks"
+tool = "jk-musemd"
+kind = "count"
+value = 62853
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.tokens"
+project = "change-tasks"
+tool = "jk-musemd+section"
+kind = "count"
+value = 63373
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 24203115
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 29
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.turns"
+project = "change-tasks"
+tool = "jk-musemd"
+kind = "count"
+value = 3
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.turns"
+project = "change-tasks"
+tool = "jk-musemd+section"
+kind = "count"
+value = 3
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 284
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 526880
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.tokens"
+project = "change-tasks"
+tool = "jk-musemd"
+kind = "count"
+value = 198792
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.tokens"
+project = "change-tasks"
+tool = "jk-musemd+section"
+kind = "count"
+value = 159815
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 11767539
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 23
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.turns"
+project = "change-tasks"
+tool = "jk-musemd"
+kind = "count"
+value = 10
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.turns"
+project = "change-tasks"
+tool = "jk-musemd+section"
+kind = "count"
+value = 8
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 186
+unit = "turns"
+band = 0.25
+runs = 3
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "mcp.cards.default.tokens"
+project = "any"
+tool = "jk"
+kind = "count"
+value = 527
+unit = "tokens"
+band = 0.02
+target = 600
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+cards = 6
+
+[[row]]
+dim = "agents"
+subject = "mcp.cards.extended.tokens"
+project = "any"
+tool = "jk"
+kind = "count"
+value = 3660
+unit = "tokens"
+band = 0.02
+target = 2500
+runs = 1
+date = "2026-11-04"
+commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+cards = 38
+
+[[row]]
 dim = "calibration"
 subject = "javac.fixed-tree"
 project = "generated"

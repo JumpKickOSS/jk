@@ -72,7 +72,7 @@ spend more turns on jk; that gap is open
 ([the table](docs/user/why.md#agents-reach-green)).
 
 <!-- agents-claims:begin -->
-Asked who calls a method or what can end up running it, agents from 5 vendors answered from the graph in 60%–86% fewer turns and 78%–94% fewer tokens than with no graph; renaming a method and every caller took 66%–85% fewer turns and 73%–82% fewer tokens; down to the smallest repository measured, spring-petclinic at 3,635 lines. ([The tables](docs/user/why.md#asking-about-the-code).)
+Asked who calls a method or what can end up running it, agents from 6 vendors answered from the graph in 66%–91% fewer turns and 72%–98% fewer tokens than with no graph; renaming a method and every caller took 75%–91% fewer turns and 78%–98% fewer tokens; down to the smallest repository measured, gs-multi-module at 83 lines. ([The tables](docs/user/why.md#asking-about-the-code).)
 <!-- agents-claims:end -->
 
 ### 2. Never type `clean` again
