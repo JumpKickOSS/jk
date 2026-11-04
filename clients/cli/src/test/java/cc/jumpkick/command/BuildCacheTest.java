@@ -6,8 +6,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.Capture;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.Comparator;
@@ -168,11 +171,21 @@ class BuildCacheTest {
         }
     }
 
-    private static void deleteRecursively(Path root) throws IOException {
-        if (!Files.exists(root)) return;
-        try (var stream = Files.walk(root)) {
-            for (Path p : stream.sorted(Comparator.reverseOrder()).toList()) {
-                Files.deleteIfExists(p);
+    /**
+     * Wipe {@code root} as {@code jk clean} would. The code-graph refresh a build starts on its way
+     * out writes its facts index under {@code target/incremental} after the build has returned, so
+     * a file can appear or vanish between the walk and its delete; the wipe walks again until the
+     * tree is gone.
+     */
+    private static void deleteRecursively(Path root) throws IOException, InterruptedException {
+        for (int attempt = 1; Files.exists(root); attempt++) {
+            try (var stream = Files.walk(root)) {
+                for (Path p : stream.sorted(Comparator.reverseOrder()).toList()) {
+                    Files.deleteIfExists(p);
+                }
+            } catch (DirectoryNotEmptyException | NoSuchFileException | UncheckedIOException lateWriter) {
+                if (attempt >= 50) throw lateWriter;
+                Thread.sleep(100);
             }
         }
     }
