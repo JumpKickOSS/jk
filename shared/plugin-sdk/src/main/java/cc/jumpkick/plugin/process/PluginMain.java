@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.process;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
+import cc.jumpkick.plugin.build.Transfers;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
@@ -65,6 +66,8 @@ public final class PluginMain {
                 /* autoFlush */ false,
                 StandardCharsets.UTF_8);
         ProtocolWriter writer = new ProtocolWriter(out, plugin.manifest().protocolPrefix());
+        // A download the plugin makes itself, or a JVM it forks makes, reaches the run's board.
+        Transfers.install(writer::emit);
 
         if (args.length == 1 && PluginProtocol.SERVE.equals(args[0])) {
             try {

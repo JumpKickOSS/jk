@@ -37,6 +37,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.PluginBuild;
+import cc.jumpkick.runtime.PluginTransfers;
 import cc.jumpkick.runtime.Tail;
 import cc.jumpkick.runtime.base.ImageCredentials;
 import cc.jumpkick.runtime.base.PluginLaunch;
@@ -451,11 +452,15 @@ public final class ImagePlans {
                 @Nullable String[] ref = {null};
                 @Nullable String[] workerError = {null};
                 StringBuilder diag = new StringBuilder();
-                int exit = new PluginClient("##JKIM:")
+                PluginClient client = new PluginClient("##JKIM:")
                         .on(PluginProtocol.RESULT, json -> ref[0] = Jsonl.str(json, "ref"))
                         .on(PluginProtocol.ERROR, json -> workerError[0] = Jsonl.str(json, PluginProtocol.MESSAGE))
-                        .passthrough(ln -> diag.append(ln).append('\n'))
-                        .run(PluginLaunch.javaCommand(workerJar, spec));
+                        .passthrough(ln -> diag.append(ln).append('\n'));
+                int exit;
+                // Base layers the worker pulls are the run's downloads like any other.
+                try (PluginTransfers ignored = PluginTransfers.relay(client)) {
+                    exit = client.run(PluginLaunch.javaCommand(workerJar, spec));
+                }
                 if (workerError[0] != null) throw new RuntimeException("image worker: " + workerError[0]);
                 if (exit != 0) {
                     String d = diag.length() > 0 ? diag.toString().trim() : null;

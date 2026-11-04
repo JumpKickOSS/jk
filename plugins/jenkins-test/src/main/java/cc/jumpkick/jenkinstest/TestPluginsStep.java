@@ -5,6 +5,7 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.RepositoryRoute;
 import cc.jumpkick.plugin.build.TaskExec;
+import cc.jumpkick.plugin.build.Transfers;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -99,7 +100,11 @@ final class TestPluginsStep {
             try (InputStream body = response.body()) {
                 if (response.statusCode() == 200) {
                     Path part = to.resolveSibling(to.getFileName() + ".part");
-                    Files.copy(body, part, StandardCopyOption.REPLACE_EXISTING);
+                    // On the run's download board, like every other body the build fetches.
+                    long length = response.headers()
+                            .firstValueAsLong("Content-Length")
+                            .orElse(-1L);
+                    Transfers.copy(body, part, entry.gav() + "!hpi", length);
                     Files.move(part, to, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
                     return;
                 }
