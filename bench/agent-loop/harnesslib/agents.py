@@ -129,6 +129,22 @@ def _pump(stream, sink: queue.Queue) -> None:
         sink.put(None)
 
 
+def _record(out, line: str, started: float):
+    """Write one stdout line to the transcript, an object stamped with ``_t_ms`` (its arrival, in ms
+    since the agent started, so a run's wall time splits into model time and tool time for any agent),
+    and return it parsed; None when the line is not JSON."""
+    try:
+        ev = json.loads(line)
+    except json.JSONDecodeError:
+        out.write(line)
+        return None
+    if isinstance(ev, dict):
+        out.write(json.dumps({**ev, "_t_ms": int((time.monotonic() - started) * 1000)}) + "\n")
+    else:
+        out.write(line)
+    return ev
+
+
 def _run_streaming(cmd: list[str], cwd: Path, env: dict, max_seconds: int, transcript_path: Path,
                    on_event=None) -> tuple[list[dict], str, str | None]:
     """Run ``cmd`` in its own session. Return parsed stdout events, stderr, and why it was stopped.
@@ -168,10 +184,8 @@ def _run_streaming(cmd: list[str], cwd: Path, env: dict, max_seconds: int, trans
             if line is None:
                 stdout_done = True
                 break
-            out.write(line)
-            try:
-                ev = json.loads(line)
-            except json.JSONDecodeError:
+            ev = _record(out, line, started)
+            if ev is None:
                 continue
             events.append(ev)
             if on_event and on_event(ev) == "kill":
@@ -185,12 +199,9 @@ def _run_streaming(cmd: list[str], cwd: Path, env: dict, max_seconds: int, trans
                 break
             if not line:
                 continue
-            out.write(line)
-            try:
-                ev = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            events.append(ev)
+            ev = _record(out, line, started)
+            if ev is not None:
+                events.append(ev)
         if stop:
             _kill_group(proc)
         try:
@@ -1039,13 +1050,15 @@ def cursor(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: in
         ]
         events, stderr, stop = _run_streaming(cmd, sandbox, env, max_seconds, transcript_path, on_event)
         result = next((ev for ev in reversed(events) if ev.get("type") == "result"), None)
+        # cursor-agent reports usage only in its result event, which a run killed at the turn or time
+        # budget never writes: no usage then, not zeros.
         raw = (result or {}).get("usage") or {}
         usage = {
             "input_tokens": int(raw.get("inputTokens") or 0),
             "output_tokens": int(raw.get("outputTokens") or 0),
             "cache_read_input_tokens": int(raw.get("cacheReadTokens") or 0),
             "cache_creation_input_tokens": int(raw.get("cacheWriteTokens") or 0),
-        }
+        } if raw else {}
         turns = _cursor_turns(events)
         summary = _cursor_summary(events)
         used = [step["tool_use"] for step in summary if step.get("tool_use")]

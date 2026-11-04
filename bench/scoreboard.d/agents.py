@@ -101,7 +101,7 @@ def agent_rows(by: dict[tuple[str, str, str], list[dict]]) -> list[dict]:
         runs = min(len(rs) for rs in tasks.values())
         sums = {
             "turns": sum(statistics.median(r["turns"] for r in rs) for rs in tasks.values()),
-            "tokens": sum(statistics.median(r["tokens"] for r in rs) for rs in tasks.values()),
+            "tokens": sum(statistics.median(_known(rs, "tokens") or [0]) for rs in tasks.values()),
         }
         for counter in ("turns", "tokens"):
             found.append(row(f"agents.{driver}.{group}.{counter}", arm, sums[counter], counter, runs, len(tasks)))
@@ -161,7 +161,9 @@ CLAIM_DOCS = {
 }
 
 
-def _k(x: float) -> str:
+def _k(x: float | None) -> str:
+    if x is None:
+        return "n/a"
     if x >= 1e6:
         return f"{x / 1e6:.1f}M"
     return f"{x / 1e3:.0f}k" if x >= 1e3 else f"{x:.0f}"
@@ -181,9 +183,18 @@ def _pair(by: dict, driver: str, kind: str) -> tuple[list[str], dict, dict] | No
     return (both, jk, off) if both else None
 
 
+def _known(rs: list[dict], key: str) -> list:
+    """The runs' values of key, without the runs that never reported it (tokens of a killed agent)."""
+    return [r[key] for r in rs if r.get(key) is not None]
+
+
 def _sums(cells: dict, tasks: list[str]) -> dict:
     ok = {t: [r for r in cells[t] if r.get("accepted")] or cells[t] for t in tasks}
-    med = lambda key: sum(statistics.median(r[key] for r in ok[t]) for t in tasks)  # noqa: E731
+
+    def med(key: str) -> float | None:
+        per_task = [_known(ok[t], key) for t in tasks]
+        return None if not all(per_task) else sum(statistics.median(v) for v in per_task)
+
     return {"correct": sum(1 for t in tasks for r in cells[t] if r.get("accepted")),
             "runs": sum(len(cells[t]) for t in tasks), "turns": med("turns"), "tokens": med("tokens"),
             "wall": med("wall_s"), "share": statistics.median(
@@ -256,7 +267,7 @@ def curve_table(points: list[dict]) -> str:
 
 def claims(questions: list[dict], renames: list[dict], points: list[dict], link: str | None) -> str:
     def cut(rows, key):
-        return [1 - r["jk"][key] / r["off"][key] for r in rows if r["off"][key]]
+        return [1 - r["jk"][key] / r["off"][key] for r in rows if r["jk"][key] is not None and r["off"][key]]
     parts = []
     if questions:
         t, k = cut(questions, "turns"), cut(questions, "tokens")
@@ -267,7 +278,8 @@ def claims(questions: list[dict], renames: list[dict], points: list[dict], link:
         t, k = cut(renames, "turns"), cut(renames, "tokens")
         parts.append(f"renaming a method and every caller took {min(t):.0%}–{max(t):.0%} fewer turns and "
                      f"{min(k):.0%}–{max(k):.0%} fewer tokens")
-    small = [p for p in points if all(a["tokens"] < b["tokens"] for a, b in p["drivers"].values())]
+    small = [p for p in points if all(a["tokens"] is not None and b["tokens"] is not None and a["tokens"] < b["tokens"]
+                                      for a, b in p["drivers"].values())]
     if small:
         p = small[0]
         parts.append(f"down to the smallest repository measured, {p['repo']} at {p['loc']:,} lines")

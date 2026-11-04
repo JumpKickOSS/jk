@@ -81,6 +81,7 @@ the task names it: no file needs finding or opening first.
   the task is done: reply, without searching for the old name or re-reading files (another type's
   method of the same name is not this one).
 - jk `skill` only when a verdict names a topic.
+- `.jk/graph/` is jk's graph store, read by jk only: do not open or search it.
 """
 
 # arm: build tool, extra MCP servers, jk graph tools hidden, hooks installed in the sandbox, prompt addition
@@ -122,9 +123,10 @@ DEFAULT_MODEL = {"claude-code": "claude-sonnet-5-5", "grok": "grok-4.7", "agy": 
 DEFAULT_EFFORT = {"claude-code": "medium", "grok": "high", "agy": "high", "cursor": "medium", "muse": "xhigh"}
 
 # Each CLI's names for the same moves.
-NAV_TEXT = {"Grep", "Glob", "Read", "read_file", "grep", "list_dir", "view_file", "grep_search", "find_by_name"}
+NAV_TEXT = {"Grep", "Glob", "Read", "read_file", "grep", "list_dir", "view_file", "grep_search", "find_by_name",
+            "search"}
 EDITS = {"Edit", "Write", "MultiEdit", "search_replace", "replace_file_content", "multi_replace_file_content",
-         "write_to_file"}
+         "write_to_file", "edit_file", "write_file"}
 GRAPH = set(JK_GRAPH_TOOLS) | {"query_graph", "read_symbol", "get_neighbors", "find_symbols", "get_node",
                                "get_community", "god_nodes", "graph_stats", "shortest_path", "rules_for"}
 
@@ -140,6 +142,12 @@ QUESTION_PROMPT = """You are working in a {tool_label} project at {sandbox}.
 Use only the tools you are given (the MCP tools and the file tools), on files under {sandbox}. Do not run shell commands and do not use git.
 
 The task is a question about the code. Write the answer to {sandbox}/ANSWER.txt and change no other file; you do not need to build or test. One method per line as `ClassName.methodName`, where ClassName is the simple name of the innermost class that declares the method (a constructor is `ClassName.<init>`; list overloads once), or one type per line as its simple name when the question asks for types. Count main sources only, not tests. A call inside a lambda counts as a call from the method that contains the lambda.
+
+For example, an ANSWER.txt that lists two methods and a constructor:
+
+    OrderService.place
+    InvoiceWriter.write
+    Order.<init>
 
 When ANSWER.txt is written, reply with one line: DONE.
 """
@@ -359,6 +367,14 @@ def outside(entry: dict, sandbox: Path | None) -> bool:
     call's input short, so paths are read off the text when it is not whole JSON."""
     if sandbox is None:
         return False
+    paths = call_paths(entry)
+    root = str(sandbox)
+    return bool(paths) and not any(p.startswith(root) for p in paths)
+
+
+def call_paths(entry: dict) -> list[str]:
+    """The absolute paths a tool call names, read off its input (cut short by some drivers, so off the
+    text when it is not whole JSON)."""
     raw = str(entry.get("input") or "")
     try:
         args = json.loads(raw or "{}")
@@ -366,19 +382,22 @@ def outside(entry: dict, sandbox: Path | None) -> bool:
             if isinstance(args, dict) else []
     except json.JSONDecodeError:
         paths = ABS_PATH.findall(raw)
-    root = str(sandbox)
-    return bool(paths) and not any(p.removeprefix("file://").startswith(root) for p in paths)
+    return [p.removeprefix("file://") for p in paths]
 
 
 def navigation(summary: list[dict], sandbox: Path | None = None) -> dict:
     """Tool calls by family, from a driver's transcript spine. A file tool aimed only outside the
-    sandbox is `outside`, neither graph nor text, so it moves no graph share."""
-    counts = {"graph": 0, "text": 0, "edits": 0, "build": 0, "outside": 0, "other": 0}
+    sandbox is `outside`, and a read of files the agent itself wrote earlier in the run (its answer file,
+    read back) is `own`: neither is graph nor text, so neither moves the graph share."""
+    counts = {"graph": 0, "text": 0, "edits": 0, "build": 0, "outside": 0, "own": 0, "other": 0}
     names: dict[str, int] = {}
+    written: set[str] = set()
     for entry in summary:
         if "tool_use" not in entry:
             continue
         name = called(entry)
+        if name.split("__")[-1] in EDITS:
+            written.update(call_paths(entry))
         names[name] = names.get(name, 0) + 1
         short = name.split("__")[-1]
         command = ""
@@ -393,6 +412,8 @@ def navigation(summary: list[dict], sandbox: Path | None = None) -> dict:
             counts["text"] += 1
         elif short in NAV_TEXT and outside(entry, sandbox):
             counts["outside"] += 1
+        elif short in NAV_TEXT and written and set(call_paths(entry) or ["-"]) <= written:
+            counts["own"] += 1
         elif short in NAV_TEXT:
             counts["text"] += 1
         elif short in EDITS:
@@ -525,7 +546,15 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
         if res.extra.get("abort"):
             row["finding"] = f"the {ns.driver} CLI did not start: {res.finding}"[:300]
             return row
-        row["tokens"] = row["input_tokens"] + row["output_tokens"] + row["cache_read_tokens"] + row["cache_write_tokens"]
+        if usage:
+            row["tokens"] = (row["input_tokens"] + row["output_tokens"] + row["cache_read_tokens"]
+                             + row["cache_write_tokens"])
+        else:
+            # The agent was stopped before it reported usage (cursor-agent killed at the turn budget):
+            # its tokens are unknown, and a 0 would pull the cell's median down.
+            for key in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
+                        "reasoning_tokens", "tokens"):
+                row[key] = None
         hook_log = run_dir / "hook.jsonl"
         if hook_log.exists():
             fired = [json.loads(line) for line in hook_log.read_text().splitlines() if line.strip()]
@@ -559,6 +588,21 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
     return row
 
 
+def prune(row: dict) -> None:
+    """Delete a finished run's sandbox once its row is written, keeping the agent's diff beside the
+    transcript. Only a red or claimed run keeps its sandbox, for --reverify; a sandbox is a full repository
+    with its build output, a few hundred MB, and a matrix of them fills the disk."""
+    if row.get("outcome") in ("red", "claimed") or not row.get("sandbox"):
+        return
+    sandbox = Path(row["sandbox"])
+    if not sandbox.is_dir():
+        return
+    if (sandbox / ".git").exists():
+        diff = subprocess.run(["git", "diff", "HEAD"], cwd=sandbox, capture_output=True, text=True).stdout
+        (sandbox.parent / "diff.patch").write_text(diff, encoding="utf-8")
+    shutil.rmtree(sandbox, ignore_errors=True)
+
+
 def reverify(out_dir: Path) -> None:
     """Re-run verification in every kept sandbox whose row is not green, and rewrite the rows."""
     path = out_dir / "rows.jsonl"
@@ -582,7 +626,8 @@ def reverify(out_dir: Path) -> None:
 def render(out_dir: Path) -> None:
     rows = [json.loads(line) for line in (out_dir / "rows.jsonl").read_text().splitlines()]
     lines = [f"# Change tasks — {out_dir.name}", "",
-             "Medians over runs. Tokens are input + output + cache read + cache write as the API reports them. "
+             "Medians over runs. Tokens are input + output + cache read + cache write as the API reports them; "
+             "a run stopped before it reported usage is left out of the token medians and counted as unreported. "
              "Graph share is graph calls over graph + Grep/Glob/Read calls.", "",
              "| Driver | Task | Arm | Runs | Green | Median tokens | Uncached in | Output | Turns | Wall s | Graph share "
              "| Median F1 |",
@@ -592,10 +637,14 @@ def render(out_dir: Path) -> None:
               and "tokens" in r]
         if not rs:
             continue
-        med = lambda k: statistics.median(r.get(k) or 0 for r in rs)  # noqa: E731
+        def med(k: str) -> float:
+            known = [r[k] for r in rs if r.get(k) is not None]
+            return statistics.median(known) if known else float("nan")
+        unknown = sum(1 for r in rs if r.get("tokens") is None)
         shares = [r["graph_share"] for r in rs if r.get("graph_share") is not None]
         lines.append(f"| {driver} | {task} | {arm} | {len(rs)} | {sum(r['outcome'] == 'green' for r in rs)} "
-                     f"| {med('tokens'):.0f} | {med('input_tokens'):.0f} | {med('output_tokens'):.0f} "
+                     f"| {med('tokens'):.0f}{f' ({unknown} unreported)' if unknown else ''} "
+                     f"| {med('input_tokens'):.0f} | {med('output_tokens'):.0f} "
                      f"| {med('turns'):.0f} | {med('wall_s'):.0f} "
                      f"| {statistics.median(shares) if shares else 0:.2f} "
                      f"| {statistics.median(r['f1'] for r in rs) if all('f1' in r for r in rs) else '-'} |")
@@ -660,6 +709,7 @@ def main() -> int:
                     row = run_one(name, all_tasks[name], arm, run_no, ns, run_root)
                     f.write(json.dumps(row) + "\n")
                     f.flush()
+                    prune(row)
                     print(f"{ns.driver} {name} {arm} #{run_no}: {row['outcome']} tokens={row.get('tokens')} "
                           f"turns={row.get('turns')} graph_share={row.get('graph_share')} {row['finding']}")
     render(out_dir)
