@@ -26,10 +26,11 @@ public final class McpJobRuns {
     public static final int DEFAULT_WAIT_S = 240;
 
     /**
-     * The park for a client that gives up on a request after about a minute and then cancels it:
-     * answering {@code TIMEOUT … run(jid=N)} first keeps the job, where its cancel would end it.
+     * The park for a client that gives up on a request after 60 s and then cancels it: answering
+     * {@code TIMEOUT … run(jid=N)} first keeps the job, where its cancel would end it. Measured on
+     * that client, calls succeed up to 57 s and time out at 63 s; each TIMEOUT costs it a turn.
      */
-    static final int SHORT_CLIENT_WAIT_S = 45;
+    static final int SHORT_CLIENT_WAIT_S = 55;
 
     /** {@code clientInfo.name}s of hosts with that short request timeout. */
     private static final Set<String> SHORT_CLIENTS = Set.of("Cursor");
