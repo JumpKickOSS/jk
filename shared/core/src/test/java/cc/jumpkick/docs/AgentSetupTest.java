@@ -53,7 +53,8 @@ class AgentSetupTest {
         Object permissions = MiniJson.get(root, "permissions");
         assertThat(strings(MiniJson.list(permissions, "allow")))
                 .containsExactly("Bash(git *)", "mcp__jk", "Bash(jk *)");
-        assertThat(strings(MiniJson.list(permissions, "deny"))).containsExactly("Read(.env)");
+        assertThat(strings(MiniJson.list(permissions, "deny")))
+                .containsExactly("Read(.env)", AgentSetup.GRAPH_STORE_DENY);
         assertThat(MiniJson.list(MiniJson.get(root, "hooks"), "PreToolUse")).hasSize(2);
     }
 

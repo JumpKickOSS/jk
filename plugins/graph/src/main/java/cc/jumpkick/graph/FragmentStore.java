@@ -41,8 +41,11 @@ final class FragmentStore {
     /** Each module's file of lines, at the module's path under the store's directory. */
     static final String FILE = "graph.jsonl";
 
-    /** The line that opens every file: what it is, for a reader who opens one. */
-    static final String HEADER = MiniJson.write(Map.of("jk-graph", 1));
+    /**
+     * The line that opens every file: what it is, and where to ask instead, for an agent that opens one.
+     * A header from another release reads as a line with no path, so it is skipped all the same.
+     */
+    static final String HEADER = MiniJson.write(header());
 
     static final String ATTRIBUTES = ".gitattributes";
 
@@ -67,6 +70,16 @@ final class FragmentStore {
     private FragmentStore(Map<String, Fragment> fragments, Map<String, Fragment> classes) {
         this.fragments = fragments;
         this.classes = classes;
+    }
+
+    private static Map<String, Object> header() {
+        Map<String, Object> header = new LinkedHashMap<>();
+        header.put("jk-graph", 1);
+        header.put(
+                "note",
+                "jk's code graph store, read by jk only. Ask it through jk's MCP tools (callers, rename, query)"
+                        + " or jk graph; do not open or search this file.");
+        return header;
     }
 
     static FragmentStore empty() {

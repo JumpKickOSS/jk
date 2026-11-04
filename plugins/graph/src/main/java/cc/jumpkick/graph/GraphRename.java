@@ -159,13 +159,7 @@ final class GraphRename {
         }
         Hierarchy h = new Hierarchy(classes);
         Target target = target(classes, address);
-        if (target.error() != null) {
-            List<String> missing = unbuilt(graph, indexes, null);
-            return missing.isEmpty()
-                    ? target.error()
-                    : target.error() + " No compiled classes for " + String.join(", ", missing)
-                            + ": build them first (run kind=build, or jk build).";
-        }
+        if (target.error() != null) return RenameHints.withUnbuilt(target.error(), unbuilt(graph, indexes, null));
         if (target.name().equals(to)) return "'" + address + "' is already named " + to + ".";
         Map<String, Set<String>> family = family(classes, h, target);
         String clash = clash(classes, h, family, target.name(), to);
@@ -652,8 +646,11 @@ final class GraphRename {
             matches.add(l.facts().name());
         }
         if (matches.isEmpty()) {
-            return new Target(
-                    "", name, Set.of(), "No method '" + wanted + "' in the compiled classes. Pass Type.method.");
+            List<String> declaring = classes.values().stream()
+                    .filter(l -> !declared(l.facts(), name).isEmpty())
+                    .map(l -> l.facts().name())
+                    .toList();
+            return new Target("", name, Set.of(), RenameHints.noMethod(wanted, owner, name, declaring));
         }
         if (matches.size() > 1) {
             List<String> shown =
