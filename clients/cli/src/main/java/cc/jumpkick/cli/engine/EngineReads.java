@@ -29,6 +29,8 @@ import cc.jumpkick.wire.protocol.GraphProgress;
 import cc.jumpkick.wire.protocol.GraphRequest;
 import cc.jumpkick.wire.protocol.GuardCommitMsgAck;
 import cc.jumpkick.wire.protocol.GuardCommitMsgRequest;
+import cc.jumpkick.wire.protocol.GuardDocsAck;
+import cc.jumpkick.wire.protocol.GuardDocsRequest;
 import cc.jumpkick.wire.protocol.GuardExplainAck;
 import cc.jumpkick.wire.protocol.GuardExplainRequest;
 import cc.jumpkick.wire.protocol.GuardFreezeAck;
@@ -472,6 +474,16 @@ final class EngineReads {
                 EngineProtocol.GUARD_COMMIT_MSG_ACK,
                 "guard commit-msg",
                 GuardCommitMsgAck::decode);
+    }
+
+    /** {@code jk guard docs}: the Markdown rules over the tree — an inline read, no build. */
+    static GuardDocsAck guardDocs(EnginePaths.Paths paths, Path dir) throws IOException {
+        return request(
+                paths,
+                new GuardDocsRequest(dir.toString()).encode(),
+                EngineProtocol.GUARD_DOCS_ACK,
+                "guard docs",
+                GuardDocsAck::decode);
     }
 
     /** {@code jk guard explain}: one card, the catalog, or a kind's schema — an inline read. */

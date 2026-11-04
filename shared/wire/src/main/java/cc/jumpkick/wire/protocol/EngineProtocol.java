@@ -487,6 +487,15 @@ public final class EngineProtocol {
     public static final String GUARD_COMMIT_MSG_ACK = "guard-commit-msg-ack";
 
     /**
+     * Client → server: {@code jk guard docs}, the text rules that read Markdown, over the tree with no
+     * build; one {@link #GUARD_DOCS_ACK}.
+     */
+    public static final String GUARD_DOCS_REQUEST = "guard-docs-request";
+
+    /** Server → client, terminal for {@link #GUARD_DOCS_REQUEST}. */
+    public static final String GUARD_DOCS_ACK = "guard-docs-ack";
+
+    /**
      * Client → server: {@code jk guard explain} — one rule's card, the catalog, or a kind's schema;
      * an inline read that never plans a build. One {@link #GUARD_EXPLAIN_ACK}.
      */

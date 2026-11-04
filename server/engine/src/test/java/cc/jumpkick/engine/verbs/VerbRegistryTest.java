@@ -21,7 +21,7 @@ class VerbRegistryTest {
     @Test
     void standard_serves_every_build_like_goal_through_one_verb() {
         VerbRegistry reg = VerbRegistry.standard(new FakeHost());
-        assertThat(reg.all()).hasSize(40);
+        assertThat(reg.all()).hasSize(41);
         HostedVerb build = verb(reg, EngineProtocol.BUILD_REQUEST);
         assertThat(build).isInstanceOf(WorkspaceBuildVerb.class);
         assertThat(build.jobKinds())
@@ -39,6 +39,7 @@ class VerbRegistryTest {
                         "upload",
                         "sync");
         assertThat(verb(reg, EngineProtocol.LOCK_REQUEST)).isInstanceOf(LockVerb.class);
+        assertThat(verb(reg, EngineProtocol.GUARD_DOCS_REQUEST)).isInstanceOf(GuardDocsVerb.class);
         assertThat(verb(reg, EngineProtocol.UPDATE_REQUEST)).isInstanceOf(UpdateVerb.class);
         assertThat(build.shape()).isInstanceOf(VerbShape.AsyncPlan.class);
         assertThat(build.toJobRequest("{\"type\":\"build-request\"}").verb()).isEqualTo("build");
