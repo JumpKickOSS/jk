@@ -13,6 +13,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.secret.SecretBackendException;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -67,7 +68,13 @@ public final class AuthLogoutCommand implements CliCommand {
             return Exit.CONFIG;
         }
 
-        AuthCommand.authFor(credentialsDir).logout(kind, resolvedHost);
+        try {
+            AuthCommand.authFor(credentialsDir).logout(kind, resolvedHost);
+        } catch (SecretBackendException refused) {
+            CliOutput.err("error: " + refused.getMessage() + "; the login is kept, so `jk auth logout` can be run again"
+                    + " once the keychain answers.");
+            return 1;
+        }
         if (!global.quiet) {
             CommandWedge.printOk("Auth", "Logged out of " + kind.displayName() + " (" + resolvedHost + ")");
         }

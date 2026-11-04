@@ -104,6 +104,7 @@ public final class DoctorCommand implements CliCommand {
         Check shell = checkShell();
         Check mvn = checkMavenSpy(MavenSpyJar.current());
         Check m2 = checkM2();
+        StoredLogins.Rows logins = StoredLogins.collect();
         List<ToolRow> toolRows;
         String toolsError = null;
         try {
@@ -154,7 +155,8 @@ public final class DoctorCommand implements CliCommand {
                     toolsError,
                     workers,
                     repos,
-                    settings));
+                    settings,
+                    logins));
             return hasFail ? 1 : 0;
         }
 
@@ -170,6 +172,7 @@ public final class DoctorCommand implements CliCommand {
         printCheck(shell, t);
         printCheck(mvn, t);
         printCheck(m2, t);
+        for (String line : StoredLogins.render(logins, t)) CliOutput.out(line);
 
         printTools(toolRows, toolsError, t);
 
@@ -880,7 +883,8 @@ public final class DoctorCommand implements CliCommand {
 
     /**
      * The `-O jsonl` report: the checks, the tool tallies and the scan error, then the
-     * installed workers with their launch classpaths, the repository stores and Maven's settings.
+     * installed workers with their launch classpaths, the repository stores, Maven's settings and
+     * the stored logins with where each keeps its secret.
      */
     public static String reportJson(
             Check engine,
@@ -900,7 +904,8 @@ public final class DoctorCommand implements CliCommand {
             @Nullable String toolsError,
             Workers workers,
             RepoStores.Stores repos,
-            MavenSettingsRows.Rows settings) {
+            MavenSettingsRows.Rows settings,
+            StoredLogins.Rows logins) {
         return JsonFields.object()
                 .token("engine", checkJson(engine))
                 .token("cache", checkJson(cache))
@@ -924,6 +929,7 @@ public final class DoctorCommand implements CliCommand {
                 .token("workers", workersJson(workers))
                 .token("repos", RepoStores.json(repos))
                 .token("settings", MavenSettingsRows.json(settings))
+                .token("logins", StoredLogins.json(logins))
                 .finish();
     }
 

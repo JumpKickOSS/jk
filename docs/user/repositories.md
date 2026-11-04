@@ -274,7 +274,8 @@ Sources, in order — the first that yields a credential wins:
    `_FILE` form (`JK_REPO_<ID>_TOKEN_FILE`, `_USERNAME_FILE`, `_PASSWORD_FILE`) that names a file
    holding the value, the convention Docker and Kubernetes secret mounts follow; see
    [Secret references](#secret-references)
-3. `jk repo login <id>` (stored under `~/.jk/creds/repo/`, owner-only)
+3. `jk repo login <id>` (the secret in the OS keychain, or the owner-only file under
+   `~/.jk/creds/repo/` — see [Where a login keeps its secret](#where-a-login-keeps-its-secret))
 4. the `<server>` with that `<id>` in `~/.m2/settings.xml` (a `<mirror>` or active-profile
    `<repository>` with that id in the same file binds the name to its URL — see
    [Maven `settings.xml`](#maven-settingsxml-mirrors-proxies-profiles))
@@ -358,6 +359,39 @@ password = "${cmd:aws codeartifact get-authorization-token --domain acme --domai
 
 `${cmd:…}` works only in `~/.jk/config.toml`. Anywhere else it is a parse error, not a warning:
 a project that could name a command would run it on your machine at its first resolve.
+
+### Where a login keeps its secret
+
+`jk repo login` and `jk auth login` put the token or password in the OS keychain when one
+answers: the macOS Keychain (`/usr/bin/security`), the Windows Credential Manager, or the Secret
+Service on Linux (GNOME Keyring, KWallet, KeePassXC, through libsecret's `secret-tool`). The record
+under `~/.jk/creds/repo/<id>` keeps what is not secret: the `<scheme> <origin>` binding, the
+username, and a pointer to the keychain item (`secret-service repo/nexus`). A `jk auth login`
+record under `~/.jk/creds/forge/<host>` holds only the pointer.
+
+With no keychain answering (SSH without a desktop session, CI, a container), the secret stays in
+the owner-only record and the login prints one notice saying why. Choose explicitly in
+`~/.jk/config.toml`, or with `JK_CREDENTIALS_STORE` for CI:
+
+```toml
+[credentials]
+store = "keychain"   # fail the login when no keychain takes the secret
+# store = "file"     # keep it in the owner-only record, no notice
+```
+
+A login over an existing record moves its secret to wherever the login puts it now, and removes
+a keychain item the record no longer points at. A plaintext record still reads; nothing migrates
+it except the next login. `jk repo logout <id>` and `jk auth logout` remove the keychain item,
+then the record; a keychain that refuses (locked) keeps the record, so the logout can be retried.
+`jk doctor` lists every login with where its secret is.
+
+The engine reads the macOS Keychain and the Windows Credential Manager itself, through the
+user's logon session. The Secret Service is found through the shell's D-Bus variables, and a
+resident engine has those of whichever shell started it, if any (none when it was started over SSH
+or by systemd), so the `jk` command reads those items and sends the secrets with its request, the
+way `JK_REPO_*` variables travel. A build started without a `jk` command — from the dashboard or an MCP client — reads
+them from the engine, which reaches the Secret Service only when it was started from a desktop
+session.
 
 ### A name is not a destination
 

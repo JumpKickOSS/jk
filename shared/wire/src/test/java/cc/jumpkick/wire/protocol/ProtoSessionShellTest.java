@@ -36,4 +36,17 @@ class ProtoSessionShellTest {
         assertThat(ProtoSession.withShell(line, Map.of())).isEqualTo(line);
         assertThat(ProtoSession.shellOf(line)).isEmpty();
     }
+
+    @Test
+    void keychain_secrets_round_trip_beside_the_shell_keyed_by_pointer() {
+        Map<String, String> secrets = new LinkedHashMap<>();
+        secrets.put("secret-service repo/nexus", "p=ss \"w\" \\ 1");
+        secrets.put("secret-service forge/github.com", "ghp_x");
+        String line =
+                ProtoSession.withKeychain(ProtoSession.withShell("{\"type\":\"x\"}", Map.of("PATH", "/bin")), secrets);
+
+        assertThat(ProtoSession.keychainOf(line)).isEqualTo(secrets);
+        assertThat(ProtoSession.shellOf(line)).isEqualTo(Map.of("PATH", "/bin"));
+        assertThat(ProtoSession.withKeychain("{\"type\":\"x\"}", Map.of())).isEqualTo("{\"type\":\"x\"}");
+    }
 }

@@ -66,6 +66,7 @@ public final class EffectiveUserConfig {
         addHistory(out, userConfig, env);
         addM2(out, userConfig, env);
         addInstall(out, userConfig, env);
+        addCredentials(out, userConfig, env);
         addTemplates(out, userConfig);
         return List.copyOf(out);
     }
@@ -178,6 +179,15 @@ public final class EffectiveUserConfig {
                 "install.destination",
                 d.destination().spelling(),
                 e.destination().spelling());
+    }
+
+    /** {@code [credentials] store}, under {@code JK_CREDENTIALS_STORE}, as spelled; validated where a login reads it. */
+    private static void addCredentials(List<Row> out, Path file, Function<String, @Nullable String> env) {
+        String fromEnv = env.apply("JK_CREDENTIALS_STORE");
+        String store = fromEnv != null && !fromEnv.isBlank()
+                ? fromEnv.strip()
+                : GlobalConfig.credentialsStore(file).orElse("auto");
+        add(out, "credentials.store", "auto", store);
     }
 
     private static void addTemplates(List<Row> out, Path file) {

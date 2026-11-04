@@ -18,6 +18,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.secret.SecretVault;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -90,18 +91,25 @@ public final class AuthLoginCommand implements CliCommand {
             return Exit.CONFIG;
         }
 
+        SecretVault.Stored stored;
         try {
             String token = withToken ? readTokenFromStdin() : runDeviceFlow(kind, resolvedHost);
-            auth.store(kind, resolvedHost, token);
-        } catch (AuthException e) {
+            stored = auth.store(kind, resolvedHost, token);
+        } catch (AuthException | IllegalStateException e) {
             CliOutput.err("error: " + e.getMessage());
             return 1;
         } catch (IOException e) {
             CliOutput.err("error: could not read token from stdin: " + e.getMessage());
             return 1;
         }
+        if (stored.notice() != null) CliOutput.err(stored.notice());
 
-        if (!global.quiet) CliOutput.out("Logged in to " + kind.displayName() + " (" + resolvedHost + ").");
+        SecretVault.Pointer pointer = stored.pointer();
+        if (!global.quiet) {
+            CliOutput.out("Logged in to " + kind.displayName() + " (" + resolvedHost + ")"
+                    + (pointer == null ? "" : "; the token is in the " + SecretVault.displayName(pointer.backend()))
+                    + ".");
+        }
         return 0;
     }
 

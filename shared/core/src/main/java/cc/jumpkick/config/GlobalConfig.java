@@ -184,6 +184,19 @@ public final class GlobalConfig {
         return stringFromRoot(configFile, SelfUpdatePolicy.KEY);
     }
 
+    /**
+     * {@code [credentials] store}: where {@code jk repo login} and {@code jk auth login} keep a
+     * secret ({@code keychain} or {@code file}), as written. Empty when unset.
+     */
+    public static Optional<String> credentialsStore() {
+        return credentialsStore(JkDirs.userConfigFile());
+    }
+
+    /** As {@link #credentialsStore()} against an explicit config file. */
+    public static Optional<String> credentialsStore(Path configFile) {
+        return stringFromGlobal(configFile, "credentials", "store");
+    }
+
     /** {@code [release] trusted-keys}: base64 RSA SPKI keys extending built-in release trust. */
     public static List<String> releaseTrustedKeys() {
         return stringFromGlobal(JkDirs.userConfigFile(), "release", "trusted-keys")

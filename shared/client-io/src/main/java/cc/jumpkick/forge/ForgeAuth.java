@@ -2,6 +2,7 @@
 package cc.jumpkick.forge;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.secret.SecretVault;
 import java.util.Optional;
 import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
@@ -45,9 +46,13 @@ public final class ForgeAuth {
         return store.read(resolveHost(kind, host)).map(t -> new ResolvedToken(t, TokenSource.STORE));
     }
 
-    /** Persist a freshly-obtained token (device flow or pasted PAT). */
-    public void store(ForgeKind kind, String host, String token) {
-        store.write(resolveHost(kind, host), token);
+    /**
+     * Persist a freshly-obtained token (device flow or pasted PAT).
+     *
+     * @return where the token went, and the notice to show when no keychain answered
+     */
+    public SecretVault.Stored store(ForgeKind kind, String host, String token) {
+        return store.write(resolveHost(kind, host), token);
     }
 
     /** Forget jk's stored credential for a host. Leaves env/CLI tokens alone. */
