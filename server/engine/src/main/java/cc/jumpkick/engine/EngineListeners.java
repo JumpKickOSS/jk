@@ -115,6 +115,15 @@ public final class EngineListeners {
             }
 
             @Override
+            public void remaining(long remainingMs) {
+                if (rid <= 0) return;
+                // The first estimate anchors the run's clock (R0); later ones are its residual.
+                var tracker = sessions.tracker(rid);
+                tracker.noteRemaining(remainingMs, tracker.R0ms() > 0 ? tracker.R0ms() : remainingMs);
+                sse.emitWorkspaceProgress(rid, writer, true);
+            }
+
+            @Override
             public void recordWeight(String dir, long weight) {
                 if (rid > 0) sessions.weights(rid).put(dir, weight);
             }

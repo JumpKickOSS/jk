@@ -83,6 +83,21 @@ public final class WorkspacePreflightPhase {
 
     /** {@link #run(WorkspaceRequest, WorkspaceBuildListener)} on {@code clock}, which times the lock freshen. */
     static Outcome run(WorkspaceRequest request, WorkspaceBuildListener listener, Clock clock) {
+        // A cold lock or sync is mostly downloads: priced in time while they run, so the header
+        // moves through them instead of holding at a few percent.
+        AutoCloseable eta = DownloadEta.start(listener);
+        try {
+            return preflight(request, listener, clock);
+        } finally {
+            try {
+                eta.close();
+            } catch (Exception e) {
+                Log.debug("preflight: download eta did not stop cleanly", e);
+            }
+        }
+    }
+
+    private static Outcome preflight(WorkspaceRequest request, WorkspaceBuildListener listener, Clock clock) {
         // Artifacts landed so far: the run's own downloads (the lock's included) are counted from here.
         long landedBefore = SessionContext.current().io().transfers().artifactsLanded();
         JkBuild entryBuild;
