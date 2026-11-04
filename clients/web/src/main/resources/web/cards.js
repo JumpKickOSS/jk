@@ -205,6 +205,19 @@ export const cardMethods = {
   summary(card) {
     return moduleSummary(card);
   },
+  /** The Download block's head: {@code 120/183 · 143.8 MiB}, or {@code 12 files · 3.1 MiB} with no declared set. */
+  downloadsHead(dl) {
+    const count = dl.planned > 0 ? `${dl.settled}/${dl.planned}` : `${dl.files} files`;
+    return `${count} · ${fmtBytes(dl.bytes)}`;
+  },
+  /** A row's fill, 0–100; null while its length is undeclared. */
+  downloadPct(row) {
+    return row.total > 0 ? Math.min(100, Math.round((100 * row.read) / row.total)) : null;
+  },
+  /** Bodies in flight past the rows the engine sent (its row cap). */
+  downloadsMore(dl) {
+    return Math.max(0, dl.inflight - dl.rows.length);
+  },
   /**
    * Activity kind label. Wire kind stays {@code build}; finished runs use past tense so a
    * fully-cached monorepo (no / few module rows, ~100ms) reads "built" not "build". A run an

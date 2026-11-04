@@ -7,6 +7,7 @@ import path from 'node:path';
 const spa = (name) => import(pathToFileURL(path.join(process.env.JK_APP_DIR, name)));
 
 export const {
+  downloadsOf,
   etaTotalMillis,
   foldEvent,
   historyCard,

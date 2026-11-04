@@ -15,6 +15,7 @@ import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.base.LiveUnits;
@@ -33,6 +34,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -544,13 +546,18 @@ public final class JobEnvelope {
             // removes the sink, or a later run's notice would ride the wrong request.
             RunNotices.openSink(io, (code, message) -> publishNotice(eventRequestId, eventDir, writer, message));
             // Every download this job makes, whichever step or caller asked for the bytes, streams
-            // to its client from the run's board; a detached job (no writer) has no display.
-            if (writer != null) {
-                downloads = DownloadsPublisher.start(
-                        io.transfers(),
-                        snapshot -> WireWriter.sendNoWait(writer, ProtoEvents.downloads(snapshot)),
-                        eventRequestId);
-            }
+            // from the run's board: to its CLI client on the wire, and to the dashboard and MCP
+            // subscribers as the same event, so a job started from the web UI or by an agent shows
+            // its downloads too.
+            final long rid = eventRequestId;
+            downloads = DownloadsPublisher.start(
+                    io.transfers(),
+                    snapshot -> {
+                        String line = ProtoEvents.downloads(snapshot);
+                        if (writer != null) WireWriter.sendNoWait(writer, line);
+                        publishDownloads(line, rid);
+                    },
+                    eventRequestId);
             JobOutcome outcome;
             try {
                 // Every read of the caller's environment in this job answers from its shell.
@@ -793,5 +800,17 @@ public final class JobEnvelope {
         String cache = Jsonl.str(requestLine, "cache");
         if (cache != null) return cache;
         return "";
+    }
+
+    /**
+     * The wire's {@code downloads} event, field for field, to the SSE and MCP subscribers, tagged
+     * with its job: one encoding (DownloadsEvent) for every surface, so none can drift.
+     */
+    private void publishDownloads(String wireLine, long rid) {
+        if (!(MiniJson.parse(wireLine) instanceof Map<?, ?> parsed)) return;
+        Map<String, Object> fields = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : parsed.entrySet()) fields.put(String.valueOf(e.getKey()), e.getValue());
+        fields.put("jid", rid);
+        host.publishEvent(EngineProtocol.DOWNLOADS, host.withProgress(JsonOut.rawObject(fields), rid));
     }
 }

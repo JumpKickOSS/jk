@@ -857,6 +857,17 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 
 /* console tail (in-flight output + engine log) */
 
+/* the run's downloads (CLI parity: the Download block of the work tree) */
+
+.downloads { font: 11.5px/1.7 var(--mono); color: var(--tx); margin-top: 9px; }
+.downloads-sep { color: var(--dim); }
+.downloads-row { display: flex; align-items: center; gap: 8px; padding-left: 14px; }
+.downloads-bar { flex: 0 0 80px; height: 5px; border-radius: 3px; background: var(--bd); overflow: hidden; }
+.downloads-fill { display: block; height: 100%; background: var(--run); }
+.downloads-pct { flex: 0 0 3.2em; text-align: right; color: var(--mu); }
+.downloads-label { color: var(--mu); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.downloads-more { padding-left: 14px; color: var(--dim); }
+
 .console {
   font: 11.5px/1.8 var(--mono);
   color: var(--mu);

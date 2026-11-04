@@ -279,6 +279,13 @@ export function foldEvent(cards, event) {
       }
       break;
     }
+    case EVENT.downloads: {
+      // The run's downloads, as the terminal's Download block draws them: shown while bytes move
+      // and a step's declared set is unsettled or a body is still streaming.
+      const card = resolveCard(cards, d);
+      if (card) card.downloads = downloadsOf(d);
+      break;
+    }
     case EVENT.output: {
       const card = resolveCard(cards, d);
       if (card && typeof d.line === 'string') {
@@ -340,6 +347,7 @@ export function foldEvent(cards, event) {
         card.cancelled = !!d.cancelled;
         card.success = typeof d.success === 'boolean' ? d.success : null;
         card.output = []; // the console tail is an in-flight affordance; finished cards are compact
+        card.downloads = null; // so is the Download block, whether or not its last frame arrived
         card.etaMillis = null; // the countdown is an in-flight affordance; a finished card is 100%
         card.io = ioOf(d); // byte counters, absent when the run moved nothing
       }
@@ -1028,4 +1036,21 @@ function queuedCard(d, at) {
     etaAt: null,
     output: [],
   };
+}
+
+/**
+ * A {@code downloads} event as the card keeps it, or null when nothing is downloading — the same
+ * rule as the CLI's TransferBoard.Snapshot.downloading(): bytes moved, and a body is streaming or
+ * a declared set is unsettled.
+ */
+export function downloadsOf(d) {
+  const settled = d.settled || 0;
+  const planned = d.planned || 0;
+  const bytes = d.bytes || 0;
+  const inflight = d.inflight || 0;
+  if (!(bytes > 0 && (inflight > 0 || settled < planned))) return null;
+  const rows = Array.isArray(d.rows)
+    ? d.rows.map((r) => ({ label: r.label || '', read: r.read || 0, total: typeof r.total === 'number' ? r.total : -1 }))
+    : [];
+  return { settled, planned, files: d.files || 0, bytes, inflight, rows };
 }
