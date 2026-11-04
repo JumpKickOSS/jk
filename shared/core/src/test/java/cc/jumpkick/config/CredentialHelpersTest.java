@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.task.IoLedger;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -149,6 +150,85 @@ class CredentialHelpersTest {
         assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-2");
         assertThat(runs).hasValue(2);
         assertThat(CredentialHelpers.produced("literal")).isFalse();
+    }
+
+    @Test
+    void a_rerun_value_refused_again_in_the_same_request_is_not_run_a_third_time() {
+        AtomicInteger runs = countingRunner(0);
+        var cmd = CredentialHelpers.parse("helper", "w");
+        IoLedger.open(new IoLedger());
+        try {
+            assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-1");
+            assertThat(CredentialHelpers.forget("token-1")).isTrue();
+            assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-2");
+
+            // Another module's repository is refused token-2: the re-run's value, so no third run.
+            assertThat(CredentialHelpers.forget("token-2")).isFalse();
+            assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-2");
+            assertThat(runs).hasValue(2);
+        } finally {
+            RequestScope.release();
+            IoLedger.close();
+        }
+    }
+
+    @Test
+    void the_next_request_runs_a_helper_whose_rerun_was_refused_again() {
+        AtomicInteger runs = countingRunner(0);
+        var cmd = CredentialHelpers.parse("helper", "w");
+        IoLedger.open(new IoLedger());
+        try {
+            CredentialHelpers.value(cmd, Map.of(), "w");
+            CredentialHelpers.forget("token-1");
+            CredentialHelpers.value(cmd, Map.of(), "w");
+            assertThat(CredentialHelpers.forget("token-2")).isFalse();
+        } finally {
+            RequestScope.release();
+            IoLedger.close();
+        }
+
+        IoLedger.open(new IoLedger());
+        try {
+            // The user logged in again between commands: the refusal runs the helper once more.
+            assertThat(CredentialHelpers.forget("token-2")).isTrue();
+            assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-3");
+            assertThat(runs).hasValue(3);
+        } finally {
+            RequestScope.release();
+            IoLedger.close();
+        }
+    }
+
+    @Test
+    void off_a_request_a_refused_rerun_stays_refused_for_the_window() {
+        AtomicInteger runs = countingRunner(0);
+        AtomicLong now = new AtomicLong(0);
+        CredentialHelpers.clock(now::get);
+        var cmd = CredentialHelpers.parse("helper", "w");
+        CredentialHelpers.value(cmd, Map.of(), "w");
+        CredentialHelpers.forget("token-1");
+        CredentialHelpers.value(cmd, Map.of(), "w");
+
+        assertThat(CredentialHelpers.forget("token-2")).isFalse();
+        now.set(CredentialHelpers.RERUN_WINDOW.toNanos());
+        assertThat(CredentialHelpers.forget("token-2")).isTrue();
+        assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-3");
+        assertThat(runs).hasValue(3);
+    }
+
+    @Test
+    void a_ttl_refresh_is_not_a_rerun_so_its_refusal_runs_the_helper_again() {
+        AtomicInteger runs = countingRunner(0);
+        AtomicLong now = new AtomicLong(0);
+        CredentialHelpers.clock(now::get);
+        var cmd = CredentialHelpers.parse("helper #ttl=1m", "w");
+        CredentialHelpers.value(cmd, Map.of(), "w");
+        now.set(Duration.ofMinutes(2).toNanos());
+        assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-2");
+
+        assertThat(CredentialHelpers.forget("token-2")).isTrue();
+        assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-3");
+        assertThat(runs).hasValue(3);
     }
 
     @Test

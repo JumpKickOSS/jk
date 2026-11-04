@@ -391,6 +391,9 @@ password = "${cmd:aws codeartifact get-authorization-token --domain acme --domai
   environment, and concurrent resolves share one run.
 - When the repository answers 401 or 403, jk drops the cached value, runs the helper once more,
   and sends the request once more. A second refusal is the answer.
+- A helper runs again at most once per command. If the value it printed on that second run is
+  refused too, every other repository and module that uses it fails at once, so an expired SSO login
+  doesn't run the helper twice for every module of a lock. The next command runs the helper again.
 - jk masks what the helper prints, as it masks every other credential.
 
 `${cmd:…}` works only in `~/.jk/config.toml`. Anywhere else it is a parse error, not a warning:
