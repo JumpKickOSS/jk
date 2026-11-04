@@ -205,6 +205,9 @@ Each is, first to answer: `JK_<TOOL>_DIST_MIRROR` (`JK_NODE_DIST_MIRROR`, `JK_KO
 the public origin. A Gradle wrapper's own `distributionUrl` is used as written. Credentials come
 from the chain below, under the mirror's `host[:port]` (or a `settings.xml` mirror's `id`).
 
+A `[mirrors]` value, and a `[node]` registry or scope, may use any
+[secret reference](repositories.md#secret-references): `${VAR}`, `${env:VAR}` or `${file:…}`.
+
 A JDK comes from more than one host: the catalog feed is on `download.jetbrains.com` and each
 archive it names is on its vendor's host (`github.com` for Temurin, `cdn.azul.com`, …). A `jdk`
 mirror (`JK_JDK_DIST_MIRROR`, or a `settings.xml` mirror whose `mirrorOf` names `jdk`) therefore

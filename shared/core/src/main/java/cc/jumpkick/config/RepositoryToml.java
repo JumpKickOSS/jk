@@ -28,7 +28,8 @@ public final class RepositoryToml {
 
     private RepositoryToml() {}
 
-    private static final Pattern ENV_REF = Pattern.compile("\\$\\{([A-Za-z_][A-Za-z0-9_]*)}");
+    /** {@code ${NAME}} and its explicit spelling {@code ${env:NAME}}; see {@link ConfigReference}. */
+    private static final Pattern ENV_REF = Pattern.compile("\\$\\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)}");
 
     /** What a {@code ${VAR}} reference means to a layer. */
     public enum VarPolicy {
@@ -263,9 +264,10 @@ public final class RepositoryToml {
     }
 
     /**
-     * Expand {@code ${VAR}} references in {@code raw}, resolving each var name via {@code resolveVar}
-     * (which returns the replacement, or may throw for a strict "unset var" policy). {@code null} in →
-     * {@code null} out.
+     * Expand {@code ${VAR}} and {@code ${env:VAR}} references in {@code raw}, resolving each var name
+     * via {@code resolveVar} (which returns the replacement, or may throw for a strict "unset var"
+     * policy). {@code null} in → {@code null} out. A {@code ${file:...}} reference is left as
+     * written: only {@link ReferenceResolver} reads one, under the declaring file's provenance.
      */
     public static @Nullable String interpolate(@Nullable String raw, Function<String, String> resolveVar) {
         if (raw == null) return null;

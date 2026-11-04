@@ -1,0 +1,156 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.config;
+
+import cc.jumpkick.host.PathUtil;
+import java.io.IOException;
+import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFilePermission;
+import java.util.Objects;
+import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
+
+/**
+ * Reads the secret a {@code ${file:path}} or {@code ${file:path#key}} reference, or a {@code
+ * JK_REPO_<ID>_*_FILE} variable, names.
+ *
+ * <p><b>Permissions.</b> On POSIX a file that its group or others can read is refused, naming the
+ * file and the {@code chmod 600} that fixes it: a secret anyone on the machine can read is not one
+ * the user meant to keep. The check follows symlinks, so a mounted secret is judged by the file it
+ * points at. Windows has no cheap equivalent and is not checked.
+ *
+ * <p><b>Rotation.</b> Every read stats the file, and the cached contents are reused only while the
+ * file's identity, modification time and size are unchanged. A rotated secret is therefore picked
+ * up on the next resolve, and a resident engine never needs restarting for it.
+ *
+ * <p>Every failure is a {@link JkBuildParseException} that starts with {@code where}, the position
+ * that named the file ({@code repositories.<id>.<key>} or the variable), so a missing file or key
+ * is never a silent anonymous request.
+ */
+public final class SecretFiles {
+
+    /** What one file held the last time it was read, and the stat it was read under. */
+    private record Read(@Nullable Object fileKey, FileTime modified, long size, String contents) {}
+
+    private static final ConcurrentHashMap<Path, Read> CACHE = new ConcurrentHashMap<>();
+
+    /** A machine names a handful of secret files; an over-full table is dropped whole. */
+    private static final int MAX_ENTRIES = 256;
+
+    private SecretFiles() {}
+
+    /**
+     * The value of a {@code file:} reference body — {@code path} or {@code path#key} — with a
+     * relative path resolved against {@code baseDir}, the declaring file's directory.
+     */
+    public static String reference(String body, Path baseDir, String where) {
+        int hash = body.lastIndexOf('#');
+        String path = hash < 0 ? body : body.substring(0, hash);
+        String key = hash < 0 ? null : body.substring(hash + 1).strip();
+        if (path.isBlank()) throw new JkBuildParseException(where + " has a ${file:} reference with no path");
+        if (key != null && key.isEmpty()) {
+            throw new JkBuildParseException(where + " has a ${file:" + body + "} reference with an empty key after #");
+        }
+        Path file = resolve(path.strip(), baseDir);
+        return key == null ? contents(file, where) : property(file, key, where);
+    }
+
+    /** {@code raw} with a leading {@code ~} expanded, and a relative path resolved against {@code baseDir}. */
+    public static Path resolve(String raw, Path baseDir) {
+        if (raw.equals("~") || raw.startsWith("~/") || raw.startsWith("~\\")) return PathUtil.resolveUserPath(raw);
+        Path p = Path.of(raw);
+        return (p.isAbsolute() ? p : baseDir.resolve(p)).toAbsolutePath().normalize();
+    }
+
+    /** The whole of {@code file}, trailing line terminators trimmed; an empty file is an error. */
+    public static String contents(Path file, String where) {
+        String value = stripTrailingNewlines(read(file, where));
+        if (value.isEmpty()) throw new JkBuildParseException(where + " reads " + file + ", which is empty");
+        return value;
+    }
+
+    /** One key of {@code file} read as a Java {@code .properties} file; a missing key is an error. */
+    public static String property(Path file, String key, String where) {
+        Properties props = new Properties();
+        try {
+            props.load(new StringReader(read(file, where)));
+        } catch (IOException | IllegalArgumentException e) {
+            throw new JkBuildParseException(
+                    where + " reads " + file + ", which is not a valid .properties file: " + e.getMessage());
+        }
+        String value = props.getProperty(key);
+        if (value == null) {
+            throw new JkBuildParseException(where + " reads key `" + key + "` of " + file + ", which has no such key");
+        }
+        if (value.isEmpty()) {
+            throw new JkBuildParseException(where + " reads key `" + key + "` of " + file + ", which is empty");
+        }
+        return value;
+    }
+
+    /** The file's text, from the cache while its stat is unchanged, after the permission check. */
+    private static String read(Path file, String where) {
+        BasicFileAttributes attrs;
+        try {
+            attrs = Files.readAttributes(file, BasicFileAttributes.class);
+        } catch (NoSuchFileException e) {
+            throw new JkBuildParseException(where + " reads " + file + ", which does not exist");
+        } catch (IOException e) {
+            throw new JkBuildParseException(where + " cannot read " + file + ": " + e.getMessage());
+        }
+        if (!attrs.isRegularFile()) throw new JkBuildParseException(where + " reads " + file + ", which is not a file");
+        refuseIfShared(file, where);
+        Read cached = CACHE.get(file);
+        if (cached != null
+                && Objects.equals(cached.fileKey(), attrs.fileKey())
+                && cached.modified().equals(attrs.lastModifiedTime())
+                && cached.size() == attrs.size()) {
+            return cached.contents();
+        }
+        String text;
+        try {
+            text = Files.readString(file, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new JkBuildParseException(where + " cannot read " + file + ": " + e.getMessage());
+        }
+        if (CACHE.size() >= MAX_ENTRIES) CACHE.clear();
+        CACHE.put(file, new Read(attrs.fileKey(), attrs.lastModifiedTime(), attrs.size(), text));
+        return text;
+    }
+
+    /** The POSIX check: group- or other-readable is refused. A file system without POSIX permissions is not checked. */
+    private static void refuseIfShared(Path file, String where) {
+        PosixFileAttributeView view = Files.getFileAttributeView(file, PosixFileAttributeView.class);
+        if (view == null) return;
+        Set<PosixFilePermission> perms;
+        try {
+            perms = view.readAttributes().permissions();
+        } catch (IOException | UnsupportedOperationException e) {
+            return;
+        }
+        if (perms.contains(PosixFilePermission.GROUP_READ) || perms.contains(PosixFilePermission.OTHERS_READ)) {
+            throw new JkBuildParseException(where + " reads " + file
+                    + ", which its group or other users can read; a secret must be readable by you alone."
+                    + " Run `chmod 600 " + file + "`.");
+        }
+    }
+
+    private static String stripTrailingNewlines(String s) {
+        int end = s.length();
+        while (end > 0 && (s.charAt(end - 1) == '\n' || s.charAt(end - 1) == '\r')) end--;
+        return s.substring(0, end);
+    }
+
+    /** Forget every cached read. Nothing on the build path needs this; tests do. */
+    static void clear() {
+        CACHE.clear();
+    }
+}
