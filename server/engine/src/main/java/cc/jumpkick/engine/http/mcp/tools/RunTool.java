@@ -7,7 +7,9 @@ import cc.jumpkick.engine.http.mcp.McpDiagnostics;
 import cc.jumpkick.engine.http.mcp.McpJobRuns;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
+import cc.jumpkick.engine.http.mcp.McpVitals;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code run} — start a job and wait, keep waiting on one, or read an earlier verdict. {@code jid}
@@ -49,6 +51,14 @@ public final class RunTool implements McpTool {
         return McpJobRuns.run(in, null);
     }
 
+    private static @Nullable Long jidOf(String run) {
+        try {
+            return Long.parseLong(run.strip());
+        } catch (NumberFormatException notANumber) {
+            return null;
+        }
+    }
+
     /** The agent rendering of a finished run. {@code latest} is the newest. */
     private static Map<String, Object> earlier(McpCall in, String run) {
         String dir = in.dir();
@@ -57,6 +67,9 @@ public final class RunTool implements McpTool {
                 ? McpDiagnostics.findNewest(in.ctx().history(), dir)
                 : McpDiagnostics.findRun(in.ctx().history(), run, dir);
         if (rec == null) {
+            // An agent handed TIMEOUT ... jid=N often asks for run=N: when N is a live job, wait on it.
+            Long live = newest ? null : jidOf(run);
+            if (live != null && McpVitals.isLive(in.ctx(), live)) return McpJobRuns.await(in, live);
             return in.error("no matching run\n");
         }
         String text = McpAgentText.of(in.ctx(), rec);
