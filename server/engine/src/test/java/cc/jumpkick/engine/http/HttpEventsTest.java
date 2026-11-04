@@ -203,4 +203,25 @@ class HttpEventsTest {
         assertThat(HttpEvents.extractRequestId("{\"step\":\"x\"}")).isNull();
         assertThat(HttpEvents.extractRequestId(null)).isNull();
     }
+
+    /**
+     * An agent's build tool call streams its job's events, filtered by jid: the run's downloads are
+     * among them, so the agent sees a cold lock move, and another job's are not.
+     */
+    @Test
+    void an_mcp_stream_for_one_job_carries_its_downloads_and_no_one_elses() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        try (HttpEvents.Subscription mcp = hub.subscribe(HttpEvents.FrameStyle.MCP, 7L)) {
+            hub.publish("downloads", JsonOut.object().put("jid", 8).put("files", 1));
+            hub.publish(
+                    "downloads", JsonOut.object().put("jid", 7).put("files", 3).put("planned", 9));
+
+            String frame = mcp.next(1000);
+            assertThat(frame)
+                    .contains("notifications/jk/event")
+                    .contains("downloads")
+                    .contains("\"files\":3");
+            assertThat(mcp.next(10)).isNull();
+        }
+    }
 }

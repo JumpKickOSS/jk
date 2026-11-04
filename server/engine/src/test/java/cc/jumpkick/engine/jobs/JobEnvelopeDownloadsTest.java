@@ -119,4 +119,43 @@ class JobEnvelopeDownloadsTest {
         assertThat(Jsonl.intValue(lines.get(downloads), "files", 0)).isEqualTo(1);
         assertThat(Jsonl.intValue(lines.get(downloads), "inflight", -1)).isZero();
     }
+
+    /**
+     * A job the web UI or an agent started has no CLI stream, and its downloads still reach the
+     * dashboard and MCP subscribers: the same event, field for field, tagged with the job.
+     */
+    @Test
+    void a_detached_jobs_downloads_reach_the_dashboard_and_mcp_events() throws Exception {
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
+        long jid = env.submit(
+                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                JobRequest.plan("sync", "jk-test-", (line, tok, w) -> {
+                    try {
+                        SessionContext.where(Session.defaults(), () -> {
+                            try (var t =
+                                    SessionContext.current().io().transfers().open("g:a:1")) {
+                                t.started(2_048);
+                                t.advanced(2_048);
+                                t.finished();
+                            }
+                            return null;
+                        });
+                    } catch (Exception e) {
+                        throw new IllegalStateException(e);
+                    }
+                    return JobOutcome.ok();
+                }),
+                new JobTransport.FireAndForget());
+        Await.until(Duration.ofSeconds(30), () -> host.finished.get() == 1);
+
+        String event = List.copyOf(host.events).stream()
+                .filter(e -> e.startsWith(EngineProtocol.DOWNLOADS + ":"))
+                .reduce((first, second) -> second)
+                .orElseThrow(() -> new AssertionError("no downloads event published: " + host.events));
+        String json = event.substring(EngineProtocol.DOWNLOADS.length() + 1);
+        assertThat(Jsonl.longValue(json, "jid", -1)).isEqualTo(jid);
+        assertThat(Jsonl.longValue(json, "bytes", 0)).isEqualTo(2_048);
+        assertThat(Jsonl.intValue(json, "files", 0)).isEqualTo(1);
+    }
 }

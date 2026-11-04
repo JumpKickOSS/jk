@@ -18,6 +18,7 @@ export const EVENT = Object.freeze({
   buildplanFinish: 'buildplan-finish',
   moduleFinish: 'module-finish',
   status: 'status',
+  downloads: 'downloads',
 });
 
 /**
