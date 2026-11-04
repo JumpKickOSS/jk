@@ -775,8 +775,8 @@ public final class MavenRepo {
                 fresh = refresh.get();
             } catch (RuntimeException e) {
                 throw new IOException(
-                        name + " refused its credential (" + refused + "), and running its credential helper"
-                                + " again failed: " + e.getMessage(),
+                        name + " refused its credential (" + refused + "), and its credential helper could not"
+                                + " supply another: " + e.getMessage(),
                         failure);
             }
             credential = fresh;

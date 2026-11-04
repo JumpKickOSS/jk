@@ -370,14 +370,18 @@ public final class RepoCredentialResolver {
      * What re-runs the credential helper behind {@code resolved} and resolves again, when the
      * credential came from a {@code ${cmd:...}} helper; else null. A repository that refuses the
      * credential (401, 403) calls it once: the cached value is dropped first, so the helper runs
-     * again rather than answering from its cache.
+     * again rather than answering from its cache. When this request already re-ran the helper and
+     * its fresh value is the one refused, it throws instead of running the helper a third time.
      */
     public @Nullable Supplier<RepoCredential> refresher(
             @Nullable String repoId, @Nullable URI url, Optional<RepoCredential> inline, RepoCredential resolved) {
         String stale = resolved.secret();
         if (!CredentialHelpers.produced(stale)) return null;
         return () -> {
-            CredentialHelpers.forget(stale);
+            if (!CredentialHelpers.forget(stale)) {
+                throw new JkBuildParseException("its helper already ran again in this command, and the value"
+                        + " it printed then was refused too");
+            }
             return resolve(repoId, url, inline);
         };
     }

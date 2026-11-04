@@ -5,10 +5,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.RunNotices;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -198,6 +202,41 @@ class RepoCredentialHelperGroupTest {
                 .hasMessageContaining("gar")
                 .hasMessageContaining("401");
         assertThat(runs(tmp)).isEqualTo(2);
+    }
+
+    @Test
+    void a_three_module_lock_with_an_always_refused_helper_runs_it_exactly_twice(@TempDir Path tmp) throws Exception {
+        Path helper = helper(tmp);
+        userConfig(tmp.resolve("home"), helper);
+        accepted.set("never-issued");
+        Cas cas = new Cas(tmp.resolve("cas"));
+        List<Throwable> failures = new ArrayList<>();
+        // One request, as a lock is: each module builds its own group, so each has its own gar.
+        IoLedger.open(new IoLedger());
+        try {
+            for (String module : List.of("api", "core", "app")) {
+                Path dir = Files.createDirectories(tmp.resolve("ws").resolve(module));
+                Path manifest = Files.writeString(dir.resolve("jk.toml"), """
+                        group = "com.acme"
+                        name = "%s"
+                        version = "1.0"
+                        """.formatted(module));
+                RepoGroup group =
+                        RepoGroupBuilder.buildFor(JkBuildParser.parse(manifest), null, cas, BuildEnv.forModule(dir));
+                try {
+                    gar(group).fetchPom(Coordinate.of("com.acme", module + "-dep", "1.0"));
+                } catch (IOException e) {
+                    failures.add(e);
+                }
+            }
+        } finally {
+            RequestScope.release();
+            IoLedger.close();
+        }
+
+        assertThat(runs(tmp)).isEqualTo(2);
+        assertThat(failures).hasSize(3).allSatisfy(e -> assertThat(e).hasMessageContaining("gar"));
+        assertThat(failures.getLast()).cause().hasMessageContaining("its helper already ran again in this command");
     }
 
     @Test
