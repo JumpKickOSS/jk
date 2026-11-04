@@ -4,6 +4,7 @@ package cc.jumpkick.http;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NetworkConfig;
+import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.task.RunNotices;
@@ -59,7 +60,10 @@ import org.jspecify.annotations.Nullable;
  * java.net.Authenticator}: a client with one installed fails every origin 401 the authenticator
  * declines, and jk's callers answer their own 401s. The credential is never part of a message: a
  * proxy URL is printed through {@link SafeUri#forMessage}, and an unusable value is reported by
- * the name that set it, not its text.
+ * the name that set it, not its text. Whatever the source, the password is filed with {@link
+ * ResolvedSecrets} when jk hands it out for a request, so text that quotes it anyway — a tool's
+ * error carrying the proxy URL it was given — is masked on the wire, in {@code -o jsonl} and in
+ * the journal.
  */
 public final class ProxyEnvironment extends ProxySelector {
 
@@ -126,8 +130,15 @@ public final class ProxyEnvironment extends ProxySelector {
         }
     }
 
-    /** Where a proxy listens, the Basic credential its URL carried, and the URL safe to print. */
-    record Endpoint(InetSocketAddress address, @Nullable PasswordAuthentication credential, URI shown) {
+    /**
+     * Where a proxy listens, the Basic credential its URL carried, the password as the URL spells it
+     * (percent-encoded where it needs to be), and the URL safe to print.
+     */
+    record Endpoint(
+            InetSocketAddress address,
+            @Nullable PasswordAuthentication credential,
+            @Nullable String spelledPassword,
+            URI shown) {
 
         /** Empty, after a once-per-run warning, when the value is not a proxy this client can use. */
         static Optional<Endpoint> parse(Source source) {
@@ -146,12 +157,15 @@ public final class ProxyEnvironment extends ProxySelector {
             }
             if (uri.getHost() == null) return unusable(source, "names no host");
             PasswordAuthentication credential = null;
+            String spelledPassword = null;
             String userInfo = uri.getUserInfo();
             if (userInfo != null) {
                 int colon = userInfo.indexOf(':');
                 String user = colon < 0 ? userInfo : userInfo.substring(0, colon);
                 String password = colon < 0 ? "" : userInfo.substring(colon + 1);
                 credential = new PasswordAuthentication(user, password.toCharArray());
+                String raw = Objects.requireNonNull(uri.getRawUserInfo());
+                spelledPassword = raw.indexOf(':') < 0 ? null : raw.substring(raw.indexOf(':') + 1);
             }
             int port = uri.getPort() == -1 ? 80 : uri.getPort();
             // Unresolved on purpose: the client resolves the proxy when it connects, so a laptop
@@ -159,6 +173,7 @@ public final class ProxyEnvironment extends ProxySelector {
             return Optional.of(new Endpoint(
                     InetSocketAddress.createUnresolved(uri.getHost(), port),
                     credential,
+                    spelledPassword,
                     Objects.requireNonNull(SafeUri.withoutUserInfo(uri))));
         }
 
@@ -175,8 +190,33 @@ public final class ProxyEnvironment extends ProxySelector {
         /** The {@code Proxy-Authorization} value for this proxy, or empty when its URL carried no credential. */
         Optional<String> proxyAuthorization() {
             if (credential == null) return Optional.empty();
+            return Optional.of("Basic " + basic(credential));
+        }
+
+        private static String basic(PasswordAuthentication credential) {
             String pair = credential.getUserName() + ":" + new String(credential.getPassword());
-            return Optional.of("Basic " + Base64.getEncoder().encodeToString(pair.getBytes(StandardCharsets.UTF_8)));
+            return Base64.getEncoder().encodeToString(pair.getBytes(StandardCharsets.UTF_8));
+        }
+
+        /**
+         * File this proxy's password with {@link ResolvedSecrets} for the request being served, in
+         * every form it travels in: as written, as the URL spells it, and inside the Basic value. A
+         * proxy credential comes from {@code [network]}, a {@code settings.xml} {@code <proxy>}
+         * (expanded or decrypted) or the shell's proxy variables, and none of them is a name a
+         * {@code .env} declares, so the redactor learns it here, where jk hands it out.
+         */
+        Endpoint declared() {
+            if (credential == null) return this;
+            ResolvedSecrets.record(new String(credential.getPassword()));
+            ResolvedSecrets.record(spelledPassword);
+            ResolvedSecrets.record(basic(credential));
+            return this;
+        }
+
+        /** The address and the printable URL; never the password, in either spelling. */
+        @Override
+        public String toString() {
+            return "Endpoint[address=" + address + ", shown=" + shown + "]";
         }
     }
 
@@ -288,7 +328,7 @@ public final class ProxyEnvironment extends ProxySelector {
      * Http} recomputes it for every redirect hop.
      */
     public Optional<String> proxyAuthorization(URI target) {
-        return endpointFor(target, settings()).flatMap(Endpoint::proxyAuthorization);
+        return endpointFor(target, settings()).map(Endpoint::declared).flatMap(Endpoint::proxyAuthorization);
     }
 
     /**
@@ -298,7 +338,7 @@ public final class ProxyEnvironment extends ProxySelector {
      */
     public Optional<String> proxyUrl(URI target) {
         Settings settings = settings();
-        if (endpointFor(target, settings).isEmpty()) return Optional.empty();
+        if (endpointFor(target, settings).map(Endpoint::declared).isEmpty()) return Optional.empty();
         Source source = "https".equalsIgnoreCase(target.getScheme()) ? settings.https() : settings.http();
         if (source == null) return Optional.empty();
         String value = source.value();
