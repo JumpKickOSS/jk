@@ -58,6 +58,15 @@ public final class TransferBoard {
         public Snapshot {
             rows = List.copyOf(rows);
         }
+
+        /**
+         * True while the run is downloading: bytes have moved and a body is streaming, or a step's
+         * declared set is still settling. A run whose files were all on disk moves no bytes and is
+         * never downloading, so a warm sync shows nothing.
+         */
+        public boolean downloading() {
+            return bytes > 0 && (inflight > 0 || settled < planned);
+        }
     }
 
     /** One body streaming to disk. Close it however the stream ends; closing twice is harmless. */

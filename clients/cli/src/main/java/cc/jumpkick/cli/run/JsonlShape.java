@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.run.jsonl.ClassFinishLine;
+import cc.jumpkick.cli.run.jsonl.DownloadsLine;
 import cc.jumpkick.cli.run.jsonl.ErrorLine;
 import cc.jumpkick.cli.run.jsonl.EtaLine;
 import cc.jumpkick.cli.run.jsonl.JobLine;
@@ -31,6 +32,7 @@ import cc.jumpkick.run.SlowestTests;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.FailureTextRefs;
 import cc.jumpkick.wire.protocol.RequestEnvironment;
@@ -309,6 +311,12 @@ public final class JsonlShape {
     public static String workspaceProgress(
             String dir, long numerator, long denominator, String phase, int modulesComplete, int modulesTotal) {
         return new WorkspaceProgressLine(nowMillis(), dir, numerator, denominator, phase, modulesComplete, modulesTotal)
+                .encode();
+    }
+
+    /** The run's downloads summed up; {@code done} closes a burst. */
+    public static String downloads(TransferBoard.Snapshot d, boolean done) {
+        return new DownloadsLine(nowMillis(), d.settled(), d.planned(), d.files(), d.bytes(), d.inflight(), done)
                 .encode();
     }
 

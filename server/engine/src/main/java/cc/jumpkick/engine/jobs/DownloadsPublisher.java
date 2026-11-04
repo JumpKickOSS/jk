@@ -25,10 +25,15 @@ final class DownloadsPublisher implements AutoCloseable {
 
     private final CountDownLatch stop = new CountDownLatch(1);
     private final Thread sampler;
+    private final TransferBoard board;
+    private final Consumer<TransferBoard.Snapshot> sink;
+
+    /** The last frame sent; {@link TransferBoard.Snapshot#EMPTY} until one is. */
+    private volatile TransferBoard.Snapshot last = TransferBoard.Snapshot.EMPTY;
 
     private DownloadsPublisher(TransferBoard board, Consumer<TransferBoard.Snapshot> sink, String name) {
-        Objects.requireNonNull(board, "board");
-        Objects.requireNonNull(sink, "sink");
+        this.board = Objects.requireNonNull(board, "board");
+        this.sink = Objects.requireNonNull(sink, "sink");
         this.sampler = SessionContext.startVirtual(name, () -> sample(board, sink));
     }
 
@@ -38,19 +43,22 @@ final class DownloadsPublisher implements AutoCloseable {
     }
 
     private void sample(TransferBoard board, Consumer<TransferBoard.Snapshot> sink) {
-        TransferBoard.Snapshot last = TransferBoard.Snapshot.EMPTY;
         do {
-            TransferBoard.Snapshot now = board.snapshot();
-            if (!now.equals(last)) {
-                try {
-                    sink.accept(now);
-                } catch (RuntimeException e) {
-                    // The display is advisory: a sink that fails must not touch the job.
-                    Log.debug("downloads: sink failed", e);
-                }
-                last = now;
-            }
+            sendIfChanged(board, sink);
         } while (!awaitStop());
+    }
+
+    /** Send the board's state when it differs from the last frame sent. */
+    private void sendIfChanged(TransferBoard board, Consumer<TransferBoard.Snapshot> sink) {
+        TransferBoard.Snapshot now = board.snapshot();
+        if (now.equals(last)) return;
+        try {
+            sink.accept(now);
+        } catch (RuntimeException e) {
+            // The display is advisory: a sink that fails must not touch the job.
+            Log.debug("downloads: sink failed", e);
+        }
+        last = now;
     }
 
     /** True once the publisher is closed, waiting at most one period; an interrupt counts as stop. */
@@ -64,8 +72,11 @@ final class DownloadsPublisher implements AutoCloseable {
     }
 
     /**
-     * Stop sampling and wait out a sample in progress. Sends nothing more: the job's downloads ended
-     * before its body returned, and the last frame that mattered is already on the wire.
+     * Stop sampling, wait out a sample in progress, then send the board's final state if the job
+     * downloaded anything and its last frame is not already that state — including a download too
+     * short for any sample to have caught. A body that ends within a
+     * period of its last download would otherwise leave the client with a frame that still shows
+     * transfers in flight, and a reader of the summary with no end to the burst.
      */
     @Override
     public void close() {
@@ -75,5 +86,7 @@ final class DownloadsPublisher implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        // A board nothing touched equals EMPTY, the "nothing sent" state, so this sends nothing.
+        sendIfChanged(board, sink);
     }
 }
