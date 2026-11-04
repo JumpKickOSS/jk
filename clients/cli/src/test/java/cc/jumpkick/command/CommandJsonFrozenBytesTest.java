@@ -198,7 +198,8 @@ class CommandJsonFrozenBytesTest {
                         "*",
                         "https://nexus.acme/maven-public/",
                         List.of("jumpkick", "central", "google"),
-                        null)),
+                        null,
+                        "/home/me/.m2/settings.xml")),
                 List.of(new MavenSettingsRows.Proxy("corp", "https", "proxy.acme:3128", List.of("*.acme"))),
                 List.of(new MavenSettingsRows.Repository("acme-releases", "https://nexus.acme/releases/")),
                 null);
@@ -212,7 +213,8 @@ class CommandJsonFrozenBytesTest {
                                 + "\"files\":2,\"bytes\":40,\"state\":\"ok\"}],"
                                 + "\"settings\":{\"files\":[{\"path\":\"/home/me/.m2/settings.xml\",\"state\":\"read\"}],"
                                 + "\"mirrors\":[{\"id\":\"nexus\",\"mirrorOf\":\"*\",\"url\":\"https://nexus.acme/maven-public/\","
-                                + "\"captures\":[\"jumpkick\",\"central\",\"google\"],\"refusal\":null}],"
+                                + "\"captures\":[\"jumpkick\",\"central\",\"google\"],\"refusal\":null,"
+                                + "\"source\":\"/home/me/.m2/settings.xml\"}],"
                                 + "\"proxies\":[{\"id\":\"corp\",\"protocol\":\"https\",\"via\":\"proxy.acme:3128\",\"nonProxyHosts\":[\"*.acme\"]}],"
                                 + "\"repositories\":[{\"id\":\"acme-releases\",\"url\":\"https://nexus.acme/releases/\"}]}}");
     }

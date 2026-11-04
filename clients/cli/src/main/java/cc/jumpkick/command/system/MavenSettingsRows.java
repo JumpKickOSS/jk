@@ -24,15 +24,18 @@ public final class MavenSettingsRows {
     public record File(String path, boolean read) {}
 
     /**
-     * One {@code <mirror>}. {@code captures} names the built-in remotes it stands in for (empty when
-     * it matches none of them); {@code refusal} is why it is not used, or null when it is.
+     * One mirror: a {@code mirror-of} table of {@code ~/.jk/config.toml} or a settings.xml {@code
+     * <mirror>}. {@code captures} names the built-in remotes it stands in for (empty when it matches
+     * none of them); {@code refusal} is why jk refuses it — every repository it matches then fails
+     * to resolve — or null when it is used; {@code source} is the file that declared it.
      */
     public record Mirror(
             String id,
             String mirrorOf,
             String url,
             List<String> captures,
-            @Nullable String refusal) {}
+            @Nullable String refusal,
+            String source) {}
 
     /** One active {@code <proxy>}: never its credential. */
     public record Proxy(String id, String protocol, String hostPort, List<String> nonProxyHosts) {}
@@ -81,8 +84,8 @@ public final class MavenSettingsRows {
                     if (f.length >= 3) files.add(new File(f[1], "read".equals(f[2])));
                 }
                 case "mirror" -> {
-                    if (f.length >= 6) {
-                        mirrors.add(new Mirror(f[1], f[2], f[3], csv(f[4]), f[5].isBlank() ? null : f[5]));
+                    if (f.length >= 7) {
+                        mirrors.add(new Mirror(f[1], f[2], f[3], csv(f[4]), f[5].isBlank() ? null : f[5], f[6]));
                     }
                 }
                 case "proxy" -> {
@@ -105,8 +108,8 @@ public final class MavenSettingsRows {
 
     /**
      * One line per file, mirror, proxy and profile repository: {@code settings: <path>}, then
-     * {@code mirror: central, google → <url> (mirror `nexus`, mirrorOf `*`)} — or a warning when
-     * the mirror is refused — {@code proxy: https via <host:port> (…)} and {@code repository:
+     * {@code mirror: central, google → <url> (mirror `nexus`, mirrorOf `*`, <file>)} — or a warning
+     * when the mirror is refused — {@code proxy: https via <host:port> (…)} and {@code repository:
      * <id> → <url> (settings.xml profile)}.
      */
     public static List<String> render(Rows rows, Theme t) {
@@ -121,10 +124,10 @@ public final class MavenSettingsRows {
                     + " — " + Theme.colorize(file.path(), t.path()) + (file.read() ? "" : " (absent)"));
         }
         for (Mirror m : rows.mirrors()) {
-            String entry = "mirror `" + m.id() + "`, mirrorOf `" + m.mirrorOf() + "`";
+            String entry = "mirror `" + m.id() + "`, mirrorOf `" + m.mirrorOf() + "`, " + m.source();
             if (m.refusal() != null) {
                 out.add(Theme.colorize("warn:    ", t.warning()) + " " + Theme.colorize(entry, t.cyan())
-                        + " — not used: " + m.refusal());
+                        + " — refused, so what it mirrors fails to resolve: " + m.refusal());
                 continue;
             }
             String captures = m.captures().isEmpty() ? "no built-in remote" : String.join(", ", m.captures());
@@ -167,6 +170,7 @@ public final class MavenSettingsRows {
                     .string("url", m.url())
                     .array("captures", m.captures())
                     .string("refusal", m.refusal())
+                    .string("source", m.source())
                     .finish());
         }
         StringBuilder proxies = new StringBuilder("[");

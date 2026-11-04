@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.credential.RepoCredential;
@@ -13,6 +14,7 @@ import cc.jumpkick.plugin.build.RepositoryRoute;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.function.UnaryOperator;
@@ -21,7 +23,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A plugin step that declares {@link In#repositories()} receives the module's remotes the way jk
- * asks them — the {@code settings.xml} mirror standing in for a repository, Central rewritten to
+ * asks them — the mirror standing in for a repository ({@code ~/.jk/config.toml} or {@code
+ * settings.xml}), Central rewritten to
  * its mirror while the failover window is open, the credential each request carries — so a
  * worker's own resolver reaches nothing jk would not, and Central never directly. The action-key
  * token names the declared set alone.
@@ -152,5 +155,49 @@ class PluginRepositoriesTest {
                 name -> null);
 
         assertThat(none).isSameAs(PluginRepositories.NONE);
+    }
+
+    /** A {@code mirror-of} table of the user's config reaches the fork as it reaches jk's own requests. */
+    @Test
+    void a_config_toml_mirror_is_the_url_and_credential_every_route_carries(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("config.toml"), """
+                [repositories.corp]
+                url = "https://artifactory.acme.test/maven-virtual/"
+                mirror-of = ["*"]
+                token = "${JK_REPO_CORP_TOKEN}"
+                """);
+        System.setProperty("jk.env.JK_HOME", tmp.toString());
+        PluginRepositories routed;
+        try {
+            routed = PluginRepositories.forInputs(
+                    List.of(In.repositories().wireName()),
+                    JkBuild.of(new Project("com.example", "app", "1.0", 25)),
+                    new Cas(tmp.resolve("cache")),
+                    name -> "JK_REPO_CORP_TOKEN".equals(name) ? "corp-secret" : null);
+        } finally {
+            System.clearProperty("jk.env.JK_HOME");
+        }
+
+        URI corp = URI.create("https://artifactory.acme.test/maven-virtual/");
+        assertThat(routed.routes()).extracting(RepositoryRoute::id).containsExactly("jumpkick", "central", "google");
+        assertThat(routed.routes()).allSatisfy(route -> {
+            assertThat(route.url()).isEqualTo(corp);
+            assertThat(route.secret()).isEqualTo("corp-secret");
+        });
+    }
+
+    @Test
+    void a_repository_behind_a_refused_mirror_fails_the_routes_naming_it(@TempDir Path tmp) {
+        MavenRepo refused = new MavenRepo("central", CENTRAL, new Http(), new Cas(tmp.resolve("cache")))
+                .mirroredThrough(new MavenRepo.Mirror(
+                        "nexus",
+                        URI.create("http://nexus.example.test/m2/"),
+                        RepoCredential.ANONYMOUS,
+                        "mirror `nexus` (settings.xml)",
+                        "it is plaintext http on a network path"));
+
+        assertThatThrownBy(() -> PluginRepositories.of(RepoGroup.of(refused), UnaryOperator.identity()))
+                .hasMessageContaining("mirror `nexus` (settings.xml)")
+                .hasMessageContaining("plaintext http");
     }
 }

@@ -130,7 +130,8 @@ class SettingsXmlCredentialStubTest {
     private MavenRepo.Fetched fetchThroughMirror(Path dir) throws Exception {
         MavenSettings settings = MavenSettings.current();
         MavenRepo central = new MavenRepo("central", origin.base(), new Http(), new Cas(dir.resolve("cas")));
-        return RepoMirrors.apply(central, settings, creds(settings, dir)).fetchPom(WIDGET);
+        return RepoMirrors.apply(central, List.of(), settings, creds(settings, dir))
+                .fetchPom(WIDGET);
     }
 
     @Test

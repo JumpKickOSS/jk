@@ -60,9 +60,10 @@ public final class MavenRepo {
     private final URI baseUrl;
 
     /**
-     * The settings.xml mirror this repository's requests go to, or null when they go to {@link
-     * #baseUrl}. A transport fact only: name, {@link #baseUrl} and the store's origin key are the
-     * repository's own.
+     * The mirror this repository's requests go to — a {@code mirror-of} table of {@code
+     * ~/.jk/config.toml} or a {@code settings.xml} {@code <mirror>} — or null when they go to
+     * {@link #baseUrl}. A transport fact only: name, {@link #baseUrl} and the store's origin key are
+     * the repository's own. A mirrored repository is never asked at {@link #baseUrl}.
      */
     private final @Nullable Mirror mirror;
 
@@ -128,8 +129,23 @@ public final class MavenRepo {
     /** {@code optional = true} on the declaring table, or a repository a dependency's POM declares. */
     private final boolean optional;
 
-    /** A settings.xml mirror standing in for a repository: the URL its requests open, the mirror's credential, its label. */
-    public record Mirror(String id, URI url, RepoCredential credential, String label) {}
+    /**
+     * A mirror standing in for a repository: the URL its requests open, the mirror's credential, its
+     * label, and — when jk will not use it — why: such a mirror is asked nothing, and neither is
+     * the repository at its own URL, so every request fails naming the mirror.
+     */
+    public record Mirror(
+            String id,
+            URI url,
+            RepoCredential credential,
+            String label,
+            @Nullable String refusal) {
+
+        /** A mirror jk uses. */
+        public Mirror(String id, URI url, RepoCredential credential, String label) {
+            this(id, url, credential, label, null);
+        }
+    }
 
     public MavenRepo(String name, URI baseUrl, Http http, Cas cas) {
         this(name, baseUrl, http, cas, RepoCredential.ANONYMOUS);
@@ -231,10 +247,12 @@ public final class MavenRepo {
      */
     public MavenRepo mirroredThrough(Mirror mirror) {
         Http client = http != null ? http : new Http();
+        // A refused mirror is asked nothing, so its URL selects no transport (it may name none jk has).
+        RepoTransport over = mirror.refusal() == null ? RepoTransports.forUrl(mirror.url(), client) : transport;
         return new MavenRepo(
                 name,
                 baseUrl,
-                RepoTransports.forUrl(mirror.url(), client),
+                over,
                 cas,
                 mirror.credential(),
                 client,
@@ -378,6 +396,7 @@ public final class MavenRepo {
                 ? new MavenMetadataCache(httpOrNull, metadataDir(), ttl)
                 : null;
         this.download = new DownloadLeg(name, this.fetchBase, transport, credential, storeDir(), allowUnverified);
+        if (mirror != null && mirror.refusal() != null) unreachable.set("jk refuses it: " + mirror.refusal());
     }
 
     /**
@@ -410,9 +429,11 @@ public final class MavenRepo {
      * True when the resolve passes this repository over once nothing answers at its address or it
      * refuses access (401, 403), as it does a blocked one, instead of stopping: one declared {@code
      * optional}, and any at a loopback address — a developer's local Nexus no other machine runs.
+     * Never a mirrored one: the mirror is this machine's only route to it, so its failure is the
+     * resolve's.
      */
     public boolean passable() {
-        return passable(optional, baseUrl);
+        return mirror == null && passable(optional, baseUrl);
     }
 
     /**
@@ -486,9 +507,14 @@ public final class MavenRepo {
      * True for a plaintext {@code http://} base URL over a network path. Such a repository only
      * reaches here when its table said {@code allow-insecure = true} (or a test pinned it), so this
      * is what the lock summary reports as {@code insecure (allowed)}. A loopback repository that
-     * did not opt in is plaintext to nobody but this machine and is not reported.
+     * did not opt in is plaintext to nobody but this machine and is not reported. Behind a mirror
+     * the question is the mirror's URL, which every request opens: a {@code config.toml} mirror
+     * that said {@code allow-insecure} is reported for each repository it carries.
      */
     public boolean isPlaintext() {
+        if (mirror != null) {
+            return "http".equalsIgnoreCase(fetchBase.getScheme()) && !RepositorySpec.loopback(fetchBase.getHost());
+        }
         return "http".equalsIgnoreCase(baseUrl.getScheme())
                 && (allowInsecure || !RepositorySpec.loopback(baseUrl.getHost()));
     }
@@ -775,22 +801,31 @@ public final class MavenRepo {
     /** The fault an earlier request met, thrown again without a request, once this repository is unreachable. */
     private void refuseIfUnreachable() throws RepositoryUnreachableException {
         String fault = unreachable.get();
-        if (fault != null) throw new RepositoryUnreachableException(name, baseUrl, fault, null);
+        if (fault != null) throw unreachableFailure(fault, null);
+    }
+
+    /** The failure for {@code fault}: naming the mirror when one stands in for this repository. */
+    private RepositoryUnreachableException unreachableFailure(String fault, @Nullable Throwable cause) {
+        Mirror through = mirror;
+        if (through == null) return new RepositoryUnreachableException(name, baseUrl, fault, cause);
+        return RepositoryUnreachableException.throughMirror(name, baseUrl, through, fault, cause);
     }
 
     /**
      * {@code transport} as this repository's unreachable failure when its cause is connect-level,
-     * or — for a {@linkplain #passable passable} one — when it got no HTTP answer at all (reset,
-     * dropped, timed out) or an answer refusing access (401, 403), which Maven passes over as
-     * well: remembered, so the repository is asked nothing more. Else {@code transport} itself.
+     * or — for a {@linkplain #passable passable} one, or one a mirror stands in for — when it got no
+     * HTTP answer at all (reset, dropped, timed out) or an answer refusing access (401, 403), which
+     * Maven passes over as well: remembered, so the repository is asked nothing more. Else {@code
+     * transport} itself.
      */
     private IOException unreachableOr(IOException transport) {
+        boolean answersMatter = passable() || mirror != null;
         String fault = ConnectFaults.describe(transport);
-        if (fault == null && passable()) fault = silence(transport);
-        if (fault == null && passable()) fault = refusal(transport);
+        if (fault == null && answersMatter) fault = silence(transport);
+        if (fault == null && answersMatter) fault = refusal(transport);
         if (fault == null) return transport;
         unreachable.compareAndSet(null, fault);
-        return new RepositoryUnreachableException(name, baseUrl, fault, transport);
+        return unreachableFailure(fault, transport);
     }
 
     /** The no-answer failure in {@code failure}'s cause chain as one line naming what it met, or null. */
@@ -1067,10 +1102,28 @@ public final class MavenRepo {
      */
     public static final class RepositoryUnreachableException extends IOException {
         public RepositoryUnreachableException(String repository, URI url, String fault, @Nullable Throwable cause) {
-            super(
+            this(
                     "repository " + repository + " at " + SafeUri.forMessage(url) + " is unreachable (" + fault
                             + "); the resolve stops rather than lock without a configured repository — fix its url,"
                             + " start it, or remove it from [repositories]",
+                    cause);
+        }
+
+        private RepositoryUnreachableException(String message, @Nullable Throwable cause) {
+            super(message, cause);
+        }
+
+        /**
+         * The failure of a repository a mirror stands in for: the mirror is named, and so is the
+         * repository's own URL, which is not asked in its place.
+         */
+        static RepositoryUnreachableException throughMirror(
+                String repository, URI url, Mirror mirror, String fault, @Nullable Throwable cause) {
+            return new RepositoryUnreachableException(
+                    "repository " + repository + " is reached through " + mirror.label() + " at "
+                            + SafeUri.forMessage(mirror.url()) + ", which is unreachable (" + fault + "); a mirror is"
+                            + " never bypassed, so " + repository + " is not asked at " + SafeUri.forMessage(url)
+                            + " instead — fix or start the mirror, or remove it",
                     cause);
         }
     }

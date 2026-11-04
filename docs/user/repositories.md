@@ -100,11 +100,58 @@ Cloudflare's headers is a permission answer and is reported as one.
 
 A plugin whose own resolver fetches outside the lock — the Quarkus augment reads its build-time
 deployment closure through Quarkus's embedded Maven resolver — is handed this module's remotes as
-jk routes them: the `[repositories]` set over the built-in remotes, in resolve order, a
-`settings.xml` mirror standing in for the repository it mirrors, and Central at the mirror while
+jk routes them: the `[repositories]` set over the built-in remotes, in resolve order, a mirror
+(`config.toml` or `settings.xml`) standing in for the repository it mirrors, and Central at the mirror while
 the window is open, each with the credential jk would send. The fork asks those and nothing else;
 Maven's own defaults and `~/.m2/settings.xml`'s repositories are never consulted, so a Central
 refusal is answered by the window here rather than by a failed package step.
+
+## A corporate repository: mirror or source
+
+Artifactory or Nexus in front of everything, and Artifactory holding your own artifacts, are two
+different statements, spelled two ways:
+
+| You mean | Spelling | What happens |
+|---|---|---|
+| "My repository intercepts everything" | `[repositories.corp]` with `url` and `mirror-of = ["*"]`, in `~/.jk/config.toml` only | A transport rewrite. Every request for a matched repository opens `corp`'s URL instead; the lock records the mirrored repository (`central` at Central's URL). A matched repository is **never** asked at its own URL. |
+| "My repository has our internal stuff" | `[repositories.corp]` with `url` and `groups = ["com.acme", "com.acme.*"]` | A real source, recorded in the lock. Bound groups are asked of their claimants alone ([Exclusive groups](#exclusive-groups-your-internals)); everything else goes corp → central → google. |
+
+```toml
+# ~/.jk/config.toml
+[repositories.corp]
+url            = "https://artifactory.acme.com/maven-virtual/"
+mirror-of      = ["*", "!jumpkick"]
+token          = "${JK_REPO_CORP_TOKEN}"
+# allow-insecure = true   # accepted on a mirror whose URL is plaintext http
+```
+
+`mirror-of` lists repository ids in Maven's `mirrorOf` grammar: `*` every repository, `external:*`
+every one not on this machine, `external:http:*` every plaintext one not on this machine, a bare id
+that repository, `!id` every match but that one. It matches repositories, not packages — routing a
+namespace is `groups` on a real repository, and a mirror takes no `groups`. A mirror table carries
+only `url`, `mirror-of`, `token` / `username` / `password` and `allow-insecure`; any other key, or
+a plaintext network URL without `allow-insecure`, fails the resolve naming the table.
+
+- **A mirror is not a repository.** It is in no repository group, no lock and no `repos/` tree of
+  its own, so a project's `jk-lock.toml` is byte-identical with and without it, and the Central →
+  Google split never fires behind it.
+- **Only `~/.jk/config.toml` declares one.** A mirror describes this machine's network, and a
+  cloned project must not be able to redirect your whole resolve: `mirror-of` in a `jk.toml` is a
+  parse error.
+- **Lookup order:** the `config.toml` mirrors in file order, then `settings.xml`'s `<mirror>`
+  entries in file order; the first that matches a repository wins.
+- **A mirror never goes direct.** A mirror nothing answers at, or one that answers 401 or 403, is
+  the failure, naming the mirror and the repository it stands in for — `optional` on the
+  repository does not pass it over. The same holds for a `settings.xml` mirror.
+- **Credentials** come from the chain in [Credentials](#credentials), keyed by the mirror's id;
+  its `config.toml` table binds the id to its URL, so `${VAR}` there reads your shell and `jk repo
+  login corp` binds to the mirror's URL.
+
+`jk lock` notes each mirrored repository and `jk doctor` lists every mirror, from either file,
+with the built-in remotes it answers for. A plugin's own resolver (the Quarkus augment) is handed
+each repository at its mirror's URL with the mirror's credential. `[mirrors]` in `config.toml` is
+a different table: it points the *tool downloads* (Node, Kotlin, Gradle, Maven, JDKs) elsewhere —
+see [Config § Tool mirrors](config.md#tool-mirrors).
 
 ## Exclusive groups (your internals)
 
@@ -421,11 +468,11 @@ works on, with nothing added to the project:
 lock keeps recording `central+https://repo.maven.apache.org/maven2/`, the store keeps its
 `repos/central` tree — only the URL every request opens (POMs, jars, `maven-metadata.xml`,
 `.module` files, checksum sidecars) changes on this machine. A lock written behind Nexus is
-byte-identical to one written on the open internet, which is why a mirror does not go into
-`~/.jk/config.toml [repositories]`: a repository declared there is a real source and lands in
-every `source` field. `mirrorOf` follows Maven's grammar — `*`, `external:*` (everything not on
-this machine), `external:http:*`, `central,google`, `*,!jumpkick` — and the first mirror in file
-order that matches wins. The mirror's credential is the `<server>` with the mirror's own `<id>`,
+byte-identical to one written on the open internet. A `[repositories]` table without `mirror-of`
+is a real source and lands in every `source` field; the native spelling of a mirror is `mirror-of`
+([Mirror or source](#a-corporate-repository-mirror-or-source)). `mirrorOf` follows Maven's grammar
+— `*`, `external:*` (everything not on this machine), `external:http:*`, `central,google`,
+`*,!jumpkick` — and the first mirror that matches wins, the `config.toml` ones before these. The mirror's credential is the `<server>` with the mirror's own `<id>`,
 bound to the mirror URL by the file itself. `jk lock` prints one note per mirrored repository:
 
 ```
@@ -433,8 +480,11 @@ repository `central` is reached through mirror `nexus` (/home/me/.m2/settings.xm
 https://nexus.acme.com/repository/maven-public/; the lock records `central` at https://repo.maven.apache.org/maven2/
 ```
 
-A plaintext `http://` mirror on a network path is refused with a warning naming the entry and the
-repository is asked at its own URL; a loopback mirror is fine. A `<repository>` a dependency's
+A mirror never goes direct: one that is unreachable or refuses access fails the resolve naming
+it, and a plaintext `http://` mirror on a network path — which `settings.xml` has no
+`allow-insecure` for — fails every repository it matches, naming the entry and the two ways out:
+https, or the same mirror in `config.toml` with `allow-insecure = true`. The repository is never
+asked at its own URL in the mirror's place; a loopback mirror is fine. A `<repository>` a dependency's
 POM declares goes through the mirror too, and so does every resolve that runs with no project in
 hand: `jk run Foo.java` (and a repository its header names), a tool run by its coordinate,
 `jk format`'s formatter jars, build logic's pinned Groovy, the plugin workers' own closures and a

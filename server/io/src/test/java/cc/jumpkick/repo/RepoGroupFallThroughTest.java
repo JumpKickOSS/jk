@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,14 +33,41 @@ import org.junit.jupiter.api.io.TempDir;
  * One candidate's transport failure is that candidate's problem: the fan-out asks the rest. The
  * dead candidate is a {@link DeadEndpoint} — accepted and dropped, the same shape as a reset from a
  * remote — behind a zero-retry client, so each failure costs one attempt and no backoff. It is
- * reached as a remote's mirror, so it is a hand-written remote and not a passable loopback one.
+ * reached through a transport that reroutes a network remote's requests to it, so it is a
+ * hand-written remote and neither a passable loopback one nor a mirrored one (a mirror's failure is
+ * the resolve's, see {@code MavenRepoMirrorTest}).
  */
 class RepoGroupFallThroughTest {
 
+    private static final URI REMOTE = URI.create("https://dead.example/maven2/");
+
     /** A hand-written remote repository whose every request lands on {@code dead}. */
     private static MavenRepo remote(DeadEndpoint dead, Cas cas) {
-        return new MavenRepo("dead", URI.create("https://dead.example/maven2/"), Http.failFast(), cas)
-                .mirroredThrough(new MavenRepo.Mirror("dead-mirror", dead.uri(), RepoCredential.ANONYMOUS, "a test"));
+        RepoTransport toDead = RepoTransports.forUrl(dead.uri(), Http.failFast());
+        RepoTransport rerouted = new RepoTransport() {
+            @Override
+            public Optional<byte[]> fetch(URI uri, RepoCredential credential) throws IOException, InterruptedException {
+                return toDead.fetch(onDead(dead, uri), credential);
+            }
+
+            @Override
+            public Optional<Body> fetchBody(URI uri, RepoCredential credential)
+                    throws IOException, InterruptedException {
+                return toDead.fetchBody(onDead(dead, uri), credential);
+            }
+
+            @Override
+            public int put(URI uri, byte[] body, String contentType, RepoCredential credential) {
+                throw new UnsupportedOperationException("read-only");
+            }
+        };
+        return MavenRepo.overTransport(
+                "dead", REMOTE, rerouted, cas, RepoCredential.ANONYMOUS, null, true, false, false);
+    }
+
+    private static URI onDead(DeadEndpoint dead, URI uri) {
+        return URI.create(dead.uri().toString().replaceAll("/$", "") + "/"
+                + REMOTE.relativize(uri).toString());
     }
 
     @BeforeEach

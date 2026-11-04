@@ -4,10 +4,12 @@ package cc.jumpkick.config;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.RepositoryMirror;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -394,5 +396,41 @@ public final class GlobalConfig {
                 .map(toml -> RepositoryToml.repositories(
                         toml.getTable("repositories"), RepositoryToml.VarPolicy.LENIENT, RepositoryToml.OnBad.SKIP))
                 .orElse(List.of());
+    }
+
+    /**
+     * The {@code [repositories.<id>]} tables of {@code ~/.jk/config.toml} that carry {@code
+     * mirror-of}, in file order: the routes this machine's requests take, which no project can
+     * declare. Strict where {@link #repositories()} is lenient — see {@link RepositoryToml#mirrors}.
+     *
+     * @throws JkBuildParseException when a mirror table is malformed
+     */
+    public static List<RepositoryMirror> repositoryMirrors() {
+        return repositoryMirrors(JkDirs.userConfigFile());
+    }
+
+    /** As {@link #repositoryMirrors()} but against an explicit config file — for tests. */
+    static List<RepositoryMirror> repositoryMirrors(Path configFile) {
+        return parseConfig(configFile)
+                .map(toml -> RepositoryToml.mirrors(toml.getTable("repositories"), configFile))
+                .orElse(List.of());
+    }
+
+    /**
+     * Every id {@code ~/.jk/config.toml} binds to a URL: its repositories, then its mirrors. What
+     * the credential resolver treats as the user's own declaration — a mirror's {@code ${VAR}}
+     * credential is the user's word for the mirror's URL exactly as a repository's is — and never
+     * a repository group: a mirror is not a source.
+     */
+    public static List<RepositorySpec> repositoryDeclarations() {
+        Path file = JkDirs.userConfigFile();
+        List<RepositorySpec> out = new ArrayList<>(repositories(file));
+        try {
+            for (RepositoryMirror mirror : repositoryMirrors(file)) out.add(mirror.declaration());
+        } catch (JkBuildParseException malformed) {
+            // The resolve that uses the mirror fails on it, naming the table; a credential lookup is
+            // not the place to say so.
+        }
+        return List.copyOf(out);
     }
 }

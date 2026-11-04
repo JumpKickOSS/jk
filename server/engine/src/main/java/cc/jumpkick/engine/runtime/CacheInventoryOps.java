@@ -4,6 +4,8 @@ package cc.jumpkick.engine.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
@@ -11,11 +13,13 @@ import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.model.RepositoryMirror;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.EffectivePomBuilder;
@@ -36,6 +40,7 @@ import cc.jumpkick.util.TestHomes;
 import cc.jumpkick.version.Versions;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -48,6 +53,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BiPredicate;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
@@ -354,20 +360,34 @@ public final class CacheInventoryOps {
         Path user = MavenSettings.userSettingsPath();
         if (user != null && !settings.files().contains(user)) lines.add("file|" + user + "|absent");
         for (Path file : settings.files()) lines.add("file|" + file + "|read");
+        // Lookup order: the user's config.toml mirrors, then settings.xml's — the first match wins.
+        try {
+            for (RepositoryMirror mirror : GlobalConfig.repositoryMirrors()) {
+                lines.add(mirrorLine(
+                        mirror.id(),
+                        mirror.mirrorOf().spelled(),
+                        SafeUri.forMessage(mirror.url()),
+                        captured(mirror::matches),
+                        null,
+                        mirror.file().toString()));
+            }
+        } catch (JkBuildParseException malformed) {
+            lines.add(mirrorLine(
+                    ManifestNames.CONFIG,
+                    "",
+                    "",
+                    "",
+                    Errors.text(malformed),
+                    JkDirs.userConfigFile().toString()));
+        }
         for (MavenSettings.Mirror mirror : settings.mirrors()) {
-            String captured = RepoGroupBuilder.defaultRemoteRepos().stream()
-                    .filter(r -> mirror.matches(r.name(), r.url()))
-                    .map(RepositorySpec::name)
-                    .collect(Collectors.joining(","));
-            String refusal = RepoMirrors.refusal(mirror);
-            lines.add(String.join(
-                    "|",
-                    "mirror",
+            lines.add(mirrorLine(
                     mirror.id(),
                     mirror.mirrorOf(),
                     SafeUri.forMessage(mirror.url()),
-                    captured,
-                    refusal == null ? "" : refusal));
+                    captured(mirror::matches),
+                    RepoMirrors.refusal(mirror),
+                    mirror.file().toString()));
         }
         for (MavenSettings.Proxy proxy : settings.proxies()) {
             lines.add(String.join(
@@ -382,6 +402,20 @@ public final class CacheInventoryOps {
             lines.add(String.join("|", "repository", repo.name(), SafeUri.forMessage(repo.url())));
         }
         return CacheInventoryAck.m2Settings(lines);
+    }
+
+    /** {@code mirror|id|mirrorOf|url|captures|refusal|source}: one mirror, whichever file declared it. */
+    private static String mirrorLine(
+            String id, String mirrorOf, String url, String captured, @Nullable String refusal, String source) {
+        return String.join("|", "mirror", id, mirrorOf, url, captured, refusal == null ? "" : refusal, source);
+    }
+
+    /** The built-in remotes {@code matches} stands in for, comma-separated. */
+    private static String captured(BiPredicate<String, URI> matches) {
+        return RepoGroupBuilder.defaultRemoteRepos().stream()
+                .filter(r -> matches.test(r.name(), r.url()))
+                .map(RepositorySpec::name)
+                .collect(Collectors.joining(","));
     }
 
     private static CacheInventoryAck repoRefresh(Path storeRoot, List<String> coords) {

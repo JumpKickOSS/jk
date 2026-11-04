@@ -14,6 +14,7 @@ import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.ObjectStoreConfig;
+import cc.jumpkick.model.RepositoryMirror;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.ExclusiveGroups;
 import cc.jumpkick.repo.MavenRepo;
@@ -49,9 +50,11 @@ import org.jspecify.annotations.Nullable;
  * <p>Resolve order (logical): local materialization (CAS, {@code repos/*}, {@code ~/.m2}) then
  * remotes among the eligible set above.
  *
- * <p>Every repository of the group is routed through the {@code <mirror>} Maven's {@code
- * settings.xml} names for it ({@link RepoMirrors}); the group's names and URLs — what the lock
- * records — are unchanged by that.
+ * <p>Every repository of the group is routed through the mirror that stands in for it ({@link
+ * RepoMirrors}): a {@code mirror-of} table of {@code ~/.jk/config.toml}, else a {@code <mirror>} of
+ * Maven's {@code settings.xml}. A mirror table is no repository of the group ({@link
+ * GlobalConfig#repositories()} leaves it out), and the group's names and URLs — what the lock
+ * records — are unchanged by it.
  */
 public final class RepoGroupBuilder {
 
@@ -221,6 +224,7 @@ public final class RepoGroupBuilder {
         // forge-token bridge). Public repos resolve to ANONYMOUS, so this is
         // transparent for Maven Central, Google Maven, and other open mirrors.
         MavenSettings settings = MavenSettings.current();
+        List<RepositoryMirror> mirrors = GlobalConfig.repositoryMirrors();
         RepoCredentialResolver creds = RepoCredentialResolver.withEnv(env::apply, settings);
         List<List<String>> exclusiveGroups = new ArrayList<>(effective.size());
         List<List<String>> routedGroups = new ArrayList<>(effective.size());
@@ -261,7 +265,7 @@ public final class RepoGroupBuilder {
             // A credential a ${cmd:} helper printed may have expired: a refusal re-runs it once.
             var refresh = creds.refresher(spec.name(), spec.url(), spec.credentialOpt(), cred);
             if (refresh != null) repo.refreshingCredentialWith(refresh);
-            repos.add(RepoMirrors.apply(repo, settings, creds));
+            repos.add(RepoMirrors.apply(repo, mirrors, settings, creds));
             exclusiveGroups.add(exclusiveGroupsFor(spec));
             routedGroups.add(routedGroupsFor(spec));
             var bound = new LinkedHashSet<>(exclusiveGroupsFor(spec));

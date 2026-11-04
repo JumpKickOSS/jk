@@ -2,11 +2,15 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.model.MirrorOf;
 import cc.jumpkick.model.ObjectStoreConfig;
+import cc.jumpkick.model.RepositoryMirror;
 import cc.jumpkick.model.RepositorySpec;
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -75,9 +79,15 @@ public final class RepositoryToml {
                 }
                 continue;
             }
+            // The list form: a quoted name such as "nexus.internal" is one key, not a path.
+            Object value = repos.get(List.of(name));
+            if (isMirror(value)) {
+                // A mirror is this machine's network, read by mirrors() from the user's config alone.
+                if (onBad == OnBad.REJECT) throw new JkBuildParseException(mirrorInProject(name));
+                continue;
+            }
             try {
-                // The list form: a quoted name such as "nexus.internal" is one key, not a path.
-                RepositorySpec spec = entry(name, repos.get(List.of(name)), vars, onBad);
+                RepositorySpec spec = entry(name, value, vars, onBad);
                 if (spec != null) result.add(spec);
             } catch (JkBuildParseException e) {
                 if (onBad == OnBad.REJECT) throw e;
@@ -86,6 +96,90 @@ public final class RepositoryToml {
             }
         }
         return result;
+    }
+
+    /** The key that makes a {@code [repositories.<name>]} table of {@code ~/.jk/config.toml} a mirror. */
+    public static final String MIRROR_OF = "mirror-of";
+
+    /** Every key a mirror table may carry; any other key fails it. */
+    public static final List<String> MIRROR_KEYS =
+            List.of("url", MIRROR_OF, "token", "username", "password", "allow-insecure");
+
+    /** True when {@code value} is a table carrying {@code mirror-of}. */
+    private static boolean isMirror(@Nullable Object value) {
+        return value instanceof TomlTable t && t.contains(List.of(MIRROR_OF));
+    }
+
+    /** Why a project manifest may not declare a mirror, naming the table and where it belongs. */
+    static String mirrorInProject(String name) {
+        return "repositories." + name + "." + MIRROR_OF + " is not accepted in jk.toml: a mirror describes this"
+                + " machine's network, and a cloned project must not be able to redirect your whole resolve."
+                + " Declare [repositories." + name + "] with mirror-of in ~/.jk/config.toml, or drop mirror-of"
+                + " to declare a repository the project resolves from";
+    }
+
+    /**
+     * Every {@code [repositories.<name>]} table of the user's config that carries {@code
+     * mirror-of}, in declaration order: the mirrors {@code file} declares. Strict, unlike the
+     * repositories beside them — a mirror the parse dropped would send its repositories to their own
+     * URLs, which is the one thing a mirror exists to prevent — so a malformed mirror is a {@link
+     * JkBuildParseException} naming the table and the file.
+     */
+    public static List<RepositoryMirror> mirrors(@Nullable TomlTable repos, Path file) {
+        if (repos == null) return List.of();
+        List<RepositoryMirror> result = new ArrayList<>();
+        for (String name : repos.keySet()) {
+            Object value = repos.get(List.of(name));
+            if (!isMirror(value)) continue;
+            result.add(mirror(name, (TomlTable) Objects.requireNonNull(value), file));
+        }
+        return List.copyOf(result);
+    }
+
+    private static RepositoryMirror mirror(String name, TomlTable t, Path file) {
+        String where = "repositories." + name + " in " + file;
+        for (String key : t.keySet()) {
+            if (!MIRROR_KEYS.contains(key)) {
+                throw new JkBuildParseException(where + " is a mirror (it sets mirror-of), which takes only "
+                        + String.join(", ", MIRROR_KEYS) + "; `" + key + "` belongs on a repository");
+            }
+        }
+        String url = t.getString("url");
+        if (url == null) throw new JkBuildParseException(where + " requires a string `url` field");
+        URI uri;
+        try {
+            uri = URI.create(url);
+        } catch (IllegalArgumentException e) {
+            throw new JkBuildParseException(where + " has malformed URL: " + url, e);
+        }
+        boolean allowInsecure;
+        try {
+            allowInsecure = flag(t, "allow-insecure", where);
+        } catch (IllegalArgumentException e) {
+            throw new JkBuildParseException(e.getMessage(), e);
+        }
+        if ("http".equalsIgnoreCase(uri.getScheme()) && !allowInsecure && !loopback(uri.getHost())) {
+            throw new JkBuildParseException(plaintextRefusal("repositories." + name, url) + " (" + file + ")");
+        }
+        Optional<RepoCredential> credential =
+                credential(t, raw -> interpolate(raw, VarPolicy.LENIENT, "repositories." + name));
+        return new RepositoryMirror(name, uri, mirrorOf(t, where), credential.orElse(null), allowInsecure, file);
+    }
+
+    /** {@code mirror-of} as a non-empty list of non-empty strings. */
+    private static MirrorOf mirrorOf(TomlTable t, String where) {
+        if (!(t.get(MIRROR_OF) instanceof TomlArray arr) || arr.isEmpty()) {
+            throw new JkBuildParseException(
+                    where + ".mirror-of must be a non-empty array of repository ids (e.g. [\"*\", \"!jumpkick\"])");
+        }
+        List<String> tokens = new ArrayList<>(arr.size());
+        for (int i = 0; i < arr.size(); i++) {
+            if (!(arr.get(i) instanceof String token) || token.isBlank()) {
+                throw new JkBuildParseException(where + ".mirror-of[" + i + "] must be a non-empty string");
+            }
+            tokens.add(token);
+        }
+        return new MirrorOf(tokens);
     }
 
     /** Every key a {@code [repositories.<name>]} table may carry; any other key fails the entry. */

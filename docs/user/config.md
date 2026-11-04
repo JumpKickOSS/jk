@@ -187,7 +187,10 @@ word is skipped. See [Install](packaging.md#jk-install-project).
 ## Tool mirrors
 
 The distributions jk provisions for itself come from their public origins unless `[mirrors]` points
-a tool elsewhere. Each mirror is laid out as the origin it replaces:
+a tool elsewhere. `[mirrors]` covers tool downloads only; a Maven repository mirror (Artifactory
+or Nexus answering for Central and the rest) is a `[repositories.<id>]` table with `mirror-of` —
+see [Repositories § Mirror or source](repositories.md#a-corporate-repository-mirror-or-source).
+Each mirror is laid out as the origin it replaces:
 
 ```toml
 # ~/.jk/config.toml

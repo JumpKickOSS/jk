@@ -61,13 +61,13 @@ class CoexistenceMirrorE2eTest {
     private static final String GROUP_PATH = "com/example/mirrored";
     private static final String ARTIFACT = "only-on-nexus";
 
-    /** Fresh per run, so the cache under {@code build/} cannot answer for the mirror. */
-    private static final String VERSION = "1." + Long.toString(System.nanoTime(), 36);
+    /** Fresh per test, so the cache under {@code build/} cannot answer for the mirror. */
+    private final String version = "1." + Long.toString(System.nanoTime(), 36);
 
-    private static final String POM_PATH =
-            "/" + GROUP_PATH + "/" + ARTIFACT + "/" + VERSION + "/" + ARTIFACT + "-" + VERSION + ".pom";
-    private static final String JAR_PATH =
-            "/" + GROUP_PATH + "/" + ARTIFACT + "/" + VERSION + "/" + ARTIFACT + "-" + VERSION + ".jar";
+    private final String pomPath =
+            "/" + GROUP_PATH + "/" + ARTIFACT + "/" + version + "/" + ARTIFACT + "-" + version + ".pom";
+    private final String jarPath =
+            "/" + GROUP_PATH + "/" + ARTIFACT + "/" + version + "/" + ARTIFACT + "-" + version + ".jar";
     private static final String METADATA_PATH = "/" + GROUP_PATH + "/" + ARTIFACT + "/maven-metadata.xml";
 
     /** The build's store: warm with the JUnit Platform from this engine's, like a suite's sandbox. */
@@ -128,7 +128,7 @@ class CoexistenceMirrorE2eTest {
         assertThat(built.errors()).isEmpty();
         assertThat(built.success()).isTrue();
         assertThat(project.resolve("target/classes/com/example/Shop.class")).exists();
-        assertThat(nexus.requested).contains(POM_PATH, JAR_PATH);
+        assertThat(nexus.requested).contains(pomPath, jarPath);
         assertThat(nexus.requested)
                 .as("the test runner's own dependencies came through the mirror too")
                 .anyMatch(path -> path.contains("/org/junit/platform/junit-platform-launcher/"));
@@ -147,16 +147,56 @@ class CoexistenceMirrorE2eTest {
         assertThat(project.resolve("jk.toml")).doesNotExist();
     }
 
+    /**
+     * The same shop with no Maven settings at all: a {@code mirror-of} table in the user's
+     * {@code config.toml} stands in for every repository, and the lock still records {@code
+     * central} at Central's own URL — the mirror is no repository of the build.
+     */
+    @Test
+    void a_config_toml_mirror_answers_for_every_repository_and_the_lock_records_central(@TempDir Path tmp)
+            throws Exception {
+        serveOnlyOnNexus();
+        Path home = Files.createDirectories(tmp.resolve("home"));
+        Files.writeString(home.resolve("config.toml"), """
+                [repositories.corp]
+                url = "%s/"
+                mirror-of = ["*"]
+                """.formatted(nexus.base()));
+        System.setProperty(
+                MavenSettings.SETTINGS_PROPERTY, tmp.resolve("no-settings.xml").toString());
+        System.setProperty("jk.env.JK_HOME", home.toString());
+        try {
+            Path project = writeProject(tmp.resolve("shop"));
+
+            BuildPlanResult built = plan(project, CACHE).run();
+
+            assertThat(built.errors()).isEmpty();
+            assertThat(built.success()).isTrue();
+            assertThat(nexus.requested).contains(pomPath, jarPath);
+            Lockfile lock = LockfileReader.read(LockPaths.lockFile(project));
+            assertThat(lock.artifacts())
+                    .filteredOn(a -> a.name().startsWith("com.example.mirrored:" + ARTIFACT + ":"))
+                    .singleElement()
+                    .satisfies(a -> assertThat(a.source())
+                            .isEqualTo(RepositorySpec.CENTRAL + "+" + RepositorySpec.MAVEN_CENTRAL.url()));
+            assertThat(Files.readString(LockPaths.lockFile(project)))
+                    .doesNotContain("corp")
+                    .doesNotContain(nexus.base().getHost() + ":" + nexus.base().getPort());
+        } finally {
+            System.clearProperty("jk.env.JK_HOME");
+        }
+    }
+
     /** A POM, a jar with a manifest, and the version list, for a coordinate Central has never heard of. */
     private void serveOnlyOnNexus() throws Exception {
-        nexus.serve(POM_PATH, """
+        nexus.serve(pomPath, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>com.example.mirrored</groupId>
                   <artifactId>only-on-nexus</artifactId>
                   <version>%s</version>
                 </project>
-                """.formatted(VERSION));
+                """.formatted(version));
         nexus.serve(METADATA_PATH, """
                 <metadata>
                   <groupId>com.example.mirrored</groupId>
@@ -167,7 +207,7 @@ class CoexistenceMirrorE2eTest {
                     <versions><version>%s</version></versions>
                   </versioning>
                 </metadata>
-                """.formatted(VERSION, VERSION, VERSION));
+                """.formatted(version, version, version));
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         Manifest manifest = new Manifest();
         manifest.getMainAttributes().putValue("Manifest-Version", "1.0");
@@ -176,7 +216,7 @@ class CoexistenceMirrorE2eTest {
             jar.write("served by the mirror".getBytes(StandardCharsets.UTF_8));
             jar.closeEntry();
         }
-        nexus.hosted.put(JAR_PATH, bytes.toByteArray());
+        nexus.hosted.put(jarPath, bytes.toByteArray());
     }
 
     /**
@@ -257,7 +297,7 @@ class CoexistenceMirrorE2eTest {
         }
     }
 
-    private static Path writeProject(Path project) throws Exception {
+    private Path writeProject(Path project) throws Exception {
         Files.createDirectories(project);
         Files.writeString(project.resolve("pom.xml"), """
                 <?xml version="1.0" encoding="UTF-8"?>
@@ -278,7 +318,7 @@ class CoexistenceMirrorE2eTest {
                     </dependency>
                   </dependencies>
                 </project>
-                """.formatted(VERSION));
+                """.formatted(version));
         Path main = Files.createDirectories(project.resolve("src/main/java/com/example"));
         Files.writeString(main.resolve("Shop.java"), """
                 package com.example;

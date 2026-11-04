@@ -21,7 +21,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * The remote repositories a plugin step's {@code repositories} input hands the worker, as jk
  * routes them: the module's {@link RepoGroup} in resolve order, each at the URL jk itself opens —
- * the {@code settings.xml} mirror when one stands in for it, Central's mirror while Central is
+ * the mirror when one stands in for it ({@code ~/.jk/config.toml} or {@code settings.xml}), Central's mirror while Central is
  * refusing this host — with the credential that URL is asked with.
  *
  * <p>The action-key token names the declared set (repository names and their own URLs), never the
@@ -66,11 +66,23 @@ record PluginRepositories(List<RepositoryRoute> routes, String token) {
         List<RepositoryRoute> routes = new ArrayList<>();
         StringBuilder declared = new StringBuilder();
         for (MavenRepo repo : group.repos()) {
+            refuseRefusedMirror(repo);
             URI url = centralRoute.apply(repo.fetchBase());
             routes.add(route(repo, url).through(proxyFor.apply(url)));
             declared.append(repo.name()).append('|').append(repo.baseUrl()).append('\n');
         }
         return new PluginRepositories(List.copyOf(routes), Hashing.sha256Hex(declared.toString()));
+    }
+
+    /**
+     * A mirror jk refuses stands in for {@code repo} all the same: the step's resolver would dial
+     * the refused URL, and jk's own requests go nowhere in its place, so the step fails naming it.
+     */
+    private static void refuseRefusedMirror(MavenRepo repo) {
+        MavenRepo.Mirror mirror = repo.mirror().orElse(null);
+        if (mirror == null || mirror.refusal() == null) return;
+        throw new IllegalStateException("repository " + repo.name() + " is reached through " + mirror.label()
+                + ", which jk refuses: " + mirror.refusal());
     }
 
     private static RepositoryRoute route(MavenRepo repo, URI url) {
