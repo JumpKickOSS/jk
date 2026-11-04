@@ -9,6 +9,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.task.TransferBoard;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -215,8 +216,13 @@ public final class JdkInstaller {
         IN_FLIGHT.add(archive);
         boolean keep = false;
         try {
-            long bytes =
-                    streamingDownload(entry.url(), entry.sha256(), entry.installFolderName(), archive, onBytesRead);
+            long bytes = streamingDownload(
+                    entry.url(),
+                    entry.sha256(),
+                    entry.installFolderName(),
+                    JdkProgressLabel.compactName(entry),
+                    archive,
+                    onBytesRead);
             keep = true;
             // Metered once off the finished archive, not per chunk (onBytesRead is a progress hook).
             SessionContext.current().io().remoteDown(bytes);
@@ -510,11 +516,18 @@ public final class JdkInstaller {
 
     /**
      * Stream {@code uri} into {@code archive} while updating a SHA-256 digest and forwarding
-     * cumulative byte counts to {@code onBytesRead}. Verifies the digest against {@code
-     * expectedSha256} on completion; an entry without one is refused before the request goes out.
+     * cumulative byte counts to {@code onBytesRead}, and to the run's download board as {@code
+     * boardLabel} so the archive shows beside every other download of the run. Verifies the digest
+     * against {@code expectedSha256} on completion; an entry without one is refused before the
+     * request goes out.
      */
     private long streamingDownload(
-            URI uri, @Nullable String expectedSha256, String displayName, Path archive, LongConsumer onBytesRead)
+            URI uri,
+            @Nullable String expectedSha256,
+            String displayName,
+            String boardLabel,
+            Path archive,
+            LongConsumer onBytesRead)
             throws IOException, InterruptedException {
         String expected = requireDigest(expectedSha256, displayName, uri);
         uri = mirror.map(uri);
@@ -527,8 +540,12 @@ public final class JdkInstaller {
         }
         MessageDigest sha = Hashing.newSha256();
         long total = 0;
+        // The run's board shows this archive beside every other download of the run.
         try (InputStream body = response.body();
-                OutputStream sink = Files.newOutputStream(archive)) {
+                OutputStream sink = Files.newOutputStream(archive);
+                TransferBoard.Transfer transfer =
+                        SessionContext.current().io().transfers().open(boardLabel)) {
+            transfer.started(Http.declaredLength(response));
             byte[] buf = new byte[DOWNLOAD_BUFFER];
             int n;
             while ((n = body.read(buf)) > 0) {
@@ -536,7 +553,9 @@ public final class JdkInstaller {
                 sink.write(buf, 0, n);
                 total += n;
                 onBytesRead.accept(total);
+                transfer.advanced(total);
             }
+            transfer.finished();
         }
         String actual = Hashing.hex(sha.digest());
         if (!actual.equalsIgnoreCase(expected)) {

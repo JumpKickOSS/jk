@@ -58,7 +58,16 @@ public final class IoLedger {
     private final LongAdder localDown = new LongAdder();
 
     /** This run's downloads as they stream, for a live display; see {@link TransferBoard}. */
-    private final TransferBoard transfers = new TransferBoard(Clock.SYSTEM);
+    private final TransferBoard transfers;
+
+    public IoLedger() {
+        this(Clock.SYSTEM);
+    }
+
+    /** A ledger whose download board reads {@code clock}: a test moves time past a row's dwell. */
+    public IoLedger(Clock clock) {
+        this.transfers = new TransferBoard(clock);
+    }
 
     /** One run's totals, in bytes. */
     public record Totals(long remoteUp, long remoteDown, long localUp, long localDown) {
