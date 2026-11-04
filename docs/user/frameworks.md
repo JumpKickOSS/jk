@@ -72,7 +72,8 @@ jk new -t quarkus/hello my-api
 - **Build-time closure:** each extension's `-deployment` artifact and what it depends on — the
   closure the augment and the test model load — is pinned by `jk lock`, which asks Quarkus's
   own resolver for it, so jk never second-guesses Quarkus's rules (extension descriptors,
-  conditional dependencies, capabilities). It is a `quarkus/deployment` row in `jk-lock.toml`
+  conditional dependencies, capabilities). It is two rows in `jk-lock.toml`, `quarkus/deployment`
+  for the augment and `quarkus/test-deployment` for the test model
   ([Lockfile](lockfile.md#closures-a-plugin-resolves)). `jk sync` puts every file in the
   store, so a clean build downloads nothing and `jk build -o` augments offline. The augment reads
   those files and nothing else on the machine — never `~/.m2`. A file the lock does not pin (a

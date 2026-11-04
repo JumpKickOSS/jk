@@ -326,21 +326,24 @@ class LockFreshnessTest {
         assertThat(LockFreshness.isStale(dir, lockFile)).as("no closure row").isTrue();
 
         var build = JkBuildParser.parse(dir.resolve("jk.toml"));
-        var closure = PluginContributions.lockClosures(build, dir).getFirst();
-        String inputs = LockClosureInputs.of(closure, dir, dir, lock);
-        var row = ToolEntry.resolved(
-                "quarkus/deployment",
-                inputs,
-                Map.of(Coordinate.parse("io.quarkus:quarkus-arc-deployment:3.40.1"), "3".repeat(64)));
-        List<ToolEntry> withRow = new ArrayList<>(tools);
-        withRow.add(row);
-        LockfileWriter.write(lock.withTools(withRow), lockFile);
+        // The inputs are read off the lock as it reads back from disk, tool rows and all.
+        Lockfile written = LockfileReader.read(lockFile);
+        Map<Coordinate, String> files =
+                Map.of(Coordinate.parse("io.quarkus:quarkus-arc-deployment:3.40.1"), "3".repeat(64));
+        List<ToolEntry> withRows = new ArrayList<>(tools);
+        for (var closure : PluginContributions.lockClosures(build, dir)) {
+            withRows.add(
+                    ToolEntry.resolved(closure.resolvedBy(), LockClosureInputs.of(closure, dir, dir, written), files));
+        }
+        LockfileWriter.write(lock.withTools(withRows), lockFile);
         assertThat(LockFreshness.isStale(dir, lockFile))
                 .as("a row for the module's inputs")
                 .isFalse();
 
         List<ToolEntry> otherInputs = new ArrayList<>(tools);
-        otherInputs.add(ToolEntry.resolved("quarkus/deployment", "4".repeat(64), row.files()));
+        for (var closure : PluginContributions.lockClosures(build, dir)) {
+            otherInputs.add(ToolEntry.resolved(closure.resolvedBy(), "4".repeat(64), files));
+        }
         LockfileWriter.write(lock.withTools(otherInputs), lockFile);
         assertThat(LockFreshness.isStale(dir, lockFile))
                 .as("a row for other inputs")

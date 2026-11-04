@@ -334,7 +334,10 @@ public final class PluginDescriptors {
                 lockClosures);
     }
 
-    /** {@code [[contribute.lock-closure]]}: a {@code name} each, unique within the plugin. */
+    /**
+     * {@code [[contribute.lock-closure]]}: a {@code name} each, unique within the plugin, and the
+     * steps that read it ({@code for-step}; none named is every step of the plugin).
+     */
     private static List<PluginDescriptor.LockClosure> parseLockClosures(TomlTable contribute, String displayPath) {
         List<PluginDescriptor.LockClosure> out = new ArrayList<>();
         for (TomlTable t : tableArray(contribute, "lock-closure", displayPath)) {
@@ -347,7 +350,7 @@ public final class PluginDescriptors {
             if (out.stream().anyMatch(c -> c.name().equals(name))) {
                 throw new JkBuildParseException(where + ": `" + name + "` is declared twice");
             }
-            out.add(new PluginDescriptor.LockClosure(name));
+            out.add(new PluginDescriptor.LockClosure(name, parseForStep(t, "lock-closure", where)));
         }
         return out;
     }
@@ -659,8 +662,9 @@ public final class PluginDescriptors {
      */
     private static List<String> parseForStep(TomlTable t, String key, String where) {
         if (!t.contains("for-step")) return List.of();
-        if (!key.equals("step-dependency")) {
-            throw new JkBuildParseException(where + ": for-step applies to a [[contribute.step-dependency]] only"
+        if (!key.equals("step-dependency") && !key.equals("lock-closure")) {
+            throw new JkBuildParseException(where
+                    + ": for-step applies to a [[contribute.step-dependency]] or [[contribute.lock-closure]] only"
                     + " — a command tool reaches every command and no step");
         }
         if (!t.isString("for-step") && !t.isArray("for-step")) {

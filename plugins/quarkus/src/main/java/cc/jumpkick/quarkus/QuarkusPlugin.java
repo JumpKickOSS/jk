@@ -60,11 +60,17 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
     /** The file the engine reads for the test JVM's arguments, under {@link #TEST_MODEL_DIR}. */
     static final String TEST_JVM_ARGS = TEST_MODEL_DIR + "/jvm.args";
 
-    /** The {@code [[contribute.lock-closure]]} the lock asks for: the extensions' build-time closure. */
+    /**
+     * The {@code [[contribute.lock-closure]]} the augment reads: what Quarkus's resolver reads
+     * building the production application model — the extensions' build-time closure.
+     */
     static final String DEPLOYMENT_CLOSURE = "deployment";
 
-    /** The extra the engine hands the closure's repository under ({@code lock-closure.<name>}). */
-    static final String CLOSURE_EXTRA = "lock-closure." + DEPLOYMENT_CLOSURE;
+    /**
+     * The one the test model reads: the same for the test application model. Two closures, so a
+     * test-only extension changes the test model's input and not the augment's.
+     */
+    static final String TEST_DEPLOYMENT_CLOSURE = "test-deployment";
 
     private static final String BOOTSTRAP_EXTRA = "quarkus-bootstrap";
     static final String PLATFORM_PROPS_EXTRA = "quarkus-platform-properties";
@@ -149,23 +155,28 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
     }
 
     /**
-     * The {@value #DEPLOYMENT_CLOSURE} closure: every file Quarkus's resolver reads building the
-     * production and the test application models from the lock being written — the extensions'
-     * {@code -deployment} artifacts and their closure, and each POM it walks — resolved in a fork
-     * on the augment's own tool classpath ({@link QuarkusLockClosureMain}). The lock pins them and
+     * The {@value #DEPLOYMENT_CLOSURE} and {@value #TEST_DEPLOYMENT_CLOSURE} closures: every file
+     * Quarkus's resolver reads building the production, or the test, application model from the
+     * lock being written — the extensions' {@code -deployment} artifacts and their closure, and each
+     * POM it walks — resolved in a fork on the augment's own tool classpath ({@link
+     * QuarkusLockClosureMain}), each with where the resolver holds its bytes. The lock pins them and
      * the sync stages them, so the augment and the test model read them from the store.
      */
     @Override
-    public List<String> lockClosure(String name, TaskExec exec, List<PackageIo.RuntimeEntry> testRuntimeEntries)
+    public List<Pin> lockClosure(String name, TaskExec exec, List<PackageIo.RuntimeEntry> testRuntimeEntries)
             throws Exception {
-        if (!DEPLOYMENT_CLOSURE.equals(name)) {
+        List<PackageIo.RuntimeEntry> entries;
+        if (DEPLOYMENT_CLOSURE.equals(name)) {
+            entries = exec.runtimeEntries();
+        } else if (TEST_DEPLOYMENT_CLOSURE.equals(name)) {
+            entries = testRuntimeEntries;
+        } else {
             throw new IOException("quarkus resolves no lock closure named `" + name + "`");
         }
-        exec.label("quarkus deployment closure (" + exec.project().name() + ")");
+        exec.label("quarkus " + name + " closure (" + exec.project().name() + ")");
         Path scratch = exec.scratch();
-        Path runtimeList = writeRuntimeList(exec.runtimeEntries(), scratch.resolve("runtime-jars.tsv"));
-        Path testList = writeRuntimeList(testRuntimeEntries, scratch.resolve("test-runtime-jars.tsv"));
-        Path out = scratch.resolve("closure.txt");
+        Path list = writeRuntimeList(entries, scratch.resolve(name + "-jars.tsv"));
+        Path out = scratch.resolve(name + ".txt");
         Path routes = writeRepositoryRoutes(exec);
         TaskExec.ToolRun.Result run;
         try {
@@ -174,29 +185,33 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                     .mainClass(QuarkusLockClosureMain.class.getName())
                     .args(List.of(
                             exec.classesDir().toString(),
-                            scratch.resolve("resolve").toString(),
+                            scratch.resolve("resolve-" + name).toString(),
                             exec.project().group(),
                             exec.project().name(),
                             exec.project().version(),
-                            runtimeList.toString(),
-                            testList.toString(),
+                            list.toString(),
                             quarkusVersion(exec),
                             routes.toString(),
+                            closureRepository(exec, name),
                             Boolean.toString(exec.offline()),
-                            out.toString(),
-                            closureRepository(exec)))
+                            out.toString()))
                     .cwd(exec.moduleDir())
                     .run();
         } finally {
             Files.deleteIfExists(routes);
         }
         if (run.exit() != 0 || !Files.isRegularFile(out)) {
-            throw new IOException("quarkus deployment closure failed (exit " + run.exit() + "):\n"
+            throw new IOException("quarkus " + name + " closure failed (exit " + run.exit() + "):\n"
                     + failureText(QuarkusLockClosureMain.LOG_PREFIX, run.output()));
         }
-        List<String> files = new ArrayList<>();
+        List<Pin> files = new ArrayList<>();
         for (String line : Files.readAllLines(out, StandardCharsets.UTF_8)) {
-            if (!line.isBlank()) files.add(line.strip());
+            if (line.isBlank()) continue;
+            int tab = line.indexOf('\t');
+            files.add(
+                    tab < 0
+                            ? new Pin(line.strip(), null)
+                            : new Pin(line.substring(0, tab), Path.of(line.substring(tab + 1))));
         }
         return files;
     }
@@ -272,7 +287,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                 quarkusVersion,
                 exec.requireExtra(PLATFORM_PROPS_EXTRA).toString(),
                 routes.toString(),
-                closureRepository(exec),
+                closureRepository(exec, TEST_DEPLOYMENT_CLOSURE),
                 Boolean.toString(exec.offline()));
     }
 
@@ -378,17 +393,17 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                 quarkusVersion,
                 exec.requireExtra(PLATFORM_PROPS_EXTRA).toString(),
                 routes.toString(),
-                closureRepository(exec),
+                closureRepository(exec, DEPLOYMENT_CLOSURE),
                 Boolean.toString(exec.offline()));
     }
 
     /**
-     * The lock's {@value #DEPLOYMENT_CLOSURE} closure as the engine hands it to a step — a
+     * The lock closure {@code closure} as the engine hands it to the step that reads it — a
      * Maven-layout repository of every pinned file, linked from the store — or blank when none
      * was handed over: the forks' resolver's only local tail.
      */
-    static String closureRepository(TaskExec exec) {
-        return exec.extra(CLOSURE_EXTRA).map(Path::toString).orElse("");
+    static String closureRepository(TaskExec exec, String closure) {
+        return exec.extra("lock-closure." + closure).map(Path::toString).orElse("");
     }
 
     /** {@code fast-jar} (default) or {@code uber-jar}; unknown values fail early. */

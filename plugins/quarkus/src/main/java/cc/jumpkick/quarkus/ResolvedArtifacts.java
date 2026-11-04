@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.quarkus;
 
-import java.util.List;
+import java.nio.file.Path;
+import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import org.eclipse.aether.AbstractRepositoryListener;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositoryEvent;
 import org.eclipse.aether.RepositoryListener;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.artifact.Artifact;
+import org.eclipse.aether.repository.RepositoryPolicy;
 import org.eclipse.aether.util.listener.ChainedRepositoryListener;
 
 /**
@@ -21,7 +24,7 @@ import org.eclipse.aether.util.listener.ChainedRepositoryListener;
  */
 final class ResolvedArtifacts extends AbstractRepositoryListener {
 
-    private final Set<String> files = new ConcurrentSkipListSet<>();
+    private final Map<String, Path> files = new ConcurrentSkipListMap<>();
     private final Set<String> skipped;
 
     /** {@code skipped}: {@code group:artifact:version} of what is not fetched from a repository (the app, siblings). */
@@ -34,6 +37,9 @@ final class ResolvedArtifacts extends AbstractRepositoryListener {
         if (!(session instanceof DefaultRepositorySystemSession mutable)) {
             throw new IllegalStateException("the resolver session is read-only; its artifacts cannot be recorded");
         }
+        // What is recorded is pinned by the digest of these bytes: a body that disagrees with its
+        // repository's checksum fails the resolve rather than becoming the pin.
+        mutable.setChecksumPolicy(RepositoryPolicy.CHECKSUM_POLICY_FAIL);
         RepositoryListener previous = mutable.getRepositoryListener();
         mutable.setRepositoryListener(previous == null ? this : ChainedRepositoryListener.newInstance(previous, this));
     }
@@ -44,12 +50,12 @@ final class ResolvedArtifacts extends AbstractRepositoryListener {
         if (a == null || event.getFile() == null || !event.getExceptions().isEmpty()) return;
         String gav = a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getBaseVersion();
         if (skipped.contains(gav)) return;
-        files.add(coordinate(a));
+        files.putIfAbsent(coordinate(a), event.getFile().toPath());
     }
 
-    /** The files recorded so far, sorted. */
-    List<String> files() {
-        return List.copyOf(files);
+    /** The files recorded so far, sorted by coordinate, each to where the resolver holds it. */
+    Map<String, Path> files() {
+        return new TreeMap<>(files);
     }
 
     /** {@code a} as jk writes a coordinate: no type for a jar, {@code !<extension>} for any other file. */

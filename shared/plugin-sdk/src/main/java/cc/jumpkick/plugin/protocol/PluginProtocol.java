@@ -87,7 +87,10 @@ public final class PluginProtocol {
 
     public static final String LABEL = "label"; // free-text progress label
     public static final String COMMAND_OUT = "command-out"; // user-facing output line (command ops)
-    /** One file a lock closure needs: {@code coordinate} is {@code group:artifact:version[:classifier][!type]}. */
+    /**
+     * One file a lock closure needs: {@code coordinate} is {@code group:artifact:version[:classifier][!type]},
+     * and {@code path}, when present, where the plugin's resolver holds its bytes.
+     */
     public static final String PIN = "pin";
 
     public static final String DIAGNOSTIC = "diagnostic"; // {sev,file?,line?,col?,key?,msg}

@@ -33,6 +33,8 @@ class QuarkusAugmentArgsTest {
     private static final Path ROUTES = ShortTempDirs.path().resolve("jk-quarkus-repositories-1.jsonl");
     private static final Path CLOSURE =
             ShortTempDirs.path().resolve("store/tools/plugin-tools/lock-quarkus-deployment__abc");
+    private static final Path TEST_CLOSURE =
+            ShortTempDirs.path().resolve("store/tools/plugin-tools/lock-quarkus-test-deployment__def");
 
     @Test
     void the_offline_decision_is_the_last_argument_the_augment_is_given() {
@@ -73,7 +75,7 @@ class QuarkusAugmentArgsTest {
     @Test
     void the_closure_repository_is_the_engine_supplied_extra() {
         assertThat(argsFor(false)).element(11).isEqualTo(CLOSURE.toString());
-        assertThat(testModelArgsFor(false)).element(10).isEqualTo(CLOSURE.toString());
+        assertThat(testModelArgsFor(false)).element(10).isEqualTo(TEST_CLOSURE.toString());
         assertThat(QuarkusAugmentMain.closureRepository("")).isNull();
         assertThat(QuarkusAugmentMain.closureRepository(CLOSURE.toString())).isEqualTo(CLOSURE);
     }
@@ -196,7 +198,9 @@ class QuarkusAugmentArgsTest {
 
         @Override
         public Optional<Path> extra(String name) {
-            if (QuarkusPlugin.CLOSURE_EXTRA.equals(name)) return Optional.of(CLOSURE);
+            if (("lock-closure." + QuarkusPlugin.DEPLOYMENT_CLOSURE).equals(name)) return Optional.of(CLOSURE);
+            if (("lock-closure." + QuarkusPlugin.TEST_DEPLOYMENT_CLOSURE).equals(name))
+                return Optional.of(TEST_CLOSURE);
             return QuarkusPlugin.PLATFORM_PROPS_EXTRA.equals(name)
                     ? Optional.ofNullable(platformProps)
                     : Optional.empty();

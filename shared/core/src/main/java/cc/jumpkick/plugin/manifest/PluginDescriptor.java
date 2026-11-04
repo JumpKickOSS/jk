@@ -203,11 +203,19 @@ public record PluginDescriptor(
      * {@code [[contribute.lock-closure]]}: files a build of the module needs that only the plugin's
      * own resolution can name (Quarkus's extension deployment artifacts). {@code jk lock} asks the
      * plugin's worker for them ({@code LockExtension}) and pins every one, so {@code jk sync} stages
-     * them and an offline build has them. {@code name} tells the plugin which closure is asked for.
+     * them and an offline build has them. {@code name} tells the plugin which closure is asked for;
+     * {@code forSteps} names the steps that read it (empty: every step of the plugin), and only
+     * those receive it and are keyed by it.
      */
-    public record LockClosure(String name) {
+    public record LockClosure(String name, List<String> forSteps) {
         public LockClosure {
             Objects.requireNonNull(name, "name");
+            forSteps = forSteps == null ? List.of() : List.copyOf(forSteps);
+        }
+
+        /** True when the step or packager {@code consumer} reads this closure. */
+        public boolean reaches(String consumer) {
+            return forSteps.isEmpty() || forSteps.contains(consumer);
         }
     }
 

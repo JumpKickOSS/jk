@@ -50,6 +50,22 @@ public final class ToolsGc {
     /** An unpacked archive can be gigabytes: a week from last use, however recent the others. */
     static final Rule ARCHIVE = new Rule(Duration.ofDays(7), Duration.ofDays(7));
 
+    /**
+     * Closure directories (a tool's runtime closure, a plugin's lock-closure repository): link farms
+     * over the store, each the answer for its own tools rather than one version among several, so
+     * every one keeps the same window from its own last use.
+     */
+    static final Rule CLOSURES = new Rule(Duration.ofDays(30), Duration.ofDays(30));
+
+    /** The family closure directories live in. */
+    public static final String CLOSURE_FAMILY = "plugin-tools";
+
+    /**
+     * A staging directory ({@code .repo-…}, {@code .seed-…}, {@code .closure-…}) a closure is built
+     * in is published or removed within one run; one older than this was left by a run that died.
+     */
+    static final Duration STAGING_TTL = Duration.ofDays(1);
+
     /** What a pass found: installs removed (or that would be), their bytes, and those kept. */
     public record Report(int deleted, long freedBytes, int kept, List<String> removed) {}
 
@@ -57,6 +73,7 @@ public final class ToolsGc {
     static Rule ruleFor(String family) {
         return switch (family) {
             case UNPACKED -> ARCHIVE;
+            case CLOSURE_FAMILY -> CLOSURES;
             case "node", "pnpm", "yarn", "bun" -> RUNTIME;
             default -> BUILD_TOOL;
         };
@@ -85,8 +102,16 @@ public final class ToolsGc {
             Rule rule = ruleFor(family);
             record Install(Path dir, String version, long usedAt, int days) {}
             List<Install> installs = new ArrayList<>();
+            List<Path> abandoned = new ArrayList<>();
             PathUtil.forEachChild(dir, (child, attrs) -> {
-                if (!attrs.isDirectory() || child.getFileName().toString().startsWith(".")) return true;
+                if (!attrs.isDirectory()) return true;
+                if (child.getFileName().toString().startsWith(".")) {
+                    if (family.equals(CLOSURE_FAMILY)
+                            && nowMillis - attrs.lastModifiedTime().toMillis() > STAGING_TTL.toMillis()) {
+                        abandoned.add(child);
+                    }
+                    return true;
+                }
                 String version = child.getFileName().toString();
                 AccessLedger.Use use = uses.get(ToolUse.key(family, version));
                 long mtime = attrs.lastModifiedTime().toMillis();
@@ -97,6 +122,12 @@ public final class ToolsGc {
                         use == null ? 1 : use.days()));
                 return true;
             });
+            for (Path staging : abandoned) {
+                long size = sizeOf(staging);
+                if (!dryRun) PathUtil.deleteRecursively(staging);
+                removed.add(family + "/" + staging.getFileName());
+                freed[0] += size;
+            }
             installs.sort(Comparator.comparingLong(Install::usedAt).reversed());
             for (int i = 0; i < installs.size(); i++) {
                 Install install = installs.get(i);

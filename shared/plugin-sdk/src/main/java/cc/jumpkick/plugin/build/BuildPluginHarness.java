@@ -73,17 +73,20 @@ public final class BuildPluginHarness {
             out.emit(error("unknown-closure", "a lock-closure op names no closure"));
             return 65;
         }
-        List<String> files;
+        List<LockExtension.Pin> files;
         try {
             files = lock.lockClosure(name, new SpecTaskExec(spec, out), spec.testEntries());
         } catch (Exception e) {
             out.emit(error("lock-closure-failed", String.valueOf(e.getMessage())));
             return 1;
         }
-        for (String file : files) {
+        for (LockExtension.Pin file : files) {
+            Path held = file.file();
             out.emit(JsonFields.object()
                     .string(PluginProtocol.T, PluginProtocol.PIN)
-                    .string("coordinate", file)
+                    .string("coordinate", file.coordinate())
+                    .optionalString(
+                            "path", held == null ? null : held.toAbsolutePath().toString())
                     .finish());
         }
         return 0;

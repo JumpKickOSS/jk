@@ -58,9 +58,15 @@ coordinate = "io.quarkus.platform:quarkus-bom-quarkus-platform-properties:^${con
 # dependencies, with every POM Quarkus's resolver reads — is Quarkus's to decide (descriptors,
 # conditional dependencies, capabilities). `jk lock` asks the worker for it (QuarkusPlugin
 # .lockClosure) and pins every file; `jk sync` stages them, so the augment and the test model read
-# them from the store and an offline build has them.
+# them from the store and an offline build has them. One closure per model, each read by its own
+# step, so a test-only extension does not move the augment's key.
 [[contribute.lock-closure]]
-name = "deployment"
+name     = "deployment"
+for-step = "quarkus-augment"
+
+[[contribute.lock-closure]]
+name     = "test-deployment"
+for-step = "quarkus-test-model"
 
 # Quarkus REST / CDI reflect on parameter names.
 [[contribute.compiler-args]]

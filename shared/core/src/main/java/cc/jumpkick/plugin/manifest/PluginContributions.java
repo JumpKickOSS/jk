@@ -288,11 +288,16 @@ public final class PluginContributions {
      * One closure an active plugin resolves for the lock ({@code [[contribute.lock-closure]]}): the
      * plugin's manifest and the closure's name.
      */
-    public record LockClosureDep(PluginDescriptor manifest, String name) {
+    public record LockClosureDep(PluginDescriptor manifest, PluginDescriptor.LockClosure closure) {
+
+        /** The closure's name, unique within its plugin. */
+        public String name() {
+            return closure.name();
+        }
 
         /** {@code <plugin>/<name>}: what the lock row is {@code resolved-by}. */
         public String resolvedBy() {
-            return manifest.id() + "/" + name;
+            return manifest.id() + "/" + closure.name();
         }
     }
 
@@ -306,7 +311,7 @@ public final class PluginContributions {
             if (manifest.contributions().lockClosures().isEmpty()) continue;
             if (build.pluginConfig(manifest.id()).isEmpty()) continue;
             for (PluginDescriptor.LockClosure closure : manifest.contributions().lockClosures()) {
-                out.add(new LockClosureDep(manifest, closure.name()));
+                out.add(new LockClosureDep(manifest, closure));
             }
         }
         return out;

@@ -40,6 +40,24 @@ class LockClosureContributionTest {
         assertThat(d.contributions().isEmpty()).isFalse();
     }
 
+    /** {@code for-step} names the steps that read a closure; none named is every step. */
+    @Test
+    void for_step_scopes_a_closure_to_the_steps_that_read_it() {
+        PluginDescriptor d = PluginDescriptors.parse(HEAD + """
+                [[contribute.lock-closure]]
+                name = "deployment"
+                for-step = "augment"
+
+                [[contribute.lock-closure]]
+                name = "everything"
+                """, "hello.toml");
+        PluginDescriptor.LockClosure scoped = d.contributions().lockClosures().get(0);
+        PluginDescriptor.LockClosure open = d.contributions().lockClosures().get(1);
+        assertThat(scoped.reaches("augment")).isTrue();
+        assertThat(scoped.reaches("test-model")).isFalse();
+        assertThat(open.reaches("test-model")).isTrue();
+    }
+
     @Test
     void a_name_is_a_lower_case_word_declared_once() {
         assertThatThrownBy(() -> PluginDescriptors.parse(HEAD + """
@@ -72,7 +90,7 @@ class LockClosureContributionTest {
                 """);
         assertThat(PluginContributions.lockClosures(quarkus, dir))
                 .extracting(PluginContributions.LockClosureDep::resolvedBy)
-                .containsExactly("quarkus/deployment");
+                .containsExactly("quarkus/deployment", "quarkus/test-deployment");
 
         var plain = JkBuildParser.parse("""
                 group = "g"

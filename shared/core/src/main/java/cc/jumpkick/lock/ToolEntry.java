@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.lock;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.VersionSelector;
 import java.util.ArrayList;
@@ -72,12 +73,12 @@ public record ToolEntry(
                 throw new IllegalArgumentException(
                         "[[tool]] " + resolvedBy + " names `resolved-by`, `inputs` and `files` alone");
             }
-            if (inputs == null || !inputs.startsWith("sha256:")) {
+            if (!isDigest(inputs)) {
                 throw new IllegalArgumentException("[[tool]] " + resolvedBy + " inputs must be sha256:<hex>");
             }
             for (String file : closure) {
                 int at = file.indexOf(" sha256:");
-                if (at <= 0 || file.length() - at - " sha256:".length() != 64) {
+                if (at <= 0 || !isDigest(file.substring(at + 1))) {
                     throw new IllegalArgumentException(
                             "[[tool]] " + resolvedBy + " file `" + file + "` must be `<coordinate> sha256:<hex>`");
                 }
@@ -113,9 +114,23 @@ public record ToolEntry(
                         "[[tool]] " + coordinate + " names a `classifier` beside per-platform `sha256`");
             }
         }
-        if (checksum != null && !checksum.startsWith("sha256:")) {
+        if (checksum != null && !isDigest(checksum)) {
             throw new IllegalArgumentException("[[tool]] " + name + " checksum must be sha256:<hex>");
         }
+        for (Map.Entry<String, String> platform : sha256.entrySet()) {
+            if (!Hashing.isHex(platform.getValue(), 64)) {
+                throw new IllegalArgumentException(
+                        "[[tool]] " + name + " sha256." + platform.getKey() + " must be 64 hex digits");
+            }
+        }
+    }
+
+    /**
+     * True for {@code sha256:} and 64 hex digits. A digest names a file in the store, so anything
+     * else — a path segment, a {@code ..} — is refused where the lock is read, never resolved.
+     */
+    private static boolean isDigest(@Nullable String value) {
+        return value != null && value.startsWith("sha256:") && Hashing.isHex(value.substring("sha256:".length()), 64);
     }
 
     /** A row that is not {@linkplain #isResolved resolved}. */

@@ -471,20 +471,30 @@ files = [
 ]
 ```
 
-`inputs` digests what the answer was resolved from: the plugin and its version, the module (its
-path under the lock), and the module's locked rows. A plain `jk lock` keeps a row whose inputs
-still match without asking the plugin again; a row that no longer matches — a dependency added,
-the platform version moved — makes the lock stale, and the next build relocks first. Asking
-runs the plugin's own resolver once, over what the store already holds, so a relock downloads
-only what is new. The plugin's table is not an input: the lock is the same for every variant,
-and what the table changes about a resolution is already in the rows. Only a module whose active
-plugins declare a closure is asked; every other lock and build forks nothing for it. A closure
-is resolved for the host that locks: a file a POM picks by OS is this host's, and a build on
-another OS downloads its own (an offline one there refuses it).
+`[quarkus]` declares two: `quarkus/deployment`, which its augment reads, and
+`quarkus/test-deployment`, which its test model reads — so a test-only extension changes the test
+model's input and not the augment's.
 
-The build hands each closure to the plugin's steps as a repository of exactly those files,
-linked from the store and verified against their digests; bytes that disagree with a row fail
-the step naming the closure.
+`inputs` digests what the answer was resolved from: the plugin and its version (and jk's version,
+for a plugin jk bundles), the module (its path under the lock), the module's locked rows, and the
+lock's other tool rows (the tools the plugin resolves with). A plain `jk lock` keeps a row whose
+inputs still match without asking the plugin again; a row that no longer matches — a dependency
+added, the platform version moved, a jk upgrade — makes the lock stale, and the next build relocks
+first. Asking runs the plugin's own resolver once, over what jk already holds, and the files it
+downloads are taken into the store as they are pinned, so neither a relock nor the sync after it
+downloads them a second time. The plugin's table is not an input: the lock is the same for every
+variant, and what the table changes about a resolution is already in the rows. Only a module
+whose active plugins declare a closure is asked; every other lock and build forks nothing for it.
+A closure is resolved for the host that locks: a file a POM picks by OS is this host's, and a
+build on another OS downloads its own (an offline one there refuses it).
+
+Each step that reads a closure receives it as a repository of exactly those files, built from the
+store (or the Maven local repository, where jk keeps Central's artifacts) and verified against
+their digests; bytes that disagree with a row fail the step naming the closure. A step whose
+result is cached keys on the repository's name, a hash of every file and digest, without building
+it. The repository is kept under `tools/plugin-tools/` and reclaimed a month after its last use
+([Cache](cache.md)); the next step that needs it builds it again from the store, which needs no
+network while the store still holds the files.
 
 `jk sync` fetches every tool the lock pins for this platform — artifacts, closures, URL files, and
 the files of every closure a plugin resolved — into
