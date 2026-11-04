@@ -154,11 +154,13 @@
       max-width: var(--max);
       margin: 0 auto;
     }
+    /* jumpkick-logo.webp is cropped tight to the sprite (179×120); the margins stand in
+       for the empty canvas the old 200×200 asset carried above and below it. */
     .hero-logo {
-      width: min(300px, 56vw);
+      width: min(279px, 52vw);
       height: auto;
       display: block;
-      margin: 0 auto 0.85rem;
+      margin: min(54px, 10vw) auto calc(min(55px, 10.3vw) + 0.85rem);
       filter: drop-shadow(0 0 28px rgba(var(--cn-rgb), 0.35));
     }
     .hero-name {
@@ -587,7 +589,7 @@
       .pillars, .pillar ul { grid-template-columns: 1fr; }
       .proof-strip { grid-template-columns: repeat(2, 1fr); }
       .hero { padding: 1.35rem 1.25rem 1rem; }
-      .hero-logo { width: min(240px, 54vw); }
+      .hero-logo { width: min(223px, 50vw); margin: min(43px, 9.7vw) auto calc(min(44px, 10vw) + 0.85rem); }
       .hero-tagline { max-width: 36rem; }
     }
 
@@ -615,7 +617,7 @@
   </header>
 
   <section class="hero">
-    <img class="hero-logo" src="jumpkick-logo.webp" alt="JumpKick" width="200" height="200" />
+    <img class="hero-logo" src="jumpkick-logo.webp" alt="JumpKick" width="179" height="120" />
     <h1 class="hero-name">JumpKick</h1>
     <p class="hero-tagline">
       The JVM build system built for coding agents — and the humans supervising them.
