@@ -334,8 +334,20 @@ password = "${file:~/.jk/secrets.properties#corp.password}"
 - `~` expands to your home. A relative path is relative to `~/.jk/`, the directory of the file
   that declares it.
 - On Linux and macOS, jk refuses a file that its group or other users can read, and names the
-  fix: `chmod 600 <file>`. The check follows symlinks. Docker and Kubernetes mount secrets as `0444`
-  and `0644` by default, so set the mount's mode to `0400` or `0600`. Windows is not checked.
+  fix: `chmod 600 <file>`. The check follows symlinks. Windows is not checked.
+- A container platform's secret mount is accepted at its default mode. Docker and Compose mount
+  secrets in `/run/secrets` as `0444`, and Kubernetes mounts service-account and workload-identity
+  tokens in `/var/run/secrets` as `0644`. Under those two directories, jk reads a file that others
+  can read, as long as only its owner can write it and that owner is root or you. Only root can
+  create those directories, so jk doesn't need to detect a container. Accepting the file allows only
+  what the mount already allows: other users on the machine can read it too. A mounted file that
+  someone else owns, or that its group or others can write, is still refused.
+- Mount a Kubernetes secret volume under `/var/run/secrets`, for example
+  `mountPath: /var/run/secrets/nexus`, and it is accepted at its default mode. That includes
+  `defaultMode: 0440` with `fsGroup`, which is how a non-root jk reads a root-owned secret. Mounted
+  anywhere else (such as `/etc/secrets`), the file must be readable by its owner alone: set
+  `defaultMode: 0400`, which only a root jk can read. For a Compose secret with a custom `target`,
+  set `mode: 0400`.
 - A missing file, a missing key, or an empty value is an error that names
   `repositories.<id>.<key>` and the path. jk never falls back to an anonymous request.
 - jk re-reads the file whenever its modification time, size or identity changes, so a rotated

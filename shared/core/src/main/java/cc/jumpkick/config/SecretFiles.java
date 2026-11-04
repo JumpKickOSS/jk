@@ -10,11 +10,8 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
-import java.nio.file.attribute.PosixFileAttributeView;
-import java.nio.file.attribute.PosixFilePermission;
 import java.util.Objects;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
@@ -23,9 +20,9 @@ import org.jspecify.annotations.Nullable;
  * JK_REPO_<ID>_*_FILE} variable, names.
  *
  * <p><b>Permissions.</b> On POSIX a file that its group or others can read is refused, naming the
- * file and the {@code chmod 600} that fixes it: a secret anyone on the machine can read is not one
- * the user meant to keep. The check follows symlinks, so a mounted secret is judged by the file it
- * points at. Windows has no cheap equivalent and is not checked.
+ * fix, except a container platform's secret mount that only root or the user can write; {@link
+ * SecretFileAccess} has the rule and the threat it accepts. Windows has no cheap equivalent and is
+ * not checked.
  *
  * <p><b>Rotation.</b> Every read stats the file, and the cached contents are reused only while the
  * file's identity, modification time and size are unchanged. A rotated secret is therefore picked
@@ -107,7 +104,7 @@ public final class SecretFiles {
             throw new JkBuildParseException(where + " cannot read " + file + ": " + e.getMessage());
         }
         if (!attrs.isRegularFile()) throw new JkBuildParseException(where + " reads " + file + ", which is not a file");
-        refuseIfShared(file, where);
+        SecretFileAccess.DEFAULT.check(file, where);
         Read cached = CACHE.get(file);
         if (cached != null
                 && Objects.equals(cached.fileKey(), attrs.fileKey())
@@ -124,23 +121,6 @@ public final class SecretFiles {
         if (CACHE.size() >= MAX_ENTRIES) CACHE.clear();
         CACHE.put(file, new Read(attrs.fileKey(), attrs.lastModifiedTime(), attrs.size(), text));
         return text;
-    }
-
-    /** The POSIX check: group- or other-readable is refused. A file system without POSIX permissions is not checked. */
-    private static void refuseIfShared(Path file, String where) {
-        PosixFileAttributeView view = Files.getFileAttributeView(file, PosixFileAttributeView.class);
-        if (view == null) return;
-        Set<PosixFilePermission> perms;
-        try {
-            perms = view.readAttributes().permissions();
-        } catch (IOException | UnsupportedOperationException e) {
-            return;
-        }
-        if (perms.contains(PosixFilePermission.GROUP_READ) || perms.contains(PosixFilePermission.OTHERS_READ)) {
-            throw new JkBuildParseException(where + " reads " + file
-                    + ", which its group or other users can read; a secret must be readable by you alone."
-                    + " Run `chmod 600 " + file + "`.");
-        }
     }
 
     private static String stripTrailingNewlines(String s) {
