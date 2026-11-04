@@ -14,14 +14,17 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.PlatformConstraints;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -133,6 +136,37 @@ public final class StableVersions {
         if (newest == null) newest = newestOf(available, false);
         throw new IOException("no " + group + ":" + artifact + ":" + version
                 + " in the configured repositories; the newest release is " + newest);
+    }
+
+    /**
+     * Where {@code group:artifact} is served from — its POM's artifact at {@code version}, or its
+     * metadata when {@code version} is null — in the repositories {@code manifest} declares, or,
+     * with no manifest, the user's repositories over the public baseline. Either way the group is
+     * {@link RepoGroupBuilder}'s, so the user's mirrors, credentials and group bindings apply: a
+     * firewalled machine asks its mirror, not Central. Empty when no repository serves it.
+     *
+     * @throws IOException when a repository could not be reached, naming it
+     */
+    public static Optional<URI> probe(Path manifest, String group, String artifact, @Nullable String version)
+            throws IOException {
+        RepoGroup repos;
+        if (Files.isRegularFile(manifest)) {
+            Path dir = Objects.requireNonNull(manifest.toAbsolutePath().getParent(), "manifest directory");
+            JkBuild effective = LockPlans.applyWorkspaceContextIfModule(dir, JkBuildParser.parse(manifest));
+            repos = RepoGroupBuilder.buildFor(effective, null, JkStores.storeCas());
+        } else {
+            repos = RepoGroupBuilder.buildDefault(JkStores.storeCas());
+        }
+        Coordinate coord = Coordinate.of(group, artifact, version == null ? "0" : version);
+        try {
+            Optional<RepoGroup.RepoFetched> hit =
+                    version == null ? repos.tryFetchMetadata(coord) : repos.tryFetchPom(coord);
+            String path = version == null ? MavenLayout.metadataPath(coord) : MavenLayout.artifactPath(coord);
+            return hit.map(found -> found.repo().fetchBase().resolve(path));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("interrupted while looking up " + group + ":" + artifact, e);
+        }
     }
 
     /**

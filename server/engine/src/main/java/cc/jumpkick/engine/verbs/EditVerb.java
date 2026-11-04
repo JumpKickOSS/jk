@@ -14,6 +14,7 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoReads;
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -66,8 +67,12 @@ public final class EditVerb implements HostedVerb {
                         .withWorkingDir(
                                 Objects.requireNonNull(file.toAbsolutePath().getParent(), "manifest directory"))
                         .withCancel(cancelToken);
-                List<String> args = SessionContext.where(session, () -> pinned(file, req.op(), req.args()));
-                result = EditOps.apply(file, req.op(), args);
+                if (PROBE_DEPENDENCY.equals(req.op())) {
+                    result = SessionContext.where(session, () -> probe(file, req.args()));
+                } else {
+                    List<String> args = SessionContext.where(session, () -> pinned(file, req.op(), req.args()));
+                    result = EditOps.apply(file, req.op(), args);
+                }
             } catch (Exception e) {
                 result = new EditOps.Result(false, Errors.text(e));
             }
@@ -77,6 +82,23 @@ public final class EditVerb implements HostedVerb {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
         }
         return JobOutcome.declined();
+    }
+
+    /**
+     * The op of {@code jk add --ping}: {@code [group, artifact, version]} ({@code version} blank for
+     * any version) is looked up, not written, and the ack's detail is the URL that served it, blank
+     * when none did. Here rather than in the client so the lookup goes through the user's
+     * repository group: their mirrors, credentials and group bindings.
+     */
+    static final String PROBE_DEPENDENCY = "probe-dependency";
+
+    private static EditOps.Result probe(Path file, List<String> args) throws IOException {
+        if (args.size() < 3) throw new IOException(PROBE_DEPENDENCY + " takes group, artifact and version");
+        String version = args.get(2).isBlank() ? null : args.get(2);
+        String found = StableVersions.probe(file, args.get(0), args.get(1), version)
+                .map(URI::toString)
+                .orElse("");
+        return new EditOps.Result(false, null, found);
     }
 
     /**
