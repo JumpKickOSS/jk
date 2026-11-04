@@ -60,6 +60,7 @@ public final class VerbRegistry {
                 new GuardFreezeVerb(host),
                 new GuardTestVerb(host),
                 new GuardCommitMsgVerb(host),
+                new GuardDocsVerb(host),
                 new GuardExplainVerb(host),
                 new EditVerb(host),
                 new FreshenCatalogVerb(host),

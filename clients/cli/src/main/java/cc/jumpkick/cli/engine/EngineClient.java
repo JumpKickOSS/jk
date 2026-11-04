@@ -17,6 +17,7 @@ import cc.jumpkick.wire.protocol.GraphAck;
 import cc.jumpkick.wire.protocol.GraphProgress;
 import cc.jumpkick.wire.protocol.GraphRequest;
 import cc.jumpkick.wire.protocol.GuardCommitMsgAck;
+import cc.jumpkick.wire.protocol.GuardDocsAck;
 import cc.jumpkick.wire.protocol.GuardExplainAck;
 import cc.jumpkick.wire.protocol.GuardFreezeAck;
 import cc.jumpkick.wire.protocol.GuardTestAck;
@@ -253,6 +254,11 @@ public final class EngineClient {
     /** {@code jk guard test}: every fixture-bearing rule and guard test proven to bite; one sync round trip. */
     public static GuardTestAck guardTest(EnginePaths.Paths paths, Path dir) throws IOException {
         return EngineReads.guardTest(paths, dir);
+    }
+
+    /** {@code jk guard docs}: the Markdown rules over the tree; one sync round trip, never a build. */
+    public static GuardDocsAck guardDocs(EnginePaths.Paths paths, Path dir) throws IOException {
+        return EngineReads.guardDocs(paths, dir);
     }
 
     /** {@code jk guard commit-msg}: the commit rules over one message; one sync round trip, never a build. */

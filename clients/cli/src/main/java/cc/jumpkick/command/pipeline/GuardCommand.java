@@ -21,6 +21,7 @@ import cc.jumpkick.model.command.Param;
 import cc.jumpkick.util.GuardBaselineMarker;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.GuardCommitMsgAck;
+import cc.jumpkick.wire.protocol.GuardDocsAck;
 import cc.jumpkick.wire.protocol.GuardExplainAck;
 import cc.jumpkick.wire.protocol.GuardFreezeAck;
 import cc.jumpkick.wire.protocol.GuardTestAck;
@@ -64,6 +65,7 @@ public final class GuardCommand implements CliCommand {
                         + "freeze <rule-id> -U accepts a shrunk population;\n"
                         + "test proves every fixture-bearing rule bites;\n"
                         + "commit-msg <file> judges a commit message;\n"
+                        + "docs runs only the Markdown rules, no build;\n"
                         + "hooks [install] prints or installs the git hooks.\n"
                         + "--output sarif prints target/jk-guards.sarif after the run."));
     }
@@ -97,6 +99,9 @@ public final class GuardCommand implements CliCommand {
         if (!positionals.isEmpty() && "commit-msg".equals(positionals.get(0))) {
             return commitMsg(dir, positionals);
         }
+        if (!positionals.isEmpty() && "docs".equals(positionals.get(0))) {
+            return docs(dir);
+        }
         if (!positionals.isEmpty() && "hooks".equals(positionals.get(0))) {
             return hooks(in, dir, positionals);
         }
@@ -108,7 +113,7 @@ public final class GuardCommand implements CliCommand {
                     "Guard",
                     "unknown subcommand `" + positionals.get(0)
                             + "`; jk guard [explain [<id>] [--schema <kind>] | freeze <id> --reason \"…\" [--retire] | test"
-                            + " | commit-msg <file> | hooks [install] [--replace]]");
+                            + " | commit-msg <file> | docs | hooks [install] [--replace]]");
             return Exit.USAGE;
         }
         // Every lane, cache-aware: the build with tests skipped and the guard flag on.
@@ -255,6 +260,22 @@ public final class GuardCommand implements CliCommand {
      * read here and judged by the engine against the {@code commit} rules; non-zero refuses the
      * commit with each rule's {@code instead}.
      */
+    private int docs(Path dir) {
+        GuardDocsAck ack;
+        try {
+            ack = EngineClient.guardDocs(EnginePaths.current(), dir);
+        } catch (IOException e) {
+            CommandWedge.printFail("Guard", e.getMessage());
+            return Exit.SOFTWARE;
+        }
+        if (ack.error() != null) {
+            CommandWedge.printFail("Guard", ack.error());
+            return 1;
+        }
+        CliOutput.out(ack.text().stripTrailing());
+        return ack.failures() == 0 ? 0 : 1;
+    }
+
     private int commitMsg(Path dir, List<String> positionals) {
         if (positionals.size() < 2) {
             CommandWedge.printFail("Guard", "commit-msg needs the message file: jk guard commit-msg <file>");

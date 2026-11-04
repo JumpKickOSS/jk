@@ -195,6 +195,7 @@ Prefer a small WIP limit (a few claimed tickets). If blocked: `ka set-status JK-
 | Command | What runs | When |
 |---------|-----------|------|
 | `jk guard` | Formats every changed source, then every house-rule lane, the tree lane and the fixture proofs included | Every commit that touches code, and every local merge |
+| `jk guard docs` | The text rules that read Markdown, no build | A docs-only commit |
 | `jk snapshot` | Exactly what `jk build` runs (every module compiled and packaged, its fast tier, the model/module/workspace/output lanes), then the reinstall | Every local merge |
 | `jk snapshot -p integration` | Engine/CLI e2e, workers, install, lock | Every push to `origin` (the push gate) |
 | `jk test -p slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | Before the push that carries a plugin or toolchain change; nightly |
@@ -312,8 +313,8 @@ last settled it (Spotless plus the first-party FQCN shortener, every language it
 CI it fails naming each file that is not formatted. There is no separate `jk format` step.
 
 - **Run `jk guard` before every commit that touches code** (commit, amend, or any equivalent) and let it
-  finish green. A docs-only commit (Markdown, no source) skips it: the next code commit's guard and the
-  push gate run every rule, the doc rules included.
+  finish green. A docs-only commit (Markdown, no source) runs `jk guard docs` instead: the text rules
+  that read Markdown, in seconds, with no build.
   It is the merge gate's first half too. Unformatted source must not enter git history.
 - **Trust what it rewrites.** Long-hand FQCNs and similar agent noise are why it exists.
 - **Unrelated files may change. Keep them.** A file someone changed without a guard run is formatted

@@ -7,6 +7,7 @@ violation with those three facts so the fix is mechanical and the exemption is a
 
 ```bash
 jk guard                          # every lane now; exit 1 on any new violation
+jk guard docs                     # only the text rules that read Markdown, no build: seconds
 jk guard explain                  # the catalog: every rule, its last verdict, its baseline
 jk guard explain <id>             # one rule's card: what, instead, why, where it came from
 jk guard explain --schema forbid  # a kind's keys and one example
