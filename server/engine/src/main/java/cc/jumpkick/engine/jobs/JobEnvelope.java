@@ -20,6 +20,7 @@ import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.base.LiveUnits;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.secret.RequestKeychain;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -560,8 +561,10 @@ public final class JobEnvelope {
             JobOutcome outcome;
             try {
                 // Every read of the caller's environment in this job answers from its shell.
-                outcome = RequestShell.where(
-                        ProtoSession.shellOf(requestLine), () -> runner.run(requestLine, cancelToken, writer));
+                outcome = RequestKeychain.where(
+                        ProtoSession.keychainOf(requestLine),
+                        () -> RequestShell.where(
+                                ProtoSession.shellOf(requestLine), () -> runner.run(requestLine, cancelToken, writer)));
             } catch (Throwable t) {
                 // An escaped throw must not impersonate Declined: with clean rows already
                 // recorded and no failure row, the derived verdict would read green. Rule

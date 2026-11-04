@@ -264,6 +264,14 @@ uses ([Network](#network)) is handed over as `npm_config_proxy` / `npm_config_ht
 registry and scope map are part of the install's cache key; a credential never is, and never
 appears in output or `jk-results.md`.
 
+## Credentials
+
+`[credentials] store` in `~/.jk/config.toml` says where `jk repo login` and `jk auth login` keep a
+secret: `"keychain"` (the OS keychain, or the login fails), `"file"` (the owner-only record under
+`~/.jk/creds/`), or `"auto"`, the default (the keychain when one answers, else the file with one
+notice). `JK_CREDENTIALS_STORE` overrides it. See
+[Repositories § Where a login keeps its secret](repositories.md#where-a-login-keeps-its-secret).
+
 ## Other env
 
 Every boolean jk reads — from a `JK_*` variable, from `CI`, or from a quoted value in

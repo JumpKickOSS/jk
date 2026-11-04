@@ -25,6 +25,9 @@ public final class ProtoSession {
     /** The request field carrying the caller's environment; see {@link #withShell}. */
     public static final String SHELL = "shell";
 
+    /** The request field carrying the keychain secrets the client read; see {@link #withKeychain}. */
+    public static final String KEYCHAIN = "keychain";
+
     private ProtoSession() {}
 
     /**
@@ -384,6 +387,28 @@ public final class ProtoSession {
         Map<String, String> out = new LinkedHashMap<>();
         for (String pair : Jsonl.strArray(request, SHELL)) {
             int eq = pair.indexOf('=', 1); // Windows keeps per-drive names such as `=C:`
+            if (eq > 0) out.put(pair.substring(0, eq), pair.substring(eq + 1));
+        }
+        return out;
+    }
+
+    /**
+     * Attach the keychain secrets the client read for this request, as {@code POINTER=SECRET}
+     * strings keyed by the record's pointer text. An empty map leaves the line byte-identical.
+     */
+    public static String withKeychain(String request, Map<String, String> secrets) {
+        if (secrets.isEmpty()) return request;
+        List<String> pairs = new ArrayList<>(secrets.size());
+        secrets.forEach((pointer, secret) -> pairs.add(pointer + "=" + secret));
+        return Jsonl.append(
+                request, RequestJson.fields().optionalArray(KEYCHAIN, pairs).body());
+    }
+
+    /** Decode side of {@link #withKeychain}: the secrets by pointer text, or empty when it sent none. */
+    public static Map<String, String> keychainOf(String request) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String pair : Jsonl.strArray(request, KEYCHAIN)) {
+            int eq = pair.indexOf('=');
             if (eq > 0) out.put(pair.substring(0, eq), pair.substring(eq + 1));
         }
         return out;

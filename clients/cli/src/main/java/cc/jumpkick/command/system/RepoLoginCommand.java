@@ -15,6 +15,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.repo.RepoCredentialStore;
+import cc.jumpkick.secret.SecretVault;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -36,6 +37,10 @@ import org.jspecify.annotations.Nullable;
  * itself when it is a host ({@code ghcr.io}, {@code 127.0.0.1:5000}). The resolver sends the stored
  * credential to that origin only, so a project that later points the same id at another host gets
  * nothing — and the origin is printed here so the user sees what they bound.
+ *
+ * <p>The secret goes to the OS keychain when one answers, and the record keeps a pointer to it;
+ * otherwise it stays in the owner-only record, with one notice saying why ({@link
+ * cc.jumpkick.secret.SecretVault}). A login over an existing record moves its secret the same way.
  */
 public final class RepoLoginCommand implements CliCommand {
 
@@ -102,13 +107,26 @@ public final class RepoLoginCommand implements CliCommand {
         RepoCredential cred = (username != null && !username.isBlank())
                 ? new RepoCredential.Basic(username.strip(), secret)
                 : new RepoCredential.Bearer(secret);
-        store(credentialsDir).write(id, cred, url);
+        SecretVault.Stored stored;
+        try {
+            stored = store(credentialsDir).write(id, cred, url);
+        } catch (IllegalStateException noKeychain) {
+            CliOutput.err("error: " + noKeychain.getMessage());
+            return 1;
+        }
+        if (stored.notice() != null) CliOutput.err(stored.notice());
 
         if (!global.quiet) {
+            SecretVault.Pointer pointer = stored.pointer();
             CommandWedge.printOk(
                     "Login",
                     "Stored " + (username != null ? "basic" : "token") + " credentials for repository '" + id
-                            + "', sent only to " + RepoCredentialStore.originOf(url) + ".");
+                            + "', sent only to " + RepoCredentialStore.originOf(url)
+                            + (pointer == null
+                                    ? ""
+                                    : "; the " + (username != null ? "password" : "token") + " is in the "
+                                            + SecretVault.displayName(pointer.backend()))
+                            + ".");
         }
         return 0;
     }

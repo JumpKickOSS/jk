@@ -274,9 +274,13 @@ public final class EngineWire {
         }
     }
 
-    /** {@code requestLine} carrying this shell's environment, which the engine decides the request by. */
+    /**
+     * {@code requestLine} carrying this shell's environment, which the engine decides the request
+     * by, and the keychain secrets the engine cannot read itself ({@link ClientKeychain}).
+     */
     static String withShell(String requestLine) {
-        return ProtoSession.withShell(requestLine, ClientEnvForward.shell());
+        return ProtoSession.withKeychain(
+                ProtoSession.withShell(requestLine, ClientEnvForward.shell()), ClientKeychain.carried());
     }
 
     /**

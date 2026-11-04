@@ -11,6 +11,7 @@ import cc.jumpkick.command.system.EngineStatusCommand;
 import cc.jumpkick.command.system.EnvCommand;
 import cc.jumpkick.command.system.MavenSettingsRows;
 import cc.jumpkick.command.system.RepoStores;
+import cc.jumpkick.command.system.StoredLogins;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.wire.protocol.OutdatedReport;
 import java.util.List;
@@ -142,8 +143,28 @@ class CommandJsonFrozenBytesTest {
         var noRepos = new RepoStores.Stores(List.of(), null);
         var noSettings = new MavenSettingsRows.Rows(List.of(), List.of(), List.of(), List.of(), null);
         String emptySettings = "\"settings\":{\"files\":[],\"mirrors\":[],\"proxies\":[],\"repositories\":[]}";
+        var noLogins = new StoredLogins.Rows(List.of(), "file", null);
+        String emptyLogins = "\"logins\":{\"destination\":\"file\",\"error\":null,\"rows\":[]}";
         assertThat(DoctorCommand.reportJson(
-                        ok, warn, ok, fail, ok, ok, warn, fail, 3, 1, 0, 0, 2, 0, null, noWorkers, noRepos, noSettings))
+                        ok,
+                        warn,
+                        ok,
+                        fail,
+                        ok,
+                        ok,
+                        warn,
+                        fail,
+                        3,
+                        1,
+                        0,
+                        0,
+                        2,
+                        0,
+                        null,
+                        noWorkers,
+                        noRepos,
+                        noSettings,
+                        noLogins))
                 .isEqualTo("{\"engine\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"cache\":{\"status\":\"warn\",\"detail\":\"large\"},"
                         + "\"state\":{\"status\":\"ok\",\"detail\":\"running\"},"
@@ -153,7 +174,7 @@ class CommandJsonFrozenBytesTest {
                         + "\"mvn\":{\"status\":\"warn\",\"detail\":\"large\"},"
                         + "\"m2\":{\"status\":\"fail\",\"detail\":\"missing \\\"25\\\"\"},"
                         + "\"tools\":{\"healthy\":3,\"pruned\":1,\"verified\":0,\"drifted\":0,\"firstSeen\":2,\"empty\":0,\"error\":null},"
-                        + "\"workers\":[],\"repos\":[]," + emptySettings + "}");
+                        + "\"workers\":[],\"repos\":[]," + emptySettings + "," + emptyLogins + "}");
         assertThat(DoctorCommand.reportJson(
                         ok,
                         ok,
@@ -172,8 +193,10 @@ class CommandJsonFrozenBytesTest {
                         "scan failed",
                         noWorkers,
                         noRepos,
-                        noSettings))
-                .endsWith("\"empty\":0,\"error\":\"scan failed\"},\"workers\":[],\"repos\":[]," + emptySettings + "}");
+                        noSettings,
+                        noLogins))
+                .endsWith("\"empty\":0,\"error\":\"scan failed\"},\"workers\":[],\"repos\":[]," + emptySettings + ","
+                        + emptyLogins + "}");
         var one = new DoctorCommand.Workers(
                 List.of(new DoctorCommand.Worker(
                         "jk-image-builder",
@@ -203,8 +226,14 @@ class CommandJsonFrozenBytesTest {
                 List.of(new MavenSettingsRows.Proxy("corp", "https", "proxy.acme:3128", List.of("*.acme"))),
                 List.of(new MavenSettingsRows.Repository("acme-releases", "https://nexus.acme/releases/")),
                 null);
+        var logins = new StoredLogins.Rows(
+                List.of(
+                        new StoredLogins.Login("repo", "nexus", "https://nexus.acme", "secret-service"),
+                        new StoredLogins.Login("forge", "github.com", null, "file")),
+                "secret-service",
+                null);
         assertThat(DoctorCommand.reportJson(
-                        ok, ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos, settings))
+                        ok, ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos, settings, logins))
                 .endsWith(
                         "\"workers\":[{\"artifact\":\"jk-image-builder\",\"version\":\"0.13.3\",\"source\":\"jk-local\","
                                 + "\"jar\":\"/s/w.jar\",\"pom\":\"/s/w.pom\",\"declared\":2,\"classpath\":[\"/s/w.jar\"],\"error\":null,\"refused\":null,\"packagedBy\":\"ab12cd34ef56"
@@ -216,6 +245,9 @@ class CommandJsonFrozenBytesTest {
                                 + "\"captures\":[\"jumpkick\",\"central\",\"google\"],\"refusal\":null,"
                                 + "\"source\":\"/home/me/.m2/settings.xml\"}],"
                                 + "\"proxies\":[{\"id\":\"corp\",\"protocol\":\"https\",\"via\":\"proxy.acme:3128\",\"nonProxyHosts\":[\"*.acme\"]}],"
-                                + "\"repositories\":[{\"id\":\"acme-releases\",\"url\":\"https://nexus.acme/releases/\"}]}}");
+                                + "\"repositories\":[{\"id\":\"acme-releases\",\"url\":\"https://nexus.acme/releases/\"}]},"
+                                + "\"logins\":{\"destination\":\"secret-service\",\"error\":null,\"rows\":["
+                                + "{\"kind\":\"repo\",\"name\":\"nexus\",\"origin\":\"https://nexus.acme\",\"store\":\"secret-service\"},"
+                                + "{\"kind\":\"forge\",\"name\":\"github.com\",\"origin\":null,\"store\":\"file\"}]}}");
     }
 }

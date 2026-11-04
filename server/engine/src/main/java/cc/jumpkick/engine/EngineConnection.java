@@ -15,6 +15,7 @@ import cc.jumpkick.engine.verbs.VerbShape;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
+import cc.jumpkick.secret.RequestKeychain;
 import cc.jumpkick.task.WorkCounters;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -269,9 +270,11 @@ final class EngineConnection {
                 yield true;
             }
             case VerbShape.SyncRead() -> {
-                RequestShell.runWhere(
-                        ProtoSession.shellOf(line),
-                        () -> verb.run(line, Session.defaults().cancel(), writer));
+                RequestKeychain.runWhere(
+                        ProtoSession.keychainOf(line),
+                        () -> RequestShell.runWhere(
+                                ProtoSession.shellOf(line),
+                                () -> verb.run(line, Session.defaults().cancel(), writer)));
                 yield false;
             }
         };

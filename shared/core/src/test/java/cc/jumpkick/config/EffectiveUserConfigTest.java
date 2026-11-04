@@ -55,6 +55,24 @@ class EffectiveUserConfigTest {
     }
 
     @Test
+    void the_credentials_store_reads_the_file_under_its_environment_variable(@TempDir Path dir) throws Exception {
+        Path toml = dir.resolve("config.toml");
+        Files.writeString(toml, "[credentials]\nstore = \"file\"\n");
+
+        assertThat(find(EffectiveUserConfig.rows(dir.resolve("none.toml"), env(), () -> BIG_DISK), "credentials.store")
+                        .effectiveValue())
+                .isEqualTo("auto");
+        var fromFile = find(EffectiveUserConfig.rows(toml, env(), () -> BIG_DISK), "credentials.store");
+        assertThat(fromFile.effectiveValue()).isEqualTo("file");
+        assertThat(fromFile.overridden()).isTrue();
+        assertThat(find(
+                                EffectiveUserConfig.rows(toml, env("JK_CREDENTIALS_STORE", "keychain"), () -> BIG_DISK),
+                                "credentials.store")
+                        .effectiveValue())
+                .isEqualTo("keychain");
+    }
+
+    @Test
     void env_overrides_file(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("config.toml");
         Files.writeString(toml, "[http]\nport = 9000\n");
