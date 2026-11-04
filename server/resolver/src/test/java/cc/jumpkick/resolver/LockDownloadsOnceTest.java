@@ -52,6 +52,7 @@ class LockDownloadsOnceTest {
                 .lock(project, "test", List.of(), true, ResolveObserver.NOOP);
 
         assertThat(lock.artifacts()).anyMatch(a -> a.name().startsWith("com.foo:shared:"));
+        assertThat(central.requested()).as("each file is asked for once").doesNotHaveDuplicates();
         assertThat(central.requested())
                 .as("each jar is asked for once")
                 .filteredOn(path -> path.endsWith(".jar"))

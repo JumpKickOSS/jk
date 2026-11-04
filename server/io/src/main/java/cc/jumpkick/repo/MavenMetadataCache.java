@@ -154,11 +154,20 @@ public final class MavenMetadataCache {
     /** Metadata bytes for {@code uri}; 404 → {@link MavenRepo.ArtifactNotFoundException}. */
     public byte[] fetch(URI uri, RepoCredential credential) throws IOException, InterruptedException {
         Path body = dir.resolve(Hashing.sha256Hex(uri.toString()));
+        boolean force = SessionContext.current().config().forceOr(false) || forceRevalidate();
+        // Two graphs of one lock read the same catalog at once: one request, and each caller its own copy.
+        return FLIGHTS.run(body + "|" + force, () -> read(uri, credential, body, force)).clone();
+    }
+
+    /** One catalog read per body file at a time, process-wide. */
+    private static final SingleFlight<byte[]> FLIGHTS = new SingleFlight<>(failure -> false);
+
+    private byte[] read(URI uri, RepoCredential credential, Path body, boolean force)
+            throws IOException, InterruptedException {
         Path meta = body.resolveSibling(body.getFileName() + ".h");
 
         // -F / withForceRevalidate (jk update) skip the TTL window. Unchanged indexes still
         // cost only a conditional GET (304); warm TTL hits never leave the disk.
-        boolean force = SessionContext.current().config().forceOr(false) || forceRevalidate();
         if (!force && fresh(body)) {
             byte[] held = BODIES.get(body, Files::readAllBytes).orElse(null);
             if (held != null) return held.clone();
