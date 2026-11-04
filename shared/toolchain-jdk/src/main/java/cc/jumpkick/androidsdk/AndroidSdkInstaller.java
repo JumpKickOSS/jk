@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.androidsdk;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.PoolUse;
 import java.io.IOException;
@@ -100,7 +102,7 @@ public final class AndroidSdkInstaller {
                     + " — installing the offered revision; run `jk lock` to refresh the pin");
         }
 
-        Path archiveFile = download(archive);
+        Path archiveFile = download(archive, componentPath);
         try {
             extractZip(archiveFile, dir);
         } finally {
@@ -145,7 +147,8 @@ public final class AndroidSdkInstaller {
      * Google's repository feed advertises for each archive, so the feed's format names the
      * algorithm — jk's own content hashing never does.
      */
-    private Path download(AndroidRepoFeed.Archive archive) throws IOException, InterruptedException {
+    private Path download(AndroidRepoFeed.Archive archive, String componentPath)
+            throws IOException, InterruptedException {
         Path downloads = Files.createDirectories(sdk.root().resolve(".downloads"));
         Path target = Files.createTempFile(downloads, "jk-sdk-", ".zip");
         URI uri = URI.create(AndroidRepoFeed.REPOSITORY_BASE + archive.url());
@@ -158,8 +161,8 @@ public final class AndroidSdkInstaller {
             throw new IOException("Android SDK download " + uri + " returned " + response.statusCode());
         }
         MessageDigest sha1 = Hashing.newDigest("SHA-1");
-        try (DigestInputStream in = new DigestInputStream(response.body(), sha1)) {
-            Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+        try {
+            receive(response.body(), Http.declaredLength(response), archive, componentPath, sha1, target);
         } catch (IOException | RuntimeException e) {
             Files.deleteIfExists(target); // a transfer that died leaves no partial zip in .downloads
             throw e;
@@ -171,6 +174,37 @@ public final class AndroidSdkInstaller {
                     + ", got " + actual);
         }
         return target;
+    }
+
+    /**
+     * Stream {@code body} into {@code target} through {@code sha1}, reporting it to the run's {@link
+     * TransferBoard} so the archive shows beside every other download of the run. The feed states
+     * each archive's size, which stands in when the server declared no length ({@code declared} is
+     * {@code -1}).
+     */
+    static void receive(
+            InputStream body,
+            long declared,
+            AndroidRepoFeed.Archive archive,
+            String componentPath,
+            MessageDigest sha1,
+            Path target)
+            throws IOException {
+        try (DigestInputStream in = new DigestInputStream(body, sha1);
+                OutputStream out = Files.newOutputStream(target);
+                TransferBoard.Transfer transfer =
+                        SessionContext.current().io().transfers().open("Android SDK " + componentPath)) {
+            transfer.started(declared >= 0 ? declared : archive.size() > 0 ? archive.size() : -1L);
+            byte[] buf = new byte[64 * 1024];
+            long read = 0;
+            for (int n; (n = in.read(buf)) >= 0; ) {
+                if (n == 0) continue;
+                out.write(buf, 0, n);
+                read += n;
+                transfer.advanced(read);
+            }
+            transfer.finished();
+        }
     }
 
     /**

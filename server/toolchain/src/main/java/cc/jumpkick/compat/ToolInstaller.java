@@ -7,6 +7,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.MinimalTar;
 import cc.jumpkick.node.PackageManagerShims;
+import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.util.JkOwnership;
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -194,7 +195,11 @@ public final class ToolInstaller {
             }
             long length = response.headers().firstValueAsLong("content-length").orElse(0L);
             progress.downloading(name, 0, length);
-            try (OutputStream out = Files.newOutputStream(archive)) {
+            // The run's board shows this archive beside every other download of the run.
+            try (OutputStream out = Files.newOutputStream(archive);
+                    TransferBoard.Transfer transfer =
+                            SessionContext.current().io().transfers().open(name)) {
+                transfer.started(Http.declaredLength(response));
                 byte[] buf = new byte[64 * 1024];
                 long read = 0;
                 for (int n; (n = body.read(buf)) > 0; ) {
@@ -205,7 +210,9 @@ public final class ToolInstaller {
                     out.write(buf, 0, n);
                     read += n;
                     progress.downloading(name, read, length);
+                    transfer.advanced(read);
                 }
+                transfer.finished();
             }
         }
         SessionContext.current().io().remoteDown(archive);
