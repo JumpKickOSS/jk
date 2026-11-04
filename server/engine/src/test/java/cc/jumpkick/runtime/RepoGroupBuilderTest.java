@@ -548,4 +548,64 @@ class RepoGroupBuilderTest {
                 .contains("repository `central` is reached through mirror `nexus`")
                 .contains("the lock records `central` at https://repo.maven.apache.org/maven2/");
     }
+
+    /**
+     * A {@code mirror-of} table of the user's config is a route, not a repository: it is no member
+     * of the group, it stands in for what it matches ahead of a settings.xml mirror, and its
+     * {@code ${VAR}} credential is the user's own word for its URL.
+     */
+    @Test
+    void a_config_toml_mirror_routes_what_it_matches_ahead_of_settings_xml_and_is_no_repository(@TempDir Path tmp)
+            throws Exception {
+        Files.writeString(tmp.resolve("config.toml"), """
+                [repositories.corp]
+                url = "https://artifactory.acme.test/maven-virtual/"
+                mirror-of = ["*", "!jumpkick"]
+                token = "${JK_REPO_CORP_TOKEN}"
+                """);
+        Files.writeString(tmp.resolve("settings.xml"), """
+                <settings><mirrors><mirror>
+                  <id>nexus</id><mirrorOf>*</mirrorOf><url>https://nexus.example/repository/maven-public/</url>
+                </mirror></mirrors></settings>
+                """);
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "demo"
+                name = "demo"
+                version = "1.0.0"
+                """);
+        var project = JkBuildParser.parse(tmp.resolve("jk.toml"));
+        String prior = System.getProperty(MavenSettings.SETTINGS_PROPERTY);
+        System.setProperty(
+                MavenSettings.SETTINGS_PROPERTY, tmp.resolve("settings.xml").toString());
+        System.setProperty("jk.env.JK_HOME", tmp.toString());
+        RepoGroup group;
+        try {
+            group = RepoGroupBuilder.buildFor(
+                    project,
+                    null,
+                    new Cas(tmp.resolve("store")),
+                    name -> "JK_REPO_CORP_TOKEN".equals(name) ? "corp-secret" : null);
+        } finally {
+            System.clearProperty("jk.env.JK_HOME");
+            if (prior == null) System.clearProperty(MavenSettings.SETTINGS_PROPERTY);
+            else System.setProperty(MavenSettings.SETTINGS_PROPERTY, prior);
+        }
+
+        assertThat(group.repos())
+                .extracting(MavenRepo::name)
+                .containsExactly(RepositorySpec.JUMPKICK_NAME, RepositorySpec.CENTRAL, RepositorySpec.GOOGLE);
+        MavenRepo central = group.repos().get(1);
+        assertThat(central.baseUrl()).isEqualTo(RepositorySpec.MAVEN_CENTRAL.url());
+        assertThat(central.fetchBase()).hasToString("https://artifactory.acme.test/maven-virtual/");
+        assertThat(central.credential()).isEqualTo(new RepoCredential.Bearer("corp-secret"));
+        assertThat(group.repos().get(2).mirror())
+                .hasValueSatisfying(m -> assertThat(m.id()).isEqualTo("corp"));
+        assertThat(group.repos().get(0).mirror())
+                .as("the native mirror excludes jumpkick, so settings.xml's answers for it")
+                .hasValueSatisfying(m -> assertThat(m.id()).isEqualTo("nexus"));
+        assertThat(group.mirrorNotes())
+                .contains("repository `central` is reached through mirror `corp` (" + tmp.resolve("config.toml")
+                        + ") at https://artifactory.acme.test/maven-virtual/; the lock records `central` at "
+                        + "https://repo.maven.apache.org/maven2/");
+    }
 }

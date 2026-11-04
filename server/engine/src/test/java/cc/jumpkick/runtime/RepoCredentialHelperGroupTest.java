@@ -152,6 +152,39 @@ class RepoCredentialHelperGroupTest {
     }
 
     @Test
+    void a_mirror_whose_helper_token_the_stub_stops_accepting_reruns_the_helper_once(@TempDir Path tmp)
+            throws Exception {
+        Path helper = helper(tmp);
+        Path home = tmp.resolve("home");
+        Files.createDirectories(home);
+        Files.writeString(
+                home.resolve("config.toml"), """
+                [repositories.corp]
+                url = "http://127.0.0.1:%d/maven/"
+                mirror-of = ["central"]
+                token = "${cmd:%s}"
+                """.formatted(server.getAddress().getPort(), helper));
+        System.setProperty("jk.env.JK_HOME", home.toString());
+        Cas cas = new Cas(tmp.resolve("cas"));
+
+        central(RepoGroupBuilder.buildDefault(cas)).fetchPom(Coordinate.of("com.acme", "first", "1.0"));
+        assertThat(runs(tmp)).isEqualTo(1);
+
+        accepted.set("token-2");
+        central(RepoGroupBuilder.buildDefault(cas)).fetchPom(Coordinate.of("com.acme", "second", "1.0"));
+
+        assertThat(runs(tmp)).isEqualTo(2);
+        assertThat(authorizations).contains("Bearer token-1", "Bearer token-2");
+    }
+
+    private static MavenRepo central(RepoGroup group) {
+        return group.repos().stream()
+                .filter(r -> r.name().equals("central"))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    @Test
     void a_helper_whose_tokens_are_always_refused_runs_exactly_twice_and_the_failure_names_the_repository(
             @TempDir Path tmp) throws Exception {
         Path helper = helper(tmp);

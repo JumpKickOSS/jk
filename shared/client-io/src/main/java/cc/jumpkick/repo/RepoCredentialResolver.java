@@ -110,7 +110,7 @@ public final class RepoCredentialResolver {
                 new ForgeAuth(),
                 ForgeIdentity.real(),
                 name -> BuildEnv.ambient().apply(name),
-                GlobalConfig::repositories);
+                GlobalConfig::repositoryDeclarations);
     }
 
     /** The default resolver, but reading environment variables through {@code env}. */

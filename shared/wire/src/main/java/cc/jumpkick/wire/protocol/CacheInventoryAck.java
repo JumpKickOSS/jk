@@ -66,7 +66,8 @@ public record CacheInventoryAck(
     /**
      * Maven's {@code settings.xml} as the engine reads it: {@code file|<path>|read} or {@code
      * file|<path>|absent} per settings file looked for, {@code mirror|<id>|<mirrorOf>|<url>|<built-in
-     * remotes it answers for>|<refusal or empty>} per mirror, {@code proxy|<id>|<protocol>|<host>:<port>|<nonProxyHosts>}
+     * remotes it answers for>|<refusal or empty>|<declaring file>} per mirror in lookup order — the
+     * {@code mirror-of} tables of {@code ~/.jk/config.toml}, then settings.xml's — {@code proxy|<id>|<protocol>|<host>:<port>|<nonProxyHosts>}
      * per active proxy, and {@code repository|<id>|<url>} per active-profile repository.
      */
     public static CacheInventoryAck m2Settings(List<String> lines) {

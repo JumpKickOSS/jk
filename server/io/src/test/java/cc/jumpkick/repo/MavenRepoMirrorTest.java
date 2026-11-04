@@ -2,30 +2,28 @@
 package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.forge.TokenStore;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.MirrorOf;
+import cc.jumpkick.model.RepositoryMirror;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.testing.LoopbackHttp;
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,8 +32,11 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A settings.xml mirror is a transport rewrite: the repository's requests open at the mirror, and
- * its name, URL and store — what the lock and the cache key on — are its own.
+ * A mirror — a {@code mirror-of} table of {@code ~/.jk/config.toml} or a settings.xml {@code
+ * <mirror>} — is a transport rewrite: the repository's requests open at the mirror, and its name,
+ * URL and store — what the lock and the cache key on — are its own. A mirror never goes direct:
+ * one jk refuses, one nothing answers at and one that refuses access each fail the resolve naming
+ * the mirror, and the repository is not asked at its own URL instead.
  */
 class MavenRepoMirrorTest {
 
@@ -103,7 +104,7 @@ class MavenRepoMirrorTest {
         MavenSettings settings = settings(mirror("nexus", "central", nexus.base()), dir);
         MavenRepo central = new MavenRepo("central", origin.base(), new Http(), new Cas(dir.resolve("cas")));
 
-        MavenRepo mirrored = RepoMirrors.apply(central, settings, creds(settings, dir));
+        MavenRepo mirrored = RepoMirrors.apply(central, List.of(), settings, creds(settings, dir));
 
         assertThat(mirrored).isNotSameAs(central);
         assertThat(mirrored.name()).isEqualTo("central");
@@ -135,37 +136,132 @@ class MavenRepoMirrorTest {
         MavenSettings settings = settings(mirror("nexus", "central", nexus.base()), dir);
         MavenRepo google = new MavenRepo("google", origin.base(), new Http(), new Cas(dir.resolve("cas")));
 
-        assertThat(RepoMirrors.apply(google, settings, creds(settings, dir))).isSameAs(google);
+        assertThat(RepoMirrors.apply(google, List.of(), settings, creds(settings, dir)))
+                .isSameAs(google);
     }
 
     @Test
-    void a_plaintext_mirror_on_a_network_path_is_refused_once_naming_the_entry(@TempDir Path dir) throws Exception {
+    void a_plaintext_settings_xml_mirror_on_a_network_path_fails_the_resolve_and_the_origin_is_not_asked(
+            @TempDir Path dir) throws Exception {
         MavenSettings.Mirror plaintext = mirror("nexus", "*", URI.create("http://nexus.example/repository/public/"));
         MavenSettings settings = settings(plaintext, dir);
-        MavenRepo central = new MavenRepo("central", origin.base(), new Http(), new Cas(dir.resolve("cas")));
+        origin.serve("/com/example/widget/1.0/widget-1.0.pom", new String(POM, StandardCharsets.UTF_8));
+        MavenRepo central =
+                new MavenRepo("central", origin.base(), new Http(), new Cas(dir.resolve("cas"))).withOptional(true);
 
-        var err = new ByteArrayOutputStream();
-        Log.install(
-                new PrintStream(err, true, StandardCharsets.UTF_8), System.Logger.Level.INFO, UnaryOperator.identity());
-        try {
-            SessionContext.runWhere(Session.defaults(), () -> {
-                assertThat(RepoMirrors.apply(central, settings, creds(settings, dir)))
-                        .isSameAs(central);
-                assertThat(RepoMirrors.apply(central, settings, creds(settings, dir)))
-                        .isSameAs(central);
-            });
-        } finally {
-            Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
-        }
-        String warnings = err.toString(StandardCharsets.UTF_8);
-        assertThat(warnings)
-                .contains("mirror `nexus` (" + dir.resolve("settings.xml") + ") is not used for repository `central`")
-                .contains("plaintext http")
-                .contains(origin.base().toString());
-        assertThat(warnings.split("is not used for repository", -1)).hasSize(2);
+        MavenRepo refused = RepoMirrors.apply(central, List.of(), settings, creds(settings, dir));
+
+        assertThat(refused.mirror())
+                .hasValueSatisfying(m -> assertThat(m.refusal()).contains("plaintext http"));
+        assertThat(refused.passable())
+                .as("a mirrored repository is never passed over")
+                .isFalse();
+        assertThatThrownBy(() -> refused.fetchPom(WIDGET))
+                .isInstanceOf(MavenRepo.RepositoryUnreachableException.class)
+                .hasMessageContaining("mirror `nexus` (" + dir.resolve("settings.xml") + ")")
+                .hasMessageContaining("switch it to https")
+                .hasMessageContaining("mirror-of = [\"*\"] and allow-insecure = true")
+                .hasMessageContaining("is not asked at " + SafeUri.forMessage(origin.base()));
+        assertThat(origin.requested()).isEmpty();
         assertThat(RepoMirrors.refusal(mirror("ok", "*", nexus.base()))).isNull();
         assertThat(RepoMirrors.refusal(mirror("ok", "*", URI.create("https://nexus.example/m2/"))))
                 .isNull();
+    }
+
+    @Test
+    void a_corpMirrormirror_wins_over_a_settings_xml_one_and_carries_its_own_credential(@TempDir Path dir)
+            throws Exception {
+        LoopbackHttp corp = nexus;
+        corp.serve("/com/example/widget/1.0/widget-1.0.pom", new String(POM, StandardCharsets.UTF_8));
+        MavenSettings settings = settings(mirror("other", "*", origin.base()), dir);
+        RepositoryMirror corpMirror = new RepositoryMirror(
+                "corp",
+                corp.base(),
+                new MirrorOf(List.of("*")),
+                new RepoCredential.Bearer("corp-token"),
+                false,
+                Path.of("/home/me/.jk/config.toml"));
+        MavenRepo central = new MavenRepo("central", origin.base(), new Http(), new Cas(dir.resolve("cas")));
+
+        MavenRepo mirrored = RepoMirrors.apply(central, List.of(corpMirror), settings, creds(settings, dir));
+        mirrored.fetchPom(WIDGET);
+
+        assertThat(mirrored.mirror()).hasValueSatisfying(m -> {
+            assertThat(m.id()).isEqualTo("corp");
+            assertThat(m.label()).isEqualTo("mirror `corp` (/home/me/.jk/config.toml)");
+            assertThat(m.refusal()).isNull();
+        });
+        assertThat(corp.headersFor("/com/example/widget/1.0/widget-1.0.pom"))
+                .get()
+                .extracting(h -> h.get("Authorization"))
+                .isEqualTo(List.of("Bearer corp-token"));
+        assertThat(origin.requested()).isEmpty();
+    }
+
+    @Test
+    void a_corpMirrormirror_that_says_allow_insecure_is_used_over_plaintext(@TempDir Path dir) throws Exception {
+        RepositoryMirror plaintext = new RepositoryMirror(
+                "corp",
+                URI.create("http://nexus.example/repository/public/"),
+                new MirrorOf(List.of("central")),
+                null,
+                true,
+                Path.of("/home/me/.jk/config.toml"));
+        MavenRepo central = new MavenRepo("central", origin.base(), new Http(), new Cas(dir.resolve("cas")));
+
+        MavenRepo mirrored = RepoMirrors.apply(
+                central, List.of(plaintext), MavenSettings.empty(), creds(MavenSettings.empty(), dir));
+
+        assertThat(mirrored.fetchBase()).hasToString("http://nexus.example/repository/public/");
+        assertThat(mirrored.mirror())
+                .hasValueSatisfying(m -> assertThat(m.refusal()).isNull());
+        assertThat(mirrored.isPlaintext())
+                .as("the lock summary reports it insecure (allowed)")
+                .isTrue();
+        assertThat(central.isPlaintext()).isFalse();
+    }
+
+    @Test
+    void a_mirror_nothing_answers_at_fails_naming_it_and_the_repository_is_not_asked_at_its_own_url(@TempDir Path dir)
+            throws Exception {
+        origin.serve("/com/example/widget/1.0/widget-1.0.pom", new String(POM, StandardCharsets.UTF_8));
+        URI dead = nexus.base();
+        nexus.stop();
+        RepositoryMirror corp = new RepositoryMirror(
+                "corp", dead, new MirrorOf(List.of("*")), null, false, Path.of("/home/me/.jk/config.toml"));
+        MavenRepo optional =
+                new MavenRepo("central", origin.base(), new Http(), new Cas(dir.resolve("cas"))).withOptional(true);
+
+        MavenRepo mirrored =
+                RepoMirrors.apply(optional, List.of(corp), MavenSettings.empty(), creds(MavenSettings.empty(), dir));
+
+        assertThatThrownBy(() -> mirrored.fetchPom(WIDGET))
+                .isInstanceOf(MavenRepo.RepositoryUnreachableException.class)
+                .hasMessageContaining("reached through mirror `corp` (/home/me/.jk/config.toml)")
+                .hasMessageContaining("a mirror is never bypassed");
+        assertThat(origin.requested()).isEmpty();
+    }
+
+    @Test
+    void a_mirror_that_refuses_access_fails_naming_it(@TempDir Path dir) throws Exception {
+        nexus.server().removeContext("/");
+        nexus.server().createContext("/", exchange -> {
+            exchange.sendResponseHeaders(401, -1);
+            exchange.close();
+        });
+        origin.serve("/com/example/widget/1.0/widget-1.0.pom", new String(POM, StandardCharsets.UTF_8));
+        RepositoryMirror corp = new RepositoryMirror(
+                "corp", nexus.base(), new MirrorOf(List.of("*")), null, false, Path.of("/home/me/.jk/config.toml"));
+        MavenRepo central = new MavenRepo("central", origin.base(), new Http(), new Cas(dir.resolve("cas")));
+
+        MavenRepo mirrored =
+                RepoMirrors.apply(central, List.of(corp), MavenSettings.empty(), creds(MavenSettings.empty(), dir));
+
+        assertThatThrownBy(() -> mirrored.fetchPom(WIDGET))
+                .isInstanceOf(MavenRepo.RepositoryUnreachableException.class)
+                .hasMessageContaining("mirror `corp`")
+                .hasMessageContaining("HTTP 401");
+        assertThat(origin.requested()).isEmpty();
     }
 
     @Test
@@ -174,6 +270,7 @@ class MavenRepoMirrorTest {
         Cas cas = new Cas(dir.resolve("cas"));
         MavenRepo central = RepoMirrors.apply(
                 new MavenRepo("central", URI.create("https://repo.maven.apache.org/maven2/"), new Http(), cas),
+                List.of(),
                 settings,
                 creds(settings, dir));
         MavenRepo plain = new MavenRepo("plain", origin.base(), new Http(), cas);

@@ -114,8 +114,8 @@ public final class RepoLoginCommand implements CliCommand {
     }
 
     /**
-     * The URL the credential is bound to, or null when nothing names one. The user's own config
-     * outranks the project's manifest: when both declare the id, the login binds to the one the
+     * The URL the credential is bound to, or null when nothing names one — a mirror of the user's
+     * config as well as a repository. The user's own config outranks the project's manifest: when both declare the id, the login binds to the one the
      * project cannot edit, and a project pointing elsewhere is refused with a warning naming both.
      */
     static @Nullable URI urlFor(String id, @Nullable String urlFlag, Path workingDir) {
@@ -124,7 +124,7 @@ public final class RepoLoginCommand implements CliCommand {
             RepoCredentialStore.originOf(explicit); // validates scheme + host
             return explicit;
         }
-        for (RepositorySpec spec : GlobalConfig.repositories()) {
+        for (RepositorySpec spec : GlobalConfig.repositoryDeclarations()) {
             if (spec.name().equals(id)) return spec.url();
         }
         for (RepositoriesScan.Repo repo : RepositoriesScan.scan(ManifestPaths.manifestIn(workingDir))) {

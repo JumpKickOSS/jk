@@ -4,6 +4,7 @@ package cc.jumpkick.m2;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.host.StatIdentity;
+import cc.jumpkick.model.MirrorOf;
 import cc.jumpkick.model.RepositorySpec;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -75,40 +76,11 @@ public final class MavenSettings {
 
         /**
          * Whether this mirror stands in for the repository {@code repoId} at {@code repoUrl},
-         * under Maven's {@code mirrorOf} grammar: {@code *} every repository; {@code external:*}
-         * every repository not on this machine (localhost or {@code file:}); {@code external:http:*}
-         * every plaintext-http repository not on this machine; {@code a,b} either id; {@code
-         * *,!excluded} every repository but that one. An exact id match or an exclusion decides
-         * outright; a wildcard keeps reading so a later exclusion can veto it.
+         * under Maven's {@code mirrorOf} grammar — {@link MirrorOf}, the matcher a {@code
+         * mirror-of} list in {@code ~/.jk/config.toml} is read by too.
          */
         public boolean matches(String repoId, URI repoUrl) {
-            String pattern = mirrorOf.strip();
-            if (pattern.equals("*") || pattern.equals(repoId)) return true;
-            boolean result = false;
-            for (String token : pattern.split(",")) {
-                String t = token.strip();
-                if (t.length() > 1 && t.startsWith("!")) {
-                    if (t.substring(1).equals(repoId)) return false;
-                } else if (t.equals(repoId)) {
-                    return true;
-                } else if (t.equals("external:*") && external(repoUrl)) {
-                    result = true;
-                } else if (t.equals("external:http:*") && externalHttp(repoUrl)) {
-                    result = true;
-                } else if (t.equals("*")) {
-                    result = true;
-                }
-            }
-            return result;
-        }
-
-        /** Not on this machine: neither a loopback host nor a {@code file:} URL. */
-        static boolean external(URI url) {
-            return !"file".equalsIgnoreCase(url.getScheme()) && !RepositorySpec.loopback(url.getHost());
-        }
-
-        private static boolean externalHttp(URI url) {
-            return "http".equalsIgnoreCase(url.getScheme()) && external(url);
+            return MirrorOf.parse(mirrorOf).matches(repoId, repoUrl);
         }
 
         /** {@code mirror `nexus` (~/.m2/settings.xml)} — how a diagnostic names this entry. */
