@@ -94,6 +94,14 @@ pin behavior (`JdkFloorTest`, `FirstBuildJdkTest`, …). Elsewhere prefer `java 
   `proto`, JSONL/`details.jsonl` `schema`, REST/SSE, MCP, etc. Shapes change in place (see
   Pre-release); no version churn noise without public users. See [docs/contributors/architecture.md](docs/contributors/architecture.md#schema-freeze-until-10).
 
+## What coding agents read
+
+The `AGENTS.md` section `jk` writes, the MCP tools' answers and the files `jk agents` writes are a
+product surface tuned per agent (Claude Code first, then Cursor). Before changing any of it, read
+[docs/contributors/agent-integration.md](docs/contributors/agent-integration.md), and measure before
+and after as [docs/contributors/agent-bench.md](docs/contributors/agent-bench.md) says: breadth-first,
+one run per cell, fail fast.
+
 ## Tech stack
 
 | Layer | Choice |

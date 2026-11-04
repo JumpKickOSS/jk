@@ -249,14 +249,14 @@ when the API reports reasoning only inside `output_tokens`.
 
 ## Tiers: smoke before the long runs
 
-A prescription (a rules file, a permission, a hook, a line of wording) is tuned in the smallest loop
-that can show it failing, and only what passes moves on:
+The method (breadth first, one run per cell, fail fast, depth only where it decides) is in
+[docs/contributors/agent-bench.md](../../docs/contributors/agent-bench.md).
 
 | Tier | Command | Budget | Question |
 |---|---|---|---|
-| 0 smoke | `smoke-test --driver <agent> --arm <arm>` | about 2 minutes per agent | Does the agent reach for the graph at all, and first? |
-| 1 screen | `change-tasks` on 3 tasks x 3 runs, two small repositories | about 10 minutes per agent | Is it reliably so, across tasks? |
-| 2 proof | `change-tasks` on every task, 5+ runs | hours | Does the gain hold, with median and spread? |
+| 0 smoke | `smoke-test --driver <agent> --arm <arm>` | minutes per agent | Does the agent reach for the graph at all, and first? |
+| 1 screen | `screen-ff --series N --task …` on the tasks the change can show, every agent, one run | under an hour | Is every agent better, the same or worse than the baseline? |
+| 2 collection | `screen-ff` on every task; `--runs 3` for the no-graph arm only | hours | Fresh numbers for the docs, or a new agent |
 
 `smoke-test` runs change-tasks' own arms, drivers and grading over `smoke/fixture`, a 127-line
 project where `Ledger.post` has three callers and `Journal.post` is a same-name decoy, with a caller
@@ -281,7 +281,8 @@ bench/agent-loop/change-tasks --task commons-lang-rename-indexof --arm jk --arm 
 bench/agent-loop/change-tasks --render
 ```
 
-`--driver` is `claude-code` (the default), `grok`, `agy`, `cursor` or `muse`, each as in the driver table above;
+`--driver` is `claude-code` (the default), `grok`, `agy`, `cursor`, `muse` or `codex` (shell only: it gets the shell
+prompts), each as in the driver table above;
 `--model` picks among a driver's models (`cursor`: `composer-2.5`, `claude-sonnet-5-5-medium`, …).
 
 Tasks are in [`tasks.toml`](tasks.toml), on the repositories of the graph-retrieval corpus
