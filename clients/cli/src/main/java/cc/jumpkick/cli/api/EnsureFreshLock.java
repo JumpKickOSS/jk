@@ -7,18 +7,23 @@ import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -145,9 +150,7 @@ public final class EnsureFreshLock {
                 spinner.update(message);
                 outcome = EngineClient.runLock(EnginePaths.current(), req, quiet);
             } else if (showOwn) {
-                try (Spinner ignored = CommandWedge.analyzingStdout(chip, message)) {
-                    outcome = EngineClient.runLock(EnginePaths.current(), req, quiet);
-                }
+                outcome = runInRegion(chip, message, req);
             } else {
                 outcome = EngineClient.runLock(EnginePaths.current(), req, quiet);
             }
@@ -164,6 +167,45 @@ public final class EnsureFreshLock {
             return Exit.SUCCESS;
         } catch (Exception e) {
             return failSoftOrHard(dir, chip, "could not refresh jk-lock.toml: " + e.getMessage(), Exit.CONFIG, spinner);
+        }
+    }
+
+    /**
+     * The freshen in the region every pipeline step draws in: the chip, the lock's row per module
+     * with its phase, and the run's downloads beneath while bytes move. A first lock is mostly
+     * downloads, and a one-line spinner had nowhere to show them. The region is wiped when the
+     * lock ends, as the spinner was: the command's own output follows on a clean screen.
+     */
+    private static EngineRequests.LockOutcome runInRegion(String chip, String message, EngineRequests.LockRequest req)
+            throws IOException {
+        JkManager view = JkManager.plan(CliOutput.stdout(), chip, true);
+        Map<String, String> coordByDir = new ConcurrentHashMap<>();
+        try {
+            view.solveLabel(message);
+            EngineRequests.LockHandler region = new EngineRequests.LockHandler() {
+                @Override
+                public BuildPlanListener onModuleStart(String moduleDir, String moduleCoord, List<Task> steps) {
+                    coordByDir.put(moduleDir, moduleCoord);
+                    view.addTaskLabeled(moduleCoord, "lock", "");
+                    view.stepRunning(moduleCoord, "lock");
+                    return new BuildPlanListener() {};
+                }
+
+                @Override
+                public void onPhase(@Nullable String moduleDir, String label) {
+                    String coord = moduleDir == null ? null : coordByDir.get(moduleDir);
+                    if (coord != null) view.stepMessage(coord, "lock", label);
+                }
+
+                @Override
+                public void onModuleFinish(String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
+                    String coord = coordByDir.get(moduleDir);
+                    if (coord != null) view.stepDone(coord, "lock", result.success());
+                }
+            };
+            return EngineClient.runLock(EnginePaths.current(), req, region);
+        } finally {
+            view.close();
         }
     }
 
