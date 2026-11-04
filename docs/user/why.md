@@ -419,6 +419,32 @@ to jk itself, each with and without the graph (medians, 3 or more runs each):
 | jk | 679,533 | `CodeGraph.between` | 2 / 8 · 29k / 103k | 2 / 9.5 · 51k / 288k |
 <!-- agents-curve:end -->
 
+### Every model
+
+A vendor's top model reasons more, so it might need the graph less. The same tasks on each agent's
+default model and on its vendor's top model, with the graph:
+
+<!-- agents-models-claim:begin -->
+On 5 agents' top models, the graph's runs took at most 1 more turn across 7 tasks than on each agent's default model, and tokens within 18%, every answer right: the gain does not depend on the model.
+<!-- agents-models-claim:end -->
+
+<!-- agents-models:begin -->
+| Agent (tasks) | Model | Correct | Turns | Tokens | Wall |
+|---|---|---|---|---|---|
+| Vendor A (7) | default | 7 of 7 | 18 | 170k | 94 s |
+| Vendor A (7) | top model | 7 of 7 | 17 | 154k | 74 s |
+| Vendor B (7) | default | 7 of 7 | 26 | 236k | 123 s |
+| Vendor B (7) | top model | 7 of 7 | 27 | 245k | 111 s |
+| Vendor D (7) | default | 7 of 7 | 17 | 326k | 163 s |
+| Vendor D (7) | top model | 7 of 7 | 17 | 318k | 281 s |
+| Vendor E (7) | default | 7 of 7 | 24 | 566k | 307 s |
+| Vendor E (7) | top model | 7 of 7 | 20 | 463k | 187 s |
+| Vendor F (7) | default | 7 of 7 | 17 | 471k | 157 s |
+| Vendor F (7) | top model | 7 of 7 | 17 | 531k | 92 s |
+
+Each agent with the graph as `jk agents` sets it up, on the same tasks, its default model against its vendor's top model (or, for Vendor B, its model at the highest reasoning effort). Medians per task, summed.
+<!-- agents-models:end -->
+
 ## What is still open
 
 The loop's surfaces are real: `jk skill`, results, MCP, TOML edits, the lockfile, the cache,

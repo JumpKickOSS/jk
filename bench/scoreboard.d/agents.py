@@ -56,6 +56,7 @@ def cells() -> dict[tuple[str, str, str], list[dict]]:
     sys.path.insert(0, str(RESULTS.parent))
     tasks = tomllib.loads((RESULTS.parent / "tasks.toml").read_text())["tasks"]
     models = _default_models()
+    efforts = _default_efforts()
     by: dict[tuple[str, str, str], dict[tuple[str, int], list[dict]]] = {}
     for f in sorted(RESULTS.glob("*/rows.jsonl")):
         for line in f.read_text().splitlines():
@@ -63,12 +64,19 @@ def cells() -> dict[tuple[str, str, str], list[dict]]:
                 continue
             r = json.loads(line)
             # A row with no verdict is a run that never started (its baseline was red): not a series.
-            if r.get("task") not in tasks or r.get("model") != models.get(r.get("driver")) or "accepted" not in r:
+            if (r.get("task") not in tasks or r.get("model") != models.get(r.get("driver"))
+                    or r.get("effort") != efforts.get(r.get("driver")) or "accepted" not in r):
                 continue
             r["kind"] = tasks[r["task"]].get("kind", r.get("kind", ""))
             r["results"] = f.parent.name
             by.setdefault((r["driver"], r["arm"], r["task"]), {}).setdefault(series(r), []).append(r)
     return {k: v[max(v)] for k, v in by.items()}
+
+
+def _default_efforts() -> dict[str, str]:
+    text = (RESULTS.parent / "change-tasks").read_text()
+    m = re.search(r"DEFAULT_EFFORT = (\{.*?\})", text, re.S)
+    return ast.literal_eval(m.group(1)) if m else {}
 
 
 def _default_models() -> dict[str, str]:
@@ -154,6 +162,8 @@ PRESCRIPTION = {"claude-code": "jk", "grok": "jk", "muse": "jk", "cursor": "jk-c
 LABELS = {"claude-code": "Vendor A, mid-tier", "grok": "Vendor B, frontier", "agy": "Vendor C, fast",
           "cursor": "Vendor D", "muse": "Vendor E", "codex": "Vendor F"}
 QUESTIONS = JK_TREE / "bench" / "graph-retrieval" / "questions"
+# The docs that carry the default-against-top-model comparison (a doc without a block's markers is skipped).
+MODEL_DOCS = (JK_TREE / "docs" / "user" / "why.md", JK_TREE / "hosting" / "public" / "index.html")
 # Each doc that carries the agent sentences, and its link to the change-task bench.
 CLAIM_DOCS = {
     JK_TREE / "README.md": "docs/user/why.md#asking-about-the-code",
@@ -295,6 +305,63 @@ def claims(questions: list[dict], renames: list[dict], points: list[dict], link:
     return text[0].upper() + text[1:] + (f" ([The tables]({link}).)" if link else "")
 
 
+def models(prescription_only: bool = True) -> list[dict]:
+    """Each agent's default model against every other model it ran, on the tasks both ran with its
+    prescription: the newest series of each (driver, model, task)."""
+    tasks = tomllib.loads((RESULTS.parent / "tasks.toml").read_text())["tasks"]
+    defaults = _default_models()
+    efforts = _default_efforts()
+    newest: dict[tuple[str, str, str], dict[tuple[str, int], list[dict]]] = {}
+    for f in sorted(RESULTS.glob("*/rows.jsonl")):
+        for line in f.read_text().splitlines():
+            if not line.strip():
+                continue
+            r = json.loads(line)
+            d = r.get("driver")
+            if r.get("task") not in tasks or "accepted" not in r or r.get("arm") != PRESCRIPTION.get(d, "jk"):
+                continue
+            tier = f"{r.get('model')}/{r.get('effort')}"
+            newest.setdefault((d, tier, r["task"]), {}).setdefault(series(r), []).append(r)
+    cells = {k: v[max(v)] for k, v in newest.items()}
+    out = []
+    for driver in LABELS:
+        mine = {m for (d, m, _) in cells if d == driver}
+        default = f"{defaults.get(driver)}/{efforts.get(driver)}"
+        for model in sorted(mine - {default}):
+            both = sorted(t for (d, m, t) in cells if d == driver and m == model
+                          and (driver, default, t) in cells)
+            if both:
+                out.append({"driver": driver, "tasks": both,
+                            "default": _sums({t: cells[(driver, default, t)] for t in both}, both),
+                            "top": _sums({t: cells[(driver, model, t)] for t in both}, both)})
+    return out
+
+
+def models_table(rows: list[dict]) -> str:
+    lines = ["| Agent (tasks) | Model | Correct | Turns | Tokens | Wall |", "|---|---|---|---|---|---|"]
+    for r in rows:
+        for tier in ("default", "top"):
+            a = r[tier]
+            lines.append(f"| {LABELS[r['driver']].split(',')[0]} ({len(r['tasks'])}) | {'default' if tier == 'default' else 'top model'} "
+                         f"| {a['correct']} of {a['runs']} | {_n(a['turns'])} | {_k(a['tokens'])} | {a['wall']:,.0f} s |")
+    lines += ["", "Each agent with the graph as `jk agents` sets it up, on the same tasks, its default model against its "
+              "vendor's top model (or, for Vendor B, its model at the highest reasoning effort). Medians per task, summed."]
+    return "\n".join(lines)
+
+
+def models_claim(rows: list[dict]) -> str:
+    if not rows:
+        return "_No runs on another model yet._"
+    up = max(r["top"]["turns"] - r["default"]["turns"] for r in rows)
+    toks = [r["top"]["tokens"] / r["default"]["tokens"] - 1 for r in rows if r["default"]["tokens"]]
+    correct = all(r["top"]["correct"] == r["top"]["runs"] for r in rows)
+    more = "no more turns" if up <= 0 else f"at most {up:.0f} more turn{'s' if up > 1 else ''}"
+    return (f"On {len(rows)} agents' top models, the graph's runs took {more} across "
+            f"{len(rows[0]['tasks'])} tasks than on each agent's default model, and tokens within "
+            f"{max(abs(x) for x in toks):.0%}{', every answer right' if correct else ''}: the gain does not depend "
+            f"on the model.")
+
+
 def _splice(doc: Path, name: str, text: str) -> None:
     begin, end = f"<!-- agents-{name}:begin -->", f"<!-- agents-{name}:end -->"
     body = doc.read_text(encoding="utf-8")
@@ -314,3 +381,7 @@ def render(board: list[dict], host: str) -> None:
         _splice(doc, "questions", comparison_table(questions, "questions"))
         _splice(doc, "renames", comparison_table(renames, "renames"))
         _splice(doc, "curve", curve_table(points))
+    tiers = models()
+    for doc in MODEL_DOCS:
+        _splice(doc, "models", models_table(tiers))
+        _splice(doc, "models-claim", models_claim(tiers))
