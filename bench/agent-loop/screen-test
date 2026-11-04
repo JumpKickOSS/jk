@@ -6,6 +6,7 @@ runs each, through change-tasks with smoke-test's arms (the prescriptions tier 0
     bench/agent-loop/screen-test                         # every agent on its prescription
     bench/agent-loop/screen-test --agent cursor --agent muse
     bench/agent-loop/screen-test --runs 1
+    bench/agent-loop/screen-test --agent claude-code --shipped   # plus what `jk agents` writes for it
 
 Rows go to change-tasks' results, numbered from --first-run (default 1200), so a tier-1 screen is its own
 series. Arms and the preflight are change-tasks' own.
@@ -16,7 +17,10 @@ from __future__ import annotations
 import argparse
 import importlib.machinery
 import importlib.util
+import os
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -27,11 +31,19 @@ PRESCRIPTIONS = {
     "cursor": "jk-cursorrules",
     "grok": "jk",
     "agy": "jk-agyrules",
-    "muse": "jk-musemd",
+    "muse": "jk",
 }
 # The AGENTS.md section under test: callers and rename merged into one line that also says "first, with
 # T.m as the task names it, before opening or searching a file" (what muse needed), within 1000 bytes.
 SECTION_FILE = HERE / "screen" / "agents-section.md"
+# The files `jk agents` writes for each agent beyond AGENTS.md, as --shipped adds them. Claude Code's
+# .mcp.json is left out: the driver passes --strict-mcp-config with the same jk server.
+SHIPPED = {
+    "claude-code": ["CLAUDE.md", ".claude/settings.json"],
+    "cursor": [".cursor/rules/jk.mdc"],
+    "agy": [".agents/rules/jk.md"],
+}
+
 TASKS = ["petclinic-callers-addpet", "petclinic-rename-addvisit", "gs-uploading-rename-loadasresource"]
 
 
@@ -43,6 +55,15 @@ def load(name: str, path: Path):
     return module
 
 
+def shipped_files() -> dict:
+    """Each agent's SHIPPED files as the installed jk writes them, from `jk agents -A` in a scratch repo."""
+    with tempfile.TemporaryDirectory() as tmp:
+        subprocess.run(["git", "init", "-q"], cwd=tmp, check=True)
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+        subprocess.run(["jk", "-u", "agents", "-A", "."], cwd=tmp, check=True, capture_output=True, env=env)
+        return {agent: {rel: (Path(tmp) / rel).read_text() for rel in rels} for agent, rels in SHIPPED.items()}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--agent", action="append", choices=sorted(PRESCRIPTIONS))
@@ -50,6 +71,9 @@ def main() -> int:
     ap.add_argument("--first-run", type=int, default=1200)
     ap.add_argument("--section", action="store_true",
                     help="each prescription with AGENTS.md written from screen/agents-section.md")
+    ap.add_argument("--task", action="append", help="change-tasks task names in place of the three tier-1 tasks")
+    ap.add_argument("--shipped", action="store_true",
+                    help="each prescription plus the agent's files from the installed `jk agents -A`")
     ns = ap.parse_args()
     # smoke-test adds the tier-0 arms to the change-tasks module it loads; its main is not run.
     ct = load("smoke_test", HERE / "smoke-test").ct
@@ -68,11 +92,17 @@ def main() -> int:
             base["files"] = {**base.get("files", {}), "AGENTS.md": agents_md}
             ct.ARMS[arm + "+section"] = base
             arms[agent] = arm + "+section"
+    if ns.shipped:
+        for agent, files in shipped_files().items():
+            base = dict(ct.ARMS[arms[agent]])
+            base["files"] = {**base.get("files", {}), **files}
+            ct.ARMS[arms[agent] + "+shipped"] = base
+            arms[agent] += "+shipped"
     status = 0
     for agent in ns.agent or list(PRESCRIPTIONS):
         argv = ["change-tasks", "--driver", agent, "--arm", arms[agent], "--runs", str(ns.runs),
                 "--first-run", str(ns.first_run)]
-        for task in TASKS:
+        for task in ns.task or TASKS:
             argv += ["--task", task]
         print(f"== {agent} ({arms[agent]})", flush=True)
         sys.argv = argv
