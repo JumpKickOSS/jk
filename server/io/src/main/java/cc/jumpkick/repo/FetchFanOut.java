@@ -28,6 +28,12 @@ final class FetchFanOut {
         this.holder = holder;
     }
 
+    /** The repository that served the coordinate's POM, or null when none is known. */
+    @Nullable
+    MavenRepo holder() {
+        return holder;
+    }
+
     /** {@code repo} answered not-found. */
     void notFound(MavenRepo repo) {
         if (repo == holder) holderAnswered = true;

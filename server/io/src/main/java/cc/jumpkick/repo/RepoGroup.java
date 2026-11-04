@@ -764,11 +764,19 @@ public final class RepoGroup {
 
     /**
      * The first candidate, in repository order, that has {@code coord}: a local mirror copy or a
-     * network answer. Every candidate ahead of the first local copy is asked over the network at
-     * once, and the answers are read in order, so a coordinate a later repository holds costs the
-     * slowest earlier miss, never the sum of them; each repository mirrors into its own directory,
-     * so a fetch that loses to an earlier answer leaves nothing another repository's copy could
-     * collide with.
+     * network answer, asked of every candidate ahead of the first local copy.
+     *
+     * <p>On the resolve leg (POMs, metadata) those candidates are asked at once and the answers
+     * read in order, so a coordinate a later repository holds costs the slowest earlier miss, never
+     * the sum of them; the bodies are small.
+     *
+     * <p>Artifact bytes are asked one repository at a time, the one that served the coordinate's
+     * POM first. A losing leg is cancelled only once an earlier one has answered, and a download is
+     * never cut off mid-body, so asking at once streamed the whole artifact from every repository
+     * that has it: a subtree whose POM declares a mirror of Central (Spark's does) downloaded each
+     * jar twice. The POM's holder is the repository whose answer settles the artifact — a GAV's
+     * POM and its files are published together — so the first request is nearly always the only
+     * one, and the repositories ahead of it already missed the POM.
      */
     private Optional<RepoFetched> tryFetchFrom(
             List<MavenRepo> candidates,
@@ -797,15 +805,38 @@ public final class RepoGroup {
             throw new MavenRepo.FetchAbortedException(
                     "fetch aborted before network leg for " + coord + " (lock already failed)");
         }
-        List<RepoLegs.Leg<MavenRepo.Fetched>> legs =
-                RepoLegs.legs(candidates.subList(0, networkLegs), repo -> fetcher.fetch(repo, coord));
+        List<MavenRepo> asked = candidates.subList(0, networkLegs);
+        List<List<MavenRepo>> waves = resolve
+                ? List.of(asked)
+                : holderFirst(asked, fanOut.holder()).stream().map(List::of).toList();
+        for (List<MavenRepo> wave : waves) {
+            Optional<RepoFetched> answered = firstAnswer(wave, coord, fetcher, fanOut, resolve);
+            if (answered.isPresent()) return answered;
+        }
+        return local;
+    }
+
+    /** {@code asked} with {@code holder} moved to the front when it is among them; otherwise as is. */
+    static List<MavenRepo> holderFirst(List<MavenRepo> asked, @Nullable MavenRepo holder) {
+        if (holder == null || !asked.contains(holder) || asked.getFirst() == holder) return asked;
+        List<MavenRepo> out = new ArrayList<>(asked.size());
+        out.add(holder);
+        for (MavenRepo repo : asked) if (repo != holder) out.add(repo);
+        return out;
+    }
+
+    /** The first of {@code wave}'s legs, run at once and read in order, that answered with the file. */
+    private Optional<RepoFetched> firstAnswer(
+            List<MavenRepo> wave, Coordinate coord, Fetcher fetcher, FetchFanOut fanOut, boolean resolve)
+            throws IOException, InterruptedException {
+        List<RepoLegs.Leg<MavenRepo.Fetched>> legs = RepoLegs.legs(wave, repo -> fetcher.fetch(repo, coord));
         try {
-            for (int i = 0; i < networkLegs; i++) {
+            for (int i = 0; i < wave.size(); i++) {
                 try {
                     return Optional.of(new RepoFetched(
-                            candidates.get(i), RepoLegs.await(legs.get(i).future())));
+                            wave.get(i), RepoLegs.await(legs.get(i).future())));
                 } catch (MavenRepo.ArtifactNotFoundException notFound) {
-                    fanOut.notFound(candidates.get(i)); // the next candidate in order
+                    fanOut.notFound(wave.get(i)); // the next candidate in order
                 } catch (MavenRepo.FetchAbortedException aborted) {
                     throw aborted;
                 } catch (MavenRepo.RepositoryUnreachableException dead) {
@@ -814,7 +845,7 @@ public final class RepoGroup {
                     // the lock that was asked for, so the resolve stops here naming it — unless the
                     // repository is passable, which is then a miss like a blocked one. Pinned bytes
                     // still fall through — the lock's sha256 says what is accepted.
-                    MavenRepo repo = candidates.get(i);
+                    MavenRepo repo = wave.get(i);
                     if (resolve && repo.passable()) {
                         passOver(repo);
                         continue;
@@ -825,13 +856,13 @@ public final class RepoGroup {
                     // A failed remote falls through to the next candidate silently: the artifact that
                     // arrives is still checked against the lock's sha256, so where it came from does
                     // not change what is accepted. If nobody answers, the fan-out settles on the failure.
-                    fanOut.failed(candidates.get(i), transport);
+                    fanOut.failed(wave.get(i), transport);
                 }
             }
         } finally {
             RepoLegs.settle(legs);
         }
-        return local;
+        return Optional.empty();
     }
 
     /** Said once per run: a passable repository nothing answers at, or that refuses access, is asked nothing more. */
