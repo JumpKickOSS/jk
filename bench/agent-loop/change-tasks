@@ -584,7 +584,8 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
                 tool_label=TOOL_LABEL[tool], sandbox=sandbox, server=server) + spec["prompt"],
             user=task["prompt"].strip(),
             servers=servers,
-            shell=shell)
+            shell=shell,
+            hide_graph=bool(spec.get("hide_graph")))
         started = time.monotonic()
         try:
             res = DRIVERS[ns.driver](tool, sandbox, ns.model, ns.max_turns, ns.max_minutes * 60, transcript,

@@ -47,9 +47,30 @@ class Task:
     user: str
     servers: dict
     shell: bool = False  # Bash beside the file tools (Claude Code only)
+    hide_graph: bool = False  # the no-graph arm: a shell agent's `jk graph` is refused too
 
 
 TASK: Task | None = None
+
+
+def no_graph_path(home: Path, env: dict) -> dict:
+    """`env` with a `jk` first on PATH that refuses `jk graph …` and runs every other command, for the
+    no-graph arm of an agent with a shell: hiding the MCP tools alone leaves the graph one command away."""
+    if not (TASK and TASK.hide_graph):
+        return env
+    real = shutil.which("jk")
+    if real is None:
+        return env
+    shim = home / "no-graph-bin"
+    shim.mkdir(parents=True, exist_ok=True)
+    (shim / "jk").write_text(
+        "#!/bin/sh\n"
+        'for a in "$@"; do\n'
+        '  if [ "$a" = graph ]; then echo "jk graph is not available in this run" >&2; exit 2; fi\n'
+        "done\n"
+        f'exec "{real}" "$@"\n')
+    (shim / "jk").chmod(0o755)
+    return {**env, "PATH": f"{shim}:{env.get('PATH', '')}"}
 
 
 def user_prompt() -> str:
@@ -252,7 +273,8 @@ def claude_code(tool: str, sandbox: Path, model: str, max_turns: int, max_second
         "--permission-mode", "bypassPermissions", "--dangerously-skip-permissions",
         "--no-session-persistence",
     ]
-    env = {**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
+    env = no_graph_path(Path.home() / ".cache" / "jk-bench" / "claude-shim",
+                        {**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"})
     events, stderr, stop = _run_streaming(cmd, sandbox, env, max_seconds, transcript_path)
     result = next((ev for ev in reversed(events) if ev.get("type") == "result"), None)
     extra = {"effort": effort, "file_tools_only": True, "model_usage": (result or {}).get("modelUsage")}
@@ -1628,7 +1650,7 @@ def codex(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int
                     return "kill"
             return None
 
-        env = {**os.environ, "CODEX_HOME": str(home)}
+        env = no_graph_path(home, {**os.environ, "CODEX_HOME": str(home)})
         events, stderr, stop = _run_streaming(cmd, sandbox, env, max_seconds, transcript_path, on_event)
     raw = {}
     for ev in events:
