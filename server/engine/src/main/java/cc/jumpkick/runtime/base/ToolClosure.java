@@ -6,6 +6,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.repo.ArtifactFanOut;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.PubGrubResolver;
 import cc.jumpkick.resolver.Resolution;
@@ -56,10 +57,12 @@ final class ToolClosure {
 
         List<Path> jars = new ArrayList<>();
         List<String> shas = new ArrayList<>();
-        for (Resolution.ResolvedModule mod : resolution.modules().values()) {
+        List<Coordinate> coords = new ArrayList<>();
+        for (Resolution.ResolvedModule mod : resolution.modules().values()) coords.add(mod.coordinate());
+        // The closure's jars at once, in resolution order: a compiler's closure is dozens of jars.
+        for (var hit : ArtifactFanOut.artifacts(repos, coords)) {
             // POM-only modules (BOMs/parents) carry no jar — tryFetchArtifact
             // returns empty and we simply omit them from the classpath.
-            var hit = repos.tryFetchArtifact(mod.coordinate());
             if (hit.isEmpty()) continue;
             jars.add(hit.get().fetched().cachePath());
             shas.add(hit.get().fetched().sha256());

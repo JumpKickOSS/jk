@@ -3,14 +3,11 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildEnv;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
-import cc.jumpkick.run.JkThreads;
-import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -26,8 +23,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -681,69 +676,12 @@ public final class PomRuntimeClasspath {
         }
     }
 
-    /**
-     * Every claim's {@link #fetchOne} at once on the I/O pool, answered in claim order. A failure
-     * is thrown as the first claim in order that met one would have thrown it, once all have ended.
-     */
+    /** Every claim's {@link #fetchOne} at once, a declared set on the run's board, answered in claim order. */
     private static List<Fetched> fetchAll(List<Claim> claims, EffectivePomBuilder builder, RepoGroup repos)
             throws IOException, InterruptedException {
-        // The depth is a declared set on the run's board, so its downloads are priced like a sync's.
-        try (TransferBoard.Plan plan = SessionContext.current().io().transfers().plan(claims.size())) {
-            return fetchAll(claims, builder, repos, plan);
-        }
-    }
-
-    private static List<Fetched> fetchAll(
-            List<Claim> claims, EffectivePomBuilder builder, RepoGroup repos, TransferBoard.Plan plan)
-            throws IOException, InterruptedException {
-        if (claims.size() <= 1) {
-            List<Fetched> one = new ArrayList<>();
-            for (Claim c : claims) {
-                one.add(fetchOne(c.coord(), builder, repos));
-                plan.settled();
-            }
-            return one;
-        }
-        List<Future<Fetched>> pending = new ArrayList<>(claims.size());
-        for (Claim c : claims) {
-            pending.add(JkThreads.io().submit(() -> {
-                try {
-                    return fetchOne(c.coord(), builder, repos);
-                } finally {
-                    plan.settled();
-                }
-            }));
-        }
-        List<Fetched> done = new ArrayList<>(claims.size());
-        try {
-            for (Future<Fetched> f : pending) {
-                try {
-                    done.add(f.get());
-                } catch (ExecutionException e) {
-                    Throwable cause = e.getCause();
-                    if (cause instanceof IOException io) throw io;
-                    if (cause instanceof InterruptedException ie) throw ie;
-                    if (cause instanceof RuntimeException re) throw re;
-                    if (cause instanceof Error err) throw err;
-                    throw new IOException(cause);
-                }
-            }
-        } finally {
-            // Settle the rest before returning or throwing: nothing of this walk outlives it.
-            for (Future<Fetched> f : pending) {
-                if (f.isDone()) continue;
-                try {
-                    f.get();
-                } catch (ExecutionException ignored) {
-                    // the first failure in order is already on its way out
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    for (Future<Fetched> g : pending) g.cancel(true);
-                    break;
-                }
-            }
-        }
-        return done;
+        List<ArtifactFanOut.Fetch<Fetched>> fetches = new ArrayList<>(claims.size());
+        for (Claim c : claims) fetches.add(() -> fetchOne(c.coord(), builder, repos));
+        return ArtifactFanOut.all(fetches);
     }
 
     /** What one claim's fetch means for the walk: its jar on the classpath and its POM for the next depth. */
