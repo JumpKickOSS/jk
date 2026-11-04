@@ -324,13 +324,13 @@ class WorkerContainmentTest {
                 workers = Objects.requireNonNull(group.getParent(), "workers");
                 long cap = WorkerRss.workerCapBytes(
                         WorkerLeases.TOOL_BYTES, WorkerLeases.engine().capacityBytes());
-                assertThat(Long.parseLong(readFile(group.resolve("memory.max")).trim()))
-                        .isEqualTo(cap);
+                assertPageRounded(
+                        Long.parseLong(readFile(group.resolve("memory.max")).trim()), cap);
             } else {
                 assertThat(path).endsWith("/workers");
             }
-            assertThat(Long.parseLong(readFile(workers.resolve("memory.max")).trim()))
-                    .isEqualTo(report.maxBytes());
+            assertPageRounded(
+                    Long.parseLong(readFile(workers.resolve("memory.max")).trim()), report.maxBytes());
             assertThat(readFile(workers.resolve("memory.high")).trim()).isEqualTo("max");
             Path swap = group.resolve("memory.swap.max");
             if (Files.exists(swap)) assertThat(readFile(swap).trim()).isEqualTo("0");
@@ -338,6 +338,23 @@ class WorkerContainmentTest {
             child.destroyForcibly();
             child.waitFor(5, TimeUnit.SECONDS);
         }
+    }
+
+    /** The largest page a Linux kernel uses for a cgroup limit: 64 KiB on arm64; 4 KiB on x86_64. */
+    private static final long MAX_PAGE_BYTES = 64 * 1024;
+
+    /**
+     * {@code actual} is the {@code memory.max} the kernel kept for a write of {@code written}: the
+     * kernel stores the limit rounded down to a whole page, so the two agree only when {@code
+     * written} happens to be page-aligned. Accepted: {@code written} itself, or the value just
+     * below it on a page boundary.
+     */
+    private static void assertPageRounded(long actual, long written) {
+        assertThat(actual)
+                .as("memory.max kept for a write of %d", written)
+                .isLessThanOrEqualTo(written)
+                .isGreaterThan(written - MAX_PAGE_BYTES);
+        if (actual != written) assertThat(actual % 4096).as("a page boundary").isZero();
     }
 
     /**
