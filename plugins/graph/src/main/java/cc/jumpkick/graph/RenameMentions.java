@@ -120,14 +120,14 @@ final class RenameMentions {
     static List<String> find(
             Path root, String old, Set<String> types, Map<String, String> edited, Set<String> textFiles) {
         Pattern word = Pattern.compile("\\b" + Pattern.quote(old) + "\\b");
-        // Named as code ({@code m}, m(), .m, #m, `m`), not the English word a method name often is.
+        // Named as this method's code: Type.m or Type#m for one of its types, a same-class #m, a bare
+        // m(, {@code m}, `m`. Not the English word, and not other.m or Other#m: another type's method.
         String q = Pattern.quote(old);
-        Pattern code =
-                Pattern.compile("[.#]" + q + "\\b|\\b" + q + "\\s*\\(|\\{@(?:code|link)\\s+" + q + "\\b|`" + q + "`");
-        // Outside the type's own files a bare indexOf is some other type's: only Type.m or #m there.
-        Pattern qualified = Pattern.compile("(?:\\b(?:"
-                + String.join("|", types.stream().map(Pattern::quote).toList()) + ")[.#]|#)" + Pattern.quote(old)
-                + "\\b");
+        String typed =
+                "\\b(?:" + String.join("|", types.stream().map(Pattern::quote).toList()) + ")[.#]";
+        Pattern qualified = Pattern.compile("(?:" + typed + "|(?<![\\w$.])#)" + q + "\\b");
+        Pattern code = Pattern.compile(
+                qualified.pattern() + "|(?<![\\w$.#])" + q + "\\s*\\(|\\{@(?:code|link)\\s+" + q + "\\b|`" + q + "`");
         List<String> out = new ArrayList<>();
         for (Map.Entry<String, String> e : edited.entrySet()) {
             if (prose(e.getKey())) continue;

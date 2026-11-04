@@ -159,13 +159,14 @@ class GraphRenameTest {
                 "Shop.java",
                 shop.replace(
                         "    boolean listed(",
-                        "    // as Range.contains() does\n    // the list contains it\n    boolean listed("));
+                        "    // as Range.contains() does\n    // the list contains it\n"
+                                + "    // see {@link java.util.List#contains}\n    boolean listed("));
         Path root = workspace(dir, sources);
         rename(root, "Range.contains", "includes");
         assertThat(read(root, "Shop.java"))
                 .contains("// as Range.includes() does")
                 .as("a bare contains in another type's file is that type's")
-                .contains("// the list contains it");
+                .contains("// the list contains it", "{@link java.util.List#contains}");
         assertThat(RenameMentions.home(PKG + "RangeTest.java", Set.of("Range"))).isTrue();
     }
 
