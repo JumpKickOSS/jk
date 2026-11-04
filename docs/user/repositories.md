@@ -287,6 +287,30 @@ Tool distribution mirrors and npm registries use the same chain, keyed by host �
 `jk publish -c` reads the id `central`, bound to `https://central.sonatype.com` — see
 [Publish: Maven Central](publish.md#maven-central).
 
+### On CI, in a container, over SSH
+
+A CI server, a build container, an SSH session and an engine started by systemd have no desktop
+and no keychain, and that is the normal case. Give jk the secret the way the machine already holds
+it:
+
+- **From the CI secret store:** `JK_REPO_<ID>_TOKEN` (or `_USERNAME` + `_PASSWORD`) as an
+  environment variable, or `JK_REPO_<ID>_TOKEN_FILE` naming a file the runner writes. Nothing is
+  stored, and nothing is left behind when the job ends.
+- **From a mounted secret** (Docker, Kubernetes, a systemd credential): `${file:/run/secrets/nexus}`
+  in `~/.jk/config.toml`, or the `_FILE` variable. See [Secret references](#secret-references).
+- **From a token service** (cloud registries, vaults, short-lived tokens): `${cmd:…}` in
+  `~/.jk/config.toml`. See [Credential helpers](#credential-helpers).
+
+```yaml
+# GitHub Actions
+env:
+  JK_REPO_CORP_TOKEN: ${{ secrets.NEXUS_TOKEN }}
+```
+
+`jk repo login` works headless too: the secret goes in the owner-only record without a word (see
+[Where a login keeps its secret](#where-a-login-keeps-its-secret)). jk never prompts for, waits on,
+or warns about a keychain on a machine that has none.
+
 ### Secret references
 
 A credential value, an object-store key and a `[mirrors]` value can be a reference instead of the
@@ -362,22 +386,39 @@ a project that could name a command would run it on your machine at its first re
 
 ### Where a login keeps its secret
 
-`jk repo login` and `jk auth login` put the token or password in the OS keychain when one
-answers: the macOS Keychain (`/usr/bin/security`), the Windows Credential Manager, or the Secret
-Service on Linux (GNOME Keyring, KWallet, KeePassXC, through libsecret's `secret-tool`). The record
-under `~/.jk/creds/repo/<id>` keeps what is not secret: the `<scheme> <origin>` binding, the
+On a desktop, `jk repo login` and `jk auth login` put the token or password in the OS keychain
+when one answers: the macOS Keychain (`/usr/bin/security`), the Windows Credential Manager, or the
+Secret Service on Linux (GNOME Keyring, KWallet, KeePassXC, through libsecret's `secret-tool`). The
+record under `~/.jk/creds/repo/<id>` keeps what is not secret: the `<scheme> <origin>` binding, the
 username, and a pointer to the keychain item (`secret-service repo/nexus`). A `jk auth login`
 record under `~/.jk/creds/forge/<host>` holds only the pointer.
 
-With no keychain answering (SSH without a desktop session, CI, a container), the secret stays in
-the owner-only record and the login prints one notice saying why. Choose explicitly in
-`~/.jk/config.toml`, or with `JK_CREDENTIALS_STORE` for CI:
+Everywhere else the secret stays in the owner-only record, silently:
+
+- On a CI server (`CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `JENKINS_URL`, `BUILDKITE`, … is set) or in a
+  container (`/.dockerenv`, `/run/.containerenv`, `container` or `KUBERNETES_SERVICE_HOST`), jk asks
+  no keychain at all.
+- With no keychain on the machine — no D-Bus session bus or no `secret-tool` on Linux, a macOS
+  login keychain that is locked with no window server to unlock it (SSH, launchd) — the record
+  takes the secret without a notice.
+- A keychain that is there and refuses (a locked GNOME Keyring collection, a denial) earns one
+  notice saying why, except over SSH with no display, where nobody could have unlocked it.
+
+jk never shows or waits on an unlock prompt. Before every keychain call it checks, without
+prompting, whether the keychain is locked — on Linux by reading the default collection's `Locked`
+property with `busctl` or `gdbus` — and a locked keychain is a refusal on the spot. A check takes
+at most a second and a call at most five.
+
+Choose explicitly in `~/.jk/config.toml`, or with `JK_CREDENTIALS_STORE`:
 
 ```toml
 [credentials]
-store = "keychain"   # fail the login when no keychain takes the secret
-# store = "file"     # keep it in the owner-only record, no notice
+store = "keychain"   # fail the login when no keychain takes the secret, naming why
+# store = "file"     # keep it in the owner-only record and never ask a keychain
 ```
+
+`store = "keychain"` on a machine with no keychain fails the login at once, and the error names the
+headless recipe above.
 
 A login over an existing record moves its secret to wherever the login puts it now, and removes
 a keychain item the record no longer points at. A plaintext record still reads; nothing migrates
@@ -391,7 +432,8 @@ resident engine has those of whichever shell started it, if any (none when it wa
 or by systemd), so the `jk` command reads those items and sends the secrets with its request, the
 way `JK_REPO_*` variables travel. A build started without a `jk` command — from the dashboard or an MCP client — reads
 them from the engine, which reaches the Secret Service only when it was started from a desktop
-session.
+session; an engine with no session bus never tries to reach one, and a login whose secret is in
+its record serves it as usual.
 
 ### A name is not a destination
 

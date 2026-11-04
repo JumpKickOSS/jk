@@ -8,13 +8,15 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
-/** An in-memory keychain: tests decide whether it answers, refuses, or is daemon-reachable. */
+/** An in-memory keychain: tests decide whether it is there, locked, refusing, or daemon-reachable. */
 public final class FakeKeychain implements SecretBackend {
 
     public final Map<String, String> items = new ConcurrentHashMap<>();
     public final List<String> calls = new ArrayList<>();
     public @Nullable String unavailable;
+    public @Nullable String locked;
     public @Nullable String refusing;
+    public int probes;
     public boolean daemon;
 
     @Override
@@ -28,8 +30,10 @@ public final class FakeKeychain implements SecretBackend {
     }
 
     @Override
-    public Probe probe() {
-        return unavailable == null ? Probe.AVAILABLE : Probe.unavailable(unavailable);
+    public synchronized Probe probe() {
+        probes++;
+        if (unavailable != null) return Probe.unavailable(unavailable);
+        return locked == null ? Probe.AVAILABLE : Probe.refused(locked);
     }
 
     @Override

@@ -49,7 +49,7 @@ public final class ForgeAuth {
     /**
      * Persist a freshly-obtained token (device flow or pasted PAT).
      *
-     * @return where the token went, and the notice to show when no keychain answered
+     * @return where the token went, and the notice to show when a keychain refused
      */
     public SecretVault.Stored store(ForgeKind kind, String host, String token) {
         return store.write(resolveHost(kind, host), token);

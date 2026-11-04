@@ -21,7 +21,15 @@ import org.jspecify.annotations.Nullable;
  * <p>The choice is {@value #ENV}, then {@code [credentials] store} in {@code ~/.jk/config.toml},
  * then {@code auto}: {@code keychain} insists on the keychain and fails a login that cannot reach
  * one; {@code file} keeps the secret in the record; {@code auto} takes the first keychain that
- * answers and otherwise the file, with one notice saying why.
+ * answers and otherwise the file.
+ *
+ * <p>Headless is the normal case: a CI server, a build container, an SSH session and a systemd
+ * service have no desktop, and the keychain is a desktop convenience. So {@code auto} on a CI
+ * server or in a container ({@link HostSession#headless()}) asks no keychain at all, and {@code
+ * auto} with no keychain here (no session bus, no tool, no window server) settles for the file
+ * without a word. The one notice is for a keychain that is there and refused (locked, denied), and
+ * not even that over SSH with no display, where nobody could have unlocked it. No backend ever
+ * prompts or waits on one: a locked keychain refuses on the spot.
  *
  * <p>A secret in a keychain leaves a {@link Pointer} in its record. {@link #resolve} turns the
  * pointer back into the secret: from what the client sent with the request ({@link
@@ -91,24 +99,32 @@ public final class SecretVault {
 
     private final Choice choice;
     private final List<SecretBackend> backends;
+    private final HostSession session;
 
     /** Why the configured choice could not be read; a login refuses, a read is unaffected. */
     private final @Nullable String misconfigured;
 
-    private SecretVault(Choice choice, List<SecretBackend> backends, @Nullable String misconfigured) {
+    private SecretVault(
+            Choice choice, List<SecretBackend> backends, HostSession session, @Nullable String misconfigured) {
         this.choice = Objects.requireNonNull(choice, "choice");
         this.backends = List.copyOf(backends);
+        this.session = Objects.requireNonNull(session, "session");
         this.misconfigured = misconfigured;
     }
 
-    /** {@code choice} over {@code backends}, in preference order — tests. */
+    /** {@code choice} over {@code backends}, in preference order, on a desktop — tests. */
     public static SecretVault of(Choice choice, List<SecretBackend> backends) {
-        return new SecretVault(choice, backends, null);
+        return of(choice, backends, HostSession.desktop());
+    }
+
+    /** {@code choice} over {@code backends}, in preference order, in {@code session} — tests. */
+    public static SecretVault of(Choice choice, List<SecretBackend> backends, HostSession session) {
+        return new SecretVault(choice, backends, session, null);
     }
 
     /** A vault that keeps every secret in its record and follows no pointer: a scratch store. */
     public static SecretVault fileOnly() {
-        return new SecretVault(Choice.FILE, List.of(), null);
+        return new SecretVault(Choice.FILE, List.of(), HostSession.desktop(), null);
     }
 
     /**
@@ -117,11 +133,12 @@ public final class SecretVault {
      * spelling problem.
      */
     public static SecretVault current() {
-        List<SecretBackend> host = hostBackends(SecretCommand.REAL);
+        HostSession session = HostSession.current();
+        List<SecretBackend> host = hostBackends(SecretCommand.REAL, session);
         try {
-            return new SecretVault(configuredChoice(), host, null);
+            return new SecretVault(configuredChoice(), host, session, null);
         } catch (IllegalArgumentException misspelled) {
-            return new SecretVault(Choice.AUTO, host, misspelled.getMessage());
+            return new SecretVault(Choice.AUTO, host, session, misspelled.getMessage());
         }
     }
 
@@ -135,10 +152,10 @@ public final class SecretVault {
     }
 
     /** The keychain this OS has, in preference order. */
-    public static List<SecretBackend> hostBackends(SecretCommand command) {
+    public static List<SecretBackend> hostBackends(SecretCommand command, HostSession session) {
         if (Os.isDarwin()) return List.of(new MacKeychainBackend(command));
         if (Os.isWindows()) return List.of(new WindowsCredentialBackend(command));
-        if (Os.isLinux()) return List.of(new SecretServiceBackend(command));
+        if (Os.isLinux()) return List.of(new SecretServiceBackend(command, session));
         return List.of();
     }
 
@@ -171,29 +188,55 @@ public final class SecretVault {
      * file. {@code reasons} collects why each keychain did not.
      */
     public Optional<SecretBackend> destination(List<String> reasons) {
-        if (choice == Choice.FILE) return Optional.empty();
+        Placement placement = place();
+        reasons.addAll(placement.refusals());
+        reasons.addAll(placement.absences());
+        return Optional.ofNullable(placement.backend());
+    }
+
+    /**
+     * Where a new secret goes: {@code backend}, or null for the file. {@code refusals} name the
+     * keychains that are there and would not answer, {@code absences} those this machine does not
+     * have; {@code headless} says why no keychain was asked at all.
+     */
+    private record Placement(
+            @Nullable SecretBackend backend,
+            List<String> refusals,
+            List<String> absences,
+            @Nullable String headless) {}
+
+    private Placement place() {
+        List<String> refusals = new ArrayList<>();
+        List<String> absences = new ArrayList<>();
+        if (choice == Choice.FILE) return new Placement(null, refusals, absences, null);
+        String headless = session.headless();
+        if (choice == Choice.AUTO && headless != null) {
+            absences.add("this is " + headless);
+            return new Placement(null, refusals, absences, headless);
+        }
         for (SecretBackend backend : backends) {
             SecretBackend.Probe probe = backend.probe();
-            if (probe.available()) return Optional.of(backend);
-            reasons.add(backend.displayName() + ": " + probe.reason());
+            if (probe.available()) return new Placement(backend, refusals, absences, headless);
+            (probe.refused() ? refusals : absences).add(backend.displayName() + ": " + probe.reason());
         }
-        if (backends.isEmpty()) reasons.add("jk knows no keychain on " + Os.name());
-        return Optional.empty();
+        if (backends.isEmpty()) absences.add("jk knows no keychain on " + Os.name());
+        return new Placement(null, refusals, absences, headless);
     }
 
     /**
      * Store {@code secret} as {@code item}. A keychain that answers takes it, and the caller records
      * the returned pointer; otherwise the caller keeps the secret in its record. {@code fileShown}
-     * is the record's path, for the notice.
+     * is the record's path, for the notice a refusing keychain earns.
      *
      * @throws IllegalStateException when the choice is {@code keychain} and no keychain took it
      */
     public Stored store(String item, String label, String secret, Path fileShown) {
         if (misconfigured != null) throw new IllegalStateException(misconfigured);
-        List<String> reasons = new ArrayList<>();
-        Optional<SecretBackend> destination = destination(reasons);
-        if (destination.isPresent()) {
-            SecretBackend backend = destination.get();
+        if (choice == Choice.FILE) return new Stored(null, null);
+        Placement placement = place();
+        List<String> refusals = new ArrayList<>(placement.refusals());
+        SecretBackend backend = placement.backend();
+        if (backend != null) {
             try {
                 backend.write(item, label, secret);
                 Optional<String> back = backend.read(item);
@@ -202,25 +245,34 @@ public final class SecretVault {
                     forget(pointer);
                     return new Stored(pointer, null);
                 }
-                reasons.add(backend.displayName() + ": the item did not read back as written");
+                refusals.add(backend.displayName() + ": the item did not read back as written");
                 backend.delete(item);
             } catch (SecretBackendException refused) {
-                reasons.add(refused.getMessage());
+                refusals.add(refused.getMessage());
             }
         }
-        if (choice == Choice.FILE) return new Stored(null, null);
-        String why = String.join("; ", reasons);
         if (choice == Choice.KEYCHAIN) {
+            List<String> why = new ArrayList<>(refusals);
+            why.addAll(placement.absences());
+            if (placement.headless() != null) why.add("this is " + placement.headless());
             throw new IllegalStateException("[credentials] store is \"keychain\", and no OS keychain took the secret ("
-                    + why + "). Unlock or start the keychain, or set " + ENV + "=file.");
+                    + String.join("; ", why) + "). " + HEADLESS_RECIPE + " On a desktop, unlock the keychain and"
+                    + " log in again.");
         }
+        if (refusals.isEmpty() || session.remote()) return new Stored(null, null);
         return new Stored(
                 null,
-                "jk: notice: no OS keychain answered (" + why + "), so the secret is in the owner-only file "
-                        + fileShown
+                "jk: notice: the OS keychain refused (" + String.join("; ", refusals)
+                        + "), so the secret is in the owner-only file " + fileShown
                         + ". Set [credentials] store = \"file\" in ~/.jk/config.toml to keep it there without this"
                         + " notice.");
     }
+
+    /** What a machine with no keychain does instead, for the error that insists on one. */
+    static final String HEADLESS_RECIPE = "A CI server or container has no keychain: give the secret from its"
+            + " secret store as JK_REPO_<ID>_TOKEN or JK_REPO_<ID>_TOKEN_FILE (JK_<FORGE>_TOKEN for a forge),"
+            + " or as a ${file:} or ${cmd:} reference in ~/.jk/config.toml, or set " + ENV + "=file to keep"
+            + " a login's secret in its owner-only record.";
 
     /**
      * The secret {@code pointer} names: the one the client sent with this request, else the

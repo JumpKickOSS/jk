@@ -438,6 +438,10 @@ in     = "clients/cli/src/test/java/cc/jumpkick/cli/engine/EngineScopeTest.java"
 reason = "fixtures for the systemd user bus check"
 
 [[guards.single-home-root.allow]]
+in     = "shared/client-io/src/main/java/cc/jumpkick/secret/HostSession.java"
+reason = "the D-Bus session bus is $XDG_RUNTIME_DIR/bus when no address is set; that directory is not a jk layout root"
+
+[[guards.single-home-root.allow]]
 in     = "shared/toolchain-jdk/src/main/java/cc/jumpkick/discovery/MiseProbe.java"
 reason = "reads mise's own layout (MISE_DATA_DIR, XDG_DATA_HOME, .local/share/mise) to discover JDKs"
 

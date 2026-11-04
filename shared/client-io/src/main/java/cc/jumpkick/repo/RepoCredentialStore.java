@@ -124,7 +124,7 @@ public final class RepoCredentialStore {
      * no longer uses is removed.
      *
      * @return where the secret went: the keychain pointer, or none for the record itself, and the
-     *     notice to show when no keychain answered
+     *     notice to show when a keychain refused
      * @throws IllegalStateException when the vault insists on a keychain that did not take it
      */
     public SecretVault.Stored write(String repoId, RepoCredential cred, URI url) {

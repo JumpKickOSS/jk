@@ -18,16 +18,31 @@ public interface SecretBackend {
     /** What {@code jk doctor} and the login notices call it. */
     String displayName();
 
-    /** Whether this keychain answers here and now; {@code reason} says why not when it does not. */
-    record Probe(boolean available, @Nullable String reason) {
-        public static final Probe AVAILABLE = new Probe(true, null);
+    /**
+     * Whether this keychain answers here and now; {@code reason} says why not when it does not.
+     * {@code refused} tells a keychain that is there and will not answer (locked, denied) from one
+     * this machine does not have (no session bus, no tool, no window server), which is the normal
+     * headless case and nothing to tell the user about.
+     */
+    record Probe(
+            boolean available, boolean refused, @Nullable String reason) {
+        public static final Probe AVAILABLE = new Probe(true, false, null);
 
+        /** No keychain here: a headless session, or the tool is not installed. */
         public static Probe unavailable(String reason) {
-            return new Probe(false, reason);
+            return new Probe(false, false, reason);
+        }
+
+        /** A keychain that is there and refuses: locked, denied, or answering nonsense. */
+        public static Probe refused(String reason) {
+            return new Probe(false, true, reason);
         }
     }
 
-    /** Ask the keychain whether it answers, without touching any item. */
+    /**
+     * Ask the keychain whether it answers, without touching any item and without anything that
+     * could show a prompt, within about a second. A locked keychain is a refusal, never a wait.
+     */
     Probe probe();
 
     /**

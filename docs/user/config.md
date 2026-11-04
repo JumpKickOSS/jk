@@ -268,8 +268,9 @@ appears in output or `jk-results.md`.
 
 `[credentials] store` in `~/.jk/config.toml` says where `jk repo login` and `jk auth login` keep a
 secret: `"keychain"` (the OS keychain, or the login fails), `"file"` (the owner-only record under
-`~/.jk/creds/`), or `"auto"`, the default (the keychain when one answers, else the file with one
-notice). `JK_CREDENTIALS_STORE` overrides it. See
+`~/.jk/creds/`), or `"auto"`, the default (the keychain when one answers, else the file; on a CI
+server, in a container, or with no keychain on the machine, the file without a word).
+`JK_CREDENTIALS_STORE` overrides it. See
 [Repositories § Where a login keeps its secret](repositories.md#where-a-login-keeps-its-secret).
 
 ## Other env

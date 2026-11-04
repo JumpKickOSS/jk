@@ -114,16 +114,16 @@ class RepoCredentialStoreTest {
     }
 
     @Test
-    void with_no_keychain_answering_the_secret_stays_in_the_file_with_one_notice(@TempDir Path dir) throws Exception {
+    void with_the_keychain_locked_the_secret_stays_in_the_file_with_one_notice(@TempDir Path dir) throws Exception {
         FakeKeychain keychain = new FakeKeychain();
-        keychain.unavailable = "Cannot autolaunch D-Bus without X11 $DISPLAY";
+        keychain.locked = "the default keyring is locked, and jk never asks to unlock it";
         var store = new RepoCredentialStore(dir, keychainVault(keychain));
 
         SecretVault.Stored stored = store.write("ghp", new RepoCredential.Bearer("tok-123"), NEXUS);
 
         assertThat(stored.pointer()).isNull();
         assertThat(stored.notice())
-                .contains("Cannot autolaunch D-Bus")
+                .contains("the default keyring is locked")
                 .contains(dir.resolve("ghp").toString());
         assertThat(Files.readString(dir.resolve("ghp"))).isEqualTo("bearer https://nexus.corp:8443\ntok-123\n");
     }
