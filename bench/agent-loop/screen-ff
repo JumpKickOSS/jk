@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""A screen that fails fast: rounds of one run per task per agent, breadth-first, each agent on its
-prescription, compared after every round against a baseline series on the same tasks.
+"""A breadth-first agent screen: one run per task per agent by default, each agent on its
+prescription, then a verdict per agent against a baseline series on the same tasks.
 
     bench/agent-loop/screen-ff --series 19 --task petclinic-callers-addpet --task petclinic-rename-addvisit
-    bench/agent-loop/screen-ff --series 19 --agent cursor --agent agy --rounds 2 --task ...
+    bench/agent-loop/screen-ff --series 19 --agent cursor --confirm --task ...
+    bench/agent-loop/screen-ff --series 40 --agent codex --arm codex=jk-nograph --runs 3 --task ...
 
-After round 1 an agent that is worse than its baseline is dropped, and the screen stops when no agent
-is better. After round 2 only the agents still better run the last round. A rename run also reports
-whether its `rename` answer reached the agent with the line under test (--expect), so a change no agent
-saw is never read as a change that did nothing. Rows go to change-tasks' results; run numbers are
-series * 100 + round - 1.
+One run per cell is the screen: with the graph, an agent repeats itself closely, and a second run has
+not changed a decision. --confirm reruns, once, only the cells that surprised (correctness lost, or
+tokens or turns past ±30% of the baseline). --runs N is a deliberate collection (the heavy-tailed
+no-graph arm, a new agent): every cell's run k before any cell's run k+1. A rename run also reports
+whether its answer carried --expect, so a change no agent saw is never read as a change that did
+nothing. Rows go to change-tasks' results; run numbers are series * 100 + k. Resumable: measured cells
+are skipped.
 """
 from __future__ import annotations
 
@@ -23,7 +26,8 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-PRESCRIPTIONS = {"claude-code": "jk", "cursor": "jk-cursorrules", "grok": "jk", "muse": "jk", "agy": "jk-agyrules"}
+PRESCRIPTIONS = {"claude-code": "jk", "cursor": "jk-cursorrules", "grok": "jk", "muse": "jk", "agy": "jk-agyrules",
+                 "codex": "jk"}
 # Tasks whose baseline needs Docker (petclinic's Testcontainers Postgres test); skipped while it is down.
 NEEDS_DOCKER = {"petclinic-rename-addvisit"}
 # Ratio of the new median to the baseline's past which a measure counts as better or worse, over all
@@ -112,18 +116,31 @@ def reached(agent: str, arm: str, task: str, run: int, expect: str) -> bool | No
     return expect in hits[-1].read_text(errors="replace").replace("\\n", "\n")
 
 
+def surprising(row: dict, agent: str, arm: str, task: str, baseline: int) -> str | None:
+    """Why a cell's run is worth a second look against the baseline's runs of that cell, or None."""
+    old = [r for r in rows() if (r["driver"], r["arm"], r["task"]) == (agent, arm, task) and r["run"] // 100 == baseline]
+    if not old:
+        return None
+    if not row.get("accepted") and sum(r["accepted"] for r in old) / len(old) > 0.5:
+        return "correctness lost"
+    for key in ("tokens", "turns"):
+        a, b = row.get(key), median(old, key)
+        if a is not None and b and not 0.7 <= a / b <= 1.3:
+            return f"{key} {b:,.0f} -> {a:,.0f}"
+    return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--series", type=int, required=True, help="run numbers series*100 + round - 1")
+    ap.add_argument("--series", type=int, required=True, help="run numbers series*100 + k")
     ap.add_argument("--baseline", type=int, default=16, help="the series to compare against")
     ap.add_argument("--agent", action="append", choices=sorted(PRESCRIPTIONS))
     ap.add_argument("--task", action="append", required=True, help="cheapest first")
-    ap.add_argument("--rounds", type=int, default=3)
-    ap.add_argument("--no-stop", action="store_true",
-                    help="collect: run every round for every agent, verdicts printed but never acted on")
+    ap.add_argument("--runs", type=int, default=1, help="runs per cell, breadth-first (a collection)")
+    ap.add_argument("--confirm", action="store_true", help="rerun once only the cells that surprised")
     ap.add_argument("--arm", action="append", default=[], metavar="AGENT=ARM",
-                    help="run an agent on another arm than its prescription (compared with the baseline's same arm)")
-    ap.add_argument("--expect", default="A rename changes no behaviour",
+                    help="run an agent on another arm than its prescription (compared with the prescription)")
+    ap.add_argument("--expect", default="Checked by jk",
                     help="text a rename answer must carry for the run to test the change")
     ns = ap.parse_args()
     ct = load("smoke_test", HERE / "smoke-test").ct
@@ -134,58 +151,58 @@ def main() -> int:
             raise SystemExit(f"screen-ff: no agent or arm in {pair!r}")
         arms[agent] = arm
     active = list(ns.agent or PRESCRIPTIONS)
-    for rnd in range(1, ns.rounds + 1):
-        run = ns.series * 100 + rnd - 1
-        print(f"== round {rnd}: {', '.join(active)}", flush=True)
+
+    def cell(agent: str, task: str, run: int) -> dict | None:
+        """One run of a cell, unless it is measured already; its row, or None when it was not measured."""
+        arm = arms[agent]
+        row = measured(agent, arm, task, run)
+        if row is not None:
+            return row
+        sys.argv = ["change-tasks", "--driver", agent, "--arm", arm, "--task", task,
+                    "--first-run", str(run), "--runs", "1"]
+        try:
+            ct.main()
+        except Exception as e:  # noqa: BLE001 - one broken cell is a line, not the end of the screen
+            print(f"   {agent} {task} #{run} raised {e!r}", flush=True)
+        row = measured(agent, arm, task, run)
+        if row is None:
+            why = last_finding(agent, arm, task, run)
+            print(f"   {agent} {task} #{run}: not measured: {why}", flush=True)
+            if "did not start" in why:
+                print(f"== {agent} dropped: its CLI does not start", flush=True)
+                active.remove(agent)
+            return None
+        if "rename" in task and not arm.endswith("nograph"):
+            seen = reached(agent, arm, task, run, ns.expect)
+            print(f"   {agent} {task} #{run}: change reached the agent: {seen}", flush=True)
+            if seen is False:
+                raise SystemExit(f"== stop: {task}'s rename answer did not carry {ns.expect!r}; fix that first")
+        return row
+
+    first = ns.series * 100
+    for k in range(ns.runs):
+        print(f"== run {k + 1} of {ns.runs}: {', '.join(active)}", flush=True)
         for task in ns.task:
             if task in NEEDS_DOCKER and subprocess.run(["docker", "info"], capture_output=True).returncode != 0:
                 print(f"   {task}: skipped, Docker is down", flush=True)
                 continue
             for agent in list(active):
-                arm = arms[agent]
-                if measured(agent, arm, task, run):
-                    continue
-                sys.argv = ["change-tasks", "--driver", agent, "--arm", arm, "--task", task,
-                            "--first-run", str(run), "--runs", "1"]
-                try:
-                    ct.main()
-                except Exception as e:  # noqa: BLE001 - one broken cell is a line, not the end of the screen
-                    print(f"   {agent} {task} #{run} raised {e!r}", flush=True)
-                row = measured(agent, arm, task, run)
-                if row is None:
-                    why = last_finding(agent, arm, task, run)
-                    print(f"   {agent} {task} #{run}: not measured: {why}", flush=True)
-                    if "did not start" in why:
-                        print(f"== {agent} dropped: its CLI does not start", flush=True)
-                        active.remove(agent)
-                    continue
-                if "rename" in task:
-                    seen = reached(agent, arm, task, run, ns.expect)
-                    print(f"   {agent} {task} #{run}: change reached the agent: {seen}", flush=True)
-                    if seen is False:
-                        print(f"== stop: {task}'s rename answer did not carry the change; fix that first", flush=True)
-                        return 1
-        if not active:
-            print("== stop: no agent left", flush=True)
-            return 1
-        verdicts = {}
-        for agent in active:
-            v, lines = verdict(agent, arms[agent], ns.series, ns.baseline, ns.task, PRESCRIPTIONS[agent])
-            verdicts[agent] = v
-            print(f"== after round {rnd}: {agent} {v}", flush=True)
-            print("\n".join(lines), flush=True)
-        if ns.no_stop:
-            continue
-        if rnd == 1:
-            if not any(v == "better" for v in verdicts.values()):
-                print("== stop: no agent is better than its baseline after round 1", flush=True)
-                return 0
-            active = [a for a in active if verdicts[a] != "worse"]
-        elif rnd == 2:
-            active = [a for a in active if verdicts[a] == "better"]
-            if not active:
-                print("== stop: no agent still better after round 2", flush=True)
-                return 0
+                cell(agent, task, first + k)
+    if ns.confirm:
+        again = []
+        for task in ns.task:
+            for agent in active:
+                row = measured(agent, arms[agent], task, first)
+                why = row and surprising(row, agent, PRESCRIPTIONS[agent], task, ns.baseline)
+                if why:
+                    again.append((agent, task))
+                    print(f"   confirm {agent} {task}: {why}", flush=True)
+        for agent, task in again:
+            cell(agent, task, first + ns.runs)
+    for agent in active:
+        v, lines = verdict(agent, arms[agent], ns.series, ns.baseline, ns.task, PRESCRIPTIONS[agent])
+        print(f"== {agent}: {v}", flush=True)
+        print("\n".join(lines), flush=True)
     print("== screen done", flush=True)
     return 0
 

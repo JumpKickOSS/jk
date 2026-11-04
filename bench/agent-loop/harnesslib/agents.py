@@ -1022,7 +1022,7 @@ def cursor(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: in
     """
     if not shutil.which("cursor-agent"):
         raise RuntimeError("the `cursor-agent` CLI is not on PATH")
-    with tempfile.TemporaryDirectory(prefix="jk-agent-loop-cursor-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="jk-agent-loop-cursor-", ignore_cleanup_errors=True) as tmp:
         home = Path(tmp)
         server = _write_cursor_home(home, tool, sandbox)
         env = dict(os.environ)
@@ -1549,3 +1549,117 @@ def api(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int, 
 def claims_green_from_results(sandbox: Path) -> bool:
     p = sandbox / "target" / "jk-results.md"
     return p.exists() and results_ok(p.read_text(encoding="utf-8", errors="replace"))
+
+
+# ----------------------------------------------------------------------------------- codex
+
+# What `codex exec --json` reports for one run, as the other drivers' spines name it.
+_CODEX_SHELL = re.compile(r"""^\S*(?:zsh|bash|sh)\s+-\w*c\s+(['"])(.*)\1\s*$""", re.S)
+
+
+def _codex_command(cmd: str) -> str:
+    """The command inside codex's `zsh -lc '…'` wrapper, so a navigation rule sees `cat` or `rg`."""
+    m = _CODEX_SHELL.match(cmd.strip())
+    return m.group(2) if m else cmd
+
+
+def _codex_summary(events: list[dict]) -> list[dict]:
+    out: list[dict] = []
+    for ev in events:
+        if ev.get("type") != "item.completed":
+            continue
+        item = ev.get("item") or {}
+        kind = item.get("type")
+        if kind == "command_execution":
+            out.append({"tool_use": "Bash", "input": json.dumps({"command": _codex_command(item.get("command") or "")})[:200]})
+        elif kind == "mcp_tool_call":
+            out.append({"tool_use": f"mcp__{item.get('server')}__{item.get('tool')}",
+                        "input": json.dumps(item.get("arguments") or {})[:200]})
+        elif kind == "file_change":
+            paths = [c.get("path") for c in item.get("changes") or [] if isinstance(c, dict)]
+            out.append({"tool_use": "Edit", "input": json.dumps({"file_path": paths[0] if paths else ""})[:200]})
+        elif kind == "agent_message" and (item.get("text") or "").strip():
+            out.append({"text": item["text"][:300]})
+    return out
+
+
+def _codex_turns(events: list[dict]) -> int:
+    """Model calls: one per tool call, and the one that answers."""
+    calls = sum(1 for ev in events if ev.get("type") == "item.completed"
+                and (ev.get("item") or {}).get("type") in ("command_execution", "mcp_tool_call", "file_change"))
+    return calls + 1
+
+
+def codex(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int, transcript_path: Path,
+          effort: str = "medium") -> AgentResult:
+    """`codex exec --json` with the tool's MCP server. Codex works through its shell and apply_patch,
+    so a change task runs with the shell prompt. Config and sessions live in a throwaway CODEX_HOME
+    with a copy of the login, so the user's hooks and settings stay out; codex has no turn limit, so
+    the harness stops it at max_turns tool calls. The system prompt opens the user prompt."""
+    if not shutil.which("codex"):
+        raise RuntimeError("the `codex` CLI is not on PATH")
+    auth = Path.home() / ".codex" / "auth.json"
+    if not auth.exists():
+        raise RuntimeError("codex is not signed in: no ~/.codex/auth.json (run `codex login`)")
+    server, registered = servers(tool, sandbox)
+    homes = Path.home() / ".cache" / "jk-bench" / "codex-homes"
+    homes.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="run-", dir=homes) as tmp:
+        home = Path(tmp)
+        shutil.copy2(auth, home / "auth.json")
+        lines = [f'model = "{model}"', f'model_reasoning_effort = "{effort}"', ""]
+        for name, cfg in registered.items():
+            args = ", ".join(json.dumps(a) for a in cfg.get("args") or [])
+            lines += [f"[mcp_servers.{name}]", f'command = {json.dumps(cfg["command"])}', f"args = [{args}]",
+                      # jk's run parks up to 240 s; codex's own default would cut it short.
+                      "tool_timeout_sec = 300", "startup_timeout_sec = 60", ""]
+        (home / "config.toml").write_text("\n".join(lines))
+        prompt = system_prompt(tool, sandbox, server) + "\n\n" + user_prompt()
+        cmd = ["codex", "exec", "--json", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox",
+               "--ephemeral", "-C", str(sandbox), prompt]
+        calls = 0
+
+        def on_event(ev: dict) -> str | None:
+            nonlocal calls
+            if ev.get("type") == "item.completed" and (ev.get("item") or {}).get("type") in (
+                    "command_execution", "mcp_tool_call", "file_change"):
+                calls += 1
+                if calls > max_turns:
+                    return "kill"
+            return None
+
+        env = {**os.environ, "CODEX_HOME": str(home)}
+        events, stderr, stop = _run_streaming(cmd, sandbox, env, max_seconds, transcript_path, on_event)
+    raw = {}
+    for ev in events:
+        if ev.get("type") == "turn.completed":
+            u = ev.get("usage") or {}
+            for k, v in u.items():
+                if isinstance(v, (int, float)):
+                    raw[k] = raw.get(k, 0) + v
+    cached = int(raw.get("cached_input_tokens") or 0)
+    usage = {
+        "input_tokens": int(raw.get("input_tokens") or 0) - cached,
+        "output_tokens": int(raw.get("output_tokens") or 0),
+        "cache_read_input_tokens": cached,
+        "cache_creation_input_tokens": int(raw.get("cache_write_input_tokens") or 0),
+    } if raw else {}
+    summary = _codex_summary(events)
+    turns = _codex_turns(events)
+    extra = {"effort": effort, "file_tools_only": False, "server": server, "model_usage": None}
+    texts = [e["text"] for e in summary if "text" in e]
+    reply = texts[-1] if texts else ""
+    failed = next((ev for ev in events if ev.get("type") in ("turn.failed", "error")), None)
+    if failed is not None or not any(ev.get("type") == "turn.completed" for ev in events):
+        finding = json.dumps(failed)[:300] if failed else ("codex exited without a completed turn"
+                                                             + (f": {stderr[:300]}" if stderr else ""))
+        if stop == "wall":
+            finding = f"time budget exhausted ({max_seconds}s)"
+        elif stop == "turns":
+            finding = f"turn budget exhausted ({max_turns})"
+        if _startup_failure(finding) or _startup_failure(stderr):
+            extra["abort"] = True
+        return AgentResult(False, turns, usage, None, summary, finding, extra)
+    claimed = bool(re.match(r"\s*GREEN\b", reply))
+    finding = "" if claimed else (f"agent stopped: {reply.strip()[:200]}" if reply.strip() else "agent stopped")
+    return AgentResult(claimed, turns, usage, None, summary, finding, extra)
