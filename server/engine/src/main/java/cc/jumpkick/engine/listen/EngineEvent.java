@@ -3,6 +3,8 @@ package cc.jumpkick.engine.listen;
 
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.EventCatalog;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import org.jspecify.annotations.Nullable;
 
@@ -13,6 +15,41 @@ import org.jspecify.annotations.Nullable;
  * is dashboard sampling, not a build event, and stays off this spine.
  */
 public sealed interface EngineEvent {
+
+    /**
+     * The event's type in {@link EventCatalog}: the wire type it is sent as, or for the two the
+     * wire never sees ({@link Plan}, and {@link PlanFinish}, whose wire terminal is {@link
+     * PlanFinishLine}) the SSE frame it becomes.
+     */
+    default String type() {
+        return switch (this) {
+            case PlanStart e -> EngineProtocol.BUILDPLAN_START;
+            case StepStart e -> EngineProtocol.TASK_START;
+            case Progress e -> EngineProtocol.PROGRESS;
+            case TickUpdate e -> EngineProtocol.TICK_UPDATE;
+            case Label e -> EngineProtocol.LABEL;
+            case Output e -> EngineProtocol.OUTPUT;
+            case Warn e -> EngineProtocol.WARN;
+            case ErrorLine e -> EngineProtocol.ERROR_LINE;
+            case ErrorFailure e -> EngineProtocol.ERROR_LINE;
+            case StepFinish e -> EngineProtocol.TASK_FINISH;
+            case PlanFinishLine e -> EngineProtocol.BUILDPLAN_FINISH;
+            case PlanFinish e -> EngineProtocol.BUILDPLAN_FINISH;
+            case PlanDiagnostic e -> EngineProtocol.BUILDPLAN_DIAGNOSTIC;
+            case PlanDiagnosticFailure e -> EngineProtocol.BUILDPLAN_DIAGNOSTIC;
+            case ClassFinish e -> EngineProtocol.CLASS_FINISH;
+            case Preflight e -> EngineProtocol.PREFLIGHT;
+            case Note e -> EngineProtocol.NOTE;
+            case InvocationPhase e -> EngineProtocol.INVOCATION_PHASE;
+            case PlanModule e -> EngineProtocol.PLAN_MODULE;
+            case PlanStep e -> EngineProtocol.PLAN_TASK;
+            case PlanDone e -> EngineProtocol.PLAN_DONE;
+            case ModuleStart e -> EngineProtocol.MODULE_START;
+            case ModuleFinish e -> EngineProtocol.MODULE_FINISH;
+            case Eta e -> EngineProtocol.ETA;
+            case Plan e -> EventCatalog.SSE_PLAN;
+        };
+    }
 
     record PlanStart(
             String dir,

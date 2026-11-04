@@ -2,12 +2,14 @@
 package cc.jumpkick.engine.listen;
 
 import cc.jumpkick.engine.api.SseEvents;
+import cc.jumpkick.wire.protocol.EventCatalog;
 
 /**
  * Encodes {@link EngineEvent} as dashboard/MCP SSE frames via {@link SseEvents}. The second
- * production sink beside {@link WireEventSink}: one event vocabulary, two encodings. Events with
- * no SSE frame (wire-only bursts, per-line diagnostics — the capped publication needs the whole
- * list and stays on {@code Hooks.planDiagnostics}) map to nothing.
+ * production sink beside {@link WireEventSink}: one event vocabulary, two encodings. Which events
+ * become frames is {@link EventCatalog}'s to say, each omission with its reason: per-line
+ * diagnostics, for one, reach SSE through the capped publication at the plan's end
+ * ({@code Hooks.planDiagnostics}), not here.
  */
 public final class SseEventSink implements EventSink {
 
@@ -21,6 +23,14 @@ public final class SseEventSink implements EventSink {
 
     @Override
     public void emit(EngineEvent event) {
+        // The catalog decides what SSE carries from an engine event; the switch only spells how.
+        // An event it omits is dropped here with its reason written there, never by an empty case.
+        if (!(EventCatalog.row(event.type()) instanceof EventCatalog.Row row)
+                || !(row.sse() instanceof EventCatalog.Carried carried)
+                || !carried.fromEventSink()
+                || event instanceof EngineEvent.PlanFinishLine) {
+            return;
+        }
         switch (event) {
             case EngineEvent.PlanStart e -> sse.publishPlanProgress(requestId, e.dir(), e.numerator(), e.denominator());
             case EngineEvent.Progress e -> sse.publishPlanProgress(requestId, e.dir(), e.numerator(), e.denominator());
@@ -45,19 +55,9 @@ public final class SseEventSink implements EventSink {
             case EngineEvent.Eta e -> sse.publishEta(requestId, e.remainingMs());
             case EngineEvent.Plan e -> sse.publishPlan(requestId, e.totalWeight());
             case EngineEvent.PlanFinish e -> sse.publishBuildPlanFinish(requestId, e.dir(), e.success());
-            case EngineEvent.Warn e -> {}
-            case EngineEvent.ErrorLine e -> {}
-            case EngineEvent.ErrorFailure e -> {}
-            case EngineEvent.ClassFinish e -> {}
-            case EngineEvent.PlanDiagnostic e -> {}
-            case EngineEvent.PlanDiagnosticFailure e -> {}
-            case EngineEvent.PlanFinishLine e -> {}
-            case EngineEvent.Preflight e -> {}
-            case EngineEvent.Note e -> {}
-            case EngineEvent.InvocationPhase e -> {}
-            case EngineEvent.PlanModule e -> {}
-            case EngineEvent.PlanStep e -> {}
-            case EngineEvent.PlanDone e -> {}
+            default ->
+                throw new IllegalStateException(
+                        "EventCatalog says the SSE event sink carries " + event.type() + ", and no case publishes it");
         }
     }
 }
