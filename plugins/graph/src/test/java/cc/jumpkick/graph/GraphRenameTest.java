@@ -116,17 +116,20 @@ class GraphRenameTest {
                 Objects.requireNonNull(RANGES.get("Range.java"))
                         .replace(
                                 "    public boolean contains(T t) {",
-                                "    // contains() fails open on NaN\n    public boolean contains(T t) {"));
+                                "    // contains() fails open on NaN\n    // a range contains its ends\n"
+                                        + "    public boolean contains(T t) {"));
         Path root = workspace(dir, sources);
-        Files.writeString(root.resolve("CHANGES.md"), "- Range.contains no longer accepts NaN.\n- Shop contains it.\n");
+        Files.writeString(root.resolve("README.md"), "- Range.contains accepts no NaN.\n- Shop contains it.\n");
+        Files.writeString(root.resolve("CHANGES.md"), "- Range.contains no longer accepts NaN.\n");
         String answer = rename(root, "Range.contains", "includes");
 
         assertThat(answer)
                 .contains("Not renamed, prose that names contains (comments, docs)")
                 .contains(PKG + "Range.java:", "| // contains() fails open on NaN")
-                .contains("CHANGES.md:1| - Range.contains no longer accepts NaN.")
-                .doesNotContain("Shop contains it");
-        assertThat(Files.readString(root.resolve("CHANGES.md"))).contains("Range.contains");
+                .contains("README.md:1| - Range.contains accepts no NaN.")
+                .as("the English word, and a changelog's record of the old name, are not the method")
+                .doesNotContain("Shop contains it", "a range contains its ends", "CHANGES.md");
+        assertThat(Files.readString(root.resolve("README.md"))).contains("Range.contains");
     }
 
     @Test
