@@ -363,12 +363,7 @@ public final class Http {
 
     /** Whether {@code host} names this machine by spelling alone: no lookup is made to decide. */
     static boolean loopback(String host) {
-        String h = host.toLowerCase(Locale.ROOT);
-        return h.equals("localhost")
-                || h.endsWith(".localhost")
-                || h.matches("127\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}")
-                || h.equals("::1")
-                || h.equals("[::1]");
+        return host.toLowerCase(Locale.ROOT).endsWith(".localhost") || RepositorySpec.loopback(host);
     }
 
     /** The hosts a {@link #DENY_HOSTS_ENV} value names: split on commas, trimmed, lower-cased, blanks dropped. */

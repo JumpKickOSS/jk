@@ -14,7 +14,11 @@ class LoopbackTest {
         assertThat(Loopback.is("127.0.0.1")).isTrue();
         assertThat(Loopback.is("::1")).isTrue();
         assertThat(Loopback.is("[::1]")).isTrue();
+        assertThat(Loopback.is("127.0.0.2")).isTrue();
+        assertThat(Loopback.is("[::ffff:127.0.0.1]")).isTrue();
+        assertThat(Loopback.is("[::ffff:7f00:1]")).isTrue();
         assertThat(Loopback.is("10.0.0.5")).isFalse();
+        assertThat(Loopback.is("[::ffff:10.0.0.5]")).isFalse();
         assertThat(Loopback.is("localhost.example.com")).isFalse();
     }
 
@@ -22,6 +26,7 @@ class LoopbackTest {
     void an_authority_is_judged_by_its_host() {
         assertThat(Loopback.authority("127.0.0.1:8081")).isTrue();
         assertThat(Loopback.authority("[::1]:8081")).isTrue();
+        assertThat(Loopback.authority("[::ffff:127.0.0.1]:8081")).isTrue();
         assertThat(Loopback.authority("repo.example.com:443")).isFalse();
     }
 }

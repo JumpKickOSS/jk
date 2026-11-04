@@ -3,6 +3,7 @@ package cc.jumpkick.model;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.ProcessEnv;
+import java.net.InetAddress;
 import java.net.URI;
 import java.util.List;
 import java.util.Locale;
@@ -358,11 +359,22 @@ public record RepositorySpec(
      * insecure-repository refusal names — there is no network path for anyone to sit on — so a
      * local mirror, an ssh-tunnelled Nexus or a test stub needs no opt-in and is not reported as
      * insecure.
+     *
+     * <p>{@code localhost}, or an address literal in {@code 127.0.0.0/8} or {@code ::1}, in any
+     * spelling — IPv6 bracketed or not, and the IPv4-mapped forms {@code ::ffff:127.0.0.1} and
+     * {@code ::ffff:7f00:1}. Decided by spelling alone: no name is looked up, so {@code
+     * 127.example.com} is a name like any other and not loopback.
      */
     public static boolean loopback(@Nullable String host) {
-        if (host == null) return false;
+        if (host == null || host.isEmpty()) return false;
         String h = host.toLowerCase(Locale.ROOT);
         if (h.startsWith("[") && h.endsWith("]")) h = h.substring(1, h.length() - 1);
-        return h.equals("localhost") || h.equals("::1") || h.startsWith("127.");
+        if (h.equals("localhost")) return true;
+        try {
+            // A literal only: ofLiteral parses, never resolves, and maps ::ffff:a.b.c.d to IPv4.
+            return InetAddress.ofLiteral(h).isLoopbackAddress();
+        } catch (IllegalArgumentException notALiteral) {
+            return false;
+        }
     }
 }
