@@ -28,6 +28,9 @@ public final class JsonlDownloads implements DownloadsView {
     /** Bytes the last {@code done} record reported; a later end with more closes another burst. */
     private long doneBytes;
 
+    /** The command's terminal is written: nothing follows it on stdout. */
+    private boolean sealed;
+
     /** {@code out} is read at each write, so a command that swaps {@code System.out} is followed. */
     public JsonlDownloads(Supplier<PrintStream> out, Clock clock) {
         this.out = Objects.requireNonNull(out, "out");
@@ -36,6 +39,7 @@ public final class JsonlDownloads implements DownloadsView {
 
     @Override
     public synchronized void downloads(TransferBoard.Snapshot snapshot) {
+        if (sealed) return;
         long now = clock.nanos();
         if (snapshot.downloading()) {
             if (!inBurst || now - lastWrittenNanos >= PERIOD_MILLIS * 1_000_000L) write(snapshot, false, now);
@@ -49,9 +53,23 @@ public final class JsonlDownloads implements DownloadsView {
         last = snapshot;
     }
 
+    /**
+     * The command's terminal is next: a burst still open ends now, with the last totals seen, and
+     * nothing is written after the terminal — the stream's last line is its terminal.
+     */
+    public synchronized void seal() {
+        finish();
+        sealed = true;
+    }
+
+    /** Seal whichever JSONL downloads view this command writes to, if it has one. */
+    public static void sealCurrent() {
+        if (DownloadsView.current() instanceof JsonlDownloads jsonl) jsonl.seal();
+    }
+
     /** The command is over: a burst still open ends with the last totals seen. */
     public synchronized void finish() {
-        if (!inBurst) return;
+        if (sealed || !inBurst) return;
         write(last, true, clock.nanos());
         inBurst = false;
     }

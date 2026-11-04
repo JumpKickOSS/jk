@@ -77,4 +77,17 @@ class JsonlDownloadsTest {
 
         assertThat(lines()).extracting(DownloadsEvent::done).containsExactly(false, true);
     }
+
+    /** The terminal is the stream's last line: a burst open at it closes first, and nothing follows. */
+    @Test
+    void sealing_closes_an_open_burst_and_writes_nothing_after() {
+        view.downloads(streaming(3, 1_000));
+        view.seal();
+        view.downloads(new TransferBoard.Snapshot(0, 0, 183, 150_000, 0, List.of())); // after the terminal
+        view.finish();
+
+        assertThat(lines())
+                .extracting(e -> e.snapshot().bytes(), DownloadsEvent::done)
+                .containsExactly(tuple(1_000L, false), tuple(1_000L, true));
+    }
 }
