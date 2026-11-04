@@ -6,6 +6,7 @@ import cc.jumpkick.config.Redacted;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import java.util.List;
@@ -21,6 +22,10 @@ public final class ProtoEvents {
 
     public static String preflight(String stage, int done, int total, String label) {
         return new PreflightEvent(stage, done, total, label).encode();
+    }
+
+    public static String downloads(TransferBoard.Snapshot snapshot) {
+        return new DownloadsEvent(snapshot).encode();
     }
 
     public static String invocationPhase(String phase, String status) {

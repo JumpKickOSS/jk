@@ -149,6 +149,12 @@ public final class WireStream {
                     notifyJobStart(start, notedJid);
                     continue;
                 }
+                if (EngineProtocol.DOWNLOADS.equals(type)) {
+                    // Any job may download, whatever its verb, so the run's download frames are read
+                    // here for every stream and never reach a verb's decoder. The live region does
+                    // not draw them yet; until it does they are consumed and dropped.
+                    continue;
+                }
                 T terminal = decoder.onLine(type, line);
                 if (terminal != null) {
                     if (job) awaitJobFinish(reader, ch);

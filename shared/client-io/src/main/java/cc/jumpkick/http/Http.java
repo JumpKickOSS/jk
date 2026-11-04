@@ -456,6 +456,18 @@ public final class Http {
     }
 
     /**
+     * The decoded body length {@code response} declares, or {@code -1} when it declares none. A
+     * {@code Content-Encoding} (the gzip {@link #getStream} opts into) makes {@code Content-Length}
+     * the compressed size, which is not what the caller reads, so it counts as none.
+     */
+    public static long declaredLength(HttpResponse<?> response) {
+        String encoding = response.headers().firstValue("content-encoding").orElse("");
+        if (!encoding.isBlank() && !"identity".equalsIgnoreCase(encoding.strip())) return -1L;
+        long length = response.headers().firstValueAsLong("content-length").orElse(-1L);
+        return length >= 0 ? length : -1L;
+    }
+
+    /**
      * POST an {@code application/x-www-form-urlencoded} body and ask for a JSON reply. Same
      * retry/offline policy as {@link #get(URI)}: retries on connect failures and 5xx, never on 4xx,
      * max 5 attempts.

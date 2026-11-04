@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -55,6 +56,9 @@ public final class IoLedger {
     private final LongAdder remoteDown = new LongAdder();
     private final LongAdder localUp = new LongAdder();
     private final LongAdder localDown = new LongAdder();
+
+    /** This run's downloads as they stream, for a live display; see {@link TransferBoard}. */
+    private final TransferBoard transfers = new TransferBoard(Clock.SYSTEM);
 
     /** One run's totals, in bytes. */
     public record Totals(long remoteUp, long remoteDown, long localUp, long localDown) {
@@ -131,6 +135,14 @@ public final class IoLedger {
     /** As {@link #localDown(long)}, taking the size of a file already on disk. */
     public void localDown(@Nullable Path file) {
         localDown(sizeOf(file));
+    }
+
+    /**
+     * This run's downloads in flight. Code that streams a body to disk reports here, so a run's
+     * display shows every download whichever step or caller asked for it.
+     */
+    public TransferBoard transfers() {
+        return transfers;
     }
 
     /** A snapshot of the totals so far; consistent enough for reporting, not an atomic read. */

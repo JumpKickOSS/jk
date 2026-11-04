@@ -127,6 +127,13 @@ public final class EngineProtocol {
      */
     public static final String PREFLIGHT = "preflight";
 
+    /**
+     * Server → client, during any job: the run's downloads in flight — the files a step planned and
+     * settled, bytes so far, and up to a region's worth of per-file rows — sampled a few times a
+     * second while anything streams, whichever verb, phase or caller asked for the bytes.
+     */
+    public static final String DOWNLOADS = "downloads";
+
     /** Server → client: outer InvocationPhase enter/leave ({@code phase}, {@code status}). */
     public static final String INVOCATION_PHASE = "invocation-phase";
 

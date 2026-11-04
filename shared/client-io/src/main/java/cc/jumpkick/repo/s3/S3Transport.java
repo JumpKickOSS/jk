@@ -141,6 +141,11 @@ public final class S3Transport implements RepoTransport {
     /** The object streamed, so an artifact in flight costs its connection and not its payload. */
     @Override
     public Optional<InputStream> fetchStream(URI uri, RepoCredential ignored) throws IOException, InterruptedException {
+        return fetchBody(uri, ignored).map(Body::in);
+    }
+
+    @Override
+    public Optional<Body> fetchBody(URI uri, RepoCredential ignored) throws IOException, InterruptedException {
         URI object = objectUri(uri);
         String payloadHash = SigV4Signer.sha256Hex(new byte[0]);
         HttpResponse<InputStream> resp = http.getStream(object, signedHeaders("GET", object, payloadHash));
@@ -153,7 +158,7 @@ public final class S3Transport implements RepoTransport {
             drain(resp.body());
             throw new IOException("S3 HTTP " + status + " fetching " + object);
         }
-        return Optional.of(resp.body());
+        return Optional.of(new Body(resp.body(), Http.declaredLength(resp)));
     }
 
     /** Consume and discard a non-success body so the connection can be reused. */

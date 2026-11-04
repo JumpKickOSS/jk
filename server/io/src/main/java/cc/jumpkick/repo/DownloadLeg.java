@@ -2,12 +2,14 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.cache.FetchTimings;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.task.TransferBoard;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -108,7 +110,7 @@ final class DownloadLeg {
         try {
             streamed = rateLimited(uri, () -> {
                 checkAbort(abort, coord);
-                return stream(uri, tmp, mirror);
+                return stream(coord, relativePath, uri, tmp, mirror);
             });
             ms = (Clock.SYSTEM.nanos() - t0) / 1_000_000L;
             if (streamed.sidecars() != null) {
@@ -150,24 +152,64 @@ final class DownloadLeg {
         }
     }
 
-    /** Stream the body to {@code tmp}, hashing as it lands; the sidecars are started beside it when {@code withSidecars}. */
-    private Streamed stream(URI uri, Path tmp, boolean withSidecars) throws IOException, InterruptedException {
+    /**
+     * Stream the body to {@code tmp}, hashing as it lands and reporting it to the run's {@link
+     * TransferBoard}, so every download shows whichever step asked for it; the sidecars are started
+     * beside it when {@code withSidecars}.
+     */
+    private Streamed stream(Coordinate coord, String relativePath, URI uri, Path tmp, boolean withSidecars)
+            throws IOException, InterruptedException {
         // The sidecars travel beside the body, so the check costs no round trip of its own.
         ChecksumSidecars sidecars = withSidecars ? ChecksumSidecars.start(transport, credential, uri) : null;
         MessageDigest digest = Hashing.newSha256();
         long size;
-        try (InputStream in = transport
-                        .fetchStream(uri, credential)
-                        .orElseThrow(
-                                () -> new MavenRepo.ArtifactNotFoundException("not found in " + name + ": " + uri));
-                OutputStream out = new DigestOutputStream(Files.newOutputStream(tmp), digest)) {
-            size = in.transferTo(out);
+        try (TransferBoard.Transfer transfer =
+                SessionContext.current().io().transfers().open(label(coord, relativePath))) {
+            RepoTransport.Body body = transport
+                    .fetchBody(uri, credential)
+                    .orElseThrow(() -> new MavenRepo.ArtifactNotFoundException("not found in " + name + ": " + uri));
+            transfer.started(body.length());
+            try (InputStream in = body.in();
+                    OutputStream out = new DigestOutputStream(Files.newOutputStream(tmp), digest)) {
+                size = copy(in, out, transfer);
+            }
+            transfer.finished();
         } catch (IOException | InterruptedException e) {
             // The sidecars were only ever worth reading beside a body that arrived.
             if (sidecars != null) sidecars.cancel();
             throw e;
         }
         return new Streamed(new Downloaded(tmp, Hashing.hex(digest.digest()), size), sidecars);
+    }
+
+    /**
+     * {@link InputStream#transferTo} with a report per chunk: the same 16 KiB buffer, so a download
+     * in flight still costs its connection and that buffer, never its payload.
+     */
+    static long copy(InputStream in, OutputStream out, TransferBoard.Transfer transfer) throws IOException {
+        byte[] buffer = new byte[16 * 1024];
+        long total = 0;
+        int n;
+        while ((n = in.read(buffer)) >= 0) {
+            if (n == 0) continue;
+            out.write(buffer, 0, n);
+            total += n;
+            transfer.advanced(total);
+        }
+        return total;
+    }
+
+    /**
+     * What a download shows as: {@code g:a:v} for the artifact a coordinate names, with the file's
+     * extension beside it when the leg fetches another of its files ({@code g:a:v · pom}).
+     */
+    static String label(Coordinate coord, String relativePath) {
+        String file = relativePath.substring(relativePath.lastIndexOf('/') + 1);
+        int dot = file.lastIndexOf('.');
+        String ext = dot < 0 ? "" : file.substring(dot + 1);
+        String gav = coord.toString();
+        if (ext.isEmpty() || "jar".equals(ext) || ext.equals(coord.type())) return gav;
+        return gav + " · " + ext;
     }
 
     /**
