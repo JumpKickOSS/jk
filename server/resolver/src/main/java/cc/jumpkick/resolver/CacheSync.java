@@ -4,6 +4,7 @@ package cc.jumpkick.resolver;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkM2Config;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.http.ConnectFaults;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
@@ -15,6 +16,7 @@ import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoCredentialResolver;
 import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.task.TransferBoard;
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
@@ -120,6 +122,45 @@ public final class CacheSync {
      * nothing ({@link ConnectFaults}), so a repository that came back is dialled again at once.
      */
     public Report sync(Lockfile lock, ProgressObserver observer, boolean refresh)
+            throws IOException, InterruptedException {
+        // The lock's rows are the set this sync settles: the run's download display counts them
+        // whichever caller asked for the sync, and the bytes of each fetch report on their own.
+        try (TransferBoard.Plan plan =
+                SessionContext.current().io().transfers().plan(lock.artifacts().size())) {
+            return syncSettling(lock, settling(observer, plan), refresh);
+        }
+    }
+
+    /** {@code observer}, settling one of {@code plan}'s files at each row's verdict. */
+    private static ProgressObserver settling(ProgressObserver observer, TransferBoard.Plan plan) {
+        return new ProgressObserver() {
+            @Override
+            public void upToDate(Lockfile.Artifact pkg) {
+                plan.settled();
+                observer.upToDate(pkg);
+            }
+
+            @Override
+            public void fetched(Lockfile.Artifact pkg) {
+                plan.settled();
+                observer.fetched(pkg);
+            }
+
+            @Override
+            public void skipped(Lockfile.Artifact pkg) {
+                plan.settled();
+                observer.skipped(pkg);
+            }
+
+            @Override
+            public void failed(Lockfile.Artifact pkg, @Nullable String error) {
+                plan.settled();
+                observer.failed(pkg, error);
+            }
+        };
+    }
+
+    private Report syncSettling(Lockfile lock, ProgressObserver observer, boolean refresh)
             throws IOException, InterruptedException {
         if (refresh) ConnectFaults.forget();
         int upToDate = 0;

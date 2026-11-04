@@ -42,6 +42,11 @@ public final class HttpTransport implements RepoTransport {
     @Override
     public Optional<InputStream> fetchStream(URI uri, RepoCredential credential)
             throws IOException, InterruptedException {
+        return fetchBody(uri, credential).map(Body::in);
+    }
+
+    @Override
+    public Optional<Body> fetchBody(URI uri, RepoCredential credential) throws IOException, InterruptedException {
         HttpResponse<InputStream> response = http.getStream(uri, AuthHeaders.of(credential));
         int status = response.statusCode();
         if (status == 404) {
@@ -52,7 +57,7 @@ public final class HttpTransport implements RepoTransport {
             drain(response.body());
             throw new HttpStatusException(status, uri);
         }
-        return Optional.of(response.body());
+        return Optional.of(new Body(response.body(), Http.declaredLength(response)));
     }
 
     /**

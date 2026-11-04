@@ -143,6 +143,43 @@ class HttpTransportTest {
     }
 
     @Test
+    void fetchBody_declares_the_content_length() throws Exception {
+        byte[] b = "twelve bytes".getBytes(StandardCharsets.UTF_8);
+        server.createContext("/a.jar", ex -> {
+            ex.sendResponseHeaders(200, b.length);
+            ex.getResponseBody().write(b);
+            ex.close();
+        });
+
+        RepoTransport.Body body = transport()
+                .fetchBody(base.resolve("/a.jar"), RepoCredential.ANONYMOUS)
+                .orElseThrow();
+        try (var in = body.in()) {
+            assertThat(body.length()).isEqualTo(b.length);
+            assertThat(in.readAllBytes()).isEqualTo(b);
+        }
+    }
+
+    /** A chunked body has no length to declare, so the caller draws bytes and no bar. */
+    @Test
+    void fetchBody_of_a_chunked_body_declares_none() throws Exception {
+        byte[] b = "streamed".getBytes(StandardCharsets.UTF_8);
+        server.createContext("/a.jar", ex -> {
+            ex.sendResponseHeaders(200, 0); // 0 = chunked
+            ex.getResponseBody().write(b);
+            ex.close();
+        });
+
+        RepoTransport.Body body = transport()
+                .fetchBody(base.resolve("/a.jar"), RepoCredential.ANONYMOUS)
+                .orElseThrow();
+        try (var in = body.in()) {
+            assertThat(body.length()).isEqualTo(-1L);
+            assertThat(in.readAllBytes()).isEqualTo(b);
+        }
+    }
+
+    @Test
     void fetchStream_404_is_empty_not_an_error() throws Exception {
         server.createContext("/missing.jar", ex -> {
             ex.sendResponseHeaders(404, -1);

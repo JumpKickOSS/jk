@@ -36,6 +36,21 @@ public interface RepoTransport {
     }
 
     /**
+     * A streamed body and the length the server declared for it: {@code length} is the byte count
+     * the stream will deliver, or {@code -1} when the server sent none (chunked, or a compressed
+     * body whose decoded size is unknown). The caller owns closing {@code in}.
+     */
+    record Body(InputStream in, long length) {}
+
+    /**
+     * As {@link #fetchStream}, with the declared length beside the stream so a caller can show
+     * progress. The default declares nothing; {@link HttpTransport} reads {@code Content-Length}.
+     */
+    default Optional<Body> fetchBody(URI uri, RepoCredential credential) throws IOException, InterruptedException {
+        return fetchStream(uri, credential).map(in -> new Body(in, -1L));
+    }
+
+    /**
      * Upload {@code body} to {@code uri} and return a status code — the HTTP status for {@link
      * HttpTransport}, or a 2xx-range value for object stores on success. The caller decides what
      * counts as success; a transport-level failure throws {@link IOException}.

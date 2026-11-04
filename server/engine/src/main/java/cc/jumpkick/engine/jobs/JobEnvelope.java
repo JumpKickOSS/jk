@@ -525,6 +525,7 @@ public final class JobEnvelope {
         CountDownLatch done = a.done();
         BufferedWriter writer = a.writer();
         IoLedger io = host.runIo(eventRequestId);
+        DownloadsPublisher downloads = null;
         // Nothing between the lock and the try: a throw from the setup calls would
         // leak the read lock — one leak and the cache prune's write-lock tryLock never
         // succeeds again for the engine's life — and would strand the in-flight fingerprint
@@ -542,6 +543,14 @@ public final class JobEnvelope {
             // Run-scoped notices join this request's stream for the run's life; the finally
             // removes the sink, or a later run's notice would ride the wrong request.
             RunNotices.openSink(io, (code, message) -> publishNotice(eventRequestId, eventDir, writer, message));
+            // Every download this job makes, whichever step or caller asked for the bytes, streams
+            // to its client from the run's board; a detached job (no writer) has no display.
+            if (writer != null) {
+                downloads = DownloadsPublisher.start(
+                        io.transfers(),
+                        snapshot -> WireWriter.sendNoWait(writer, ProtoEvents.downloads(snapshot)),
+                        eventRequestId);
+            }
             JobOutcome outcome;
             try {
                 // Every read of the caller's environment in this job answers from its shell.
@@ -576,6 +585,7 @@ public final class JobEnvelope {
             // line, no wire terminal, and a client that reads EOF and blames a crash.
             reportDeadJob(eventRequestId, eventDir, writer, t);
         } finally {
+            if (downloads != null) downloads.close();
             RunNotices.closeSink(io);
             InputTrees.finishJob();
             RequestScope.release();

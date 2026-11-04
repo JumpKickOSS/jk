@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.DownloadSlots;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.task.TransferBoard;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -71,6 +73,19 @@ final class ArtifactMaterializer {
     List<Lockfile.Artifact> materialize(
             List<Map.Entry<String, Resolution.ResolvedModule>> ordered, Map<String, EnumSet<Scope>> tagsByKey)
             throws IOException, InterruptedException {
+        // The rows are the set this pass settles: the run's download display counts them while the
+        // bytes of each row's download report on their own (a lock pins a digest of the bytes, so a
+        // first lock is where a cold project downloads its jars).
+        try (TransferBoard.Plan plan = SessionContext.current().io().transfers().plan(ordered.size())) {
+            return materialize(ordered, tagsByKey, plan);
+        }
+    }
+
+    private List<Lockfile.Artifact> materialize(
+            List<Map.Entry<String, Resolution.ResolvedModule>> ordered,
+            Map<String, EnumSet<Scope>> tagsByKey,
+            TransferBoard.Plan plan)
+            throws IOException, InterruptedException {
         int n = ordered.size();
         Lockfile.Artifact[] arts = new Lockfile.Artifact[n];
         BlockingQueue<MaterializeDone> doneQ = new LinkedBlockingQueue<>();
@@ -132,6 +147,7 @@ final class ArtifactMaterializer {
             // not a failure event, so the row is complete
             arts[d.index] = Objects.requireNonNull(d.artifact);
             progress.materialized(Objects.requireNonNull(d.module), Objects.requireNonNull(d.version));
+            plan.settled();
             received++;
         }
         return List.of(arts);
