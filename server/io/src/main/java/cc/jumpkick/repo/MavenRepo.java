@@ -45,6 +45,14 @@ public final class MavenRepo {
      */
     private static final CentralMirror CENTRAL_MIRROR = CentralMirror.standard();
 
+    /**
+     * One network leg per file at a time, process-wide: two graphs of one lock, or two runs, that
+     * want the same POM, sidecar or jar share its download. A leader's abort is its own, so a
+     * waiter fetches for itself then.
+     */
+    private static final SingleFlight<Fetched> FLIGHTS =
+            new SingleFlight<>(failure -> failure instanceof FetchAbortedException);
+
     private final String name;
     private final URI baseUrl;
 
@@ -551,6 +559,23 @@ public final class MavenRepo {
         }
         URI uri = fetchBase.resolve(relativePath);
         refuseIfUnreachable();
+        // The same file into the same store under the same pin: one download, whoever asks.
+        String flight = (repoStore.root() == null ? "" : repoStore.root().toString()) + "|" + uri + "|" + mirror + "|"
+                + leg + "|" + expectedSha256 + "|" + force;
+        return FLIGHTS.run(flight, () -> fetchRemote(coord, relativePath, uri, mirror, leg, abort, expectedSha256, force));
+    }
+
+    /** {@link #fetch}'s network leg, once the store has missed. */
+    private Fetched fetchRemote(
+            Coordinate coord,
+            String relativePath,
+            URI uri,
+            boolean mirror,
+            Leg leg,
+            BooleanSupplier abort,
+            @Nullable String expectedSha256,
+            boolean force)
+            throws IOException, InterruptedException {
         // A miss this repository already answered is answered again without a request; a catalog's
         // for an hour, a POM's or artifact's for the metadata cache's day.
         RepoMisses misses = relativePath.endsWith("maven-metadata.xml") ? RepoMisses.CATALOGS : RepoMisses.FETCHES;
