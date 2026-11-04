@@ -15,33 +15,35 @@ import org.jspecify.annotations.Nullable;
  * <li>{@code ${NAME}} or {@code ${env:NAME}} ({@link Scheme#ENV}): the environment variable
  * <li>{@code ${file:path}} ({@link Scheme#FILE}): the file's contents, trailing newline trimmed
  * <li>{@code ${file:path#key}} ({@link Scheme#FILE}): one key of a Java {@code .properties} file
+ * <li>{@code ${cmd:argv}} ({@link Scheme#CMD}): a helper command's trimmed stdout
  * </ul>
  *
  * <p>The one answer to "what is a reference": the manifest guard, the credential resolver's
  * provenance rule and the expanders all parse through here, so a spelling one of them recognises is
- * a spelling all of them do. The body of a {@code file:} reference runs to the first closing brace, so
- * a path may not contain one.
+ * a spelling all of them do. The body of a {@code file:} or {@code cmd:} reference runs to the first
+ * closing brace, so neither a path nor a command may contain one.
  */
 public record ConfigReference(Scheme scheme, String body, String spelling) {
 
     /** Where a reference's value comes from. */
     public enum Scheme {
         ENV,
-        FILE;
+        FILE,
+        CMD;
 
-        /** The prefix as written: {@code env}, {@code file}. */
+        /** The prefix as written: {@code env}, {@code file}, {@code cmd}. */
         public String prefix() {
             return name().toLowerCase(Locale.ROOT);
         }
     }
 
     /**
-     * {@code ${NAME}}, {@code ${env:NAME}} or {@code ${file:...}}. A bare name
+     * {@code ${NAME}}, {@code ${env:NAME}}, {@code ${file:...}} or {@code ${cmd:...}}. A bare name
      * keeps the identifier shape so the generator vocabulary ({@code ${in}}, {@code ${module.dir}})
      * and a plugin's own placeholders are not references.
      */
     static final Pattern PATTERN =
-            Pattern.compile("\\$\\{(?:env:([A-Za-z_][A-Za-z0-9_]*)|(file):([^}]*)|([A-Za-z_][A-Za-z0-9_]*))}");
+            Pattern.compile("\\$\\{(?:env:([A-Za-z_][A-Za-z0-9_]*)|(file|cmd):([^}]*)|([A-Za-z_][A-Za-z0-9_]*))}");
 
     /** Every reference in {@code value}, in order of appearance, duplicates kept. Empty for null. */
     public static List<ConfigReference> all(@Nullable String value) {
@@ -57,7 +59,8 @@ public record ConfigReference(Scheme scheme, String body, String spelling) {
         String spelling = m.group();
         if (m.group(1) != null) return new ConfigReference(Scheme.ENV, m.group(1), spelling);
         if (m.group(4) != null) return new ConfigReference(Scheme.ENV, m.group(4), spelling);
-        return new ConfigReference(Scheme.FILE, m.group(3).strip(), spelling);
+        Scheme scheme = "file".equals(m.group(2)) ? Scheme.FILE : Scheme.CMD;
+        return new ConfigReference(scheme, m.group(3).strip(), spelling);
     }
 
     /** True for {@code ${NAME}} and {@code ${env:NAME}}. */

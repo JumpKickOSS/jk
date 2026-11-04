@@ -16,8 +16,8 @@ import org.jspecify.annotations.Nullable;
  * ~/.jk/config.toml} may use them all: it describes this machine, and nobody else can edit it. A
  * project manifest is anyone's, so it may read only environment variables, and the credential
  * resolver narrows that further to the repository's own {@code JK_REPO_<ID>_*} names. A {@code
- * file:} reference reached here from a project manifest is a bug upstream of this class, so it is
- * an error rather than a read.
+ * file:} or {@code cmd:} reference reached here from a project manifest is a bug upstream of this
+ * class, so it is an error rather than a read or a run.
  *
  * <p>Strict: an unset variable, a missing file or a missing key is an error that starts with {@code
  * where}, never an empty string. A value read from a file is filed with {@link ResolvedSecrets} so
@@ -95,6 +95,7 @@ public final class ReferenceResolver {
     private String value(ConfigReference ref, String where, Origin origin) {
         if (ref.isEnv()) return env.apply(ref.body());
         if (origin != Origin.USER_CONFIG) throw notHere(ref, where);
+        if (ref.scheme() == ConfigReference.Scheme.CMD) return CredentialHelpers.value(ref.body(), where);
         String value = SecretFiles.reference(ref.body(), baseDir.get(), where);
         ResolvedSecrets.record(value);
         return value;
@@ -105,6 +106,8 @@ public final class ReferenceResolver {
         return new JkBuildParseException(
                 where + " uses " + ref.spelling() + ": a ${" + ref.scheme().prefix()
                         + ":} reference is honoured only in ~/.jk/config.toml, which describes this machine;"
-                        + " a project manifest may not read this machine's files");
+                        + (ref.scheme() == ConfigReference.Scheme.CMD
+                                ? " a project manifest may not run a command on this machine"
+                                : " a project manifest may not read this machine's files"));
     }
 }
