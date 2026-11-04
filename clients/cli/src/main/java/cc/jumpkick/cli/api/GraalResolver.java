@@ -2,7 +2,6 @@
 package cc.jumpkick.cli.api;
 
 import cc.jumpkick.cli.run.BuildPlanConsole;
-import cc.jumpkick.cli.run.ToolchainInstalls;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -10,13 +9,10 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
-import cc.jumpkick.jdk.JdkCatalog;
-import cc.jumpkick.jdk.JdkCatalogClient;
 import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkResolver;
 import cc.jumpkick.jdk.JdkSelector;
-import cc.jumpkick.jdk.JdkService;
 import cc.jumpkick.jdk.LockPinMatch;
 import cc.jumpkick.lock.GraalPin;
 import cc.jumpkick.lock.ToolchainPins;
@@ -38,10 +34,24 @@ import org.jspecify.annotations.Nullable;
  */
 public final class GraalResolver {
 
+    /**
+     * What a native build gets: the {@code home} of a GraalVM already on this machine, or the
+     * {@code install} spec the engine downloads as part of the run. Exactly one is set.
+     */
+    public record Choice(@Nullable Path home, @Nullable String install) {
+        public static Choice found(Path home) {
+            return new Choice(home, null);
+        }
+
+        public static Choice toInstall(String spec) {
+            return new Choice(null, spec);
+        }
+    }
+
     private final @Nullable Path jdksDir; // nullable — overrides the default jdks root
     private final boolean assumeYes; // --yes: install without prompting
     private final BuildPlanConsole.Mode mode; // how an install renders: bar, plain lines, or JSONL
-    private final Map<String, Path> memo = new HashMap<>();
+    private final Map<String, @Nullable Choice> memo = new HashMap<>();
 
     public GraalResolver(@Nullable Path jdksDir, boolean assumeYes, BuildPlanConsole.Mode mode) {
         this.jdksDir = jdksDir;
@@ -54,7 +64,7 @@ public final class GraalResolver {
      * actionable message has already been printed — the caller should abort the native build). A
      * non-empty result is suitable to pass as {@code graalHome} to {@code NativePlans.nativeStep}.
      */
-    public Optional<Path> resolve(Path projectDir, @Nullable String graalSpec) {
+    public Optional<Choice> resolve(Path projectDir, @Nullable String graalSpec) {
         return resolve(projectDir, graalSpec, 0);
     }
 
@@ -68,14 +78,14 @@ public final class GraalResolver {
      * files it had no version for. A spec that names a version is the user's word and is not
      * second-guessed; {@code 0} means the module declared no release and nothing is constrained.
      */
-    public Optional<Path> resolve(Path projectDir, @Nullable String graalSpec, int javaRelease) {
+    public Optional<Choice> resolve(Path projectDir, @Nullable String graalSpec, int javaRelease) {
         String key = (graalSpec == null ? "" : graalSpec) + "@" + javaRelease;
         if (memo.containsKey(key)) {
             return Optional.ofNullable(memo.get(key));
         }
-        Path home = resolveUncached(projectDir, graalSpec, javaRelease);
-        memo.put(key, home);
-        return Optional.ofNullable(home);
+        Choice choice = resolveUncached(projectDir, graalSpec, javaRelease);
+        memo.put(key, choice);
+        return Optional.ofNullable(choice);
     }
 
     /**
@@ -107,18 +117,19 @@ public final class GraalResolver {
         return null;
     }
 
-    private @Nullable Path resolveUncached(Path projectDir, @Nullable String graalSpec, int javaRelease) {
+    private @Nullable Choice resolveUncached(Path projectDir, @Nullable String graalSpec, int javaRelease) {
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
 
         // Tiers 1-4 are GraalHomeLookup's — the same policy the engine runs for a request that
         // shipped no client answer. What is the CLI's alone is what happens when a tier names a
-        // Graal that is not installed: install it, or offer to.
+        // Graal that is not installed: have the engine install it as part of the run, or offer to
+        // (the prompt needs this terminal).
 
         // 1. A spec that NAMES one: --graal switch (jk.graal) > project.graal > JK_GRAAL env.
         String effective = firstNonBlank(SessionContext.current().graalSpec(), graalSpec, System.getenv("JK_GRAAL"));
         if (effective != null && namesOne(effective)) {
             Optional<Path> hit = GraalHomeLookup.bySpec(registry, effective);
-            if (hit.isPresent()) return hit.get();
+            if (hit.isPresent()) return Choice.found(hit.get());
             return install(effective, registry, /*announce*/ "graal = \"" + effective + "\"");
         }
         // Otherwise a flavour at most ("graalvm"), which is what a module linking a native image
@@ -135,7 +146,7 @@ public final class GraalResolver {
         GraalPin lockGraal = ToolchainPins.scan(projectDir).graal();
         if (lockGraal != null) {
             Optional<Path> locked = GraalHomeLookup.byLockPin(registry, lockGraal);
-            if (locked.isPresent()) return locked.get();
+            if (locked.isPresent()) return Choice.found(locked.get());
             String spec = LockPinMatch.installSpec(lockGraal);
             return install(
                     spec,
@@ -146,14 +157,14 @@ public final class GraalResolver {
         // 3. The `jk jdk graal` default-graal pointer, if one is set, usable, and able to build
         //    what this module targets.
         Optional<Path> pointer = GraalHomeLookup.byInventory(registry, javaRelease);
-        if (pointer.isPresent()) return pointer.get();
+        if (pointer.isPresent()) return Choice.found(pointer.get());
 
         // 4. The best installed Graal: of the named flavour when there is one, clearing the
         //    module's release either way.
         Optional<Path> installed = flavour != null
                 ? GraalHomeLookup.bySpecAtLeast(registry, flavour, javaRelease)
                 : GraalHomeLookup.byPolicy(registry, javaRelease);
-        if (installed.isPresent()) return installed.get();
+        if (installed.isPresent()) return Choice.found(installed.get());
 
         // 5. Ambient native-image search (project JDK → $GRAALVM_HOME → PATH).
         // projectJavaHome may be null (jk runs as a native image with no java.home,
@@ -172,7 +183,10 @@ public final class GraalResolver {
             if (javaHome != null && !javaHome.isBlank()) projectJavaHome = Path.of(javaHome);
         }
         Optional<Path> binary = NativeImageDriver.resolve(projectJavaHome);
-        if (binary.isPresent()) return graalHomeOf(binary.get(), projectJavaHome);
+        if (binary.isPresent()) {
+            Path home = graalHomeOf(binary.get(), projectJavaHome);
+            return home == null ? null : Choice.found(home);
+        }
 
         // 6. Missing — offer Oracle GraalVM (prompt / --yes / non-TTY fail).
         if (flavour != null) {
@@ -204,32 +218,7 @@ public final class GraalResolver {
         return GraalLauncher.homeOf(launcher).orElse(fallback);
     }
 
-    /**
-     * Whether {@code home} itself holds a {@code native-image} launcher, complaining if it does not.
-     *
-     * <p>Every tier above filters its candidates; an install does not, and this is the one place a
-     * home reaches the caller without having been looked at. It is also where the unchecked answer
-     * did the most damage: an install that reports "already installed" for a directory that is not
-     * one handed back a home with no launcher, the engine quietly fell through to the project's JDK,
-     * and the native step failed naming a Temurin. Asked here, the build stops with the home that is
-     * actually wrong in the message.
-     *
-     * <p>{@link GraalLauncher#in} and not {@code NativeImageDriver.resolve}: the question is whether
-     * THIS home can build, and {@code resolve} would answer yes for a launcher it found on {@code
-     * $PATH} — a different GraalVM than the one the tier named.
-     */
-    static boolean carriesNativeImage(Path home) {
-        if (GraalLauncher.in(home).isPresent()) return true;
-        CliOutput.err("jk native: " + home + " holds no " + GraalLauncher.NAME + " launcher ("
-                + GraalLauncher.searchedDirs() + ").");
-        // --force is what JdkInstallCommand turns into JdkService's refresh, and refresh is what
-        // reinstalls over a tree already sitting at the name.
-        CliOutput.err("  Reinstall it with `jk jdk install -F " + home.getFileName()
-                + "`, or set $GRAALVM_HOME to a GraalVM that has one.");
-        return false;
-    }
-
-    private @Nullable Path offerOracleGraalVm(@Nullable Path searchedJavaHome, JdkRegistry registry) {
+    private @Nullable Choice offerOracleGraalVm(@Nullable Path searchedJavaHome, JdkRegistry registry) {
         if (!assumeYes && !Confirm.isInteractiveTerminal()) {
             // Can't prompt — fail with the same actionable hint as the driver.
             CliOutput.err(NativeImageDriver.notFoundError(searchedJavaHome).getMessage());
@@ -252,44 +241,19 @@ public final class GraalResolver {
         return install("native", registry, /*announce*/ "Oracle GraalVM");
     }
 
-    /** Resolve {@code spec} (keyword-aware) to a catalog entry and install it. */
-    private @Nullable Path install(String spec, JdkRegistry registry, String announce) {
-        String os = HostPlatform.currentOs();
-        String arch = HostPlatform.currentArch();
+    /**
+     * {@code spec} for the engine to install as part of the run, where its download shows with the
+     * run's others. A host no GraalVM is published for is refused here, before the request goes out.
+     */
+    private @Nullable Choice install(String spec, JdkRegistry registry, String announce) {
         if (!HostPlatform.supported()) {
             CliOutput.err("jk native: this host ("
-                    + os
+                    + HostPlatform.currentOs()
                     + "/"
-                    + arch
+                    + HostPlatform.currentArch()
                     + ") has no installable GraalVM; set $GRAALVM_HOME instead.");
             return null;
         }
-        try {
-            JdkCatalog catalog = new JdkCatalogClient().fetch();
-            String effective = spec;
-            if (JdkKeywords.isKeyword(spec)) {
-                effective =
-                        JdkKeywords.resolveToMajorSpec(catalog, spec, os, arch).orElse(spec);
-            }
-            Optional<JdkCatalog.Entry> entry = JdkSelector.selectPreferred(catalog, effective, os, arch);
-            if (entry.isEmpty()) {
-                CliOutput.err("jk native: no GraalVM matches " + spec + " on " + os + "/" + arch + ".");
-                return null;
-            }
-            JdkCatalog.Entry e = entry.get();
-            // The same bar, phases and done line `jk jdk install native` renders; the header says
-            // which pin asked for it.
-            String label = JdkService.displayLabel(e);
-            Optional<Path> home = ToolchainInstalls.run(
-                            mode,
-                            "Installing GraalVM " + e.installFolderName() + " (" + announce + ")",
-                            label,
-                            (progress, warn) -> new JdkService().install(e, registry, false, progress))
-                    .map(InstalledJdk::home);
-            return home.filter(GraalResolver::carriesNativeImage).orElse(null);
-        } catch (Exception ex) {
-            CliOutput.err("jk native: failed to install GraalVM (" + spec + "): " + ex.getMessage());
-            return null;
-        }
+        return Choice.toInstall(spec);
     }
 }

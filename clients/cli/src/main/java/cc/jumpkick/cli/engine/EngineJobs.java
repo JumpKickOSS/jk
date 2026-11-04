@@ -83,6 +83,8 @@ final class EngineJobs {
         WorkspaceSpec spec = req.spec();
         Map<String, String> graalHomes = new LinkedHashMap<>();
         if (spec != null) spec.graalByDir().forEach((dir, home) -> graalHomes.put(dir.toString(), home.toString()));
+        Map<String, String> graalInstalls = new LinkedHashMap<>();
+        if (spec != null) spec.graalInstalls().forEach((dir, graal) -> graalInstalls.put(dir.toString(), graal));
         String workspaceTarget = spec != null && spec.target() != WorkspaceTarget.PACKAGE
                 ? spec.target().name().toLowerCase(Locale.ROOT)
                 : null;
@@ -119,7 +121,8 @@ final class EngineJobs {
                                 RequestEnvironment.progressMode(),
                                 session.coverage(),
                                 testFailures(session),
-                                session.skipNode())
+                                session.skipNode(),
+                                graalInstalls)
                         .encode(),
                 null,
                 RequestEnvironment.session());

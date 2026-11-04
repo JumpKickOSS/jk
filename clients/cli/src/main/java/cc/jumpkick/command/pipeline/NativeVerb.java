@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.pipeline;
 
+import cc.jumpkick.cli.api.GraalResolver;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.theme.Theme;
@@ -23,9 +24,10 @@ import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -40,10 +42,15 @@ final class NativeVerb implements BuildVerb {
 
     private @Nullable String mainClass;
     private List<String> extraArgs = List.of();
-    private @Nullable Path graalHome;
+    /**
+     * Each native-eligible module's GraalVM, decided before the workspace run starts the way every
+     * native build decides it ({@link GraalResolver}: the module's pin, the lock, what is installed,
+     * $GRAALVM_HOME), found on this machine or for the engine to install as part of the run.
+     */
+    private AlwaysNativeGraal.Graal graal = AlwaysNativeGraal.Graal.NONE;
 
-    /** Native-eligible module → GraalVM home, decided before the workspace run starts. */
-    private Map<Path, Path> graalHomes = Map.of();
+    /** How many modules link a native image this run. */
+    private int nativeModules;
 
     @Override
     public String name() {
@@ -83,17 +90,6 @@ final class NativeVerb implements BuildVerb {
     }
 
     @Override
-    public int before(BuildRun run) {
-        var graal = NativePreflight.graal(System.getenv("GRAALVM_HOME"));
-        if (graal instanceof NativePreflight.Graal.Fail fail) {
-            run.fail(fail.message());
-            return Exit.CONFIG;
-        }
-        this.graalHome = ((NativePreflight.Graal.Ok) graal).home();
-        return -1;
-    }
-
-    @Override
     public int prepareWorkspace(BuildRun run, Path entryDir, BuildRun.Selection selection) {
         ProjectInfo rootInfo = ProjectInfos.orNull(entryDir);
         if (rootInfo == null) {
@@ -113,16 +109,30 @@ final class NativeVerb implements BuildVerb {
                     : entryDir.resolve(rel).toAbsolutePath().normalize();
             if (selected == null || selected.contains(moduleDir)) candidates.add(moduleDir);
         }
+        Set<Path> eligible;
         try {
-            this.graalHomes = graalHomesForModules(candidates, graalHome, mainClass, ProjectInfos::orNull);
+            eligible = nativeEligible(candidates, mainClass, ProjectInfos::orNull);
         } catch (AmbiguousMainException e) {
             run.fail(NativePreflight.MANY_MAINS);
             return Exit.CONFIG;
         }
-        if (graalHomes.isEmpty()) {
+        if (eligible.isEmpty()) {
             run.fail(NativePreflight.NO_MAIN);
             return Exit.CONFIG;
         }
+        List<AlwaysNativeGraal.Module> modules = new ArrayList<>();
+        for (Path dir : eligible) {
+            ProjectInfo info = ProjectInfos.orNull(dir);
+            String spec = info == null || info.graal() == null || info.graal().isBlank()
+                    ? AlwaysNativeGraal.DEFAULT_SPEC
+                    : info.graal();
+            modules.add(new AlwaysNativeGraal.Module(dir, spec, info == null ? 0 : info.javaRelease()));
+        }
+        Optional<AlwaysNativeGraal.Graal> resolved = AlwaysNativeGraal.homes(
+                modules, new GraalResolver(run.flags().jdksDir(), run.global().yes, run.mode())::resolve);
+        if (resolved.isEmpty()) return Exit.FAILURE; // the resolver printed why
+        this.graal = resolved.get();
+        this.nativeModules = eligible.size();
         return -1;
     }
 
@@ -133,7 +143,10 @@ final class NativeVerb implements BuildVerb {
         // never the siblings outside the native dependency cone.
         return EngineClient.buildWorkspace(
                 EnginePaths.current(),
-                run.request(entryDir, modules, WorkspaceSpec.nativeImage(Set.of(), graalHomes, mainClass, extraArgs)),
+                run.request(
+                        entryDir,
+                        modules,
+                        graal.onto(WorkspaceSpec.nativeImage(Set.of(), Map.of(), mainClass, extraArgs))),
                 listener);
     }
 
@@ -147,25 +160,22 @@ final class NativeVerb implements BuildVerb {
                                         (int) r.modules().stream()
                                                 .filter(ModuleOutcome::success)
                                                 .count(),
-                                        graalHomes.size())
+                                        nativeModules)
                                 + " "
                                 + BuildTails.elapsedSince(startNanos),
                 r -> BuildTails.failureTail(WorkspaceRunView.failedSubject(r, "native"), startNanos));
     }
 
     /**
-     * Map each native-eligible module dir to {@code graalHome}. Prefers modules that declare
-     * {@code [native]} so workspace plugin harness mains do not each start a native-image run.
-     * When none declare the table, every module with a unique main is eligible.
+     * The native-eligible module dirs. Prefers modules that declare {@code [native]} so workspace
+     * plugin harness mains do not each start a native-image run. When none declare the table, every
+     * module with a unique main is eligible.
      */
-    static Map<Path, Path> graalHomesForModules(
-            List<Path> moduleDirs,
-            @Nullable Path graalHome,
-            @Nullable String mainOverride,
-            Function<Path, @Nullable ProjectInfo> infos)
+    static Set<Path> nativeEligible(
+            List<Path> moduleDirs, @Nullable String mainOverride, Function<Path, @Nullable ProjectInfo> infos)
             throws AmbiguousMainException {
-        Map<Path, Path> withTable = new HashMap<>();
-        Map<Path, Path> withMain = new HashMap<>();
+        Set<Path> withTable = new LinkedHashSet<>();
+        Set<Path> withMain = new LinkedHashSet<>();
         for (Path moduleDir : moduleDirs) {
             boolean hasNativeTable;
             boolean explicitlyDisabled;
@@ -188,8 +198,8 @@ final class NativeVerb implements BuildVerb {
             var main = NativePreflight.resolveMain(moduleDir, mainOverride);
             if (main instanceof NativePreflight.Main.None) continue;
             if (main instanceof NativePreflight.Main.Ambiguous) throw new AmbiguousMainException();
-            withMain.put(moduleDir, graalHome);
-            if (hasNativeTable) withTable.put(moduleDir, graalHome);
+            withMain.add(moduleDir);
+            if (hasNativeTable) withTable.add(moduleDir);
         }
         return withTable.isEmpty() ? withMain : withTable;
     }

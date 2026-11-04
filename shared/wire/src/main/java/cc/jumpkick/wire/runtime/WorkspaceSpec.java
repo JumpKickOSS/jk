@@ -10,14 +10,16 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The goal of a {@link WorkspaceRequest} and the modules it selects. Empty {@link
- * #selectedModules()} means the whole graph; {@code graalByDir} names the GraalVM the client
- * resolved for each module whose build links a native image; {@link #tail()} carries the goal's
- * own arguments.
+ * #selectedModules()} means the whole graph; {@code graalByDir} names the GraalVM home found on
+ * this machine for each module whose build links a native image, and {@code graalInstalls} the
+ * GraalVM spec the engine installs, as part of the run, for each module that has none yet;
+ * {@link #tail()} carries the goal's own arguments.
  */
 public record WorkspaceSpec(
         WorkspaceTarget target,
         Set<Path> selectedModules,
         Map<Path, Path> graalByDir,
+        Map<Path, String> graalInstalls,
         @Nullable TailArgs tail) {
 
     public static final WorkspaceSpec DEFAULT = of(WorkspaceTarget.PACKAGE);
@@ -26,6 +28,13 @@ public record WorkspaceSpec(
         target = target == null ? WorkspaceTarget.PACKAGE : target;
         selectedModules = selectedModules == null ? Set.of() : Set.copyOf(selectedModules);
         graalByDir = graalByDir == null ? Map.of() : Map.copyOf(graalByDir);
+        graalInstalls = graalInstalls == null ? Map.of() : Map.copyOf(graalInstalls);
+    }
+
+    /** A spec with no GraalVM to install: every home is found or none is needed. */
+    public WorkspaceSpec(
+            WorkspaceTarget target, Set<Path> selectedModules, Map<Path, Path> graalByDir, @Nullable TailArgs tail) {
+        this(target, selectedModules, graalByDir, Map.of(), tail);
     }
 
     public static WorkspaceSpec of(WorkspaceTarget target) {
@@ -84,12 +93,17 @@ public record WorkspaceSpec(
 
     /** This spec with the client-resolved GraalVM home per module that links a native image. */
     public WorkspaceSpec withGraalByDir(Map<Path, Path> homes) {
-        return new WorkspaceSpec(target, selectedModules, homes, tail);
+        return new WorkspaceSpec(target, selectedModules, homes, graalInstalls, tail);
+    }
+
+    /** This spec with the GraalVM the engine installs, as part of the run, per module that has none. */
+    public WorkspaceSpec withGraalInstalls(Map<Path, String> installs) {
+        return new WorkspaceSpec(target, selectedModules, graalByDir, installs, tail);
     }
 
     /** This spec narrowed to {@code selected}. */
     public WorkspaceSpec withSelection(Set<Path> selected) {
-        return new WorkspaceSpec(target, selected, graalByDir, tail);
+        return new WorkspaceSpec(target, selected, graalByDir, graalInstalls, tail);
     }
 
     public boolean hasSelection() {

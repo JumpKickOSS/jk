@@ -32,6 +32,7 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.AutoLock;
+import cc.jumpkick.runtime.JdkInstallNotice;
 import cc.jumpkick.runtime.LockFlow;
 import cc.jumpkick.runtime.PlannerNodeSetup;
 import cc.jumpkick.runtime.PluginBuild;
@@ -53,9 +54,10 @@ import java.util.function.BiFunction;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk sync} plan: align the local JDK and dependency CAS with {@code jk-lock.toml}. Engine
- * builds pass {@code allowJdkInstall=false} so JDK downloads stay client-side; {@code coordLabel}
- * is null in the engine (plain {@code name:version}, no themed text on the wire).
+ * {@code jk sync} plan: align the local JDK and dependency CAS with {@code jk-lock.toml}. The
+ * engine installs a missing pinned JDK here, as part of the run, so its download shows with the
+ * run's others; {@code coordLabel} is null in the engine (plain {@code name:version}, no themed
+ * text on the wire).
  */
 public final class SyncPlans {
 
@@ -78,7 +80,7 @@ public final class SyncPlans {
      * modules plan. {@code refresh} comes from ambient {@link SessionContext}. {@code relock} lets
      * {@code parse-lock} write a missing or stale lock; a build has already freshened it (or was
      * told to use it verbatim), so it reads the lock as it stands. {@code allowJdkInstall} is false
-     * where the client pre-flights installs.
+     * only where a caller must not download, such as a read-only forecast.
      */
     public static BuildPlan syncBuildPlan(
             Path dir,
@@ -185,7 +187,7 @@ public final class SyncPlans {
                 .build();
     }
 
-    /** Align the local JDK with the lock; installs only on in-process paths. */
+    /** Align the local JDK with the lock, installing a missing pin when {@code allowJdkInstall}. */
     private static Task ensureJdkStep(Path dir, @Nullable Path jdksDir, boolean allowJdkInstall) {
         return Task.builder(TaskNames.ENSURE_JDK)
                 .kind(TaskKind.IO)
@@ -199,6 +201,7 @@ public final class SyncPlans {
                         var outcome =
                                 JdkEnsure.ensure(dir, jdksDir, build, lock, m -> ctx.warn("jdk", m), allowJdkInstall);
                         ctx.put(JDK_OUTCOME, outcome);
+                        JdkInstallNotice.post(outcome);
                     } catch (Exception e) {
                         ctx.error("jdk", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
                         throw e;

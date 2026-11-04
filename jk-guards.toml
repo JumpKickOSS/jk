@@ -862,6 +862,19 @@ baseline   = true
 instead    = "WorkerEnv.strict() / forModule(...).environment() for a worker, TaskExec.ToolRun for a plugin, BuildEnv.callerEnv() for a step that hands on the caller's shell"
 why        = "a child's environment copied from the daemon is the engine's shell, not the jk command being served"
 
+# G118. A build's JDK and GraalVM install in the engine, inside the run: the ensure-jdk steps install
+# a missing pin, the build verb a GraalVM the client decided on (after its consent prompt), and the
+# download shows on the run's board with the others. The client installs a JDK only where no engine
+# can or where the install is the command itself: the engine's own JDK before an engine exists,
+# `jk jdk`, and `jk new`'s interactive choice.
+[guards.jdk-installs-in-engine]
+kind       = "forbid"
+scope      = ["clients/*"]
+signatures = ["cc.jumpkick.jdk.JdkEnsure#ensure(**)", "cc.jumpkick.jdk.JdkEnsure#install(**)", "cc.jumpkick.jdk.JdkInstaller#<init>(**)"]
+owner      = ["cc.jumpkick.cli.engine.EngineSpawn", "cc.jumpkick.command.toolchain.JdkEnsureCommand", "cc.jumpkick.command.toolchain.JdkUpdateCommand", "cc.jumpkick.command.toolchain.JdkInstallCommand", "cc.jumpkick.command.toolchain.JdkInstallWizard", "cc.jumpkick.command.project.NewJdkChoice"]
+instead    = "nothing on the client: the engine's ensure-jdk step installs the pin as part of the run"
+why        = "a JDK the client installs before the request downloads outside the run: its own progress UI, and no place in the run's download display, timing or record"
+
 # G42. The mirror of G37 for the write direction: every hand-rolled tree copy shared the same three
 # defects (createDirectories per file, no byte-identity check, walk attributes discarded).
 [guards.tree-copy-owner]

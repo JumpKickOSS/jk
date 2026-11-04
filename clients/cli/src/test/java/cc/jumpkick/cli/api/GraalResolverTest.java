@@ -37,8 +37,9 @@ class GraalResolverTest {
                 project.resolve("jk-lock.toml"),
                 "[graal]\nsuggested-vendor = \"graalvm\"\nsuggested-version = \"25.0.4\"\n");
 
-        Optional<Path> home =
-                new GraalResolver(jdks, false, BuildPlanConsole.Mode.QUIET).resolve(project, "graalvm", 0);
+        Optional<Path> home = new GraalResolver(jdks, false, BuildPlanConsole.Mode.QUIET)
+                .resolve(project, "graalvm", 0)
+                .map(GraalResolver.Choice::home);
 
         assertThat(home).contains(pinned);
     }
@@ -50,7 +51,9 @@ class GraalResolverTest {
         Path g25 = graalvm(jdks, "graalvm-25.0.4", "25.0.4");
         Path project = Files.createDirectories(tmp.resolve("app"));
 
-        assertThat(new GraalResolver(jdks, false, BuildPlanConsole.Mode.QUIET).resolve(project, "graalvm", 25))
+        assertThat(new GraalResolver(jdks, false, BuildPlanConsole.Mode.QUIET)
+                        .resolve(project, "graalvm", 25)
+                        .map(GraalResolver.Choice::home))
                 .as("a 21 cannot build a module targeting 25")
                 .contains(g25);
     }
@@ -70,19 +73,26 @@ class GraalResolverTest {
         return home;
     }
 
+    /**
+     * A lock-pinned GraalVM that is not on this machine is the engine's to install, as part of the
+     * run: the client decides, and downloads nothing itself.
+     */
     @Test
-    void a_home_that_holds_no_launcher_is_refused_rather_than_handed_on(@TempDir Path dir) throws IOException {
-        // What an install used to hand back for a directory that was not an install: a home with
-        // nothing in it. Unchecked, it reached the engine, which fell through to the project's JDK
-        // and failed naming that instead.
-        Path home = Files.createDirectories(dir.resolve("graalvm-25"));
+    void a_pinned_graalvm_not_on_disk_is_left_for_the_engine_to_install(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(
+                project.resolve("jk-lock.toml"),
+                "[graal]\nsuggested-vendor = \"graalvm\"\nsuggested-version = \"25.0.4\"\n");
 
-        assertThat(GraalResolver.carriesNativeImage(home)).isFalse();
+        Optional<GraalResolver.Choice> choice =
+                new GraalResolver(jdks, false, BuildPlanConsole.Mode.QUIET).resolve(project, "graalvm", 0);
 
-        Files.createDirectories(home.resolve("bin"));
-        Files.writeString(home.resolve("bin").resolve(GraalLauncher.NAME), "#!/fake");
-
-        assertThat(GraalResolver.carriesNativeImage(home)).isTrue();
+        assertThat(choice).hasValueSatisfying(c -> {
+            assertThat(c.home()).isNull();
+            assertThat(c.install()).as("the pin is a major-or-better floor").isEqualTo("graalvm-25");
+        });
+        assertThat(jdks).isEmptyDirectory();
     }
 
     @Test

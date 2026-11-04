@@ -49,7 +49,13 @@ public record BuildRequest(
         /** {@code fail} or {@code report} over every module's {@code [test] failures}; null for the modules' own. */
         @Nullable String testFailures,
         /** {@code --skip-node}: no module's node steps run. */
-        boolean skipNode) {
+        boolean skipNode,
+        /**
+         * Module dir → the GraalVM spec the engine installs, as part of the run, for a module whose
+         * native build has no GraalVM on this machine yet. The client decided it (and asked first
+         * when no pin did); the download is the run's.
+         */
+        Map<String, String> graalInstalls) {
 
     public BuildRequest {
         dirtyHint = dirtyHint == null || dirtyHint.isEmpty() ? null : List.copyOf(dirtyHint);
@@ -57,6 +63,68 @@ public record BuildRequest(
         modules = modules == null ? List.of() : List.copyOf(modules);
         workspaceTarget = workspaceTarget == null || workspaceTarget.isBlank() ? null : workspaceTarget;
         graalHomes = graalHomes == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(graalHomes));
+        graalInstalls =
+                graalInstalls == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(graalInstalls));
+    }
+
+    /** No GraalVM to install. */
+    public BuildRequest(
+            @Nullable String dir,
+            @Nullable String cache,
+            @Nullable String jdksDir,
+            int workers,
+            @Nullable String profile,
+            boolean skipTests,
+            boolean verbose,
+            int maxModuleConcurrency,
+            boolean parallelTests,
+            boolean offline,
+            boolean force,
+            boolean freshenLock,
+            boolean ephemeralActions,
+            boolean testOnly,
+            @Nullable List<String> dirtyHint,
+            TestSelection selection,
+            @Nullable String debugJvm,
+            List<String> modules,
+            boolean keepGoing,
+            @Nullable String workspaceTarget,
+            Map<String, String> graalHomes,
+            @Nullable TailArgs tail,
+            @Nullable String trigger,
+            @Nullable String progressMode,
+            boolean coverage,
+            @Nullable String testFailures,
+            boolean skipNode) {
+        this(
+                dir,
+                cache,
+                jdksDir,
+                workers,
+                profile,
+                skipTests,
+                verbose,
+                maxModuleConcurrency,
+                parallelTests,
+                offline,
+                force,
+                freshenLock,
+                ephemeralActions,
+                testOnly,
+                dirtyHint,
+                selection,
+                debugJvm,
+                modules,
+                keepGoing,
+                workspaceTarget,
+                graalHomes,
+                tail,
+                trigger,
+                progressMode,
+                coverage,
+                testFailures,
+                skipNode,
+                Map.of());
     }
 
     /** No coverage, the modules' own test-failure modes, and node steps that run. */
@@ -144,6 +212,7 @@ public record BuildRequest(
                 .optionalTrue(ProtoJobs.COVERAGE, coverage)
                 .optionalNonBlankString(ProtoJobs.TEST_FAILURES, testFailures)
                 .optionalTrue(ProtoJobs.SKIP_NODE, skipNode)
+                .optionalMap("graalInstalls", graalInstalls)
                 .finish();
     }
 
@@ -176,6 +245,7 @@ public record BuildRequest(
                 Jsonl.str(json, "progressMode"),
                 Jsonl.bool(json, ProtoJobs.COVERAGE, false),
                 Jsonl.str(json, ProtoJobs.TEST_FAILURES),
-                Jsonl.bool(json, ProtoJobs.SKIP_NODE, false));
+                Jsonl.bool(json, ProtoJobs.SKIP_NODE, false),
+                Jsonl.strMap(json, "graalInstalls"));
     }
 }

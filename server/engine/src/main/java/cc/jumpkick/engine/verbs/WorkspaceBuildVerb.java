@@ -19,6 +19,7 @@ import cc.jumpkick.engine.jobs.JobSelect;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.jdk.GraalInstall;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.NativePreflight;
 import cc.jumpkick.lock.ManifestPaths;
@@ -27,6 +28,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.runtime.workspace.BuildService;
+import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.BuildRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -282,6 +284,35 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                 JobKind.workspace(guard ? BuildHistoryKinds.GUARD : target(body).jobKind()), threadPrefix(), this::run);
     }
 
+    /**
+     * The GraalVM homes for {@code installs} (module dir → spec), each spec installed once as a
+     * {@code graal} preflight stage of the run, its download on the run's board like every other.
+     * A GraalVM this run downloaded leaves a notice saying where it went.
+     */
+    private static Map<Path, Path> installGraal(
+            Map<String, String> installs, @Nullable Path jdksDir, WorkspaceBuildListener listener)
+            throws IOException, InterruptedException {
+        Map<String, Path> bySpec = new LinkedHashMap<>();
+        Map<Path, Path> homes = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : installs.entrySet()) {
+            String spec = e.getValue();
+            Path home = bySpec.get(spec);
+            if (home == null) {
+                listener.onPreflight("graal", 0, 0, "Installing GraalVM " + spec + "…");
+                GraalInstall.Installed installed = GraalInstall.install(spec, jdksDir);
+                home = installed.home();
+                bySpec.put(spec, home);
+                Path where = home;
+                if (installed.downloaded()) {
+                    RunNotices.warnOnce("graal-installed:" + where, () -> "installed GraalVM " + spec + " to " + where);
+                }
+                listener.onPreflight("graal", 1, 1, "GraalVM ready");
+            }
+            homes.put(Path.of(e.getKey()), home);
+        }
+        return homes;
+    }
+
     private static WorkspaceTarget target(BuildRequest body) {
         String named = body.workspaceTarget();
         if (named != null) return WorkspaceTarget.valueOf(named.toUpperCase(Locale.ROOT));
@@ -335,11 +366,24 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                             .collect(Collectors.toUnmodifiableSet());
                 }
             }
-            // The client resolved a GraalVM home for every module whose build links a native
-            // image; the plan reads it from the spec, or the daemon would pick one from the shell
-            // that started it.
+            Session session = ProtoSession.sessionOf(requestLine, cancelToken);
+            WorkspaceBuildListener listener = host.workspaceListener(writer, entryDirStr);
+            // The client found a GraalVM home for each module whose build links a native image, or
+            // decided one is installed: that install is the run's, here, under the request's session
+            // so its download shows with the run's others. The plan reads every home from the spec,
+            // or the daemon would pick one from the shell that started it.
             Map<Path, Path> graalByDir = new LinkedHashMap<>();
             body.graalHomes().forEach((d, h) -> graalByDir.put(Path.of(d), Path.of(h)));
+            if (!body.graalInstalls().isEmpty()) {
+                try {
+                    graalByDir.putAll(
+                            SessionContext.where(session, () -> installGraal(body.graalInstalls(), jdksDir, listener)));
+                } catch (Exception e) {
+                    listener.onPreflightFailed("graal", 0L, String.valueOf(e.getMessage()));
+                    host.sendQuiet(writer, host.requestFailedLine(null, e));
+                    return JobOutcome.failed(Exit.FAILURE);
+                }
+            }
             Set<Path> selected = !selectsByModule(target)
                     ? Set.of()
                     : dirty != null ? dirty : target == WorkspaceTarget.NATIVE ? graalByDir.keySet() : Set.of();
@@ -362,10 +406,8 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
                     .withSpec(new WorkspaceSpec(target, selected, graalByDir, body.tail()));
 
-            Session session = ProtoSession.sessionOf(requestLine, cancelToken);
             long rid = host.eventRequestId();
             if (rid > 0) host.putProgressRoot(rid, entryDirStr);
-            WorkspaceBuildListener listener = host.workspaceListener(writer, entryDirStr);
             WorkspaceResult result = SessionContext.where(session, () -> BuildService.buildWorkspace(req, listener));
             JobOutcome outcome = WorkspaceTerminal.finish(host, writer, entryDirStr, result, cancelToken.cancelled());
             // The graph is a build product: one that exists is brought up to the tree the build

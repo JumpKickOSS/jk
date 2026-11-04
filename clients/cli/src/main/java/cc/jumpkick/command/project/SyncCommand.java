@@ -7,16 +7,11 @@ import cc.jumpkick.cli.api.EnsureFreshLock;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
-import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.jdk.JdkEnsure;
-import cc.jumpkick.lock.JdkPin;
-import cc.jumpkick.lock.LockPaths;
-import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -88,28 +83,6 @@ public final class SyncCommand implements CliCommand {
         int lockCode = EnsureFreshLock.ensure(dir, cache, global, "Sync", repoUrl);
         if (lockCode != 0) return lockCode;
 
-        // Pre-flight the JDK ensure client-side: a missing pinned JDK is downloaded HERE, before
-        // the request — never silently inside the engine (docs/contributors/architecture.md keeps installs, and any
-        // interactive consent, client-side). The engine's own ensure-jdk step then only resolves
-        // the already-installed JDK (JdkEnsure with allowInstall=false). Thin client: the three
-        // values JdkEnsure needs (project jdk spec, java floor, lock pin) ride the ProjectInfo
-        // summary rather than a client-side parse.
-        var info = ProjectInfos.orNull(dir);
-        try {
-            JdkEnsure.ensure(
-                    dir,
-                    jdksDir,
-                    info == null ? null : info.jdk(),
-                    info == null ? 0 : info.javaRelease(),
-                    lockJdkPin(dir),
-                    m -> CommandWedge.printFail("Sync", m),
-                    true);
-        } catch (Exception e) {
-            CommandWedge.printFail(
-                    "Sync", (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
-            return 1;
-        }
-
         // The sync's run record carries a details.jsonl like a build's: the transcript binds to the
         // engine job when its job-start arrives and mirrors the plan events the listener sees.
         CliSessionTranscript transcript = CliSessionTranscript.open(dir, "sync", syncArgv());
@@ -172,21 +145,5 @@ public final class SyncCommand implements CliCommand {
                 },
                 r -> "Failed to sync dependencies.",
                 true);
-    }
-
-    /**
-     * Workspace lock {@code [jdk]} pin, or null when there is no lock / no pin. A lock that exists
-     * but fails to parse propagates: the pin is a floor sync must enforce (docs/user/lockfile.md),
-     * so a corrupt lock has to fail the command, not silently drop the pin. Only an unreadable
-     * file degrades to null — the freshen step just rewrote the lock, so IO here is transient.
-     */
-    private static @Nullable JdkPin lockJdkPin(Path dir) {
-        Path lf = LockPaths.lockFile(dir);
-        if (!Files.isRegularFile(lf)) return null;
-        try {
-            return LockfileReader.read(lf).jdk();
-        } catch (IOException e) {
-            return null;
-        }
     }
 }

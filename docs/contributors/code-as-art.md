@@ -980,6 +980,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G115 | a build-like goal planning a module outside `ModulePipeline`: calling `BuildPlanner.coreBuilder`/`fullPlan`, `PlannerTails.appendDeclaredTails`/`joinTests`, or constructing `BuildPlanner.Inputs` anywhere but the pipeline and its factory ([lifecycle](lifecycle.md)) | forbid over main bytecode; `BuildPlan.Builder` refuses a re-root that drops the terminal it replaced; `LifecycleParityTest` holds every goal to the build plus its tail | `one-module-planner` (forbid) |
 | G116 | a step in a module build plan whose `Task.builder` chain declares no `StepForecast` (`PRICED`, `RIDES` or `always(why)`) — the forecast could not say whether it runs, so a clean tree skips it or a stale one never stops rebuilding ([lifecycle](lifecycle.md#forecasting)) | text over engine main, plans no module build runs exempt by file; a self-fail arm on the site count | guard test `steps-declare-forecast` |
 | G117 | a `ProcessBuilder.environment()` outside the spawners that build a child's environment on purpose — a child starts from a copy of the daemon's environment, so a read of it is a `System.getenv` by another name and a write that does not clear it hands the child the shell that started the engine | forbid, baselined at the 16 existing spawners; a new one composes through `WorkerEnv` or `TaskExec` | `child-env-owner` (forbid) |
+| G118 | a client-side JDK install outside the commands that are the install or run before any engine exists — a build's pinned JDK installs in the engine's ensure-jdk steps and a GraalVM the client decided on (after its consent prompt) in the build verb, inside the run, where the download shows with the run's others | forbid over client bytecode, owners: `EngineSpawn` (the engine's own JDK), `jk jdk` commands, `jk new`'s choice | `jdk-installs-in-engine` (forbid) |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
@@ -1025,6 +1026,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | git-writes-are-pinned | text | a write that searches upward mutates whichever repository encloses the path, not the one meant |
 | guard-registry-doc | generated | the registry drifted twice by hand; the third reconciliation is not by hand |
 | install-tests-redirect-m2 | text | an install test without --m2-dir publishes into the developer's real ~/.m2 |
+| jdk-installs-in-engine | forbid | a JDK the client installs before the request downloads outside the run: its own progress UI, and no place in the run's download display, timing or record |
 | jdk-removal-confined | forbid | an ordinary build once deleted the JDK it was running on, twice in one afternoon |
 | json-concat | text | a hand-built JSON line spells its own separator and escaping, and every second speller has drifted from the first |
 | json-concat-ratchet | metric | a hand-built JSON line spells its own separator and escaping, and every second speller has drifted from the first |

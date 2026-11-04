@@ -4,6 +4,7 @@ package cc.jumpkick.command.pipeline;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.api.GraalResolver;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -76,7 +77,7 @@ class AlwaysNativeGraalTest {
         assertThat(AlwaysNativeGraal.homes(List.of(), (dir, spec, release) -> {
                     throw new AssertionError("no member, no resolution");
                 }))
-                .contains(Map.of());
+                .contains(AlwaysNativeGraal.Graal.NONE);
     }
 
     @Test
@@ -85,16 +86,34 @@ class AlwaysNativeGraalTest {
         var tool = new AlwaysNativeGraal.Module(Path.of("/w/tool"), "graalvm", 21);
         Path home = Path.of("/jdks/graalvm-25");
 
-        assertThat(AlwaysNativeGraal.homes(List.of(app, tool), (dir, spec, release) -> Optional.of(home)))
-                .contains(Map.of(app.dir(), home, tool.dir(), home));
+        GraalResolver.Choice found = GraalResolver.Choice.found(home);
+
+        assertThat(AlwaysNativeGraal.homes(List.of(app, tool), (dir, spec, release) -> Optional.of(found)))
+                .contains(new AlwaysNativeGraal.Graal(Map.of(app.dir(), home, tool.dir(), home), Map.of()));
         assertThat(AlwaysNativeGraal.homes(
                         List.of(app, tool),
-                        (dir, spec, release) -> "graalvm".equals(spec) ? Optional.empty() : Optional.of(home)))
+                        (dir, spec, release) -> "graalvm".equals(spec) ? Optional.empty() : Optional.of(found)))
                 .as("one unresolved pin fails the whole build up front")
                 .isEmpty();
         assertThat(AlwaysNativeGraal.homes(List.of(), (dir, spec, release) -> Optional.empty()))
                 .as("no native module, nothing to resolve")
-                .contains(Map.of());
+                .contains(AlwaysNativeGraal.Graal.NONE);
+    }
+
+    /** A module whose GraalVM is to be installed goes to the engine as a spec, beside the homes found. */
+    @Test
+    void homes_split_found_graalvms_from_ones_the_engine_installs() {
+        var app = new AlwaysNativeGraal.Module(Path.of("/w/app"), "graalvm-25", 0);
+        var tool = new AlwaysNativeGraal.Module(Path.of("/w/tool"), "graalvm", 21);
+        Path home = Path.of("/jdks/graalvm-25");
+
+        assertThat(AlwaysNativeGraal.homes(
+                        List.of(app, tool),
+                        (dir, spec, release) -> Optional.of(
+                                "graalvm".equals(spec)
+                                        ? GraalResolver.Choice.toInstall("graalvm-21")
+                                        : GraalResolver.Choice.found(home))))
+                .contains(new AlwaysNativeGraal.Graal(Map.of(app.dir(), home), Map.of(tool.dir(), "graalvm-21")));
     }
 
     @Test
@@ -123,7 +142,7 @@ class AlwaysNativeGraalTest {
 
         AlwaysNativeGraal.homes(List.of(app), (dir, spec, release) -> {
             seen.put(spec, release);
-            return Optional.of(Path.of("/jdks/graalvm-25"));
+            return Optional.of(GraalResolver.Choice.found(Path.of("/jdks/graalvm-25")));
         });
 
         assertThat(seen).containsExactly(Map.entry("graalvm", 25));

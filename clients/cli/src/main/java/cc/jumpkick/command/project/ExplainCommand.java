@@ -10,7 +10,6 @@ import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
-import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.DurationText;
 import cc.jumpkick.cli.theme.Theme;
@@ -28,7 +27,6 @@ import cc.jumpkick.command.CwdModuleScope;
 import cc.jumpkick.command.ModuleSelectors;
 import cc.jumpkick.command.pipeline.BuildFlags;
 import cc.jumpkick.command.pipeline.BuildVerbCommand;
-import cc.jumpkick.command.pipeline.JdkPreflight;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -126,11 +124,6 @@ public final class ExplainCommand implements CliCommand {
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(startDir, modulesSpec, peek);
         if (cwdScope.inferredFromCwd()) modulesSpec = cwdScope.modulesSpec();
         Path graphDir = cwdScope.workspaceMember() ? cwdScope.workspaceRoot() : startDir;
-        // The forecast prices the build that follows, and that build starts by pre-flighting its
-        // pinned JDK — so explain does too, with the same bar, before anything is estimated.
-        if (!JdkPreflight.ensure(startDir, peek, CommonOpts.jdksDirValue(in), BuildPlanConsole.modeFor(global))) {
-            return Exit.FAILURE;
-        }
         if (in.isSet("run") && hasGraph) {
             CommandWedge.printFail("Explain", "cannot combine --run with --graph (pick one)");
             return Exit.USAGE;
