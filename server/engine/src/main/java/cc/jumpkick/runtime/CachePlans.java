@@ -144,6 +144,8 @@ public final class CachePlans {
                         long now = System.currentTimeMillis();
                         Path toolsRoot = JkStores.store().resolve("tools");
                         AccessLedger toolLedger = ToolUse.ledger(toolsRoot);
+                        // What the GC collects, the next sync stages again rather than trusting its memo.
+                        if (!dryRun) BuildForks.forgetStaged();
                         var toolsGc = ToolsGc.run(toolsRoot, toolFamilies(), toolLedger.load(), pressure, now, dryRun);
                         totalFiles += toolsGc.deleted();
                         totalBytes += toolsGc.freedBytes();

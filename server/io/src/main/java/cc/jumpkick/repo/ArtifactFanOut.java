@@ -16,6 +16,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
 
 /**
@@ -90,9 +91,15 @@ public final class ArtifactFanOut {
     public static <T> List<T> concurrently(List<Fetch<T>> fetches) throws IOException, InterruptedException {
         CompletionService<T> completions = new ExecutorCompletionService<>(JkThreads.io());
         CountDownLatch stopped = new CountDownLatch(fetches.size());
+        // Each task's start is claimed once: by its own body, or on its behalf by a cancel that
+        // reached it before it ran (a cancelled task that never started never runs its finally).
+        List<AtomicBoolean> claimed = new ArrayList<>(fetches.size());
         List<Future<T>> pending = new ArrayList<>(fetches.size());
         for (Fetch<T> f : fetches) {
+            AtomicBoolean mine = new AtomicBoolean();
+            claimed.add(mine);
             pending.add(completions.submit(() -> {
+                if (!mine.compareAndSet(false, true)) throw new InterruptedException("cancelled before it ran");
                 try {
                     return f.fetch();
                 } finally {
@@ -110,7 +117,7 @@ public final class ArtifactFanOut {
             }
         } finally {
             if (firstFailed != null || Thread.currentThread().isInterrupted() || stopped.getCount() > 0) {
-                cancelAndWait(pending, stopped);
+                cancelAndWait(pending, claimed, stopped);
             }
         }
         if (firstFailed == null) {
@@ -127,9 +134,15 @@ public final class ArtifactFanOut {
         throw new IllegalStateException("unreachable: a failed fetch threw");
     }
 
-    /** Cancel every fetch still running and give them a moment to stop: nothing of the set outlives the call. */
-    private static void cancelAndWait(List<? extends Future<?>> pending, CountDownLatch stopped) {
-        for (Future<?> f : pending) f.cancel(true);
+    /**
+     * Cancel every fetch and give the ones running a moment to stop: nothing of the set outlives
+     * the call. A fetch that never started is counted stopped at once.
+     */
+    static void cancelAndWait(List<? extends Future<?>> pending, List<AtomicBoolean> claimed, CountDownLatch stopped) {
+        for (int i = 0; i < pending.size(); i++) {
+            if (claimed.get(i).compareAndSet(false, true)) stopped.countDown();
+            pending.get(i).cancel(true);
+        }
         boolean interrupted = Thread.interrupted();
         try {
             stopped.await(CANCEL_GRACE.toMillis(), TimeUnit.MILLISECONDS);

@@ -27,6 +27,7 @@ import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoMirrors;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.BuildForks;
 import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.runtime.base.TestStorePool;
 import cc.jumpkick.util.JkDirs;
@@ -77,6 +78,10 @@ public final class CacheInventoryOps {
         // repo queries must too: pointing them at <cache>/repos made jk repo search return
         // nothing and jk repo refresh never evict.
         Path store = req.store() != null ? req.store() : JkStores.store();
+        // A wipe or a worker drop removes what the sync staged; the next one stages it again.
+        if (!req.dryRun() && (query.equals("wipe-store") || query.equals("drop-workers"))) {
+            BuildForks.forgetStaged();
+        }
         return switch (query) {
             case "usage" -> cacheUsage(cache);
             case "store-usage" -> storeUsage(store, req.m2());

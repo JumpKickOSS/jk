@@ -194,14 +194,19 @@ public final class TransferBoard {
         // not downloading, whatever else the run fetches beside it. A closed set stays counted by
         // what it downloaded, so a nested set (a closure's depth inside the sync) never makes the
         // run's count go down.
-        int settled = closedItems.get();
-        int planned = closedItems.get();
-        for (Planned p : plans.keySet()) {
-            int downloaded = p.downloaded.get();
-            if (downloaded == 0) continue;
-            int toDownload = Math.max(0, p.items - p.found.get());
-            settled += Math.min(downloaded, toDownload);
-            planned += toDownload;
+        // Under the lock a set's close takes, so a set closing now is counted once: open or closed.
+        int settled;
+        int planned;
+        synchronized (plans) {
+            settled = closedItems.get();
+            planned = closedItems.get();
+            for (Planned p : plans.keySet()) {
+                int downloaded = p.downloaded.get();
+                if (downloaded == 0) continue;
+                int toDownload = Math.max(0, p.items - p.found.get());
+                settled += Math.min(downloaded, toDownload);
+                planned += toDownload;
+            }
         }
         return new Snapshot(settled, planned, (int) files.sum(), bytes.sum(), inflight, rows);
     }
@@ -266,7 +271,9 @@ public final class TransferBoard {
 
         @Override
         public void close() {
-            if (plans.remove(this) != null) closedItems.addAndGet(downloaded.get());
+            synchronized (plans) {
+                if (plans.remove(this) != null) closedItems.addAndGet(downloaded.get());
+            }
         }
     }
 }
