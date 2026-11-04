@@ -9,14 +9,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Text the compiled classes do not record that still names a renamed method: comment lines of the
- * files the rename edited, and lines of docs and config that name one of its types beside it.
- * Listed, never edited: whether a comment means this method is the agent's call, and saying there is
- * none saves it the search.
+ * files the rename edited, and lines of docs and config that name one of its types beside it. What
+ * can only mean the method is renamed with it ({@link #rewrite}); the rest is listed, since whether it
+ * means this method is the agent's call, and saying there is none saves it the search.
  */
 final class RenameMentions {
 
@@ -34,6 +35,82 @@ final class RenameMentions {
     private static final int SHOWN = 12;
 
     private RenameMentions() {}
+
+    /** A file's text after {@link #rewrite}, the 1-based lines it changed, and how many mentions. */
+    record Rewrite(String text, List<Integer> lines, int count) {}
+
+    /**
+     * Renames the mentions that can only mean the method: in a comment of one of its types' own
+     * sources, {@code {@code m}}, a backticked or {@code #m}, a bare {@code m(}, and {@code Type.m}; in a
+     * comment of any other source, or any line of a doc or config, only {@code Type.m} or
+     * {@code Type#m}. Changelogs keep the name they recorded. Whatever else names it is left for
+     * {@link #find} to list.
+     */
+    static Rewrite rewrite(String rel, String text, String old, String to, Set<String> types) {
+        if (types.isEmpty() || HISTORY.matcher(rel).find() || !text.contains(old))
+            return new Rewrite(text, List.of(), 0);
+        String q = Pattern.quote(old);
+        String typed =
+                "\\b(?:" + String.join("|", types.stream().map(Pattern::quote).toList()) + ")[.#]";
+        Pattern only = home(rel, types) && !prose(rel)
+                ? Pattern.compile(
+                        "(?<=" + typed + "|\\{@code\\s|`|(?<![\\w.])#)" + q + "\\b|(?<![\\w.#$])" + q + "(?=\\s*\\()")
+                : Pattern.compile("(?<=" + typed + ")" + q + "\\b");
+        String[] lines = text.split("\n", -1);
+        List<Integer> changed = new ArrayList<>();
+        int count = 0;
+        for (int i = 0; i < lines.length; i++) {
+            String t = lines[i].strip();
+            boolean comment = prose(rel) || t.startsWith("//") || t.startsWith("*") || t.startsWith("/*");
+            if (!comment) continue;
+            Matcher m = only.matcher(lines[i]);
+            StringBuilder out = new StringBuilder();
+            int n = 0;
+            while (m.find()) {
+                m.appendReplacement(out, Matcher.quoteReplacement(to));
+                n++;
+            }
+            if (n == 0) continue;
+            m.appendTail(out);
+            lines[i] = out.toString();
+            changed.add(i + 1);
+            count += n;
+        }
+        return new Rewrite(String.join("\n", lines), changed, count);
+    }
+
+    /**
+     * {@link #rewrite} over the edited files and the docs, folding each change into {@code edited} and
+     * {@code changedLines}; the number of mentions renamed.
+     */
+    static int renameAll(
+            Path root,
+            String old,
+            String to,
+            Set<String> types,
+            Map<String, String> edited,
+            Map<String, List<Integer>> changedLines,
+            Set<String> textFiles) {
+        Set<String> files = new TreeSet<>(edited.keySet());
+        files.addAll(textFiles);
+        int count = 0;
+        for (String rel : files) {
+            String text = edited.get(rel);
+            try {
+                if (text == null) text = Files.readString(root.resolve(rel), StandardCharsets.UTF_8);
+            } catch (IOException | RuntimeException unreadable) {
+                continue;
+            }
+            Rewrite r = rewrite(rel, text, old, to, types);
+            if (r.count() == 0) continue;
+            count += r.count();
+            edited.put(rel, r.text());
+            List<Integer> lines = new ArrayList<>(changedLines.getOrDefault(rel, List.of()));
+            lines.addAll(r.lines());
+            changedLines.put(rel, lines.stream().distinct().sorted().toList());
+        }
+        return count;
+    }
 
     static boolean prose(String rel) {
         return !rel.isEmpty() && PROSE.matcher(rel).find();
@@ -53,6 +130,7 @@ final class RenameMentions {
                 + "\\b");
         List<String> out = new ArrayList<>();
         for (Map.Entry<String, String> e : edited.entrySet()) {
+            if (prose(e.getKey())) continue;
             Pattern wanted = home(e.getKey(), types) ? code : qualified;
             String[] lines = e.getValue().split("\n", -1);
             for (int i = 0; i < lines.length; i++) {
@@ -66,9 +144,9 @@ final class RenameMentions {
                 "\\b(?:" + String.join("|", types.stream().map(Pattern::quote).toList()) + ")\\b");
         for (String rel : textFiles) {
             if (HISTORY.matcher(rel).find()) continue;
-            String text;
+            String text = edited.get(rel);
             try {
-                text = Files.readString(root.resolve(rel), StandardCharsets.UTF_8);
+                if (text == null) text = Files.readString(root.resolve(rel), StandardCharsets.UTF_8);
             } catch (IOException | RuntimeException e) {
                 continue;
             }

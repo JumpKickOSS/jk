@@ -109,7 +109,7 @@ class GraphRenameTest {
     }
 
     @Test
-    void proseThatStillNamesTheMethodIsListedNotEdited(@TempDir Path dir) throws IOException {
+    void proseThatCanOnlyMeanTheMethodIsRenamedAndTheRestLeftAlone(@TempDir Path dir) throws IOException {
         Map<String, String> sources = new LinkedHashMap<>(RANGES);
         sources.put(
                 "Range.java",
@@ -123,13 +123,16 @@ class GraphRenameTest {
         Files.writeString(root.resolve("CHANGES.md"), "- Range.contains no longer accepts NaN.\n");
         String answer = rename(root, "Range.contains", "includes");
 
-        assertThat(answer)
-                .contains("Not renamed, prose that names contains (comments, docs)")
-                .contains(PKG + "Range.java:", "| // contains() fails open on NaN")
-                .contains("README.md:1| - Range.contains accepts no NaN.")
-                .as("the English word, and a changelog's record of the old name, are not the method")
-                .doesNotContain("Shop contains it", "a range contains its ends", "CHANGES.md");
-        assertThat(Files.readString(root.resolve("README.md"))).contains("Range.contains");
+        assertThat(answer).contains("2 comment or doc mentions", "README.md:1");
+        assertThat(read(root, "Range.java"))
+                .contains("// includes() fails open on NaN")
+                .as("the English word is not the method")
+                .contains("// a range contains its ends");
+        assertThat(Files.readString(root.resolve("README.md")))
+                .isEqualTo("- Range.includes accepts no NaN.\n- Shop contains it.\n");
+        assertThat(Files.readString(root.resolve("CHANGES.md")))
+                .as("a changelog keeps the name it recorded")
+                .isEqualTo("- Range.contains no longer accepts NaN.\n");
     }
 
     @Test
@@ -149,7 +152,7 @@ class GraphRenameTest {
     }
 
     @Test
-    void outsideTheTypesOwnFilesOnlyAQualifiedMentionIsListed(@TempDir Path dir) throws IOException {
+    void outsideTheTypesOwnFilesOnlyAQualifiedMentionIsRenamed(@TempDir Path dir) throws IOException {
         String shop = Objects.requireNonNull(RANGES.get("Shop.java"));
         Map<String, String> sources = new LinkedHashMap<>(RANGES);
         sources.put(
@@ -157,11 +160,12 @@ class GraphRenameTest {
                 shop.replace(
                         "    boolean listed(",
                         "    // as Range.contains() does\n    // the list contains it\n    boolean listed("));
-        String answer = rename(workspace(dir, sources), "Range.contains", "includes");
-        assertThat(answer)
-                .contains("| // as Range.contains() does")
+        Path root = workspace(dir, sources);
+        rename(root, "Range.contains", "includes");
+        assertThat(read(root, "Shop.java"))
+                .contains("// as Range.includes() does")
                 .as("a bare contains in another type's file is that type's")
-                .doesNotContain("the list contains it");
+                .contains("// the list contains it");
         assertThat(RenameMentions.home(PKG + "RangeTest.java", Set.of("Range"))).isTrue();
     }
 

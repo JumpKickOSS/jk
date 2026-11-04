@@ -176,6 +176,8 @@ final class GraphRename {
                     + " file.";
         }
         run.docLinks();
+        run.prose = RenameMentions.renameAll(
+                root, run.old, to, run.familyTypes, run.edited, run.changedLines, run.textFiles);
         run.mentions = RenameMentions.find(run.root, run.old, run.familyTypes, run.edited, run.textFiles);
         for (Map.Entry<String, String> e : run.edited.entrySet()) {
             Files.writeString(root.resolve(e.getKey()), e.getValue(), StandardCharsets.UTF_8);
@@ -214,6 +216,7 @@ final class GraphRename {
         int calls;
         int declarations;
         int docs;
+        int prose;
 
         Run(
                 Path root,
@@ -405,7 +408,8 @@ final class GraphRename {
         List<String> answer() {
             List<String> lines = new ArrayList<>();
             lines.add("Renamed " + display(target) + " to " + to + ": " + count(declarations, "declaration") + ", "
-                    + count(calls, "call") + (docs == 0 ? "" : ", " + count(docs, "doc link")) + ", in "
+                    + count(calls, "call") + (docs == 0 ? "" : ", " + count(docs, "doc link"))
+                    + (prose == 0 ? "" : ", " + count(prose, "comment or doc mention")) + ", in "
                     + count(edited.size(), "file") + ".");
             for (Map.Entry<String, List<Integer>> e : changedLines.entrySet()) {
                 lines.add("  " + e.getKey() + ":" + numbers(e.getValue()));
