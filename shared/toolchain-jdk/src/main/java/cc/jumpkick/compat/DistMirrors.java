@@ -4,6 +4,7 @@ package cc.jumpkick.compat;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.m2.MavenSettings;
+import cc.jumpkick.model.RepositoryMirror;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.JkDirs;
 import java.net.URI;
@@ -18,27 +19,35 @@ import org.jspecify.annotations.Nullable;
  * ({@code node}, {@code kotlin}, {@code gradle}, {@code maven}), each overridable by
  * {@code JK_<TOOL>_DIST_MIRROR}, else a settings.xml mirror that names it, else the public origin
  * (see {@link DownloadOrigins} for the order and the credential).
+ *
+ * <p>The Apache Maven distribution lives in Central, in a Maven repository layout, so a native
+ * {@code mirror-of} table that stands in for {@code central} serves it too, after {@code [mirrors]
+ * maven} and before {@code settings.xml}: the order a repository's own requests take. The other
+ * distributions are not in a Maven repository and keep {@code [mirrors]}.
  */
 public final class DistMirrors {
 
     /** A mirrored distribution: its {@code [mirrors]} key, the settings.xml tokens that name it, and its public base. */
     public enum Dist {
-        NODE("node", List.of("nodejs"), "https://nodejs.org/dist/"),
-        KOTLIN("kotlin", List.of("kotlin"), "https://github.com/JetBrains/kotlin/releases/download/"),
-        GRADLE("gradle", List.of("gradle"), "https://services.gradle.org/distributions/"),
+        NODE("node", List.of("nodejs"), "https://nodejs.org/dist/", null),
+        KOTLIN("kotlin", List.of("kotlin"), "https://github.com/JetBrains/kotlin/releases/download/", null),
+        GRADLE("gradle", List.of("gradle"), "https://services.gradle.org/distributions/", null),
         MAVEN(
                 "maven",
                 List.of(RepositorySpec.CENTRAL, "*"),
-                RepositorySpec.MAVEN_CENTRAL.url().toString());
+                RepositorySpec.MAVEN_CENTRAL.url().toString(),
+                RepositorySpec.MAVEN_CENTRAL);
 
         private final String key;
         private final List<String> mirrorOf;
         private final String publicBase;
+        private final @Nullable RepositorySpec repository;
 
-        Dist(String key, List<String> mirrorOf, String publicBase) {
+        Dist(String key, List<String> mirrorOf, String publicBase, @Nullable RepositorySpec repository) {
             this.key = key;
             this.mirrorOf = mirrorOf;
             this.publicBase = publicBase;
+            this.repository = repository;
         }
 
         /** The {@code [mirrors]} key. */
@@ -60,20 +69,41 @@ public final class DistMirrors {
 
     /** The origin {@code dist} downloads from. */
     public static DownloadOrigin origin(Dist dist) {
-        return origin(dist, JkDirs::env, GlobalConfig.mirrors(), MavenSettings.current());
+        List<RepositoryMirror> natives = dist.repository == null ? List.of() : GlobalConfig.repositoryMirrors();
+        return origin(dist, JkDirs::env, GlobalConfig.mirrors(), natives, MavenSettings.current());
     }
 
-    /** As {@link #origin(Dist)} against explicit inputs, for tests. */
+    /** As {@link #origin(Dist)} with no native mirrors, for tests. */
     public static DownloadOrigin origin(
             Dist dist, Function<String, @Nullable String> env, Map<String, String> mirrors, MavenSettings settings) {
-        return DownloadOrigins.resolve(
-                env,
-                settings,
-                dist.env(),
-                mirrors.get(dist.key()),
-                "[mirrors] " + dist.key(),
-                dist.mirrorOf,
-                dist.publicBase);
+        return origin(dist, env, mirrors, List.of(), settings);
+    }
+
+    /**
+     * As {@link #origin(Dist)} against explicit inputs, for tests: the environment, then {@code
+     * [mirrors]}, then the first native mirror that stands in for the distribution's repository
+     * (with its id as the credential id), then a settings.xml mirror, then the public base.
+     */
+    public static DownloadOrigin origin(
+            Dist dist,
+            Function<String, @Nullable String> env,
+            Map<String, String> mirrors,
+            List<RepositoryMirror> natives,
+            MavenSettings settings) {
+        String key = "[mirrors] " + dist.key();
+        DownloadOrigin chosen = DownloadOrigins.configured(
+                env, MavenSettings.empty(), dist.env(), mirrors.get(dist.key()), key, List.of());
+        if (chosen != null) return chosen;
+        RepositorySpec repository = dist.repository;
+        if (repository != null) {
+            for (RepositoryMirror mirror : natives) {
+                if (mirror.matches(repository.name(), repository.url())) {
+                    return new DownloadOrigin(
+                            DownloadOrigin.directory(mirror.url().toString()), mirror.id());
+                }
+            }
+        }
+        return DownloadOrigins.resolve(env, settings, dist.env(), null, key, dist.mirrorOf, dist.publicBase);
     }
 
     /** The base URL {@code dist} downloads from, ending in {@code /}. */

@@ -94,8 +94,15 @@ public final class DownloadOrigins {
         return credential(origin, RepoCredentialResolver.withEnv(JkDirs::env));
     }
 
+    /**
+     * The chain under the origin's credential id, starting from the credential of the user's own
+     * {@code ~/.jk/config.toml} table of that id at that origin — a native mirror's {@code token}
+     * or {@code username}/{@code password} — when there is one.
+     */
     public static RepoCredential credential(DownloadOrigin origin, RepoCredentialResolver resolver) {
-        return resolver.resolve(origin.credentialId(), origin.url(), Optional.empty());
+        Optional<RepoCredential> declared =
+                resolver.userDeclaration(origin.credentialId(), origin.url()).flatMap(RepositorySpec::credentialOpt);
+        return resolver.resolve(origin.credentialId(), origin.url(), declared);
     }
 
     /**
