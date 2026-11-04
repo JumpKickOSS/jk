@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The checksum sidecars a Maven repository publishes beside an artifact, strongest first: {@code
@@ -53,25 +54,45 @@ final class ChecksumSidecars {
     private final RepoTransport transport;
     private final RepoCredential credential;
     private final URI artifact;
-    private final Future<Optional<String>> sha256;
+    /** Null in {@linkplain #startSha1First sha1-first} mode, where it is read only when no {@code .sha1} is. */
+    private final @Nullable Future<Optional<String>> sha256;
+
     private final Future<Optional<String>> sha1;
 
-    private ChecksumSidecars(RepoTransport transport, RepoCredential credential, URI artifact) {
+    private ChecksumSidecars(RepoTransport transport, RepoCredential credential, URI artifact, boolean sha1First) {
         this.transport = transport;
         this.credential = credential;
         this.artifact = artifact;
-        this.sha256 = JkThreads.io().submit(() -> read(Algorithm.SHA256));
+        this.sha256 = sha1First ? null : JkThreads.io().submit(() -> read(Algorithm.SHA256));
         this.sha1 = JkThreads.io().submit(() -> read(Algorithm.SHA1));
     }
 
     /** Start reading the {@code .sha256} and {@code .sha1} beside {@code artifact}. */
     static ChecksumSidecars start(RepoTransport transport, RepoCredential credential, URI artifact) {
-        return new ChecksumSidecars(transport, credential, artifact);
+        return new ChecksumSidecars(transport, credential, artifact, false);
+    }
+
+    /**
+     * Start reading the {@code .sha1} alone beside {@code artifact}: one request, for a repository
+     * that publishes one for every file. Maven Central requires {@code .sha1} and {@code .md5} of
+     * every upload and leaves {@code .sha256} optional, so asking for both there spends a request on
+     * a file that is often absent. SHA-1 is strong enough for what the read is for: bytes that match
+     * a digest someone else published need a second preimage, and the known SHA-1 attacks are
+     * collisions, which need the attacker to make both files. The {@code .sha256}, then the {@code
+     * .md5}, are asked for only when no {@code .sha1} is published.
+     */
+    static ChecksumSidecars startSha1First(RepoTransport transport, RepoCredential credential, URI artifact) {
+        return new ChecksumSidecars(transport, credential, artifact, true);
     }
 
     /** The strongest SHA digest published, or empty when the repository publishes neither. */
     Optional<Published> strongestSha() throws IOException, InterruptedException {
         try {
+            if (sha256 == null) {
+                Optional<String> weak = join(sha1);
+                if (weak.isPresent()) return Optional.of(new Published(Algorithm.SHA1, weak.get()));
+                return read(Algorithm.SHA256).map(hex -> new Published(Algorithm.SHA256, hex));
+            }
             Optional<String> strong = join(sha256);
             if (strong.isPresent()) return Optional.of(new Published(Algorithm.SHA256, strong.get()));
             return join(sha1).map(hex -> new Published(Algorithm.SHA1, hex));
@@ -82,7 +103,7 @@ final class ChecksumSidecars {
 
     /** Stop the two SHA reads: a leg still parked in its request is interrupted and ends at once. */
     void cancel() {
-        sha256.cancel(true);
+        if (sha256 != null) sha256.cancel(true);
         sha1.cancel(true);
     }
 

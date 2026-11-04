@@ -43,6 +43,14 @@ import org.jspecify.annotations.Nullable;
  * restart, which matters because {@code jk engine stop} between attempts would otherwise forget the
  * rate limit and go straight back to hammering Central.
  *
+ * <h2>Central vouches, the mirror carries</h2>
+ *
+ * Apart from the refusal window there is a standing split ({@link #routeForDownload}): release
+ * POMs and artifacts are downloaded from the mirror first, while {@code maven-metadata.xml} and the
+ * {@code .sha1} that verifies an unpinned file are asked of Central. Central stays the authority
+ * for which versions exist and for what their bytes are; the mirror only moves the bytes. While the
+ * window is open the checksums come from the mirror too, and the run says so.
+ *
  * <h2>What this deliberately does not do</h2>
  *
  * It does not rewrite the repository's identity. The lockfile records the repo's configured URL, so a
@@ -137,6 +145,16 @@ public final class CentralMirror {
      */
     public static CentralMirror standard() {
         return STANDARD;
+    }
+
+    /**
+     * A mirror whose window lives under {@code cacheDir} instead of the machine's cache, for a test
+     * in another package that drives a repository against Central's canonical host through a fake
+     * transport. Production code has no use for it: a second window is the half-sticky switch
+     * {@link #standard()} exists to prevent.
+     */
+    public static CentralMirror isolated(Path cacheDir, boolean enabled) {
+        return new CentralMirror(cacheDir, DEFAULT_WINDOW, enabled);
     }
 
     /** Visible for tests: the single file that carries the window. */
@@ -277,13 +295,17 @@ public final class CentralMirror {
     }
 
     /**
-     * The mirror URI for a Central-bound <em>artifact byte</em> fetch, regardless of the window.
+     * The mirror URI for a Central-bound <em>file</em> fetch — a POM or an artifact — regardless of
+     * the window.
      *
      * <p>{@link #route} is the refusal reaction: only reroute once Central has refused. This is the
-     * standing preference for the download leg, and it is safe for a different reason — a locked artifact
-     * is pinned by sha256, so the bytes are verified on arrival and where they came from does not matter.
-     * Version <em>enumeration</em> is the opposite case: the mirror can lag, so metadata and POMs keep
-     * asking Central and only fall back once refused.
+     * standing preference for immutable release files, and it is safe because Central still vouches
+     * for them: an unpinned file's bytes are checked against the {@code .sha1} Central publishes
+     * (asked of Central through {@link #route}, so only a refusal moves the check to the mirror), and
+     * a pinned one against the lock's sha256. A lagging mirror cannot serve stale content for a
+     * release coordinate, only a 404, which falls back to Central. Version <em>enumeration</em> is the
+     * opposite case: {@code maven-metadata.xml} changes, the mirror can lag, so it keeps asking Central
+     * and only falls back once refused.
      *
      * <p>Also spends the mirror's much larger concurrency budget instead of Sonatype's per-IP quota, which
      * is the point of {@link HostRateLimiter#MIRROR_PERMITS}.

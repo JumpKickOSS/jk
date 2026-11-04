@@ -294,7 +294,9 @@ a pre-release belong on `jk update`.
    resort) and **fails closed** on mismatch. An artifact only an `.md5` vouches for (Central holds
    POMs published that way, `org.jetbrains.kotlin:kotlin-bom:1.9.20` among them) is accepted, and
    the lock output carries a note naming the artifact and the weaker digest; from then on the lock
-   pins its bytes by SHA-256 like every other row.
+   pins its bytes by SHA-256 like every other row. For Central the `.sha1` comes first, in one
+   request, and is read from Central even when Google's mirror carried the bytes
+   ([Repositories](repositories.md#when-central-refuses-this-host)).
 3. Refuses to pin when no sidecar exists, unless the repository table says
    `allow-unverified = true`; the lock summary then counts those rows as `unverified (allowed)`.
 4. Refuses a plaintext `http://` repository when the manifest is read, unless its table says
