@@ -58,6 +58,22 @@ or a change to a Java method, use it, not Grep or file reads:
 - `.jk/graph/` is jk's graph store, read by jk only: do not open or search it.
 """
 
+# A leaner Cursor rule under test: the generic wording plus exact call shapes and what a TIMEOUT means.
+CURSOR_RULES2 = """---
+description: JumpKick (jk) code graph
+alwaysApply: true
+---
+This project's Java code is indexed by jk's code graph, on the `jk` MCP server. Its answers are compiled
+facts and final: do not grep or re-read to check them.
+
+- Rename `T.m`: call `rename(address="T.m", to="newName")` first. It edits the method, its overrides, every
+  caller and the comments that can only mean it. Then do what its answer says: `run(kind="test", only=…)`
+  and `run(kind="guard")`. When both say OK, the task is done.
+- Who calls `T.m`: `callers(address="T.m")` once, and use its list as the answer.
+- An answer `TIMEOUT … jid=N` means the job is still running: call `run(jid=N)` until it says OK or FAIL.
+- `.jk/graph/` is jk's graph store, read by jk only: do not open or search it.
+"""
+
 # Cursor's project permissions: reading Java source is denied, so the graph is the way in.
 CURSOR_DENY_READ = json.dumps({"permissions": {"allow": [], "deny": ["Read(**/*.java)"]}}, indent=2) + "\n"
 
@@ -78,6 +94,8 @@ ct.ARMS.update({
     "jk-museskill": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", files=skill_files()),
     "jk-cursorrules": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", files={
         ".cursor/rules/jk.mdc": CURSOR_RULES}),
+    "jk-cursorrules2": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", files={
+        ".cursor/rules/jk.mdc": CURSOR_RULES2}),
     "jk-cursordeny": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", files={
         ".cursor/rules/jk.mdc": CURSOR_RULES, ".cursor/cli.json": CURSOR_DENY_READ}),
 })
