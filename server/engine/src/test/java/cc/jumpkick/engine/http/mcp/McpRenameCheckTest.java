@@ -18,7 +18,7 @@ class McpRenameCheckTest {
 
     @Test
     void the_answers_test_instruction_is_run_with_its_modules_and_classes() {
-        McpCall in = new McpCall(context(), Map.of("dir", "/w", "timeout_s", 5), null);
+        McpCall in = new McpCall(context(), Map.of("dir", "/w", "timeout_s", 30), null);
         String renamed = "Renamed Range.contains to includes: 1 declaration, 2 calls, in 2 files.\n"
                 + "Every use the compiled classes record is renamed; no search needed. Test the test classes it"
                 + " edited: run(kind=test, only=core,app, classes=RangeTest,ShopTest), or jk test -m core,app -S"
@@ -75,6 +75,8 @@ class McpRenameCheckTest {
                 null);
         ctx.liveJid(jid -> false);
         ctx.journalSettleMs(20);
+        // A wait-second of 10 ms: the 30 s budget the test names runs out in a fraction of a second.
+        ctx.waitSecondMs(10);
         return ctx;
     }
 }
