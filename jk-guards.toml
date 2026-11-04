@@ -862,6 +862,10 @@ baseline   = true
 instead    = "WorkerEnv.strict() / forModule(...).environment() for a worker, TaskExec.ToolRun for a plugin, BuildEnv.callerEnv() for a step that hands on the caller's shell"
 why        = "a child's environment copied from the daemon is the engine's shell, not the jk command being served"
 
+[[guards.child-env-owner.allow]]
+in     = "cc.jumpkick.config.CredentialHelpers"
+reason = "a ${cmd:} credential helper runs under exactly the request's shell (BuildEnv.callerEnv()): the inherited map is cleared before it is set"
+
 # G118. A build's JDK and GraalVM install in the engine, inside the run: the ensure-jdk steps install
 # a missing pin, the build verb a GraalVM the client decided on (after its consent prompt), and the
 # download shows on the run's board with the others. The client installs a JDK only where no engine

@@ -27,6 +27,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -71,7 +72,20 @@ public final class MavenRepo {
     private final RepoTransport transport;
     private final Cas cas;
     private final RepoArtifactStore repoStore;
-    private final RepoCredential credential;
+
+    /** Replaced at most once, by {@link #refreshedAfter}, when it came from a credential helper. */
+    private volatile RepoCredential credential;
+
+    /**
+     * What re-runs the credential helper this repository's credential came from and resolves again;
+     * null for every other credential. See {@link #refreshingCredentialWith}.
+     */
+    private volatile @Nullable Supplier<RepoCredential> credentialRefresh;
+
+    /** Guards the one refresh; {@link #credentialRefreshed} says it has happened. */
+    private final Object refreshLock = new Object();
+
+    private boolean credentialRefreshed;
     /** When true, Central and the repositories {@code settings.xml} declares keep their artifacts in the Maven local repository. */
     private final boolean m2integration;
 
@@ -251,6 +265,19 @@ public final class MavenRepo {
                 mirror,
                 optional,
                 centralMirror);
+    }
+
+    /**
+     * This repository, re-resolving its credential through {@code refresh} the first time a request
+     * is refused (401, 403): the request is then sent once more with the fresh credential, and a
+     * second refusal is the answer. For a credential a {@code ${cmd:...}} helper printed, whose
+     * token may simply have expired. Set before the repository is shared; a copy made by a {@code
+     * with…} method or {@link #mirroredThrough} does not carry it, since a mirror has its own
+     * credential.
+     */
+    public MavenRepo refreshingCredentialWith(Supplier<RepoCredential> refresh) {
+        this.credentialRefresh = Objects.requireNonNull(refresh, "refresh");
+        return this;
     }
 
     /** The settings.xml mirror this repository's requests go through, when one applies. */
@@ -535,13 +562,27 @@ public final class MavenRepo {
         refuseIfUnreachable();
         try {
             byte[] xml = metadataCache != null
-                    ? metadataCache.fetch(fetchBase.resolve(MavenLayout.metadataPath(coord)), credential)
+                    ? cachedMetadata(fetchBase.resolve(MavenLayout.metadataPath(coord)))
                     : Files.readAllBytes(fetchMetadata(coord).cachePath());
             return MavenMetadata.parse(xml, coord.group(), coord.artifact()).versions();
         } catch (ArtifactNotFoundException notFound) {
             return List.of();
         } catch (IOException transport) {
             throw unreachableOr(transport);
+        }
+    }
+
+    /** {@code uri} through the metadata cache, sent once more with a fresh credential after a refusal. */
+    private byte[] cachedMetadata(URI uri) throws IOException, InterruptedException {
+        MavenMetadataCache cache = Objects.requireNonNull(metadataCache, "metadataCache");
+        RepoCredential used = credential;
+        try {
+            return cache.fetch(uri, used);
+        } catch (ArtifactNotFoundException | FetchAbortedException e) {
+            throw e;
+        } catch (IOException e) {
+            if (!refreshedAfter(e, used)) throw e;
+            return cache.fetch(uri, credential);
         }
     }
 
@@ -624,21 +665,14 @@ public final class MavenRepo {
         // (undeletable on Windows) and the promote writes the store right back (StoreWriteGate).
         try (var held = StoreWriteGate.write()) {
             DownloadLeg.Downloaded stored;
+            RepoCredential used = credential;
             try {
-                stored = download.run(coord, primary, relativePath, vouch, leg, expectedSha256, abort);
-            } catch (FetchAbortedException e) {
+                stored = download(coord, primary, uri, relativePath, vouch, leg, expectedSha256, abort);
+            } catch (ArtifactNotFoundException | FetchAbortedException e) {
                 throw e;
             } catch (IOException e) {
-                // The mirror can lag or simply not carry something Central has. Falling back keeps a
-                // preference from becoming a dependency.
-                if (primary.equals(uri)) throw e;
-                if (e instanceof ChecksumMismatchException) {
-                    // Central's releases do not change, so bytes that fail the check are the
-                    // mirror's fault; Central's copy is what the check is for.
-                    download.note(coord + " from " + name + ": the mirror's copy of " + relativePath
-                            + " failed verification, so it was downloaded from Maven Central instead");
-                }
-                stored = download.run(coord, uri, relativePath, vouch, leg, expectedSha256, abort);
+                if (!refreshedAfter(e, used)) throw e;
+                stored = download(coord, primary, uri, relativePath, vouch, leg, expectedSha256, abort);
             }
             SessionContext.current().io().remoteDown(stored.size());
             misses.forget(uri);
@@ -661,6 +695,67 @@ public final class MavenRepo {
             throw aborted;
         } catch (IOException transport) {
             throw unreachableOr(transport);
+        }
+    }
+
+    /** One download of {@code uri}, from {@code primary} first when that is Central's mirror. */
+    private DownloadLeg.Downloaded download(
+            Coordinate coord,
+            URI primary,
+            URI uri,
+            String relativePath,
+            DownloadLeg.@Nullable Vouch vouch,
+            Leg leg,
+            @Nullable String expectedSha256,
+            BooleanSupplier abort)
+            throws IOException, InterruptedException {
+        try {
+            return download.run(coord, primary, relativePath, vouch, leg, expectedSha256, abort);
+        } catch (FetchAbortedException e) {
+            throw e;
+        } catch (IOException e) {
+            // The mirror can lag or simply not carry something Central has. Falling back keeps a
+            // preference from becoming a dependency.
+            if (primary.equals(uri)) throw e;
+            if (e instanceof ChecksumMismatchException) {
+                // Central's releases do not change, so bytes that fail the check are the
+                // mirror's fault; Central's copy is what the check is for.
+                download.note(coord + " from " + name + ": the mirror's copy of " + relativePath
+                        + " failed verification, so it was downloaded from Maven Central instead");
+            }
+            return download.run(coord, uri, relativePath, vouch, leg, expectedSha256, abort);
+        }
+    }
+
+    /**
+     * Whether a request refused with {@code used} may be sent once more: true when the credential
+     * is now a fresh one — this call re-ran its helper, or a concurrent request already did — and
+     * false when there is nothing to refresh, the failure is not a refusal, or the one refresh this
+     * repository gets is spent. Runs before {@link #unreachableOr}, so a refused credential is
+     * refreshed before the refusal can put a passable repository out of the job, and {@link
+     * RepoMisses} records only absences, never refusals.
+     */
+    private boolean refreshedAfter(IOException failure, RepoCredential used) throws IOException {
+        Supplier<RepoCredential> refresh = credentialRefresh;
+        if (refresh == null) return false;
+        String refused = refusal(failure);
+        if (refused == null) return false;
+        synchronized (refreshLock) {
+            if (credential != used) return true;
+            if (credentialRefreshed) return false;
+            credentialRefreshed = true;
+            RepoCredential fresh;
+            try {
+                fresh = refresh.get();
+            } catch (RuntimeException e) {
+                throw new IOException(
+                        name + " refused its credential (" + refused + "), and running its credential helper"
+                                + " again failed: " + e.getMessage(),
+                        failure);
+            }
+            credential = fresh;
+            download.credential(fresh);
+            return true;
         }
     }
 

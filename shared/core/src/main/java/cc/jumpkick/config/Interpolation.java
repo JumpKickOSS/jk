@@ -96,15 +96,23 @@ public final class Interpolation {
     private Interpolation() {}
 
     /**
-     * Reject {@code ${VAR}} outside {@link #ALLOWED}, and a {@code ${file:...}} reference outside a
-     * repository's credential and object-store keys, naming the offending position.
+     * Reject {@code ${VAR}} outside {@link #ALLOWED}, a {@code ${file:...}} reference outside a
+     * repository's credential and object-store keys, and a {@code ${cmd:...}} reference anywhere — a
+     * project that could name a command would run it on every resolve — naming the offending
+     * position.
      *
      * <p>Called once per parse. Cheap: it only walks string values, and only those containing
      * {@code $}.
      */
     public static void guard(TomlTable root) {
-        Offenders found = new Offenders(new ArrayList<>(), new ArrayList<>());
+        Offenders found = new Offenders(new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
         walk(root, List.of(), found);
+        if (!found.commands().isEmpty()) {
+            throw new JkBuildParseException("command references are not allowed in a project manifest: "
+                    + String.join("; ", found.commands())
+                    + ". A ${cmd:} reference runs a command on this machine, so it is honoured only in"
+                    + " ~/.jk/config.toml: declare the repository there, with the reference, at the same URL.");
+        }
         List<String> machine = found.machine();
         if (!machine.isEmpty()) {
             throw new JkBuildParseException("file references are not allowed here: " + String.join("; ", machine)
@@ -128,8 +136,8 @@ public final class Interpolation {
                 + " a literal, or the same commit would build differently on different machines.");
     }
 
-    /** Positions holding a reference they may not: environment ones, and file ones. */
-    private record Offenders(List<String> env, List<String> machine) {}
+    /** Positions holding a reference they may not: environment ones, file ones, and every command. */
+    private record Offenders(List<String> env, List<String> machine, List<String> commands) {}
 
     private static void walk(TomlTable table, List<String> prefix, Offenders offenders) {
         for (String key : table.keySet()) {
@@ -195,7 +203,9 @@ public final class Interpolation {
         boolean envAllowed = allowed(path);
         boolean machineAllowed = allowed(path, MACHINE_REFERENCE_POSITIONS);
         for (ConfigReference ref : found) {
-            if (ref.isEnv()) {
+            if (ref.scheme() == ConfigReference.Scheme.CMD) {
+                offenders.commands().add(spell(path) + " (" + ref.spelling() + ")");
+            } else if (ref.isEnv()) {
                 if (!envAllowed) offenders.env().add(spell(path) + " (" + ref.spelling() + ")");
             } else if (!machineAllowed) {
                 offenders.machine().add(spell(path) + " (" + ref.spelling() + ")");

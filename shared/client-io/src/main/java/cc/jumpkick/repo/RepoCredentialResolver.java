@@ -3,6 +3,7 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.ConfigReference;
+import cc.jumpkick.config.CredentialHelpers;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.ReferenceResolver;
@@ -275,9 +276,17 @@ public final class RepoCredentialResolver {
      * when something binds the name to the origin. Any other variable, a {@code ${file:...}}
      * reference, or an unbound name, is refused with a once-per-run warning that names the
      * references and the remedies — never a value. A declaration with no repository id has no
-     * convention to read and is refused quietly.
+     * convention to read and is refused quietly. A {@code ${cmd:...}} reference is an error, never a
+     * warning: a project must not be able to name a command to run.
      */
     public boolean projectMayRead(@Nullable String repoId, @Nullable URI url, Collection<ConfigReference> references) {
+        for (ConfigReference r : references) {
+            if (r.scheme() == ConfigReference.Scheme.CMD) {
+                throw new JkBuildParseException("repositories." + repoId + " uses " + r.spelling()
+                        + " in a project manifest: a ${cmd:} reference runs a command on this machine, so it is"
+                        + " honoured only in ~/.jk/config.toml");
+            }
+        }
         if (repoId == null || repoId.isBlank()) return false;
         String prefix = envVarPrefix(repoId);
         List<ConfigReference> foreign = references.stream()
@@ -355,6 +364,22 @@ public final class RepoCredentialResolver {
                     + (url == null || url.getHost() == null ? "<host>" : hostPort(url)) + ", or run `jk repo login "
                     + repoId + " -U " + SafeUri.forMessage(url) + "`. See repositories.md § Credentials.";
         });
+    }
+
+    /**
+     * What re-runs the credential helper behind {@code resolved} and resolves again, when the
+     * credential came from a {@code ${cmd:...}} helper; else null. A repository that refuses the
+     * credential (401, 403) calls it once: the cached value is dropped first, so the helper runs
+     * again rather than answering from its cache.
+     */
+    public @Nullable Supplier<RepoCredential> refresher(
+            @Nullable String repoId, @Nullable URI url, Optional<RepoCredential> inline, RepoCredential resolved) {
+        String stale = resolved.secret();
+        if (!CredentialHelpers.produced(stale)) return null;
+        return () -> {
+            CredentialHelpers.forget(stale);
+            return resolve(repoId, url, inline);
+        };
     }
 
     /**

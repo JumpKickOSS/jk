@@ -42,7 +42,8 @@ final class DownloadLeg {
     private final String name;
     private final URI baseUrl;
     private final RepoTransport transport;
-    private final RepoCredential credential;
+    /** Replaced once, by {@link MavenRepo}, when a credential helper's value is refused and it runs again. */
+    private volatile RepoCredential credential;
     /** The repository's tree under {@code <store>/repos/}, where the download temps land. */
     private final Path shard;
 
@@ -82,6 +83,11 @@ final class DownloadLeg {
         this.credential = Objects.requireNonNull(credential, "credential");
         this.shard = Objects.requireNonNull(shard, "shard");
         this.allowUnverified = allowUnverified;
+    }
+
+    /** Authenticate every later request with {@code fresh}. */
+    void credential(RepoCredential fresh) {
+        this.credential = Objects.requireNonNull(fresh, "fresh");
     }
 
     /**

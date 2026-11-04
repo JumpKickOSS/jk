@@ -248,6 +248,9 @@ public final class RepoGroupBuilder {
                             spec.allowInsecure())
                     .withPolicy(spec.releases(), spec.snapshots())
                     .withOptional(spec.optional());
+            // A credential a ${cmd:} helper printed may have expired: a refusal re-runs it once.
+            var refresh = creds.refresher(spec.name(), spec.url(), spec.credentialOpt(), cred);
+            if (refresh != null) repo.refreshingCredentialWith(refresh);
             repos.add(RepoMirrors.apply(repo, settings, creds));
             exclusiveGroups.add(exclusiveGroupsFor(spec));
             routedGroups.add(routedGroupsFor(spec));

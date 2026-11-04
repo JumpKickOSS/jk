@@ -206,7 +206,8 @@ the public origin. A Gradle wrapper's own `distributionUrl` is used as written. 
 from the chain below, under the mirror's `host[:port]` (or a `settings.xml` mirror's `id`).
 
 A `[mirrors]` value, and a `[node]` registry or scope, may use any
-[secret reference](repositories.md#secret-references): `${VAR}`, `${env:VAR}` or `${file:…}`.
+[secret reference](repositories.md#secret-references): `${VAR}`, `${env:VAR}`, `${file:…}` or
+`${cmd:…}`.
 
 A JDK comes from more than one host: the catalog feed is on `download.jetbrains.com` and each
 archive it names is on its vendor's host (`github.com` for Temurin, `cdn.azul.com`, …). A `jdk`
