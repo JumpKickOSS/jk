@@ -11,11 +11,11 @@ import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.JdkCompilerAccess;
-import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
+import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildStage;
@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -58,7 +59,8 @@ public final class FormatPlans {
     /**
      * Build the format plan for {@code projectDir}. Style names arrive already resolved (flags/env/
      * {@code [format]} block are the client's concern). Steps: {@code collect-sources} (SYNC) walks
-     * the tree, {@code resolve-formatters} (IO) pulls the impl jars via {@link ToolResolver}, {@code
+     * the tree, {@code resolve-formatters} (IO) pulls the impl jars from {@code repos} — the user's
+     * repositories, their mirrors applied — via {@link ToolResolver}, {@code
      * format} (IO) forks the plugin and streams per-file results. A project with no sources
      * finishes successfully with {@link FormatWorker#TOTAL} = 0 and no plugin forked. {@code redo}
      * ({@code -r} / {@code -F}) sends every file to the worker and has it ignore its settled stamps;
@@ -67,6 +69,7 @@ public final class FormatPlans {
     public static BuildPlan formatBuildPlan(
             Path projectDir,
             Path cache,
+            Supplier<RepoGroup> repos,
             boolean check,
             @Nullable String javaStyle,
             @Nullable String kotlinStyle,
@@ -78,6 +81,7 @@ public final class FormatPlans {
         return plan(new Options(
                 projectDir,
                 cache,
+                repos,
                 check,
                 javaStyle,
                 kotlinStyle,
@@ -98,6 +102,7 @@ public final class FormatPlans {
     public static BuildPlan formatSourcesPlan(
             Path projectDir,
             Path cache,
+            Supplier<RepoGroup> repos,
             boolean check,
             @Nullable String javaStyle,
             @Nullable String kotlinStyle,
@@ -110,6 +115,7 @@ public final class FormatPlans {
         return plan(new Options(
                 projectDir,
                 cache,
+                repos,
                 check,
                 javaStyle,
                 kotlinStyle,
@@ -156,6 +162,7 @@ public final class FormatPlans {
     private record Options(
             Path projectDir,
             Path cache,
+            Supplier<RepoGroup> repos,
             boolean check,
             @Nullable String javaStyle,
             @Nullable String kotlinStyle,
@@ -272,7 +279,7 @@ public final class FormatPlans {
                         return;
                     }
                     ctx.label("resolve formatter jars");
-                    var resolver = ToolResolver.mavenCentral(new Http(), JkStores.storeCas());
+                    var resolver = new ToolResolver(o.repos().get());
                     try {
                         if (javaFiles.isEmpty()) {
                             ctx.put(k.javaJarsKey(), List.of());

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.AffectedSelection;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.DirtyPaths;
@@ -12,6 +13,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.runtime.base.FormatPlans;
 import cc.jumpkick.runtime.base.Perf;
 import java.nio.file.Path;
@@ -70,6 +72,7 @@ final class GuardFormat {
         BuildPlan plan = FormatPlans.formatSourcesPlan(
                 root,
                 cache,
+                () -> RepoGroupBuilder.buildDefault(JkStores.storeCas()),
                 check,
                 styles.java(),
                 styles.kotlin(),

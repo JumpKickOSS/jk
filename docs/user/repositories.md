@@ -435,7 +435,11 @@ https://nexus.acme.com/repository/maven-public/; the lock records `central` at h
 
 A plaintext `http://` mirror on a network path is refused with a warning naming the entry and the
 repository is asked at its own URL; a loopback mirror is fine. A `<repository>` a dependency's
-POM declares goes through the mirror too. The engine's not-found memo is keyed by the URL a request
+POM declares goes through the mirror too, and so does every resolve that runs with no project in
+hand: `jk run Foo.java` (and a repository its header names), a tool run by its coordinate,
+`jk format`'s formatter jars, build logic's pinned Groovy, the plugin workers' own closures and a
+giter8 template's `maven()` property each ask your `~/.jk/config.toml` repositories over the
+built-in remotes, through the mirror, the way a build does. The engine's not-found memo is keyed by the URL a request
 opened, so a mirror that appears is asked afresh for a coordinate the repository missed before it
 existed, and a mirror removed leaves the repository asked afresh at its own URL. A `file://`
 repository and a loopback one are never memoized — not their misses, not their version lists: a

@@ -274,7 +274,7 @@ patterns = ["repo1\\.maven\\.org", "https://repo\\.maven\\.apache\\.org/maven2/?
 owner    = "shared/jk-api/src/main/java/cc/jumpkick/model/RepositorySpec.java"
 hit      = "URI.create(\"https://repo.maven.apache.org/maven2/\")"
 miss     = "URI.create(\"https://repo.example.org/maven2/\")"
-instead  = "RepositorySpec.MAVEN_CENTRAL.url(), through cc.jumpkick.http.Http"
+instead  = "RepositorySpec.MAVEN_CENTRAL, through RepoGroupBuilder"
 why      = "the mirror and the cooldown key on the canonical host; an alias matches neither"
 
 [[guards.central-address.allow]]
@@ -288,6 +288,63 @@ reason = "recognises a foreign build file's declared repository: every spelling 
 [[guards.central-address.allow]]
 in     = "shared/toolchain-jdk/src/main/java/cc/jumpkick/gradle/GradleExporter.java"
 reason = "writes a foreign build file's repository block in that file's own vocabulary"
+
+# G119. A Maven resolve gets its repositories from RepoGroupBuilder, which lays the user's own
+# repositories over the public baseline and routes each through the mirror that stands in for it. A
+# MavenRepo built over Central's URL by hand goes around both: behind a firewall that admits only
+# the user's repository it fails, and on an open network it dials Central behind the mirror's back.
+[guards.central-through-the-group]
+kind     = "text"
+files    = ["**/src/main/**/*.java"]
+patterns = ["new\\s+MavenRepo\\(\\s*RepositorySpec\\.MAVEN_CENTRAL\\b", "RepositorySpec\\.MAVEN_CENTRAL\\.url\\(\\)"]
+hit      = "new MavenRepo(RepositorySpec.MAVEN_CENTRAL.name(), RepositorySpec.MAVEN_CENTRAL.url(), http, cas)"
+miss     = "new ToolResolver(RepoGroupBuilder.buildDefault(cas))"
+instead  = "RepoGroupBuilder.buildFor(project, …) with a project in hand, RepoGroupBuilder.buildDefault(cas) without one"
+why      = "a repository built over Central by hand skips the user's repositories and mirrors, so a firewalled resolve fails and an open one goes around the mirror"
+
+[[guards.central-through-the-group.allow]]
+in     = "shared/client-io/src/main/java/cc/jumpkick/repo/RepoIdentity.java"
+reason = "names Central's origin as a store identity; opens no connection"
+
+[[guards.central-through-the-group.allow]]
+in     = "shared/client-io/src/main/java/cc/jumpkick/repo/RepoArtifactStore.java"
+reason = "names Central's origin as a store key; opens no connection"
+
+[[guards.central-through-the-group.allow]]
+in     = "shared/client-io/src/main/java/cc/jumpkick/repo/M2Backing.java"
+reason = "recognises Central's origin to place its files in the Maven local repository; opens no connection"
+
+[[guards.central-through-the-group.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/runtime/HardwareProbe.java"
+reason = "seeds a probe store under Central's origin key; opens no connection"
+
+[[guards.central-through-the-group.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/runtime/base/TestStoreSeed.java"
+reason = "seeds a test store under Central's origin key; opens no connection"
+
+[[guards.central-through-the-group.allow]]
+in     = "server/io/src/main/java/cc/jumpkick/repo/PomParser.java"
+reason = "compares a POM-declared repository's host to Central's; opens no connection"
+
+[[guards.central-through-the-group.allow]]
+in     = "server/toolchain/src/main/java/cc/jumpkick/gradle/GradleImporter.java"
+reason = "recognises a foreign build file's declared repository; opens no connection"
+
+[[guards.central-through-the-group.allow]]
+in     = "server/toolchain/src/main/java/cc/jumpkick/mvn/RepoModelResolver.java"
+reason = "recognises a foreign build file's declared repository; opens no connection"
+
+[[guards.central-through-the-group.allow]]
+in     = "shared/toolchain-jdk/src/main/java/cc/jumpkick/compat/DistMirrors.java"
+reason = "the Apache Maven distribution's public base, a tool download DownloadOrigins mirrors itself"
+
+[[guards.central-through-the-group.allow]]
+in     = "server/io/src/main/java/cc/jumpkick/repo/PomRuntimeClasspath.java"
+reason = "a plugin worker's closure resolves against the built-in remotes, each routed through RepoMirrors.apply"
+
+[[guards.central-through-the-group.allow]]
+in     = "clients/cli/src/main/java/cc/jumpkick/command/project/AddCommand.java"
+reason = "`jk add --ping` probes Central from the client, which holds no repository group; it goes around a mirror until the probe moves into the engine"
 
 # G28. Retired wire-key spellings have no owner by definition — there is deliberately no constant
 # left to read them from — so the ban list is written here and the live owners are named in `instead`.

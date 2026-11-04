@@ -262,7 +262,12 @@ public final class NewProjectOps {
                 params.putIfAbsent(Giter8ShortNames.LAYOUT_SIMPLE, "yes");
             }
             try {
-                Giter8Apply.apply(templateRoot, target, params, Giter8Maven.central(offline));
+                Giter8Apply.apply(
+                        templateRoot,
+                        target,
+                        params,
+                        Giter8Maven.fromRepositories(
+                                () -> RepoGroupBuilder.buildDefault(JkStores.storeCas()), offline));
             } catch (IOException e) {
                 throw new IOException(
                         "applying template " + prep.template() + " lang=" + langName + ": " + e.getMessage(), e);

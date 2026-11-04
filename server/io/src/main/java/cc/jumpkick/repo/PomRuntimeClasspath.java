@@ -319,12 +319,15 @@ public final class PomRuntimeClasspath {
      * then Google's Android Maven (routed for the Android groups, so an {@code androidx} or
      * {@code com.android} request never probes Central). It is the set a lock resolves against by
      * default, which is why a dependency the plugin's lock pins with a Google source is fetchable
-     * for the worker too. Reads and writes stay under {@code cas}'s store.
+     * for the worker too. Reads and writes stay under {@code cas}'s store, and each remote is asked
+     * through the mirror that stands in for it ({@link RepoMirrors}), as a lock's are.
      */
     public static RepoGroup workerRemotes(URI officialBase, Http http, Cas cas) {
-        MavenRepo jumpkick = storeOnlyRepo(RepositorySpec.JUMPKICK_NAME, officialBase, http, cas);
-        MavenRepo central = storeOnlyRepo(RepositorySpec.CENTRAL, RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
-        MavenRepo google = storeOnlyRepo(RepositorySpec.GOOGLE, RepositorySpec.GOOGLE_MAVEN.url(), http, cas);
+        MavenRepo jumpkick = RepoMirrors.apply(storeOnlyRepo(RepositorySpec.JUMPKICK_NAME, officialBase, http, cas));
+        MavenRepo central =
+                RepoMirrors.apply(storeOnlyRepo(RepositorySpec.CENTRAL, RepositorySpec.MAVEN_CENTRAL.url(), http, cas));
+        MavenRepo google =
+                RepoMirrors.apply(storeOnlyRepo(RepositorySpec.GOOGLE, RepositorySpec.GOOGLE_MAVEN.url(), http, cas));
         return new RepoGroup(
                 List.of(jumpkick, central, google),
                 List.of(RepositorySpec.JUMPKICK.groups(), List.of(), List.of()),

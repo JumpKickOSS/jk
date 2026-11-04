@@ -981,6 +981,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G116 | a step in a module build plan whose `Task.builder` chain declares no `StepForecast` (`PRICED`, `RIDES` or `always(why)`) — the forecast could not say whether it runs, so a clean tree skips it or a stale one never stops rebuilding ([lifecycle](lifecycle.md#forecasting)) | text over engine main, plans no module build runs exempt by file; a self-fail arm on the site count | guard test `steps-declare-forecast` |
 | G117 | a `ProcessBuilder.environment()` outside the spawners that build a child's environment on purpose — a child starts from a copy of the daemon's environment, so a read of it is a `System.getenv` by another name and a write that does not clear it hands the child the shell that started the engine | forbid, baselined at the 16 existing spawners; a new one composes through `WorkerEnv` or `TaskExec` | `child-env-owner` (forbid) |
 | G118 | a client-side JDK install outside the commands that are the install or run before any engine exists — a build's pinned JDK installs in the engine's ensure-jdk steps and a GraalVM the client decided on (after its consent prompt) in the build verb, inside the run, where the download shows with the run's others | forbid over client bytecode, owners: `EngineSpawn` (the engine's own JDK), `jk jdk` commands, `jk new`'s choice | `jdk-installs-in-engine` (forbid) |
+| G119 | a `MavenRepo` built over Central by hand — `new MavenRepo(RepositorySpec.MAVEN_CENTRAL…` or `RepositorySpec.MAVEN_CENTRAL.url()` — outside `RepoGroupBuilder`: it skips the user's repositories and the mirrors that stand in for them, so a firewalled resolve fails and an open one dials Central behind the mirror | ban, store/identity code that only names Central's origin and foreign-build readers allowed | `central-through-the-group` (text) |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
@@ -1016,6 +1017,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | cache-tiers | vocabulary | a cache tier is named once; the homonyms each have their own owner |
 | case-conversion-locale | forbid | a case conversion in the default locale misparses identifiers under tr_TR and az |
 | central-address | text | the mirror and the cooldown key on the canonical host; an alias matches neither |
+| central-through-the-group | text | a repository built over Central by hand skips the user's repositories and mirrors, so a firewalled resolve fails and an open one goes around the mirror |
 | child-env-owner | forbid | a child's environment copied from the daemon is the engine's shell, not the jk command being served |
 | cli-runtime-classpath | depend | the CLI runtime is the native image; a test or build-time library there is a mis-scoped dependency |
 | cli-runtime-modules | layers | a CLI edge to an engine-side module puts engine code in the native image; shared/ide is client-side by construction (the IDE file generators the CLI and the engine both link) |

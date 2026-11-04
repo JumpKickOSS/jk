@@ -177,6 +177,16 @@ public final class RepoGroupBuilder {
     }
 
     /**
+     * {@link #buildDefault(Cas)}, or the one URL a test pins in its place under Central's name —
+     * the {@code --repo-url} hook of the paths that resolve with no project in hand: a script's
+     * dependencies, a tool by its coordinate.
+     */
+    public static RepoGroup buildDefault(@Nullable URI overrideUrl, Cas cas) {
+        if (overrideUrl == null) return buildDefault(cas);
+        return RepoGroup.of(new MavenRepo(RepositorySpec.CENTRAL, overrideUrl, new Http(), cas));
+    }
+
+    /**
      * The repositories a POM is imported against — {@code jk import} and the coexistence shadow:
      * the repositories of the active {@code settings.xml} profiles, the way Maven consults them for
      * a parent or a BOM the POM does not name a repository for, over {@link #buildDefault}'s set.

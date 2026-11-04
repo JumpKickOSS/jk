@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.FormatStyles;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
@@ -11,6 +12,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.runtime.base.FormatPlans;
 import cc.jumpkick.runtime.base.FormatWorker;
@@ -108,6 +110,7 @@ public final class FormatVerb implements HostedVerb {
                 BuildPlan plan = FormatPlans.formatBuildPlan(
                         session.workingDir(),
                         session.cacheDir(),
+                        () -> RepoGroupBuilder.buildDefault(JkStores.storeCas()),
                         body.check(),
                         body.javaStyle(),
                         body.kotlinStyle(),

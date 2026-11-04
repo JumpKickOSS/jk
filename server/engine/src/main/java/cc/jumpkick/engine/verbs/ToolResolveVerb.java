@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.model.ToolCoordSpec;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.runtime.base.ToolPlans;
 import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -65,7 +67,14 @@ public final class ToolResolveVerb implements HostedVerb {
                 Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 // Plain g:a[:v] label — coordinate colorization is a client-side concern.
-                BuildPlan plan = ToolPlans.resolveBuildPlan(spec, with, bin, mainClass, repoUrl, cache, coord);
+                BuildPlan plan = ToolPlans.resolveBuildPlan(
+                        spec,
+                        with,
+                        bin,
+                        mainClass,
+                        () -> RepoGroupBuilder.buildDefault(repoUrl, JkStores.storeCas()),
+                        cache,
+                        coord);
                 return host.streamSinglePlan(plan, session, writer, result -> {
                     ToolEnv env = plan.get(ToolPlans.TOOL_ENV).orElse(null);
                     return ProtoSession.planFinishTool(

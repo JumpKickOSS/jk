@@ -1,96 +1,63 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.giter8;
 
-import cc.jumpkick.http.Http;
-import cc.jumpkick.model.RepositorySpec;
-import cc.jumpkick.repo.MavenMetadata;
+import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpResponse;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
-/** Central {@code maven-metadata.xml} lookup for Giter8 {@code maven()} properties. */
+/**
+ * Version lookup for Giter8 {@code maven()} properties, against the repositories every other
+ * resolve uses: the user's, over the public baseline, each routed through the mirror that stands
+ * in for it.
+ */
 public final class Giter8Maven {
 
     private static final Pattern EXPR = Pattern.compile(
             "maven\\(\\s*([^,\\s]+)\\s*,\\s*([^,\\s]+)(?:\\s*,\\s*([^)]+))?\\s*\\)", Pattern.CASE_INSENSITIVE);
-    private static final URI CENTRAL = RepositorySpec.MAVEN_CENTRAL.url();
-
-    /**
-     * One shared transport, and it is jk's. A private {@link java.net.http.HttpClient} would reach
-     * Central without the mirror, without the per-host cooldown, and without opening the rate-limit
-     * window — so a scaffold could spend a 429 that the rest of the build never learned about.
-     * {@link Http} also carries the request deadline and the retry ladder, so an unresponsive
-     * Central cannot hang {@code jk new} forever.
-     */
-    private static final class Client {
-        static final Http SHARED = new Http();
-    }
-
-    /**
-     * Metadata memo per (group, artifact): every maven() property of the same coordinate shares
-     * one fetch. Short TTL — the engine is resident, and a scaffold a day later must see newly
-     * released versions.
-     */
-    private static final ConcurrentHashMap<String, CachedMetadata> METADATA_CACHE = new ConcurrentHashMap<>();
-
-    private static final long METADATA_TTL_NANOS = TimeUnit.MINUTES.toNanos(10);
-
-    private record CachedMetadata(MavenMetadata metadata, long atNanos) {}
 
     private Giter8Maven() {}
 
-    public static MavenVersionLookup central(boolean offline) {
-        return (group, artifact, stable) -> {
+    /**
+     * The lookup over {@code repos}, asked for when a template carries a {@code maven()} property:
+     * the newest release the repositories list, or the newest stable one when the property says
+     * {@code stable}. {@link RepoGroup}'s version memo shares one catalog read per coordinate
+     * across the template's properties.
+     */
+    public static MavenVersionLookup fromRepositories(Supplier<RepoGroup> repos, boolean offline) {
+        return (groupId, artifact, stable) -> {
             if (offline) {
                 throw new IOException("maven() properties require the network (offline)");
             }
-            String key = group + ":" + artifact;
-            CachedMetadata cached = METADATA_CACHE.get(key);
-            MavenMetadata md = cached != null && System.nanoTime() - cached.atNanos() < METADATA_TTL_NANOS
-                    ? cached.metadata()
-                    : null;
-            if (md == null) {
-                String path = group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml";
-                HttpResponse<byte[]> res;
-                try {
-                    res = Client.SHARED.get(CENTRAL.resolve(path));
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new IOException("maven() lookup interrupted", e);
-                }
-                if (res.statusCode() != 200 || res.body() == null) {
-                    throw new IOException("maven() lookup failed for " + key + " (HTTP " + res.statusCode() + ")");
-                }
-                md = MavenMetadata.parse(res.body(), group, artifact);
-                METADATA_CACHE.put(key, new CachedMetadata(md, System.nanoTime()));
+            String key = groupId + ":" + artifact;
+            List<String> versions;
+            try {
+                versions = repos.get().availableVersions(Coordinate.of(groupId, artifact, "0"));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("maven() lookup interrupted", e);
             }
-            String picked = pick(md, stable);
-            if (picked == null || picked.isBlank()) {
+            String picked = pick(versions, stable);
+            if (picked == null) {
                 throw new IOException("maven() found no version for " + key);
             }
             return picked;
         };
     }
 
-    static @Nullable String pick(MavenMetadata md, boolean stable) {
-        if (!stable) {
-            if (md.latest() != null && !md.latest().isBlank()) return md.latest();
-            List<String> v = md.versions();
-            return v.isEmpty() ? null : v.get(v.size() - 1);
+    /** The newest of {@code versions}, or the newest stable one; null when there is none. */
+    static @Nullable String pick(List<String> versions, boolean stable) {
+        String best = null;
+        for (String v : versions) {
+            if (v.isBlank() || Versions.isSnapshot(v) || (stable && unstable(v))) continue;
+            if (best == null || Versions.compare(v, best) > 0) best = v;
         }
-        if (md.release() != null && !md.release().isBlank() && !unstable(md.release())) return md.release();
-        List<String> v = md.versions();
-        for (int i = v.size() - 1; i >= 0; i--) {
-            if (!unstable(v.get(i))) return v.get(i);
-        }
-        return null;
+        return best;
     }
 
     static boolean isMavenExpr(@Nullable String value) {
