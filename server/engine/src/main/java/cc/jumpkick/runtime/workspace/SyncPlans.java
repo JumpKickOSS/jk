@@ -7,6 +7,7 @@ import cc.jumpkick.compat.NodeProvisioning;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
@@ -25,6 +26,7 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.CacheSync;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
@@ -37,13 +39,17 @@ import cc.jumpkick.runtime.ToolPlanProgress;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import cc.jumpkick.runtime.base.ReachabilityMetadata;
 import cc.jumpkick.task.SyncManifest;
+import cc.jumpkick.task.WorkerClosure;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import org.jspecify.annotations.Nullable;
@@ -111,6 +117,7 @@ public final class SyncPlans {
                 .addTask(syncSourcesStep(sources))
                 .addTask(syncPluginsStep(dir, cache, repoUrl))
                 .addTask(syncToolsStep(dir))
+                .addTask(syncWorkersStep())
                 .addTask(writeManifestStep(cache, lockFile))
                 .build();
     }
@@ -315,6 +322,46 @@ public final class SyncPlans {
                         ctx.progress(1);
                     }
                     if (failed) throw new RuntimeException("a pinned tool did not sync");
+                })
+                .build();
+    }
+
+    /** The workers every JVM build forks: its compiler, and the runner its tests run in. */
+    static final List<PluginJar> BUILD_WORKERS = List.of(PluginJar.JAVA_COMPILER, PluginJar.TEST_RUNNER);
+
+    /**
+     * Put the launch classpath of each worker a build forks ({@link #BUILD_WORKERS}) on disk, all
+     * at once. On a fresh home a worker's closure is dozens of jars; fetched here they come down
+     * beside the lock's, priced and drawn with them, instead of one at a time behind the first
+     * compile. A worker already staged costs a stat per entry.
+     */
+    private static Task syncWorkersStep() {
+        return Task.builder(TaskNames.SYNC_WORKERS)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.PARSE_LOCK)
+                .ticks(BUILD_WORKERS.size())
+                .execute(ctx -> {
+                    ctx.label("sync workers");
+                    List<Future<List<Path>>> staged = new ArrayList<>();
+                    for (PluginJar worker : BUILD_WORKERS) {
+                        staged.add(JkThreads.io().submit(() -> WorkerClosure.paths(worker)));
+                    }
+                    for (int i = 0; i < staged.size(); i++) {
+                        try {
+                            staged.get(i).get();
+                        } catch (ExecutionException e) {
+                            Throwable cause = e.getCause() == null ? e : e.getCause();
+                            throw new RuntimeException(
+                                    "could not stage the "
+                                            + BUILD_WORKERS.get(i).artifactId() + " worker: " + Errors.text(cause),
+                                    cause);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            for (Future<List<Path>> f : staged) f.cancel(true);
+                            throw new RuntimeException("interrupted staging workers", e);
+                        }
+                        ctx.progress(1);
+                    }
                 })
                 .build();
     }
