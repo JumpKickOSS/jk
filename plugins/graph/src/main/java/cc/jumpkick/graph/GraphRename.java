@@ -6,14 +6,13 @@ import cc.jumpkick.codegraph.CodeGraph;
 import cc.jumpkick.codegraph.GraphNode;
 import cc.jumpkick.codegraph.Modules;
 import cc.jumpkick.codegraph.extract.Extractors;
-import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ManifestOutline;
 import cc.jumpkick.guard.facts.CallSite;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.facts.MethodFacts;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
-import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -579,7 +578,7 @@ final class GraphRename {
     /**
      * The modules that can call into the one holding {@code rel}: it and every module that depends
      * on it, directly or through another, as their manifests say; {@code null} when a manifest
-     * does not read, so every module counts.
+     * is not TOML, so every module counts.
      */
     static @Nullable Set<String> reaching(Path root, Modules modules, String rel) {
         Modules.Module home = modules.of(rel);
@@ -588,15 +587,11 @@ final class GraphRename {
         Map<String, Set<String>> dependents = new HashMap<>();
         for (Modules.Module m : modules.list()) {
             try {
-                JkBuild build = JkBuildParser.parse(ManifestPaths.manifestIn(root.resolve(m.prefix())));
-                prefixByName.put(build.project().name(), m.prefix());
-                for (List<Dependency> deps : build.dependencies().byScope().values()) {
-                    for (Dependency d : deps) {
-                        if (!d.module().startsWith(Dependency.WORKSPACE_PREFIX)) continue;
-                        String name = d.module().substring(Dependency.WORKSPACE_PREFIX.length());
-                        name = name.substring(name.lastIndexOf(Dependency.WORKSPACE_GROUP_SEPARATOR) + 1);
-                        dependents.computeIfAbsent(name, k -> new TreeSet<>()).add(m.prefix());
-                    }
+                ManifestOutline outline = ManifestOutline.read(ManifestPaths.manifestIn(root.resolve(m.prefix())));
+                if (outline.name() != null) prefixByName.put(outline.name(), m.prefix());
+                for (String dep : outline.workspaceDependencies()) {
+                    String name = dep.substring(dep.lastIndexOf(Dependency.WORKSPACE_GROUP_SEPARATOR) + 1);
+                    dependents.computeIfAbsent(name, k -> new TreeSet<>()).add(m.prefix());
                 }
             } catch (IOException | RuntimeException unreadable) {
                 return null;

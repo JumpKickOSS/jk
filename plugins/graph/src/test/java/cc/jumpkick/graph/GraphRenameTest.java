@@ -335,6 +335,30 @@ class GraphRenameTest {
     }
 
     @Test
+    void theModulesThatCanCallAreReadPastPluginTablesNoInstalledPluginOwns(@TempDir Path root) throws IOException {
+        manifest(root, "core", "name = \"core\"\n\n[intellij]\nplugin-id = \"x\"\n");
+        manifest(
+                root,
+                "app",
+                "name = \"app\"\n\n[dependencies]\ncore.workspace = true\n\n[intellij]\nplugin-id = \"y\"\n");
+        manifest(root, "tool", "name = \"tool\"\n\n[test-dependencies]\napp.workspace = true\n");
+        manifest(root, "other", "name = \"other\"\n");
+        Modules modules = new Modules(List.of(
+                new Modules.Module("app/", false),
+                new Modules.Module("core/", false),
+                new Modules.Module("other/", false),
+                new Modules.Module("tool/", false)));
+        assertThat(GraphRename.reaching(root, modules, "core/src/main/java/a/Core.java"))
+                .as("core, what depends on it, and what depends on that; never an unrelated module")
+                .containsExactlyInAnyOrder("core/", "app/", "tool/");
+    }
+
+    private static void manifest(Path root, String module, String toml) throws IOException {
+        Files.createDirectories(root.resolve(module));
+        Files.writeString(root.resolve(module).resolve("jk.toml"), toml);
+    }
+
+    @Test
     void theAnswerNamesTheModulesTheRenameEditedToTest() {
         Modules modules = new Modules(List.of(
                 new Modules.Module("", false),
