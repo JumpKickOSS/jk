@@ -545,7 +545,7 @@ final class JkManagerView {
         TransferBoard.Snapshot downloads = m.model.downloads();
         int reserve = visible.isEmpty() ? 0 : 1;
         int downloadRoom = Math.min(budget, JkManager.MAX_ROWS) - reserve;
-        if (showsDownloads(downloads) && downloadRoom > 0) {
+        if (downloads.downloading() && downloadRoom > 0) {
             Tree.Node node = downloadsNode(downloads, downloadRoom - 1);
             work.child(node);
             int rows = 1 + node.children().size();
@@ -586,16 +586,6 @@ final class JkManagerView {
             }
         }
         return chrome;
-    }
-
-    /**
-     * True while the run is downloading: bytes have moved and a body is streaming, or a step's
-     * declared set is still settling. A run whose files were all on disk moves no bytes and never
-     * shows the row, so a warm sync does not flash it.
-     */
-    static boolean showsDownloads(TransferBoard.Snapshot d) {
-        if (d.bytes() <= 0) return false;
-        return d.inflight() > 0 || d.settled() < d.planned();
     }
 
     /**

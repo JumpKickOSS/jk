@@ -12,6 +12,7 @@ import cc.jumpkick.testing.Await;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.StringWriter;
 import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /** Every job streams its run's downloads to its client, whichever code moved the bytes. */
@@ -74,5 +75,48 @@ class JobEnvelopeDownloadsTest {
                 JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
                 out);
         assertThat(out.toString()).doesNotContain("\"type\":\"downloads\"");
+    }
+
+    /**
+     * A job whose download ends faster than one sample still says so: the final state goes out as
+     * the job winds down, before its job-finish line.
+     */
+    @Test
+    void a_download_no_sample_caught_is_sent_as_the_job_ends() {
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
+        StringWriter out = new StringWriter();
+        ConnectedClient.submit(
+                env,
+                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                JobRequest.plan("sync", "jk-test-", (line, tok, w) -> {
+                    try {
+                        SessionContext.where(Session.defaults(), () -> {
+                            try (var t =
+                                    SessionContext.current().io().transfers().open("g:a:1")) {
+                                t.started(100);
+                                t.advanced(100);
+                                t.finished();
+                            }
+                            return null;
+                        });
+                    } catch (Exception e) {
+                        throw new IllegalStateException(e);
+                    }
+                    return JobOutcome.ok();
+                }),
+                out);
+        List<String> lines = out.toString().lines().toList();
+        int downloads = -1;
+        int finish = -1;
+        for (int i = 0; i < lines.size(); i++) {
+            String type = EngineProtocol.typeOf(lines.get(i));
+            if (EngineProtocol.DOWNLOADS.equals(type)) downloads = i;
+            if (EngineProtocol.JOB_FINISH.equals(type)) finish = i;
+        }
+        assertThat(downloads).as("a downloads frame:\n%s", out).isNotNegative();
+        assertThat(downloads).isLessThan(finish);
+        assertThat(Jsonl.intValue(lines.get(downloads), "files", 0)).isEqualTo(1);
+        assertThat(Jsonl.intValue(lines.get(downloads), "inflight", -1)).isZero();
     }
 }

@@ -128,7 +128,7 @@ final class JkManagerPlainView {
      */
     void onDownloads(TransferBoard.Snapshot d) {
         if (m.done || !animating()) return;
-        if (!JkManagerView.showsDownloads(d)) {
+        if (!d.downloading()) {
             downloadsPrintedNanos = 0;
             return;
         }

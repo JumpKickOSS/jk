@@ -11,9 +11,11 @@ import cc.jumpkick.cli.args.ParseException;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.WireStream;
+import cc.jumpkick.cli.run.JsonlDownloads;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
+import cc.jumpkick.cli.tui.DownloadsView;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.LiveRegion;
 import cc.jumpkick.cli.tui.StartupPulse;
@@ -87,6 +89,7 @@ import cc.jumpkick.command.toolchain.ToolRunCommand;
 import cc.jumpkick.command.toolchain.TrustCommand;
 import cc.jumpkick.command.toolchain.WrapperCommand;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Command;
@@ -448,12 +451,19 @@ public final class CommandDispatch {
             System.setErr(new PrintStream(errBuf, true, StandardCharsets.UTF_8));
         }
         int code;
+        JsonlDownloads jsonlDownloads = null;
         try {
             // One envelope per leaf command: the leading blank on the first chrome write, one
             // trailing blank after the last — including after the error line below. Machine stdout
             // (JSON/JSONL, a script-mode command, or agent mode) opts out of both and of the ASCII
             // rewrite.
             CliOutput.beginCommand(script);
+            // A JSON command shows the run's downloads as sparse JSONL; a terminal shows them in
+            // its region, which takes precedence whenever one is on screen.
+            if (GlobalOptions.outputIsJson(in)) {
+                jsonlDownloads = new JsonlDownloads(() -> System.out, Clock.SYSTEM);
+                DownloadsView.fallback(jsonlDownloads);
+            }
             // Hidden global -y/--yes: skip Confirm prompts for this leaf command only.
             Confirm.setAssumeYes(in.isSet("yes"));
             try {
@@ -480,6 +490,8 @@ public final class CommandDispatch {
                 System.setOut(prevOut);
                 System.setErr(prevErr);
             }
+            DownloadsView.fallback(null);
+            if (jsonlDownloads != null) jsonlDownloads.finish();
             // Trailing blank after the last chrome, on whichever stream wrote it — settles never
             // print it themselves, and an exec handoff suppresses it outright.
             CliOutput.closeEnvelope();

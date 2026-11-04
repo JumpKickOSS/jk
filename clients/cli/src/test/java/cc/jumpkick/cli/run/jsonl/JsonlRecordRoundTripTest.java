@@ -41,6 +41,7 @@ class JsonlRecordRoundTripTest {
             TaskFinishLine.class,
             PlanFinishLine.class,
             WorkspaceProgressLine.class,
+            DownloadsLine.class,
             WorkspaceStartLine.class,
             WorkspaceFinishLine.class,
             ModuleStartLine.class,

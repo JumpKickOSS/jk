@@ -3,7 +3,6 @@ package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.tui.DownloadsView;
-import cc.jumpkick.cli.tui.LiveRegion;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.EnginePaths;
@@ -154,8 +153,8 @@ public final class WireStream {
                 }
                 if (EngineProtocol.DOWNLOADS.equals(type)) {
                     // Any job may download, whatever its verb, so the run's download frames are read
-                    // here for every stream, never by a verb's decoder, and drawn by whichever region
-                    // is on screen. With no region (a pipe, --quiet, JSONL) there is nothing to draw.
+                    // here for every stream, never by a verb's decoder, and shown by the region on
+                    // screen or, under --output json, written as sparse JSONL summaries.
                     showDownloads(line);
                     continue;
                 }
@@ -173,11 +172,13 @@ public final class WireStream {
         }
     }
 
-    /** Hand one {@code downloads} frame to the region on screen, when it draws downloads. */
+    /**
+     * Hand one {@code downloads} frame to whoever shows the run's downloads now: the region on
+     * screen, or a JSONL command's writer.
+     */
     static void showDownloads(String line) {
-        if (LiveRegion.active() instanceof DownloadsView view) {
-            view.downloads(DownloadsEvent.decode(line).snapshot());
-        }
+        DownloadsView view = DownloadsView.current();
+        if (view != null) view.downloads(DownloadsEvent.decode(line).snapshot());
     }
 
     /**
@@ -265,10 +266,14 @@ public final class WireStream {
         try {
             String line;
             while ((line = reader.readLine()) != null) {
-                if (EngineProtocol.JOB_FINISH.equals(EngineProtocol.typeOf(line))) {
+                String type = EngineProtocol.typeOf(line);
+                if (EngineProtocol.JOB_FINISH.equals(type)) {
                     noteJobFinish(line);
                     return;
                 }
+                // The engine sends the run's final download state as the job winds down, after the
+                // body's terminal: it closes the burst for whoever shows the downloads.
+                if (EngineProtocol.DOWNLOADS.equals(type)) showDownloads(line);
             }
         } catch (IOException ignored) {
             // Outcome already decided; a broken stream now tells us nothing new.
