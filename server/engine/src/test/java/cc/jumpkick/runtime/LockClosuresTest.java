@@ -22,6 +22,7 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import cc.jumpkick.testing.RepoRoot;
+import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -96,7 +97,11 @@ class LockClosuresTest {
 
         assertThat(repos).containsOnlyKeys("lock-closure.deployment");
         Path repo = Objects.requireNonNull(repos.get("lock-closure.deployment"));
-        assertThat(repo).startsWith(cas.root().resolve("plugin-tools"));
+        assertThat(repo.getParent()).isEqualTo(ToolClosures.root(cas));
+        assertThat(repo.getFileName().toString()).startsWith("lock-quarkus-deployment__");
+        // Every hand-out is a use the tools collector counts down from.
+        assertThat(ToolUse.ledger(cas.root().resolve("tools")).load())
+                .containsKey(ToolUse.key(ToolClosures.FAMILY, repo.getFileName().toString()));
         for (Map.Entry<Coordinate, byte[]> file : published.entrySet()) {
             Path linked = repo.resolve(MavenLayout.artifactPath(file.getKey()));
             assertThat(linked).as(file.getKey().toString()).hasBinaryContent(file.getValue());

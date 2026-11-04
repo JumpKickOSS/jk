@@ -20,6 +20,7 @@ import cc.jumpkick.resolver.PlatformConstraints;
 import cc.jumpkick.resolver.PubGrubResolver;
 import cc.jumpkick.resolver.Resolution;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
@@ -39,7 +40,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * A transitive step-dependency's runtime closure as a directory of jars under the CAS
- * ({@code plugin-tools/<key>}), handed to a step for {@code -cp <dir>/*}.
+ * ({@code tools/plugin-tools/<key>}), handed to a step for {@code -cp <dir>/*}.
  *
  * <p>{@code jk lock} resolves the closure from the tool's POMs the way it resolves a module's —
  * PubGrub, under BOM pins when {@code managed-by} or {@code with} is set, a Kotlin-multiplatform
@@ -107,8 +108,8 @@ final class ToolClosures {
         roots.add(row.root());
         for (String w : row.with()) roots.add(Coordinate.parse(w));
 
-        Path dir = cas.root().resolve("plugin-tools").resolve(cacheKey(row.root(), pinned));
-        if (complete(dir)) return dir;
+        Path dir = root(cas).resolve(cacheKey(row.root(), pinned));
+        if (complete(dir)) return used(cas, dir);
         Path staging = null;
         try {
             staging = Files.createTempDirectory(Files.createDirectories(dir.getParent()), ".closure-");
@@ -121,6 +122,24 @@ final class ToolClosures {
             if (staging != null) PathUtil.deleteRecursively(staging);
             throw failure(roots, dir, e);
         }
+        return used(cas, dir);
+    }
+
+    /**
+     * The family of the store's tools every closure directory lives in — a tool closure's and a
+     * lock closure's repository alike — so the tools collector reclaims one nothing has used
+     * within the family's window ({@code ToolsGc}).
+     */
+    static final String FAMILY = "plugin-tools";
+
+    /** Where closure directories live: {@code <store>/tools/plugin-tools}. */
+    static Path root(Cas cas) {
+        return cas.root().resolve("tools").resolve(FAMILY);
+    }
+
+    /** Record a use of the closure directory {@code dir}, which the collector counts down from; answers it. */
+    static Path used(Cas cas, Path dir) {
+        ToolUse.record(cas.root().resolve("tools"), FAMILY, dir);
         return dir;
     }
 
