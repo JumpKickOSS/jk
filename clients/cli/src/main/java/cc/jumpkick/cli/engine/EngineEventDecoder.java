@@ -265,6 +265,17 @@ final class EngineEventDecoder {
                         listener.onWorkspaceFinish(failed);
                         return failed;
                     }
+                    // A warning no module owns yet (a run notice posted while the run locks, syncs or
+                    // installs a toolchain, before any module starts) is a fact about the run: a note,
+                    // kept above the region. Routed to a module that does not exist it was dropped.
+                    case EngineProtocol.WARN -> {
+                        BuildPlanListener owner = planListenersByDir.get(dir);
+                        if (owner != null) {
+                            dispatch(type, line, owner, d -> {}, d -> {}, texts);
+                        } else {
+                            listener.onNote(WarnEvent.decode(line).message());
+                        }
+                    }
                     // A member's warnings render live through its listener; its result carries none.
                     default ->
                         dispatch(
