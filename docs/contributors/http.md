@@ -369,6 +369,15 @@ progress/structure, and the freshest sample always survives); the engine skips w
 | **Sampled** (change-gated) | `status` | ~every 2 s while any client is subscribed, **and** only when presentation-quantized vitals change (CPU ~1 pp, RAM/heap ~1 MiB, counters exact). Also forced on stream connect and nudged on request start/finish |
 | **Sampled** (change-gated, IO) | `cache` | Safety-net tick (60 s) while subscribed, plus after request finish; snapshot walks are single-flight and TTL-memoized (30 s) engine-side; **not** on the 2 s status sampler. Live frames are **thin** (dual surface totals + budgets, `"thin": true`); full section breakdown is REST-only |
 
+**Which events each surface carries** is written in one place, `EventCatalog`
+(`shared/wire/.../protocol/EventCatalog.java`): every event jk streams, and for the engine wire,
+console JSONL (`-O jsonl` stdout), SSE and MCP either how it is carried (under which name, how
+sampled) or why it is omitted. `SseEventSink` asks it rather than dropping events in empty cases,
+and the catalog tests drive each surface's real encoder against it (`WireRecordContractTest`,
+`EventCatalogSseTest`, `EventCatalogMcpTest`, `EventCatalogConsoleTest`): a new event type fails
+until it has a row, and a surface that carries what its row omits, or drops what it carries, fails
+too. A new event is a row first, then its encoders.
+
 The sampled `status`/`cache` frames are **dashboard-stream chrome**: MCP SSE subscriptions
 (`GET /mcp`) never receive them, and an MCP stream alone neither starts nor sustains the samplers
 — "while subscribed" above means dashboard (`/api/events`) subscribers.

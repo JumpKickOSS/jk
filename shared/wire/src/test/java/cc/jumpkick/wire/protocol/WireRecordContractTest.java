@@ -135,6 +135,62 @@ class WireRecordContractTest {
         }
     }
 
+    // ---- the event catalog ----------------------------------------------------------------------
+
+    /**
+     * Every token {@link EngineProtocol} declares is an event with a row in {@link EventCatalog}, or
+     * a message the catalog names as one (a request, a reply, an error code, a field): never both,
+     * never neither. A new token fails here until it is placed. An event one surface has alone may
+     * share a request's name ({@code status}) or be declared here for the CLI's own record ({@code
+     * guard}): its row says the wire never carries it.
+     */
+    @Test
+    void every_protocol_token_is_an_event_or_a_message() throws Exception {
+        for (String token : protocolTokens()) {
+            EventCatalog.Row row = EventCatalog.row(token);
+            boolean onTheWire = row != null && row.wire() instanceof EventCatalog.Carried;
+            boolean message = EventCatalog.isMessage(token);
+            assertThat(row != null || message)
+                    .as("`%s` is neither an event in EventCatalog nor a message it names", token)
+                    .isTrue();
+            assertThat(onTheWire && message)
+                    .as("`%s` is both a wire event and a request/reply in EventCatalog", token)
+                    .isFalse();
+        }
+    }
+
+    /** Every record that encodes a wire line is an event the catalog carries on the wire, or a message. */
+    @Test
+    void every_wire_record_is_an_event_or_a_message() throws Exception {
+        for (Class<?> type : wireRecords()) {
+            String discriminator = requireNonNull(EngineProtocol.typeOf(encode(populated(type))));
+            boolean event = EventCatalog.carries(EventCatalog.Surface.WIRE, discriminator);
+            assertThat(event || EventCatalog.isMessage(discriminator))
+                    .as(
+                            "%s encodes `%s`, which EventCatalog neither lists nor names a message",
+                            type.getSimpleName(), discriminator)
+                    .isTrue();
+        }
+    }
+
+    /** A verdict says why: an omission has its reason, a carried event how it is carried. */
+    @Test
+    void every_verdict_is_written() {
+        assertThat(EventCatalog.rows()).hasSizeGreaterThan(50);
+        for (EventCatalog.Row row : EventCatalog.rows()) {
+            for (EventCatalog.Surface surface : EventCatalog.Surface.values()) {
+                switch (row.on(surface)) {
+                    case EventCatalog.Omitted o ->
+                        assertThat(o.reason())
+                                .as("%s on %s", row.type(), surface)
+                                .isNotBlank();
+                    case EventCatalog.Carried c ->
+                        assertThat(c.how()).as("%s on %s", row.type(), surface).isNotBlank();
+                }
+            }
+        }
+    }
+
     // ---- discovery + instance synthesis --------------------------------------------------------
 
     private static final String PACKAGE = "cc.jumpkick.wire.protocol";
