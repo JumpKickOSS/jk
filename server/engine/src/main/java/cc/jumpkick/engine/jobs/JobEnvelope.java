@@ -93,7 +93,7 @@ public final class JobEnvelope {
         private final long jid;
         private final long buildNumber;
 
-        AlreadyRunning(String message, long jid, long buildNumber) {
+        public AlreadyRunning(String message, long jid, long buildNumber) {
             super(message);
             this.jid = jid;
             this.buildNumber = buildNumber;

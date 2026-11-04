@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobOrigin;
 import cc.jumpkick.engine.jobs.JobSpec;
 import java.util.ArrayList;
@@ -35,11 +36,20 @@ public final class McpJobRuns {
 
     private McpJobRuns() {}
 
-    /** Submit and answer immediately with the {@code <kind>-accepted} envelope. */
+    /**
+     * Submit and answer immediately with the {@code <kind>-accepted} envelope. When the same job is
+     * already running, the answer is that job's {@code jid}, so a {@code run} waits on it and the
+     * agent never sees the journal's build number, a second number for the same job.
+     */
     public static Map<String, Object> accept(McpCall in, JobSpec spec) {
         McpContext ctx = in.ctx();
         try {
-            long requestId = ctx.jobs().trigger(spec);
+            long requestId;
+            try {
+                requestId = ctx.jobs().trigger(spec);
+            } catch (JobEnvelope.AlreadyRunning running) {
+                requestId = running.jid();
+            }
             String progressToken = in.progressToken();
             if (progressToken != null) ctx.progressTokens().bind(progressToken, requestId);
             Map<String, Object> fields = new LinkedHashMap<>();
