@@ -5,11 +5,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.FileNotFoundException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 
 class ArtifactFanOutTest {
@@ -75,6 +78,26 @@ class ArtifactFanOutTest {
                     .as("the fetch in flight was interrupted")
                     .isTrue();
         }
+    }
+
+    @Test
+    void fetches_cancelled_before_they_ran_do_not_hold_the_call_for_its_grace() {
+        int n = 200;
+        List<AtomicBoolean> claimed = new ArrayList<>();
+        List<Future<?>> pending = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            claimed.add(new AtomicBoolean());
+            pending.add(new CompletableFuture<>()); // never scheduled
+        }
+        CountDownLatch stopped = new CountDownLatch(n);
+        long start = System.nanoTime();
+
+        ArtifactFanOut.cancelAndWait(pending, claimed, stopped);
+
+        assertThat(stopped.getCount()).isZero();
+        assertThat(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start))
+                .as("not the %s grace", ArtifactFanOut.CANCEL_GRACE)
+                .isLessThan(1_000);
     }
 
     private static boolean await(CountDownLatch latch) throws InterruptedException {

@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.Lockfile;
@@ -49,7 +50,7 @@ public final class BuildForks {
     /** Forks this engine staged, by store and fork; see {@link #stage}. */
     private static final Set<String> STAGED = ConcurrentHashMap.newKeySet();
 
-    /** Forget what this engine staged; tests and a store clean. */
+    /** Forget what this engine staged: the store's GC and wipes call it, and tests. */
     public static void forgetStaged() {
         STAGED.clear();
     }
@@ -122,12 +123,14 @@ public final class BuildForks {
      */
     public static List<String> stage(List<Fork> forks) throws InterruptedException {
         String store = JkStores.storeCas().root().toString();
+        // --force revalidates what it stages, as every fetch under it does.
+        boolean force = SessionContext.current().config().forceOr(false);
         List<ArtifactFanOut.Fetch<String>> stages = new ArrayList<>(forks.size());
         for (Fork fork : forks) {
             // Staged once in this engine, a fork is not walked again on every warm build: staging is
             // ahead of time only, so a store cleaned since is the needing step's to refetch.
             String memo = store + "|" + fork.key();
-            if (STAGED.contains(memo)) continue;
+            if (!force && STAGED.contains(memo)) continue;
             stages.add(() -> {
                 try {
                     fork.stage().fetch();

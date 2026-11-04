@@ -29,6 +29,7 @@ final class StageProgress implements AutoCloseable {
     static final String SYNC_LABEL = "Syncing dependencies…";
 
     private final CountDownLatch stop = new CountDownLatch(1);
+    private boolean closed;
     private final Thread sampler;
 
     /** What one stage has reported, so the next report moves only forward. */
@@ -50,7 +51,11 @@ final class StageProgress implements AutoCloseable {
         this.sampler = SessionContext.startVirtual("jk-stage-progress-" + stage, () -> {
             try {
                 do {
-                    report(board.snapshot(), listener, stage, label, reported);
+                    // Under the lock close() takes: once the stage is closed, its last word stands.
+                    synchronized (this) {
+                        if (closed) break;
+                        report(board.snapshot(), listener, stage, label, reported);
+                    }
                 } while (!stop.await(PERIOD_MILLIS, TimeUnit.MILLISECONDS));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -85,6 +90,9 @@ final class StageProgress implements AutoCloseable {
 
     @Override
     public void close() {
+        synchronized (this) {
+            closed = true; // a report in progress finishes first; none starts after
+        }
         stop.countDown();
         try {
             sampler.join(Duration.ofSeconds(2));
