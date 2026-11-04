@@ -3,6 +3,7 @@ package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.Session;
@@ -655,6 +656,36 @@ class RepoCredentialResolverTest {
 
         assertThat(ResolvedSecrets.plus(dir, SecretRedactor.none()).redact("alice-the-user:p4ssw0rd-secret"))
                 .isEqualTo("alice-the-user:" + SecretRedactor.MASK);
+        ResolvedSecrets.clear();
+    }
+
+    /**
+     * A settings.xml {@code <server>} whose password is {@code ${env.NEXUS_PASSWORD}} sends the
+     * requesting shell's value, and that value is filed for the redactor like any other credential.
+     */
+    @Test
+    void an_expanded_settings_xml_password_is_sent_and_filed(@TempDir Path dir) throws Exception {
+        ResolvedSecrets.clear();
+        Path settings = dir.resolve("settings.xml");
+        Files.writeString(settings, """
+                <settings>
+                  <servers><server><id>nexus</id><username>u</username><password>${env.NEXUS_PASSWORD}</password></server></servers>
+                  <mirrors>
+                    <mirror><id>nexus</id><mirrorOf>*</mirrorOf><url>https://nexus.corp/repo/maven-public/</url></mirror>
+                  </mirrors>
+                </settings>
+                """);
+        MavenSettings expanded = RequestShell.where(
+                Map.of("NEXUS_PASSWORD", "shell-only-secret"), () -> MavenSettings.loadFrom(settings));
+        var r = resolver(env(Map.of()), expanded, new RepoCredentialStore(dir), forge(new TokenStore(dir)));
+
+        RepoCredential sent = SessionContext.where(
+                Session.defaults().withWorkingDir(dir),
+                () -> r.resolve("nexus", URI.create("https://nexus.corp/repo/maven-public/"), Optional.empty()));
+
+        assertThat(sent).isEqualTo(new RepoCredential.Basic("u", "shell-only-secret"));
+        assertThat(ResolvedSecrets.plus(dir, SecretRedactor.none()).redact("u:shell-only-secret"))
+                .isEqualTo("u:" + SecretRedactor.MASK);
         ResolvedSecrets.clear();
     }
 

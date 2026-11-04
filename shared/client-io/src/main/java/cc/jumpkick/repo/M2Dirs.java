@@ -7,6 +7,7 @@ import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.util.MinimalXml;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
 
@@ -19,10 +20,12 @@ import org.jspecify.annotations.Nullable;
  *   <li>{@code JK_M2_LOCAL} environment variable
  *   <li>{@code maven.repo.local} system property
  *   <li>the user settings file's top-level {@code <localRepository>} (no profile merge; the file
- *       is the one {@link MavenSettings#userSettingsPath()} names)
+ *       is the one {@link MavenSettings#userSettingsPath()} names), its {@code ${env.NAME}} and
+ *       {@code ${user.home}} expressions expanded for the request — see {@link MavenSettings#expand}
  *   <li>{@code ~/.m2/repository}
  * </ol>
- * An unparseable {@code settings.xml} localRepository is warned once per run and skipped.
+ * An unparseable {@code settings.xml} localRepository, or one naming an expression that does not
+ * expand, is warned once per run and skipped.
  */
 public final class M2Dirs {
 
@@ -49,13 +52,38 @@ public final class M2Dirs {
         return Path.of(System.getProperty("user.home"), ".m2", "repository");
     }
 
-    /** Top-level {@code <localRepository>} only; null when missing or unusable. */
+    /**
+     * Top-level {@code <localRepository>} only, expanded for the request; null when missing or
+     * unusable. The parse is memoized on the file and the expansion runs per call, so the path a
+     * request sees follows its own environment.
+     */
     static @Nullable Path settingsLocalRepository() {
         Path settings = settingsXml();
         if (settings == null) return null;
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(settings);
         if (stamp == null) return null; // absent or unreadable
-        return SETTINGS_REPO.get(settings.toAbsolutePath().normalize(), stamp, () -> parseSettings(settings));
+        String raw = SETTINGS_REPO.get(settings.toAbsolutePath().normalize(), stamp, () -> parseSettings(settings));
+        if (raw == null) return null;
+        MavenSettings.Expansion expanded = MavenSettings.expand(raw);
+        if (!expanded.unresolved().isEmpty()) {
+            String names = String.join(
+                    ", ",
+                    expanded.unresolved().stream().map(e -> "${" + e + "}").toList());
+            RunNotices.warnOnce(
+                    "m2-settings-localrepo-unexpanded:" + settings + " " + names,
+                    () -> "jk: warning: " + settings + " <localRepository> names " + names
+                            + ", which does not expand in the shell that ran jk; using " + defaultRepository());
+            return null;
+        }
+        try {
+            return Path.of(expanded.value());
+        } catch (InvalidPathException notAPath) {
+            RunNotices.warnOnce(
+                    "m2-settings-localrepo-not-a-path:" + settings,
+                    () -> "jk: warning: " + settings + " <localRepository> is not a path once expanded; using "
+                            + defaultRepository());
+            return null;
+        }
     }
 
     /**
@@ -67,16 +95,18 @@ public final class M2Dirs {
      * thousand times for a value that cannot change during a resolve. {@code RunNotices.warnOnce}
      * beside the failure paths is a good hint that the authors expected repeat entry.
      */
-    private static final StampedMemo<Path, StampedMemo.FileStamp, Path> SETTINGS_REPO = StampedMemo.create();
+    private static final StampedMemo<Path, StampedMemo.FileStamp, @Nullable String> SETTINGS_REPO =
+            StampedMemo.create();
 
-    private static @Nullable Path parseSettings(Path settings) {
+    /** The {@code <localRepository>} text as written, stripped; null when absent or not a path. */
+    private static @Nullable String parseSettings(Path settings) {
         try {
             MinimalXml.Element doc = MinimalXml.parse(Files.readString(settings));
             String raw =
                     doc.element("localRepository").map(MinimalXml.Element::text).orElse(null);
             if (raw == null || raw.isBlank()) return null;
             String trimmed = raw.strip();
-            if (trimmed.contains("${") || trimmed.indexOf('<') >= 0) {
+            if (trimmed.indexOf('<') >= 0) {
                 RunNotices.warnOnce(
                         "m2-settings-localrepo-not-plain",
                         () -> "jk: warning: ~/.m2/settings.xml <localRepository> is not a plain path; using "
@@ -84,7 +114,7 @@ public final class M2Dirs {
                                 + " (or JK_STORE_DIR repos on fetch fallback)");
                 return null;
             }
-            return Path.of(trimmed);
+            return trimmed;
         } catch (Exception e) {
             RunNotices.warnOnce(
                     "m2-settings-localrepo-unparseable",

@@ -35,9 +35,14 @@ import org.jspecify.annotations.Nullable;
  * <p>A mirror is a <em>transport</em> fact: the resolver keeps asking the repository it names,
  * the lock records that repository, and only the URL the HTTP client opens changes on this
  * machine. Best-effort and read-only: a missing or malformed file is an empty result, never an
- * error. {@code privateKey} / {@code passphrase} / {@code configuration} on a server, Maven's
- * {@code ${...}} property expansion and password encryption, {@code <pluginRepositories>} and
- * {@code <pluginGroups>} are not read.
+ * error.
+ *
+ * <p>Every value is expanded the way Maven expands it — {@code ${env.NAME}}, {@code ${user.home}}
+ * and the other system properties, see {@link SettingsValues} — against the environment of the
+ * request that asks: {@link #current()} keeps the parse while the files are unchanged and expands
+ * it per request, so {@code NEXUS_PASSWORD=… jk build} is seen by a resident engine started
+ * without it. {@code privateKey} / {@code configuration} on a server, password encryption, {@code
+ * <pluginRepositories>} and {@code <pluginGroups>} are not read.
  */
 public final class MavenSettings {
 
@@ -47,9 +52,17 @@ public final class MavenSettings {
     /** The environment variable naming the user settings file: Maven's {@code -s} for jk. */
     public static final String SETTINGS_ENV = "JK_M2_SETTINGS";
 
-    /** A server entry: a username/password keyed by repository id. */
+    /** A server entry: a username/password keyed by repository id, and the key passphrase it names. */
     public record Server(
-            String id, @Nullable String username, @Nullable String password) {}
+            String id,
+            @Nullable String username,
+            @Nullable String password,
+            @Nullable String passphrase) {
+
+        public Server(String id, @Nullable String username, @Nullable String password) {
+            this(id, username, password, null);
+        }
+    }
 
     /**
      * A {@code <mirror>}: the repositories {@code mirrorOf} matches are fetched from {@code url}
@@ -161,7 +174,7 @@ public final class MavenSettings {
     record Profile(String id, boolean activeByDefault, List<RepositorySpec> repositories) {}
 
     private static final MavenSettings EMPTY =
-            new MavenSettings(Map.of(), List.of(), List.of(), List.of(), Set.of(), List.of());
+            new MavenSettings(Map.of(), List.of(), List.of(), List.of(), Set.of(), List.of(), List.of());
 
     private final Map<String, Server> servers;
     private final List<Mirror> mirrors;
@@ -169,6 +182,7 @@ public final class MavenSettings {
     private final List<Profile> profiles;
     private final Set<String> activeProfileIds;
     private final List<Path> files;
+    private final List<SettingsValues.Notice> notices;
 
     MavenSettings(
             Map<String, Server> servers,
@@ -176,13 +190,15 @@ public final class MavenSettings {
             List<Proxy> proxies,
             List<Profile> profiles,
             Set<String> activeProfileIds,
-            List<Path> files) {
+            List<Path> files,
+            List<SettingsValues.Notice> notices) {
         this.servers = Map.copyOf(servers);
         this.mirrors = List.copyOf(mirrors);
         this.proxies = List.copyOf(proxies);
         this.profiles = List.copyOf(profiles);
         this.activeProfileIds = Set.copyOf(activeProfileIds);
         this.files = List.copyOf(files);
+        this.notices = List.copyOf(notices);
     }
 
     public static MavenSettings empty() {
@@ -210,6 +226,20 @@ public final class MavenSettings {
     /** Every active {@code <proxy>}, user file first, in declaration order. */
     public List<Proxy> proxies() {
         return proxies;
+    }
+
+    /**
+     * What reading the files found wrong for this request — an expression that did not expand —
+     * one line each, as the run's warnings say it.
+     */
+    public List<String> warnings() {
+        return notices.stream().map(SettingsValues.Notice::message).toList();
+    }
+
+    /** Say {@link #warnings()} on this run, once each. */
+    private MavenSettings warn() {
+        for (SettingsValues.Notice notice : notices) notice.say();
+        return this;
     }
 
     /** The settings files that were read, user file first; empty when neither exists. */
@@ -276,13 +306,16 @@ public final class MavenSettings {
         ids.addAll(global.activeProfileIds);
         List<Path> read = new ArrayList<>(files);
         read.addAll(global.files);
+        Set<SettingsValues.Notice> said = new LinkedHashSet<>(notices);
+        said.addAll(global.notices);
         return new MavenSettings(
                 mergedServers,
                 byId(mirrors, global.mirrors, Mirror::id),
                 byId(proxies, global.proxies, Proxy::id),
                 byId(profiles, global.profiles, Profile::id),
                 ids,
-                read);
+                read,
+                List.copyOf(said));
     }
 
     private static <T> List<T> byId(List<T> user, List<T> global, Function<T, String> id) {
@@ -292,27 +325,33 @@ public final class MavenSettings {
         return List.copyOf(merged.values());
     }
 
-    /** Load from an explicit file alone; missing/invalid → empty. */
+    /** Load from an explicit file alone, expanded against the request's environment; missing/invalid → empty. */
     public static MavenSettings loadFrom(@Nullable Path settingsXml) {
-        return settingsXml == null ? EMPTY : SettingsXml.read(settingsXml);
+        return loadFrom(settingsXml, BuildEnv.ambient()).warn();
+    }
+
+    /** As {@link #loadFrom(Path)} expanding against {@code env}, without saying the warnings — tests. */
+    static MavenSettings loadFrom(@Nullable Path settingsXml, Function<String, @Nullable String> env) {
+        return settingsXml == null ? EMPTY : SettingsXml.read(SettingsXml.parse(settingsXml), SettingsValues.of(env));
     }
 
     /** The user file over the installation file, both located through the ambient environment. */
     public static MavenSettings load() {
-        return load(BuildEnv.ambient());
+        return load(BuildEnv.ambient()).warn();
     }
 
-    /** As {@link #load()} with the environment given — tests. */
+    /** As {@link #load()} with the environment given, without saying the warnings — tests. */
     static MavenSettings load(Function<String, @Nullable String> env) {
-        MavenSettings user = loadFrom(userSettingsPath(env));
-        Path global = globalSettingsPath(env);
-        return global == null ? user : user.over(loadFrom(global));
+        return Parsed.of(env).expand(SettingsValues.of(env));
     }
 
     /**
-     * {@link #load()}, memoized on the two files' size and mtime: the engine is resident and asks
-     * per request — the proxy selector once per HTTP request — so the files are re-read only when
-     * they change, and a file that appears or is edited is seen by the next request.
+     * {@link #load()} for the request being served. The parse is memoized on the two files'
+     * identity: the engine is resident and asks per request — the proxy selector once per HTTP
+     * request — so the files are re-read only when they change, and a file that appears or is
+     * edited is seen by the next request. The expansion is the request's own: it is reused only
+     * while every variable it read answers the same, so one shell's {@code ${env.NEXUS_PASSWORD}}
+     * is never another's.
      */
     public static MavenSettings current() {
         Function<String, @Nullable String> env = BuildEnv.ambient();
@@ -322,13 +361,72 @@ public final class MavenSettings {
         List<StampedMemo.FileStamp> stamp = List.of(
                 Objects.requireNonNullElse(StampedMemo.FileStamp.of(user), ABSENT),
                 Objects.requireNonNullElse(StampedMemo.FileStamp.of(global), ABSENT));
-        return CURRENT.get(key, stamp, () -> load(env));
+        return CURRENT.get(key, stamp, () -> Parsed.of(env)).current(env).warn();
+    }
+
+    /**
+     * {@code raw}, a value of the settings file the user names, expanded against the request's
+     * environment the way every other value of the file is — for a reader of the file that is not
+     * this class ({@code <localRepository>}). Says nothing: what did not resolve is listed.
+     */
+    public static Expansion expand(String raw) {
+        SettingsValues.Expanded expanded = SettingsValues.of(BuildEnv.ambient()).expandQuietly(raw);
+        return new Expansion(expanded.value(), expanded.unresolved());
+    }
+
+    /** One expanded value, and the expressions in it ({@code env.HOME}) that did not resolve. */
+    public record Expansion(String value, List<String> unresolved) {
+
+        public Expansion {
+            unresolved = List.copyOf(unresolved);
+        }
+    }
+
+    /**
+     * The parse of the user and installation files, and the last expansion of it with the lookups
+     * that expansion made. Concurrent requests from different shells each get their own values;
+     * at worst they take turns recomputing.
+     */
+    private static final class Parsed {
+
+        private final SettingsXml.@Nullable Document user;
+        private final SettingsXml.@Nullable Document global;
+        private volatile @Nullable Expanded last;
+
+        private record Expanded(SettingsValues values, MavenSettings settings) {}
+
+        private Parsed(SettingsXml.@Nullable Document user, SettingsXml.@Nullable Document global) {
+            this.user = user;
+            this.global = global;
+        }
+
+        static Parsed of(Function<String, @Nullable String> env) {
+            Path userPath = userSettingsPath(env);
+            Path globalPath = globalSettingsPath(env);
+            return new Parsed(
+                    userPath == null ? null : SettingsXml.parse(userPath),
+                    globalPath == null ? null : SettingsXml.parse(globalPath));
+        }
+
+        MavenSettings current(Function<String, @Nullable String> env) {
+            SettingsValues values = SettingsValues.of(env);
+            Expanded hit = last;
+            if (hit != null && hit.values().stillHolds(values)) return hit.settings();
+            MavenSettings fresh = expand(values);
+            last = new Expanded(values, fresh);
+            return fresh;
+        }
+
+        MavenSettings expand(SettingsValues values) {
+            MavenSettings userSettings = SettingsXml.read(user, values);
+            return global == null ? userSettings : userSettings.over(SettingsXml.read(global, values));
+        }
     }
 
     /** The stamp of a file that is not there, so an absent file is a state and not a cache miss. */
     private static final StampedMemo.FileStamp ABSENT = new StampedMemo.FileStamp(new StatIdentity(-1, 0, 0, ""));
 
-    private static final StampedMemo<String, List<StampedMemo.FileStamp>, MavenSettings> CURRENT = StampedMemo.create();
+    private static final StampedMemo<String, List<StampedMemo.FileStamp>, Parsed> CURRENT = StampedMemo.create();
 
     /**
      * The user settings file: the {@code jk.m2.settings} system property, then {@code
