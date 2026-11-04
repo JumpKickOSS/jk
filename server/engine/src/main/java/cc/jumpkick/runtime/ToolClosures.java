@@ -21,6 +21,7 @@ import cc.jumpkick.resolver.PlatformConstraints;
 import cc.jumpkick.resolver.PubGrubResolver;
 import cc.jumpkick.resolver.Resolution;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -218,17 +219,27 @@ final class ToolClosures {
      * deleted: a step may be running on it.
      */
     static void publish(Path staging, Path dir) throws IOException {
-        if (complete(dir)) {
-            PathUtil.deleteRecursively(staging);
-            return;
-        }
-        if (Files.isDirectory(dir)) PathUtil.deleteRecursively(dir);
-        try {
-            AtomicWrites.publishDir(staging, dir);
-        } catch (IOException e) {
-            if (!complete(dir)) throw e;
-            PathUtil.deleteRecursively(staging);
-        }
+        // Under the directory's lock, so the check and the replace are one step: two builders of
+        // one closure (two modules, two engines) cannot see it incomplete, and then one of them
+        // delete the whole directory the other just published and a step is reading.
+        FileLocks.withLock(lockFile(dir), () -> {
+            if (complete(dir)) {
+                PathUtil.deleteRecursively(staging);
+                return;
+            }
+            if (Files.isDirectory(dir)) PathUtil.deleteRecursively(dir);
+            try {
+                AtomicWrites.publishDir(staging, dir);
+            } catch (IOException e) {
+                if (!complete(dir)) throw e;
+                PathUtil.deleteRecursively(staging);
+            }
+        });
+    }
+
+    /** The lock {@link #publish} holds for {@code dir}: a dot-file beside it, which the collector leaves alone. */
+    static Path lockFile(Path dir) {
+        return dir.resolveSibling("." + dir.getFileName() + ".lock");
     }
 
     /**

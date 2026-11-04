@@ -31,7 +31,8 @@ import org.jspecify.annotations.Nullable;
  * digest of what the answer was resolved from, and every file of it, POMs among them ({@code
  * !pom}), each with its digest on one line ({@code <coordinate> sha256:<hex>}, written as {@code
  * files}, held in {@link #closure}): hundreds of files, so one line each rather than a row each.
- * Rows of one name differ by inputs, which name the module.
+ * Each row names the module it answers for ({@link #module}, a path under the lock; none for the
+ * lock's own) and the {@link #plugin} that answered ({@link LockClosureStamp}).
  */
 public record ToolEntry(
         @Nullable String coordinate,
@@ -45,7 +46,9 @@ public record ToolEntry(
         @Nullable String managedBy,
         List<String> closure,
         @Nullable String resolvedBy,
-        @Nullable String inputs) {
+        @Nullable String inputs,
+        @Nullable String module,
+        @Nullable String plugin) {
 
     /** The {@link #type} of a URL row. */
     public static final String FILE = "file";
@@ -83,8 +86,16 @@ public record ToolEntry(
                             "[[tool]] " + resolvedBy + " file `" + file + "` must be `<coordinate> sha256:<hex>`");
                 }
             }
-        } else if (inputs != null) {
-            throw new IllegalArgumentException("[[tool]] " + name + " names `inputs` without `resolved-by`");
+            if (plugin == null || plugin.isBlank()) {
+                throw new IllegalArgumentException("[[tool]] " + resolvedBy + " names no `plugin` that answered it");
+            }
+            if (module != null && (module.isBlank() || module.startsWith("/") || module.contains(".."))) {
+                throw new IllegalArgumentException(
+                        "[[tool]] " + resolvedBy + " module must be a path under the lock — got: " + module);
+            }
+        } else if (inputs != null || module != null || plugin != null) {
+            throw new IllegalArgumentException(
+                    "[[tool]] " + name + " names `inputs`, `module` or `plugin` without `resolved-by`");
         } else if (url != null) {
             if (coordinate != null
                     || version != null
@@ -145,7 +156,21 @@ public record ToolEntry(
             List<String> with,
             @Nullable String managedBy,
             List<String> closure) {
-        this(coordinate, version, type, classifier, checksum, sha256, url, with, managedBy, closure, null, null);
+        this(
+                coordinate,
+                version,
+                type,
+                classifier,
+                checksum,
+                sha256,
+                url,
+                with,
+                managedBy,
+                closure,
+                null,
+                null,
+                null,
+                null);
     }
 
     /** A Maven artifact row. */
@@ -191,10 +216,17 @@ public record ToolEntry(
     }
 
     /**
-     * The closure {@code resolvedBy} ({@code <plugin>/<name>}) answered for {@code inputsHex}: each
-     * file ({@code group:artifact:version[:classifier][!type]}) to the hex digest of its bytes.
+     * The closure {@code resolvedBy} ({@code <plugin>/<name>}) answered for the module at {@code
+     * module} (a path under the lock; null for the lock's own module) by {@code plugin} (its
+     * {@link LockClosureStamp}), for inputs digesting to {@code inputsHex}: each file ({@code
+     * group:artifact:version[:classifier][!type]}) to the hex digest of its bytes.
      */
-    public static ToolEntry resolved(String resolvedBy, String inputsHex, Map<Coordinate, String> files) {
+    public static ToolEntry resolved(
+            String resolvedBy,
+            @Nullable String module,
+            String plugin,
+            String inputsHex,
+            Map<Coordinate, String> files) {
         List<String> specs = new ArrayList<>();
         for (Map.Entry<Coordinate, String> file : files.entrySet()) {
             specs.add(file.getKey() + " sha256:" + file.getValue());
@@ -211,16 +243,26 @@ public record ToolEntry(
                 null,
                 specs,
                 resolvedBy,
-                "sha256:" + inputsHex);
+                "sha256:" + inputsHex,
+                module == null || module.isEmpty() ? null : module,
+                plugin);
     }
 
-    /** The row of {@code rows} {@code resolvedBy} answered for {@code inputsHex}, or null when none is. */
-    public static @Nullable ToolEntry resolvedIn(List<ToolEntry> rows, String resolvedBy, String inputsHex) {
-        String inputs = "sha256:" + inputsHex;
+    /**
+     * The row of {@code rows} answering {@code resolvedBy} for the module at {@code module} (a path
+     * under the lock; empty or null for the lock's own module), or null when none does.
+     */
+    public static @Nullable ToolEntry resolvedIn(List<ToolEntry> rows, String resolvedBy, @Nullable String module) {
+        String wanted = module == null || module.isEmpty() ? null : module;
         for (ToolEntry row : rows) {
-            if (resolvedBy.equals(row.resolvedBy()) && inputs.equals(row.inputs())) return row;
+            if (resolvedBy.equals(row.resolvedBy()) && Objects.equals(wanted, row.module())) return row;
         }
         return null;
+    }
+
+    /** The hex digest of the inputs a resolved row was answered for. */
+    public String inputsHex() {
+        return Objects.requireNonNull(inputs, "inputs").substring("sha256:".length());
     }
 
     /** True for a closure a plugin resolved ({@link #resolvedBy}). */

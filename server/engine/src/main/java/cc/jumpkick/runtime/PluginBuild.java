@@ -500,11 +500,6 @@ public final class PluginBuild {
                 : MemberRows.view(lock, lockFile, moduleDir).platformPins();
     }
 
-    /**
-     * The lock at {@code lockFile} as the module at {@code moduleDir} reads it: a workspace member's
-     * partition rows in place of the workspace's for the coordinates it disagrees on, so a step's
-     * classpaths carry the jars the member's compile does ({@link MemberRows#view}).
-     */
     /** {@link LockClosures#planned} for the lock at {@code lockFile}; empty when the plugin declares no closure. */
     private static List<LockClosures.Repo> planLockClosures(
             JkBuild project, Path moduleDir, Cas cas, Path lockFile, String pluginId) throws IOException {
@@ -523,6 +518,11 @@ public final class PluginBuild {
         return Objects.requireNonNull(lockFile.toAbsolutePath().normalize().getParent(), "lock directory");
     }
 
+    /**
+     * The lock at {@code lockFile} as the module at {@code moduleDir} reads it: a workspace member's
+     * partition rows in place of the workspace's for the coordinates it disagrees on, so a step's
+     * classpaths carry the jars the member's compile does ({@link MemberRows#view}).
+     */
     private static Lockfile memberLock(Path lockFile, Path moduleDir) throws IOException {
         return MemberRows.view(LockfileReader.read(lockFile), lockFile, moduleDir);
     }

@@ -140,7 +140,13 @@ public final class ToolsGc {
                     continue;
                 }
                 long size = sizeOf(install.dir());
-                if (!dryRun) PathUtil.deleteRecursively(install.dir());
+                if (!dryRun) {
+                    PathUtil.deleteRecursively(install.dir());
+                    // A closure directory's publish lock beside it goes with it.
+                    if (family.equals(CLOSURE_FAMILY)) {
+                        Files.deleteIfExists(install.dir().resolveSibling("." + install.version() + ".lock"));
+                    }
+                }
                 removed.add(family + "/" + install.version());
                 freed[0] += size;
             }

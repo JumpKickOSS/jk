@@ -289,6 +289,7 @@ so a user can override anything a plugin sets.
 [[contribute.lock-closure]]
 name     = "deployment"
 for-step = "quarkus-augment"     # the steps that read it; omitted: every step of the plugin
+entries  = "runtime"             # the rows it is resolved from: runtime, or test-runtime (default)
 ```
 
 A `lock-closure` is a set of files your steps load that only your own resolution can name —
@@ -306,8 +307,11 @@ network. Each step `for-step` names receives the same extra holding exactly the 
 from the store when the step runs, and is keyed by it; other steps neither see it nor key on it.
 The lock pins each file by digest ([Lockfile](../user/lockfile.md#closures-a-plugin-resolves)),
 `jk sync` stages them, and an offline build reads them. jk asks only when the module's inputs (your
-plugin and version — jk's, if jk bundles it — the module, its locked rows and the lock's tool rows)
+plugin's build — its version, jk's if jk bundles it, and its jar — the module, the module's own rows
+and the lock's tool rows)
 changed, so the answer must follow from those — not from your table, which a variant can rewrite.
+`entries` says which of the module's rows are the inputs: `runtime` for a closure the production
+closure decides, so a test-only change does not ask for it again.
 
 **Conditions (closed set, one per `when`):** `classpath-has`, `config`/`equals`,
 `native-declared`, `kotlin-project`. Richer logic belongs in code.

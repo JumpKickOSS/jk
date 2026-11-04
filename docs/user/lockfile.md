@@ -457,12 +457,15 @@ build on another OS fails naming the missing closure.
 Some of what a build loads only the plugin can name: Quarkus finds each extension's
 `-deployment` artifact through the extension's own descriptor and applies its conditional
 dependencies and capabilities. A plugin that declares such a closure (`[[contribute.lock-closure]]`)
-is asked for it by `jk lock`, and the lock pins the answer as one row — the plugin and closure,
+is asked for it by `jk lock`, and the lock pins the answer as one row per module — the plugin and
+closure, the module it answers for (omitted for the lock's own), the plugin build that answered,
 the digest of its inputs, and every file with its digest, one per line, POMs among them:
 
 ```toml
 [[tool]]
 resolved-by = "quarkus/deployment"
+module      = "services/api"
+plugin      = "quarkus 1.0.0 jk 0.50.2 jar 3f2a9c…"
 inputs      = "sha256:879b9fa0…"
 files = [
   "io.quarkus:quarkus-arc-deployment:3.40.1 sha256:…",
@@ -471,22 +474,26 @@ files = [
 ]
 ```
 
-`[quarkus]` declares two: `quarkus/deployment`, which its augment reads, and
-`quarkus/test-deployment`, which its test model reads — so a test-only extension changes the test
-model's input and not the augment's.
+`[quarkus]` declares two: `quarkus/deployment`, resolved from the module's production rows and read
+by its augment, and `quarkus/test-deployment`, resolved from its test runtime rows and read by its
+test model — so a test-only extension changes the test model's input and not the augment's.
 
-`inputs` digests what the answer was resolved from: the plugin and its version (and jk's version,
-for a plugin jk bundles), the module (its path under the lock), the module's locked rows, and the
-lock's other tool rows (the tools the plugin resolves with). A plain `jk lock` keeps a row whose
-inputs still match without asking the plugin again; a row that no longer matches — a dependency
-added, the platform version moved, a jk upgrade — makes the lock stale, and the next build relocks
-first. Asking runs the plugin's own resolver once, over what jk already holds, and the files it
-downloads are taken into the store as they are pinned, so neither a relock nor the sync after it
-downloads them a second time. The plugin's table is not an input: the lock is the same for every
-variant, and what the table changes about a resolution is already in the rows. Only a module
-whose active plugins declare a closure is asked; every other lock and build forks nothing for it.
-A closure is resolved for the host that locks: a file a POM picks by OS is this host's, and a
-build on another OS downloads its own (an offline one there refuses it).
+`inputs` digests what the answer was resolved from: the plugin build, the module, the module's own
+rows in the scopes the closure reads (another member's dependencies are not among them), and the
+lock's tool rows (the tools the plugin resolves with). A relock keeps a module's row while its
+inputs and its plugin are unchanged, without asking the plugin again, and asks again when they
+moved — a dependency added, the platform version moved. A lock with no row for a module, or a row
+another build of the plugin answered (a jk upgrade, a plugin rebuilt under the same version), is
+stale, and the next build relocks first; any other change to what a closure is resolved from
+changes a manifest, which the lock's manifest digest already covers. Asking runs the plugin's own
+resolver once, over what jk already holds, and the files it downloads are taken into the store as
+they are pinned, so neither a relock nor the sync after it downloads them a second time. The
+plugin's table is not an input: the lock is the same for every variant, and what the table changes
+about a resolution is already in the rows. Only a module whose active plugins declare a closure is
+asked; every other lock and build forks nothing for it. A closure is resolved for the host that
+locks: a file a POM picks by OS is this host's, and a build on another OS downloads its own (an
+offline one there refuses it). Two modules that resolve alike each carry their row; their
+repositories on disk are one.
 
 Each step that reads a closure receives it as a repository of exactly those files, built from the
 store (or the Maven local repository, where jk keeps Central's artifacts) and verified against

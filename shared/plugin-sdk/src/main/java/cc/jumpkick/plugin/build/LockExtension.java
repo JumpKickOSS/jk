@@ -13,13 +13,14 @@ import org.jspecify.annotations.Nullable;
  * jk-plugin.toml} as {@code [[contribute.lock-closure]] name = "<name>"}, with {@code for-step}
  * naming the steps that read it.
  *
- * <p>{@code jk lock} asks only for a closure an active plugin declares, and only when the module's
- * inputs to it — the plugin (jk's version for one jk bundles), the module, its locked rows and the
- * plugin's tool rows — differ from the ones the lock already answers for; every other lock and
- * every build forks nothing for it. The plugin's table is not an input. The lock pins each file
- * by digest, {@code jk sync} puts them in the store, and each step the closure names receives a
- * Maven-layout repository of exactly those files under {@code exec.extra("lock-closure.<name>")},
- * built from the store when the step runs (and again if the store's collector reclaimed it).
+ * <p>{@code jk lock} asks only for a closure an active plugin declares, per module, and only when
+ * the module's inputs to it — this plugin's build, the module, the module's own rows in the scopes
+ * the closure reads ({@code entries}: {@code runtime} or {@code test-runtime}), and the lock's tool
+ * rows — differ from the ones the lock already answers for; every other lock and every build forks
+ * nothing for it. The plugin's table is not an input. The lock pins each file by digest, {@code jk
+ * sync} puts them in the store, and each step the closure names receives a Maven-layout repository
+ * of exactly those files under {@code exec.extra("lock-closure.<name>")}, built from the store when
+ * the step runs (and again if the store's collector reclaimed it).
  */
 @FunctionalInterface
 public interface LockExtension {

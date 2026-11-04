@@ -192,7 +192,7 @@ public final class ClasspathResolver {
      * closure within the rows {@code scopes} select, then its siblings' closure within the rows of
      * the scopes a sibling passes on ({@link ModuleRoots#inheritedScopes}).
      */
-    static List<Lockfile.Artifact> moduleRows(Lockfile lock, Set<Scope> scopes, JkBuild module, Path moduleDir) {
+    public static List<Lockfile.Artifact> moduleRows(Lockfile lock, Set<Scope> scopes, JkBuild module, Path moduleDir) {
         Map<String, Lockfile.Artifact> rows = new LinkedHashMap<>();
         for (Lockfile.Artifact row : reachableArtifacts(
                 selected(lock, scopes), ModuleRoots.own(module, moduleDir, scopes, lock.artifacts()))) {

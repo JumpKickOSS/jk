@@ -78,6 +78,7 @@ public final class QuarkusAugmentMain {
         // one `JK_OFFLINE=1 jk build` would silently pin every later build in that session.
         boolean offline = EnvValues.parseBool(args[12]).orElse(false);
         // The lock's quarkus/deployment closure as a Maven-layout repository: the resolver's tail.
+        // (The test model's fork receives quarkus/test-deployment the same way.)
         @Nullable Path closureRepo = closureRepository(args[11]);
 
         LockedClosure locked = LockedClosure.parse(runtimeList);
@@ -147,8 +148,9 @@ public final class QuarkusAugmentMain {
      * routes it, Central's mirror in Central's place while the failover window is open — so a file
      * of the deployment closure the store lacks (a lock older than its inputs, or another OS's
      * native jar) comes through the same doors every other fetch of the build does and Maven's own
-     * defaults are never consulted. The lock pins that closure ({@code quarkus/deployment}) and the
-     * engine hands it over as {@code closureRepo}, so the resolver normally finds every file there. A repository a
+     * defaults are never consulted. The lock pins that closure ({@code quarkus/deployment} for the
+     * augment, {@code quarkus/test-deployment} for the test model) and the engine hands it over as
+     * {@code closureRepo}, so the resolver normally finds every file there. A repository a
      * dependency POM declares under a route's id (the super POM's {@code central}) is sent to the
      * route as well.
      *
@@ -227,7 +229,8 @@ public final class QuarkusAugmentMain {
     }
 
     /**
-     * The closure repository argument: the lock's {@code quarkus/deployment} closure as a
+     * The closure repository argument: the lock closure the fork's step reads ({@code
+     * quarkus/deployment} for the augment, {@code quarkus/test-deployment} for the test model) as a
      * Maven-layout directory the engine linked from the store, or none (blank). It is the
      * resolver's only local tail — every file the lock pins for the closure is there after a sync,
      * so a clean build downloads nothing and an offline one has everything; a file it lacks (a lock

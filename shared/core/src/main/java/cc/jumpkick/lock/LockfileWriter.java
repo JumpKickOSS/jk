@@ -311,7 +311,7 @@ public final class LockfileWriter {
         sorted.sort(Comparator.comparing(ToolEntry::isResolved)
                 .thenComparing((ToolEntry t) -> t.url() != null)
                 .thenComparing(LockfileWriter::toolName)
-                .thenComparing(t -> t.inputs() == null ? "" : t.inputs())
+                .thenComparing(t -> t.module() == null ? "" : t.module())
                 .thenComparing(t -> t.version() == null ? "" : t.version())
                 .thenComparing(ToolEntry::type)
                 .thenComparing(t -> t.classifier() == null ? "" : t.classifier())
@@ -324,6 +324,12 @@ public final class LockfileWriter {
             String resolvedBy = t.resolvedBy();
             if (resolvedBy != null) {
                 out.append("resolved-by = ").append(quote(resolvedBy)).append('\n');
+                String module = t.module();
+                if (module != null)
+                    out.append("module      = ").append(quote(module)).append('\n');
+                out.append("plugin      = ")
+                        .append(quote(Objects.requireNonNull(t.plugin())))
+                        .append('\n');
                 out.append("inputs      = ")
                         .append(quote(Objects.requireNonNull(t.inputs())))
                         .append('\n');

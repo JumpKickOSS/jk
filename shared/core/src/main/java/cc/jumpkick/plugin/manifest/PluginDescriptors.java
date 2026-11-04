@@ -350,7 +350,17 @@ public final class PluginDescriptors {
             if (out.stream().anyMatch(c -> c.name().equals(name))) {
                 throw new JkBuildParseException(where + ": `" + name + "` is declared twice");
             }
-            out.add(new PluginDescriptor.LockClosure(name, parseForStep(t, "lock-closure", where)));
+            String entries = t.getString("entries");
+            if (entries == null) entries = PluginDescriptor.LockClosure.TEST_RUNTIME_ENTRIES;
+            if (!entries.equals(PluginDescriptor.LockClosure.RUNTIME_ENTRIES)
+                    && !entries.equals(PluginDescriptor.LockClosure.TEST_RUNTIME_ENTRIES)) {
+                throw new JkBuildParseException(
+                        where + ".entries must be \"runtime\" or \"test-runtime\" — got: " + entries);
+            }
+            out.add(new PluginDescriptor.LockClosure(
+                    name,
+                    parseForStep(t, "lock-closure", where),
+                    entries.equals(PluginDescriptor.LockClosure.TEST_RUNTIME_ENTRIES)));
         }
         return out;
     }

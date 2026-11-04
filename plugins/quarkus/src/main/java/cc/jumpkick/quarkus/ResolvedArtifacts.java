@@ -19,8 +19,8 @@ import org.eclipse.aether.util.listener.ChainedRepositoryListener;
  * Every file Quarkus's resolver read while it resolved an application model: each POM (a
  * dependency's, a parent, an imported BOM) and each jar, whether a repository served it or a local
  * tail already held it, as {@code group:artifact:version[:classifier][!type]}. What {@code jk lock}
- * pins for the {@code quarkus/deployment} closure, so the augment's resolver finds every one of them
- * in the store. Lives in the JVM that resolves alone: the worker never loads Aether.
+ * pins for the {@code quarkus/deployment} and {@code quarkus/test-deployment} closures, so the
+ * augment's and the test model's resolvers find every one of them in the store. Lives in the JVM that resolves alone: the worker never loads Aether.
  */
 final class ResolvedArtifacts extends AbstractRepositoryListener {
 

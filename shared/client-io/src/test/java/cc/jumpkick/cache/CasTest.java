@@ -199,4 +199,15 @@ class CasTest {
         assertThat(cas.hashFromPath(leaked)).isEmpty();
         assertThat(Cas.isBlobPath(cas.pathFor(hex))).isTrue();
     }
+
+    /** Only hex names a blob: a separator or a {@code ..} would resolve outside the store. */
+    @Test
+    void a_hash_that_is_not_hex_names_no_blob(@TempDir Path root) {
+        Cas cas = new Cas(root);
+        assertThat(cas.pathFor("ab".repeat(32)).startsWith(root.resolve("sha256")))
+                .isTrue();
+        assertThatThrownBy(() -> cas.pathFor("abcd" + "/".repeat(4) + "etc/passwd"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> cas.pathFor("abcd../../x")).isInstanceOf(IllegalArgumentException.class);
+    }
 }

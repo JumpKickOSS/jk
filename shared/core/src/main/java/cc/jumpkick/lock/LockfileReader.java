@@ -529,7 +529,9 @@ public final class LockfileReader {
                         null,
                         stringList(t, "files"),
                         resolvedBy,
-                        requireRowString(t, "inputs")));
+                        requireRowString(t, "inputs"),
+                        t.getString("module"),
+                        requireRowString(t, "plugin")));
                 continue;
             }
             String url = t.getString("url");
