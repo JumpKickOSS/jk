@@ -24,6 +24,12 @@ public final class McpRenameCheck {
     /** Seconds a guard needs left in the budget to be worth starting here. */
     private static final int GUARD_FLOOR_S = 5;
 
+    /**
+     * Seconds of the caller's wait kept back for the answer itself: a TIMEOUT's journal settle and
+     * the reply must land before a client with a hard request limit gives up (one did at 63 s).
+     */
+    private static final int MARGIN_S = 8;
+
     private McpRenameCheck() {}
 
     /**
@@ -41,7 +47,7 @@ public final class McpRenameCheck {
             if (eq > 0)
                 args.put(pair.substring(0, eq).strip(), pair.substring(eq + 1).strip());
         }
-        int budget = McpJobRuns.timeoutS(in);
+        int budget = McpJobRuns.timeoutS(in) - MARGIN_S;
         int left = budget - elapsedS(startedNanos);
         if (left < 1) return in.text(renamed);
         String body = TEST_LINE.matcher(renamed).replaceAll("").stripTrailing();
