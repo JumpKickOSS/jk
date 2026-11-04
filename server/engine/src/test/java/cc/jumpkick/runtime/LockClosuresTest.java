@@ -6,15 +6,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.lock.LockClosureInputs;
+import cc.jumpkick.lock.LockClosureStamp;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.lock.ToolEntry;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptors;
@@ -24,6 +26,7 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import cc.jumpkick.testing.RepoRoot;
+import cc.jumpkick.testing.Symlinks;
 import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -34,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -216,6 +220,90 @@ class LockClosuresTest {
         assertThat(relocked.tools()).containsExactlyElementsOf(previous.tools());
     }
 
+    /**
+     * The inputs are the module's own: its path under the lock, and its rows in the scopes the
+     * closure reads — a test-only row moves the test model's closure and not the augment's.
+     */
+    @Test
+    void the_inputs_are_the_modules_own_rows_in_the_closures_scopes(@TempDir Path tmp) throws Exception {
+        JkBuild build = project(tmp);
+        Files.writeString(tmp.resolve("jk.toml"), Files.readString(tmp.resolve("jk.toml")) + """
+
+                [test-dependencies]
+                junit = "org.junit.jupiter:junit-jupiter:6.1.3"
+                """);
+        build = JkBuildParser.parse(tmp.resolve("jk.toml"));
+        Lockfile without = Lockfile.empty("test");
+        Lockfile with = without.withArtifacts(List.of(new Lockfile.Artifact(
+                "org.junit.jupiter:junit-jupiter",
+                "6.1.3",
+                "central+https://repo.maven.apache.org/maven2/",
+                "sha256:" + "6".repeat(64),
+                null,
+                List.of(Scope.TEST),
+                List.of(),
+                null,
+                null,
+                null)));
+        var closures = PluginContributions.lockClosures(build, tmp);
+        var deployment = closures.get(0);
+        var testDeployment = closures.get(1);
+
+        assertThat(LockClosureInputs.of(deployment, build, tmp, tmp, with))
+                .as("a test-only row is no input of the production closure")
+                .isEqualTo(LockClosureInputs.of(deployment, build, tmp, tmp, without));
+        assertThat(LockClosureInputs.of(testDeployment, build, tmp, tmp, with))
+                .isNotEqualTo(LockClosureInputs.of(testDeployment, build, tmp, tmp, without));
+        assertThat(LockClosureInputs.of(deployment, build, tmp, tmp.resolve("api"), without))
+                .as("the module is an input")
+                .isNotEqualTo(LockClosureInputs.of(deployment, build, tmp, tmp.resolve("web"), without));
+        assertThat(LockClosureInputs.module(tmp, tmp)).isEmpty();
+        assertThat(LockClosureInputs.module(tmp, tmp.resolve("services/api"))).isEqualTo("services/api");
+    }
+
+    /**
+     * What the plugin's resolver downloaded is taken in from where it lies — inside the worker's
+     * scratch or seed, a regular file and no link — and pinned by its digest; anything else is
+     * fetched, and a digest the lock already pins wins over the bytes.
+     */
+    @Test
+    void a_file_the_resolver_holds_is_taken_in_only_from_inside_its_own_directories(@TempDir Path tmp)
+            throws Exception {
+        JkBuild build = project(tmp);
+        Cas cas = JkStores.storeCas();
+        RepoGroup repos = RepoGroupBuilder.buildFor(build, null, cas, BuildEnv.forModule(tmp));
+        Path scratch = Files.createDirectories(tmp.resolve("scratch"));
+        Path outside = Files.createDirectories(tmp.resolve("outside"));
+        Path held = Files.writeString(scratch.resolve("held.jar"), "held bytes");
+        Path secret = Files.writeString(outside.resolve("secret"), "not the plugin's");
+        Path link = Symlinks.create(scratch.resolve("link.jar"), secret);
+
+        assertThat(LockClosures.within(held, List.of(scratch))).isTrue();
+        assertThat(LockClosures.within(link, List.of(scratch)))
+                .as("a link out of the scratch")
+                .isFalse();
+        assertThat(LockClosures.within(scratch.resolve("../outside/secret"), List.of(scratch)))
+                .as("a .. out of the scratch")
+                .isFalse();
+
+        Map<Coordinate, String> known = new LinkedHashMap<>();
+        known.put(PARENT_POM, "7".repeat(64));
+        Map<Coordinate, @Nullable Path> answered = new LinkedHashMap<>();
+        answered.put(Coordinate.parse("x:held:1"), held);
+        answered.put(PARENT_POM, held);
+        answered.put(DEPLOYMENT, link);
+        Map<Coordinate, String> digests = LockClosures.digests(answered, known, repos, cas, List.of(scratch));
+
+        assertThat(digests.get(Coordinate.parse("x:held:1"))).isEqualTo(Hashing.sha256Hex(held));
+        assertThat(cas.pathFor(Hashing.sha256Hex(held)))
+                .as("taken into the store")
+                .hasContent("held bytes");
+        assertThat(digests.get(PARENT_POM)).as("the lock's pin wins").isEqualTo("7".repeat(64));
+        assertThat(digests.get(DEPLOYMENT))
+                .as("the link is not followed; the file is fetched")
+                .isEqualTo(Hashing.sha256Hex(Objects.requireNonNull(published.get(DEPLOYMENT))));
+    }
+
     @Test
     void a_module_without_the_plugin_is_left_as_it_was(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), "group = \"g\"\nname = \"n\"\nversion = \"1\"\n");
@@ -241,7 +329,12 @@ class LockClosuresTest {
         Lockfile written = LockfileReader.parse(LockfileWriter.render(base));
         List<ToolEntry> rows = new ArrayList<>(base.tools());
         for (var closure : PluginContributions.lockClosures(build, dir)) {
-            rows.add(ToolEntry.resolved(closure.resolvedBy(), LockClosureInputs.of(closure, dir, dir, written), files));
+            rows.add(ToolEntry.resolved(
+                    closure.resolvedBy(),
+                    null,
+                    LockClosureStamp.of(closure.manifest()),
+                    LockClosureInputs.of(closure, build, dir, dir, written),
+                    files));
         }
         return base.withTools(rows);
     }

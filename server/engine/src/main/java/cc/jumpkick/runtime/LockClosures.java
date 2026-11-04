@@ -13,7 +13,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.CentralMirror;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.lock.LockClosureInputs;
+import cc.jumpkick.lock.LockClosureStamp;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
@@ -33,6 +33,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -75,8 +76,8 @@ final class LockClosures {
         Cas cas = JkStores.storeCas();
         Map<String, ToolEntry> answered = new LinkedHashMap<>();
         Map<Coordinate, String> known = null;
-        // Inputs are read off the lock as it will read back from disk, so the build and the
-        // freshness check, which read the file, compute the same digest this pin does.
+        // Inputs are read off the lock as it will read back from disk, so the next jk lock, which
+        // reads the file as its previous lock, computes the same digest for the same rows.
         Lockfile written = null;
         for (Map.Entry<Path, JkBuild> module : modules.entrySet()) {
             Path dir = module.getKey();
@@ -85,18 +86,24 @@ final class LockClosures {
             if (closures.isEmpty()) continue;
             if (written == null) written = LockfileReader.parse(LockfileWriter.render(lock));
             Lockfile view = view(written, lockDir, dir);
+            String modulePath = LockClosureInputs.module(lockDir, dir);
             for (PluginContributions.LockClosureDep closure : closures) {
-                String inputs = LockClosureInputs.of(closure, lockDir, dir, view);
-                String key = closure.resolvedBy() + "|" + inputs;
+                String key = closure.resolvedBy() + "|" + modulePath;
                 if (answered.containsKey(key)) continue;
-                ToolEntry row =
-                        previous == null ? null : ToolEntry.resolvedIn(previous.tools(), closure.resolvedBy(), inputs);
+                String stamp = LockClosureStamp.of(closure.manifest());
+                String inputs = LockClosureInputs.of(closure, build, lockDir, dir, view);
+                ToolEntry row = previous == null
+                        ? null
+                        : ToolEntry.resolvedIn(previous.tools(), closure.resolvedBy(), modulePath);
+                if (row != null && (!row.inputsHex().equals(inputs) || !stamp.equals(row.plugin()))) row = null;
                 if (row == null) {
                     progress.label("lock " + closure.resolvedBy());
                     if (known == null) known = knownDigests(lock, previous);
                     RepoGroup repos = RepoGroupBuilder.buildFor(build, repoUrl, cas, BuildEnv.forModule(dir));
                     row = ToolEntry.resolved(
                             closure.resolvedBy(),
+                            modulePath,
+                            stamp,
                             inputs,
                             ask(new Asking(closure, build, dir, lock, view, known, repos), cas, cache, progress));
                 }
@@ -225,7 +232,7 @@ final class LockClosures {
         for (PluginContributions.LockClosureDep closure : PluginContributions.lockClosures(build, moduleDir)) {
             if (pluginId != null && !closure.manifest().id().equals(pluginId)) continue;
             out.add(new Repo(
-                    closure, requireRow(closure, lockDir, moduleDir, lock, view).files(), cas, group, m2(lock)));
+                    closure, requireRow(closure, lockDir, moduleDir, lock).files(), cas, group, m2(lock)));
         }
         return out;
     }
@@ -377,10 +384,12 @@ final class LockClosures {
 
     /** The row of {@code lock} that answers {@code closure} for the module's current inputs; none is a stale lock. */
     private static ToolEntry requireRow(
-            PluginContributions.LockClosureDep closure, Path lockDir, Path moduleDir, Lockfile lock, Lockfile view)
+            PluginContributions.LockClosureDep closure, Path lockDir, Path moduleDir, Lockfile lock)
             throws IOException {
-        ToolEntry row = ToolEntry.resolvedIn(
-                lock.tools(), closure.resolvedBy(), LockClosureInputs.of(closure, lockDir, moduleDir, view));
+        // Found by closure and module: whether the row is still the answer is the lock's freshness
+        // to judge before a build starts, not the build's to recompute under its variant.
+        ToolEntry row =
+                ToolEntry.resolvedIn(lock.tools(), closure.resolvedBy(), LockClosureInputs.module(lockDir, moduleDir));
         if (row == null) {
             throw new IOException(
                     "jk-lock.toml answers no " + closure.resolvedBy() + " closure for this module — run `jk lock`");
@@ -421,7 +430,7 @@ final class LockClosures {
      * digest, the bytes taken into the store so neither the sync nor a build downloads them again;
      * else the bytes', fetched all at once from {@code repos} and declared on the run's board.
      */
-    private static Map<Coordinate, String> digests(
+    static Map<Coordinate, String> digests(
             Map<Coordinate, @Nullable Path> files,
             Map<Coordinate, String> known,
             RepoGroup repos,
@@ -434,7 +443,7 @@ final class LockClosures {
             Coordinate coord = file.getKey();
             String hex = known.get(coord);
             Path bytes = file.getValue();
-            if (hex == null && bytes != null && within(bytes, held) && Files.isRegularFile(bytes)) {
+            if (hex == null && bytes != null && within(bytes, held)) {
                 hex = Hashing.sha256Hex(bytes);
                 cas.putFile(bytes, hex);
                 known.put(coord, hex);
@@ -457,13 +466,22 @@ final class LockClosures {
         return out;
     }
 
-    /** True when {@code file} is under one of {@code roots}, after resolving {@code ..}. */
-    private static boolean within(Path file, List<Path> roots) {
-        Path real = file.toAbsolutePath().normalize();
-        for (Path root : roots) {
-            if (real.startsWith(root.toAbsolutePath().normalize())) return true;
+    /**
+     * True when {@code file} is a regular file — not a link — whose real path is under the real path
+     * of one of {@code roots}: the bytes the plugin's resolver wrote there, and nothing a link or a
+     * {@code ..} reaches elsewhere on the machine.
+     */
+    static boolean within(Path file, List<Path> roots) {
+        try {
+            if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) return false;
+            Path real = file.toRealPath();
+            for (Path root : roots) {
+                if (Files.isDirectory(root) && real.startsWith(root.toRealPath())) return true;
+            }
+            return false;
+        } catch (IOException e) {
+            return false;
         }
-        return false;
     }
 
     /** One closure about to be asked for, with what asking reads. */

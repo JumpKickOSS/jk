@@ -193,7 +193,9 @@ public final class LockFreshness {
      * True when an active plugin of a module fetches a tool artifact by coordinate, a file at a URL
      * or a runtime closure that {@code lock} has no {@code [[tool]]} row for — the module, version and type; a
      * floating version matches any row of its module — or resolves a closure for the lock that no
-     * row answers for the module's current inputs ({@link LockClosureInputs}). Which platforms a row covers is the build's
+     * row answers for the module, or one another build of the plugin answered ({@link
+     * LockClosureStamp}). What the closure was resolved from changes with the manifests, which the
+     * digest already covers; {@code jk lock} compares the rest when it decides to ask again. Which platforms a row covers is the build's
      * question, not freshness's.
      */
     private static boolean missingToolPin(Path owner, Map<Path, JkBuild> modules, Lockfile lock) {
@@ -224,12 +226,19 @@ public final class LockFreshness {
             }
             for (PluginContributions.LockClosureDep closure :
                     PluginContributions.lockClosures(module.getValue(), dir)) {
-                if (ToolEntry.resolvedIn(
-                                lock.tools(), closure.resolvedBy(), LockClosureInputs.of(closure, owner, dir, view))
-                        == null) return true;
+                ToolEntry row = ToolEntry.resolvedIn(lock.tools(), closure.resolvedBy(), moduleUnder(owner, dir));
+                if (row == null || !LockClosureStamp.of(closure.manifest()).equals(row.plugin())) return true;
             }
         }
         return false;
+    }
+
+    /** {@code dir} under {@code owner}, {@code /}-separated; empty for the owner itself. */
+    static String moduleUnder(Path owner, Path dir) {
+        Path root = owner.toAbsolutePath().normalize();
+        Path module = dir.toAbsolutePath().normalize();
+        if (root.equals(module) || !module.startsWith(root)) return "";
+        return root.relativize(module).toString().replace('\\', '/');
     }
 
     /** {@code true} when {@code hex} is a 64-char hex SHA-256 (case-insensitive). */

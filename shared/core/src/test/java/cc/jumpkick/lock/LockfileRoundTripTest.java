@@ -253,9 +253,9 @@ class LockfileRoundTripTest {
     }
 
     /**
-     * A closure a plugin resolved is one row naming the plugin and closure, the digest of its
-     * inputs, and each file with its own digest on one line — POMs among them — written after every
-     * other tool row.
+     * A closure a plugin resolved is one row naming the plugin and closure, the module it answers
+     * for, the plugin that answered, the digest of its inputs, and each file with its own digest on
+     * one line — POMs among them — written after every other tool row.
      */
     @Test
     void a_resolved_closure_round_trips_with_each_file_on_one_line() {
@@ -264,21 +264,29 @@ class LockfileRoundTripTest {
         files.put(Coordinate.parse("io.quarkus:quarkus-arc-deployment:3.40.1!pom"), "f".repeat(64));
         Lockfile lock = Lockfile.empty("test")
                 .withTools(List.of(
-                        ToolEntry.resolved("quarkus/deployment", "9".repeat(64), files),
+                        ToolEntry.resolved(
+                                "quarkus/deployment", "api", "quarkus 1.0.0 jk 0.50.2", "9".repeat(64), files),
+                        ToolEntry.resolved(
+                                "quarkus/deployment", null, "quarkus 1.0.0 jk 0.50.2", "8".repeat(64), files),
                         ToolEntry.single(Coordinate.parse("com.android.tools:r8:9.5.28"), "c".repeat(64))));
         String rendered = LockfileWriter.render(lock);
         assertThat(rendered)
-                .contains("[[tool]]\nresolved-by = \"quarkus/deployment\"\ninputs      = \"sha256:" + "9".repeat(64)
+                .contains("[[tool]]\nresolved-by = \"quarkus/deployment\"\nmodule      = \"api\"\n"
+                        + "plugin      = \"quarkus 1.0.0 jk 0.50.2\"\ninputs      = \"sha256:" + "9".repeat(64)
                         + "\"\nfiles = [\n  \"io.quarkus:quarkus-arc-deployment:3.40.1 sha256:" + "e".repeat(64)
                         + "\",\n  \"io.quarkus:quarkus-arc-deployment:3.40.1!pom sha256:" + "f".repeat(64) + "\",\n]");
         assertThat(rendered.indexOf("resolved-by")).isGreaterThan(rendered.indexOf("com.android.tools:r8"));
 
         Lockfile back = LockfileReader.parse(rendered);
         assertThat(back.tools()).containsExactlyInAnyOrderElementsOf(lock.tools());
-        ToolEntry row =
-                Objects.requireNonNull(ToolEntry.resolvedIn(back.tools(), "quarkus/deployment", "9".repeat(64)));
+        ToolEntry row = Objects.requireNonNull(ToolEntry.resolvedIn(back.tools(), "quarkus/deployment", "api"));
         assertThat(row.files()).isEqualTo(files);
-        assertThat(ToolEntry.resolvedIn(back.tools(), "quarkus/deployment", "8".repeat(64)))
+        assertThat(row.inputsHex()).isEqualTo("9".repeat(64));
+        assertThat(Objects.requireNonNull(ToolEntry.resolvedIn(back.tools(), "quarkus/deployment", ""))
+                        .inputsHex())
+                .as("the lock's own module")
+                .isEqualTo("8".repeat(64));
+        assertThat(ToolEntry.resolvedIn(back.tools(), "quarkus/deployment", "web"))
                 .isNull();
         // A resolved row pins its files itself: it is no single-artifact row and no tool closure.
         assertThat(back.toolRow(Coordinate.parse("io.quarkus:quarkus-arc-deployment:3.40.1")))
@@ -294,6 +302,7 @@ class LockfileRoundTripTest {
 
                         [[tool]]
                         resolved-by = "quarkus/deployment"
+                        plugin      = "quarkus 1.0.0"
                         inputs      = "sha256:%s"
                         files = ["io.quarkus:quarkus-arc-deployment:3.40.1"]
                         """.formatted("9".repeat(64))))
@@ -305,6 +314,30 @@ class LockfileRoundTripTest {
                         resolved-by = "quarkus/deployment"
                         files = []
                         """)).hasMessageContaining("inputs");
+    }
+
+    /**
+     * A digest names a file in the store, so a lock row's digest is 64 hex digits and nothing else:
+     * a path segment or a {@code ..} smuggled in as one is refused where the lock is read.
+     */
+    @Test
+    void a_digest_that_is_not_hex_is_refused_where_the_lock_is_read() {
+        String traversal = "abcd" + "/".repeat(42) + "../../../.ssh/id_x";
+        assertThatThrownBy(() -> ToolEntry.resolved(
+                        "quarkus/deployment",
+                        null,
+                        "quarkus 1.0.0",
+                        "9".repeat(64),
+                        Map.of(Coordinate.parse("x:y:1"), traversal.substring(0, 64))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("x:y:1");
+        assertThatThrownBy(() -> ToolEntry.single(Coordinate.parse("x:y:1"), "../" + "a".repeat(61)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("sha256:<hex>");
+        assertThatThrownBy(() -> ToolEntry.single(Coordinate.parse("x:y:1"), "a".repeat(63)))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new ToolEntry("x:y", "1", "exe", null, null, Map.of("linux-x86_64", "z".repeat(64))))
+                .hasMessageContaining("sha256.linux-x86_64");
     }
 
     @Test

@@ -294,8 +294,9 @@ class LockFreshnessTest {
 
     /**
      * A closure an active plugin resolves for the lock ([quarkus] resolves its extensions'
-     * deployment closure) is pinned by a resolved row for the module's inputs: none, or one for
-     * other inputs, is a stale lock, found without forking the plugin.
+     * deployment closures) is pinned by a row per module, stamped by the plugin that answered it:
+     * none, one for another module, or one another build of the plugin answered is a stale lock,
+     * found without forking the plugin.
      */
     @Test
     void a_lock_closure_without_a_row_for_the_modules_inputs_is_stale(@TempDir Path dir) throws Exception {
@@ -326,46 +327,36 @@ class LockFreshnessTest {
         assertThat(LockFreshness.isStale(dir, lockFile)).as("no closure row").isTrue();
 
         var build = JkBuildParser.parse(dir.resolve("jk.toml"));
-        // The inputs are read off the lock as it reads back from disk, tool rows and all.
-        Lockfile written = LockfileReader.read(lockFile);
         Map<Coordinate, String> files =
                 Map.of(Coordinate.parse("io.quarkus:quarkus-arc-deployment:3.40.1"), "3".repeat(64));
         List<ToolEntry> withRows = new ArrayList<>(tools);
         for (var closure : PluginContributions.lockClosures(build, dir)) {
-            withRows.add(
-                    ToolEntry.resolved(closure.resolvedBy(), LockClosureInputs.of(closure, dir, dir, written), files));
+            withRows.add(ToolEntry.resolved(
+                    closure.resolvedBy(), null, LockClosureStamp.of(closure.manifest()), "5".repeat(64), files));
         }
         LockfileWriter.write(lock.withTools(withRows), lockFile);
         assertThat(LockFreshness.isStale(dir, lockFile))
-                .as("a row for the module's inputs")
+                .as("a row per closure, this plugin's")
                 .isFalse();
 
-        List<ToolEntry> otherInputs = new ArrayList<>(tools);
+        List<ToolEntry> otherPlugin = new ArrayList<>(tools);
         for (var closure : PluginContributions.lockClosures(build, dir)) {
-            otherInputs.add(ToolEntry.resolved(closure.resolvedBy(), "4".repeat(64), files));
+            otherPlugin.add(ToolEntry.resolved(closure.resolvedBy(), null, "quarkus 0.9.0", "5".repeat(64), files));
         }
-        LockfileWriter.write(lock.withTools(otherInputs), lockFile);
+        LockfileWriter.write(lock.withTools(otherPlugin), lockFile);
         assertThat(LockFreshness.isStale(dir, lockFile))
-                .as("a row for other inputs")
+                .as("rows another plugin build answered")
                 .isTrue();
-    }
 
-    /** The module is an input: two members of one workspace reading the same rows are two answers. */
-    @Test
-    void the_module_is_an_input_of_its_lock_closure(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                "group = \"g\"\nname = \"n\"\nversion = \"1\"\n\n[quarkus]\nversion = \"3.40.1\"\n");
-        var build = JkBuildParser.parse(dir.resolve("jk.toml"));
-        var closure = PluginContributions.lockClosures(build, dir).getFirst();
-        Lockfile lock = Lockfile.empty("test");
-
-        assertThat(LockClosureInputs.of(closure, dir, dir.resolve("api"), lock))
-                .isNotEqualTo(LockClosureInputs.of(closure, dir, dir.resolve("web"), lock))
-                .isEqualTo(
-                        LockClosureInputs.of(closure, dir, dir.resolve("api/.").normalize(), lock));
-        assertThat(LockClosureInputs.module(dir, dir)).isEmpty();
-        assertThat(LockClosureInputs.module(dir, dir.resolve("services/api"))).isEqualTo("services/api");
+        List<ToolEntry> otherModule = new ArrayList<>(tools);
+        for (var closure : PluginContributions.lockClosures(build, dir)) {
+            otherModule.add(ToolEntry.resolved(
+                    closure.resolvedBy(), "api", LockClosureStamp.of(closure.manifest()), "5".repeat(64), files));
+        }
+        LockfileWriter.write(lock.withTools(otherModule), lockFile);
+        assertThat(LockFreshness.isStale(dir, lockFile))
+                .as("rows for another module")
+                .isTrue();
     }
 
     @Test

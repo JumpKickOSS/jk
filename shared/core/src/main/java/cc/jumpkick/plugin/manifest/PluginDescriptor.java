@@ -205,9 +205,18 @@ public record PluginDescriptor(
      * plugin's worker for them ({@code LockExtension}) and pins every one, so {@code jk sync} stages
      * them and an offline build has them. {@code name} tells the plugin which closure is asked for;
      * {@code forSteps} names the steps that read it (empty: every step of the plugin), and only
-     * those receive it and are keyed by it.
+     * those receive it and are keyed by it. {@code testEntries} says which of the module's rows it
+     * is resolved from ({@code entries}): the test runtime closure, or the production one alone —
+     * the rows that are its inputs, so a test-only change does not ask for a production closure.
      */
-    public record LockClosure(String name, List<String> forSteps) {
+    public record LockClosure(String name, List<String> forSteps, boolean testEntries) {
+
+        /** {@code entries = "runtime"}: the closure is resolved from the production closure alone. */
+        public static final String RUNTIME_ENTRIES = "runtime";
+
+        /** {@code entries = "test-runtime"} (the default): from the test runtime closure, a superset. */
+        public static final String TEST_RUNTIME_ENTRIES = "test-runtime";
+
         public LockClosure {
             Objects.requireNonNull(name, "name");
             forSteps = forSteps == null ? List.of() : List.copyOf(forSteps);

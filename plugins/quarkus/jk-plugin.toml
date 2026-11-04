@@ -63,10 +63,12 @@ coordinate = "io.quarkus.platform:quarkus-bom-quarkus-platform-properties:^${con
 [[contribute.lock-closure]]
 name     = "deployment"
 for-step = "quarkus-augment"
+entries  = "runtime"
 
 [[contribute.lock-closure]]
 name     = "test-deployment"
 for-step = "quarkus-test-model"
+entries  = "test-runtime"
 
 # Quarkus REST / CDI reflect on parameter names.
 [[contribute.compiler-args]]
