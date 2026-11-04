@@ -23,6 +23,10 @@ final class RenameMentions {
     /** Docs and config whose lines a rename lists when they name the method beside its type. */
     private static final Pattern PROSE = Pattern.compile("\\.(?:md|adoc|txt|html|xml|properties|ya?ml|toml)$");
 
+    /** Changelogs and release notes: they record what a name was, so a rename never sends an agent there. */
+    private static final Pattern HISTORY =
+            Pattern.compile("(?i)(?:^|/)(?:changes|changelog|history|news|release[-_]?notes)[^/]*$");
+
     /** A quoted line's characters at most. */
     private static final int WIDTH = 160;
 
@@ -39,13 +43,17 @@ final class RenameMentions {
     static List<String> find(
             Path root, String old, Set<String> types, Map<String, String> edited, Set<String> textFiles) {
         Pattern word = Pattern.compile("\\b" + Pattern.quote(old) + "\\b");
+        // Named as code ({@code m}, m(), .m, #m, `m`), not the English word a method name often is.
+        String q = Pattern.quote(old);
+        Pattern code =
+                Pattern.compile("[.#]" + q + "\\b|\\b" + q + "\\s*\\(|\\{@(?:code|link)\\s+" + q + "\\b|`" + q + "`");
         // Outside the type's own files a bare indexOf is some other type's: only Type.m or #m there.
         Pattern qualified = Pattern.compile("(?:\\b(?:"
                 + String.join("|", types.stream().map(Pattern::quote).toList()) + ")[.#]|#)" + Pattern.quote(old)
                 + "\\b");
         List<String> out = new ArrayList<>();
         for (Map.Entry<String, String> e : edited.entrySet()) {
-            Pattern wanted = home(e.getKey(), types) ? word : qualified;
+            Pattern wanted = home(e.getKey(), types) ? code : qualified;
             String[] lines = e.getValue().split("\n", -1);
             for (int i = 0; i < lines.length; i++) {
                 String t = lines[i].strip();
@@ -57,6 +65,7 @@ final class RenameMentions {
         Pattern type = Pattern.compile(
                 "\\b(?:" + String.join("|", types.stream().map(Pattern::quote).toList()) + ")\\b");
         for (String rel : textFiles) {
+            if (HISTORY.matcher(rel).find()) continue;
             String text;
             try {
                 text = Files.readString(root.resolve(rel), StandardCharsets.UTF_8);
@@ -66,7 +75,7 @@ final class RenameMentions {
             if (!text.contains(old)) continue;
             String[] lines = text.split("\n", -1);
             for (int i = 0; i < lines.length; i++) {
-                if (word.matcher(lines[i]).find() && type.matcher(lines[i]).find()) {
+                if (code.matcher(lines[i]).find() && type.matcher(lines[i]).find()) {
                     out.add(rel + ":" + (i + 1) + "| " + clip(lines[i].strip(), word));
                 }
             }
