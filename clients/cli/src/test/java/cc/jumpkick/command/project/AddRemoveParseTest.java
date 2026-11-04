@@ -140,4 +140,13 @@ class AddRemoveParseTest {
 
         assertThatThrownBy(() -> RemoveCommand.shortNameOf("@1.0", tmp)).isInstanceOf(IllegalArgumentException.class);
     }
+
+    /** A Scala-suffixed artifactId keeps its coordinate and gets a key a manifest can hold. */
+    @Test
+    void a_scala_suffixed_artifact_gets_a_bare_key_and_keeps_its_name() {
+        var p = AddCommand.ParsedDep.parse("org.apache.spark:spark-sql_2.13:3.5.4", null, null, null, null, null);
+        assertThat(p.library()).isEqualTo("spark-sql_2-13");
+        assertThat(p.name()).isEqualTo("spark-sql_2.13");
+        assertThat(p.group()).isEqualTo("org.apache.spark");
+    }
 }

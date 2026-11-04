@@ -901,4 +901,13 @@ class JkBuildEditorTest {
         assertThat(workspaceOf(parsed).modules()).containsExactly("a", "b");
         assertThat(parsed.assembly()).isTrue();
     }
+
+    /** A key a manifest can hold, from any artifactId: what `jk add` names a dependency by default. */
+    @Test
+    void an_artifact_id_becomes_a_bare_key() {
+        assertThat(JkBuildEditor.handleFor("spark-sql_2.13")).isEqualTo("spark-sql_2-13");
+        assertThat(JkBuildEditor.handleFor("guava")).isEqualTo("guava");
+        assertThat(JkBuildEditor.handleFor("3d-engine")).isEqualTo("lib-3d-engine");
+        assertThat(JkBuildEditor.handleFor("cats.core")).matches("[A-Za-z][A-Za-z0-9_-]*");
+    }
 }
