@@ -194,7 +194,7 @@ class JkManagerChromeTest {
     @Test
     void addCompletion_does_not_print_into_scrollback() {
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(stream(buf), true, true, 80);
+        var cm = new JkManager(stream(buf), true, 80);
         cm.name = "Build";
         cm.startNanos = System.nanoTime();
         cm.stepRunning("m", "compile");
@@ -212,7 +212,7 @@ class JkManagerChromeTest {
     @Test
     void completed_tail_is_wiped_on_settle_not_copied_above_chrome() {
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(stream(buf), true, true, 80);
+        var cm = new JkManager(stream(buf), true, 80);
         cm.name = "Build";
         cm.startNanos = System.nanoTime();
         cm.stepRunning("m", "compile");
@@ -255,7 +255,7 @@ class JkManagerChromeTest {
     @Test
     void write_above_buffers_when_hidden_and_repaints_when_shown() {
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(stream(buf), true, true, 80);
+        var cm = new JkManager(stream(buf), true, 80);
         cm.progress(1, 4);
         cm.stepRunning("m", "compile");
         cm.tick(); // initial region paint
@@ -281,7 +281,7 @@ class JkManagerChromeTest {
     @Test
     void writeAbove_splits_a_multiline_diagnostic_into_scrollback_rows() {
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(stream(buf), true, true, 80);
+        var cm = new JkManager(stream(buf), true, 80);
         cm.name = "Build";
         cm.progress(1, 4);
         cm.stepRunning("m", "compile-java");
@@ -305,7 +305,7 @@ class JkManagerChromeTest {
     @Test
     void toggle_off_replaces_peek_rule_with_blank_separator() {
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(stream(buf), true, true, 80);
+        var cm = new JkManager(stream(buf), true, 80);
         cm.name = "Build";
         cm.progress(1, 4);
         cm.stepRunning("m", "compile");
@@ -328,7 +328,7 @@ class JkManagerChromeTest {
     @Test
     void capture_output_buffers_system_out_in_the_output_window() {
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(stream(buf), true, true, 80);
+        var cm = new JkManager(stream(buf), true, 80);
         cm.stepRunning("m", "compile");
         cm.tick();
         buf.reset();

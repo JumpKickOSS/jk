@@ -7,62 +7,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
-import cc.jumpkick.cli.theme.Theme;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** Simple-task lifecycle and plan-mode settle envelope of the JkManager component. */
+/** The settle envelope of the JkManager component. */
 class JkManagerTest {
-
-    @Test
-    void tick_renders_first_glyph_and_verb() {
-        var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(stream(buf), true);
-        cm.label("Locking");
-        cm.tick(); // frame 0 = pulse circle
-        assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8))).contains(Spinner.PULSE_GLYPH + " Locking…");
-    }
-
-    @Test
-    void finish_success_freezes_spinner_then_prints_green_check_line() {
-        var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(stream(buf), true);
-        cm.label("Syncing");
-        cm.finishSuccess("Finished syncing 13 artifacts");
-
-        String raw = buf.toString(StandardCharsets.UTF_8);
-        String visible = TestAnsi.strip(raw);
-        // Frozen pulse circle + command on its own line, result line below.
-        assertThat(visible).contains(Spinner.PULSE_GLYPH + " Syncing…");
-        // "✓ <plan> Successful: <message>", head in green.
-        assertThat(visible).contains("✓ Syncing Successful: Finished syncing 13 artifacts");
-        assertThat(raw)
-                .contains(Theme.colorize("✓ Syncing Successful", Theme.active().success()));
-        assertThat(raw).contains("\033[?25h"); // cursor restored
-    }
-
-    @Test
-    void finish_success_prints_deferred_output_above_the_summary_line() {
-        var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(stream(buf), false); // pipe / --quiet
-        cm.label("Build");
-        cm.finishSuccess("built 17 modules", List.of("‼ Warning [compile-test]:", "  deprecation in Foo.java"));
-
-        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
-        int warn = visible.indexOf("‼ Warning [compile-test]:");
-        int summary = visible.indexOf("✓ Build Successful: built 17 modules");
-        // Subprocess output prints first; the success summary is the last thing shown.
-        assertThat(warn).isGreaterThanOrEqualTo(0);
-        assertThat(summary).isGreaterThan(warn);
-        assertThat(visible.indexOf("deprecation in Foo.java")).isBetween(warn, summary);
-    }
 
     @Test
     void animated_goal_settle_wipes_region_then_prints_deferred_above_summary() {
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(stream(buf), true, true, 80); // animate + plan mode
+        var cm = new JkManager(stream(buf), true, 80); // animate + plan mode
         cm.progress(2, 4);
         cm.stepRunning("m", "compile");
         cm.tick(); // paint the live region
@@ -79,60 +35,29 @@ class JkManagerTest {
     }
 
     @Test
-    void finish_failure_prints_red_failure_marker_line() {
-        var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(stream(buf), true);
-        cm.label("Syncing");
-        cm.finishFailure("Failed to sync remote artifacts");
-
-        String raw = buf.toString(StandardCharsets.UTF_8);
-        assertThat(TestAnsi.strip(raw)).contains("✘ Failed to sync remote artifacts");
-        assertThat(raw).contains(Theme.colorize("✘", Theme.active().error()));
-    }
-
-    @Test
-    void render_canceled_settles_spinner_without_printing_the_cancel_notice() {
-        var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(stream(buf), true);
-        cm.label("Locking");
-        cm.renderCanceled();
-
-        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
-        assertThat(visible).contains(Spinner.PULSE_GLYPH + " Locking…");
-        // The notice itself is GlobalCancel's job; the component only settles.
-        assertThat(visible).doesNotContain("cancelled");
-        assertThat(buf.toString(StandardCharsets.UTF_8)).contains("\033[?25h");
-        // Simple (non-plan) mode still supplies the generic cancel text for the notice.
-        assertThat(cm.canceledMessage()).isEqualTo("Build job was cancelled");
-    }
-
-    @Test
     void non_animated_mode_prints_only_the_result_line() {
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(stream(buf), false); // pipe / --quiet
-        cm.label("Locking");
+        var cm = new JkManager(stream(buf), false, 80); // pipe / --quiet
+        cm.name = "Locking";
         cm.tick(); // animator never runs; harmless if poked
         cm.finishSuccess("done");
 
         String raw = buf.toString(StandardCharsets.UTF_8);
         assertThat(TestAnsi.strip(raw)).contains("✓ Locking Successful: done");
-        assertThat(TestAnsi.strip(raw)).doesNotContain("Locking…"); // no spinner line
         assertThat(raw).doesNotContain("\033[?25h"); // never hid the cursor
     }
 
     @Test
     void finish_is_idempotent() {
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(stream(buf), true);
-        cm.label("Building");
+        var cm = new JkManager(stream(buf), true, 80);
+        cm.name = "Building";
         cm.finishSuccess("Built x");
         buf.reset();
         cm.finishFailure("ignored");
         cm.close();
         assertThat(buf.toString(StandardCharsets.UTF_8)).isEmpty();
     }
-
-    // --- plan-oriented mode ----------------------------------------------
 
     @Test
     void progress_is_monotonic_and_never_slides_backward() {

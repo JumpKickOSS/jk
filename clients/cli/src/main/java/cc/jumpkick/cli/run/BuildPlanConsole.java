@@ -8,7 +8,6 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
-import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -48,36 +47,6 @@ public final class BuildPlanConsole {
      */
     public static BuildPlanResult run(BuildPlan plan, Mode mode, Path cacheRoot) {
         plan.addListener(chooseConsoleListener(plan, mode));
-        return plan.run();
-    }
-
-    /**
-     * Variant that derives the cache root from {@link JkDirs#cache}. Use when the command doesn't
-     * have an explicit override.
-     */
-    public static BuildPlanResult run(BuildPlan plan, Mode mode) {
-        return run(plan, mode, JkDirs.cache());
-    }
-
-    /**
-     * Simple-task variant: render the plan as a spinner + command (on a TTY) and a {@code ✓}/{@code ✗}
-     * result line from {@code spec}, instead of the step-by-step progress bar. {@code --output
-     * json} still emits JSONL and {@code --verbose} still prints per-step lines; otherwise the
-     * {@link SimpleTaskListener} owns the output (animating only on a TTY).
-     */
-    public static BuildPlanResult run(BuildPlan plan, Mode mode, Path cacheRoot, ConsoleSpec spec) {
-        attachSessionMirror(plan, mode);
-
-        BuildPlanListener console =
-                switch (mode) {
-                    case JSON -> new JsonlListener(System.out);
-                    case VERBOSE -> new VerboseListener(System.out, System.err);
-                    // AUTO animates only on an interactive TTY; QUIET / pipes print the
-                    // result line without a spinner.
-                    case AUTO -> new SimpleTaskListener(System.out, System.err, spec, isInteractiveTerminal());
-                    case QUIET -> new SimpleTaskListener(System.out, System.err, spec, false);
-                };
-        plan.addListener(console);
         return plan.run();
     }
 

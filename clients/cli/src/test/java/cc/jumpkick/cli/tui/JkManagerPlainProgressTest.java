@@ -276,7 +276,7 @@ class JkManagerPlainProgressTest {
     @Test
     void window_title_swaps_its_half_circle_on_its_own_cadence() {
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(stream(buf), true, true, 80);
+        var cm = new JkManager(stream(buf), true, 80);
         cm.setWindowTitle("JumpKick - Building g:a:v...");
         // One tick before the measurement so the paint path is loaded: the swap window below is
         // wall-clock, and a fresh JVM class-loading the whole renderer could spend it.

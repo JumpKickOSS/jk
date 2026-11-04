@@ -321,8 +321,8 @@ class JkManagerCountdownTest {
     /** The strategy is a constructor argument, so a test picks it without touching JK_PROGRESS_MODE. */
     @Test
     void the_header_strategy_is_chosen_by_the_caller_not_the_environment() {
-        var clock = new JkManager(stream(new ByteArrayOutputStream()), true, true, 80, ProgressBarMode.CLOCK);
-        var weighted = new JkManager(stream(new ByteArrayOutputStream()), true, true, 80, ProgressBarMode.WEIGHTED);
+        var clock = new JkManager(stream(new ByteArrayOutputStream()), true, 80, ProgressBarMode.CLOCK);
+        var weighted = new JkManager(stream(new ByteArrayOutputStream()), true, 80, ProgressBarMode.WEIGHTED);
         clock.setEtaEstimate(10_000); // the clock bar needs an R0 to run from
         weighted.setEtaEstimate(10_000);
         assertThat(clock.activeProgressStrategy().id()).isEqualTo("clock");

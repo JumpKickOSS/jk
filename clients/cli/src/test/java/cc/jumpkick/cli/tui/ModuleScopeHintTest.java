@@ -74,7 +74,7 @@ class ModuleScopeHintTest {
         // show() after plan() must lift the region — a bare print at the park row orphans ● Build.
         CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, 80);
         cm.height = 24;
         cm.name = "Build";
         cm.startNanos = System.nanoTime();

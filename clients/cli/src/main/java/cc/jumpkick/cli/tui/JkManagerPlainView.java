@@ -139,9 +139,7 @@ final class JkManagerPlainView {
                 d.planned() > 0 ? d.settled() + "/" + d.planned() : d.files() + (d.files() == 1 ? " file" : " files");
         printStarting();
         m.out.println(indeterminateLine(
-                m.planMode ? m.planName() : m.label,
-                "downloading " + detail + " · " + JkManagerColor.size(d.bytes()),
-                false));
+                m.planName(), "downloading " + detail + " · " + JkManagerColor.size(d.bytes()), false));
         m.out.flush();
     }
 
@@ -258,7 +256,7 @@ final class JkManagerPlainView {
             printSnapshot(100, PlainPhase.DONE, true, planCoordOrEmpty(), "");
             return;
         }
-        if (chromeStarted || !m.planMode) {
+        if (chromeStarted) {
             if (!chromeStarted) {
                 m.out.println(indeterminateLine(false));
             }
@@ -370,10 +368,7 @@ final class JkManagerPlainView {
     }
 
     private String indeterminateLine(@Nullable boolean doneLine) {
-        if (m.planMode) {
-            return indeterminateLine(m.planName(), doneLine ? null : PlainPhase.STARTING, doneLine);
-        }
-        return indeterminateLine(null, m.label, doneLine);
+        return indeterminateLine(m.planName(), doneLine ? null : PlainPhase.STARTING, doneLine);
     }
 
     private String currentStatus() {

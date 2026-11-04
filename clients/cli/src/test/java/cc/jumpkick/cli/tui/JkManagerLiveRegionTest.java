@@ -163,7 +163,7 @@ class JkManagerLiveRegionTest {
     private static JkManager live(PrintStream out, ByteArrayOutputStream buf) {
         Size.probe = () -> new Size.Window(ROWS, COLS);
         Size.reset();
-        var cm = new JkManager(out, true, true, COLS);
+        var cm = new JkManager(out, true, COLS);
         cm.height = ROWS;
         cm.name = "Build";
         cm.startNanos = System.nanoTime();
