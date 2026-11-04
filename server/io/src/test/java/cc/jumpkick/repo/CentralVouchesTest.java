@@ -10,6 +10,7 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.CentralMirror;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.task.TransferBoard;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -86,10 +87,14 @@ class CentralVouchesTest {
         publishJar(TAMPERED, JAR_BYTES);
 
         MavenRepo repo = repo(tmp, true);
+        long landedBefore = board().artifactsLanded();
         MavenRepo.Fetched fetched = repo.fetchArtifact(WIDGET, Hashing.sha256Hex(JAR_BYTES), () -> false);
 
         assertThat(fetched.sha256()).isEqualTo(Hashing.sha256Hex(JAR_BYTES));
         assertThat(transport.requests).containsExactly(MIRROR + JAR, CENTRAL + JAR);
+        assertThat(board().artifactsLanded() - landedBefore)
+                .as("the lock rejected the mirror's bytes: one file landed, Central's")
+                .isEqualTo(1);
     }
 
     @Test
@@ -129,10 +134,16 @@ class CentralVouchesTest {
         publishJar(TAMPERED, JAR_BYTES);
 
         MavenRepo repo = repo(tmp, true);
+        TransferBoard.Snapshot before = board().snapshot();
+        long landedBefore = board().artifactsLanded();
         MavenRepo.Fetched fetched = repo.fetchArtifact(WIDGET);
 
         assertThat(fetched.sha256()).isEqualTo(Hashing.sha256Hex(JAR_BYTES));
         assertThat(transport.requests).contains(CENTRAL + JAR).doesNotContain(MIRROR + JAR + ".sha1");
+        // The disowned copy streamed but did not land: the run's downloads count Central's alone.
+        assertThat(board().artifactsLanded() - landedBefore).isEqualTo(1);
+        assertThat(board().snapshot().files() - before.files()).isEqualTo(1);
+        assertThat(board().snapshot().inflight()).isZero();
         assertThat(repo.checksumNotes())
                 .singleElement()
                 .asString()
@@ -259,5 +270,9 @@ class CentralVouchesTest {
         public int put(URI uri, byte[] body, String contentType, RepoCredential credential) throws IOException {
             throw new IOException("read-only");
         }
+    }
+
+    private static TransferBoard board() {
+        return SessionContext.current().io().transfers();
     }
 }
