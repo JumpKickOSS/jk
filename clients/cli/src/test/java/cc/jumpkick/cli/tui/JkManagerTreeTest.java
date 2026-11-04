@@ -69,7 +69,7 @@ class JkManagerTreeTest {
     @Test
     void canceling_a_goal_region_returns_to_column_zero_before_erasing() {
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(stream(buf), true, true, 80); // animate + plan mode
+        var cm = new JkManager(stream(buf), true, 80); // animate + plan mode
         cm.progress(2, 4);
         cm.stepRunning("m", "compile");
         cm.tick(); // paint the live region
@@ -226,7 +226,7 @@ class JkManagerTreeTest {
 
             var buf = new ByteArrayOutputStream();
             // animate=true so tick paints; package ctor avoids starting the animator thread.
-            var cm = new JkManager(stream(buf), true, true, 40);
+            var cm = new JkManager(stream(buf), true, 40);
             cm.height = 24;
             cm.name = "Build";
             cm.startNanos = System.nanoTime();
@@ -288,7 +288,7 @@ class JkManagerTreeTest {
             Size.probe = () -> new Size.Window(24, 80);
             Size.reset();
             var buf = new ByteArrayOutputStream();
-            var cm = new JkManager(stream(buf), true, true, 80);
+            var cm = new JkManager(stream(buf), true, 80);
             cm.height = 24;
             cm.name = "Build";
             cm.startNanos = System.nanoTime();
@@ -335,7 +335,7 @@ class JkManagerTreeTest {
             Size.probe = () -> new Size.Window(24, 80);
             Size.reset();
             var buf = new ByteArrayOutputStream();
-            var cm = new JkManager(stream(buf), true, true, 80);
+            var cm = new JkManager(stream(buf), true, 80);
             cm.height = 24;
             cm.name = "Build";
             cm.startNanos = System.nanoTime();
@@ -374,7 +374,7 @@ class JkManagerTreeTest {
         var savedProbe = Size.probe;
         try {
             var buf = new ByteArrayOutputStream();
-            var cm = new JkManager(stream(buf), true, true, 120);
+            var cm = new JkManager(stream(buf), true, 120);
             cm.height = 24;
             cm.name = "Build";
             cm.startNanos = System.nanoTime();
@@ -453,7 +453,7 @@ class JkManagerTreeTest {
         // land on the region's top, or the previous ● Build is orphaned and a second one stacks.
         var screen = LiveRegionScreen.filled(24, 80);
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(stream(buf), true, true, 80);
+        var cm = new JkManager(stream(buf), true, 80);
         cm.height = 24;
         cm.name = "Build";
         cm.startNanos = System.nanoTime();
@@ -489,7 +489,7 @@ class JkManagerTreeTest {
         // frame share a frame counter, so the diff may step over an unchanged header row.
         var screen = LiveRegionScreen.filled(24, 80);
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(stream(buf), true, true, 80);
+        var cm = new JkManager(stream(buf), true, 80);
         cm.height = 24;
         cm.name = "Build";
         cm.startNanos = System.nanoTime();
@@ -523,7 +523,7 @@ class JkManagerTreeTest {
         // cell is written; the header text and the completion rows are not.
         NoAnsi.forcedAnsi(() -> {
             var buf = new ByteArrayOutputStream();
-            var cm = new JkManager(stream(buf), true, true, 80);
+            var cm = new JkManager(stream(buf), true, 80);
             cm.height = 24;
             cm.name = "Build";
             cm.startNanos = System.nanoTime();
@@ -554,7 +554,7 @@ class JkManagerTreeTest {
         NoAnsi.forcedAnsi(() -> {
             var buf = new ByteArrayOutputStream();
             var out = stream(buf);
-            var cm = new JkManager(out, true, true, 80);
+            var cm = new JkManager(out, true, 80);
             cm.height = 24;
             cm.name = "Build";
             cm.startNanos = System.nanoTime();
@@ -593,7 +593,7 @@ class JkManagerTreeTest {
             Size.reset();
 
             var buf = new ByteArrayOutputStream();
-            var cm = new JkManager(stream(buf), true, true, 120);
+            var cm = new JkManager(stream(buf), true, 120);
             cm.height = 24;
             cm.name = "Build";
             cm.startNanos = System.nanoTime();

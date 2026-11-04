@@ -47,7 +47,7 @@ class OutputWindowTest {
         // Piped/CI plan mode (animate=false) prints every tool line, including past ring capacity.
         CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), false, true, 80);
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), false, 80);
         cm.name = "Build";
         cm.startNanos = System.nanoTime();
         int total = OutputWindow.MAX_LINES + 50;
@@ -65,7 +65,7 @@ class OutputWindowTest {
         SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {
             CliOutput.beginCommand(false);
             var buf = new ByteArrayOutputStream();
-            var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+            var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, 80);
             cm.name = "Build";
             cm.startNanos = System.nanoTime();
 
@@ -98,7 +98,7 @@ class OutputWindowTest {
         // Open dumps into permanent scrollback; close→reopen must dump only new lines.
         CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, 80);
         cm.name = "Build";
         cm.height = 30;
         cm.startNanos = System.nanoTime();
@@ -129,7 +129,7 @@ class OutputWindowTest {
         // At a full viewport, trimming sacrifices tree rows — never the separator or header.
         CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, 80);
         cm.name = "Build";
         cm.height = 6; // tiny viewport: maxRegion = 5
         cm.startNanos = System.nanoTime();
@@ -152,7 +152,7 @@ class OutputWindowTest {
         // The peek ring strips blanks; piped/CI output prints tool lines verbatim.
         CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), false, true, 80);
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), false, 80);
         cm.name = "Build";
         cm.startNanos = System.nanoTime();
         cm.writeAbove("first");
@@ -176,7 +176,7 @@ class OutputWindowTest {
     void live_region_never_fills_full_terminal_height() {
         CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, 80);
         cm.name = "Build";
         cm.height = 20;
         cm.startNanos = System.nanoTime();
@@ -243,7 +243,7 @@ class OutputWindowTest {
         CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
         // animate=true so plan mode buffers without always printing
-        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, 80);
         cm.name = "Build";
         cm.startNanos = System.nanoTime();
         cm.writeAbove("hidden-line");
@@ -266,7 +266,7 @@ class OutputWindowTest {
     void visible_empty_buffer_still_shows_rule_above_wedge() {
         CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, 80);
         cm.name = "Build";
         cm.startNanos = System.nanoTime();
         cm.outputWindow().show();
@@ -285,7 +285,7 @@ class OutputWindowTest {
     void hide_after_committed_output_replaces_rule_with_blank_separator() {
         CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, 80);
         cm.name = "Build";
         cm.startNanos = System.nanoTime();
         cm.outputWindow().show();
@@ -308,7 +308,7 @@ class OutputWindowTest {
     void settle_after_committed_process_output_inserts_one_blank_before_chip() {
         CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, 80);
         cm.name = "Build";
         cm.startNanos = System.nanoTime();
         cm.tick(); // initial region paint
@@ -359,7 +359,7 @@ class OutputWindowTest {
         // Pane paint starts by climbing over the live region, never by appending under it.
         CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, 80);
         cm.name = "Build";
         cm.height = 30;
         cm.startNanos = System.nanoTime();
@@ -384,7 +384,7 @@ class OutputWindowTest {
     void showProcessFailureOutput_opens_pane() {
         CliOutput.beginCommand(false);
         var buf = new ByteArrayOutputStream();
-        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, 80);
         cm.name = "Build";
         cm.startNanos = System.nanoTime();
         cm.writeAbove("native-image: error");

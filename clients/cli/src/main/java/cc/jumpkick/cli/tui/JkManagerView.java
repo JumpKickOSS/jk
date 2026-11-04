@@ -122,8 +122,7 @@ final class JkManagerView {
             LiveRegion.clearActive(m);
             m.windowTitle.clear();
             if (m.animate && Theme.active().isAnsi()) {
-                if (m.planMode) m.wipeRegion();
-                else m.freezeSpinnerLine();
+                m.wipeRegion();
                 m.out.print(Osc.taskbarClear());
                 m.out.print(Ansi.SHOW_CURSOR);
                 m.out.flush();
@@ -151,13 +150,11 @@ final class JkManagerView {
             LiveRegion.clearActive(m);
             m.windowTitle.clear();
             // Process lines already in scrollback; wipe removes rule/blank + live chrome.
-            int processAbove = m.planMode ? m.pane.window().committedScrollbackLines() : 0;
+            int processAbove = m.pane.window().committedScrollbackLines();
             if (m.animate && Theme.active().isAnsi()) {
-                if (m.planMode) m.pane.flushVisibleToScrollback();
-                // Simple mode keeps the settled spinner line and prints the result below it; plan
-                // mode replaces the whole region (cursor lands on the first wiped row).
-                if (m.planMode) m.wipeRegion();
-                else m.freezeSpinnerLine();
+                m.pane.flushVisibleToScrollback();
+                // The settle replaces the whole region (cursor lands on the first wiped row).
+                m.wipeRegion();
                 m.out.print(Osc.taskbarClear());
                 m.out.print(Ansi.SHOW_CURSOR);
             } else if (m.animate && !Theme.active().isAnsi()) {
@@ -198,20 +195,6 @@ final class JkManagerView {
         CommandWedge.envelopeStart(m.out);
     }
 
-    /** Repaint the single simple-mode spinner line in place (must hold the manager lock). */
-    void paintSimple() {
-        StringBuilder f = new StringBuilder();
-        m.painter.status(f, Osc.taskbarIndeterminate());
-        m.painter.paint(f, List.of(simpleLine(m.frame)), 0, 0, 0);
-        m.out.print(f);
-    }
-
-    /** The simple-mode row for animator frame {@code frame}: the pulse, the label, an ellipsis. */
-    String simpleLine(int frame) {
-        Style pulse = m.openPulseColors[Math.floorMod(frame, m.openPulseColors.length)];
-        return Theme.colorize(JkManager.PULSE, pulse) + " " + m.label + Glyphs.ELLIPSIS;
-    }
-
     /**
      * Route process/step output through the sliding {@link OutputWindow}.
      *
@@ -230,7 +213,7 @@ final class JkManagerView {
         boolean verbose = SessionContext.current().config().verboseOr(false);
         if (!Theme.active().isAnsi() && !verbose) {
             synchronized (m.lock) {
-                if (m.planMode && !m.done) m.pane.window().append(text);
+                if (!m.done) m.pane.window().append(text);
             }
             return;
         }
@@ -253,39 +236,24 @@ final class JkManagerView {
                 m.out.flush();
                 return;
             }
-            if (m.planMode) {
-                if (text == null) return;
-                if (!m.animate || !Theme.active().isAnsi()) {
-                    // No live region to lift: print diagnostics sequentially, and keep them out of
-                    // the ring. The ring is the plain-mode failure dump's source (tool stdout that
-                    // was never shown), and a line that was already printed rode along in it, so a
-                    // later module's failure re-printed every earlier module's completion line.
-                    m.out.println(text);
-                    m.out.flush();
-                    return;
-                }
-                // append() reports blank-strips; a size compare would misread ring-full
-                // eviction (size unchanged on every accepted append) as a strip.
-                boolean accepted = m.pane.window().append(text);
-                if (!accepted) return; // blank-stripped: nothing new for the live region
-                if (m.pane.window().visible()) {
-                    // Lift live region → emit one line into scrollback → repaint rule+wedge only.
-                    liftEmitRepaintLive(text);
-                }
-                return;
-            }
-            if (!m.animate) {
+            if (text == null) return;
+            if (!m.animate || !Theme.active().isAnsi()) {
+                // No live region to lift: print diagnostics sequentially, and keep them out of
+                // the ring. The ring is the plain-mode failure dump's source (tool stdout that
+                // was never shown), and a line that was already printed rode along in it, so a
+                // later module's failure re-printed every earlier module's completion line.
                 m.out.println(text);
                 m.out.flush();
                 return;
             }
-            StringBuilder f = new StringBuilder();
-            m.painter.lift(f, 0, 0);
-            m.out.print(f);
-            m.out.print(text);
-            m.out.print('\n');
-            paintSimple();
-            m.out.flush();
+            // append() reports blank-strips; a size compare would misread ring-full
+            // eviction (size unchanged on every accepted append) as a strip.
+            boolean accepted = m.pane.window().append(text);
+            if (!accepted) return; // blank-stripped: nothing new for the live region
+            if (m.pane.window().visible()) {
+                // Lift live region → emit one line into scrollback → repaint rule+wedge only.
+                liftEmitRepaintLive(text);
+            }
         }
     }
 
@@ -346,7 +314,7 @@ final class JkManagerView {
     void pinScopeCaption(String captionLine) {
         if (captionLine == null || captionLine.isEmpty()) return;
         synchronized (m.lock) {
-            if (m.done || !m.animate || !m.planMode || !Theme.active().isAnsi()) return;
+            if (m.done || !m.animate || !Theme.active().isAnsi()) return;
             syncSize();
             StringBuilder f = new StringBuilder(256);
             liftRegion(f);

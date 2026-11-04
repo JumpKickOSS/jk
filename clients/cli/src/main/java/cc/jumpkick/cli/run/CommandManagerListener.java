@@ -26,7 +26,7 @@ import org.jspecify.annotations.Nullable;
  * <p>When constructed with a {@code null} {@link ConsoleSpec} the listener uses {@code command} as the
  * display name and calls {@link JkManager#dismiss} on completion (the caller owns the result
  * line). This is used by {@link BuildPlanConsole#run(cc.jumpkick.run.BuildPlan, BuildPlanConsole.Mode,
- * java.nio.file.Path)} to drive the JkManager spinner for simple plans.
+ * java.nio.file.Path)} to drive the JkManager region for single plans.
  *
  * <p>All steps of this plan are attributed to a single {@code module} (the project's {@code
  * group:artifact}). Workspace aggregation across modules feeds one shared {@link JkManager}

@@ -65,7 +65,6 @@ public final class OutputPane {
      * plan. Does not run for test failures — callers must not invoke this for run-tests.
      */
     void showOnFailure() {
-        if (!m.planMode) return;
         synchronized (lock) {
             if (m.done) return;
             boolean wasOpen = window.visible();
@@ -87,7 +86,6 @@ public final class OutputPane {
 
     /** Toggle the process-output pane (Ctrl-O). */
     void toggle() {
-        if (!m.planMode) return;
         synchronized (lock) {
             if (m.done) return;
             if (window.visible()) {

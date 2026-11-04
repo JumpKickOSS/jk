@@ -22,8 +22,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Live console for long-running commands: simple pulse-circle task mode, or plan mode (header
- * with pulse + {@link ProgressBar} + compact module/phase tree). Animates on a TTY; under pipes/{@code
+ * Live console for long-running commands: a header (pulse + {@link ProgressBar}) over a compact
+ * module/phase tree. Animates on a TTY; under pipes/{@code
  * --quiet}/{@code --no-progress} only prints the final result. Active {@link LiveRegion} for Ctrl-C.
  *
  * <p>This type is the public TUI facade and the live region itself, and it retains exactly four
@@ -57,7 +57,6 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
 
     final PrintStream out;
     final boolean animate;
-    final boolean planMode;
 
     /**
      * Terminal columns. Seeded at plan start; {@link JkManagerView#paintBuildPlan()} re-reads
@@ -78,7 +77,7 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
      * nerd-font caps — gate the powerline pill header. Package-private: tests set it directly.
      */
     NerdFontCaps nerdFont = GlobalConfig.nerdFont();
-    /** Open pulse (blue↔dark blue) — tree rows and simple spinner lines, no chip background. */
+    /** Open pulse (blue↔dark blue) — tree rows, no chip background. */
     final Style[] openPulseColors = Spinner.buildOpenPulseStyles(PULSE_FRAMES);
 
     /**
@@ -97,7 +96,7 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
     int frame;
     /**
      * What the live region shows: every frame goes through it and it writes only what changed.
-     * Plan mode parks the cursor under the region; simple mode is one row.
+     * The cursor parks under the region.
      */
     final RegionPainter painter;
     /**
@@ -108,10 +107,7 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
     /** true after the leading blank of the human chrome envelope was printed. */
     boolean leadingBlankPrinted;
 
-    // simple mode
-    String label = "";
-
-    // plan mode
+    // the region
     String name = "";
     String target = "";
     /**
@@ -144,11 +140,10 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
     /** Step and phase state of the plan; takes {@link #lock} where the manager did. */
     final PlanModel model;
 
-    JkManager(PrintStream out, boolean animate, boolean planMode, int width, ProgressBarMode progressMode) {
+    JkManager(PrintStream out, boolean animate, int width, ProgressBarMode progressMode) {
         // PlainAscii.wrap is identity under ANSI; under --no-ansi rewrites …/•/● in messages.
         this.animate = animate;
-        this.planMode = planMode;
-        this.painter = new RegionPainter(planMode ? RegionPainter.Park.BELOW : RegionPainter.Park.IN_ROW);
+        this.painter = new RegionPainter(RegionPainter.Park.BELOW);
         // Unlocked newlines on this stream are park-row insertions; the next climb includes them.
         this.out = new RegionPrintStream(PlainAscii.wrapping(out), this);
         this.width = width <= 0 ? DEFAULT_WIDTH : width;
@@ -160,39 +155,8 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
     }
 
     /** Package-private convenience for tests: the default strategy, no environment read. */
-    JkManager(PrintStream out, boolean animate, boolean planMode, int width) {
-        this(out, animate, planMode, width, ProgressBarMode.AUTO);
-    }
-
-    /** Package-private convenience for simple-mode tests. */
-    JkManager(PrintStream out, boolean animate) {
-        this(out, animate, false, DEFAULT_WIDTH);
-    }
-
-    // --- simple-task mode -------------------------------------------------
-
-    /** Start simple-task mode: spinner (when {@code animate}) + {@code command}. */
-    public static JkManager simple(PrintStream out, String command, boolean animate) {
-        JkManager cm = new JkManager(out, animate, false, DEFAULT_WIDTH, ProgressBarMode.fromEnvironment());
-        cm.label = command;
-        LiveRegion.setActive(cm);
-        cm.view.ensureLeadingBlank(); // blank line before human chrome
-        if (animate && Theme.active().isAnsi()) {
-            out.print(Ansi.HIDE_CURSOR);
-            out.flush();
-            cm.animator.startFrames();
-        } else if (animate) {
-            // Plain multi-line: mandatory start line.
-            cm.plain.printIndeterminate(true);
-        }
-        return cm;
-    }
-
-    /** Update the running command/label (simple mode). */
-    public void label(String command) {
-        synchronized (lock) {
-            this.label = command == null ? "" : command;
-        }
+    JkManager(PrintStream out, boolean animate, int width) {
+        this(out, animate, width, ProgressBarMode.AUTO);
     }
 
     // --- plan-oriented mode -----------------------------------------------
@@ -205,7 +169,7 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
         // Probe here — a plan start is a natural boundary — never from the frame-render path.
         Size.Window size = animate ? Size.refresh() : new Size.Window(DEFAULT_HEIGHT, DEFAULT_WIDTH);
         // JK_PROGRESS_MODE is read here, at the region's start, and nowhere in the header itself.
-        JkManager cm = new JkManager(out, animate, true, size.cols(), ProgressBarMode.fromEnvironment());
+        JkManager cm = new JkManager(out, animate, size.cols(), ProgressBarMode.fromEnvironment());
         cm.height = size.rows();
         cm.name = name;
         cm.startNanos = System.nanoTime();
@@ -486,8 +450,7 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
 
     /** The plan/command name shown in the header ("Building", "Locking", …). */
     String planName() {
-        String n = planMode ? name : label;
-        return n == null ? "" : n;
+        return name == null ? "" : name;
     }
 
     void settle(String line, List<String> above) {
@@ -527,8 +490,8 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
         // region, stop animating, then settle. BuildPlan mode replaces the wiped region
         // in place with the same cancelled-job wedge as a remote `jk cancel` / web cancel
         // ("⊛ Build  job was cancelled by user took …") and returns true so GlobalCancel
-        // suppresses its generic notice. Simple / non-animating modes just settle and let
-        // the handler print the notice.
+        // suppresses its generic notice. A non-animating region just settles and lets the
+        // handler print the notice.
         restoreStreams();
         stopAnimator();
         synchronized (lock) {
@@ -537,30 +500,19 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
             LiveRegion.clearActive(this);
             windowTitle.clear();
             if (!animate) return false;
-            if (planMode) {
-                if (Theme.active().isAnsi()) {
-                    pane.flushVisibleToScrollback();
-                    wipeRegion();
-                    out.print(Osc.taskbarClear());
-                    out.print(Ansi.SHOW_CURSOR);
-                } else {
-                    plain.printDone();
-                }
-                // Ctrl-C: "by user" + took duration.
-                String took = ConsoleSpec.took(Duration.ofMillis(elapsedMillis()));
-                out.println(JkWedge.cancelled(planName(), true, took).renderLine(view.headerContext()));
-                out.flush();
-                return true;
-            }
             if (Theme.active().isAnsi()) {
-                freezeSpinnerLine();
+                pane.flushVisibleToScrollback();
+                wipeRegion();
                 out.print(Osc.taskbarClear());
                 out.print(Ansi.SHOW_CURSOR);
             } else {
                 plain.printDone();
             }
+            // Ctrl-C: "by user" + took duration.
+            String took = ConsoleSpec.took(Duration.ofMillis(elapsedMillis()));
+            out.println(JkWedge.cancelled(planName(), true, took).renderLine(view.headerContext()));
             out.flush();
-            return false;
+            return true;
         }
     }
 
@@ -588,15 +540,6 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
         }
     }
 
-    /** Simple mode: repaint the spinner line with its first (settled) glyph, then newline. */
-    void freezeSpinnerLine() {
-        StringBuilder f = new StringBuilder();
-        painter.paint(f, List.of(view.simpleLine(0)), 0, 0, 0);
-        painter.forget();
-        out.print(f);
-        out.print('\n');
-    }
-
     /**
      * Erase the live region and park the cursor at its top-left. The lift returns to column 0
      * before erasing: on a Ctrl-C the tty has just echoed "^C" at the cursor.
@@ -613,8 +556,7 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
     void tick() {
         synchronized (lock) {
             if (done || !animate) return;
-            if (planMode) view.paintBuildPlan();
-            else view.paintSimple();
+            view.paintBuildPlan();
             // OSC title swaps its half-circle glyph (◐↔◑) on its own 500ms cadence.
             windowTitle.emitIfDue(System.currentTimeMillis());
             out.flush();
@@ -723,7 +665,7 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
 
         private void noteUnlockedNewlines(int n) {
             if (n <= 0) return;
-            if (!m.planMode || !m.animate || m.done) return;
+            if (!m.animate || m.done) return;
             if (m.painter.height() == 0) return;
             if (Thread.holdsLock(m.lock)) return;
             m.parkDrift.addAndGet(n);
