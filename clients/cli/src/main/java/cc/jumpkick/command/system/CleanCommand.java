@@ -2,6 +2,7 @@
 package cc.jumpkick.command.system;
 
 import cc.jumpkick.builds.CheckoutSlot;
+import cc.jumpkick.builds.GraphRefreshSlot;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineProbe;
@@ -66,6 +67,15 @@ public final class CleanCommand implements CliCommand {
         List<Path> projectDirs = collectProjectDirs(workspaceRoot, warnings);
         for (String warning : warnings) {
             CliOutput.err(Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " " + warning);
+        }
+
+        // The code-graph refresh a build left running writes under target/; let it finish first.
+        if (!GraphRefreshSlot.awaitFree(workspaceRoot, GRAPH_REFRESH_WAIT)) {
+            CommandWedge.printFail(
+                    "Clean",
+                    "The code graph is still refreshing after the last build; nothing removed. Run jk clean again"
+                            + " in a moment");
+            return 1;
         }
 
         Optional<String> held = heldMessage(workspaceRoot, projectDirs);
@@ -185,6 +195,9 @@ public final class CleanCommand implements CliCommand {
      * under the {@code target/} the clean removes, and on Linux unlinking it would let the next
      * engine lock a fresh file while the build still writes the tree.
      */
+    /** How long a clean waits for a build's code-graph refresh before it gives up. */
+    static final Duration GRAPH_REFRESH_WAIT = Duration.ofMinutes(2);
+
     static Optional<String> heldMessage(Path workspaceRoot, List<Path> projectDirs) {
         for (Path projectDir : projectDirs) {
             Optional<CheckoutSlot.Holder> holder = CheckoutSlot.heldBy(projectDir);
