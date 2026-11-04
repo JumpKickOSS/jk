@@ -7,7 +7,6 @@ import cc.jumpkick.compat.NodeProvisioning;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
-import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
@@ -26,11 +25,11 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.CacheSync;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
-import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.BuildForks;
 import cc.jumpkick.runtime.JdkInstallNotice;
 import cc.jumpkick.runtime.PlannerNodeSetup;
 import cc.jumpkick.runtime.PluginBuild;
@@ -39,17 +38,13 @@ import cc.jumpkick.runtime.ToolPlanProgress;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import cc.jumpkick.runtime.base.ReachabilityMetadata;
 import cc.jumpkick.task.SyncManifest;
-import cc.jumpkick.task.WorkerClosure;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import org.jspecify.annotations.Nullable;
@@ -117,7 +112,7 @@ public final class SyncPlans {
                 .addTask(syncSourcesStep(sources))
                 .addTask(syncPluginsStep(dir, cache, repoUrl))
                 .addTask(syncToolsStep(dir))
-                .addTask(syncWorkersStep())
+                .addTask(syncForksStep(dir))
                 .addTask(writeManifestStep(cache, lockFile))
                 .build();
     }
@@ -326,41 +321,41 @@ public final class SyncPlans {
                 .build();
     }
 
-    /** The workers every JVM build forks: its compiler, and the runner its tests run in. */
-    static final List<PluginJar> BUILD_WORKERS = List.of(PluginJar.JAVA_COMPILER, PluginJar.TEST_RUNNER);
-
     /**
-     * Put the launch classpath of each worker a build forks ({@link #BUILD_WORKERS}) on disk, all
-     * at once. On a fresh home a worker's closure is dozens of jars; fetched here they come down
-     * beside the lock's, priced and drawn with them, instead of one at a time behind the first
-     * compile. A worker already staged costs a stat per entry.
+     * Put on disk everything the build forks or loads besides its dependencies ({@link BuildForks}:
+     * jk's workers and the language toolchains its sources need), all at once. On a fresh home
+     * that is dozens of jars a tool; fetched here they come down beside the lock's, priced and
+     * drawn with them, instead of one at a time behind the first compile. A fork already staged
+     * costs a stat per entry.
      */
-    private static Task syncWorkersStep() {
+    private static Task syncForksStep(Path dir) {
         return Task.builder(TaskNames.SYNC_WORKERS)
                 .kind(TaskKind.IO)
-                .requires(TaskNames.PARSE_LOCK)
-                .ticks(BUILD_WORKERS.size())
+                .requires(TaskNames.SYNC_PLUGINS)
+                .ticks(0)
                 .execute(ctx -> {
-                    ctx.label("sync workers");
-                    List<Future<List<Path>>> staged = new ArrayList<>();
-                    for (PluginJar worker : BUILD_WORKERS) {
-                        staged.add(JkThreads.io().submit(() -> WorkerClosure.paths(worker)));
-                    }
-                    for (int i = 0; i < staged.size(); i++) {
-                        try {
-                            staged.get(i).get();
-                        } catch (ExecutionException e) {
-                            Throwable cause = e.getCause() == null ? e : e.getCause();
-                            throw new RuntimeException(
-                                    "could not stage the "
-                                            + BUILD_WORKERS.get(i).artifactId() + " worker: " + Errors.text(cause),
-                                    cause);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            for (Future<List<Path>> f : staged) f.cancel(true);
-                            throw new RuntimeException("interrupted staging workers", e);
+                    Lockfile lock = ctx.require(LOCKFILE);
+                    Path root = dir.toAbsolutePath().normalize();
+                    JkBuild build = JkBuildParser.parse(ManifestPaths.manifestIn(root));
+                    Map<Path, JkBuild> modules = new LinkedHashMap<>();
+                    modules.put(root, build);
+                    if (build.isWorkspaceRoot()) {
+                        for (Path member :
+                                WorkspaceLoader.loadModules(root, build).keySet()) {
+                            modules.put(member, JkBuildParser.parse(ManifestPaths.manifestIn(member)));
                         }
-                        ctx.progress(1);
+                    }
+                    List<BuildForks.Fork> forks =
+                            BuildForks.of(modules, lock, LockPaths.lockFile(root), JkStores.storeCas());
+                    if (forks.isEmpty()) return;
+                    ctx.label("sync workers and toolchains");
+                    try {
+                        BuildForks.stage(forks);
+                    } catch (IOException e) {
+                        throw new RuntimeException(Errors.text(e), e);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("interrupted staging workers", e);
                     }
                 })
                 .build();

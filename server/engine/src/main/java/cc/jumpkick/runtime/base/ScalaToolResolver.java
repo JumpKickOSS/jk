@@ -6,6 +6,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.repo.ArtifactFanOut;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.PubGrubResolver;
 import cc.jumpkick.resolver.Resolution;
@@ -19,6 +20,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -62,9 +64,13 @@ public final class ScalaToolResolver {
         int expected = resolution.modules().size();
         List<Path> jars = new ArrayList<>();
         List<String> shas = new ArrayList<>();
-        for (Resolution.ResolvedModule mod : resolution.modules().values()) {
-            Coordinate coord = mod.coordinate();
-            var hit = repos.tryFetchArtifact(coord);
+        List<Coordinate> coords = new ArrayList<>();
+        for (Resolution.ResolvedModule mod : resolution.modules().values()) coords.add(mod.coordinate());
+        // The closure's jars at once, in resolution order; the copies below stay in that order.
+        List<Optional<RepoGroup.RepoFetched>> hits = ArtifactFanOut.artifacts(repos, coords);
+        for (int i = 0; i < coords.size(); i++) {
+            Coordinate coord = coords.get(i);
+            var hit = hits.get(i);
             if (hit.isEmpty()) continue;
             Path named = libDir.resolve(coord.artifact() + "-" + coord.version() + ".jar");
             // Copy through a unique temp + atomic move so a torn/partial copy is never observed by a
