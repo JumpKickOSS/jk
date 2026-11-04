@@ -452,7 +452,42 @@ row, and a tool with no closure row fails naming it. A plain `jk lock` keeps a c
 closure whose root names `${host.os}` (no shipped plugin's does) is pinned for that OS alone, and a
 build on another OS fails naming the missing closure.
 
-`jk sync` fetches every tool the lock pins for this platform — artifacts, closures, URL files — into
+### Closures a plugin resolves
+
+Some of what a build loads only the plugin can name: Quarkus finds each extension's
+`-deployment` artifact through the extension's own descriptor and applies its conditional
+dependencies and capabilities. A plugin that declares such a closure (`[[contribute.lock-closure]]`)
+is asked for it by `jk lock`, and the lock pins the answer as one row — the plugin and closure,
+the digest of its inputs, and every file with its digest, one per line, POMs among them:
+
+```toml
+[[tool]]
+resolved-by = "quarkus/deployment"
+inputs      = "sha256:879b9fa0…"
+files = [
+  "io.quarkus:quarkus-arc-deployment:3.40.1 sha256:…",
+  "io.quarkus:quarkus-arc-deployment:3.40.1!pom sha256:…",
+  …
+]
+```
+
+`inputs` digests what the answer was resolved from: the plugin and its version, the module (its
+path under the lock), and the module's locked rows. A plain `jk lock` keeps a row whose inputs
+still match without asking the plugin again; a row that no longer matches — a dependency added,
+the platform version moved — makes the lock stale, and the next build relocks first. Asking
+runs the plugin's own resolver once, over what the store already holds, so a relock downloads
+only what is new. The plugin's table is not an input: the lock is the same for every variant,
+and what the table changes about a resolution is already in the rows. Only a module whose active
+plugins declare a closure is asked; every other lock and build forks nothing for it. A closure
+is resolved for the host that locks: a file a POM picks by OS is this host's, and a build on
+another OS downloads its own (an offline one there refuses it).
+
+The build hands each closure to the plugin's steps as a repository of exactly those files,
+linked from the store and verified against their digests; bytes that disagree with a row fail
+the step naming the closure.
+
+`jk sync` fetches every tool the lock pins for this platform — artifacts, closures, URL files, and
+the files of every closure a plugin resolved — into
 the store and verifies each against its row, so the next build, or an `--offline` one, downloads
 nothing; bytes that disagree with a row fail the sync naming it.
 

@@ -384,6 +384,12 @@ public final class PlannerPlugin {
         }
         List<String> tokens = new ArrayList<>(extras.size());
         for (Map.Entry<String, Path> tool : extras.entrySet()) {
+            if (tool.getKey().startsWith(LockClosures.extraName(""))) {
+                // A lock closure's repository is named by a hash of every file and digest it
+                // holds: its name is its identity, and its hundreds of files are not read again.
+                tokens.add("tool:" + tool.getKey() + ":" + tool.getValue().getFileName());
+                continue;
+            }
             String component = wholeComponents.get(tool.getKey());
             if (component == null) {
                 String identity = ToolArchives.isUnpacked(tool.getValue())
@@ -454,6 +460,20 @@ public final class PlannerPlugin {
     }
 
     /**
+     * The step's tools by name, then each closure its plugin resolved for the lock as a repository
+     * of the pinned files ({@code lock-closure.<name>}): the step's resolver reads it, not the
+     * network.
+     */
+    private static Map<String, Path> withLockClosures(
+            Map<String, Path> tools, BuildPlanner.Ctx cx, BuildPlanner.Inputs in, JkBuild project, ActivePlugin active)
+            throws IOException, InterruptedException {
+        Map<String, Path> extras = new LinkedHashMap<>(tools);
+        extras.putAll(PluginBuild.lockClosureRepositories(
+                project, in.dir(), cx.cas(), in.lockFile(), active.manifest().id()));
+        return extras;
+    }
+
+    /**
      * One declared build-plugin task: engine fingerprints inputs, restores on hit, forks on miss.
      */
     static Task pluginTask(
@@ -503,7 +523,8 @@ public final class PlannerPlugin {
                     Map<String, String> sdkPins = PluginBuild.sdkPins(in.lockFile());
                     List<PluginContributions.StepDep> tools =
                             cx.tools().forConsumer(project, in.dir(), in.lockFile(), step.name());
-                    Map<String, Path> toolExtras = cx.tools().fetch(tools, project, cx.cas(), in.lockFile());
+                    Map<String, Path> toolExtras = withLockClosures(
+                            cx.tools().fetch(tools, project, cx.cas(), in.lockFile()), cx, in, project, active);
                     Map<String, List<Path>> siblingFiles =
                             SiblingFiles.forInputs(step.inputs(), in.dir(), project, active.manifest());
                     PluginRepositories repositories =

@@ -50,10 +50,11 @@ public final class QuarkusAugmentMain {
 
     public static void main(String[] args) throws Exception {
 
-        if (args.length != 12) {
+        if (args.length != 13) {
             System.err.println(
                     "usage: QuarkusAugmentMain projectRoot classesDir targetDir baseName group artifact version"
-                            + " runtimeListFile quarkusVersion platformPropsFile repositoriesFile offline");
+                            + " runtimeListFile quarkusVersion platformPropsFile repositoriesFile closureRepository"
+                            + " offline");
             System.exit(Exit.USAGE);
         }
         Path appProjectRoot = Path.of(args[0]).toAbsolutePath().normalize();
@@ -75,7 +76,9 @@ public final class QuarkusAugmentMain {
         // TaskExec.offline() -> the plugin spec -> the engine's session. Reading JK_OFFLINE or a
         // system property here would read the *engine daemon's* startup environment instead, so
         // one `JK_OFFLINE=1 jk build` would silently pin every later build in that session.
-        boolean offline = EnvValues.parseBool(args[11]).orElse(false);
+        boolean offline = EnvValues.parseBool(args[12]).orElse(false);
+        // The lock's quarkus/deployment closure as a Maven-layout repository: the resolver's tail.
+        @Nullable Path closureRepo = closureRepository(args[11]);
 
         LockedClosure locked = LockedClosure.parse(runtimeList);
         System.err.println(LOG_PREFIX + ": locked runtime closure="
@@ -88,7 +91,18 @@ public final class QuarkusAugmentMain {
         AppJar.write(classesDir, appJar);
 
         ApplicationModel model = resolveModel(
-                locked, localRepo, offline, routes, group, artifact, version, appJar, classesDir, quarkusVersion);
+                locked,
+                localRepo,
+                closureRepo,
+                offline,
+                routes,
+                group,
+                artifact,
+                version,
+                appJar,
+                classesDir,
+                quarkusVersion,
+                null);
 
         // Platform properties + descriptor (required for config expansion + alignment checks).
         injectPlatform(model, quarkusVersion, platformProps, offline);
@@ -130,9 +144,11 @@ public final class QuarkusAugmentMain {
      * reads for the application is a local read, never a request a remote can refuse.
      *
      * <p>The remote repositories are {@code routes} and nothing else — the module's set as jk
-     * routes it, Central's mirror in Central's place while the failover window is open — so the
-     * deployment closure, which the lock does not carry, comes through the same doors every other
-     * fetch of the build does and Maven's own defaults are never consulted. A repository a
+     * routes it, Central's mirror in Central's place while the failover window is open — so a file
+     * of the deployment closure the store lacks (a lock older than its inputs, or another OS's
+     * native jar) comes through the same doors every other fetch of the build does and Maven's own
+     * defaults are never consulted. The lock pins that closure ({@code quarkus/deployment}) and the
+     * engine hands it over as {@code closureRepo}, so the resolver normally finds every file there. A repository a
      * dependency POM declares under a route's id (the super POM's {@code central}) is sent to the
      * route as well.
      *
@@ -143,6 +159,7 @@ public final class QuarkusAugmentMain {
     static ApplicationModel resolveModel(
             LockedClosure locked,
             Path localRepo,
+            @Nullable Path closureRepo,
             boolean offline,
             RepositoryRoutes routes,
             String group,
@@ -150,12 +167,13 @@ public final class QuarkusAugmentMain {
             String version,
             Path appJar,
             Path classesDir,
-            String quarkusVersion)
+            String quarkusVersion,
+            @Nullable ResolvedArtifacts record)
             throws Exception {
-        // The bootstrap Maven context over jk's own store: local repo + the store mirrors as tails.
+        // A private local repository, over the closure repository the engine built from the store.
         var cfg = BootstrapMavenContext.config()
                 .setLocalRepository(localRepo.toString())
-                .setLocalRepositoryTail(localRepositoryTails(locked).toArray(String[]::new))
+                .setLocalRepositoryTail(closureRepo == null ? new String[0] : new String[] {closureRepo.toString()})
                 .setRemoteRepositories(routes.remoteRepositories())
                 .setWorkspaceDiscovery(false);
         if (offline) {
@@ -168,6 +186,7 @@ public final class QuarkusAugmentMain {
         routes.attachMirrors(mvn.getSession());
         // What this resolver downloads is the run's, on its board like every other body.
         AetherTransfers.attach(mvn.getSession());
+        if (record != null) record.attach(mvn.getSession());
         routes.attachBearerTokens(mvn.getSession());
         System.err.println(LOG_PREFIX + ": remote repositories: " + routes.describe());
         BootstrapAppModelResolver modelResolver = new BootstrapAppModelResolver(mvn);
@@ -196,7 +215,8 @@ public final class QuarkusAugmentMain {
         System.err.println(LOG_PREFIX + ": resolving ApplicationModel (direct=" + direct.size() + " workspaceDeps="
                 + workspaceDeps + ")…");
         // Bootstrap 3.38+: (app, directDeps, excludedArtifacts, managingProject, reloadableModules).
-        // Aether owns the deployment closure (build-time only); the lock owns what ships.
+        // Quarkus decides the deployment closure (build-time only); the lock pins its files and
+        // owns what ships.
         var model = LockedAppModel.enforce(
                 modelResolver.resolveManagedModel(appCoords, direct, Set.of(), managing, Set.of(appCoords.getKey())),
                 locked);
@@ -207,20 +227,16 @@ public final class QuarkusAugmentMain {
     }
 
     /**
-     * Reuse already-fetched jars: jk's repo mirrors are derived from the locked jar paths the engine
-     * handed us — they ARE store paths, and rebuilding product dirs from user.home guesses wrong the
-     * moment JK_STORE_DIR (or the platform default) differs. ~/.m2 honors maven.repo.local for the
-     * same reason. Plain strings, so no resolver type appears in a signature of this class.
+     * The closure repository argument: the lock's {@code quarkus/deployment} closure as a
+     * Maven-layout directory the engine linked from the store, or none (blank). It is the
+     * resolver's only local tail — every file the lock pins for the closure is there after a sync,
+     * so a clean build downloads nothing and an offline one has everything; a file it lacks (a lock
+     * older than its inputs, another OS's native jar) comes from the routed repositories, and an
+     * offline build refuses it. Never {@code ~/.m2}: what the augment reads is what the lock pins.
+     * A plain string, so no resolver type appears in a signature of this class.
      */
-    private static List<String> localRepositoryTails(LockedClosure locked) {
-        List<String> tails = new ArrayList<>();
-        for (Path reposRoot : locked.mirrorRepoRoots()) {
-            tails.add(reposRoot.toString());
-        }
-        tails.add(System.getProperty(
-                "maven.repo.local",
-                Path.of(System.getProperty("user.home"), ".m2", "repository").toString()));
-        return tails;
+    static @Nullable Path closureRepository(String arg) {
+        return arg.isBlank() ? null : Path.of(arg).toAbsolutePath().normalize();
     }
 
     /** Bootstrap + createProductionApplication; the produced jar's path, or null when none was reported. */

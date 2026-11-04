@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.quarkus;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -182,35 +181,6 @@ final class LockedClosure {
     /** The locked artifact answering for a {@code group:artifact}, if the lock names one. */
     Optional<Artifact> byGa(String ga) {
         return Optional.ofNullable(byGa.get(ga));
-    }
-
-    /**
-     * Maven-layout mirror roots under jk's store, derived from the locked jars' own locations
-     * ({@code <store>/repos/<name>/...}). Every sibling repo dir is a valid resolver tail, and
-     * deriving them from the jars jk already handed us beats rebuilding product dirs from
-     * {@code user.home} — that guesses wrong the moment {@code JK_STORE_DIR} differs.
-     */
-    List<Path> mirrorRepoRoots() {
-        List<Path> out = new ArrayList<>();
-        Set<Path> seen = new LinkedHashSet<>();
-        String marker = File.separator + "repos" + File.separator;
-        for (Artifact a : artifacts) {
-            if (a.jar() == null) continue;
-            String sp = a.jar().toString();
-            int i = sp.indexOf(marker);
-            if (i <= 0) continue;
-            Path reposRoot = Path.of(sp.substring(0, i)).resolve("repos");
-            if (!Files.isDirectory(reposRoot)) continue;
-            try (var kids = Files.list(reposRoot)) {
-                for (Path repo : kids.filter(Files::isDirectory).sorted().toList()) {
-                    if (seen.add(repo)) out.add(repo);
-                }
-            } catch (IOException ignored) {
-                // unreadable mirror root — the resolver falls back to its other tails
-            }
-            break;
-        }
-        return out;
     }
 
     /**

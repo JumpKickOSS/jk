@@ -4,16 +4,44 @@ package cc.jumpkick.quarkus;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.plugin.build.TaskExec;
 import cc.jumpkick.plugin.testing.FakeBuildIo;
 import java.io.IOException;
+import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /** The packager half: augment-output consumption, produced-path declarations, package type. */
 class QuarkusPluginTest {
+
+    /**
+     * The closure the lock asks for is the one {@code jk-plugin.toml} declares, under the name the
+     * worker answers; any other name is refused rather than answered empty, and the engine hands
+     * it back to the steps under the extra both ends name.
+     */
+    @Test
+    void the_declared_lock_closure_is_the_one_the_worker_answers() throws Exception {
+        String manifest;
+        try (var in = QuarkusPlugin.class.getResourceAsStream("/jk-plugin.toml")) {
+            assertThat(in).as("jk-plugin.toml at the worker jar root").isNotNull();
+            manifest = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        assertThat(manifest)
+                .contains("[[contribute.lock-closure]]\nname = \"" + QuarkusPlugin.DEPLOYMENT_CLOSURE + "\"");
+        assertThat(QuarkusPlugin.CLOSURE_EXTRA).isEqualTo("lock-closure." + QuarkusPlugin.DEPLOYMENT_CLOSURE);
+        TaskExec exec = (TaskExec) Proxy.newProxyInstance(
+                TaskExec.class.getClassLoader(), new Class<?>[] {TaskExec.class}, (proxy, method, args) -> {
+                    throw new AssertionError("an unknown closure reads nothing of the module: " + method.getName());
+                });
+        assertThatThrownBy(() -> new QuarkusPlugin().lockClosure("codegen", exec, List.of()))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("codegen");
+    }
 
     @Test
     void normalize_package_type_accepts_aliases_and_rejects_garbage() throws IOException {

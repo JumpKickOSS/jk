@@ -797,15 +797,16 @@ public final class LockPipeline {
 
     // ---- stage 4b: [[tool]] rows ---------------------------------------------
 
-    /** {@code [[tool]]} rows for every plugin tool the root or a member fetches: {@link ToolPins#pin}. */
+    /**
+     * {@code [[tool]]} rows for every plugin tool the root or a member fetches ({@link
+     * ToolPins#pin}), then for every closure an active plugin resolves for the lock ({@link
+     * LockClosures#pin}), which reads the tools it runs on from the rows just pinned.
+     */
     public Lockfile pinTools(Lockfile lock, Progress progress) {
-        return ToolPins.pin(
-                lock,
-                policy.keepPins() ? readIfPresent(lockDir) : null,
-                lockDir,
-                modules(LockPlans.lockMembers(lockDir, effective)),
-                repoUrl,
-                progress);
+        Lockfile previous = policy.keepPins() ? readIfPresent(lockDir) : null;
+        Map<Path, JkBuild> modules = modules(LockPlans.lockMembers(lockDir, effective));
+        Lockfile tools = ToolPins.pin(lock, previous, lockDir, modules, repoUrl, progress);
+        return LockClosures.pin(tools, previous, lockDir, modules, repoUrl, cache, progress);
     }
 
     private static @Nullable String feedRevision(String component) {

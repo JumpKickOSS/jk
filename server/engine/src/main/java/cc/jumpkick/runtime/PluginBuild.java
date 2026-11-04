@@ -235,8 +235,37 @@ public final class PluginBuild {
     }
 
     /**
+     * The module's step lane fetched as {@code lock} pins it — a lock still being written, whose
+     * {@code [[tool]]} rows are already in place — read with {@code view}'s platform pins: what a
+     * plugin answering a lock closure receives as a step would.
+     */
+    static Map<String, Path> stepTools(JkBuild project, Path moduleDir, Cas cas, Lockfile lock, Lockfile view)
+            throws IOException, InterruptedException {
+        List<PluginContributions.StepDep> lane =
+                PluginContributions.stepDependencies(project, moduleDir, view.platformPins());
+        return fetchTools(lane, project, cas, lock, false, true);
+    }
+
+    /**
+     * Every closure plugin {@code pluginId} resolved for the lock of the module at {@code
+     * moduleDir}, each a Maven-layout repository of its pinned files under the store, by extra name
+     * ({@link LockClosures#repositories}). Empty when the plugin declares none.
+     */
+    public static Map<String, Path> lockClosureRepositories(
+            JkBuild project, Path moduleDir, Cas cas, Path lockFile, String pluginId)
+            throws IOException, InterruptedException {
+        if (PluginContributions.lockClosures(project, moduleDir).isEmpty()) return Map.of();
+        Lockfile lock = lockOrNull(lockFile);
+        if (lock == null)
+            throw new IOException("no jk-lock.toml pins the closures " + pluginId + " resolves — run `jk lock`");
+        return LockClosures.repositories(
+                project, lockDir(lockFile), moduleDir, pluginId, cas, lock, memberLock(lockFile, moduleDir));
+    }
+
+    /**
      * Every tool the lock pins for the module at {@code moduleDir} on this platform — the step,
-     * command and packager lanes' Maven artifacts, closures and URL files — fetched into the CAS
+     * command and packager lanes' Maven artifacts, closures and URL files, and the files of each
+     * closure its plugins resolved for the lock ({@link LockClosures#stage}) — fetched into the CAS
      * and verified as a build fetches them; SDK components are left to their own provisioning.
      * What {@code jk sync} prefetches. Answers the tools' names.
      */
@@ -255,6 +284,10 @@ public final class PluginBuild {
                 fetchTools(lanes, project, cas, lockOrNull(lockFile), false, false)
                         .keySet());
         out.addAll(fetchPackagerDependencies(project, moduleDir, cas, lockFile).keySet());
+        Lockfile lock = lockOrNull(lockFile);
+        if (lock != null)
+            out.addAll(LockClosures.stage(
+                    project, lockDir(lockFile), moduleDir, cas, lock, memberLock(lockFile, moduleDir)));
         return out;
     }
 
@@ -466,6 +499,11 @@ public final class PluginBuild {
      * partition rows in place of the workspace's for the coordinates it disagrees on, so a step's
      * classpaths carry the jars the member's compile does ({@link MemberRows#view}).
      */
+    /** The directory of the lock at {@code lockFile}: the workspace root its module paths are under. */
+    private static Path lockDir(Path lockFile) {
+        return Objects.requireNonNull(lockFile.toAbsolutePath().normalize().getParent(), "lock directory");
+    }
+
     private static Lockfile memberLock(Path lockFile, Path moduleDir) throws IOException {
         return MemberRows.view(LockfileReader.read(lockFile), lockFile, moduleDir);
     }
@@ -620,6 +658,22 @@ public final class PluginBuild {
         } catch (Exception e) {
             /* no workspace — fine */
             Log.debug("ProdEntry: no workspace", e);
+        }
+        return out;
+    }
+
+    /**
+     * {@code view}'s rows as a step's entries — the production runtime closure, or the test runtime
+     * closure when {@code test} — without the workspace siblings, which no lock has built: what a
+     * lock closure is resolved from. A row the store lacks is left out.
+     */
+    static List<ProdEntry> lockedEntries(Cas cas, Lockfile view, JkBuild project, Path moduleDir, boolean test) {
+        var resolver = new ClasspathResolver(cas);
+        List<ProdEntry> out = new ArrayList<>();
+        for (var entry : test
+                ? resolver.testRuntimeEntriesFor(view, false, project, moduleDir)
+                : resolver.entriesFor(view, ClasspathResolver.RUNTIME, false, project, moduleDir)) {
+            out.add(lockEntry(entry));
         }
         return out;
     }

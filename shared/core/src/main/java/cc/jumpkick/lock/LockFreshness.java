@@ -192,7 +192,8 @@ public final class LockFreshness {
     /**
      * True when an active plugin of a module fetches a tool artifact by coordinate, a file at a URL
      * or a runtime closure that {@code lock} has no {@code [[tool]]} row for — the module, version and type; a
-     * floating version matches any row of its module. Which platforms a row covers is the build's
+     * floating version matches any row of its module — or resolves a closure for the lock that no
+     * row answers for the module's current inputs ({@link LockClosureInputs}). Which platforms a row covers is the build's
      * question, not freshness's.
      */
     private static boolean missingToolPin(Path owner, Map<Path, JkBuild> modules, Lockfile lock) {
@@ -220,6 +221,12 @@ public final class LockFreshness {
                 String root = Objects.requireNonNull(closure.coordinateSpec());
                 if (ToolEntry.closureIn(lock.tools(), root, closure.with(), closure.managedBySpec()) == null)
                     return true;
+            }
+            for (PluginContributions.LockClosureDep closure :
+                    PluginContributions.lockClosures(module.getValue(), dir)) {
+                if (ToolEntry.resolvedIn(
+                                lock.tools(), closure.resolvedBy(), LockClosureInputs.of(closure, owner, dir, view))
+                        == null) return true;
             }
         }
         return false;

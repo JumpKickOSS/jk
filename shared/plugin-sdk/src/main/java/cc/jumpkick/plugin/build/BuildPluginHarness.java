@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.build;
 
 import cc.jumpkick.host.Log;
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
@@ -49,7 +50,43 @@ public final class BuildPluginHarness {
      * replays its registration and answers the requested op.
      */
     public static int run(Plugin plugin, List<String> args, ProtocolWriter out) throws Exception {
+        if (plugin instanceof LockExtension lock && !args.isEmpty() && Files.isRegularFile(Path.of(args.get(0)))) {
+            Spec spec = Spec.read(Path.of(args.get(0)));
+            if (PluginProtocol.OP_LOCK_CLOSURE.equals(spec.op())) return lockClosure(lock, spec, out);
+        }
         return run(asBuildPlugin(plugin), args, out);
+    }
+
+    /** An {@code error} reply: its {@code code} and {@code message}. */
+    private static String error(String code, String message) {
+        return JsonFields.object()
+                .string(PluginProtocol.T, "error")
+                .string("code", code)
+                .string("message", message)
+                .finish();
+    }
+
+    /** Answer a {@code lock-closure} op: one {@code pin} reply per file the named closure needs. */
+    private static int lockClosure(LockExtension lock, Spec spec, ProtocolWriter out) throws IOException {
+        String name = spec.stepName();
+        if (name == null || name.isBlank()) {
+            out.emit(error("unknown-closure", "a lock-closure op names no closure"));
+            return 65;
+        }
+        List<String> files;
+        try {
+            files = lock.lockClosure(name, new SpecTaskExec(spec, out), spec.testEntries());
+        } catch (Exception e) {
+            out.emit(error("lock-closure-failed", String.valueOf(e.getMessage())));
+            return 1;
+        }
+        for (String file : files) {
+            out.emit(JsonFields.object()
+                    .string(PluginProtocol.T, PluginProtocol.PIN)
+                    .string("coordinate", file)
+                    .finish());
+        }
+        return 0;
     }
 
     /**
@@ -315,6 +352,8 @@ public final class BuildPluginHarness {
             List<Path> runtimeClasspath,
             List<Path> compileClasspath,
             List<PackageIo.RuntimeEntry> entries,
+            /** The test runtime closure's entries ({@link PluginProtocol#ROLE_TEST}): a lock closure's. */
+            List<PackageIo.RuntimeEntry> testEntries,
             Map<String, Path> stepOutputs,
             Map<String, Path> extras,
             Map<String, List<Path>> siblingFiles,
@@ -344,6 +383,7 @@ public final class BuildPluginHarness {
             List<Path> runtimeClasspath = new ArrayList<>();
             List<Path> compileClasspath = new ArrayList<>();
             List<PackageIo.RuntimeEntry> entries = new ArrayList<>();
+            List<PackageIo.RuntimeEntry> testEntries = new ArrayList<>();
             Map<String, Path> stepOutputs = new LinkedHashMap<>();
             Map<String, Path> extras = new LinkedHashMap<>();
             Map<String, List<Path>> siblingFiles = new LinkedHashMap<>();
@@ -400,7 +440,7 @@ public final class BuildPluginHarness {
                     case "java-home" -> javaHome = Path.of(required(Jsonl.str(line, "path"), "java-home.path"));
                     case "artifact" -> artifactPath = Path.of(required(Jsonl.str(line, "path"), "artifact.path"));
                     case "cp" -> addClasspathEntry(line, runtimeClasspath, compileClasspath);
-                    case "entry" -> entries.add(runtimeEntry(line));
+                    case "entry" -> (isTestEntry(line) ? testEntries : entries).add(runtimeEntry(line));
                     case "step-output" ->
                         stepOutputs.put(
                                 required(Jsonl.str(line, "name"), "step-output.name"),
@@ -436,6 +476,7 @@ public final class BuildPluginHarness {
                     runtimeClasspath,
                     compileClasspath,
                     entries,
+                    testEntries,
                     stepOutputs,
                     extras,
                     siblingFiles,
@@ -485,6 +526,11 @@ public final class BuildPluginHarness {
                 case "map" -> Jsonl.strMap(line, "values");
                 default -> throw new IOException("config kind `" + kind + "` is not one this harness reads");
             };
+        }
+
+        /** An {@code entry} of the test runtime closure ({@link PluginProtocol#ROLE_TEST}), not the production one. */
+        private static boolean isTestEntry(String line) {
+            return PluginProtocol.ROLE_TEST.equals(Jsonl.str(line, PluginProtocol.ROLE));
         }
 
         private static PackageIo.RuntimeEntry runtimeEntry(String line) {

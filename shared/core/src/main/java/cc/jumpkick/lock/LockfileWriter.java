@@ -304,12 +304,14 @@ public final class LockfileWriter {
      * One {@code [[tool]]} row per tool, artifacts sorted by coordinate, version, type and
      * classifier, then URLs; a host-following tool's per-platform digests are dotted {@code
      * sha256.<classifier>} keys, as {@code [node]} writes its archives', and a closure row lists its
-     * jars one per line.
+     * jars one per line; the closures plugins resolved come last, by plugin, closure and inputs.
      */
     private static void writeTools(StringBuilder out, Lockfile lockfile) {
         List<ToolEntry> sorted = new ArrayList<>(lockfile.tools());
-        sorted.sort(Comparator.comparing((ToolEntry t) -> t.url() != null)
-                .thenComparing(t -> t.url() != null ? t.url() : Objects.requireNonNull(t.coordinate()))
+        sorted.sort(Comparator.comparing(ToolEntry::isResolved)
+                .thenComparing((ToolEntry t) -> t.url() != null)
+                .thenComparing(LockfileWriter::toolName)
+                .thenComparing(t -> t.inputs() == null ? "" : t.inputs())
                 .thenComparing(t -> t.version() == null ? "" : t.version())
                 .thenComparing(ToolEntry::type)
                 .thenComparing(t -> t.classifier() == null ? "" : t.classifier())
@@ -319,6 +321,18 @@ public final class LockfileWriter {
         for (ToolEntry t : sorted) {
             out.append('\n');
             out.append("[[tool]]\n");
+            String resolvedBy = t.resolvedBy();
+            if (resolvedBy != null) {
+                out.append("resolved-by = ").append(quote(resolvedBy)).append('\n');
+                out.append("inputs      = ")
+                        .append(quote(Objects.requireNonNull(t.inputs())))
+                        .append('\n');
+                out.append("files = [\n");
+                for (String file : t.closure())
+                    out.append("  ").append(quote(file)).append(",\n");
+                out.append("]\n");
+                continue;
+            }
             String url = t.url();
             if (url != null) {
                 out.append("url      = ").append(quote(url)).append('\n');
@@ -360,6 +374,12 @@ public final class LockfileWriter {
                         .append('\n');
             }
         }
+    }
+
+    /** What a tool row sorts by first: its plugin and closure name, URL or coordinate. */
+    private static String toolName(ToolEntry t) {
+        if (t.resolvedBy() != null) return t.resolvedBy();
+        return t.url() != null ? t.url() : Objects.requireNonNull(t.coordinate());
     }
 
     /** {@code ["a", "b"]} on one line. */
