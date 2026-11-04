@@ -140,6 +140,10 @@ def main() -> int:
     ap.add_argument("--confirm", action="store_true", help="rerun once only the cells that surprised")
     ap.add_argument("--arm", action="append", default=[], metavar="AGENT=ARM",
                     help="run an agent on another arm than its prescription (compared with the prescription)")
+    ap.add_argument("--model", action="append", default=[], metavar="AGENT=MODEL",
+                    help="run an agent on another model than its driver's default")
+    ap.add_argument("--effort", action="append", default=[], metavar="AGENT=EFFORT",
+                    help="run an agent at another reasoning effort than its driver's default")
     ap.add_argument("--expect", default="Checked by jk",
                     help="text a rename answer must carry for the run to test the change")
     ns = ap.parse_args()
@@ -151,6 +155,8 @@ def main() -> int:
             raise SystemExit(f"screen-ff: no agent or arm in {pair!r}")
         arms[agent] = arm
     active = list(ns.agent or PRESCRIPTIONS)
+    models = dict(pair.partition("=")[::2] for pair in ns.model)
+    efforts = dict(pair.partition("=")[::2] for pair in ns.effort)
 
     def cell(agent: str, task: str, run: int) -> dict | None:
         """One run of a cell, unless it is measured already; its row, or None when it was not measured."""
@@ -160,6 +166,10 @@ def main() -> int:
             return row
         sys.argv = ["change-tasks", "--driver", agent, "--arm", arm, "--task", task,
                     "--first-run", str(run), "--runs", "1"]
+        if agent in models:
+            sys.argv += ["--model", models[agent]]
+        if agent in efforts:
+            sys.argv += ["--effort", efforts[agent]]
         try:
             ct.main()
         except Exception as e:  # noqa: BLE001 - one broken cell is a line, not the end of the screen
