@@ -43,10 +43,25 @@ class DownloadEtaTest {
     void before_anything_lands_the_recorded_rate_prices_the_rest() {
         var plan = board.plan(100);
         var eta = new DownloadEta(board, clock, sent::add, 120);
+        var first = board.open("g:first:1");
+        first.started(1_000);
 
         eta.sample();
 
         assertThat(sent).containsExactly(100 * 120L);
+        first.close();
+        plan.close();
+    }
+
+    @Test
+    void a_set_settling_files_already_on_disk_is_not_priced() {
+        var plan = board.plan(800);
+        var eta = new DownloadEta(board, clock, sent::add, 40);
+        for (int i = 0; i < 300; i++) plan.settled();
+
+        eta.sample();
+
+        assertThat(sent).as("no bytes moved, nothing in flight").isEmpty();
         plan.close();
     }
 
@@ -71,6 +86,7 @@ class DownloadEtaTest {
     void the_runs_own_rate_replaces_the_prior_once_enough_has_landed() {
         var plan = board.plan(50);
         var eta = new DownloadEta(board, clock, sent::add, 1_000);
+        board.open("g:streaming:1").started(-1);
         eta.sample(); // prior: 50 s
         clock.advance(Duration.ofSeconds(2));
         land(20, 100);
@@ -85,6 +101,7 @@ class DownloadEtaTest {
     void a_small_change_is_not_sent_again() {
         var plan = board.plan(100);
         var eta = new DownloadEta(board, clock, sent::add, 100);
+        board.open("g:streaming:1").started(-1);
         eta.sample();
         plan.settled();
         eta.sample(); // 9.9 s against 10 s: no news
@@ -98,6 +115,7 @@ class DownloadEtaTest {
         land(50);
         var plan = board.plan(10);
         var eta = new DownloadEta(board, clock, sent::add, 200);
+        board.open("g:streaming:1").started(-1);
         eta.sample();
 
         assertThat(sent).as("the prior, not 50 artifacts in no time").containsExactly(10 * 200L);

@@ -349,13 +349,26 @@ public final class SyncPlans {
                             BuildForks.of(modules, lock, LockPaths.lockFile(root), JkStores.storeCas());
                     if (forks.isEmpty()) return;
                     ctx.label("sync workers and toolchains");
+                    List<String> failed;
                     try {
-                        BuildForks.stage(forks);
-                    } catch (IOException e) {
-                        throw new RuntimeException(Errors.text(e), e);
+                        failed = BuildForks.stage(forks);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         throw new RuntimeException("interrupted staging workers", e);
+                    }
+                    // Ahead of time only: the step that needs a fork fetches it or fails on its own,
+                    // and a build that never reaches that step is not stopped here. Offline, a fork
+                    // this build may never use is not worth a warning on every run.
+                    boolean offline = SessionContext.current().config().offlineOr(false);
+                    for (String failure : failed) {
+                        if (offline) {
+                            Log.debug("sync: not staged offline: " + failure);
+                        } else {
+                            ctx.warn(
+                                    "fork-staging",
+                                    "could not stage " + failure
+                                            + " ahead of the build; the step that needs it will fetch it");
+                        }
                     }
                 })
                 .build();

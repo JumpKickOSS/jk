@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
@@ -45,8 +46,9 @@ public final class TransferBoard {
     public record Row(String label, long read, long total) {}
 
     /**
-     * The board at one moment. {@code settled} of {@code planned} are the open plans' files (both 0
-     * when no step declared a set); {@code files} bodies have landed and {@code bytes} have streamed
+     * The board at one moment. {@code settled} of {@code planned} are the run's declared files
+     * that are downloading or downloaded — sets that moved bytes, a closed one counted in full; both 0
+     * when no step's set downloaded anything; {@code files} bodies have landed and {@code bytes} have streamed
      * this request; {@code inflight} bodies are streaming, of which {@code rows} — at most {@link
      * #MAX_ROWS}, oldest first — ran past the dwell.
      */
@@ -101,6 +103,9 @@ public final class TransferBoard {
     private final LongAdder bytes = new LongAdder();
     private final LongAdder files = new LongAdder();
     private final LongAdder artifacts = new LongAdder();
+    private final Set<String> artifactLabels = ConcurrentHashMap.newKeySet();
+    /** Files of the declared sets that closed after moving bytes; they stay in the run's count. */
+    private final AtomicInteger closedItems = new AtomicInteger();
 
     public TransferBoard(Clock clock) {
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -122,6 +127,14 @@ public final class TransferBoard {
     /** Artifacts whose bodies landed this run, whichever step or caller downloaded them. */
     public long artifactsLanded() {
         return artifacts.sum();
+    }
+
+    /**
+     * The labels ({@code g:a:v}) of the artifacts that landed this run, so a caller can tell its own
+     * files from the rest: a sync counts the lock's rows among them, not a toolchain's jars.
+     */
+    public Set<String> artifactLabelsLanded() {
+        return Set.copyOf(artifactLabels);
     }
 
     /**
@@ -148,7 +161,7 @@ public final class TransferBoard {
 
     /** A step that will settle {@code items} files. */
     public Plan plan(int items) {
-        Planned p = new Planned(Math.max(0, items));
+        Planned p = new Planned(Math.max(0, items), bytes.sum());
         plans.put(p, Boolean.TRUE);
         return p;
     }
@@ -168,9 +181,15 @@ public final class TransferBoard {
             if (rows.size() == MAX_ROWS) break;
             rows.add(new Row(t.label, t.read, t.total));
         }
-        int settled = 0;
-        int planned = 0;
+        // A declared set counts once it downloads — bytes moved since it opened, or a body streaming:
+        // a step settling files that are all on disk is not downloading, whatever came before it. A closed set stays
+        // counted, settled in full, so a nested set (a closure's depth inside the sync) never makes
+        // the run's count go down.
+        long moved = bytes.sum();
+        int settled = closedItems.get();
+        int planned = closedItems.get();
         for (Planned p : plans.keySet()) {
+            if (moved <= p.bytesAtOpen && inflight == 0) continue;
             settled += Math.min(p.settled.get(), p.items);
             planned += p.items;
         }
@@ -208,7 +227,10 @@ public final class TransferBoard {
         public void finished() {
             if (live.remove(this) != null) {
                 files.increment();
-                if (artifact) artifacts.increment();
+                if (artifact) {
+                    artifacts.increment();
+                    artifactLabels.add(label);
+                }
             }
         }
 
@@ -220,10 +242,12 @@ public final class TransferBoard {
 
     private final class Planned implements Plan {
         final int items;
+        final long bytesAtOpen;
         final AtomicInteger settled = new AtomicInteger();
 
-        Planned(int items) {
+        Planned(int items, long bytesAtOpen) {
             this.items = items;
+            this.bytesAtOpen = bytesAtOpen;
         }
 
         @Override
@@ -233,7 +257,7 @@ public final class TransferBoard {
 
         @Override
         public void close() {
-            plans.remove(this);
+            if (plans.remove(this) != null && bytes.sum() > bytesAtOpen) closedItems.addAndGet(items);
         }
     }
 }

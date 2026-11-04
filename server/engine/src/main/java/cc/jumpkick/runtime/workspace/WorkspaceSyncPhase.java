@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.workspace;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.base.Perf;
@@ -13,7 +14,9 @@ import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The SYNC phase of every build: {@link SyncPlans#syncBuildPlan}, the plan {@code jk sync} runs,
@@ -32,9 +35,10 @@ final class WorkspaceSyncPhase {
     }
 
     /** Everything the lock pins put on disk, or the errors that kept it from being. */
-    static Synced run(WorkspaceRequest request, WorkspaceBuildListener listener, Clock clock, long landedBefore) {
+    static Synced run(
+            WorkspaceRequest request, WorkspaceBuildListener listener, Clock clock, Set<String> landedBefore) {
         Path owner = LockPaths.lockOwnerDir(request.entryDir());
-        listener.onPreflight("sync", 0, 0, "Syncing dependencies…");
+        listener.onPreflight("sync", 0, 0, SyncStageProgress.LABEL);
         long started = clock.nanos();
         // `jk sync` is this phase as a goal of its own; its arguments reach the same plan.
         TailArgs.Sync args = request.spec() == null ? null : request.spec().syncArgs();
@@ -51,13 +55,19 @@ final class WorkspaceSyncPhase {
                 null,
                 true);
         long perf = Perf.start();
-        BuildPlanResult result = plan.run();
+        BuildPlanResult result;
+        // The sync stage moves with the files it settles, so a cold build's header advances through
+        // its downloads; stopped before the stage's last word below.
+        try (SyncStageProgress ignored = SyncStageProgress.start(listener)) {
+            result = plan.run();
+        }
         Perf.end("ws-sync", perf, "success", result.success());
         for (BuildPlanResult.Diagnostic w : result.warnings()) {
             if (w.message() != null) listener.onNote(w.message());
         }
         if (result.success()) {
-            WorkspaceResult.SyncCounts counts = runCounts(fetched.get(), upToDate.get(), landedBefore);
+            WorkspaceResult.SyncCounts counts = runCounts(
+                    fetched.get(), upToDate.get(), plan.get(SyncPlans.LOCKFILE).orElse(null), landedBefore);
             listener.onPreflight("sync", 1, 1, summary(counts.fetched(), counts.upToDate()));
             return new Synced(List.of(), counts);
         }
@@ -70,15 +80,23 @@ final class WorkspaceSyncPhase {
     }
 
     /**
-     * What the run settled, counted for the run and not only this phase ({@code landedBefore} is
-     * the board's artifact count when the run's preflight began, so only this run's downloads count): {@code fetched} is every
-     * artifact the run downloaded, the ones a first lock pinned included; {@code upToDate} the rest
-     * of what the sync found on disk. A sync after a first lock found every jar the lock had just
-     * downloaded, and "0 fetched, 183 up-to-date" read as if nothing had come down the wire.
+     * What the run settled of the lock's own artifacts: {@code fetched} counts each row the run
+     * downloaded, the ones a first lock pinned (and so downloaded) included; {@code upToDate} the
+     * rest of what the sync found on disk. A toolchain's or worker's jars the same run staged are
+     * not the lock's and are not counted. {@code landedBefore} is the board's artifact labels when
+     * the run's preflight began, so only this run's downloads count.
      */
-    static WorkspaceResult.SyncCounts runCounts(int syncFetched, int syncUpToDate, long landedBefore) {
-        long landed = SessionContext.current().io().transfers().artifactsLanded() - landedBefore;
-        int fetched = (int) Math.max(syncFetched, landed);
+    static WorkspaceResult.SyncCounts runCounts(
+            int syncFetched, int syncUpToDate, @Nullable Lockfile lock, Set<String> landedBefore) {
+        int lockLanded = 0;
+        if (lock != null) {
+            Set<String> landed = SessionContext.current().io().transfers().artifactLabelsLanded();
+            for (Lockfile.Artifact a : lock.artifacts()) {
+                String label = a.displayCoord();
+                if (landed.contains(label) && !landedBefore.contains(label)) lockLanded++;
+            }
+        }
+        int fetched = Math.max(syncFetched, lockLanded);
         int upToDate = Math.max(0, syncFetched + syncUpToDate - fetched);
         return new WorkspaceResult.SyncCounts(fetched, upToDate);
     }

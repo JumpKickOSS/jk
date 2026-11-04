@@ -2,12 +2,15 @@
 package cc.jumpkick.repo;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.nio.channels.ClosedByInterruptException;
 import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Predicate;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One request per key at a time: a caller that asks for what another is already fetching waits for
@@ -56,9 +59,7 @@ final class SingleFlight<V> {
                 return theirs.get();
             } catch (ExecutionException e) {
                 Throwable cause = e.getCause();
-                if (cause instanceof InterruptedException
-                        || cause instanceof CancellationException
-                        || retried.test(cause)) {
+                if (cause instanceof CancellationException || interrupted(cause) || retried.test(cause)) {
                     continue;
                 }
                 if (cause instanceof IOException io) throw io;
@@ -67,6 +68,22 @@ final class SingleFlight<V> {
                 throw new IOException(cause);
             }
         }
+    }
+
+    /**
+     * Whether {@code failure} is a leader's interrupt however it was wrapped: a body stream that is
+     * interrupted surfaces as an InterruptedIOException, a ClosedByInterruptException or an
+     * IOException caused by either. Another run's Ctrl-C is never this caller's failure.
+     */
+    static boolean interrupted(@Nullable Throwable failure) {
+        for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof InterruptedException
+                    || t instanceof InterruptedIOException
+                    || t instanceof ClosedByInterruptException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Callers parked on {@code key}'s fetch now; tests wait on it. */

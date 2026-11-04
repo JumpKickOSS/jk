@@ -316,10 +316,17 @@ public final class WorkspaceProgressTracker {
             case "checking" -> 0.08;
             case "lock" -> total > 0 && done >= total ? 0.30 : 0.20;
             case "graph" -> total > 0 && done >= total ? 0.40 : 0.35;
-            case "plan" -> {
-                if (total <= 0) yield 0.45;
+            // A cold sync is most of a first build's preflight: its settled files move a band of
+            // their own, between the graph and the plan.
+            case "sync" -> {
+                if (total <= 0) yield 0.40;
                 double within = Math.min(1.0, Math.max(0.0, (double) done / (double) total));
-                yield 0.40 + 0.55 * within;
+                yield 0.40 + 0.25 * within;
+            }
+            case "plan" -> {
+                if (total <= 0) yield 0.65;
+                double within = Math.min(1.0, Math.max(0.0, (double) done / (double) total));
+                yield 0.65 + 0.30 * within;
             }
             default -> 0.10;
         };

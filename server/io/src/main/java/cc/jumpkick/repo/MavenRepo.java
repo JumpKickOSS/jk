@@ -559,9 +559,10 @@ public final class MavenRepo {
         }
         URI uri = fetchBase.resolve(relativePath);
         refuseIfUnreachable();
-        // The same file into the same store under the same pin: one download, whoever asks.
+        // The same file into the same store under the same pin and credential: one download,
+        // whoever asks. Two repositories at one URL with different credentials never share one.
         String flight = (repoStore.root() == null ? "" : repoStore.root().toString()) + "|" + uri + "|" + mirror + "|"
-                + leg + "|" + expectedSha256 + "|" + force;
+                + leg + "|" + expectedSha256 + "|" + force + "|" + credential.hashCode();
         return FLIGHTS.run(
                 flight, () -> fetchRemote(coord, relativePath, uri, mirror, leg, abort, expectedSha256, force));
     }
