@@ -19,12 +19,12 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
-import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.mvn.PomImporter;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.repo.RepoMirrors;
 import cc.jumpkick.resolver.NaiveResolver;
 import cc.jumpkick.resolver.Resolution;
 import cc.jumpkick.run.BuildPlan;
@@ -462,7 +462,7 @@ public final class ScriptPlans {
 
                     List<Dependency> declaredDeps = new ArrayList<>();
                     Cas cas = JkStores.storeCas();
-                    PomImporter poms = new PomImporter(jarRepos(repoUrl, new Http(), cas), cas);
+                    PomImporter poms = new PomImporter(RepoGroupBuilder.buildDefault(repoUrl, cas), cas);
                     for (JarManifest.EmbeddedPom p : JarManifest.scanEmbeddedPoms(jar)) {
                         if (!p.hasPomXml()) continue;
                         try {
@@ -508,7 +508,7 @@ public final class ScriptPlans {
                     ctx.label("fetch " + declaredDeps.size() + " embedded deps");
                     Files.createDirectories(cacheDir);
                     Cas cas = JkStores.storeCas();
-                    RepoGroup repos = jarRepos(repoUrl, new Http(), cas);
+                    RepoGroup repos = RepoGroupBuilder.buildDefault(repoUrl, cas);
                     try {
                         classpath.addAll(resolveClasspath(declaredDeps, repos));
                     } catch (RuntimeException e) {
@@ -605,24 +605,17 @@ public final class ScriptPlans {
                 : name;
     }
 
-    /** Central, or the one URL a test pins in its place. */
-    private static RepoGroup jarRepos(@Nullable URI repoUrl, Http http, Cas cas) {
-        return new RepoGroup(List.of(new MavenRepo(
-                RepositorySpec.CENTRAL, repoUrl != null ? repoUrl : RepositorySpec.MAVEN_CENTRAL.url(), http, cas)));
-    }
-
-    private static RepoGroup buildRepos(ScriptHeader header, @Nullable URI repoUrl, Http http, Cas cas) {
+    /**
+     * The repositories a script resolves against: the ones its header names, each routed through
+     * the mirror that stands in for it as a POM-declared repository is; else the user's
+     * repositories over the public baseline ({@link RepoGroupBuilder#buildDefault}); else the one
+     * URL a test pins.
+     */
+    static RepoGroup buildRepos(ScriptHeader header, @Nullable URI repoUrl, Http http, Cas cas) {
+        if (repoUrl != null || header.repos().isEmpty()) return RepoGroupBuilder.buildDefault(repoUrl, cas);
         List<MavenRepo> list = new ArrayList<>();
-        if (repoUrl != null) {
-            list.add(new MavenRepo(RepositorySpec.CENTRAL, repoUrl, http, cas));
-        } else {
-            for (URI uri : header.repos()) {
-                list.add(new MavenRepo("script-repo-" + list.size(), uri, http, cas));
-            }
-            if (list.isEmpty()) {
-                list.add(new MavenRepo(
-                        RepositorySpec.MAVEN_CENTRAL.name(), RepositorySpec.MAVEN_CENTRAL.url(), http, cas));
-            }
+        for (URI uri : header.repos()) {
+            list.add(RepoMirrors.apply(new MavenRepo("script-repo-" + list.size(), uri, http, cas)));
         }
         return new RepoGroup(list);
     }

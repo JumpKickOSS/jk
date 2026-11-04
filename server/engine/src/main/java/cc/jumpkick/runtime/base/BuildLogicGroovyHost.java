@@ -1,18 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
-import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.Coordinate;
-import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.MavenRepo;
+import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -25,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -63,11 +62,13 @@ public final class BuildLogicGroovyHost {
      * Run one script, returning its captured stdout/stderr. See {@link BuildLogicKtsHost#evaluate}.
      * The child is killed when {@code cancelled} — the owning step's probe, covering a sibling
      * step's failure as well as Ctrl-C — flips while it runs, and the run reports as cancelled with
-     * the jk prefix rather than as a script failure.
+     * the jk prefix rather than as a script failure. The pinned Groovy jars are fetched from {@code
+     * repos} on first use.
      */
-    public static String evaluate(Path script, Path projectDir, Path outDir, BooleanSupplier cancelled)
+    public static String evaluate(
+            Path script, Path projectDir, Path outDir, BooleanSupplier cancelled, Supplier<RepoGroup> repos)
             throws Exception {
-        Path[] jars = ensureJars();
+        Path[] jars = ensureJars(repos);
         Path wrapper = Files.createTempFile("jk-logic-", ".groovy");
         try {
             Files.writeString(wrapper, wrap(script, projectDir, outDir), StandardCharsets.UTF_8);
@@ -221,8 +222,8 @@ public final class BuildLogicGroovyHost {
      */
     private static volatile Path @Nullable [] verifiedJars;
 
-    /** Verified jars under the tool cache; anything absent or off-pin is re-fetched from Central. */
-    static Path[] ensureJars() throws IOException {
+    /** Verified jars under the tool cache; anything absent or off-pin is re-fetched from {@code repos}. */
+    static Path[] ensureJars(Supplier<RepoGroup> repos) throws IOException {
         Path[] known = verifiedJars;
         if (known != null) return known;
         Path cache = toolCache();
@@ -232,7 +233,7 @@ public final class BuildLogicGroovyHost {
             PinnedJar jar = PINNED_JARS.get(i);
             Path out = cache.resolve(jar.fileName());
             if (!published(out, jar.sha256())) {
-                publish(fetchVerified(jar), out, jar.sha256());
+                publish(fetchVerified(jar, repos.get()), out, jar.sha256());
             }
             jars[i] = out;
         }
@@ -266,18 +267,18 @@ public final class BuildLogicGroovyHost {
     }
 
     /**
-     * Through {@link MavenRepo} — the verified fetch jk already has: streamed to a temp in a CAS
-     * shard, hashed while written, deleted on failure, mirror-and-cooldown routed. Never a second
-     * hand-rolled downloader.
+     * Through {@code repos}, the user's repositories — the verified fetch jk
+     * already has: streamed to a temp in a CAS shard, hashed while written, deleted on failure,
+     * routed through the mirror that stands in for the repository, refused unless its bytes are the
+     * pin. Never a second hand-rolled downloader.
      */
-    private static Path fetchVerified(PinnedJar jar) throws IOException {
-        MavenRepo central = new MavenRepo(
-                RepositorySpec.MAVEN_CENTRAL.name(),
-                RepositorySpec.MAVEN_CENTRAL.url(),
-                new Http(),
-                JkStores.storeCas());
+    private static Path fetchVerified(PinnedJar jar, RepoGroup repos) throws IOException {
         try {
-            return central.fetchArtifact(jar.coordinate(), jar.sha256(), () -> false)
+            return repos.tryFetchArtifact(jar.coordinate(), jar.sha256())
+                    .orElseThrow(() -> new MavenRepo.ArtifactNotFoundException(
+                            jar.coordinate() + " (" + jar.fileName() + ") is in none of the configured repositories",
+                            jar.coordinate()))
+                    .fetched()
                     .cachePath();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

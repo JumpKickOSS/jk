@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
-import cc.jumpkick.cache.Cas;
-import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.http.Http;
-import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.ToolCoordSpec;
-import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
@@ -18,10 +13,10 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.tool.ToolResolver;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -43,7 +38,8 @@ public final class ToolPlans {
      * @param withSpecs {@code --with} extras injected into the env's resolution (may be empty)
      * @param mainClassOverride the {@code --main} override, or {@code null} to read the primary
      *     jar's manifest
-     * @param repoUrl overrides Maven Central ({@code null} = Central)
+     * @param repos the repositories the coordinate resolves against — the user's over the public
+     *     baseline with their mirrors applied, or the one a test pins; asked for when the step runs
      * @param coordLabel the preformatted coordinate for the step label — the CLI's in-process path
      *     passes its themed {@code Coords.gav}, the engine passes the plain spec so no pre-themed
      *     text ever crosses the wire
@@ -53,7 +49,7 @@ public final class ToolPlans {
             List<ToolCoordSpec> withSpecs,
             @Nullable String bin,
             @Nullable String mainClassOverride,
-            @Nullable URI repoUrl,
+            Supplier<RepoGroup> repos,
             Path cache,
             String coordLabel) {
         Task resolve = Task.builder(TaskNames.RESOLVE_COORD)
@@ -62,13 +58,10 @@ public final class ToolPlans {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve " + coordLabel);
-                    Cas cas = JkStores.storeCas();
-                    URI url = repoUrl != null ? repoUrl : RepositorySpec.MAVEN_CENTRAL.url();
-                    RepoGroup repos = RepoGroup.of(new MavenRepo(RepositorySpec.CENTRAL, url, new Http(), cas));
                     try {
                         ctx.put(
                                 TOOL_ENV,
-                                new ToolResolver(repos)
+                                new ToolResolver(repos.get())
                                         .resolve(
                                                 spec,
                                                 Objects.requireNonNull(bin, "a tool resolve names its bin"),

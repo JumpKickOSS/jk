@@ -2,11 +2,9 @@
 package cc.jumpkick.tool;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
-import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.ToolCoordSpec;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePomBuilder;
@@ -36,13 +34,6 @@ public final class ToolResolver {
 
     public ToolResolver(RepoGroup repos) {
         this.repos = Objects.requireNonNull(repos, "repos");
-    }
-
-    /** Convenience: Central-only resolver backed by a shared {@link Cas}. */
-    public static ToolResolver mavenCentral(Http http, Cas cas) {
-        MavenRepo central =
-                new MavenRepo(RepositorySpec.MAVEN_CENTRAL.name(), RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
-        return new ToolResolver(RepoGroup.of(central));
     }
 
     /**

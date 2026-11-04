@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.BuildLogicToml.Logic;
 import cc.jumpkick.config.SessionContext;
@@ -372,7 +373,12 @@ public final class BuildLogicSupport {
                 try {
                     return kind == BuildLogicScripts.ScriptKind.KTS
                             ? BuildLogicKtsHost.evaluate(scriptFile, projectDir, outDir, cancelled)
-                            : BuildLogicGroovyHost.evaluate(scriptFile, projectDir, outDir, cancelled);
+                            : BuildLogicGroovyHost.evaluate(
+                                    scriptFile,
+                                    projectDir,
+                                    outDir,
+                                    cancelled,
+                                    () -> RepoGroupBuilder.buildDefault(JkStores.storeCas()));
                 } catch (Exception e) {
                     Throwable root = e;
                     while (root.getCause() != null && root.getCause() != root) {

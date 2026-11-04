@@ -4,7 +4,6 @@ package cc.jumpkick.giter8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.repo.MavenMetadata;
 import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -229,28 +228,29 @@ class Giter8ApplyTest {
 
     @Test
     void maven_offline_lookup_fails() {
-        MavenVersionLookup lookup = Giter8Maven.central(true);
+        MavenVersionLookup lookup = Giter8Maven.fromRepositories(
+                () -> {
+                    throw new AssertionError("an offline lookup builds no repository group");
+                },
+                true);
         assertThatThrownBy(() -> lookup.latest("g", "a", false))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("offline");
     }
 
     @Test
-    void maven_pick_prefers_release_when_stable() {
-        var md = new MavenMetadata("g", "a", List.of("1.0.0", "2.0.0-RC1", "2.0.0"), "2.0.0-RC1", "1.0.0");
-        assertThat(Giter8Maven.pick(md, true)).isEqualTo("1.0.0");
-        assertThat(Giter8Maven.pick(md, false)).isEqualTo("2.0.0-RC1");
+    void maven_pick_takes_the_newest_listed_version_and_the_newest_stable_one_when_asked() {
+        List<String> listed = List.of("2.0.0-RC1", "1.0.0", "1.1.0-SNAPSHOT");
+        assertThat(Giter8Maven.pick(listed, true)).isEqualTo("1.0.0");
+        assertThat(Giter8Maven.pick(listed, false)).isEqualTo("2.0.0-RC1");
+        assertThat(Giter8Maven.pick(List.of("1.0.0", "2.0.0-RC1", "2.0.0"), true))
+                .isEqualTo("2.0.0");
     }
 
     @Test
     void a_dotted_pre_release_is_not_stable() {
-        var md = new MavenMetadata(
-                "io.quarkus.platform",
-                "quarkus-bom",
-                List.of("3.40.1", "4.0.0.CR1", "4.0.0.Beta1"),
-                "4.0.0.Beta1",
-                "4.0.0.Beta1");
-        assertThat(Giter8Maven.pick(md, true)).isEqualTo("3.40.1");
+        assertThat(Giter8Maven.pick(List.of("3.40.1", "4.0.0.CR1", "4.0.0.Beta1"), true))
+                .isEqualTo("3.40.1");
     }
 
     @Test

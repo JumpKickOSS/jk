@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.giter8.Giter8Apply;
 import cc.jumpkick.giter8.Giter8Maven;
@@ -98,7 +99,11 @@ class ShippedTemplateBuildTest {
         Path tmpl = PluginTemplates.materialize(
                 requireNonNull(spec.pluginId()), spec.language(), spec.framework(), spec.name());
         Path dest = tmp.resolve("compose");
-        int written = Giter8Apply.apply(tmpl, dest, Map.of(), Giter8Maven.central(false));
+        int written = Giter8Apply.apply(
+                tmpl,
+                dest,
+                Map.of(),
+                Giter8Maven.fromRepositories(() -> RepoGroupBuilder.buildDefault(JkStores.storeCas()), false));
 
         assertThat(written).as("files scaffolded from %s", id).isGreaterThanOrEqualTo(6);
         assertThat(dest.resolve("jk.toml")).exists();
@@ -188,7 +193,11 @@ class ShippedTemplateBuildTest {
 
         Path tmpl = PluginTemplates.materialize(
                 requireNonNull(spec.pluginId()), spec.language(), spec.framework(), spec.name());
-        int written = Giter8Apply.apply(tmpl, dest, Map.of(), Giter8Maven.central(false));
+        int written = Giter8Apply.apply(
+                tmpl,
+                dest,
+                Map.of(),
+                Giter8Maven.fromRepositories(() -> RepoGroupBuilder.buildDefault(JkStores.storeCas()), false));
         assertThat(written).as("files scaffolded from %s", spec.id()).isPositive();
         assertThat(dest.resolve("jk.toml"))
                 .as("%s scaffolds a jk.toml at the project root", spec.id())

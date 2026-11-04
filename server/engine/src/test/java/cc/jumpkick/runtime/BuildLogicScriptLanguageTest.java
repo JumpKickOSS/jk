@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
@@ -197,7 +198,8 @@ class BuildLogicScriptLanguageTest {
         AtomicReference<Throwable> outcome = new AtomicReference<>();
         Thread build = new Thread(() -> {
             try {
-                BuildLogicGroovyHost.evaluate(script, project, out, cancelled::get);
+                BuildLogicGroovyHost.evaluate(
+                        script, project, out, cancelled::get, () -> RepoGroupBuilder.buildDefault(JkStores.storeCas()));
             } catch (Throwable t) {
                 outcome.set(t);
             }
