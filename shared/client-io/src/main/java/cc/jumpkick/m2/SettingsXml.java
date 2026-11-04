@@ -61,8 +61,14 @@ final class SettingsXml {
                 values.notices());
     }
 
+    /**
+     * The servers with usable credentials. A {@code <password>} that is encrypted and does not
+     * decrypt drops its server, after a warning, so the repository is asked anonymously rather
+     * than with the ciphertext; an id is decided by its first entry either way.
+     */
     private Map<String, MavenSettings.Server> servers(MinimalXml.Element doc) {
         Map<String, MavenSettings.Server> byId = new LinkedHashMap<>();
+        Set<String> decided = new LinkedHashSet<>();
         for (MinimalXml.Element server : listed(doc, "servers", "server")) {
             String id = text(server, "id", "<server>");
             if (id == null) continue;
@@ -71,9 +77,41 @@ final class SettingsXml {
             String password = text(server, "password", where);
             String passphrase = text(server, "passphrase", where);
             if (username == null && password == null) continue; // no usable creds
-            byId.putIfAbsent(id, new MavenSettings.Server(id, username, password, passphrase));
+            if (!decided.add(id)) continue;
+            try {
+                password = decrypted(password);
+            } catch (MavenPasswords.Undecryptable e) {
+                undecryptable(where, "<password>", e, "the repository is accessed anonymously");
+                continue;
+            }
+            try {
+                passphrase = decrypted(passphrase);
+            } catch (MavenPasswords.Undecryptable e) {
+                undecryptable(where, "<passphrase>", e, "it is not used");
+                passphrase = null;
+            }
+            byId.put(id, new MavenSettings.Server(id, username, password, passphrase));
         }
         return byId;
+    }
+
+    /**
+     * {@code value} decrypted when it is encrypted. A value still carrying a {@code ${...}} has an
+     * expression that did not expand; it was already reported, and is sent as written rather than
+     * mistaken for ciphertext.
+     */
+    private @Nullable String decrypted(@Nullable String value) throws MavenPasswords.Undecryptable {
+        return value == null || value.contains("${") ? value : values.decrypt(value);
+    }
+
+    /** Once per run per entry: an encrypted value that does not decrypt, why, and what jk does instead. */
+    private void undecryptable(String where, String element, MavenPasswords.Undecryptable e, String instead) {
+        values.report(new SettingsValues.Notice(
+                "m2-settings-undecryptable:" + file + " " + where + " " + element,
+                "jk: warning: " + where + " in " + file + " has an encrypted " + element
+                        + " jk cannot decrypt: " + e.getMessage() + "; " + instead
+                        + ". jk reads Maven's encrypted passwords for compatibility only — `jk repo login`,"
+                        + " ${file:…} or ${cmd:…} keep a credential out of plain text"));
     }
 
     private List<MavenSettings.Mirror> mirrors(MinimalXml.Element doc) {
@@ -109,13 +147,22 @@ final class SettingsXml {
                     if (!entry.isBlank()) nonProxyHosts.add(entry.strip());
                 }
             }
+            String username = text(proxy, "username", where);
+            String password = text(proxy, "password", where);
+            try {
+                password = decrypted(password);
+            } catch (MavenPasswords.Undecryptable e) {
+                undecryptable(where, "<password>", e, "the proxy is used without credentials");
+                username = null;
+                password = null;
+            }
             out.add(new MavenSettings.Proxy(
                     id == null ? "default" : id,
                     protocol == null ? "http" : protocol,
                     host,
                     port,
-                    text(proxy, "username", where),
-                    text(proxy, "password", where),
+                    username,
+                    password,
                     nonProxyHosts,
                     file));
         }

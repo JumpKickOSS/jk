@@ -2,6 +2,7 @@
 package cc.jumpkick.m2;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.task.RunNotices;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -32,8 +33,14 @@ import org.jspecify.annotations.Nullable;
  * is reported once per run naming the file, the element and the expression: a password sent as
  * {@code ${env.NEXUS_PASSWORD}} answers 401, and a silent 401 is the thing to avoid.
  *
- * <p>Every lookup is remembered, so a later request can ask {@link #stillHolds} whether the
- * values it would see are the ones this expansion saw and reuse its result.
+ * <p>An encrypted password ({@code {...}}, see {@link MavenPasswords}) is decrypted after
+ * expansion, as Maven decrypts it, with the master password of {@code settings-security.xml}: the
+ * file {@code JK_M2_SETTINGS_SECURITY} names in the request's environment, else {@code
+ * ~/.m2/settings-security.xml}. The file is read only when a value is encrypted.
+ *
+ * <p>Every lookup is remembered, the security files too, so a later request can ask {@link
+ * #stillHolds} whether the values it would see are the ones this expansion saw and reuse its
+ * result.
  */
 final class SettingsValues {
 
@@ -58,6 +65,14 @@ final class SettingsValues {
     private final Map<String, @Nullable String> seen = new LinkedHashMap<>();
 
     private final Set<Notice> notices = new LinkedHashSet<>();
+
+    /** Every security file the master password was read through, with its identity then. */
+    private final Map<Path, StampedMemo.@Nullable FileStamp> securityFiles = new LinkedHashMap<>();
+
+    /** The master password, or why there is none; unread until a value is encrypted. */
+    private @Nullable String master;
+
+    private MavenPasswords.@Nullable Undecryptable noMaster;
 
     SettingsValues(Function<String, @Nullable String> env, Function<String, @Nullable String> properties) {
         this.env = Objects.requireNonNull(env, "env");
@@ -151,7 +166,61 @@ final class SettingsValues {
         for (Map.Entry<String, @Nullable String> e : seen.entrySet()) {
             if (!Objects.equals(other.lookup(e.getKey()), e.getValue())) return false;
         }
+        for (Map.Entry<Path, StampedMemo.@Nullable FileStamp> e : securityFiles.entrySet()) {
+            if (!Objects.equals(StampedMemo.FileStamp.of(e.getKey()), e.getValue())) return false;
+        }
         return true;
+    }
+
+    /**
+     * {@code value} — already expanded — decrypted when it is an encrypted Maven password, and
+     * as it is when it is not.
+     *
+     * @throws MavenPasswords.Undecryptable with the reason, never the value
+     */
+    String decrypt(String value) throws MavenPasswords.Undecryptable {
+        String payload = MavenPasswords.payload(value);
+        if (payload == null) return value;
+        return MavenPasswords.decrypt(payload, master());
+    }
+
+    /** The master password of the request's security file, read once per expansion. */
+    private String master() throws MavenPasswords.Undecryptable {
+        if (master != null) return master;
+        if (noMaster != null) throw noMaster;
+        Set<Path> read = new LinkedHashSet<>();
+        try {
+            master = MavenPasswords.readMaster(securityFile(), home(), read);
+            return master;
+        } catch (MavenPasswords.Undecryptable e) {
+            noMaster = e;
+            throw e;
+        } finally {
+            for (Path file : read) securityFiles.put(file, StampedMemo.FileStamp.of(file));
+        }
+    }
+
+    /** {@code JK_M2_SETTINGS_SECURITY} as the request has it, else {@code ~/.m2/settings-security.xml}. */
+    private Path securityFile() throws MavenPasswords.Undecryptable {
+        String named = resolve("env." + MavenPasswords.SECURITY_ENV);
+        Path home = home();
+        if (named != null && !named.isBlank()) {
+            String cwd = resolve("user.dir");
+            return MavenPasswords.resolve(
+                    cwd == null ? null : Path.of(cwd), named.strip(), home, MavenPasswords.SECURITY_ENV);
+        }
+        return home.resolve(".m2").resolve("settings-security.xml");
+    }
+
+    private Path home() throws MavenPasswords.Undecryptable {
+        String home = resolve("user.home");
+        if (home == null || home.isBlank()) throw new MavenPasswords.Undecryptable("there is no home directory");
+        return Path.of(home);
+    }
+
+    /** Report {@code notice} with what the expansion found. */
+    void report(Notice notice) {
+        notices.add(notice);
     }
 
     /** What this expansion has to report, in the order it found it. */

@@ -32,9 +32,10 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A settings.xml {@code <server>} password that is not written in the file authenticates against
- * a repository that answers 401 to anything else: the request's shell supplies it, not the
- * environment of the process serving the request.
+ * A settings.xml {@code <server>} password that is not written in the file as plain text
+ * authenticates against a repository that answers 401 to anything else: an {@code ${env.NAME}}
+ * the request's shell supplies, not the environment of the process serving the request, or a
+ * {@code {...}} value the master password of {@code settings-security.xml} unlocks.
  */
 @Tag("integration")
 class SettingsXmlCredentialStubTest {
@@ -148,5 +149,28 @@ class SettingsXmlCredentialStubTest {
         assertThat(origin.requested()).isEmpty();
         assertThat(URI.create(fetched.url().toString()).getPort())
                 .isEqualTo(nexus.base().getPort());
+    }
+
+    /**
+     * Maven's encrypted form, master password included: published known answers from
+     * plexus-sec-dispatcher 2.0's {@code SecUtilTest} — the master {@code testtest} under {@code
+     * settings.security}, and the password {@code testtest} under that master.
+     */
+    @Test
+    void an_encrypted_password_authenticates(@TempDir Path dir) throws Exception {
+        requireBasic("testtest");
+        Path security = dir.resolve("settings-security.xml");
+        Files.writeString(
+                security,
+                "<settingsSecurity><master>{1wQaa6S/o8MH7FnaTNL53XmhT5O0SEGXQi3gC49o6OY=}</master></settingsSecurity>");
+        System.setProperty(
+                MavenSettings.SETTINGS_PROPERTY,
+                settings(dir, "{BteqUEnqHecHM7MZfnj9FwLcYbdInWxou1C929Txa0A=}").toString());
+
+        MavenRepo.Fetched fetched = RequestShell.where(
+                Map.of("JK_M2_SETTINGS_SECURITY", security.toString()), () -> fetchThroughMirror(dir));
+
+        assertThat(fetched.sha256()).isEqualTo(Hashing.sha256Hex(POM));
+        assertThat(origin.requested()).isEmpty();
     }
 }

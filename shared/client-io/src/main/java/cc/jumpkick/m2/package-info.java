@@ -3,7 +3,7 @@
 /**
  * Maven's {@code settings.xml} as jk reads it: server credentials, mirrors, proxies and the
  * repositories of its active profiles, with Maven's {@code ${...}} expressions expanded against
- * the environment of the request that asks.
+ * the environment of the request that asks and its encrypted passwords decrypted.
  */
 @NullMarked
 package cc.jumpkick.m2;
