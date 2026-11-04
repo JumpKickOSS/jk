@@ -7,6 +7,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.RegionPainter;
 import cc.jumpkick.terminal.Size;
@@ -38,7 +39,7 @@ import org.jspecify.annotations.Nullable;
  * classifies detail tokens. Owners that touch painted state receive {@link #lock} and take it
  * where this class did; none has a monitor of its own.
  */
-public final class JkManager implements AutoCloseable, LiveRegion {
+public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView {
 
     static final String PULSE = Spinner.PULSE_GLYPH;
     static final int PULSE_FRAMES = Spinner.PULSE_FRAMES;
@@ -369,6 +370,19 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /** Workspace preflight: phase pill for {@code stage} + optional header label. */
     public void preflight(String stage, int done, int total, String label) {
         model.preflight(stage, done, total, label);
+    }
+
+    /**
+     * The run's downloads now. The next frame draws them at the top of the work tree; the plain
+     * view says how far they have got when a burst starts and on its heartbeat.
+     */
+    @Override
+    public void downloads(TransferBoard.Snapshot snapshot) {
+        synchronized (lock) {
+            if (done) return;
+            model.downloads(snapshot);
+            plain.onDownloads(snapshot);
+        }
     }
 
     public void attachPhaseError(String module, String stepKey, String phase, String brief) {

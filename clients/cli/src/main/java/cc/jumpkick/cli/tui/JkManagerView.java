@@ -6,6 +6,7 @@ import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.DurationText;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Size;
 import cc.jumpkick.terminal.Style;
@@ -538,7 +539,20 @@ final class JkManagerView {
         List<PlanModel.TreeEntry> visible = collectVisibleTree();
         Tree work = Tree.untitled().gap(Tree.Gap.NONE);
         int shown = 0;
-        for (int i = 0; i < visible.size() && budget > 0; i++) {
+        // The run's downloads lead the tree while bytes move, whichever step asked for them. One
+        // row stays for the work they serve (the lock, the sync, a module), so a burst of
+        // transfers never hides what the run is doing.
+        TransferBoard.Snapshot downloads = m.model.downloads();
+        int reserve = visible.isEmpty() ? 0 : 1;
+        int downloadRoom = Math.min(budget, JkManager.MAX_ROWS) - reserve;
+        if (showsDownloads(downloads) && downloadRoom > 0) {
+            Tree.Node node = downloadsNode(downloads, downloadRoom - 1);
+            work.child(node);
+            int rows = 1 + node.children().size();
+            shown += rows;
+            budget -= rows;
+        }
+        for (int i = 0; i < visible.size() && budget > 0 && shown < JkManager.MAX_ROWS; i++) {
             PlanModel.TreeEntry entry = visible.get(i);
             String rowLabel = entry.line == null ? "" : entry.line.stripLeading();
             Tree.Node node = Tree.node(RichText.ansi(rowLabel));
@@ -572,6 +586,51 @@ final class JkManagerView {
             }
         }
         return chrome;
+    }
+
+    /**
+     * True while the run is downloading: bytes have moved and a body is streaming, or a step's
+     * declared set is still settling. A run whose files were all on disk moves no bytes and never
+     * shows the row, so a warm sync does not flash it.
+     */
+    static boolean showsDownloads(TransferBoard.Snapshot d) {
+        if (d.bytes() <= 0) return false;
+        return d.inflight() > 0 || d.settled() < d.planned();
+    }
+
+    /**
+     * {@code Download › 120/183 · 143.8 MiB} (or {@code 12 files · 3.1 MiB} when no step declared
+     * its set), with up to {@code room} child rows: the transfers in flight, oldest first, and a
+     * {@code … N more in flight} row in the last slot when they do not all fit.
+     */
+    private Tree.Node downloadsNode(TransferBoard.Snapshot d, int room) {
+        String size = JkManagerColor.size(d.bytes());
+        String detail = d.planned() > 0
+                ? d.settled() + "/" + d.planned() + " · " + size
+                : d.files() + (d.files() == 1 ? " file · " : " files · ") + size;
+        Tree.Node node = Tree.node(
+                RichText.ansi(renderWorkRow("", "Download", false, detail).stripLeading()));
+        if (room <= 0) return node;
+        Theme t = Theme.active();
+        int fit = d.rows().size();
+        int more = Math.max(0, d.inflight() - fit);
+        if (fit + (more > 0 ? 1 : 0) > room) {
+            int keep = Math.max(0, room - 1);
+            more += fit - keep;
+            fit = keep;
+        }
+        for (int i = 0; i < fit; i++) {
+            TransferBoard.Row r = d.rows().get(i);
+            node.child(Tree.node(RichText.ansi(Theme.colorize(Spinner.fillGlyph(m.frame), t.blue())
+                    + " "
+                    + JkManagerColor.fetchRow(r.label(), r.read(), r.total(), t))));
+        }
+        if (more > 0) {
+            node.child(Tree.node(RichText.ansi(Theme.colorize(
+                    Glyphs.ELLIPSIS + " " + more + " more in flight",
+                    t.darkGray().italic()))));
+        }
+        return node;
     }
 
     /** Running/failed tree entries, newest first. Module rows when available; else preflight phases. */
