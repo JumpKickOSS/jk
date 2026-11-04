@@ -4,9 +4,11 @@ package cc.jumpkick.engine.http.mcp.tools;
 import cc.jumpkick.engine.graph.GraphRunner;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpError;
+import cc.jumpkick.engine.http.mcp.McpRenameCheck;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.wire.protocol.GraphAck;
 import cc.jumpkick.wire.protocol.GraphRequest;
 import java.io.IOException;
@@ -63,10 +65,13 @@ public final class CodeGraphTool implements McpTool {
         return new CodeGraphTool(
                 new Spec(
                         "rename",
-                        "Rename Type.method (every overload, or Type.method(int,String)) to `to`, with every override,"
-                                + " call and doc link, in one call. Then run tests.",
+                        "Rename Type.method (or Type.method(int,String)) to `to` with every override, call and doc"
+                                + " link; it then tests and guards, and says when the task is done.",
                         McpSchemas.object(
-                                props(Map.of("address", McpSchemas.string(), "to", McpSchemas.string())),
+                                props(Map.of(
+                                        "address", McpSchemas.string(),
+                                        "to", McpSchemas.string(),
+                                        "check", McpSchemas.bool())),
                                 List.of("address", "to"))),
                 "rename",
                 in -> List.of(required(in, "address"), required(in, "to")));
@@ -131,6 +136,7 @@ public final class CodeGraphTool implements McpTool {
 
     @Override
     public Map<String, Object> call(McpCall in) {
+        long started = Clock.SYSTEM.nanos();
         GraphRequest request = new GraphRequest(
                 PathUtil.resolveUserPath(in.requiredDir()).toString(),
                 op,
@@ -158,7 +164,9 @@ public final class CodeGraphTool implements McpTool {
             return in.error("graph request interrupted");
         }
         if (!ack.ok()) return in.error(String.valueOf(ack.error()));
-        return in.text(ack.note() == null ? ack.text() : ack.text() + "\n\n[i] " + ack.note());
+        String text = ack.note() == null ? ack.text() : ack.text() + "\n\n[i] " + ack.note();
+        if ("rename".equals(op) && in.flagOr("check", true)) return McpRenameCheck.after(in, text, started);
+        return in.text(text);
     }
 
     private static Spec spec(String name, String description, Map<String, Object> props, List<String> required) {
