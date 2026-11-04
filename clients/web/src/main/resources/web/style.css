@@ -164,23 +164,23 @@ header {
   overflow: visible;
 }
 
-/* Pixel karateka mark (jumpkick-logo.webp @ 200×200 source). CSS scale only — asset stays 200².
- * 3× prior display height (44 → 132); floats over the bar and spills below (overflow: visible). */
+/* Pixel karateka mark (jumpkick-logo.webp, 179×120, cropped tight to the sprite — no padding).
+ * Floats over the bar and spills below (overflow: visible). */
 .logo {
-  height: 132px;
+  height: 83px;
   width: auto;
   max-height: none;
   display: block;
   flex: none;
   align-self: flex-start;
-  margin-top: 6px; /* slight top inset; most of the sprite hangs under the header */
+  margin-top: 10px; /* slight top inset; most of the sprite hangs under the header */
   /* transform only paints the sprite; layout still uses the full box — pull brand left */
-  margin-right: -18px;
+  margin-right: -10px;
   position: relative;
   z-index: 20;
   object-fit: contain;
   pointer-events: none;
-  transform: translate(-8px, -20px);
+  transform: translateX(-4px);
   filter: drop-shadow(0 0 14px rgba(var(--cn-rgb), 0.35));
 }
 
@@ -2030,8 +2030,8 @@ label.check:hover .check-box {
   text-transform: none;
 }
 .about-logo {
-  width: auto;
-  height: 48px;
+  width: 45px;
+  height: auto;
   object-fit: contain;
   flex: none;
   filter: drop-shadow(0 0 10px rgba(var(--cn-rgb), 0.28));
