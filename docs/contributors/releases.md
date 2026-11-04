@@ -8,9 +8,9 @@ What a release may change in the formats projects depend on: [Compatibility](com
 
 | Line | Meaning |
 |------|---------|
-| **`0.50.1`** | The root `jk.toml` version: the next release, never written with `-SNAPSHOT` |
-| Tag **`v0.50.1`** | Cut from that line when it is released |
-| Prior | **`0.50.0`** — previous release; **`0.10.1`** first public |
+| **`0.50.2`** | The root `jk.toml` version: the next release, never written with `-SNAPSHOT` |
+| Tag **`v0.50.2`** | Cut from that line when it is released |
+| Prior | **`0.50.1`** — previous release; **`0.10.1`** first public |
 | Later | Semver-ish: `0.30.1`, `0.31.0`, … |
 
 The root `jk.toml` `version` is the one place the version is written, and it always names the
@@ -30,6 +30,27 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 <version>` puts the entry at the top of the GitHub Release notes, ahead of the commit list since the
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
+
+### 0.50.2
+
+- **`jk agents` wires a project for its coding agents.** `jk agents` (and `jk new`, `init`,
+  `import`) writes jk's `AGENTS.md` section and each agent's own files: for Claude Code a
+  `CLAUDE.md` import, the jk MCP server and its permissions, and a hook that turns `mvn`, `gradle`
+  and symbol greps toward jk; rules for Cursor, VS Code, Gemini CLI, opencode, agy, grok and muse;
+  Codex reads `AGENTS.md` itself. `jk agents --remove` takes jk's entries back out.
+- **A cold first build downloads half as long.** The sync stages every worker and toolchain a build
+  forks, in parallel, so nothing downloads after it; a lock asks for each POM and checksum once.
+  `jk sync` is the build's own lock and sync phase, and every download, from a JDK to a plugin
+  worker's own, shows on the run's board in the terminal, the web UI and MCP.
+- **Central's mirror, vouched for by Central.** Release POMs and jars come from Google's Central
+  mirror first, checked against the `.sha1` Central publishes; bytes Central disowns are fetched
+  again from Central. A plugin step's resolver goes through the proxy jk chose for each repository.
+- **MCP `rename` and `callers` are sharper.** A rename also edits the comment and doc mentions that
+  can only mean the method, names the test classes it touched, and runs the check its answer names.
+- **`-O jsonl` is the wire record.** Each event carries its envelope (`schema`, `type`, `jid`), the
+  last line is the terminal one, and a failed job says why.
+- **Nerd Font glyphs survive tmux, screen and zellij**, and `jk self setup-terminal` asks once and
+  remembers the answer per terminal.
 
 ### 0.50.1
 
