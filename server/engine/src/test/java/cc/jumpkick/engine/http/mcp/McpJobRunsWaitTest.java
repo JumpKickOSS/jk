@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.StatusSnapshot;
+import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSpec;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +54,45 @@ class McpJobRunsWaitTest {
 
         assertThat(String.valueOf(result.get("content"))).doesNotContain("TIMEOUT");
         assertThat(snapshots).as("the wait loop never took a live-run snapshot").hasValue(0);
+    }
+
+    @Test
+    void a_run_of_a_job_already_running_waits_on_that_jobs_jid() {
+        McpContext ctx = new McpContext(
+                () -> new StatusSnapshot("0", 1L, 0L, 0, 0, 1L, 1L, 1L, -1L, 1, 1L),
+                new EngineHttpJobs() {
+                    @Override
+                    public long trigger(JobSpec spec) {
+                        throw new JobEnvelope.AlreadyRunning("Test #841 is already running", 3545L, 841L);
+                    }
+
+                    @Override
+                    public boolean cancel(long requestId) {
+                        return false;
+                    }
+
+                    @Override
+                    public int cancelDir(String dir) {
+                        return 0;
+                    }
+                },
+                dir -> Map.of(),
+                List::of,
+                "0",
+                null,
+                List::of,
+                null,
+                null);
+        ctx.liveJid(jid -> jid == 3545L);
+
+        Map<String, Object> result =
+                McpJobRuns.run(new McpCall(ctx, Map.of("dir", "/w", "kind", "test", "timeout_s", 1), null), null);
+
+        assertThat(String.valueOf(result.get("content")))
+                .as("the running job's jid, never the journal's build number")
+                .contains("TIMEOUT test jid=3545")
+                .contains("run(jid=3545)")
+                .doesNotContain("841");
     }
 
     private static EngineHttpJobs noJobs() {
