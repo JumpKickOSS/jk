@@ -130,8 +130,9 @@ public final class EventCatalog {
             new Row(
                     EngineProtocol.JOB_START,
                     wire(),
-                    new Omitted("recorded as job in the run's details.jsonl transcript; -O jsonl stdout opens with"
-                            + " workspace-start"),
+                    Carried.as(
+                            JSONL_JOB,
+                            "once per job, before workspace-start: its jid, build number and details.jsonl path"),
                     Carried.as(SSE_REQUEST_START, "once, when the job starts")),
             new Row(
                     EngineProtocol.JOB_FINISH,
@@ -146,17 +147,13 @@ public final class EventCatalog {
             new Row(
                     EngineProtocol.ERROR,
                     wire(),
-                    new Omitted(
-                            "recorded in the run's details.jsonl transcript and told on the terminal; -O jsonl stdout"
-                                    + " ends with workspace-finish, success false"),
+                    new Omitted("its message is the errors of the workspace-finish that ends -O jsonl, success false"),
                     Carried.as(EngineProtocol.ERROR, "the request's failure (publishRequestError)")),
             // ---- the run --------------------------------------------------------------------------
             new Row(
                     EngineProtocol.PREFLIGHT,
                     wire(),
-                    new Omitted(
-                            "recorded in the run's details.jsonl transcript; on -O jsonl stdout workspace-progress's"
-                                    + " phase names the stage"),
+                    Carried.as(EngineProtocol.PREFLIGHT, "each stage's verdict; its label counts the dirty modules"),
                     new Omitted("the dashboard draws the run from workspace-progress, whose phase names the stage")),
             new Row(
                     EngineProtocol.DOWNLOADS,

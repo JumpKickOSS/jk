@@ -278,7 +278,7 @@ public final class BuildVerbCommand implements CliCommand {
             run.notify(BuildNotify.Outcome.CANCELLED, entryDir, view.etaEstimateMs(), BuildTails.elapsedMsSince(start));
             return 1;
         } catch (IOException e) {
-            runView.finishEvent(false, BuildTails.elapsedMsSince(start));
+            runView.finishEvent(false, BuildTails.elapsedMsSince(start), e.getMessage());
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()), List.of());
             if (run.session() != null) run.session().error(String.valueOf(e.getMessage()));
             run.notify(BuildNotify.Outcome.FAILED, entryDir, view.etaEstimateMs(), BuildTails.elapsedMsSince(start));
@@ -310,7 +310,7 @@ public final class BuildVerbCommand implements CliCommand {
             run.notify(BuildNotify.Outcome.CANCELLED, entryDir, 0, BuildTails.elapsedMsSince(start));
             return code;
         } catch (IOException e) {
-            runView.finishEvent(false, BuildTails.elapsedMsSince(start));
+            runView.finishEvent(false, BuildTails.elapsedMsSince(start), e.getMessage());
             if (!json) CommandWedge.printFail(run.name(), e.getMessage());
             if (run.session() != null) run.session().error(Errors.text(e));
             run.notify(BuildNotify.Outcome.FAILED, entryDir, 0, BuildTails.elapsedMsSince(start));

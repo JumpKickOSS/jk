@@ -78,7 +78,13 @@ public final class CliSessionTranscript {
         WireStream.onJobStart((jid, buildNumber, detailsPath, etaMs) -> {
             CliSessionTranscript session = active;
             if (session != null) session.bindJob(jid, buildNumber, detailsPath, etaMs);
+            JsonlShape.jobStarted(jid, buildNumber, etaMs, detailsPath);
         });
+    }
+
+    /** Load this class, so the job-start hook above is registered whether or not a transcript opens. */
+    static void listenForJobs() {
+        // the static initializer is the work
     }
 
     private final Path projectDir;

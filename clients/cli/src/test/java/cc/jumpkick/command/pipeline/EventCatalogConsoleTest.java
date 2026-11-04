@@ -36,6 +36,7 @@ import cc.jumpkick.wire.protocol.WarnEvent;
 import cc.jumpkick.wire.protocol.WorkspaceFinishEvent;
 import cc.jumpkick.wire.protocol.WorkspaceProgressEvent;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.BufferedReader;
 import java.io.StringReader;
 import java.lang.reflect.Constructor;
@@ -255,26 +256,46 @@ class EventCatalogConsoleTest {
         throw new IllegalArgumentException("no value for " + type);
     }
 
-    /** A job that fails: the engine's error frame ends the stream, and the console says what the catalog says. */
+    /**
+     * A job the engine fails ({@code ERR_REQUEST_FAILED}) through the CLI's own decoder and its
+     * headless ladder, as {@code -O jsonl} runs it: the stream opens with the job's {@code job}
+     * line and ends with {@code workspace-finish}, whose {@code errors} say why.
+     */
     @Test
-    void a_failed_jobs_error_frame_is_written_as_the_catalog_says(@TempDir Path cache) throws Exception {
+    void a_failed_jobs_reason_is_in_the_terminals_errors(@TempDir Path cache) throws Exception {
         List<String> lines = List.of(
                 ProtoLifecycle.jobStart(7, "build", "/ws", 3),
-                ProtoLifecycle.error(EngineProtocol.ERR_REQUEST_FAILED, "boom"));
+                ProtoEvents.preflight("lock", 1, 1, "3 module(s) dirty"),
+                ProtoLifecycle.error(EngineProtocol.ERR_REQUEST_FAILED, "jk.toml: unknown key `bogus`"),
+                ProtoLifecycle.jobFinish(7));
         WorkspaceRunView view =
                 new WorkspaceRunView(new WorkspaceRunView.Chrome("Build", true), Path.of("/ws"), null, true);
         String out = Capture.stdout(() -> {
-            try {
-                decode(lines, view.headless(), cache);
-            } catch (RuntimeException failed) {
-                // A failed job surfaces to the verb as a failure; what reached stdout is the question.
-            }
+            WorkspaceResult result = decode(lines, view.headless(), cache);
+            view.settleHeadless(result, 5, new WorkspaceRunView.Tails((r, n) -> "ok", r -> "failed"), settled -> {});
         });
-        boolean written =
-                out.lines().anyMatch(l -> EventCatalog.JSONL_ERROR.equals(Jsonl.str(l, EngineProtocol.TYPE_FIELD)));
-        assertThat(written)
-                .as("an error record on stdout for the job's error frame: %s", out)
-                .isEqualTo(EventCatalog.carries(EventCatalog.Surface.CONSOLE_JSONL, EngineProtocol.ERROR));
+
+        List<String> types =
+                out.lines().map(l -> Jsonl.str(l, EngineProtocol.TYPE_FIELD)).toList();
+        assertThat(types.getFirst())
+                .as("the job line opens the stream: %s", out)
+                .isEqualTo(EventCatalog.JSONL_JOB);
+        assertThat(types).contains(EngineProtocol.PREFLIGHT);
+        assertThat(types.getLast()).isEqualTo(EngineProtocol.WORKSPACE_FINISH);
+        String finish = out.lines().toList().getLast();
+        assertThat(Jsonl.bool(finish, "success", true)).isFalse();
+        assertThat(Jsonl.strArray(finish, "errors")).containsExactly("jk.toml: unknown key `bogus`");
+        assertThat(Jsonl.longValue(out.lines().toList().getFirst(), "jid", -1)).isEqualTo(7);
+    }
+
+    /** A run that fails before the engine answers (a wire error) still says why in its terminal. */
+    @Test
+    void a_run_that_never_got_an_answer_says_why_in_its_terminal() {
+        WorkspaceRunView view =
+                new WorkspaceRunView(new WorkspaceRunView.Chrome("Build", true), Path.of("/ws"), null, true);
+        String out = Capture.stdout(() -> view.finishEvent(false, 5, "jk engine: build failed: boom"));
+
+        assertThat(Jsonl.strArray(out.strip(), "errors")).containsExactly("jk engine: build failed: boom");
     }
 
     /** The types the stream above sends with their real builders; the rest go as bare lines. */
@@ -310,7 +331,7 @@ class EventCatalogConsoleTest {
             EngineProtocol.BUILDPLAN_FINISH);
 
     /** The CLI's workspace decoder, as a build reads the engine's stream (package-private in cli.engine). */
-    private static void decode(List<String> lines, WorkspaceBuildListener listener, Path cache) {
+    private static WorkspaceResult decode(List<String> lines, WorkspaceBuildListener listener, Path cache) {
         try {
             Class<?> decoder = Class.forName("cc.jumpkick.cli.engine.EngineEventDecoder");
             Method stream = decoder.getDeclaredMethod(
@@ -320,7 +341,7 @@ class EventCatalogConsoleTest {
                     Path.class,
                     SocketChannel.class);
             stream.setAccessible(true);
-            stream.invoke(
+            return (WorkspaceResult) stream.invoke(
                     null, new BufferedReader(new StringReader(String.join("\n", lines) + "\n")), listener, cache, null);
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(e);

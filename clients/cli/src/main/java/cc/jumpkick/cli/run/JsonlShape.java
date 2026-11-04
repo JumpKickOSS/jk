@@ -79,6 +79,13 @@ public final class JsonlShape {
     private static final Object STDOUT_LOCK = new Object();
 
     /**
+     * Whether a {@code job} line goes to stdout as the engine starts a job: armed by a workspace
+     * view writing {@code -O jsonl}, so an agent has the job's id and its {@code details.jsonl} path
+     * from the stream itself; never for a command whose stdout is one JSON document.
+     */
+    private static volatile boolean jobLineOnStdout;
+
+    /**
      * The failure texts this process's event stream (stdout and the session transcript) has
      * carried. One for the process: every module's listener writes the same stream.
      */
@@ -163,9 +170,25 @@ public final class JsonlShape {
                 .encode();
     }
 
+    /** Arm (or disarm) the stdout {@code job} line; see {@link #jobLineOnStdout}. */
+    public static void jobLineOnStdout(boolean on) {
+        if (on) CliSessionTranscript.listenForJobs();
+        jobLineOnStdout = on;
+    }
+
+    /** The engine started a job: its {@code job} line on stdout, when a JSONL workspace view armed it. */
+    static void jobStarted(long jid, long buildNumber, long etaMs, @Nullable String detailsPath) {
+        if (!jobLineOnStdout) return;
+        synchronized (STDOUT_LOCK) {
+            System.out.println(jobMeta(jid, buildNumber, etaMs, detailsPath));
+            System.out.flush();
+        }
+    }
+
     /**
      * Engine job binding — jid (cancel), buildNumber (run dir), ETA, details path. Written into
-     * details.jsonl so agents can diagnose a run without other files.
+     * details.jsonl so agents can diagnose a run without other files, and to {@code -O jsonl}
+     * stdout ({@link #jobStarted}).
      */
     public static String jobMeta(long jid, long buildNumber, long etaMs, @Nullable String detailsPath) {
         return new JobLine(nowMillis(), jid, buildNumber, etaMs, detailsPath).encode();
@@ -407,8 +430,13 @@ public final class JsonlShape {
 
     /** Workspace graph finished with no result to read (aborted before the engine answered). */
     public static String workspaceFinish(boolean success, long millis, int modules) {
+        return workspaceFinish(success, millis, modules, List.of());
+    }
+
+    /** As above, with why it failed: the reason a client has, in the result's {@code errors}. */
+    public static String workspaceFinish(boolean success, long millis, int modules, List<String> errors) {
         return console(
-                new WorkspaceFinishEvent(success, success ? 0 : 1, List.of(), false, null, millis, modules).encode());
+                new WorkspaceFinishEvent(success, success ? 0 : 1, errors, false, null, millis, modules).encode());
     }
 
     /** Workspace graph finished: the engine's result, with the run's wall time and module count. */
