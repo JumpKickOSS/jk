@@ -16,7 +16,14 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>A write goes through {@code security -i}, whose commands are read from stdin, so the secret
  * never appears in a process listing; it travels hex-encoded ({@code -X}), so no character of it
- * needs quoting. {@code security} exits 44 when no item matches.
+ * needs quoting. {@code security} exits with the low byte of the Security framework's status:
+ * 44 when no item matches ({@code errSecItemNotFound}), 36 when the keychain is locked and this
+ * session has no window server to unlock it ({@code errSecInteractionNotAllowed}, "User interaction
+ * is not allowed": SSH, launchd), 51 when the keychain denied jk ({@code errSecAuthFailed}).
+ *
+ * <p>Every call is preceded by the probe, {@code show-keychain-info} on the default keychain, which
+ * reads its settings and so fails the same way a locked keychain would, before anything asks for
+ * an item.
  */
 public final class MacKeychainBackend implements SecretBackend {
 
@@ -25,9 +32,15 @@ public final class MacKeychainBackend implements SecretBackend {
     /** {@code errSecItemNotFound}, as {@code security} reports it. */
     static final int NOT_FOUND = 44;
 
-    private static final Duration CAP = Duration.ofSeconds(60);
+    /** {@code errSecInteractionNotAllowed}: locked, and no window server to unlock it. */
+    static final int INTERACTION_NOT_ALLOWED = 36;
 
-    private static final Duration PROBE_CAP = Duration.ofSeconds(5);
+    /** {@code errSecAuthFailed}: the keychain denied the request. */
+    static final int AUTH_FAILED = 51;
+
+    private static final Duration CAP = Duration.ofSeconds(5);
+
+    private static final Duration PROBE_CAP = Duration.ofSeconds(1);
 
     private final SecretCommand command;
 
@@ -53,38 +66,60 @@ public final class MacKeychainBackend implements SecretBackend {
     @Override
     public Probe probe() {
         try {
-            SecretCommand.Result r = command.run(List.of(TOOL, "default-keychain"), null, PROBE_CAP);
-            return r.exit() == 0 ? Probe.AVAILABLE : Probe.unavailable(r.complaint());
+            SecretCommand.Result r = command.run(List.of(TOOL, "show-keychain-info"), null, PROBE_CAP);
+            if (r.exit() == 0) return Probe.AVAILABLE;
+            if (noWindowServer(r)) {
+                return Probe.unavailable(
+                        "the login keychain is locked, and this session has no window server to" + " unlock it");
+            }
+            return Probe.refused(complaint(r));
         } catch (IOException e) {
             return Probe.unavailable(TOOL + " is not available: " + e.getMessage());
         }
     }
 
+    /** Whether {@code security} said the keychain is locked with nobody able to unlock it. */
+    static boolean noWindowServer(SecretCommand.Result r) {
+        return r.exit() == INTERACTION_NOT_ALLOWED
+                || (r.stdout() + r.stderr()).contains("User interaction is not allowed");
+    }
+
+    /** What {@code security} said, in words for the refusals jk knows. */
+    static String complaint(SecretCommand.Result r) {
+        if (noWindowServer(r))
+            return "the keychain is locked and this session cannot unlock it (" + r.complaint() + ")";
+        if (r.exit() == AUTH_FAILED) return "the keychain denied access (" + r.complaint() + ")";
+        return r.complaint();
+    }
+
     @Override
     public Optional<String> read(String item) {
+        requireAnswering("read", item);
         SecretCommand.Result r =
                 run(List.of(TOOL, "find-generic-password", "-s", SecretItems.SERVICE, "-a", item, "-w"), null);
         if (r.exit() == 0) return Optional.of(withoutNewline(r.stdout()));
         if (r.exit() == NOT_FOUND) return Optional.empty();
-        throw new SecretBackendException("the macOS Keychain refused to read " + item + ": " + r.complaint());
+        throw new SecretBackendException("the macOS Keychain refused to read " + item + ": " + complaint(r));
     }
 
     @Override
     public void write(String item, String label, String secret) {
+        requireAnswering("store", item);
         SecretCommand.Result r =
                 run(List.of(TOOL, "-i"), addCommand(item, secret).getBytes(StandardCharsets.UTF_8));
         // `security -i` keeps going after a failed command, so its stderr is the verdict.
         if (r.exit() != 0 || !r.stderr().isBlank()) {
-            throw new SecretBackendException("the macOS Keychain refused to store " + item + ": " + r.complaint());
+            throw new SecretBackendException("the macOS Keychain refused to store " + item + ": " + complaint(r));
         }
     }
 
     @Override
     public void delete(String item) {
+        requireAnswering("remove", item);
         SecretCommand.Result r =
                 run(List.of(TOOL, "delete-generic-password", "-s", SecretItems.SERVICE, "-a", item), null);
         if (r.exit() == 0 || r.exit() == NOT_FOUND) return;
-        throw new SecretBackendException("the macOS Keychain refused to remove " + item + ": " + r.complaint());
+        throw new SecretBackendException("the macOS Keychain refused to remove " + item + ": " + complaint(r));
     }
 
     /**
@@ -101,6 +136,15 @@ public final class MacKeychainBackend implements SecretBackend {
     /** {@code -w} prints the password and a newline. */
     static String withoutNewline(String out) {
         return out.endsWith("\n") ? out.substring(0, out.length() - 1) : out;
+    }
+
+    /** Refuse before {@code security} can ask for an item in a locked keychain. */
+    private void requireAnswering(String verb, String item) {
+        Probe probe = probe();
+        if (!probe.available()) {
+            throw new SecretBackendException(
+                    "the macOS Keychain refused to " + verb + " " + item + ": " + probe.reason());
+        }
     }
 
     private SecretCommand.Result run(List<String> argv, byte @Nullable [] stdin) {

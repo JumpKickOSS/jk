@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -29,18 +30,103 @@ class SecretVaultTest {
     }
 
     @Test
-    void auto_falls_back_to_the_file_with_one_notice_naming_why() {
-        FakeKeychain down = new FakeKeychain();
-        down.unavailable = "Cannot autolaunch D-Bus without X11 $DISPLAY";
-        SecretVault vault = SecretVault.of(SecretVault.Choice.AUTO, List.of(down));
+    void auto_with_no_keychain_here_keeps_the_secret_in_the_file_without_a_word() {
+        FakeKeychain absent = new FakeKeychain();
+        absent.unavailable = "no D-Bus session bus";
+        SecretVault vault = SecretVault.of(SecretVault.Choice.AUTO, List.of(absent));
+
+        SecretVault.Stored stored = vault.store("repo/nexus", "l", "tok", Path.of("/home/u/.jk/creds/repo/nexus"));
+
+        assertThat(stored).isEqualTo(new SecretVault.Stored(null, null));
+        assertThat(absent.calls).isEmpty();
+    }
+
+    @Test
+    void auto_with_a_locked_keychain_keeps_the_secret_in_the_file_with_one_notice_naming_why() {
+        FakeKeychain locked = new FakeKeychain();
+        locked.locked = "the default keyring is locked, and jk never asks to unlock it";
+        SecretVault vault = SecretVault.of(SecretVault.Choice.AUTO, List.of(locked));
 
         SecretVault.Stored stored = vault.store("repo/nexus", "l", "tok", Path.of("/home/u/.jk/creds/repo/nexus"));
 
         assertThat(stored.pointer()).isNull();
         assertThat(stored.notice())
-                .contains("Fake Keychain: Cannot autolaunch D-Bus")
+                .contains("Fake Keychain: the default keyring is locked")
                 .contains("/home/u/.jk/creds/repo/nexus")
                 .contains("[credentials] store = \"file\"");
+        assertThat(locked.calls).isEmpty();
+    }
+
+    @Test
+    void auto_on_a_ci_server_or_in_a_container_asks_no_keychain_and_says_nothing() {
+        for (HostSession headless : List.of(
+                session(Map.of("CI", "true")),
+                session(Map.of("GITHUB_ACTIONS", "true")),
+                session(Map.of("container", "podman")),
+                new HostSession(name -> null, Path.of("/.dockerenv")::equals))) {
+            FakeKeychain up = new FakeKeychain();
+            SecretVault.Stored stored = SecretVault.of(SecretVault.Choice.AUTO, List.of(up), headless)
+                    .store("repo/nexus", "l", "tok", Path.of("/r"));
+
+            assertThat(stored).isEqualTo(new SecretVault.Stored(null, null));
+            assertThat(up.probes).isZero();
+            assertThat(up.calls).isEmpty();
+        }
+    }
+
+    @Test
+    void over_ssh_with_no_display_a_locked_keychain_is_expected_and_earns_no_notice() {
+        FakeKeychain locked = new FakeKeychain();
+        locked.locked = "locked";
+        HostSession ssh = session(Map.of("SSH_CONNECTION", "10.0.0.2 51000 10.0.0.1 22"));
+
+        SecretVault.Stored stored = SecretVault.of(SecretVault.Choice.AUTO, List.of(locked), ssh)
+                .store("repo/nexus", "l", "tok", Path.of("/r"));
+
+        assertThat(stored).isEqualTo(new SecretVault.Stored(null, null));
+    }
+
+    @Test
+    void keychain_on_a_headless_machine_fails_fast_naming_why_and_the_ci_recipe() {
+        FakeKeychain absent = new FakeKeychain();
+        absent.unavailable = "no D-Bus session bus";
+
+        assertThatThrownBy(() -> SecretVault.of(
+                                SecretVault.Choice.KEYCHAIN, List.of(absent), session(Map.of("GITLAB_CI", "true")))
+                        .store("repo/nexus", "l", "tok", Path.of("/r")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Fake Keychain: no D-Bus session bus")
+                .hasMessageContaining("a CI server (GITLAB_CI is set)")
+                .hasMessageContaining("JK_REPO_<ID>_TOKEN_FILE")
+                .hasMessageContaining("${file:}")
+                .hasMessageContaining("${cmd:}")
+                .hasMessageContaining(SecretVault.ENV + "=file");
+        assertThat(absent.calls).isEmpty();
+    }
+
+    @Test
+    void keychain_on_a_ci_server_still_uses_a_keychain_that_answers() {
+        FakeKeychain up = new FakeKeychain();
+        SecretVault.Stored stored = SecretVault.of(SecretVault.Choice.KEYCHAIN, List.of(up), session(Map.of("CI", "1")))
+                .store("repo/nexus", "l", "tok", Path.of("/r"));
+
+        assertThat(stored.pointer()).isEqualTo(new SecretVault.Pointer("fake", "repo/nexus"));
+    }
+
+    @Test
+    void destination_names_the_headless_reason_when_auto_asks_no_keychain() {
+        List<String> reasons = new ArrayList<>();
+        FakeKeychain up = new FakeKeychain();
+
+        assertThat(SecretVault.of(SecretVault.Choice.AUTO, List.of(up), session(Map.of("CI", "true")))
+                        .destination(reasons))
+                .isEmpty();
+        assertThat(reasons).containsExactly("this is a CI server (CI is set)");
+        assertThat(up.probes).isZero();
+    }
+
+    private static HostSession session(Map<String, String> env) {
+        return new HostSession(env::get, path -> false);
     }
 
     @Test

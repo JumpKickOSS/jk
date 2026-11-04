@@ -87,7 +87,7 @@ public final class TokenStore {
      * Store {@code token} for {@code host} where {@link SecretVault} puts it.
      *
      * @return where the token went: the keychain pointer, or none for the file itself, and the
-     *     notice to show when no keychain answered
+     *     notice to show when a keychain refused
      */
     public SecretVault.Stored write(String host, String token) {
         Path file = fileFor(host);
