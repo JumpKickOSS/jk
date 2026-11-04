@@ -19,7 +19,7 @@ import org.jspecify.annotations.Nullable;
 public final class RunTool implements McpTool {
 
     static final String DESCRIPTION =
-            "Run and wait; the reply is the verdict. kind=test (default)|build|snapshot|lock|…; only=modules; jid=N waits; run=<id> rereads.";
+            "Run and wait; the reply is the verdict. kind=test (default)|build|snapshot|lock|…; only=modules; classes=test classes; jid=N waits; run=<id> rereads.";
 
     @Override
     public Spec spec() {
@@ -38,7 +38,9 @@ public final class RunTool implements McpTool {
                         "jid",
                         McpSchemas.integer(),
                         "suites",
-                        McpSchemas.strings())));
+                        McpSchemas.strings(),
+                        "classes",
+                        McpSchemas.string())));
     }
 
     @Override

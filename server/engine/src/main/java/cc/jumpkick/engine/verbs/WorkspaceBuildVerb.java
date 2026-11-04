@@ -183,7 +183,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                                 guard
                                         ? TestSelection.of(List.of(), false, List.of(), List.of(), false, true)
                                         : JobSelect.testSelection(
-                                                spec.includeTags(), spec.excludeTags(), spec.suites()),
+                                                spec.includeTags(), spec.excludeTags(), spec.suites(), spec.classes()),
                                 null,
                                 modules,
                                 false,

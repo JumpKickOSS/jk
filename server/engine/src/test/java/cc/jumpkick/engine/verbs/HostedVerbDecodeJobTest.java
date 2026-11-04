@@ -75,12 +75,14 @@ class HostedVerbDecodeJobTest {
                 List.of("fast"),
                 List.of("slow"),
                 List.of(),
+                List.of("RangeTest"),
                 false,
                 false,
                 null,
                 JobOrigin.WEB));
         var sel = ProtoJobs.testSelectionOf(line);
         assertThat(sel.includeTags()).containsExactly("fast");
+        assertThat(sel.classes()).containsExactly("RangeTest");
         assertThat(sel.excludeTags()).containsExactly("slow");
         assertThat(sel.tagsResolved()).isTrue();
     }

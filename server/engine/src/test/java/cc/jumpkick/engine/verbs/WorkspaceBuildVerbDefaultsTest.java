@@ -25,6 +25,7 @@ class WorkspaceBuildVerbDefaultsTest {
                         List.of(),
                         List.of(),
                         List.of(),
+                        List.of(),
                         false,
                         false,
                         null,
@@ -49,7 +50,17 @@ class WorkspaceBuildVerbDefaultsTest {
 
     private static JobSpec job(String kind) {
         return new JobSpec(
-                kind, "/tmp/ws", List.of(), List.of(), List.of(), List.of(), false, false, null, JobOrigin.WEB);
+                kind,
+                "/tmp/ws",
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                false,
+                false,
+                null,
+                JobOrigin.WEB);
     }
 
     @Test

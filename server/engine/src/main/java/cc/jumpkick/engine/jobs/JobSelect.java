@@ -76,11 +76,14 @@ public final class JobSelect {
      * Tag/suite filter. Any explicit list means the selection is final ({@code tagsResolved=true})
      * so per-module {@code [test]} tags are not folded back in.
      */
-    public static TestSelection testSelection(List<String> includeTags, List<String> excludeTags, List<String> suites) {
+    public static TestSelection testSelection(
+            List<String> includeTags, List<String> excludeTags, List<String> suites, List<String> classes) {
         List<String> inc = includeTags == null ? List.of() : includeTags;
         List<String> exc = excludeTags == null ? List.of() : excludeTags;
         List<String> su = suites == null ? List.of() : suites;
-        if (inc.isEmpty() && exc.isEmpty() && su.isEmpty()) return TestSelection.DEFAULT;
-        return TestSelection.of(su, false, inc, exc, true);
+        TestSelection base = inc.isEmpty() && exc.isEmpty() && su.isEmpty()
+                ? TestSelection.DEFAULT
+                : TestSelection.of(su, false, inc, exc, true);
+        return classes == null || classes.isEmpty() ? base : base.withClasses(classes);
     }
 }
