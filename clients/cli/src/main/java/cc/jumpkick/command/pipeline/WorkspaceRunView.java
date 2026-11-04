@@ -8,6 +8,7 @@ import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.CompositeBuildPlanListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.DashboardCodeLink;
+import cc.jumpkick.cli.run.JsonlDownloads;
 import cc.jumpkick.cli.run.JsonlListener;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.run.LiveProgress;
@@ -408,7 +409,7 @@ final class WorkspaceRunView {
         if (result.cancelled()) {
             view.finishBuildPlanCancelled(above);
             if (session != null) session.wedge(chrome.planName() + " job was cancelled");
-            event(JsonlShape.workspaceFinish(result, false, elapsedMs, planned()));
+            terminal(JsonlShape.workspaceFinish(result, false, elapsedMs, planned()));
             after.accept(Settled.CANCELLED);
             return 1;
         }
@@ -418,7 +419,7 @@ final class WorkspaceRunView {
             String tail = errorsTail(result);
             view.finishBuildPlanFailure(tail, errs);
             if (session != null) session.wedge(tail);
-            event(JsonlShape.workspaceFinish(result, false, elapsedMs, planned()));
+            terminal(JsonlShape.workspaceFinish(result, false, elapsedMs, planned()));
             after.accept(Settled.GRAPH_ERRORS);
             // 2 for graph errors, 6 for an unsatisfiable workspace lock (the engine's freshen guard).
             return result.exitCode();
@@ -437,7 +438,7 @@ final class WorkspaceRunView {
             String failTail = tails.failure().of(result);
             view.finishBuildPlanFailure(failTail, failAbove);
             if (session != null) session.wedge(failTail);
-            event(JsonlShape.workspaceFinish(result, false, elapsedMs, planned()));
+            terminal(JsonlShape.workspaceFinish(result, false, elapsedMs, planned()));
             after.accept(Settled.FAILED);
             return result.exitCode();
         }
@@ -447,7 +448,7 @@ final class WorkspaceRunView {
         if (launchFailure != null) {
             view.finishBuildPlanFailureCustom(launchFailure, above);
             if (session != null) session.wedge(launchFailure);
-            event(JsonlShape.workspaceFinish(result, false, elapsedMs, planned()));
+            terminal(JsonlShape.workspaceFinish(result, false, elapsedMs, planned()));
             after.accept(Settled.FAILED);
             return Exit.DATA_ERR;
         }
@@ -455,7 +456,7 @@ final class WorkspaceRunView {
         if (tails.exec()) view.finishBuildPlanExec(okTail, above);
         else view.finishBuildPlanSuccess(okTail, above);
         if (session != null) session.wedge(okTail);
-        event(JsonlShape.workspaceFinish(result, true, elapsedMs, planned()));
+        terminal(JsonlShape.workspaceFinish(result, true, elapsedMs, planned()));
         after.accept(Settled.SUCCEEDED);
         return 0;
     }
@@ -484,7 +485,7 @@ final class WorkspaceRunView {
                 CommandWedge.printFail(chrome.planName(), tail);
             }
             if (session != null) session.wedge(tail);
-            event(JsonlShape.workspaceFinish(result, false, elapsedMs, planned()));
+            terminal(JsonlShape.workspaceFinish(result, false, elapsedMs, planned()));
             after.accept(Settled.GRAPH_ERRORS);
             return result.exitCode();
         }
@@ -495,7 +496,7 @@ final class WorkspaceRunView {
                 CommandWedge.printFail(chrome.planName(), failTail);
             }
             if (session != null) session.wedge(failTail);
-            event(JsonlShape.workspaceFinish(result, false, elapsedMs, planned()));
+            terminal(JsonlShape.workspaceFinish(result, false, elapsedMs, planned()));
             after.accept(Settled.FAILED);
             return result.exitCode() == 0 ? 1 : result.exitCode();
         }
@@ -505,14 +506,14 @@ final class WorkspaceRunView {
                 CommandWedge.printLine(
                         JkWedge.failureLineCustom(chrome.planName(), GlobalConfig.nerdFont(), launchFailure));
             if (session != null) session.wedge(launchFailure);
-            event(JsonlShape.workspaceFinish(result, false, elapsedMs, planned()));
+            terminal(JsonlShape.workspaceFinish(result, false, elapsedMs, planned()));
             after.accept(Settled.FAILED);
             return Exit.DATA_ERR;
         }
         String okTail = tails.success().of(result, planned());
         if (!toStdout && !tails.exec()) CommandWedge.printOk(chrome.planName(), okTail);
         if (session != null) session.wedge(okTail);
-        event(JsonlShape.workspaceFinish(result, true, elapsedMs, planned()));
+        terminal(JsonlShape.workspaceFinish(result, true, elapsedMs, planned()));
         after.accept(Settled.SUCCEEDED);
         return 0;
     }
@@ -524,7 +525,7 @@ final class WorkspaceRunView {
             CommandWedge.printLine(JkWedge.cancelledJobLine(chrome.planName(), GlobalConfig.nerdFont(), false, took));
         }
         if (session != null) session.wedge(chrome.planName() + " job was cancelled");
-        event(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
+        terminal(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
         return 1;
     }
 
@@ -541,7 +542,7 @@ final class WorkspaceRunView {
 
     /** Emit the terminal {@code workspace-finish} for a run that never reached the ladder. */
     void finishEvent(boolean success, long elapsedMs) {
-        event(JsonlShape.workspaceFinish(success, elapsedMs, planned()));
+        terminal(JsonlShape.workspaceFinish(success, elapsedMs, planned()));
     }
 
     /**
@@ -668,5 +669,11 @@ final class WorkspaceRunView {
      */
     private void event(String line) {
         JsonlShape.emitJsonl(line, toStdout);
+    }
+
+    /** The run's terminal: an open downloads burst closes ahead of it, and nothing follows it. */
+    private void terminal(String line) {
+        JsonlDownloads.sealCurrent();
+        event(line);
     }
 }
