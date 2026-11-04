@@ -4,7 +4,9 @@ package cc.jumpkick.cli.tui;
 import cc.jumpkick.cli.run.DurationText;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.task.TransferBoard;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -60,6 +62,12 @@ final class JkManagerPlainView {
      */
     long lastPrintedNanos;
 
+    /**
+     * {@link Clock#nanos()} of the last download line in the burst under way; 0 when none is
+     * under way. Package-private: a test rewinds it to simulate a long burst.
+     */
+    long downloadsPrintedNanos;
+
     JkManagerPlainView(JkManager m) {
         this.m = m;
     }
@@ -110,6 +118,31 @@ final class JkManagerPlainView {
         // Same gate as phase-change: wait for "compiling N sources" / "running N tests".
         if ("compiling".equals(status) || PlainPhase.RUNNING_TESTS.equals(status)) return;
         printSnapshot(currentPercent(), status, false, currentSubject(), "", true);
+    }
+
+    /**
+     * The run's downloads in plain chrome: one line when a burst starts, then one per {@link
+     * #HEARTBEAT_MS} while it lasts — {@code downloading 120/183 · 143.8 MiB}. A CI log is otherwise
+     * silent through a cold sync, since the stage heartbeat speaks only while a module row runs.
+     * Must hold the manager lock.
+     */
+    void onDownloads(TransferBoard.Snapshot d) {
+        if (m.done || !animating()) return;
+        if (!JkManagerView.showsDownloads(d)) {
+            downloadsPrintedNanos = 0;
+            return;
+        }
+        long now = Clock.SYSTEM.nanos();
+        if (downloadsPrintedNanos != 0 && now - downloadsPrintedNanos < HEARTBEAT_MS * 1_000_000L) return;
+        downloadsPrintedNanos = now;
+        String detail =
+                d.planned() > 0 ? d.settled() + "/" + d.planned() : d.files() + (d.files() == 1 ? " file" : " files");
+        printStarting();
+        m.out.println(indeterminateLine(
+                m.planMode ? m.planName() : m.label,
+                "downloading " + detail + " · " + JkManagerColor.size(d.bytes()),
+                false));
+        m.out.flush();
     }
 
     /** First ETA seed: print immediately as {@code start} on the workspace coordinate. */

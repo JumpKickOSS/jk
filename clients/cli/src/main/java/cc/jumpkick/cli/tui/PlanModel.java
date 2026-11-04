@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.task.TransferBoard;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -48,6 +49,9 @@ final class PlanModel {
     private int completedCount;
     private long finishSeq;
 
+    /** The run's downloads as last reported; {@link TransferBoard.Snapshot#EMPTY} until one moves. */
+    private TransferBoard.Snapshot downloads = TransferBoard.Snapshot.EMPTY;
+
     PlanModel(Object lock, Events events) {
         this.lock = lock;
         this.events = events;
@@ -72,6 +76,17 @@ final class PlanModel {
 
     int completedCount() {
         return completedCount;
+    }
+
+    TransferBoard.Snapshot downloads() {
+        return downloads;
+    }
+
+    /** Record the run's downloads now; the painters read them under the lock. */
+    void downloads(TransferBoard.Snapshot snapshot) {
+        synchronized (lock) {
+            downloads = snapshot;
+        }
     }
 
     /** Register a not-yet-started step row with a humanized display name. */

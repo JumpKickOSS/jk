@@ -2,9 +2,12 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.tui.DownloadsView;
+import cc.jumpkick.cli.tui.LiveRegion;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.DownloadsEvent;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.JobFinishFrame;
 import cc.jumpkick.wire.protocol.JobQueuedFrame;
@@ -151,8 +154,9 @@ public final class WireStream {
                 }
                 if (EngineProtocol.DOWNLOADS.equals(type)) {
                     // Any job may download, whatever its verb, so the run's download frames are read
-                    // here for every stream and never reach a verb's decoder. The live region does
-                    // not draw them yet; until it does they are consumed and dropped.
+                    // here for every stream, never by a verb's decoder, and drawn by whichever region
+                    // is on screen. With no region (a pipe, --quiet, JSONL) there is nothing to draw.
+                    showDownloads(line);
                     continue;
                 }
                 T terminal = decoder.onLine(type, line);
@@ -166,6 +170,13 @@ public final class WireStream {
             // The job is over however the stream ended — a stale jid here would add a 2s cancel
             // RPC to every later Ctrl-C in this process.
             if (notedJid > 0) ActiveJobs.forget(notedJid);
+        }
+    }
+
+    /** Hand one {@code downloads} frame to the region on screen, when it draws downloads. */
+    static void showDownloads(String line) {
+        if (LiveRegion.active() instanceof DownloadsView view) {
+            view.downloads(DownloadsEvent.decode(line).snapshot());
         }
     }
 

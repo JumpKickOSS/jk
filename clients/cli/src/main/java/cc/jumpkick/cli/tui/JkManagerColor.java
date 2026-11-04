@@ -84,6 +84,43 @@ public final class JkManagerColor {
         return painted + Theme.colorize(worker, t.midGray());
     }
 
+    /** Columns of a fanout row's gauge: the bar, a space and a right-aligned {@code 100%}. */
+    static final int FETCH_GAUGE_WIDTH = JdkProgressLabel.BAR_WIDTH + 5;
+
+    /**
+     * One download under the Download row: the gauge first, so a narrow terminal clips the coordinate
+     * and never the bar — {@code ▰▰▰▱▱▱▱▱▱▱  34% com.google.guava:guava:33.0.0-jre}, or the bytes so
+     * far, right-aligned to the same width, when the repository declared no length. The bar is
+     * painted as a JDK's or Node's download bar is.
+     */
+    static String fetchRow(String label, long read, long total, Theme t) {
+        StringBuilder out = new StringBuilder(label.length() + 64);
+        int pct = JdkProgressLabel.percent(read, total);
+        if (pct >= 0) {
+            String bar = JdkProgressLabel.bar(pct);
+            char[] glyphs = bar.toCharArray();
+            Style[] styles = new Style[glyphs.length];
+            for (int i = 0; i < glyphs.length; i++) {
+                styles[i] = glyphs[i] == JdkProgressLabel.FILLED ? t.blue() : t.darkGray();
+            }
+            out.append(t.isAnsi() ? Style.renderRuns(glyphs, styles) : Theme.paint(bar, Style.EMPTY));
+            out.append(Theme.colorize(String.format(Locale.ROOT, " %3d%%", pct), t.midGray()));
+        } else {
+            String size = size(read);
+            out.append(" ".repeat(Math.max(0, FETCH_GAUGE_WIDTH - size.length())));
+            out.append(Theme.colorize(size, t.midGray()));
+        }
+        out.append(' ').append(colorProseDetail(label, t));
+        return out.toString();
+    }
+
+    /** {@code 812 KiB}, {@code 3.4 MiB}: whole kibibytes below a mebibyte, one decimal above. */
+    static String size(long bytes) {
+        long b = Math.max(0L, bytes);
+        if (b < 1024L * 1024L) return b / 1024L + " KiB";
+        return String.format(Locale.ROOT, "%.1f MiB", b / (1024.0 * 1024.0));
+    }
+
     /**
      * Paint {@code downloading Temurin 25 ▰▰▰▰▰▱▱▱▱▱ 50%} / {@code installing … 100%}: verb and
      * percent mid-gray, product name cyan, filled bar cells blue, empty cells dark gray.
