@@ -68,6 +68,15 @@ public interface WorkspaceBuildListener {
     default void onEtaEstimate(long remainingMs) {}
 
     /**
+     * Remaining wall-work measured live before any plan exists, in milliseconds: the preflight's
+     * downloads, priced as they run. It rides the run's residual ({@link
+     * WorkspaceProgressTracker.Snapshot#remainingMs()}), not a seed: the first one anchors the
+     * clock and later ones refine it, so the bar's fill tracks the work instead of restarting at
+     * each estimate.
+     */
+    default void onRemainingEstimate(long remainingMs) {}
+
+    /**
      * Full remaining-work model for this build: seed {@code R0}, schedule parameters, and per-module
      * costs. Emitted once before execute so front-ends / engine trackers can drive residual
      * {@code R(t)} and the progress bar from the same oracle.

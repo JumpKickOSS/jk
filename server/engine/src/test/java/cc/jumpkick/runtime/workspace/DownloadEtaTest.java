@@ -1,0 +1,127 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.runtime.workspace;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import cc.jumpkick.task.TransferBoard;
+import cc.jumpkick.testing.FakeClock;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+/** The run's downloads priced in time, from no request at all: the recorded rate, then its own. */
+class DownloadEtaTest {
+
+    private final FakeClock clock = new FakeClock();
+    private final TransferBoard board = new TransferBoard(clock);
+    private final List<Long> sent = new ArrayList<>();
+
+    private int landed;
+
+    private void land(int artifacts, long bytesEach) {
+        for (int i = 0; i < artifacts; i++) {
+            try (var t = board.openArtifact("g:a" + landed++ + ":1")) {
+                t.started(bytesEach);
+                t.advanced(bytesEach);
+                t.finished();
+            }
+        }
+    }
+
+    private void land(int artifacts) {
+        land(artifacts, 1);
+    }
+
+    @Test
+    void nothing_planned_is_nothing_priced() {
+        new DownloadEta(board, clock, sent::add, 100).sample();
+        assertThat(sent).isEmpty();
+    }
+
+    @Test
+    void before_anything_lands_the_recorded_rate_prices_the_rest() {
+        var plan = board.plan(100);
+        var eta = new DownloadEta(board, clock, sent::add, 120);
+
+        eta.sample();
+
+        assertThat(sent).containsExactly(100 * 120L);
+        plan.close();
+    }
+
+    @Test
+    void with_no_history_nothing_is_priced_until_the_run_measures_itself() {
+        var plan = board.plan(100);
+        var eta = new DownloadEta(board, clock, sent::add, 0);
+        eta.sample();
+        assertThat(sent).as("no history, nothing landed").isEmpty();
+
+        clock.advance(Duration.ofSeconds(3));
+        land(10, 1_000);
+        for (int i = 0; i < 10; i++) plan.settled();
+        eta.sample();
+
+        // 10 kB in 3 s; 90 files left at the 1 kB the landed ones averaged.
+        assertThat(sent).containsExactly(27_000L);
+        plan.close();
+    }
+
+    @Test
+    void the_runs_own_rate_replaces_the_prior_once_enough_has_landed() {
+        var plan = board.plan(50);
+        var eta = new DownloadEta(board, clock, sent::add, 1_000);
+        eta.sample(); // prior: 50 s
+        clock.advance(Duration.ofSeconds(2));
+        land(20, 100);
+        for (int i = 0; i < 20; i++) plan.settled();
+        eta.sample(); // measured: 1 byte a ms, 30 files of 100 bytes left
+
+        assertThat(sent).containsExactly(50_000L, 3_000L);
+        plan.close();
+    }
+
+    @Test
+    void a_small_change_is_not_sent_again() {
+        var plan = board.plan(100);
+        var eta = new DownloadEta(board, clock, sent::add, 100);
+        eta.sample();
+        plan.settled();
+        eta.sample(); // 9.9 s against 10 s: no news
+
+        assertThat(sent).containsExactly(10_000L);
+        plan.close();
+    }
+
+    @Test
+    void artifacts_from_before_the_run_do_not_count_as_its_rate() {
+        land(50);
+        var plan = board.plan(10);
+        var eta = new DownloadEta(board, clock, sent::add, 200);
+        eta.sample();
+
+        assertThat(sent).as("the prior, not 50 artifacts in no time").containsExactly(10 * 200L);
+        plan.close();
+    }
+
+    @Test
+    void a_large_jar_in_flight_is_priced_at_its_declared_length() {
+        var plan = board.plan(10);
+        var eta = new DownloadEta(board, clock, sent::add, 0);
+        eta.sample();
+        var big = board.openArtifact("g:big:1");
+        big.started(10_000);
+        big.advanced(500);
+        clock.advance(Duration.ofSeconds(1));
+        land(5, 100);
+        for (int i = 0; i < 5; i++) plan.settled();
+        eta.sample();
+
+        // 1 kB in 1 s. The big one owes 9.5 kB; the 6 files of known size average 1.75 kB (10.5 kB
+        // over 5 landed and 1 in flight), so the 4 not started owe 7 kB: not the 100 bytes each
+        // the small ones that landed first would say.
+        assertThat(sent).containsExactly(16_500L);
+        big.close();
+        plan.close();
+    }
+}

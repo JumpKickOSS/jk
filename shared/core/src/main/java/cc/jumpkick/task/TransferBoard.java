@@ -124,6 +124,28 @@ public final class TransferBoard {
         return artifacts.sum();
     }
 
+    /**
+     * What the bodies streaming now still owe: {@code owed} bytes of the ones that declared a length,
+     * {@code read} bytes already in of all of them, and {@code undeclared} bodies whose length is
+     * unknown.
+     */
+    public record InFlight(long owed, long read, int undeclared) {}
+
+    /** The bodies streaming now, in bytes; see {@link InFlight}. */
+    public InFlight inFlight() {
+        long owed = 0;
+        long read = 0;
+        int undeclared = 0;
+        for (Live t : live.keySet()) {
+            long r = t.read;
+            long total = t.total;
+            read += r;
+            if (total > 0) owed += Math.max(0, total - r);
+            else undeclared++;
+        }
+        return new InFlight(owed, read, undeclared);
+    }
+
     /** A step that will settle {@code items} files. */
     public Plan plan(int items) {
         Planned p = new Planned(Math.max(0, items));

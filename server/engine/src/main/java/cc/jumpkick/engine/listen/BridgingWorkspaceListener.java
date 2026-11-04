@@ -34,6 +34,9 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
 
         default void workModel(WorkModel model) {}
 
+        /** The run's live remaining work before a plan exists; see {@link WorkspaceBuildListener#onRemainingEstimate}. */
+        default void remaining(long remainingMs) {}
+
         default void recordWeight(String dir, long weight) {}
 
         default void planWeights(long totalWeight, int modules) {}
@@ -128,6 +131,11 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
     @Override
     public void onEtaEstimate(long remainingMs) {
         sink.emit(new EngineEvent.Eta(remainingMs));
+    }
+
+    @Override
+    public void onRemainingEstimate(long remainingMs) {
+        hooks.remaining(remainingMs);
     }
 
     @Override
