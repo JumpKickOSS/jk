@@ -117,6 +117,11 @@ public interface PackageIo {
     /** Progress label surfaced in the build UI. */
     void label(String text);
 
+    /** A body this packager downloads itself, reported to the run's download board; see {@link Transfers}. */
+    default Transfers.Transfer transfer(String label) {
+        return Transfers.open(label);
+    }
+
     /**
      * Declare an extra produced file or directory (beyond {@link #artifactPath()}) that the
      * engine must cache and restore with the artifact — e.g. the quarkus fast-jar {@code lib/}

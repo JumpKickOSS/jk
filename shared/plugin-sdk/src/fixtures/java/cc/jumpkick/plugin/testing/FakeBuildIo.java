@@ -6,6 +6,7 @@ import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.plugin.build.RepositoryRoute;
 import cc.jumpkick.plugin.build.TaskExec;
+import cc.jumpkick.plugin.build.Transfers;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -366,6 +367,11 @@ public final class FakeBuildIo implements PackageIo, TaskExec {
     @Override
     public boolean offline() {
         return offline;
+    }
+
+    @Override
+    public Transfers.Transfer transfer(String label) {
+        return Transfers.open(label);
     }
 
     @Override

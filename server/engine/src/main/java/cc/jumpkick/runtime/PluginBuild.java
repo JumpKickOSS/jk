@@ -843,8 +843,12 @@ public final class PluginBuild {
                     if (tail.size() >= 20) tail.removeFirst();
                     tail.addLast(line);
                 });
-        int exit =
-                client.run(PluginLaunch.javaCommand(jar, spec, code(active).protocolPrefix(), sdkFloor(active)), env);
+        int exit;
+        // The worker's own downloads (a step that declared repositories) on the run's board.
+        try (PluginTransfers ignored = PluginTransfers.relay(client)) {
+            exit = client.run(
+                    PluginLaunch.javaCommand(jar, spec, code(active).protocolPrefix(), sdkFloor(active)), env);
+        }
         if (error[0] != null) {
             throw new IOException(error[0]);
         }

@@ -84,4 +84,9 @@ public interface PluginCommandExec {
 
     /** Progress label (spinner text), same channel as step/packager labels. */
     void label(String text);
+
+    /** A body this command downloads itself, reported to the run's download board; see {@link Transfers}. */
+    default Transfers.Transfer transfer(String label) {
+        return Transfers.open(label);
+    }
 }

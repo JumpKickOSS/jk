@@ -166,6 +166,8 @@ public final class QuarkusAugmentMain {
         }
         MavenArtifactResolver mvn = new MavenArtifactResolver(new BootstrapMavenContext(cfg));
         routes.attachMirrors(mvn.getSession());
+        // What this resolver downloads is the run's, on its board like every other body.
+        AetherTransfers.attach(mvn.getSession());
         routes.attachBearerTokens(mvn.getSession());
         System.err.println(LOG_PREFIX + ": remote repositories: " + routes.describe());
         BootstrapAppModelResolver modelResolver = new BootstrapAppModelResolver(mvn);

@@ -104,8 +104,11 @@ public final class PluginCommands {
                         .onOther(line -> {
                             // labels/done — not part of the command's user-facing output
                         });
-                int exit = client.run(PluginLaunch.javaCommand(
-                        jar, spec, PluginBuild.code(active).protocolPrefix()));
+                int exit;
+                try (PluginTransfers ignored = PluginTransfers.relay(client)) {
+                    exit = client.run(PluginLaunch.javaCommand(
+                            jar, spec, PluginBuild.code(active).protocolPrefix()));
+                }
                 String failure = error[0];
                 if (failure != null) return PluginCommandReport.error(failure);
                 return new PluginCommandReport(null, true, exit, output);

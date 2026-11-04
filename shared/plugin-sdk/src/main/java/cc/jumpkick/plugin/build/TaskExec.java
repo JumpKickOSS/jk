@@ -119,6 +119,14 @@ public interface TaskExec {
     void label(String text);
 
     /**
+     * A body this step downloads itself, reported to the run's download board: open one per file
+     * fetched outside the lock, and close it however the stream ends. See {@link Transfers}.
+     */
+    default Transfers.Transfer transfer(String label) {
+        return Transfers.open(label);
+    }
+
+    /**
      * One located finding from the tool this step ran, reported as the step's own diagnostic:
      * {@code severity} is {@code error} or {@code warning}; {@code file} is module-relative or
      * absolute, null when the finding has no location; {@code line}/{@code col} are 1-based, 0 when
@@ -344,7 +352,14 @@ public interface TaskExec {
                 try (BufferedReader reader =
                         new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                     @Nullable String line;
-                    while ((line = reader.readLine()) != null) sink.accept(line);
+                    // A forked JVM's download reports go to the run's board, not to its output.
+                    while ((line = reader.readLine()) != null) {
+                        if (line.startsWith(TRANSFER_PREFIX)) {
+                            Transfers.forward(line.substring(TRANSFER_PREFIX.length()));
+                        } else {
+                            sink.accept(line);
+                        }
+                    }
                 }
                 return process.waitFor();
             } finally {
@@ -353,5 +368,8 @@ public interface TaskExec {
         }
 
         public record Result(int exit, String output) {}
+
+        /** The reading end of {@link Transfers#FORKED_PREFIX}: a forked JVM's download report. */
+        static final String TRANSFER_PREFIX = "##JKXFER:";
     }
 }
