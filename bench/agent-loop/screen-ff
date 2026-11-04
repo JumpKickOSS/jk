@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""A screen that fails fast: rounds of one run per task per agent, breadth-first, each agent on its
+prescription, compared after every round against a baseline series on the same tasks.
+
+    bench/agent-loop/screen-ff --series 19 --task petclinic-callers-addpet --task petclinic-rename-addvisit
+    bench/agent-loop/screen-ff --series 19 --agent cursor --agent agy --rounds 2 --task ...
+
+After round 1 an agent that is worse than its baseline is dropped, and the screen stops when no agent
+is better. After round 2 only the agents still better run the last round. A rename run also reports
+whether its `rename` answer reached the agent with the line under test (--expect), so a change no agent
+saw is never read as a change that did nothing. Rows go to change-tasks' results; run numbers are
+series * 100 + round - 1.
+"""
+from __future__ import annotations
+
+import argparse
+import importlib.machinery
+import importlib.util
+import json
+import statistics
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+PRESCRIPTIONS = {"claude-code": "jk", "cursor": "jk-cursorrules", "grok": "jk", "muse": "jk", "agy": "jk-agyrules"}
+# Tasks whose baseline needs Docker (petclinic's Testcontainers Postgres test); skipped while it is down.
+NEEDS_DOCKER = {"petclinic-rename-addvisit"}
+# Ratio of the new median to the baseline's past which a measure counts as better or worse, over all
+# tasks; and the ratio past which one task's tokens or turns count as a regression on that task.
+BETTER, WORSE, REGRESSED = 0.9, 1.1, 1.3
+
+
+def load(name: str, path: Path):
+    loader = importlib.machinery.SourceFileLoader(name, str(path))
+    spec = importlib.util.spec_from_loader(name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def rows() -> list[dict]:
+    out = []
+    for f in sorted((HERE / "results").glob("*-change-tasks/rows.jsonl")):
+        out += [json.loads(line) for line in f.read_text().splitlines() if line.strip()]
+    return [r for r in out if "accepted" in r]
+
+
+def median(rs: list[dict], key: str) -> float | None:
+    vals = [r[key] for r in rs if r.get(key) is not None]
+    return statistics.median(vals) if vals else None
+
+
+def verdict(agent: str, arm: str, series: int, baseline: int, tasks: list[str]) -> tuple[str, list[str]]:
+    """better, worse or same, and one line per task: the new medians against the baseline's."""
+    all_rows = rows()
+    lines, ratios, lost, regressed = [], [], False, 0
+    for task in tasks:
+        new = [r for r in all_rows if (r["driver"], r["arm"], r["task"]) == (agent, arm, task)
+               and r["run"] // 100 == series]
+        old = [r for r in all_rows if (r["driver"], r["arm"], r["task"]) == (agent, arm, task)
+               and r["run"] // 100 == baseline]
+        if not new or not old:
+            continue
+        cells, worst = [], 0.0
+        for key in ("tokens", "turns", "wall_s"):
+            a, b = median(new, key), median(old, key)
+            if a is not None and b:
+                ratios.append(a / b)
+                cells.append(f"{key} {b:,.0f}→{a:,.0f}")
+                if key != "wall_s":
+                    worst = max(worst, a / b)
+        regressed += worst > REGRESSED
+        ok_new, ok_old = sum(r["accepted"] for r in new) / len(new), sum(r["accepted"] for r in old) / len(old)
+        lost |= ok_new < ok_old
+        lines.append(f"    {task:36} {'  '.join(cells)}  correct {sum(r['accepted'] for r in new)}/{len(new)}")
+    if not ratios:
+        return "same", lines
+    mid = statistics.median(ratios)
+    lines.append(f"    median ratio {mid:.2f}, tasks regressed {regressed}")
+    if lost or mid > WORSE or regressed >= 2:
+        return "worse", lines
+    return ("better" if mid < BETTER and regressed == 0 else "same"), lines
+
+
+def reached(agent: str, arm: str, task: str, run: int, expect: str) -> bool | None:
+    """Whether the run's transcript carries the expected text in a tool answer; None when not found."""
+    root = Path.home() / ".cache/jk-bench/agent-loop/change-tasks"
+    hits = sorted(root.glob(f"*/{agent}/{arm}/{task}.{run}/transcript.jsonl"))
+    if not hits:
+        return None
+    return expect in hits[-1].read_text(errors="replace").replace("\\n", "\n")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--series", type=int, required=True, help="run numbers series*100 + round - 1")
+    ap.add_argument("--baseline", type=int, default=16, help="the series to compare against")
+    ap.add_argument("--agent", action="append", choices=sorted(PRESCRIPTIONS))
+    ap.add_argument("--task", action="append", required=True, help="cheapest first")
+    ap.add_argument("--rounds", type=int, default=3)
+    ap.add_argument("--expect", default="A rename changes no behaviour",
+                    help="text a rename answer must carry for the run to test the change")
+    ns = ap.parse_args()
+    ct = load("smoke_test", HERE / "smoke-test").ct
+    active = list(ns.agent or PRESCRIPTIONS)
+    for rnd in range(1, ns.rounds + 1):
+        run = ns.series * 100 + rnd - 1
+        print(f"== round {rnd}: {', '.join(active)}", flush=True)
+        for task in ns.task:
+            if task in NEEDS_DOCKER and subprocess.run(["docker", "info"], capture_output=True).returncode != 0:
+                print(f"   {task}: skipped, Docker is down", flush=True)
+                continue
+            for agent in active:
+                arm = PRESCRIPTIONS[agent]
+                sys.argv = ["change-tasks", "--driver", agent, "--arm", arm, "--task", task,
+                            "--first-run", str(run), "--runs", "1"]
+                try:
+                    ct.main()
+                except Exception as e:  # noqa: BLE001 - one broken cell is a line, not the end of the screen
+                    print(f"   {agent} {task} #{run} raised {e!r}", flush=True)
+                if "rename" in task:
+                    seen = reached(agent, arm, task, run, ns.expect)
+                    print(f"   {agent} {task} #{run}: change reached the agent: {seen}", flush=True)
+                    if seen is False:
+                        print(f"== stop: {task}'s rename answer did not carry the change; fix that first", flush=True)
+                        return 1
+        verdicts = {}
+        for agent in active:
+            v, lines = verdict(agent, PRESCRIPTIONS[agent], ns.series, ns.baseline, ns.task)
+            verdicts[agent] = v
+            print(f"== after round {rnd}: {agent} {v}", flush=True)
+            print("\n".join(lines), flush=True)
+        if rnd == 1:
+            if not any(v == "better" for v in verdicts.values()):
+                print("== stop: no agent is better than its baseline after round 1", flush=True)
+                return 0
+            active = [a for a in active if verdicts[a] != "worse"]
+        elif rnd == 2:
+            active = [a for a in active if verdicts[a] == "better"]
+            if not active:
+                print("== stop: no agent still better after round 2", flush=True)
+                return 0
+    print("== screen done", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
