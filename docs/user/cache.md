@@ -222,7 +222,11 @@ writes — it can legitimately report “Nothing to clean up.” on a large cach
     recently for a month and every other version for two days; Maven, Gradle, Kotlin and the
     compiler closures jk keeps beside them (Scala, KSP, the Kotlin build tools, Groovy, Dokka, the
     script host) keep the newest 90 days and the others 14; an archive unpacked for a step (an IDE distribution)
-    lives in `state/tmp/unpacked/` and goes a week after its last use.
+    lives in `state/tmp/unpacked/` and goes a week after its last use. Closure directories under
+    `tools/plugin-tools/` — a plugin tool's runtime closure, or the repository of a closure a
+    plugin resolved for the lock ([Lockfile](lockfile.md#closures-a-plugin-resolves)) — are links
+    over the store: each goes a month after its own last use and is built again from the store
+    when next needed; a staging directory a killed run left there goes after a day.
   - *Repository trees* jk holds itself (`repos/<id>` for a repository no `settings.xml` names):
     30 days, or a week for a file of 50 MB or more. The first-party `jk-local` and `jumpkick`
     trees are left to installs.

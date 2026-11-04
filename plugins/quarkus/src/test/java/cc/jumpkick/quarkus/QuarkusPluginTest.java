@@ -32,8 +32,10 @@ class QuarkusPluginTest {
             manifest = new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
         assertThat(manifest)
-                .contains("[[contribute.lock-closure]]\nname = \"" + QuarkusPlugin.DEPLOYMENT_CLOSURE + "\"");
-        assertThat(QuarkusPlugin.CLOSURE_EXTRA).isEqualTo("lock-closure." + QuarkusPlugin.DEPLOYMENT_CLOSURE);
+                .contains("name     = \"" + QuarkusPlugin.DEPLOYMENT_CLOSURE + "\"\nfor-step = \""
+                        + QuarkusPlugin.AUGMENT_STEP + "\"")
+                .contains("name     = \"" + QuarkusPlugin.TEST_DEPLOYMENT_CLOSURE + "\"\nfor-step = \""
+                        + QuarkusPlugin.TEST_MODEL_STEP + "\"");
         TaskExec exec = (TaskExec) Proxy.newProxyInstance(
                 TaskExec.class.getClassLoader(), new Class<?>[] {TaskExec.class}, (proxy, method, args) -> {
                     throw new AssertionError("an unknown closure reads nothing of the module: " + method.getName());

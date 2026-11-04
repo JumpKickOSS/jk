@@ -15,6 +15,8 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.LockClosureInputs;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.lock.ToolEntry;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
@@ -73,12 +75,16 @@ final class LockClosures {
         Cas cas = JkStores.storeCas();
         Map<String, ToolEntry> answered = new LinkedHashMap<>();
         Map<Coordinate, String> known = null;
+        // Inputs are read off the lock as it will read back from disk, so the build and the
+        // freshness check, which read the file, compute the same digest this pin does.
+        Lockfile written = null;
         for (Map.Entry<Path, JkBuild> module : modules.entrySet()) {
             Path dir = module.getKey();
             JkBuild build = module.getValue();
             List<PluginContributions.LockClosureDep> closures = PluginContributions.lockClosures(build, dir);
             if (closures.isEmpty()) continue;
-            Lockfile view = view(lock, lockDir, dir);
+            if (written == null) written = LockfileReader.parse(LockfileWriter.render(lock));
+            Lockfile view = view(written, lockDir, dir);
             for (PluginContributions.LockClosureDep closure : closures) {
                 String inputs = LockClosureInputs.of(closure, lockDir, dir, view);
                 String key = closure.resolvedBy() + "|" + inputs;
@@ -87,10 +93,12 @@ final class LockClosures {
                         previous == null ? null : ToolEntry.resolvedIn(previous.tools(), closure.resolvedBy(), inputs);
                 if (row == null) {
                     progress.label("lock " + closure.resolvedBy());
-                    List<Coordinate> files = ask(closure, build, dir, lock, view, previous, cas, cache, progress);
                     if (known == null) known = knownDigests(lock, previous);
                     RepoGroup repos = RepoGroupBuilder.buildFor(build, repoUrl, cas, BuildEnv.forModule(dir));
-                    row = ToolEntry.resolved(closure.resolvedBy(), inputs, digests(files, known, repos));
+                    row = ToolEntry.resolved(
+                            closure.resolvedBy(),
+                            inputs,
+                            ask(new Asking(closure, build, dir, lock, view, known, repos), cas, cache, progress));
                 }
                 answered.put(key, row);
             }
@@ -103,22 +111,16 @@ final class LockClosures {
 
     /**
      * Put every closure the module's plugins resolved for the lock on disk as the lock pins it —
-     * the {@linkplain #repositories repository} its plugin's steps receive, every file against its
-     * digest: what {@code jk sync} stages. A repository already whole costs a listing check. A
-     * closure the lock answers nothing for is a stale lock. Answers the closures' names.
+     * the {@linkplain Repo repository} its plugin's steps receive, every file against its digest:
+     * what {@code jk sync} stages. A repository already whole costs a listing check. A closure the
+     * lock answers nothing for is a stale lock. Answers the closures' names.
      */
     static List<String> stage(JkBuild build, Path lockDir, Path moduleDir, Cas cas, Lockfile lock, Lockfile view)
             throws IOException, InterruptedException {
         List<String> names = new ArrayList<>();
-        RepoGroup[] repos = {null};
-        for (PluginContributions.LockClosureDep closure : PluginContributions.lockClosures(build, moduleDir)) {
-            repository(
-                    closure, requireRow(closure, lockDir, moduleDir, lock, view).files(), cas, () -> {
-                        if (repos[0] == null)
-                            repos[0] = RepoGroupBuilder.buildFor(build, null, cas, BuildEnv.forModule(moduleDir));
-                        return repos[0];
-                    });
-            names.add(closure.resolvedBy());
+        for (Repo repo : planned(build, lockDir, moduleDir, null, cas, lock, view)) {
+            repo.materialize();
+            names.add(repo.closure.resolvedBy());
         }
         return names;
     }
@@ -129,54 +131,112 @@ final class LockClosures {
     }
 
     /**
-     * Every closure plugin {@code pluginId} resolved for the module, each a Maven-layout repository
-     * of its pinned files under the store, by {@linkplain #extraName extra name}: what the plugin's
-     * steps hand their resolver as its local tail. Built once per closure and kept; a later step or
-     * build finds it whole and touches no file of it. A closure the lock answers nothing for is a
-     * stale lock.
+     * One closure a plugin resolved for the lock, as the repository a step receives: its extra name
+     * and its directory, named by a hash of every pinned file and digest. Planning it reads the lock
+     * alone, so a step whose result is cached keys on the name without building anything; {@link
+     * #materialize} builds it, once, when a step runs.
      */
-    static Map<String, Path> repositories(
-            JkBuild build, Path lockDir, Path moduleDir, String pluginId, Cas cas, Lockfile lock, Lockfile view)
-            throws IOException, InterruptedException {
-        Map<String, Path> out = new LinkedHashMap<>();
+    static final class Repo {
+        private final PluginContributions.LockClosureDep closure;
+        private final Map<Coordinate, String> pinned;
+        private final Path dir;
+        private final Cas cas;
+        private final Supplier<RepoGroup> repos;
+        private final boolean m2;
+        private boolean built;
+
+        private Repo(
+                PluginContributions.LockClosureDep closure,
+                Map<Coordinate, String> pinned,
+                Cas cas,
+                Supplier<RepoGroup> repos,
+                boolean m2) {
+            this.closure = closure;
+            this.m2 = m2;
+            this.pinned = pinned;
+            this.dir = ToolClosures.root(cas).resolve(key(closure, pinned));
+            this.cas = cas;
+            this.repos = repos;
+        }
+
+        /** The extra the step receives it under ({@link #extraName}). */
+        String extra() {
+            return extraName(closure.name());
+        }
+
+        /** True when the step or packager {@code consumer} reads it ({@code for-step}). */
+        boolean reaches(String consumer) {
+            return closure.closure().reaches(consumer);
+        }
+
+        /** The step's action-key token: the directory's name is a hash of every file and digest. */
+        String token() {
+            return extra() + ":" + dir.getFileName();
+        }
+
+        /**
+         * The repository on disk: found whole, or built — the files jk does not hold yet fetched
+         * all at once against their digests, every file linked, published atomically. Each call
+         * records a use, which the tools collector counts down from.
+         */
+        synchronized Path materialize() throws IOException, InterruptedException {
+            if (built || ToolClosures.complete(dir)) {
+                built = true;
+                return ToolClosures.used(cas, dir);
+            }
+            Path staging = Files.createTempDirectory(Files.createDirectories(dir.getParent()), ".repo-");
+            try {
+                link(bytes(pinned, cas, repos.get(), true, m2), staging);
+                ToolClosures.publish(staging, dir);
+            } catch (IOException | RuntimeException e) {
+                PathUtil.deleteRecursively(staging);
+                throw new IOException(
+                        "the " + closure.resolvedBy() + " closure did not materialize under " + dir + ": "
+                                + e.getMessage(),
+                        e);
+            }
+            built = true;
+            return ToolClosures.used(cas, dir);
+        }
+    }
+
+    /**
+     * The closures plugin {@code pluginId} (every plugin when null) resolved for the module, as the
+     * lock pins them, planned and not built. A closure the lock answers nothing for is a stale lock.
+     */
+    static List<Repo> planned(
+            JkBuild build,
+            Path lockDir,
+            Path moduleDir,
+            @Nullable String pluginId,
+            Cas cas,
+            Lockfile lock,
+            Lockfile view)
+            throws IOException {
+        List<Repo> out = new ArrayList<>();
         RepoGroup[] repos = {null};
+        Supplier<RepoGroup> group = () -> {
+            synchronized (repos) {
+                if (repos[0] == null)
+                    repos[0] = RepoGroupBuilder.buildFor(build, null, cas, BuildEnv.forModule(moduleDir));
+                return repos[0];
+            }
+        };
         for (PluginContributions.LockClosureDep closure : PluginContributions.lockClosures(build, moduleDir)) {
-            if (!closure.manifest().id().equals(pluginId)) continue;
-            Path dir = repository(
-                    closure, requireRow(closure, lockDir, moduleDir, lock, view).files(), cas, () -> {
-                        if (repos[0] == null)
-                            repos[0] = RepoGroupBuilder.buildFor(build, null, cas, BuildEnv.forModule(moduleDir));
-                        return repos[0];
-                    });
-            out.put(extraName(closure.name()), dir);
+            if (pluginId != null && !closure.manifest().id().equals(pluginId)) continue;
+            out.add(new Repo(
+                    closure, requireRow(closure, lockDir, moduleDir, lock, view).files(), cas, group, m2(lock)));
         }
         return out;
     }
 
-    /**
-     * {@code pinned} as a Maven-layout repository under the store, keyed by every file and digest:
-     * found whole, or built — the files jk does not hold yet fetched all at once against their
-     * digests from {@code repos}, every file linked, published atomically.
-     */
-    private static Path repository(
-            PluginContributions.LockClosureDep closure,
-            Map<Coordinate, String> pinned,
-            Cas cas,
-            Supplier<RepoGroup> repos)
+    /** {@code extras} with each of {@code repos} built and added under its extra name. */
+    static Map<String, Path> withRepositories(Map<String, Path> extras, List<Repo> repos)
             throws IOException, InterruptedException {
-        Path dir = ToolClosures.root(cas).resolve(key(closure, pinned));
-        if (ToolClosures.complete(dir)) return ToolClosures.used(cas, dir);
-        Path staging = Files.createTempDirectory(Files.createDirectories(dir.getParent()), ".repo-");
-        try {
-            link(bytes(pinned, cas, repos.get(), true), staging);
-            ToolClosures.publish(staging, dir);
-        } catch (IOException | RuntimeException e) {
-            PathUtil.deleteRecursively(staging);
-            throw new IOException(
-                    "the " + closure.resolvedBy() + " closure did not materialize under " + dir + ": " + e.getMessage(),
-                    e);
-        }
-        return ToolClosures.used(cas, dir);
+        if (repos.isEmpty()) return extras;
+        Map<String, Path> out = new LinkedHashMap<>(extras);
+        for (Repo repo : repos) out.put(repo.extra(), repo.materialize());
+        return out;
     }
 
     /**
@@ -197,10 +257,10 @@ final class LockClosures {
      * once and declared on the run's board; without {@code fetch}, a file jk does not hold is left
      * out.
      */
-    private static Map<Coordinate, Path> bytes(Map<Coordinate, String> pinned, Cas cas, RepoGroup repos, boolean fetch)
+    private static Map<Coordinate, Path> bytes(
+            Map<Coordinate, String> pinned, Cas cas, RepoGroup repos, boolean fetch, boolean m2)
             throws IOException, InterruptedException {
-        ArtifactLocator locator =
-                new ArtifactLocator(cas.root(), JkM2Config.resolve().integration());
+        ArtifactLocator locator = new ArtifactLocator(cas.root(), m2);
         Map<Coordinate, Path> out = new LinkedHashMap<>();
         List<ArtifactFanOut.Fetch<Map.Entry<Coordinate, Path>>> missing = new ArrayList<>();
         for (Map.Entry<Coordinate, String> file : pinned.entrySet()) {
@@ -269,19 +329,24 @@ final class LockClosures {
     }
 
     /**
-     * What jk already holds of a closure about to be resolved, as a Maven-layout repository in a
-     * directory of its own under the store (the caller deletes it): the files of every row {@code
-     * previous} has for it, and each row of the module's view with its POM. The plugin's
-     * resolver reads it as its tail, so a relock downloads only what is new.
+     * Whether the Maven local repository holds {@code lock}'s repository artifacts, as the compile
+     * classpath reads them: integration on, and no locked module opted out.
      */
-    private static Path seed(String resolvedBy, Lockfile view, @Nullable Lockfile previous, Cas cas, RepoGroup repos)
+    private static boolean m2(Lockfile lock) {
+        return JkM2Config.resolve().integration()
+                && lock.modules().stream().noneMatch(m -> Boolean.FALSE.equals(m.m2integration()));
+    }
+
+    /**
+     * What jk already holds of a closure about to be resolved, as a Maven-layout repository in a
+     * directory of its own under the store (the caller deletes it): every file {@code pinned} names
+     * — the lock's and the previous lock's pins, every closure's files among them, and what an
+     * earlier closure of this lock just took in — and each row of the module's view with its POM.
+     * The plugin's resolver reads it as its tail, so it downloads only what jk does not hold.
+     */
+    private static Path seed(Lockfile view, Map<Coordinate, String> pinned, Cas cas, RepoGroup repos)
             throws IOException, InterruptedException {
-        Map<Coordinate, String> known = new LinkedHashMap<>();
-        if (previous != null) {
-            for (ToolEntry row : previous.tools()) {
-                if (resolvedBy.equals(row.resolvedBy())) row.files().forEach(known::putIfAbsent);
-            }
-        }
+        Map<Coordinate, String> known = new LinkedHashMap<>(pinned);
         List<Path> mirrors = new ArrayList<>();
         PathUtil.forEachChild(cas.root().resolve("repos"), (child, attrs) -> {
             if (attrs.isDirectory()) mirrors.add(child);
@@ -306,7 +371,7 @@ final class LockClosures {
             }
         }
         Path dir = Files.createTempDirectory(Files.createDirectories(ToolClosures.root(cas)), ".seed-");
-        link(bytes(known, cas, repos, false), dir);
+        link(bytes(known, cas, repos, false, m2(view)), dir);
         return dir;
     }
 
@@ -351,57 +416,79 @@ final class LockClosures {
     }
 
     /**
-     * {@code files} each to its digest: the one {@code known} pins, else the bytes', fetched all at
-     * once from {@code repos} and declared on the run's board.
+     * Each answered file to its digest: the one {@code known} pins; else, when the plugin's
+     * resolver holds the bytes under {@code held} (its private repository, or the seed), their
+     * digest, the bytes taken into the store so neither the sync nor a build downloads them again;
+     * else the bytes', fetched all at once from {@code repos} and declared on the run's board.
      */
     private static Map<Coordinate, String> digests(
-            List<Coordinate> files, Map<Coordinate, String> known, RepoGroup repos) {
+            Map<Coordinate, @Nullable Path> files,
+            Map<Coordinate, String> known,
+            RepoGroup repos,
+            Cas cas,
+            List<Path> held)
+            throws IOException, InterruptedException {
         Map<Coordinate, String> out = new LinkedHashMap<>();
         List<Coordinate> toFetch = new ArrayList<>();
-        for (Coordinate file : files) {
-            String hex = known.get(file);
+        for (Map.Entry<Coordinate, @Nullable Path> file : files.entrySet()) {
+            Coordinate coord = file.getKey();
+            String hex = known.get(coord);
+            Path bytes = file.getValue();
+            if (hex == null && bytes != null && within(bytes, held) && Files.isRegularFile(bytes)) {
+                hex = Hashing.sha256Hex(bytes);
+                cas.putFile(bytes, hex);
+                known.put(coord, hex);
+            }
             if (hex != null) {
-                out.put(file, hex);
+                out.put(coord, hex);
             } else {
-                toFetch.add(file);
+                toFetch.add(coord);
             }
         }
         if (toFetch.isEmpty()) return out;
-        List<Optional<RepoGroup.RepoFetched>> fetched;
-        try {
-            fetched = ArtifactFanOut.artifacts(repos, toFetch);
-        } catch (IOException | InterruptedException e) {
-            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            throw new IllegalStateException("lock closure — " + e.getMessage(), e);
-        }
+        List<Optional<RepoGroup.RepoFetched>> fetched = ArtifactFanOut.artifacts(repos, toFetch);
         for (int i = 0; i < toFetch.size(); i++) {
             Coordinate file = toFetch.get(i);
             RepoGroup.RepoFetched hit = fetched.get(i)
-                    .orElseThrow(
-                            () -> new IllegalStateException("lock closure file " + file + " not found in any repo"));
+                    .orElseThrow(() -> new IOException("lock closure file " + file + " not found in any repo"));
             out.put(file, hit.fetched().sha256());
             known.put(file, hit.fetched().sha256());
         }
         return out;
     }
 
-    /**
-     * Ask the plugin's worker for {@code closure}'s files: a {@code lock-closure} spec carrying the
-     * module as {@code lock} resolves it — its production and test entries, its step tools, its
-     * routed repositories and its JDK — over an empty classes directory, since nothing is compiled
-     * yet, with what the store already holds of the closure as its {@linkplain #seed repository}.
-     * Each {@code pin} reply is one file.
-     */
-    private static List<Coordinate> ask(
+    /** True when {@code file} is under one of {@code roots}, after resolving {@code ..}. */
+    private static boolean within(Path file, List<Path> roots) {
+        Path real = file.toAbsolutePath().normalize();
+        for (Path root : roots) {
+            if (real.startsWith(root.toAbsolutePath().normalize())) return true;
+        }
+        return false;
+    }
+
+    /** One closure about to be asked for, with what asking reads. */
+    private record Asking(
             PluginContributions.LockClosureDep closure,
             JkBuild build,
             Path dir,
             Lockfile lock,
             Lockfile view,
-            @Nullable Lockfile previous,
-            Cas cas,
-            Path cache,
-            LockPipeline.Progress progress) {
+            Map<Coordinate, String> known,
+            RepoGroup repos) {}
+
+    /**
+     * Ask the plugin's worker for {@code closure}'s files: a {@code lock-closure} spec carrying the
+     * module as {@code lock} resolves it — its production and test entries, its step tools, its
+     * routed repositories and its JDK — over an empty classes directory, since nothing is compiled
+     * yet, with what the store already holds of the closure as its {@linkplain #seed repository}.
+     * Each {@code pin} reply is one file; answers each with its {@linkplain #digests digest}.
+     */
+    private static Map<Coordinate, String> ask(Asking asking, Cas cas, Path cache, LockPipeline.Progress progress) {
+        PluginContributions.LockClosureDep closure = asking.closure();
+        JkBuild build = asking.build();
+        Path dir = asking.dir();
+        Lockfile view = asking.view();
+        RepoGroup repos = asking.repos();
         String plugin = closure.manifest().id();
         ActivePlugin active = ActivePlugins.of(build, dir).stream()
                 .filter(a -> a.manifest().id().equals(plugin))
@@ -413,8 +500,7 @@ final class LockClosures {
         Path seed = null;
         try {
             scratch = Files.createTempDirectory("jk-lock-closure-");
-            RepoGroup repos = RepoGroupBuilder.buildFor(build, null, cas, BuildEnv.forModule(dir));
-            seed = seed(closure.resolvedBy(), view, previous, cas, repos);
+            seed = seed(view, asking.known(), cas, repos);
             Path classes = Files.createDirectories(scratch.resolve("classes"));
             SpecWriter writer = new SpecWriter()
                     .op(PluginProtocol.OP_LOCK_CLOSURE, closure.name(), plugin)
@@ -429,7 +515,8 @@ final class LockClosures {
                 writer.testEntry(
                         e.fileName(), e.jar(), e.snapshot(), e.container(), e.group(), e.artifact(), e.version());
             }
-            for (var tool : PluginBuild.stepTools(build, dir, cas, lock, view).entrySet()) {
+            for (var tool :
+                    PluginBuild.stepTools(build, dir, cas, asking.lock(), view).entrySet()) {
                 writer.extra(tool.getKey(), tool.getValue());
             }
             writer.extra(extraName(closure.name()), seed);
@@ -438,14 +525,17 @@ final class LockClosures {
                 writer.repository(route);
             }
             spec = writer.writeTempSpec();
-            List<Coordinate> files = new ArrayList<>();
+            Map<Coordinate, @Nullable Path> files = new LinkedHashMap<>();
             for (String line : PluginBuild.runWorker(active, cache, spec, WorkerEnv.strict(), progress::label)) {
                 if (PluginProtocol.PIN.equals(Jsonl.str(line, PluginProtocol.T))) {
-                    files.add(
-                            Coordinate.parse(Objects.requireNonNull(Jsonl.str(line, "coordinate"), "pin.coordinate")));
+                    String held = Jsonl.str(line, "path");
+                    files.put(
+                            Coordinate.parse(Objects.requireNonNull(Jsonl.str(line, "coordinate"), "pin.coordinate")),
+                            held == null ? null : Path.of(held));
                 }
             }
-            return files;
+            // While the worker's scratch is still on disk: the bytes its resolver downloaded there.
+            return digests(files, asking.known(), repos, cas, List.of(scratch, seed));
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             throw new IllegalStateException("lock closure " + closure.resolvedBy() + " — " + e.getMessage(), e);

@@ -568,7 +568,8 @@ class PluginContributionsTest {
                         for-step = "deploy"
                         """, "p.toml"))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("for-step applies to a [[contribute.step-dependency]] only");
+                .hasMessageContaining(
+                        "for-step applies to a [[contribute.step-dependency]] or [[contribute.lock-closure]] only");
     }
 
     @Test

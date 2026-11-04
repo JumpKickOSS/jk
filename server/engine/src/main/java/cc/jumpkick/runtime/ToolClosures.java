@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.ToolsGc;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.Lockfile;
@@ -130,7 +131,7 @@ final class ToolClosures {
      * lock closure's repository alike — so the tools collector reclaims one nothing has used
      * within the family's window ({@code ToolsGc}).
      */
-    static final String FAMILY = "plugin-tools";
+    static final String FAMILY = ToolsGc.CLOSURE_FAMILY;
 
     /** Where closure directories live: {@code <store>/tools/plugin-tools}. */
     static Path root(Cas cas) {

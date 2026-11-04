@@ -287,24 +287,27 @@ so a user can override anything a plugin sets.
 
 ```toml
 [[contribute.lock-closure]]
-name = "deployment"
+name     = "deployment"
+for-step = "quarkus-augment"     # the steps that read it; omitted: every step of the plugin
 ```
 
 A `lock-closure` is a set of files your steps load that only your own resolution can name —
-`[quarkus]` declares one for its extensions' `-deployment` artifacts, which Quarkus finds through
-each extension's descriptor and conditional rules. Implement `LockExtension` beside `Plugin`:
-`jk lock` sends the worker a `lock-closure` op naming the closure, with the module as the lock
-being written resolves it (`exec.runtimeEntries()` the production closure, the test runtime
-closure as a second list, your config, step tools, routed repositories and JDK, and an empty
-classes directory), and you answer every file as `group:artifact:version[:classifier][!type]`
-(`!pom` for a POM). Answer what your resolver *read*, POMs and parents included — the files a
-build will need, not only the ones it ships. Under `exec.extra("lock-closure.<name>")` you get a
-Maven-layout repository of what jk already holds of the closure, to read before the network, so
-a relock downloads only what is new; a build's steps receive the same extra holding exactly the
-pinned files. The lock pins each file by digest ([Lockfile](../user/lockfile.md#closures-a-plugin-resolves)),
-`jk sync` stages them, and an offline build reads them. jk asks only when the module's inputs
-(your plugin and version, the module, its locked rows) changed, so the answer must follow from
-those — not from your table, which a variant can rewrite.
+`[quarkus]` declares two, its extensions' `-deployment` closures for the production and the test
+application model. Implement `LockExtension` beside `Plugin`: `jk lock` sends the worker a
+`lock-closure` op naming the closure, with the module as the lock being written resolves it
+(`exec.runtimeEntries()` the production closure, the test runtime closure as a second list, your
+config, step tools, routed repositories and JDK, and an empty classes directory), and you answer
+every file as a `LockExtension.Pin`: `group:artifact:version[:classifier][!type]` (`!pom` for a
+POM) and, when your resolver holds the bytes, their path — jk takes those bytes into the store
+instead of downloading them again. Answer what your resolver *read*, POMs and parents included:
+the files a build will need, not only the ones it ships. Under `exec.extra("lock-closure.<name>")`
+you get a Maven-layout repository of what jk already holds of the closure, to read before the
+network. Each step `for-step` names receives the same extra holding exactly the pinned files, built
+from the store when the step runs, and is keyed by it; other steps neither see it nor key on it.
+The lock pins each file by digest ([Lockfile](../user/lockfile.md#closures-a-plugin-resolves)),
+`jk sync` stages them, and an offline build reads them. jk asks only when the module's inputs (your
+plugin and version — jk's, if jk bundles it — the module, its locked rows and the lock's tool rows)
+changed, so the answer must follow from those — not from your table, which a variant can rewrite.
 
 **Conditions (closed set, one per `when`):** `classpath-has`, `config`/`equals`,
 `native-declared`, `kotlin-project`. Richer logic belongs in code.

@@ -66,27 +66,27 @@ class ToolsGcTest {
     }
 
     /**
-     * Closure directories (a tool's runtime closure, a plugin's lock-closure repository) are one
-     * family of link farms: each kept while the ledger says it is used, the stale ones reclaimed,
-     * and a staging directory in flight never touched.
+     * Closure directories (a tool's runtime closure, a plugin's lock-closure repository) are each
+     * the answer for their own tools: every one keeps a month from its own last use, however many
+     * others were used since, and a staging directory a dead run left goes after a day.
      */
     @Test
-    void closure_directories_go_once_unused_and_staging_is_left_alone(@TempDir Path tools) throws Exception {
-        Path stale = install(tools, "plugin-tools", "bundletool-1.17.2__aaaa", 30);
-        Path inUse = install(tools, "plugin-tools", "lock-quarkus-deployment__bbbb", 30);
+    void each_closure_keeps_its_own_window_and_abandoned_staging_goes(@TempDir Path tools) throws Exception {
+        Path stale = install(tools, "plugin-tools", "bundletool-1.17.2__aaaa", 40);
+        Path olderButLive = install(tools, "plugin-tools", "lock-quarkus-deployment__bbbb", 20);
         Path newest = install(tools, "plugin-tools", "pmd-cli-7.20.0__cccc", 1);
-        Path staging = install(tools, "plugin-tools", ".seed-123", 30);
-        Map<String, AccessLedger.Use> uses = Map.of(
-                ToolUse.key("plugin-tools", "lock-quarkus-deployment__bbbb"),
-                new AccessLedger.Use(NOW - 60 * DAY, NOW - DAY, 20, 20));
+        Path abandoned = install(tools, "plugin-tools", ".seed-123", 2);
+        Path building = install(tools, "plugin-tools", ".repo-456", 0.1);
 
-        ToolsGc.Report report = ToolsGc.run(tools, Set.of("plugin-tools"), uses, 1.0, NOW, false);
+        ToolsGc.Report report = ToolsGc.run(tools, Set.of("plugin-tools"), Map.of(), 1.0, NOW, false);
 
-        assertThat(report.removed()).containsExactly("plugin-tools/bundletool-1.17.2__aaaa");
+        assertThat(report.removed())
+                .containsExactlyInAnyOrder("plugin-tools/bundletool-1.17.2__aaaa", "plugin-tools/.seed-123");
         assertThat(stale).doesNotExist();
-        assertThat(inUse).exists();
+        assertThat(abandoned).doesNotExist();
+        assertThat(olderButLive).as("twenty days is inside its own window").exists();
         assertThat(newest).exists();
-        assertThat(staging).exists();
+        assertThat(building).as("a staging directory in use").exists();
     }
 
     @Test

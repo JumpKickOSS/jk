@@ -384,12 +384,6 @@ public final class PlannerPlugin {
         }
         List<String> tokens = new ArrayList<>(extras.size());
         for (Map.Entry<String, Path> tool : extras.entrySet()) {
-            if (tool.getKey().startsWith(LockClosures.extraName(""))) {
-                // A lock closure's repository is named by a hash of every file and digest it
-                // holds: its name is its identity, and its hundreds of files are not read again.
-                tokens.add("tool:" + tool.getKey() + ":" + tool.getValue().getFileName());
-                continue;
-            }
             String component = wholeComponents.get(tool.getKey());
             if (component == null) {
                 String identity = ToolArchives.isUnpacked(tool.getValue())
@@ -460,17 +454,46 @@ public final class PlannerPlugin {
     }
 
     /**
-     * The step's tools by name, then each closure its plugin resolved for the lock as a repository
-     * of the pinned files ({@code lock-closure.<name>}): the step's resolver reads it, not the
-     * network.
+     * What a step reads besides its declared inputs: its tools (declared, fetched, keyed as {@link
+     * #toolTokens} says) and the lock closures its plugin resolved that it reads, planned and keyed
+     * by name, built only when the step runs.
      */
-    private static Map<String, Path> withLockClosures(
-            Map<String, Path> tools, BuildPlanner.Ctx cx, BuildPlanner.Inputs in, JkBuild project, ActivePlugin active)
-            throws IOException, InterruptedException {
-        Map<String, Path> extras = new LinkedHashMap<>(tools);
-        extras.putAll(PluginBuild.lockClosureRepositories(
-                project, in.dir(), cx.cas(), in.lockFile(), active.manifest().id()));
-        return extras;
+    private record StepToolInputs(
+            List<PluginContributions.StepDep> declared,
+            Map<String, Path> extras,
+            Map<String, String> sdkPins,
+            List<LockClosures.Repo> closures) {
+
+        static StepToolInputs of(
+                BuildPlanner.Ctx cx, BuildPlanner.Inputs in, JkBuild project, ActivePlugin active, TaskDecl step)
+                throws IOException, InterruptedException {
+            List<PluginContributions.StepDep> declared =
+                    cx.tools().forConsumer(project, in.dir(), in.lockFile(), step.name());
+            return new StepToolInputs(
+                    declared,
+                    cx.tools().fetch(declared, project, cx.cas(), in.lockFile()),
+                    PluginBuild.sdkPins(in.lockFile()),
+                    cx.tools()
+                            .lockClosures(
+                                    project,
+                                    in.dir(),
+                                    cx.cas(),
+                                    in.lockFile(),
+                                    active.manifest().id(),
+                                    step.name()));
+        }
+
+        /** The action-key tokens: each tool's, then each closure repository's name. */
+        List<String> tokens() throws IOException {
+            List<String> tokens = new ArrayList<>(toolTokens(declared, extras, sdkPins));
+            for (LockClosures.Repo closure : closures) tokens.add("tool:" + closure.token());
+            return tokens;
+        }
+
+        /** The extras the spec hands the body: the tools, and each closure's repository, built now. */
+        Map<String, Path> forSpec() throws IOException, InterruptedException {
+            return LockClosures.withRepositories(extras, closures);
+        }
     }
 
     /**
@@ -519,12 +542,9 @@ public final class PlannerPlugin {
 
                     // Manifest-contributed tool artifacts (aapt2, r8, a platform jar) — the ones
                     // this step reads, fetched into the cache, handed to the body by artifact
-                    // name, keyed like any input.
-                    Map<String, String> sdkPins = PluginBuild.sdkPins(in.lockFile());
-                    List<PluginContributions.StepDep> tools =
-                            cx.tools().forConsumer(project, in.dir(), in.lockFile(), step.name());
-                    Map<String, Path> toolExtras = withLockClosures(
-                            cx.tools().fetch(tools, project, cx.cas(), in.lockFile()), cx, in, project, active);
+                    // name, keyed like any input — and the lock closures it reads.
+                    StepToolInputs stepTools = StepToolInputs.of(cx, in, project, active, step);
+                    Map<String, Path> toolExtras = stepTools.extras();
                     Map<String, List<Path>> siblingFiles =
                             SiblingFiles.forInputs(step.inputs(), in.dir(), project, active.manifest());
                     PluginRepositories repositories =
@@ -546,7 +566,7 @@ public final class PlannerPlugin {
                                     in.dir(),
                                     siblingFiles,
                                     repositories)));
-                    tokens.addAll(toolTokens(tools, toolExtras, sdkPins));
+                    tokens.addAll(stepTools.tokens());
                     tokens.add("facts:" + facts.token());
                     // The JDK is handed to the body as spec.javaHome and is what its forked tools
                     // (d8, aapt2, a compiler plugin) run on and compile against — ProjectFacts
@@ -608,7 +628,7 @@ public final class PlannerPlugin {
                                     in.dir(),
                                     siblingFiles,
                                     repositories),
-                            toolExtras);
+                            stepTools.forSpec());
                     try {
                         runPluginWorker(ctx, in, active, spec, project, javaHome, reported, step.name());
                     } catch (IOException e) {

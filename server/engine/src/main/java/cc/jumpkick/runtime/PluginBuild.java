@@ -247,22 +247,6 @@ public final class PluginBuild {
     }
 
     /**
-     * Every closure plugin {@code pluginId} resolved for the lock of the module at {@code
-     * moduleDir}, each a Maven-layout repository of its pinned files under the store, by extra name
-     * ({@link LockClosures#repositories}). Empty when the plugin declares none.
-     */
-    public static Map<String, Path> lockClosureRepositories(
-            JkBuild project, Path moduleDir, Cas cas, Path lockFile, String pluginId)
-            throws IOException, InterruptedException {
-        if (PluginContributions.lockClosures(project, moduleDir).isEmpty()) return Map.of();
-        Lockfile lock = lockOrNull(lockFile);
-        if (lock == null)
-            throw new IOException("no jk-lock.toml pins the closures " + pluginId + " resolves — run `jk lock`");
-        return LockClosures.repositories(
-                project, lockDir(lockFile), moduleDir, pluginId, cas, lock, memberLock(lockFile, moduleDir));
-    }
-
-    /**
      * Every tool the lock pins for the module at {@code moduleDir} on this platform — the step,
      * command and packager lanes' Maven artifacts, closures and URL files, and the files of each
      * closure its plugins resolved for the lock ({@link LockClosures#stage}) — fetched into the CAS
@@ -300,6 +284,28 @@ public final class PluginBuild {
     public static final class StepTools {
         private @Nullable List<PluginContributions.StepDep> lane;
         private final Map<String, Path> fetched = new ConcurrentHashMap<>();
+        private final Map<String, List<LockClosures.Repo>> closures = new ConcurrentHashMap<>();
+
+        /**
+         * The closures plugin {@code pluginId} resolved for the lock that the step or packager
+         * {@code consumer} reads, planned once per module build and built only when a step runs
+         * ({@link LockClosures.Repo}). Empty when the plugin declares none.
+         */
+        public List<LockClosures.Repo> lockClosures(
+                JkBuild project, Path moduleDir, Cas cas, Path lockFile, String pluginId, String consumer)
+                throws IOException {
+            List<LockClosures.Repo> all = closures.get(pluginId);
+            if (all == null) {
+                all = planLockClosures(project, moduleDir, cas, lockFile, pluginId);
+                List<LockClosures.Repo> raced = closures.putIfAbsent(pluginId, all);
+                if (raced != null) all = raced;
+            }
+            List<LockClosures.Repo> out = new ArrayList<>();
+            for (LockClosures.Repo repo : all) {
+                if (repo.reaches(consumer)) out.add(repo);
+            }
+            return out;
+        }
 
         private synchronized List<PluginContributions.StepDep> lane(JkBuild project, Path moduleDir, Path lockFile) {
             List<PluginContributions.StepDep> l = lane;
@@ -499,6 +505,19 @@ public final class PluginBuild {
      * partition rows in place of the workspace's for the coordinates it disagrees on, so a step's
      * classpaths carry the jars the member's compile does ({@link MemberRows#view}).
      */
+    /** {@link LockClosures#planned} for the lock at {@code lockFile}; empty when the plugin declares no closure. */
+    private static List<LockClosures.Repo> planLockClosures(
+            JkBuild project, Path moduleDir, Cas cas, Path lockFile, String pluginId) throws IOException {
+        if (PluginContributions.lockClosures(project, moduleDir).isEmpty()) return List.of();
+        if (!Files.isRegularFile(lockFile)) {
+            throw new IOException("no jk-lock.toml pins the closures " + pluginId + " resolves — run `jk lock`");
+        }
+        // Read, not lockOrNull: a lock that does not parse says why, rather than "run jk lock".
+        Lockfile lock = LockfileReader.read(lockFile);
+        return LockClosures.planned(
+                project, lockDir(lockFile), moduleDir, pluginId, cas, lock, memberLock(lockFile, moduleDir));
+    }
+
     /** The directory of the lock at {@code lockFile}: the workspace root its module paths are under. */
     private static Path lockDir(Path lockFile) {
         return Objects.requireNonNull(lockFile.toAbsolutePath().normalize().getParent(), "lock directory");

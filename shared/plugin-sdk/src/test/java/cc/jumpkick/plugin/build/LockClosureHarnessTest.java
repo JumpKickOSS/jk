@@ -42,14 +42,16 @@ class LockClosureHarnessTest {
         public void build(BuildContext ctx) {}
 
         @Override
-        public List<String> lockClosure(String name, TaskExec exec, List<PackageIo.RuntimeEntry> testRuntimeEntries)
+        public List<Pin> lockClosure(String name, TaskExec exec, List<PackageIo.RuntimeEntry> testRuntimeEntries)
                 throws IOException {
             if (!"deployment".equals(name)) throw new IOException("no closure named " + name);
-            List<String> files = new ArrayList<>();
-            for (PackageIo.RuntimeEntry e : exec.runtimeEntries()) files.add(e.gav() + "-deployment");
-            for (PackageIo.RuntimeEntry e : testRuntimeEntries) files.add(e.gav() + "!pom");
-            files.add(exec.config().id() + ":"
-                    + exec.extra("lock-closure.deployment").orElseThrow());
+            List<Pin> files = new ArrayList<>();
+            for (PackageIo.RuntimeEntry e : exec.runtimeEntries()) files.add(new Pin(e.gav() + "-deployment", null));
+            for (PackageIo.RuntimeEntry e : testRuntimeEntries) files.add(new Pin(e.gav() + "!pom", e.jar()));
+            files.add(new Pin(
+                    exec.config().id() + ":"
+                            + exec.extra("lock-closure.deployment").orElseThrow(),
+                    null));
             return files;
         }
     }
@@ -70,6 +72,10 @@ class LockClosureHarnessTest {
 
         assertThat(exit).isZero();
         assertThat(out.pins()).containsExactly("io.q:arc:1-deployment", "org.junit:junit:6!pom", "fx:" + seed);
+        assertThat(out.lines())
+                .as("a file the resolver holds rides with its path")
+                .anyMatch(l ->
+                        l.contains("org.junit:junit:6!pom") && l.contains("\"path\":\"" + dir.resolve("junit.jar")));
     }
 
     @Test

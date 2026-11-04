@@ -69,10 +69,13 @@ public final class Cas {
         return Files.exists(pathFor(sha256Hex));
     }
 
-    /** Stable path for a hash. May or may not exist on disk. */
+    /**
+     * Stable path for a hash. May or may not exist on disk. Only hex digits name a blob: anything
+     * else (a separator, a {@code ..}) would resolve outside the store, so it is refused.
+     */
     public Path pathFor(String sha256Hex) {
-        if (sha256Hex.length() < 4) {
-            throw new IllegalArgumentException("sha256 hex must be at least 4 chars, got: " + sha256Hex);
+        if (sha256Hex.length() < 4 || !Hashing.isHex(sha256Hex)) {
+            throw new IllegalArgumentException("sha256 hex must be at least 4 hex digits, got: " + sha256Hex);
         }
         if (ledger != null) ledger.touch(StoreCasGc.key(sha256Hex));
         return root.resolve("sha256")

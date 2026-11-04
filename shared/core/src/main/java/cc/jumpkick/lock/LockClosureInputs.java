@@ -2,7 +2,9 @@
 package cc.jumpkick.lock;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.plugin.manifest.PluginContributions;
+import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -12,7 +14,8 @@ import java.util.Objects;
 
 /**
  * What a closure a plugin resolves for the lock is resolved from, as one digest: the plugin and
- * its version, the module, and every row of the module's view of the lock. A resolved row carries it as
+ * its version (and jk's, for a plugin jk bundles), the module, every row of the module's view of
+ * the lock, and the lock's tool rows (what the plugin resolves with). A resolved row carries it as
  * {@code inputs}: a plain {@code jk lock} keeps a row whose inputs still match instead of forking
  * the plugin again, and lock freshness reads a missing or different one as a stale lock, without
  * forking anything.
@@ -40,6 +43,18 @@ public final class LockClosureInputs {
                 .append(' ')
                 .append(Objects.requireNonNullElse(closure.manifest().version(), ""))
                 .append('\n');
+        // A plugin jk bundles changes with jk, whatever its manifest's version says.
+        if (PluginTableRegistry.isBuiltIn(closure.manifest().id())) {
+            b.append("jk ").append(JkVersion.VERSION).append('\n');
+        }
+        // The tools the plugin resolves with (Quarkus's bootstrap) are pinned in the lock's other
+        // tool rows; another resolver is another answer.
+        List<String> tools = new ArrayList<>();
+        for (ToolEntry row : view.tools()) {
+            if (!row.isResolved()) tools.add(row.toString());
+        }
+        Collections.sort(tools);
+        for (String row : tools) b.append("tool ").append(row).append('\n');
         List<String> rows = new ArrayList<>();
         for (Lockfile.Artifact a : view.artifacts()) {
             rows.add(a.name()

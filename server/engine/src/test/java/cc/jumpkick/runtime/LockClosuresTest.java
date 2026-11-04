@@ -10,6 +10,8 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.LockClosureInputs;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.lock.ToolEntry;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
@@ -27,6 +29,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -93,10 +96,19 @@ class LockClosuresTest {
         Lockfile lock = lockWithRow(build, tmp);
         Cas cas = JkStores.storeCas();
 
-        Map<String, Path> repos = LockClosures.repositories(build, tmp, tmp, "quarkus", cas, lock, lock);
+        List<LockClosures.Repo> planned = LockClosures.planned(build, tmp, tmp, "quarkus", cas, lock, lock);
+        assertThat(planned)
+                .extracting(LockClosures.Repo::extra)
+                .containsExactly("lock-closure.deployment", "lock-closure.test-deployment");
+        // Each closure reaches the step that reads it alone, so only that step is keyed by it.
+        assertThat(planned.get(0).reaches("quarkus-augment")).isTrue();
+        assertThat(planned.get(0).reaches("quarkus-test-model")).isFalse();
+        assertThat(planned.get(1).reaches("quarkus-test-model")).isTrue();
+        assertThat(ToolClosures.root(cas)).as("planning builds nothing").doesNotExist();
 
-        assertThat(repos).containsOnlyKeys("lock-closure.deployment");
+        Map<String, Path> repos = LockClosures.withRepositories(Map.of(), planned);
         Path repo = Objects.requireNonNull(repos.get("lock-closure.deployment"));
+        assertThat(planned.getFirst().token()).isEqualTo("lock-closure.deployment:" + repo.getFileName());
         assertThat(repo.getParent()).isEqualTo(ToolClosures.root(cas));
         assertThat(repo.getFileName().toString()).startsWith("lock-quarkus-deployment__");
         // Every hand-out is a use the tools collector counts down from.
@@ -109,12 +121,13 @@ class LockClosuresTest {
         assertThat(ToolClosures.complete(repo)).isTrue();
 
         http.clearRequests();
-        assertThat(LockClosures.repositories(build, tmp, tmp, "quarkus", cas, lock, lock))
+        assertThat(LockClosures.withRepositories(
+                        Map.of(), LockClosures.planned(build, tmp, tmp, "quarkus", cas, lock, lock)))
                 .containsEntry("lock-closure.deployment", repo);
         assertThat(http.requested())
                 .as("a whole repository is found, not rebuilt")
                 .isEmpty();
-        assertThat(LockClosures.repositories(build, tmp, tmp, "spring-boot", cas, lock, lock))
+        assertThat(LockClosures.planned(build, tmp, tmp, "spring-boot", cas, lock, lock))
                 .as("another plugin's steps receive none")
                 .isEmpty();
     }
@@ -125,7 +138,7 @@ class LockClosuresTest {
         Lockfile lock = lockWithRow(build, tmp);
 
         assertThat(LockClosures.stage(build, tmp, tmp, JkStores.storeCas(), lock, lock))
-                .containsExactly("quarkus/deployment");
+                .containsExactly("quarkus/deployment", "quarkus/test-deployment");
         for (Coordinate file : published.keySet()) {
             assertThat(http.requestsFor(path(file))).as(file.toString()).isEqualTo(1);
         }
@@ -144,7 +157,8 @@ class LockClosuresTest {
         pinned.put(DEPLOYMENT, "0".repeat(64));
         Lockfile lock = lockWith(build, tmp, pinned);
 
-        assertThatThrownBy(() -> LockClosures.repositories(build, tmp, tmp, "quarkus", JkStores.storeCas(), lock, lock))
+        assertThatThrownBy(() -> LockClosures.withRepositories(
+                        Map.of(), LockClosures.planned(build, tmp, tmp, "quarkus", JkStores.storeCas(), lock, lock)))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("quarkus/deployment");
     }
@@ -168,6 +182,40 @@ class LockClosuresTest {
         assertThat(http.requested()).isEmpty();
     }
 
+    /**
+     * The inputs are read off the lock as it reads back from disk: a row the writer drops an empty
+     * field of (no scopes reads back as main) still matches the row a pin computed, so a fresh lock
+     * is never taken for stale and asked again.
+     */
+    @Test
+    void the_inputs_are_the_written_locks(@TempDir Path tmp) throws Exception {
+        JkBuild build = project(tmp);
+        Lockfile inMemory = Lockfile.empty("test")
+                .withArtifacts(List.of(new Lockfile.Artifact(
+                        "io.quarkus:quarkus-arc",
+                        QUARKUS,
+                        "central+https://repo.maven.apache.org/maven2/",
+                        "sha256:" + "5".repeat(64),
+                        null,
+                        List.of(),
+                        List.of(),
+                        null,
+                        null,
+                        null)));
+        Lockfile previous = lockWith(inMemory, build, tmp, digests());
+
+        Lockfile relocked = LockClosures.pin(
+                inMemory,
+                previous,
+                tmp,
+                Map.of(tmp, build),
+                null,
+                tmp.resolve("no-worker-jars-here"),
+                LockPipeline.Progress.SILENT);
+
+        assertThat(relocked.tools()).containsExactlyElementsOf(previous.tools());
+    }
+
     @Test
     void a_module_without_the_plugin_is_left_as_it_was(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), "group = \"g\"\nname = \"n\"\nversion = \"1\"\n");
@@ -185,10 +233,17 @@ class LockClosuresTest {
     }
 
     private static Lockfile lockWith(JkBuild build, Path dir, Map<Coordinate, String> files) {
-        Lockfile lock = Lockfile.empty("test");
-        var closure = PluginContributions.lockClosures(build, dir).getFirst();
-        String inputs = LockClosureInputs.of(closure, dir, dir, lock);
-        return lock.withTools(List.of(ToolEntry.resolved(closure.resolvedBy(), inputs, files)));
+        return lockWith(Lockfile.empty("test"), build, dir, files);
+    }
+
+    /** {@code base} with a row for each closure of the module, read off {@code base} as it reads back from disk. */
+    private static Lockfile lockWith(Lockfile base, JkBuild build, Path dir, Map<Coordinate, String> files) {
+        Lockfile written = LockfileReader.parse(LockfileWriter.render(base));
+        List<ToolEntry> rows = new ArrayList<>(base.tools());
+        for (var closure : PluginContributions.lockClosures(build, dir)) {
+            rows.add(ToolEntry.resolved(closure.resolvedBy(), LockClosureInputs.of(closure, dir, dir, written), files));
+        }
+        return base.withTools(rows);
     }
 
     private Map<Coordinate, String> digests() {
