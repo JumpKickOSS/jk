@@ -319,6 +319,8 @@ public final class SpecWriter {
                 .string("url", route.url().toString())
                 .optionalString("username", route.username())
                 .optionalString("secret", route.secret())
+                .optionalString(
+                        "proxy", route.proxy() == null ? null : route.proxy().toString())
                 .finish());
         return this;
     }

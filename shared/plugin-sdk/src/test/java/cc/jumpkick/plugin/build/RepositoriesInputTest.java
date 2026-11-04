@@ -42,7 +42,8 @@ class RepositoriesInputTest {
         Path spec = new SpecWriter()
                 .op(PluginProtocol.OP_RUN_STEP, "quarkus-augment", "jk-quarkus")
                 .repository(new RepositoryRoute("jumpkick", NEXUS, "deploy", "s3cret"))
-                .repository(new RepositoryRoute("internal", INTERNAL, null, "t0k3n"))
+                .repository(new RepositoryRoute("internal", INTERNAL, null, "t0k3n")
+                        .through(URI.create("http://corp:p%40ss@proxy.acme.test:3128")))
                 .repository(RepositoryRoute.anonymous("central", MIRROR))
                 .writeTempSpec();
 
@@ -52,7 +53,8 @@ class RepositoriesInputTest {
         assertThat(harness.repositories())
                 .containsExactly(
                         new RepositoryRoute("jumpkick", NEXUS, "deploy", "s3cret"),
-                        new RepositoryRoute("internal", INTERNAL, null, "t0k3n"),
+                        new RepositoryRoute("internal", INTERNAL, null, "t0k3n")
+                                .through(URI.create("http://corp:p%40ss@proxy.acme.test:3128")),
                         RepositoryRoute.anonymous("central", MIRROR));
         assertThat(typed.repositories()).isEqualTo(harness.repositories());
     }

@@ -5,6 +5,8 @@ import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.build.RepositoryRoute;
 import java.io.IOException;
+import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,7 +16,10 @@ import java.util.List;
 import java.util.Map;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystemSession;
+import org.eclipse.aether.repository.Authentication;
 import org.eclipse.aether.repository.MirrorSelector;
+import org.eclipse.aether.repository.Proxy;
+import org.eclipse.aether.repository.ProxySelector;
 import org.eclipse.aether.repository.RemoteRepository;
 import org.eclipse.aether.util.repository.AuthenticationBuilder;
 import org.jspecify.annotations.Nullable;
@@ -37,12 +42,19 @@ final class RepositoryRoutes {
             String id,
             String url,
             @Nullable String username,
-            @Nullable String secret) {}
+            @Nullable String secret,
+            @Nullable String proxy) {
+
+        Route(String id, String url, @Nullable String username, @Nullable String secret) {
+            this(id, url, username, secret, null);
+        }
+    }
 
     private static final String ID = "id";
     private static final String URL = "url";
     private static final String USERNAME = "username";
     private static final String SECRET = "secret";
+    private static final String PROXY = "proxy";
 
     private final List<Route> routes;
 
@@ -63,6 +75,7 @@ final class RepositoryRoutes {
                     .string(URL, r.url().toString())
                     .optionalString(USERNAME, r.username())
                     .optionalString(SECRET, r.secret())
+                    .optionalString(PROXY, r.proxy() == null ? null : r.proxy().toString())
                     .finish());
         }
         Files.write(file, lines, StandardCharsets.UTF_8);
@@ -78,7 +91,7 @@ final class RepositoryRoutes {
             if (id == null || url == null) {
                 throw new IOException("repository route without id or url: " + line);
             }
-            out.add(new Route(id, url, Jsonl.str(line, USERNAME), Jsonl.str(line, SECRET)));
+            out.add(new Route(id, url, Jsonl.str(line, USERNAME), Jsonl.str(line, SECRET), Jsonl.str(line, PROXY)));
         }
         return new RepositoryRoutes(out);
     }
@@ -106,7 +119,66 @@ final class RepositoryRoutes {
                     .addPassword(r.secret())
                     .build());
         }
+        Proxy proxy = proxyOf(r);
+        if (proxy != null) b.setProxy(proxy);
         return b;
+    }
+
+    /** The route's proxy as Aether's, its credential riding as the proxy's authentication; null to go direct. */
+    static @Nullable Proxy proxyOf(Route r) {
+        if (r.proxy() == null) return null;
+        URI uri = URI.create(r.proxy().contains("://") ? r.proxy() : "http://" + r.proxy());
+        int port = uri.getPort() != -1 ? uri.getPort() : "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+        Authentication auth = null;
+        String userInfo = uri.getRawUserInfo();
+        if (userInfo != null) {
+            int colon = userInfo.indexOf(':');
+            String user = decode(colon < 0 ? userInfo : userInfo.substring(0, colon));
+            String password = colon < 0 ? "" : decode(userInfo.substring(colon + 1));
+            auth = new AuthenticationBuilder()
+                    .addUsername(user)
+                    .addPassword(password)
+                    .build();
+        }
+        String type = "https".equalsIgnoreCase(uri.getScheme()) ? Proxy.TYPE_HTTPS : Proxy.TYPE_HTTP;
+        return new Proxy(type, uri.getHost(), port, auth);
+    }
+
+    private static String decode(String s) {
+        return URLDecoder.decode(s, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Route each repository through the proxy jk chose for its URL — the routes carry jk's own
+     * choice ({@code [network]}, then {@code settings.xml}, then the shell, with their bypass
+     * lists), so it stands over the session's, which reads {@code settings.xml} alone. A
+     * repository no route names keeps the session's choice. A session that cannot take a
+     * selector (read-only) keeps its own, and says so.
+     */
+    void attachProxies(RepositorySystemSession session) {
+        if (!(session instanceof DefaultRepositorySystemSession mutable)) return;
+        Map<String, Route> byUrl = new LinkedHashMap<>();
+        Map<String, Route> byId = new LinkedHashMap<>();
+        for (Route r : routes) {
+            byUrl.putIfAbsent(trimSlash(r.url()), r);
+            byId.putIfAbsent(r.id(), r);
+        }
+        @Nullable ProxySelector previous = mutable.getProxySelector();
+        try {
+            mutable.setProxySelector(repository -> {
+                Route route = byUrl.get(trimSlash(repository.getUrl()));
+                if (route == null) route = byId.get(repository.getId());
+                if (route != null) return proxyOf(route);
+                return previous == null ? null : previous.getProxy(repository);
+            });
+        } catch (IllegalStateException readOnly) {
+            System.err.println("jk-quarkus: warning: the resolver session cannot take jk's proxy routing;"
+                    + " repositories go through the proxy settings.xml names, if any");
+        }
+    }
+
+    private static String trimSlash(String url) {
+        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 
     /**
@@ -167,6 +239,10 @@ final class RepositoryRoutes {
         for (Route r : routes) {
             if (b.length() > 0) b.append(", ");
             b.append(r.id()).append('=').append(r.url());
+            Proxy proxy = proxyOf(r);
+            // Where the proxy listens, never its credential.
+            if (proxy != null)
+                b.append(" via proxy ").append(proxy.getHost()).append(':').append(proxy.getPort());
         }
         return b.toString();
     }
