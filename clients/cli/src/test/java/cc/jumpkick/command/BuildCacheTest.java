@@ -4,16 +4,16 @@ package cc.jumpkick.command;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.builds.GraphRefreshSlot;
 import cc.jumpkick.cli.testing.Capture;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.util.Comparator;
+import java.util.Objects;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -172,21 +172,15 @@ class BuildCacheTest {
     }
 
     /**
-     * Wipe {@code root} as {@code jk clean} would. The code-graph refresh a build starts on its way
-     * out writes its facts index under {@code target/incremental} after the build has returned, so
-     * a file can appear or vanish between the walk and its delete; the wipe walks again until the
-     * tree is gone.
+     * Wipe {@code root} as {@code jk clean} would: once the code-graph refresh the build left running
+     * has let its slot go, nothing writes under {@code target/} and a plain delete holds.
      */
-    private static void deleteRecursively(Path root) throws IOException, InterruptedException {
-        for (int attempt = 1; Files.exists(root); attempt++) {
-            try (var stream = Files.walk(root)) {
-                for (Path p : stream.sorted(Comparator.reverseOrder()).toList()) {
-                    Files.deleteIfExists(p);
-                }
-            } catch (DirectoryNotEmptyException | NoSuchFileException | UncheckedIOException lateWriter) {
-                if (attempt >= 50) throw lateWriter;
-                Thread.sleep(100);
-            }
+    private static void deleteRecursively(Path root) throws IOException {
+        assertThat(GraphRefreshSlot.awaitFree(Objects.requireNonNull(root.getParent()), Duration.ofMinutes(2)))
+                .isTrue();
+        if (!Files.exists(root)) return;
+        try (var stream = Files.walk(root)) {
+            for (Path p : stream.sorted(Comparator.reverseOrder()).toList()) Files.delete(p);
         }
     }
 

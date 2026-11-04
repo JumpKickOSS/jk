@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.graph;
 
+import cc.jumpkick.builds.GraphRefreshSlot;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.BuildLogicToml;
@@ -39,6 +40,7 @@ import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.base.PluginLaunch;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.wire.protocol.GraphAck;
 import cc.jumpkick.wire.protocol.GraphProgress;
 import cc.jumpkick.wire.protocol.GraphRequest;
@@ -47,6 +49,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -259,10 +262,47 @@ public final class GraphRunner {
     public static void refreshAfterBuild(Path dir) {
         Path root = rootOf(dir);
         if (!hasGraph(root) || !PENDING.add(root)) return;
+        // The refresh writes under target/ after the build returns: hold the workspace's refresh
+        // slot from here, before the build's job finishes, so a jk clean that follows waits for it.
+        holdSlot(root);
         SessionContext.startVirtual("jk-graph-refresh", () -> {
             PENDING.remove(root);
-            refreshExisting(root);
+            try {
+                refreshExisting(root);
+            } finally {
+                releaseSlot(root);
+            }
         });
+    }
+
+    /** Refreshes in flight per workspace, and the refresh slot they share while any runs. */
+    private static final Map<Path, SlotHold> SLOTS = new HashMap<>();
+
+    private static final class SlotHold {
+        int refreshes;
+        FileLocks.@Nullable Hold hold;
+    }
+
+    /** One more refresh of {@code root} under way: the first takes the slot, the rest share it. */
+    static synchronized void holdSlot(Path root) {
+        SlotHold held = SLOTS.computeIfAbsent(root, k -> new SlotHold());
+        if (held.refreshes++ == 0 && FileLocks.tryHold(GraphRefreshSlot.lockFile(root)) instanceof FileLocks.Hold h) {
+            held.hold = h;
+        }
+    }
+
+    /** A refresh of {@code root} is done: the last one out lets the slot go. */
+    static synchronized void releaseSlot(Path root) {
+        SlotHold held = SLOTS.get(root);
+        if (held == null || --held.refreshes > 0) return;
+        SLOTS.remove(root);
+        if (held.hold != null) {
+            try {
+                held.hold.close();
+            } catch (IOException ignored) {
+                // the slot goes with the process at worst
+            }
+        }
     }
 
     /** What the lease ledger and {@code jk engine status} call the graph worker. */
