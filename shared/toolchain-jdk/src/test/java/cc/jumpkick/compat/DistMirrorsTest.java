@@ -5,9 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.m2.MavenSettings;
+import cc.jumpkick.model.MirrorOf;
+import cc.jumpkick.model.RepositoryMirror;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -48,6 +51,61 @@ class DistMirrorsTest {
                         .url())
                 .as("a wildcard Maven mirror never stands in for nodejs.org")
                 .hasToString(DistMirrors.Dist.NODE.publicBase());
+    }
+
+    @Test
+    void a_native_mirror_of_central_serves_the_maven_distribution_between_mirrors_and_settings_xml() throws Exception {
+        MavenSettings maven = settings("""
+                <settings><mirrors>
+                  <mirror><id>nexus</id><mirrorOf>*</mirrorOf><url>https://nexus.corp/maven/</url></mirror>
+                </mirrors></settings>
+                """);
+        List<RepositoryMirror> natives = List.of(mirror("corp", "*"));
+
+        assertThat(DistMirrors.origin(DistMirrors.Dist.MAVEN, name -> null, Map.of(), natives, maven))
+                .as("a native mirror-of that stands in for central, ahead of settings.xml, under its own id")
+                .isEqualTo(new DownloadOrigin(URI.create("https://artifactory.corp/maven-virtual/"), "corp"));
+        assertThat(DistMirrors.origin(
+                                DistMirrors.Dist.MAVEN,
+                                name -> null,
+                                Map.of("maven", "https://file.corp/maven"),
+                                natives,
+                                maven)
+                        .url())
+                .as("[mirrors] maven names the distribution itself, so it comes first")
+                .hasToString("https://file.corp/maven/");
+        assertThat(DistMirrors.origin(
+                                DistMirrors.Dist.MAVEN,
+                                name -> null,
+                                Map.of(),
+                                List.of(mirror("corp", "*,!central")),
+                                maven)
+                        .credentialId())
+                .as("a native mirror that excludes central does not serve it; settings.xml does")
+                .isEqualTo("nexus");
+        assertThat(DistMirrors.origin(
+                                DistMirrors.Dist.MAVEN,
+                                name -> null,
+                                Map.of(),
+                                List.of(mirror("corp", "google")),
+                                MavenSettings.empty())
+                        .url())
+                .as("one that names another repository leaves the public base")
+                .hasToString(DistMirrors.Dist.MAVEN.publicBase());
+        assertThat(DistMirrors.origin(DistMirrors.Dist.NODE, name -> null, Map.of(), natives, MavenSettings.empty())
+                        .url())
+                .as("nodejs.org is no Maven repository: a native mirror never stands in for it")
+                .hasToString(DistMirrors.Dist.NODE.publicBase());
+    }
+
+    private RepositoryMirror mirror(String id, String mirrorOf) {
+        return new RepositoryMirror(
+                id,
+                URI.create("https://artifactory.corp/maven-virtual/"),
+                MirrorOf.parse(mirrorOf),
+                null,
+                false,
+                dir.resolve("config.toml"));
     }
 
     @Test

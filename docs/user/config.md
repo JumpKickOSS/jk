@@ -222,6 +222,14 @@ Each is, first to answer: `JK_<TOOL>_DIST_MIRROR` (`JK_NODE_DIST_MIRROR`, `JK_KO
 the public origin. A Gradle wrapper's own `distributionUrl` is used as written. Credentials come
 from the chain below, under the mirror's `host[:port]` (or a `settings.xml` mirror's `id`).
 
+The Apache Maven distribution lives in Central, in a Maven repository layout, so a native
+[`mirror-of`](repositories.md#a-corporate-repository-mirror-or-source) table that stands in for
+`central` (`["*"]`, `["central"]`, `["external:*"]`, …) serves it too. Its order is
+`JK_MAVEN_DIST_MIRROR`, `[mirrors] maven`, the first matching `mirror-of` table, then a
+`settings.xml` mirror. It authenticates with the table's own credential, under its id. Node,
+Kotlin, Gradle and JDK downloads are not Maven repositories, so a `mirror-of` table never serves
+them; they keep `[mirrors]`.
+
 A `[mirrors]` value, and a `[node]` registry or scope, may use any
 [secret reference](repositories.md#secret-references): `${VAR}`, `${env:VAR}`, `${file:…}` or
 `${cmd:…}`.
