@@ -21,6 +21,7 @@ import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.BuildLogicScripts;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.FirstPartyPins;
 import cc.jumpkick.runtime.InstallPlans;
@@ -295,7 +296,12 @@ public final class WorkspacePreflightPhase {
         Optional<BuildForecasting.Preflight> preflight = Optional.empty();
         if (request.dirtyHint() != null) {
             listener.onPreflight("checking", 0, 0, "Using dirty set…");
-            dirty = ModuleHints.withPrereqs(graph, request.dirtyHint());
+            dirty = new LinkedHashSet<>(ModuleHints.withPrereqs(graph, request.dirtyHint()));
+            // A module whose build logic runs on every build runs in a selected build too, as on
+            // the forecast's path: the root's dist copy picks up what the selected modules produce.
+            for (BuildGraph.BuildUnit u : units) {
+                if (BuildLogicScripts.anyAlways(u.dir())) dirty.add(u.dir());
+            }
             listener.onPreflight(
                     "checking", 1, 1, dirty.isEmpty() ? "Nothing dirty" : dirty.size() + " module(s) dirty");
         } else if (request.testOnly()) {
