@@ -7,8 +7,9 @@ import java.util.Objects;
 /**
  * {@code ~/.jk/config.toml} is not valid TOML. Raised by every read that decides where a request
  * goes or what it carries — repositories, {@code mirror-of}, {@code [mirrors]}, {@code [network]},
- * {@code [node]}, {@code [templates]} — because reading such a file as empty would send traffic
- * around the mirrors, proxies and credentials the user declared there.
+ * {@code [node]}, {@code [templates]}, {@code [plugins]} — because reading such a file as empty would
+ * send traffic around the mirrors, proxies and credentials the user declared there, or run a shipped
+ * plugin in place of the one the user pinned.
  *
  * <p>The position is the first error TOML reports, one-based.
  */
@@ -46,8 +47,8 @@ public final class UserConfigParseException extends JkBuildParseException {
 
     private static String message(Path file, int line, int column, String reason) {
         return file + ":" + line + ":" + column + ": " + reason
-                + " — jk reads no repositories, mirrors, proxies or credentials from a config.toml that does not"
-                + " parse, so nothing is fetched until it is fixed (the next command sees the fix; no engine"
-                + " restart)";
+                + " — jk reads no repositories, mirrors, proxies, credentials or plugin pins from a config.toml"
+                + " that does not parse, so nothing is fetched or built until it is fixed (the next command sees"
+                + " the fix; no engine restart)";
     }
 }

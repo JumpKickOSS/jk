@@ -3,11 +3,10 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.util.JkDirs;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
-import org.tomlj.Toml;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlParseResult;
 
 /**
@@ -32,33 +31,32 @@ public final class UserPlugins {
         return fromConfig(JkDirs.userConfigFile());
     }
 
-    /** Parse {@code [plugins]} from {@code file}; missing file or missing table → empty. */
-    public static List<PluginDeclaration> fromConfig(Path file) {
+    /**
+     * Parse {@code [plugins]} from {@code file}; missing file or missing table → empty.
+     *
+     * <p>Strict, like every reader that decides what a request runs: a pin is code that runs, so a
+     * file that does not parse is a {@link UserConfigParseException}, never "no pins". Read as
+     * empty, a broken file would silently swap a pinned plugin for the shipped one.
+     *
+     * @throws UserConfigParseException when the file exists and is not valid TOML
+     */
+    public static List<PluginDeclaration> fromConfig(@Nullable Path file) {
         if (file == null) return List.of();
         Path abs = file.toAbsolutePath().normalize();
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(abs);
         if (stamp == null) {
-            CACHE.forget(abs); // missing file: drop the memo so a later recreate is not served stale
-            return List.of();
+            CACHE.forget(abs); // absent or not stat-able: no memo, so a later recreate is not served stale
+            return read(abs);
         }
-        return CACHE.get(abs, stamp, () -> parse(abs));
+        if (!stamp.settled()) return read(abs);
+        return CACHE.get(abs, stamp, () -> read(abs));
     }
 
-    private static List<PluginDeclaration> parse(Path file) {
-        if (!Files.isRegularFile(file)) return List.of();
-        TomlParseResult parsed;
-        try {
-            parsed = Toml.parse(file);
-        } catch (Exception e) {
-            return List.of();
-        }
-        if (parsed.hasErrors()) {
-            if (parsed.getTable("plugins") != null) {
-                throw new JkBuildParseException(
-                        file + " [plugins]: " + parsed.errors().getFirst().getMessage());
-            }
-            return List.of();
-        }
+    private static List<PluginDeclaration> read(Path file) {
+        return GlobalConfig.parseConfig(file).map(UserPlugins::plugins).orElse(List.of());
+    }
+
+    private static List<PluginDeclaration> plugins(TomlParseResult parsed) {
         if (parsed.getTable("plugins") == null) return List.of();
         return List.copyOf(ManifestBuild.parsePlugins(parsed));
     }

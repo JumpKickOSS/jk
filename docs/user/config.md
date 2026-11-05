@@ -70,6 +70,12 @@ and `jk doctor` keep working. `jk doctor` reports the file as a failed `config` 
 position. The engine reads the file again when it changes, so the command after the fix
 succeeds without a restart.
 
+`[plugins]` pins are code that runs, so they are read strictly too: a file that does not parse
+fails every command that would load a user plugin (`jk build`, `jk test`, `jk run` and every
+other command that reads a `jk.toml`) rather than running the shipped plugin in place of the one
+you pinned. Commands that load no user plugin (`jk --version`, `jk help`, `jk doctor`, `jk engine`)
+are unaffected, and the engine still starts.
+
 ## Nerd Font glyphs
 
 Detected per launch — `nerd-font` defaults to `"auto"`. Pin only to override:

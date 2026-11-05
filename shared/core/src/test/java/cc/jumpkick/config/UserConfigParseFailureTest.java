@@ -57,7 +57,7 @@ class UserConfigParseFailureTest {
                     assertThat(e.reason()).isNotBlank();
                     assertThat(e.getMessage())
                             .startsWith(file + ":5:" + e.column() + ": ")
-                            .contains("reads no repositories, mirrors, proxies or credentials");
+                            .contains("reads no repositories, mirrors, proxies, credentials or plugin pins");
                 });
         assertThat(GlobalConfig.userConfigProblem(file))
                 .hasValueSatisfying(e -> assertThat(e.line()).isEqualTo(5));
@@ -74,6 +74,7 @@ class UserConfigParseFailureTest {
         assertThatThrownBy(() -> GlobalConfig.image(file)).isInstanceOf(UserConfigParseException.class);
         assertThatThrownBy(() -> GlobalConfig.network(file)).isInstanceOf(UserConfigParseException.class);
         assertThatThrownBy(() -> JkTemplatesConfig.resolve(file)).isInstanceOf(UserConfigParseException.class);
+        assertThatThrownBy(() -> UserPlugins.fromConfig(file)).isInstanceOf(UserConfigParseException.class);
     }
 
     @Test

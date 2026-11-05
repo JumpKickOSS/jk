@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.UserPlugins;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
@@ -129,11 +130,22 @@ public final class BuiltInPluginJars {
      * file, unreadable jar, hash mismatch — throws: the pin is explicit user intent, and
      * silently running the shipped plugin instead is wrong code with no diagnostic. This matches
      * the project-pin posture ({@code jk lock} errors naming both digests).
+     *
+     * <p>A config.toml that does not parse registers nothing and does not stop the engine: engine
+     * control, doctor and help load no user plugin, and every request that does fails on its own
+     * with the file's position ({@link UserPlugins#fromConfig(Path)}).
      */
     public static void installUserConfig() {
         Path config = JkDirs.userConfigFile();
         Path base = config.getParent() != null ? config.getParent() : Path.of(".");
-        for (PluginDeclaration decl : UserPlugins.fromConfig(config)) {
+        List<PluginDeclaration> pins;
+        try {
+            pins = UserPlugins.fromConfig(config);
+        } catch (UserConfigParseException unparsed) {
+            Log.warn("jk engine: " + config + " [plugins] not registered: " + unparsed.getMessage());
+            return;
+        }
+        for (PluginDeclaration decl : pins) {
             if (!decl.isPathPin()) continue;
             Path jar = Path.of(decl.path());
             if (!jar.isAbsolute()) jar = base.resolve(jar).normalize();
