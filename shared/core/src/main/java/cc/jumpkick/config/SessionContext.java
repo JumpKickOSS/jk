@@ -4,7 +4,10 @@ package cc.jumpkick.config;
 import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.task.IoLedger;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -24,8 +27,15 @@ public final class SessionContext {
     /** Per-thread binding set by {@link #where}/{@link #runWhere}; enables concurrent in-JVM builds. */
     private static final ScopedValue<Session> SCOPED = ScopedValue.newInstance();
 
-    /** The session one CLI invocation installs into, bound for that invocation's extent. */
-    private static final ScopedValue<AtomicReference<Session>> INVOCATION = ScopedValue.newInstance();
+    /** One CLI invocation's session and facts, bound for that invocation's extent. */
+    private static final ScopedValue<Invocation> INVOCATION = ScopedValue.newInstance();
+
+    /** The session an invocation installs into, and what it read once for its whole extent. */
+    private record Invocation(AtomicReference<Session> session, ConcurrentMap<Object, Object> facts) {
+        Invocation() {
+            this(new AtomicReference<>(Session.defaults()), new ConcurrentHashMap<>());
+        }
+    }
 
     /** Process-wide fallback for code outside any invocation or binding. */
     private static volatile Session current = Session.defaults();
@@ -103,7 +113,7 @@ public final class SessionContext {
     /** Install {@code session} for the open invocation, or onto the process-static fallback. */
     public static void install(Session session) {
         Session s = (session == null) ? Session.defaults() : session;
-        if (INVOCATION.isBound()) INVOCATION.get().set(s);
+        if (INVOCATION.isBound()) INVOCATION.get().session().set(s);
         else current = s;
     }
 
@@ -112,8 +122,25 @@ public final class SessionContext {
      * installs is its own, invisible to any other invocation running in the same JVM.
      */
     public static <T> T invocation(Callable<T> body) throws Exception {
-        return ScopedValue.where(INVOCATION, new AtomicReference<>(Session.defaults()))
-                .<T, Exception>call(body::call);
+        return ScopedValue.where(INVOCATION, new Invocation()).<T, Exception>call(body::call);
+    }
+
+    /**
+     * {@code compute}'s value for {@code key}, read once per CLI invocation: every later ask in the
+     * same invocation gets the first answer, and the next invocation in the same JVM reads afresh.
+     * Outside an invocation it is computed on every ask, which is uncached but never stale. Two
+     * threads racing on one key may both compute; the first value stored is the one every caller
+     * gets.
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> T perInvocation(Object key, Supplier<T> compute) {
+        if (!INVOCATION.isBound()) return compute.get();
+        ConcurrentMap<Object, Object> facts = INVOCATION.get().facts();
+        Object known = facts.get(key);
+        if (known != null) return (T) known;
+        T computed = compute.get();
+        Object prior = facts.putIfAbsent(key, computed);
+        return prior != null ? (T) prior : computed;
     }
 
     /** Convenience: install the config slice onto the current session (keeps the other fields). */
@@ -128,7 +155,7 @@ public final class SessionContext {
      */
     public static Session current() {
         if (SCOPED.isBound()) return SCOPED.get();
-        return INVOCATION.isBound() ? INVOCATION.get().get() : current;
+        return INVOCATION.isBound() ? INVOCATION.get().session().get() : current;
     }
 
     /**

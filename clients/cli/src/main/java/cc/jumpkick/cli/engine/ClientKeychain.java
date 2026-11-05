@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.forge.TokenStore;
 import cc.jumpkick.repo.RepoCredentialStore;
 import cc.jumpkick.secret.SecretVault;
@@ -12,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import org.jspecify.annotations.Nullable;
 
 /**
  * What this {@code jk} command sends with its requests from the keychain: for every stored login
@@ -21,8 +21,10 @@ import org.jspecify.annotations.Nullable;
  * command always reads; the engine never asks the keychain again for an item named here, and
  * warns with the command's reason for one it could not read.
  *
- * <p>Read once per command, when the first request goes out, and only when a record points into a
- * keychain: a machine with no keychain logins pays one directory listing. Each item is read on its
+ * <p>Read once per command ({@link SessionContext#perInvocation}), when the first request goes
+ * out, and only when a record points into a keychain: a machine with no keychain logins pays one
+ * directory listing. The next command in the same process (the JVM client, an in-process test)
+ * reads again, so a login rotated or removed in between is what it sends. Each item is read on its
  * own platform thread, so several logins cost one tool's latency, not their sum.
  */
 final class ClientKeychain {
@@ -32,23 +34,23 @@ final class ClientKeychain {
         static final Carried NONE = new Carried(Map.of(), Map.of());
     }
 
-    private static volatile @Nullable Carried carried;
+    /** The key of this command's read in its invocation's facts. */
+    private static final Object KEY = new Object();
 
     private ClientKeychain() {}
 
-    /** What to send; {@link Carried#NONE} when no login points into a keychain. */
+    /** What this command sends; {@link Carried#NONE} when no login points into a keychain. */
     static Carried carried() {
-        Carried known = carried;
-        if (known != null) return known;
-        Carried read;
+        return SessionContext.perInvocation(KEY, ClientKeychain::readNow);
+    }
+
+    private static Carried readNow() {
         try {
             SecretVault vault = SecretVault.current();
-            read = read(vault, pointers(new RepoCredentialStore().logins(), new TokenStore().logins()));
+            return read(vault, pointers(new RepoCredentialStore().logins(), new TokenStore().logins()));
         } catch (RuntimeException unreadable) {
-            read = Carried.NONE;
+            return Carried.NONE;
         }
-        carried = read;
-        return read;
     }
 
     /** Every pointer the stored logins hold, in listing order, without repeats. */
