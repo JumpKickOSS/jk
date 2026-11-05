@@ -228,6 +228,35 @@ class GraphRunnerTest {
         assertThat(GraphRunner.hasGraph(root)).isFalse();
     }
 
+    /**
+     * The refresh that follows a build indexes the classes that build left and compiles nothing,
+     * even where sources moved since them. A compile it submitted would be a job of the engine's
+     * own settings, not the build's: the default cache rather than the build's {@code --cache-dir}
+     * (and none of its variant, offline or JVM settings), writing entries into a cache the build
+     * never named, for modules the build chose not to compile. A graph question compiles them
+     * when one is asked.
+     */
+    @Test
+    void the_refresh_after_a_build_compiles_nothing_even_over_moved_sources(@TempDir Path tmp) throws Exception {
+        Path root = workspace(tmp);
+        assertThat(GraphRunner.run(request(root, "build", List.of()), p -> {}).error())
+                .isNull();
+        Javac javac = new Javac();
+        GraphRunner.compiler(javac);
+        Path calculator = root.resolve("src/main/java/com/acme/shop/PriceCalculator.java");
+        Files.writeString(calculator, Files.readString(calculator) + "// edited after the build\n");
+        Path store = root.resolve(".jk/graph/" + GraphRunner.STORE);
+        String before = Files.readString(store);
+
+        GraphRunner.refreshExisting(root);
+
+        assertThat(javac.runs).as("the post-build refresh submits no compile").isEmpty();
+        assertThat(Files.readString(store)).as("and still refreshes the graph").isNotEqualTo(before);
+        GraphAck asked = GraphRunner.run(request(root, "callers", List.of("PriceCalculator.sum")), p -> {});
+        assertThat(asked.error()).isNull();
+        assertThat(javac.runs).as("a question compiles the moved module").hasSize(1);
+    }
+
     @Test
     void buildsInTheWorkerAndAnswersFromTheStoredGraphWhenNothingChanged(@TempDir Path tmp) throws Exception {
         Path root = workspace(tmp);
