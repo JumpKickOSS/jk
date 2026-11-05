@@ -377,4 +377,22 @@ public record RepositorySpec(
             return false;
         }
     }
+
+    /**
+     * Whether a {@code host[:port]} authority names this machine: its host, judged by {@link
+     * #loopback}. A bracketed IPv6 host ends at its {@code ]}; an unbracketed value with more than
+     * one colon is an IPv6 literal with no port.
+     */
+    public static boolean loopbackAuthority(@Nullable String authority) {
+        if (authority == null || authority.isEmpty()) return false;
+        String host = authority;
+        if (host.startsWith("[")) {
+            int close = host.indexOf(']');
+            if (close > 0) host = host.substring(0, close + 1);
+        } else {
+            int colon = host.indexOf(':');
+            if (colon >= 0 && colon == host.lastIndexOf(':')) host = host.substring(0, colon);
+        }
+        return loopback(host);
+    }
 }

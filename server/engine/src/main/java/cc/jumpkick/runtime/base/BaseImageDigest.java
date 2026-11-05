@@ -5,6 +5,7 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.AuthHeaders;
 import java.io.IOException;
 import java.net.URI;
@@ -197,14 +198,12 @@ public final class BaseImageDigest {
     /**
      * The API endpoint for a registry name. {@code docker.io} is a reference spelling, never a host
      * that serves {@code /v2/}. Loopback registries speak plain HTTP, the same default Docker,
-     * podman and Jib all apply to {@code localhost}.
+     * podman and Jib all apply to {@code localhost}; loopback is {@link RepositorySpec#loopback}'s
+     * answer, every spelling of 127/8 and {@code ::1} included.
      */
-    private static String base(String registry) {
+    static String base(String registry) {
         String host =
                 registry.equals("docker.io") || registry.equals("index.docker.io") ? "registry-1.docker.io" : registry;
-        int port = host.indexOf(':');
-        String name = port < 0 ? host : host.substring(0, port);
-        boolean plain = name.equals("localhost") || name.equals("127.0.0.1") || name.equals("::1");
-        return (plain ? "http://" : "https://") + host;
+        return (RepositorySpec.loopbackAuthority(host) ? "http://" : "https://") + host;
     }
 }

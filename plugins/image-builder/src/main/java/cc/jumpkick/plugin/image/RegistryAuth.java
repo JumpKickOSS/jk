@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.image;
 
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.model.RepositorySpec;
 import com.google.cloud.tools.jib.api.CacheDirectoryCreationException;
 import com.google.cloud.tools.jib.api.Containerizer;
 import com.google.cloud.tools.jib.api.Credential;
@@ -148,15 +149,14 @@ public final class RegistryAuth {
      * True when {@code reference} names a registry on the loopback interface. Docker and podman
      * both ship {@code localhost} in their default insecure-registry list, and jk's own manifest
      * probe already reads a loopback registry over {@code http://} — the worker was the one place
-     * that could not.
+     * that could not. Loopback is {@link RepositorySpec#loopback}'s answer, the same one the probe
+     * uses.
      */
     static boolean loopback(String reference) {
         if (reference == null || reference.isBlank()) return false;
         try {
-            String host = ImageReference.parse(reference).getRegistry();
-            int colon = host.lastIndexOf(':');
-            String name = colon < 0 ? host : host.substring(0, colon);
-            return name.equals("localhost") || name.equals("127.0.0.1") || name.equals("[::1]");
+            return RepositorySpec.loopbackAuthority(
+                    ImageReference.parse(reference).getRegistry());
         } catch (InvalidImageReferenceException e) {
             return false; // an unparseable reference fails later, with a better message than this
         }

@@ -74,6 +74,30 @@ class RepositorySpecTest {
     }
 
     @Test
+    void an_authority_is_judged_by_its_host_with_or_without_a_port() {
+        for (String authority : List.of(
+                "localhost",
+                "localhost:8081",
+                "127.0.0.1:8081",
+                "[::1]:8081",
+                "[::1]",
+                "::1",
+                "::ffff:127.0.0.1",
+                "[::ffff:7f00:1]:443")) {
+            assertThat(RepositorySpec.loopbackAuthority(authority))
+                    .as(authority)
+                    .isTrue();
+        }
+        for (String authority :
+                List.of("", "repo.example.com:443", "10.0.0.5:8081", "[::ffff:10.0.0.5]:8081", "127.example.com:80")) {
+            assertThat(RepositorySpec.loopbackAuthority(authority))
+                    .as(authority)
+                    .isFalse();
+        }
+        assertThat(RepositorySpec.loopbackAuthority(null)).isFalse();
+    }
+
+    @Test
     void loopback_is_decided_by_spelling_and_covers_every_form_of_127_8_and_the_ipv6_loopback() {
         for (String host : List.of(
                 "localhost",

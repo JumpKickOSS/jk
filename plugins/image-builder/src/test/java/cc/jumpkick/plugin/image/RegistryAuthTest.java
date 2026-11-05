@@ -272,6 +272,7 @@ class RegistryAuthTest {
     void only_loopback_registries_are_read_over_plain_http() {
         assertThat(RegistryAuth.loopback("127.0.0.1:5000/app:1")).isTrue();
         assertThat(RegistryAuth.loopback("localhost:5000/app:1")).isTrue();
+        assertThat(RegistryAuth.loopback("127.0.0.2:5000/app:1")).isTrue();
         assertThat(RegistryAuth.loopback("ghcr.io/acme/app:1")).isFalse();
         assertThat(RegistryAuth.loopback("eclipse-temurin:25-jre"))
                 .as("a bare name is Docker Hub, not something on this machine")

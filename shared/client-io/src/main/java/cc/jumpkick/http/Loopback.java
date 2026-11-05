@@ -16,9 +16,8 @@ final class Loopback {
         return RepositorySpec.loopback(host);
     }
 
-    /** Whether the {@code host:port} authority names this machine. */
+    /** Whether the {@code host:port} authority names this machine: {@link RepositorySpec#loopbackAuthority}. */
     static boolean authority(String authority) {
-        int colon = authority.lastIndexOf(':');
-        return is(colon < 0 ? authority : authority.substring(0, colon));
+        return RepositorySpec.loopbackAuthority(authority);
     }
 }
