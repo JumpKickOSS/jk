@@ -491,11 +491,22 @@ class JkResultsAgentTest {
     }
 
     @Test
-    void a_passing_run_keeps_its_notices_off_the_one_line_report() {
-        BuildRecord.Diag notice = new BuildRecord.Diag(
-                "warning", "/ws/rest-service", null, RunNotices.CODE, "jk: warning: a note", null, null);
-        BuildRecord r = record("lock", true, false, 400, null, List.of(notice), List.of());
-        assertThat(JkResultsAgent.render(r)).isEqualTo("OK lock rest-service · 400ms\n");
+    void a_passing_run_carries_its_notices_as_w_lines_after_the_ok_line() {
+        String keychain = "jk: warning: the `jk repo login nexus` secret is in the Secret Service, which did not"
+                + " give it up (the default keyring is locked); the repository is tried without it.";
+        BuildAccumulator a = new BuildAccumulator("build", "/ws/rest-service", "com.example:rest-service", "cli");
+        a.addTask("/ws/rest-service", "build", "resolve", "SUCCESS", 400, 0);
+        a.addNotice(RunNotices.CODE, keychain);
+        a.addNotice(RunNotices.CODE, "jk: notice: a second note");
+        BuildRecord base = a.toRecord(1_000, false, 400, "0.14.0", null);
+        BuildRecord r = record("build", true, false, 400, null, base.diagnostics(), base.steps());
+
+        assertThat(JkResultsAgent.render(r)).isEqualTo("""
+                        OK build rest-service · 400ms
+                        W the `jk repo login nexus` secret is in the Secret Service, which did not give it up \
+                        (the default keyring is locked); the repository is tried without it.
+                        W a second note
+                        """);
     }
 
     @Test

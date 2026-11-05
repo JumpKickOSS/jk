@@ -143,7 +143,7 @@ public final class JkResultsAgent {
         sb.append('\n');
         appendInputsChanged(sb, record);
         boolean ok = record.success() && !record.cancelled();
-        if (!ok) appendNotices(sb, record, reason);
+        appendNotices(sb, record, reason);
         appendMemoryEvents(sb, record);
         if (ok && !reported) return sb.toString();
         sb.append(body(record, loci, tests, opt));
@@ -180,9 +180,10 @@ public final class JkResultsAgent {
     }
 
     /**
-     * The run's notices, one line each, ahead of the problems on a run that did not pass: a notice
-     * says why something the run needed was left out (a credential a keychain did not give up, a
-     * repository passed over), which is the cause of the error below it. The notice's own {@code
+     * The run's notices, one line each, on every verdict: a notice says why something the run
+     * needed was left out (a credential a keychain did not give up, a repository passed over). On a
+     * run that did not pass it is the cause of the error below it; on a run that passed it is the
+     * one word that the run went without something, such as a request sent anonymously. The notice's own {@code
      * jk: warning:} prefix gives way to the report's {@code W}. The notice the headline already
      * gives as the reason ({@code headline}) is not repeated.
      */
