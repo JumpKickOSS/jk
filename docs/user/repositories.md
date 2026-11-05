@@ -685,7 +685,9 @@ under the cache id `plexus:secDispatcherMasterPassword`; jk asks the agent again
 command.
 
 The `gpg-agent:` source is verified on Linux against a real agent (`jk test -p live`). It needs
-the agent's Unix socket; GnuPG on macOS listens on one too, though that is not verified. On
+the agent's Unix socket. On macOS it is unverified: macOS ships no GnuPG, and the live test needs
+one on `PATH` (GnuPG 2.1 or later from Homebrew, MacPorts or GPG Suite, whose agent listens on a
+Unix socket as on Linux); without it the test is skipped. On
 Windows it is unsupported and unverified: Gpg4win's agent socket is an emulation file, not a
 socket jk connects to, so use `env:` or `file:` there.
 
