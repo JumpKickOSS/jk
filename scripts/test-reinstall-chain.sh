@@ -16,8 +16,9 @@ STATE="$WORK/state"
 export JK_HOME="$WORK/home" TMPDIR="$WORK/tmp"
 mkdir -p "$REPO" "$STATE" "$JK_HOME/lib/jk-engine" "$WORK/bin" "$TMPDIR"
 
-# The fake jk. build: refuses a tree that needs a newer engine, an unowned table in a listed
-# member, or an edited jk.toml under an unforced lock. install: builds the same way, then raises the
+# The fake jk knows build, install, snapshot and lock, answers --help on each and refuses anything
+# else. build: refuses a tree that needs a newer engine, an unowned table in a listed member, or an
+# edited jk.toml under an unforced lock. install (and snapshot): builds the same way, then raises the
 # level, adds the tree's plugin tables, stamps the engine jar with the commit time and logs what it
 # installed.
 cat >"$WORK/bin/jk" <<'FAKE'
@@ -37,9 +38,10 @@ build() {
       echo "E lock: jk-lock.toml was written by an older build of the same version"; exit 1
     fi
 }
+[ "${2:-}" = --help ] && exit 0
 case "$1" in
   build) build ;;
-  install)
+  install | snapshot)
     build
     cat .provides >"$FAKE_STATE/level"
     for plugin in plugins/*/jk-plugin.toml; do
@@ -55,6 +57,7 @@ PY
     echo "$(git log -1 --format=%s)$edited" >>"$FAKE_STATE/installs"
     ;;
   lock) echo "# forced" >>jk-lock.toml ;;
+  *) echo "E unknown command $1"; exit 2 ;;
 esac
 FAKE
 chmod +x "$WORK/bin/jk"
