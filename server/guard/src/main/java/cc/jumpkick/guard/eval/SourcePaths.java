@@ -6,6 +6,7 @@ import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -101,10 +102,16 @@ final class SourcePaths {
 
     /** Main source roots, then each discovered suite's, whether or not they exist. */
     static List<Path> roots(Path moduleDir, boolean compact) {
-        LinkedHashSet<Path> out = new LinkedHashSet<>();
-        if (compact) out.add(moduleDir.resolve("src"));
-        else for (String r : MAIN_ROOTS) out.add(moduleDir.resolve(r));
+        LinkedHashSet<Path> out = new LinkedHashSet<>(mainRoots(moduleDir, compact));
         for (String suite : TestSuites.discover(moduleDir, compact)) out.addAll(suiteRoots(moduleDir, compact, suite));
+        return List.copyOf(out);
+    }
+
+    /** The main source set's roots, whether or not they exist: {@code src/} in a compact module. */
+    static List<Path> mainRoots(Path moduleDir, boolean compact) {
+        if (compact) return List.of(moduleDir.resolve("src"));
+        List<Path> out = new ArrayList<>(MAIN_ROOTS.size());
+        for (String r : MAIN_ROOTS) out.add(moduleDir.resolve(r));
         return List.copyOf(out);
     }
 

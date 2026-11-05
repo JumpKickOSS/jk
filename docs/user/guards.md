@@ -366,6 +366,10 @@ lanes and CI remain the enforcement.
   `target/ksp/kotlin`) and under none of its source roots does not claim it, so a package a
   processor writes into every module (Hilt's `hilt_aggregated_deps`) is not a split. The check is
   by directory, so a Kotlin file whose package differs from its folder can hide behind it.
+- **`split-package` judges an allow only from a full view of its package**: while a module
+  whose main sources declare the allowed package has no class index yet (a partly built
+  worktree, `jk test -m <one module>` before the first full build), the allow is neither used
+  nor stale; it is judged once every such module has been compiled.
 
 ## Related
 
