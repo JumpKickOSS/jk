@@ -18,7 +18,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A project scaffolded from a template gets what every standalone {@code jk new} gets: the agent
- * files, a first code graph and a {@code .gitignore}. A workspace module gets none of them.
+ * files, a first code graph and a {@code .gitignore}. A workspace module gets none of them; it is
+ * listed in the root's {@code [workspace].modules} instead, so the workspace builds it.
  */
 @Tag("integration")
 class NewTemplateWiringTest {
@@ -100,6 +101,56 @@ class NewTemplateWiringTest {
         assertThat(target.resolve(".mcp.json")).doesNotExist();
         assertThat(target.resolve(".jk/graph")).doesNotExist();
         assertThat(target.resolve(".gitignore")).doesNotExist();
+    }
+
+    @Test
+    void a_workspace_module_from_a_template_is_listed_in_the_root_and_builds(@TempDir Path dir) throws Exception {
+        Path template = template(dir, null);
+        Path root = Files.createDirectories(dir.resolve("ws"));
+        Files.writeString(root.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "ws"
+                version = "0.1.0"
+                java    = 25
+
+                [workspace]
+                modules = []
+                """);
+        Path target = root.resolve("made");
+
+        assertThat(newFromTemplate(env(Map.of()), true, target, template)).isZero();
+
+        assertThat(root.resolve("jk.toml")).content().contains("modules = [\"made\"]");
+        int[] built = new int[1];
+        String out = Capture.stderr(() -> Capture.stdout(() -> {
+            built[0] = Jk.execute(
+                    "build",
+                    "-C",
+                    root.toString(),
+                    "--skip-tests",
+                    "--cache-dir",
+                    dir.resolve("cache").toString());
+        }));
+        assertThat(built[0]).as(out).isZero();
+        try (var files = Files.walk(target.resolve("target"))) {
+            assertThat(files.map(p -> p.getFileName().toString())).contains("Lib.class");
+        }
+    }
+
+    @Test
+    void a_template_inside_a_plain_project_makes_it_a_workspace_root(@TempDir Path dir) throws Exception {
+        Path template = template(dir, null);
+        Path root = Files.createDirectories(dir.resolve("app"));
+        Files.writeString(root.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "app"
+                version = "0.1.0"
+                """);
+        Path target = root.resolve("made");
+
+        assertThat(newFromTemplate(env(Map.of()), true, target, template)).isZero();
+
+        assertThat(root.resolve("jk.toml")).content().contains("[workspace]").contains("\"made\"");
     }
 
     /** An environment holding {@code vars} and a {@code PATH} with no agent CLI on it. */

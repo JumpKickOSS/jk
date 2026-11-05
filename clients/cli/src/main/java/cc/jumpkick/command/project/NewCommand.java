@@ -319,7 +319,7 @@ public final class NewCommand implements CliCommand {
                     directory,
                     cwd,
                     plugin,
-                    parent == null,
+                    parent,
                     global.offline,
                     frontend));
         }
@@ -626,14 +626,24 @@ public final class NewCommand implements CliCommand {
         }
         if (parent == null) AgentWiring.report(target);
         if (parent != null) {
-            Path root = parent.root();
-            String rel = root.relativize(inputs.directory()).toString().replace('\\', '/');
-            Path rootToml = root.resolve(ManifestPaths.MANIFEST);
-            // Registers the module, promoting a plain project into a workspace
-            // root (creating the [workspace] table) when this is its first module.
-            EngineEdits.apply(rootToml, "register-workspace-module", List.of(rel));
-            registered = new Module(root, rel, parent.displayName());
+            String rel = registerModule(parent.root(), inputs.directory());
+            registered = new Module(parent.root(), rel, parent.displayName());
         }
+    }
+
+    /**
+     * Lists {@code moduleDir} in {@code root}'s {@code [workspace].modules}, promoting a plain
+     * project into a workspace root (creating the {@code [workspace]} table) when this is its first
+     * module. Every {@code jk new} mode that lands inside a project registers through here. Returns
+     * the module's path relative to the root, as written.
+     */
+    static String registerModule(Path root, Path moduleDir) throws IOException {
+        Path base = root.toAbsolutePath().normalize();
+        String rel = base.relativize(moduleDir.toAbsolutePath().normalize())
+                .toString()
+                .replace('\\', '/');
+        EngineEdits.apply(base.resolve(ManifestPaths.MANIFEST), "register-workspace-module", List.of(rel));
+        return rel;
     }
 
     /** A non-Java compiler or any dependency pick means the scaffold must look a version up. */

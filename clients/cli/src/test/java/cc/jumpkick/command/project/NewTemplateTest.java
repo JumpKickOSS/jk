@@ -27,7 +27,7 @@ class NewTemplateTest {
 
     private static NewTemplate.Args args(List<String> params, boolean plugin) {
         return new NewTemplate.Args(
-                "hello", params, null, null, null, null, null, Path.of("/tmp"), plugin, true, true, null);
+                "hello", params, null, null, null, null, null, Path.of("/tmp"), plugin, null, true, null);
     }
 
     @Test
