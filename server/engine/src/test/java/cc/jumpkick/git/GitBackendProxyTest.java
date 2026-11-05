@@ -13,6 +13,7 @@ import cc.jumpkick.model.GitSource;
 import cc.jumpkick.testing.RecordingProxy;
 import cc.jumpkick.util.GitProxy;
 import java.io.IOException;
+import java.net.PasswordAuthentication;
 import java.net.Proxy;
 import java.net.URI;
 import java.nio.file.Path;
@@ -39,6 +40,9 @@ class GitBackendProxyTest {
 
     @RegisterExtension
     final RecordingProxy proxy = new RecordingProxy();
+
+    @RegisterExtension
+    final RecordingProxy authenticating = new RecordingProxy();
 
     @TempDir
     Path dir;
@@ -96,17 +100,49 @@ class GitBackendProxyTest {
         assertThat(JGitProxyRoute.route(remote.toURL()))
                 .as("outside an operation")
                 .isEmpty();
-        assertThat(JGitProxyRoute.call(r -> Optional.of(""), () -> JGitProxyRoute.route(remote.toURL())))
+        assertThat(JGitProxyRoute.call(r -> Optional.of(""), () -> JGitProxyRoute.route(remote.toURL()))
+                        .map(JGitProxyRoute.Route::proxy))
                 .contains(Proxy.NO_PROXY);
         assertThat(JGitProxyRoute.call(GitProxy.NONE, () -> JGitProxyRoute.route(remote.toURL())))
                 .as("no answer leaves the choice to JGit")
                 .isEmpty();
-        assertThat(JGitProxyRoute.call(
-                                r -> Optional.of("http://user:secret@proxy.corp:3128"),
-                                () -> JGitProxyRoute.route(remote.toURL()))
-                        .map(Proxy::address)
-                        .map(Object::toString))
-                .contains("proxy.corp/<unresolved>:3128");
+        Optional<JGitProxyRoute.Route> credentialed = JGitProxyRoute.call(
+                r -> Optional.of("http://us%3Aer:se%40cret@proxy.corp:3128"),
+                () -> JGitProxyRoute.route(remote.toURL()));
+        assertThat(credentialed.map(r -> r.proxy().address().toString())).contains("proxy.corp/<unresolved>:3128");
+        PasswordAuthentication credential =
+                credentialed.map(JGitProxyRoute.Route::credential).orElseThrow();
+        assertThat(credential.getUserName()).isEqualTo("us:er");
+        assertThat(new String(credential.getPassword())).isEqualTo("se@cret");
+    }
+
+    @Test
+    void jgit_answers_a_proxy_s_basic_challenge_with_the_credential_its_url_carries() {
+        authenticating.requiringBasic("corp-user", "s3cret");
+        String withCredential = authenticating.url().replace("http://", "http://corp-user:s3cret@");
+        GitBackend backend =
+                new JGitExtension(dir.resolve("git"), new ForgeGitCredentials(), remote -> Optional.of(withCredential));
+
+        assertThatThrownBy(() -> backend.listRefs(source(PROXIED))).isInstanceOf(IOException.class);
+
+        assertThat(authenticating.hosts())
+                .as("asked first without, then with the credential")
+                .contains("git.corp.test");
+        assertThat(authenticating.authorized())
+                .as("the CONNECT that answered the 407")
+                .contains("git.corp.test");
+    }
+
+    @Test
+    void jgit_sends_no_credential_to_a_proxy_whose_url_carries_none() {
+        authenticating.requiringBasic("corp-user", "s3cret");
+        GitBackend backend = new JGitExtension(
+                dir.resolve("git"), new ForgeGitCredentials(), remote -> Optional.of(authenticating.url()));
+
+        assertThatThrownBy(() -> backend.listRefs(source(PROXIED))).isInstanceOf(IOException.class);
+
+        assertThat(authenticating.hosts()).contains("git.corp.test");
+        assertThat(authenticating.authorized()).isEmpty();
     }
 
     private static GitSource source(String url) {

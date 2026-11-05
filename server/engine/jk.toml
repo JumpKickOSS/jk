@@ -104,7 +104,14 @@ exclude-tags = ["integration", "slow", "bench", "network"]
 # and at the host's full count the liveness tests that pin every carrier starve the rest of the
 # tier. Four keeps the JVM's default collector. The engine's own file-attribute access rides
 # along, so engine code reads a walked file's change time here as it does in the engine.
-jvm-args = ["-XX:ActiveProcessorCount=4", "--add-opens=java.base/sun.nio.fs=ALL-UNNAMED"]
+# The empty tunneling list is what the engine sets for itself before its first proxied request
+# (ProxyEnvironment); the JDK reads it once, so a test JVM states it up front rather than by luck
+# of class-loading order.
+jvm-args = [
+  "-XX:ActiveProcessorCount=4",
+  "--add-opens=java.base/sun.nio.fs=ALL-UNNAMED",
+  "-Djdk.http.auth.tunneling.disabledSchemes=",
+]
 env = [
   # In-process engines under test share this module's sandbox JK_HOME store, and the resident
   # engine queues a cache GC on startup when idle — which races any fixture staging prune-eligible

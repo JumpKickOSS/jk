@@ -113,6 +113,47 @@ class GitCliExtensionTest {
                 .contains(new GitCliExtension.GitCli(git.toString(), 2, 45));
     }
 
+    @Test
+    void a_git_before_2_31_is_refused_by_version_when_jk_chose_a_proxy_for_the_remote() throws Exception {
+        Path ran = dir.resolve("ran");
+        Path git = script("git", "#!/bin/sh\ntouch '" + ran + "'\n");
+        GitBackend backend = new GitCliExtension(
+                dir.resolve("git-root"),
+                new ForgeGitCredentials(),
+                new GitCliExtension.GitCli(git.toString(), 2, 30),
+                remote -> Optional.of("http://user:secret@proxy.corp:3128"),
+                30,
+                30);
+
+        assertThatThrownBy(() -> backend.listRefs(source()))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("git 2.30")
+                .hasMessageContaining("example.invalid")
+                .hasMessageContaining("2.31")
+                .hasMessageNotContaining("secret");
+        assertThat(ran)
+                .as("git never ran, so it went nowhere jk did not choose")
+                .doesNotExist();
+    }
+
+    @Test
+    void a_git_before_2_31_reaches_a_host_jk_sends_direct_through_a_no_proxy_for_every_host() throws Exception {
+        Path git = script("git", """
+                #!/bin/sh
+                printf '0000000000000000000000000000000000000000\\trefs/tags/no_proxy=%s\\n' "$no_proxy"
+                printf '0000000000000000000000000000000000000000\\trefs/tags/count=%s\\n' "${GIT_CONFIG_COUNT:-unset}"
+                """);
+        GitBackend backend = new GitCliExtension(
+                dir.resolve("git-root"),
+                new ForgeGitCredentials(),
+                new GitCliExtension.GitCli(git.toString(), 2, 30),
+                remote -> Optional.of(""),
+                30,
+                30);
+
+        assertThat(backend.listRefs(source()).tags()).containsExactlyInAnyOrder("no_proxy=*", "count=unset");
+    }
+
     private GitBackend backend(Path git, long timeoutSec) {
         return new GitCliExtension(
                 dir.resolve("git-root"),

@@ -11,6 +11,7 @@ import cc.jumpkick.util.GitProxy;
 import cc.jumpkick.util.GitUrl;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -404,7 +405,10 @@ public final class GitCliExtension implements GitBackend {
         extras.put("GIT_PAGER", "cat");
         extras.put("LC_ALL", "C");
         extras.putAll(credEnv);
-        if (remoteUrl != null) proxy.httpProxy(remoteUrl).ifPresent(value -> routeThrough(value, extras));
+        if (remoteUrl != null) {
+            Optional<String> route = proxy.httpProxy(remoteUrl);
+            if (route.isPresent()) routeThrough(route.get(), remoteUrl, extras);
+        }
         replaceEnvironment(pb, extras);
 
         Process p;
@@ -444,13 +448,33 @@ public final class GitCliExtension implements GitBackend {
      * Set git's {@code http.proxy} to {@code value} among {@code extras}, after the credential
      * entry. A proxy also blanks {@code no_proxy}: jk applied its own bypass list when it chose the
      * proxy, and the list the worker environment carries underneath must not overrule that choice.
+     *
+     * <p>A git before 2.31 reads no {@code GIT_CONFIG_*}. A direct route still reaches it, as a
+     * {@code no_proxy} that names every host; a proxy does not, since the only other way in is the
+     * command line, where its credential would show in {@code ps}, so the command is refused by
+     * name rather than sent somewhere jk did not choose.
      */
-    private static void routeThrough(String value, Map<String, String> extras) {
+    private void routeThrough(String value, String remoteUrl, Map<String, String> extras) throws IOException {
+        if (!git.supportsConfigEnv()) {
+            if (!value.isEmpty()) throw new IOException(tooOldForProxy(remoteUrl));
+            extras.put("no_proxy", "*");
+            extras.put("NO_PROXY", "*");
+            return;
+        }
         GitProxy.configure(extras, value);
         if (!value.isEmpty()) {
             extras.put("no_proxy", "");
             extras.put("NO_PROXY", "");
         }
+    }
+
+    /** Why a git too old for {@code GIT_CONFIG_*} cannot reach {@code remoteUrl} through jk's proxy. */
+    private String tooOldForProxy(String remoteUrl) {
+        String host = URI.create(remoteUrl).getHost();
+        return "git " + git.major() + "." + git.minor() + " cannot be handed the proxy jk chose for "
+                + (host == null ? "this remote" : host)
+                + ": that needs git 2.31 or later. Upgrade git, or set " + GitFetcher.BACKEND_ENV
+                + "=jgit to use jk's built-in git.";
     }
 
     /**
