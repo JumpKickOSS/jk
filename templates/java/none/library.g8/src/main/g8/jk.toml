@@ -3,8 +3,9 @@ name = "$name$"
 version = "0.1.0"
 java = $java$
 
-[dependencies]
-jspecify = "1.0.1"
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
 
 # `git.properties` in the jar: the commit, branch and dirty flag the library was built from.
 [build-info]

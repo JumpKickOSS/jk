@@ -138,7 +138,9 @@ ships a small `jk-guards.toml` of its own — a file-size ratchet and one ban wi
 `guard-fixtures/` — so the guard loop is there from the first build.
 
 Every template also declares test tiers (`[test] exclude-tags` with one profile per tag), a
-`[format]` style, and, for a runnable app, an `[image]` table. The Spring Boot and `library`
+`[format]` style, and, for a runnable app, an `[image]` table. Every Java template declares [`[nullness]`](build.md#null-checking-nullness)
+and marks each package it generates `@NullMarked`, so NullAway checks the project from the first
+build. The Spring Boot and `library`
 templates carry a [`[build-info]`](packaging.md#build-info-gitproperties-and-boots-build-infoproperties)
 table, so the jar records the commit it was built from (`git.properties`, and Boot's
 `META-INF/build-info.properties` for `/actuator/info`). None ships an `AGENTS.md`: `jk new`
