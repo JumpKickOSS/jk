@@ -48,6 +48,18 @@ class BaseImageDigestTest {
      * carries it changes the moment the registry republishes the tag.
      */
     @Test
+    void a_loopback_registry_in_any_spelling_is_plain_http_and_every_other_is_https() {
+        for (String registry : List.of(
+                "localhost:5000", "127.0.0.1:5000", "127.0.0.2:5000", "[::1]:5000", "[::ffff:127.0.0.1]:5000")) {
+            assertThat(BaseImageDigest.base(registry)).as(registry).isEqualTo("http://" + registry);
+        }
+        for (String registry : List.of("registry.example.com", "10.0.0.5:5000", "[::ffff:10.0.0.5]:5000")) {
+            assertThat(BaseImageDigest.base(registry)).as(registry).isEqualTo("https://" + registry);
+        }
+        assertThat(BaseImageDigest.base("docker.io")).isEqualTo("https://registry-1.docker.io");
+    }
+
+    @Test
     void a_tag_resolves_to_the_digest_the_registry_serves() {
         AtomicReference<String> manifestAuth = new AtomicReference<>();
         registryRequiringAToken(manifestAuth, true);

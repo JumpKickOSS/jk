@@ -3,6 +3,7 @@ package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.RepositorySpec;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -134,7 +135,7 @@ final class JBangCatalog {
         // A dot in the first segment = a hostname catalog, not a forge username.
         if (parts[0].contains(".")) {
             String tail = rest.endsWith("/") ? rest.substring(0, rest.length() - 1) : rest;
-            String scheme = parts[0].startsWith("127.0.0.1") || parts[0].startsWith("localhost") ? "http" : "https";
+            String scheme = RepositorySpec.loopbackAuthority(parts[0]) ? "http" : "https";
             return List.of(new Candidate(
                     scheme + "://" + tail + "/" + sub + "jbang-catalog.json",
                     scheme + "://" + parts[0] + "/" + (parts.length > 1 ? parts[1] + "/" : "")));
