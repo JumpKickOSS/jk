@@ -235,7 +235,12 @@ public final class ProtoLifecycle {
      * {@link JobFinishFrame}.
      */
     public static String jobFinish(long jid, @Nullable String noop) {
-        return new JobFinishFrame(jid, noop).encode();
+        return new JobFinishFrame(jid, noop, null).encode();
+    }
+
+    /** {@link #jobFinish(long, String)} with the request-level {@code warning} of {@link JobFinishFrame}. */
+    public static String jobFinish(long jid, @Nullable String noop, @Nullable String warning) {
+        return new JobFinishFrame(jid, noop, warning).encode();
     }
 
     /** {@link EngineProtocol#CANCEL_REQUEST}: cancel by {@code jid} (optional {@code dir} to cancel all for a project). */

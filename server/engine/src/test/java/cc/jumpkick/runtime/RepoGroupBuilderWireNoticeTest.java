@@ -28,6 +28,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.jspecify.annotations.Nullable;
@@ -224,6 +225,11 @@ class RepoGroupBuilderWireNoticeTest {
         @Override
         public String version() {
             return "0.0.0-test";
+        }
+
+        @Override
+        public Optional<String> userConfigWarning() {
+            return Optional.empty();
         }
 
         @Override

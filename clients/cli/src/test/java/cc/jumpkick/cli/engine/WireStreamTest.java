@@ -51,6 +51,22 @@ class WireStreamTest {
     }
 
     @Test
+    void a_job_finish_warning_is_collected_once_and_handed_over_once() throws Exception {
+        WireStream.takeJobWarnings();
+        String warning = "/home/u/.jk/config.toml:3:1 does not parse; this command read nothing from it";
+        BufferedReader reader = stream(
+                ProtoLifecycle.jobStart(81, "build", "/p", 0),
+                ProtoEvents.planDone(0),
+                ProtoEvents.planFinish("/p", true),
+                ProtoLifecycle.jobFinish(81, null, warning));
+        WireStream.pumpJob(reader, null, (type, line) -> EngineProtocol.BUILDPLAN_FINISH.equals(type) ? "done" : null);
+        WireStream.noteJobFinish(ProtoLifecycle.jobFinish(82, null, warning));
+
+        assertThat(WireStream.takeJobWarnings()).containsExactly(warning);
+        assertThat(WireStream.takeJobWarnings()).isEmpty();
+    }
+
+    @Test
     void the_jid_is_a_live_cancel_handle_for_the_whole_job_stream() throws Exception {
         // This set is exactly what EngineCancel.cancelBestEffortForInterrupt reads on Ctrl-C, and
         // it is the only handle that reaches a verb whose journal dir is the cache rather than the

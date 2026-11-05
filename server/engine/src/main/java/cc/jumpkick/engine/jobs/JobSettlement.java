@@ -5,6 +5,7 @@ import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
+import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.BufferedWriter;
 import org.jspecify.annotations.Nullable;
@@ -81,6 +82,7 @@ final class JobSettlement {
         events.publishEvent("request-finish", events.withProgress(events.withIo(finishPayload, jid), jid));
         // Journal first: clearProgress retires the JobSession (drops the accumulator).
         // Writing after retire leaves a permanent running=true stub in jk jobs.
+        String warning = success && !cancelled ? configWarning(jid, dir) : null;
         String noop = null;
         try {
             noop = journal.writeJournal(jid, cancelled, elapsedMillis, writer);
@@ -91,7 +93,7 @@ final class JobSettlement {
             // returns mid-write and a following `jk clean` races the memo/journal writers.
             // In a finally so a throwing journal can never strand the client.
             // A no-op says so: its run has no directory, so the client keeps no transcript for it.
-            if (writer != null) WireWriter.sendQuiet(writer, ProtoLifecycle.jobFinish(jid, noop));
+            if (writer != null) WireWriter.sendQuiet(writer, ProtoLifecycle.jobFinish(jid, noop, warning));
             // Also in the finally: an MCP wait counts the job live until its session retires.
             events.clearProgress(jid);
         }
@@ -100,6 +102,40 @@ final class JobSettlement {
         if (plan) runtime.maybeIdleBoundary();
         else runtime.maybeIdleGc();
     }
+
+    /**
+     * A succeeded job beside a {@code ~/.jk/config.toml} that does not parse: every reader that
+     * would have used the file fails, so this job read nothing from it and stands, but the user
+     * hears of the break now rather than on the next resolve. Decided here, once per request and
+     * for every verb, because only the settled verdict knows the job succeeded; a job that failed
+     * on the file already names it. The dashboard and MCP get the same note as a {@code warn}.
+     */
+    private @Nullable String configWarning(long jid, String dir) {
+        String safe;
+        try {
+            String raw = runtime.userConfigWarning().orElse(null);
+            if (raw == null) return null;
+            safe = EventRedaction.redactText(dir, raw);
+        } catch (RuntimeException e) {
+            // A note must never cost the client its job-finish line.
+            runtime.log("jk engine: config.toml check failed: " + e);
+            return null;
+        }
+        events.publishEvent(
+                "warn",
+                JsonOut.object()
+                        .put("schema", 1)
+                        .put("type", "warn")
+                        .put("jid", jid)
+                        .put("dir", dir)
+                        .put("step", "")
+                        .put("code", USER_CONFIG_UNPARSED)
+                        .put("message", safe));
+        return safe;
+    }
+
+    /** The {@code warn} code of {@link #configWarning}. */
+    static final String USER_CONFIG_UNPARSED = "user-config-unparsed";
 
     /**
      * Whether the build was genuinely cancelled.
