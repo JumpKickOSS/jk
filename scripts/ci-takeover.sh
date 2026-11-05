@@ -98,21 +98,6 @@ install_pass() {
 cd "$ROOT"
 state_log="$(mktemp)"
 install_pass jk install --skip-tests ${yes[@]+"${yes[@]}"} --no-ansi
-# The version is a release, installed once, and the second pass installs it again. Every jar is the
-# same bytes from both passes except one that embeds an SBOM written by a jk that still names its own
-# version there; those slots go, and the rest stay, since the tree's engine reads its built-in
-# plugins (jk-intellij among them) from them before it can rebuild anything.
-# TODO: drop this block once the pin is a release whose SBOM names no jk version (0.50.3 or later).
-version="$(sed -n 's/^version *= *"\(.*\)"/\1/p' jk.toml | head -1)"
-if [[ -n "$version" && "$version" != *-SNAPSHOT ]]; then
-  shelf="$JK_HOME/store/repos/jk-local/cc/jumpkick"
-  for slot in "$shelf"/*/"$version"; do
-    [[ -d "$slot" ]] || continue
-    if grep -aqs 'META-INF/sbom/' "$slot"/*.jar; then
-      rm -rf "$slot"
-    fi
-  done
-fi
 install_pass "$JK_HOME/bin/jk" install --skip-tests ${yes[@]+"${yes[@]}"} --no-ansi
 ((checks)) || exit 0
 run cmp target/dist/jk "$JK_HOME/bin/jk"
