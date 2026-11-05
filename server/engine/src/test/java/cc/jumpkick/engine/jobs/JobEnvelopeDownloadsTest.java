@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
+import static cc.jumpkick.engine.jobs.FakeEnvelopeHost.buildRequest;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JobLimits;
@@ -11,9 +12,11 @@ import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.StringWriter;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** Every job streams its run's downloads to its client, whichever code moved the bytes. */
 class JobEnvelopeDownloadsTest {
@@ -24,13 +27,13 @@ class JobEnvelopeDownloadsTest {
      * moved the bytes — which is what lets every verb and every caller show its downloads.
      */
     @Test
-    void a_download_anywhere_in_the_job_reaches_its_stream() {
+    void a_download_anywhere_in_the_job_reaches_its_stream(@TempDir Path dir) {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
         ConnectedClient.submit(
                 env,
-                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                buildRequest(dir),
                 JobRequest.plan("sync", "jk-test-", (line, tok, w) -> {
                     // A verb's body runs under the session it builds inside the job, as every verb
                     // does (ProtoSession.sessionOf): that session takes the run's ledger, and with
@@ -65,15 +68,12 @@ class JobEnvelopeDownloadsTest {
     }
 
     @Test
-    void a_job_that_downloads_nothing_sends_no_download_frames() {
+    void a_job_that_downloads_nothing_sends_no_download_frames(@TempDir Path dir) {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
         ConnectedClient.submit(
-                env,
-                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
-                JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
-                out);
+                env, buildRequest(dir), JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.ok()), out);
         assertThat(out.toString()).doesNotContain("\"type\":\"downloads\"");
     }
 
@@ -82,13 +82,13 @@ class JobEnvelopeDownloadsTest {
      * the job winds down, before its job-finish line.
      */
     @Test
-    void a_download_no_sample_caught_is_sent_as_the_job_ends() {
+    void a_download_no_sample_caught_is_sent_as_the_job_ends(@TempDir Path dir) {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
         ConnectedClient.submit(
                 env,
-                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                buildRequest(dir),
                 JobRequest.plan("sync", "jk-test-", (line, tok, w) -> {
                     try {
                         SessionContext.where(Session.defaults(), () -> {
@@ -125,11 +125,11 @@ class JobEnvelopeDownloadsTest {
      * dashboard and MCP subscribers: the same event, field for field, tagged with the job.
      */
     @Test
-    void a_detached_jobs_downloads_reach_the_dashboard_and_mcp_events() throws Exception {
+    void a_detached_jobs_downloads_reach_the_dashboard_and_mcp_events(@TempDir Path dir) throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         long jid = env.submit(
-                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                buildRequest(dir),
                 JobRequest.plan("sync", "jk-test-", (line, tok, w) -> {
                     try {
                         SessionContext.where(Session.defaults(), () -> {
@@ -157,5 +157,6 @@ class JobEnvelopeDownloadsTest {
         assertThat(Jsonl.longValue(json, "jid", -1)).isEqualTo(jid);
         assertThat(Jsonl.longValue(json, "bytes", 0)).isEqualTo(2_048);
         assertThat(Jsonl.intValue(json, "files", 0)).isEqualTo(1);
+        host.awaitSettled();
     }
 }

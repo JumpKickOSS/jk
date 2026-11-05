@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
+import static cc.jumpkick.engine.jobs.FakeEnvelopeHost.request;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JobLimits;
@@ -8,12 +9,14 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.wire.protocol.JobQueuedFrame;
 import java.io.StringWriter;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** The envelope's memory queue as the wire, the dashboard and a cancel see it. */
 class JobEnvelopeQueueTest {
@@ -82,13 +85,16 @@ class JobEnvelopeQueueTest {
     }
 
     @Test
-    void a_job_short_of_engine_memory_queues_with_one_wire_line_and_runs_when_the_heap_frees() throws Exception {
+    void a_job_short_of_engine_memory_queues_with_one_wire_line_and_runs_when_the_heap_frees(@TempDir Path dir)
+            throws Exception {
+        Path a = dir.resolve("a");
+        Path b = dir.resolve("b");
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         // 200 MiB heap, 40 idle, 32 reserved: one 100 MiB job fits, the next waits for it.
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(200, 40, 100));
         CountDownLatch firstMayFinish = new CountDownLatch(1);
         long first = env.submit(
-                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env-a\"}",
+                request("build-request", a),
                 JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                     awaitQuietly(firstMayFinish);
                     return JobOutcome.declined();
@@ -100,7 +106,7 @@ class JobEnvelopeQueueTest {
         Thread second = Thread.ofVirtual()
                 .start(() -> ConnectedClient.submit(
                         env,
-                        "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env-b\"}",
+                        request("build-request", b),
                         JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                             secondRan.set(true);
                             return JobOutcome.declined();
@@ -124,15 +130,19 @@ class JobEnvelopeQueueTest {
         assertThat(host.sequence.indexOf("request-queued"))
                 .as("queued is announced before the second job's start")
                 .isLessThan(host.sequence.lastIndexOf("request-start"));
+        host.awaitSettled();
     }
 
     @Test
-    void a_queued_job_cancelled_by_jid_ends_on_the_cancelled_terminal_without_running() throws Exception {
+    void a_queued_job_cancelled_by_jid_ends_on_the_cancelled_terminal_without_running(@TempDir Path dir)
+            throws Exception {
+        Path a = dir.resolve("a");
+        Path b = dir.resolve("b");
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(200, 40, 100));
         CountDownLatch firstMayFinish = new CountDownLatch(1);
         env.submit(
-                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env-a\"}",
+                request("build-request", a),
                 JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                     awaitQuietly(firstMayFinish);
                     return JobOutcome.declined();
@@ -144,7 +154,7 @@ class JobEnvelopeQueueTest {
         Thread second = Thread.ofVirtual()
                 .start(() -> secondResult.set(ConnectedClient.submit(
                         env,
-                        "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env-b\"}",
+                        request("build-request", b),
                         JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                             secondRan.set(true);
                             return JobOutcome.declined();
@@ -173,17 +183,20 @@ class JobEnvelopeQueueTest {
                 .as("no slot was claimed, so none is given back")
                 .hasValue(0);
         firstMayFinish.countDown();
+        host.awaitSettled();
     }
 
     @Test
-    void the_listing_names_the_live_job_and_the_queued_one_and_the_queued_line_names_who_it_waits_on()
+    void the_listing_names_the_live_job_and_the_queued_one_and_the_queued_line_names_who_it_waits_on(@TempDir Path dir)
             throws Exception {
+        Path suite = dir.resolve("suite");
+        Path lib = dir.resolve("lib");
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.lastEventAt = 1_500L;
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(200, 40, 100));
         CountDownLatch firstMayFinish = new CountDownLatch(1);
         long first = env.submit(
-                "{\"type\":\"test-request\",\"dir\":\"/tmp/job-env-suite\"}",
+                request("test-request", suite),
                 JobRequest.plan("test", "jk-test-", (line, tok, w) -> {
                     awaitQuietly(firstMayFinish);
                     return JobOutcome.declined();
@@ -193,7 +206,7 @@ class JobEnvelopeQueueTest {
         Thread second = Thread.ofVirtual()
                 .start(() -> ConnectedClient.submit(
                         env,
-                        "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env-lib\"}",
+                        request("build-request", lib),
                         JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.declined()),
                         out));
         Await.until(Duration.ofSeconds(5), () -> out.toString().contains("job-queued"));
@@ -202,10 +215,10 @@ class JobEnvelopeQueueTest {
         assertThat(rows).hasSize(2);
         assertThat(rows.get(0))
                 .as("the live job leads: admitted on the host's clock, no forked worker, its last event")
-                .isEqualTo(JobRow.live(first, "test", "/tmp/job-env-suite", 1_000L, 0, 1_500L));
+                .isEqualTo(JobRow.live(first, "test", suite.toString(), 1_000L, 0, 1_500L));
         assertThat(rows.get(1).live()).isFalse();
         assertThat(rows.get(1).kind()).isEqualTo("build");
-        assertThat(rows.get(1).dir()).isEqualTo("/tmp/job-env-lib");
+        assertThat(rows.get(1).dir()).isEqualTo(lib.toString());
         assertThat(rows.get(1).ahead()).isZero();
         assertThat(env.jobsJson().get(0)).containsEntry("state", "live").containsEntry("jid", first);
         assertThat(env.jobsJson().get(1)).containsEntry("state", "queued").containsEntry("ahead", 0);
@@ -213,26 +226,29 @@ class JobEnvelopeQueueTest {
         String queued = firstLine(out, "job-queued");
         assertThat(Jsonl.longValue(queued, "waitedMs", -1)).isZero();
         JobQueuedFrame frame = JobQueuedFrame.decode(queued);
-        assertThat(frame.live()).containsExactly(new JobQueuedFrame.Live(first, "test", "/tmp/job-env-suite", 1_000L));
+        assertThat(frame.live()).containsExactly(new JobQueuedFrame.Live(first, "test", suite.toString(), 1_000L));
         assertThat(host.logs)
-                .anyMatch(l -> l.contains("waits for engine memory behind 0 jobs; live: test /tmp/job-env-suite (jid "
-                        + first + ") since"));
+                .anyMatch(l -> l.contains(
+                        "waits for engine memory behind 0 jobs; live: test " + suite + " (jid " + first + ") since"));
 
         firstMayFinish.countDown();
         second.join(Duration.ofSeconds(10));
         assertThat(env.jobs()).isEmpty();
+        host.awaitSettled();
     }
 
     @Test
-    void a_queued_job_that_waits_the_bound_ends_on_an_error_naming_the_live_job_not_a_closed_connection()
-            throws Exception {
+    void a_queued_job_that_waits_the_bound_ends_on_an_error_naming_the_live_job_not_a_closed_connection(
+            @TempDir Path dir) throws Exception {
+        Path suite = dir.resolve("suite");
+        Path lib = dir.resolve("lib");
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         MemoryAdmissionTest.FakeClock clock = new MemoryAdmissionTest.FakeClock();
         MemoryAdmission.Timing timing = new MemoryAdmission.Timing(Long.MAX_VALUE / 4, 120_000L, Long.MAX_VALUE / 4);
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(200, 40, 100, timing, clock));
         CountDownLatch firstMayFinish = new CountDownLatch(1);
         long first = env.submit(
-                "{\"type\":\"test-request\",\"dir\":\"/tmp/job-env-suite\"}",
+                request("test-request", suite),
                 JobRequest.plan("test", "jk-test-", (line, tok, w) -> {
                     awaitQuietly(firstMayFinish);
                     return JobOutcome.declined();
@@ -244,7 +260,7 @@ class JobEnvelopeQueueTest {
         Thread second = Thread.ofVirtual()
                 .start(() -> secondResult.set(ConnectedClient.submit(
                         env,
-                        "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env-lib\"}",
+                        request("build-request", lib),
                         JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                             secondRan.set(true);
                             return JobOutcome.declined();
@@ -262,9 +278,8 @@ class JobEnvelopeQueueTest {
         String error = firstLine(out, "error");
         assertThat(Jsonl.str(error, "code")).isEqualTo("queue-wait");
         assertThat(Jsonl.str(error, "message"))
-                .startsWith(
-                        "gave up after waiting 2m for engine memory behind 0 jobs; live: test /tmp/job-env-suite (jid "
-                                + first + ") since ")
+                .startsWith("gave up after waiting 2m for engine memory behind 0 jobs; live: test " + suite + " (jid "
+                        + first + ") since ")
                 .contains("`jk engine status` lists them")
                 .contains("[engine] queue-wait-ms / JK_ENGINE_QUEUE_WAIT_MS");
         assertThat(host.events)
@@ -275,5 +290,6 @@ class JobEnvelopeQueueTest {
         assertThat(env.queued()).isZero();
         assertThat(env.jobs()).as("the live job is untouched").hasSize(1);
         firstMayFinish.countDown();
+        host.awaitSettled();
     }
 }
