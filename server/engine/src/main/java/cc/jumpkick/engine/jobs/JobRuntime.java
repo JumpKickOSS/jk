@@ -4,6 +4,7 @@ package cc.jumpkick.engine.jobs;
 import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.task.IoLedger;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /** Engine-process resources a job runs against: ids, clock, ledgers, gates and the idle cycle. */
@@ -31,6 +32,13 @@ public interface JobRuntime {
     void switchedWorkspace(Path left, Path entered);
 
     void log(String message);
+
+    /**
+     * What a job that succeeded says about a {@code ~/.jk/config.toml} that does not parse, or
+     * empty when it parses or is absent. Read when the job settles, so the note describes the file
+     * as it is when the result is reported.
+     */
+    Optional<String> userConfigWarning();
 
     String version();
 }

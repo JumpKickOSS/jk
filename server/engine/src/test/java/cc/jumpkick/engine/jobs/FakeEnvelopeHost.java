@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -245,6 +246,14 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
     @Override
     public void log(String message) {
         logs.add(message);
+    }
+
+    /** What {@link #userConfigWarning} answers; empty is a config.toml that parses. */
+    volatile @Nullable String userConfigWarning;
+
+    @Override
+    public Optional<String> userConfigWarning() {
+        return Optional.ofNullable(userConfigWarning);
     }
 
     @Override

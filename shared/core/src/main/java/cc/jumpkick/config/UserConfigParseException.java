@@ -45,6 +45,17 @@ public final class UserConfigParseException extends JkBuildParseException {
         return reason;
     }
 
+    /**
+     * The note for a request that succeeded without reading the file: it used nothing the file
+     * governs, so it stands, but the next command that resolves, fetches, authenticates or loads a
+     * user plugin will fail on it.
+     */
+    public String unreadWarning() {
+        return file + ":" + line + ":" + column + " does not parse; this command read nothing from it, but every"
+                + " command that resolves, fetches, authenticates or loads a user plugin fails until it is fixed ("
+                + reason + ")";
+    }
+
     private static String message(Path file, int line, int column, String reason) {
         return file + ":" + line + ":" + column + ": " + reason
                 + " — jk reads no repositories, mirrors, proxies, credentials or plugin pins from a config.toml"

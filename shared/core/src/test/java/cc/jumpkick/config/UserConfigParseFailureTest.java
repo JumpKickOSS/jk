@@ -64,6 +64,17 @@ class UserConfigParseFailureTest {
     }
 
     @Test
+    void the_warning_for_a_request_that_read_nothing_names_the_position_and_what_will_fail(@TempDir Path dir)
+            throws IOException {
+        Path file = Files.writeString(dir.resolve("config.toml"), BROKEN);
+
+        assertThat(GlobalConfig.userConfigProblem(file)).hasValueSatisfying(e -> assertThat(e.unreadWarning())
+                .startsWith(file + ":5:" + e.column() + " does not parse; ")
+                .contains("this command read nothing from it", "loads a user plugin")
+                .endsWith("(" + e.reason() + ")"));
+    }
+
+    @Test
     void every_reader_that_routes_a_request_refuses_the_file(@TempDir Path dir) throws IOException {
         Path file = Files.writeString(dir.resolve("config.toml"), BROKEN);
 

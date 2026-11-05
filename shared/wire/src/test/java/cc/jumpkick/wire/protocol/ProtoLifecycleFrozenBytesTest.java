@@ -78,6 +78,10 @@ class ProtoLifecycleFrozenBytesTest {
                 .isEqualTo(
                         "{\"type\":\"job-start\",\"jid\":9,\"kind\":\"test\",\"dir\":\"a/b\",\"buildNumber\":41,\"etaMs\":0}");
         assertThat(ProtoLifecycle.jobFinish(9)).isEqualTo("{\"type\":\"job-finish\",\"jid\":9}");
+        assertThat(ProtoLifecycle.jobFinish(9, null, "c.toml:1:2 does not parse"))
+                .isEqualTo("{\"type\":\"job-finish\",\"jid\":9,\"warning\":\"c.toml:1:2 does not parse\"}");
+        assertThat(JobFinishFrame.decode(ProtoLifecycle.jobFinish(9, "up to date", "c.toml:1:2 does not parse")))
+                .isEqualTo(new JobFinishFrame(9, "up to date", "c.toml:1:2 does not parse"));
         assertThat(ProtoLifecycle.cancelRequest(9)).isEqualTo("{\"type\":\"cancel-request\",\"jid\":9}");
         assertThat(ProtoLifecycle.cancelRequestForDir("a/b"))
                 .isEqualTo("{\"type\":\"cancel-request\",\"dir\":\"a/b\"}");

@@ -19,8 +19,10 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -63,9 +65,32 @@ public final class WireStream {
     /** The agent verdict of this invocation's last engine job when it was a no-op: a run-log line, no run directory. */
     private static volatile @Nullable String lastJobNoop;
 
-    /** Take what a {@code job-finish} line says about the run: whether it was a no-op, and its verdict. */
+    /**
+     * The request-level warnings of this invocation's engine jobs ({@link JobFinishFrame#warning}),
+     * in arrival order without repeats: one command may run several jobs, and the note is about
+     * the machine, not the job.
+     */
+    private static final Set<String> JOB_WARNINGS = new LinkedHashSet<>();
+
+    /** Take what a {@code job-finish} line says about the run: whether it was a no-op, its verdict, and its warning. */
     public static void noteJobFinish(String line) {
-        lastJobNoop = JobFinishFrame.decode(line).noop();
+        JobFinishFrame frame = JobFinishFrame.decode(line);
+        lastJobNoop = frame.noop();
+        String warning = frame.warning();
+        if (warning != null && !warning.isBlank()) {
+            synchronized (JOB_WARNINGS) {
+                JOB_WARNINGS.add(warning);
+            }
+        }
+    }
+
+    /** Hand over, and forget, the warnings {@link #noteJobFinish} collected since the last call. */
+    public static List<String> takeJobWarnings() {
+        synchronized (JOB_WARNINGS) {
+            List<String> taken = List.copyOf(JOB_WARNINGS);
+            JOB_WARNINGS.clear();
+            return taken;
+        }
     }
 
     /** The verdict the last {@code job-finish} this process saw carried for a no-op, if it was one. */

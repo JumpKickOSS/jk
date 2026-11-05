@@ -470,6 +470,8 @@ public final class CommandDispatch {
             } finally {
                 Confirm.clearAssumeYes();
             }
+            List<String> jobWarnings = WireStream.takeJobWarnings();
+            if (code == 0) printJobWarnings(jobWarnings, ansi);
         } catch (PluginJarNotFoundException e) {
             closeActiveLiveRegion();
             printWorkerJarError(e, ansi);
@@ -754,6 +756,17 @@ public final class CommandDispatch {
             }
         }
         return false;
+    }
+
+    /**
+     * The request-level warnings the engine put on this command's {@code job-finish} lines, said
+     * once each after the result. Only a command that succeeded says them: a failure already
+     * names what broke.
+     */
+    static void printJobWarnings(List<String> warnings, boolean ansi) {
+        for (String w : warnings) {
+            CliOutput.err(HelpRenderer.paint("warning:", Theme.active().warning(), ansi) + " " + w);
+        }
     }
 
     /** Colored help/error chrome follows the one color gate ({@link GlobalConfig#colorEnabled}). */

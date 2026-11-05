@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkHistoryConfig;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.jobs.JobEnvelope;
@@ -13,6 +15,7 @@ import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -202,6 +205,11 @@ public final class EngineEnvelopeHost implements JobEnvelope.Host {
     @Override
     public void log(String message) {
         log.accept(message);
+    }
+
+    @Override
+    public Optional<String> userConfigWarning() {
+        return GlobalConfig.userConfigProblem().map(UserConfigParseException::unreadWarning);
     }
 
     @Override

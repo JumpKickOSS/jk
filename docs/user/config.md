@@ -76,6 +76,11 @@ other command that reads a `jk.toml`) rather than running the shipped plugin in 
 you pinned. Commands that load no user plugin (`jk --version`, `jk help`, `jk doctor`, `jk engine`)
 are unaffected, and the engine still starts.
 
+An engine command that reads nothing the file governs (no `jk.toml`, no resolve, no download)
+still succeeds, and prints one warning after its result naming the file, line and column, so you
+hear of the break before the next command that needs it. The dashboard and MCP see the same
+note as a `warn` event.
+
 ## Nerd Font glyphs
 
 Detected per launch — `nerd-font` defaults to `"auto"`. Pin only to override:
