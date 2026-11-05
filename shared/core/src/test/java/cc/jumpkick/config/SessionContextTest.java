@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
@@ -42,5 +43,33 @@ class SessionContextTest {
         });
 
         assertThat(seen.get()).isNotSameAs(bound);
+    }
+
+    @Test
+    void a_per_invocation_fact_is_read_once_per_invocation_and_afresh_by_the_next() throws Exception {
+        Object key = new Object();
+        AtomicInteger reads = new AtomicInteger();
+
+        int first = SessionContext.invocation(() -> {
+            int once = SessionContext.perInvocation(key, reads::incrementAndGet);
+            assertThat(SessionContext.perInvocation(key, reads::incrementAndGet))
+                    .isEqualTo(once);
+            return once;
+        });
+        int second = SessionContext.invocation(() -> SessionContext.perInvocation(key, reads::incrementAndGet));
+
+        assertThat(first).isEqualTo(1);
+        assertThat(second).isEqualTo(2);
+    }
+
+    @Test
+    void a_per_invocation_fact_outside_an_invocation_is_read_on_every_ask() {
+        Object key = new Object();
+        AtomicInteger reads = new AtomicInteger();
+
+        SessionContext.perInvocation(key, reads::incrementAndGet);
+        SessionContext.perInvocation(key, reads::incrementAndGet);
+
+        assertThat(reads).hasValue(2);
     }
 }

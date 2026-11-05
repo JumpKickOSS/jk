@@ -1,18 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.forge.TokenStore;
 import cc.jumpkick.repo.RepoCredentialStore;
 import cc.jumpkick.secret.SecretBackend;
 import cc.jumpkick.secret.SecretBackendException;
 import cc.jumpkick.secret.SecretVault;
+import cc.jumpkick.util.JkDirs;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class ClientKeychainTest {
 
@@ -74,5 +81,43 @@ class ClientKeychainTest {
     @Test
     void no_keychain_login_reads_nothing() {
         assertThat(ClientKeychain.read(SecretVault.fileOnly(), List.of())).isEqualTo(ClientKeychain.Carried.NONE);
+    }
+
+    @Test
+    void a_command_reads_the_logins_as_they_are_when_it_runs_not_as_an_earlier_command_in_the_process_found_them(
+            @TempDir Path home) throws Exception {
+        System.setProperty("jk.env.JK_HOME", home.toString());
+        try {
+            login("private", "no-such-keychain repo/private");
+
+            ClientKeychain.Carried first = SessionContext.invocation(() -> {
+                ClientKeychain.Carried once = ClientKeychain.carried();
+                assertThat(ClientKeychain.carried())
+                        .as("one command reads once")
+                        .isSameAs(once);
+                return once;
+            });
+            assertThat(first.refused()).containsOnlyKeys("no-such-keychain repo/private");
+
+            assertThat(run("repo", "logout", "private")).isZero();
+            assertThat(SessionContext.invocation(ClientKeychain::carried))
+                    .as("the command after the logout sends nothing for it")
+                    .isEqualTo(ClientKeychain.Carried.NONE);
+
+            login("private", "no-such-keychain repo/rotated");
+            assertThat(SessionContext.invocation(ClientKeychain::carried).refused())
+                    .as("the command after a new login sends the new item")
+                    .containsOnlyKeys("no-such-keychain repo/rotated");
+        } finally {
+            System.clearProperty("jk.env.JK_HOME");
+        }
+    }
+
+    /** A {@code jk repo login} record whose secret is the keychain item {@code pointer}. */
+    private static void login(String id, String pointer) throws Exception {
+        Path records = Files.createDirectories(JkDirs.creds().resolve("repo"));
+        Path record = records.resolve(id);
+        Files.writeString(record, "bearer https://repo.example keychain\n" + pointer + "\n");
+        Files.setPosixFilePermissions(record, PosixFilePermissions.fromString("rw-------"));
     }
 }
