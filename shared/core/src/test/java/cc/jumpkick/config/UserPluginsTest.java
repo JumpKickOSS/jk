@@ -5,10 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.PluginDeclaration;
+import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -38,6 +40,78 @@ class UserPluginsTest {
         assertThatThrownBy(() -> UserPlugins.fromConfig(file))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("sha256");
+    }
+
+    @Test
+    void a_file_that_does_not_parse_is_an_error_naming_its_position_not_no_pins(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("config.toml");
+        Files.writeString(file, """
+                [mirrors
+                maven = "https://artifactory.acme.test/maven-dist/"
+                """);
+        GlobalConfig.clearCache();
+
+        assertThatThrownBy(() -> UserPlugins.fromConfig(file))
+                .isInstanceOfSatisfying(UserConfigParseException.class, e -> {
+                    assertThat(e.file()).isEqualTo(file);
+                    assertThat(e.line()).isEqualTo(1);
+                    assertThat(e.getMessage()).contains("plugin pins");
+                });
+    }
+
+    @Test
+    void a_broken_file_with_pins_is_an_error_too(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("config.toml");
+        Files.writeString(file, """
+                [plugins]
+                spring-boot = { path = "/tmp/boot.jar", sha256 = "%s" }
+
+                [network
+                """.formatted(SHA));
+        GlobalConfig.clearCache();
+
+        assertThatThrownBy(() -> UserPlugins.fromConfig(file)).isInstanceOf(UserConfigParseException.class);
+    }
+
+    @Test
+    void a_fixed_file_is_read_on_the_next_call(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("config.toml");
+        Files.writeString(file, "[plugins\n");
+        GlobalConfig.clearCache();
+        assertThatThrownBy(() -> UserPlugins.fromConfig(file)).isInstanceOf(UserConfigParseException.class);
+
+        Files.writeString(file, """
+                [plugins]
+                spring-boot = { path = "/tmp/boot.jar", sha256 = "%s" }
+                """.formatted(SHA));
+        assertThat(UserPlugins.fromConfig(file))
+                .extracting(PluginDeclaration::alias)
+                .containsExactly("spring-boot");
+    }
+
+    @Test
+    void a_project_parse_fails_on_a_user_config_that_does_not_parse(@TempDir Path dir) throws Exception {
+        System.setProperty("jk.env.JK_HOME", dir.resolve("home").toString());
+        try {
+            Path config = JkDirs.userConfigFile();
+            Files.createDirectories(Objects.requireNonNull(config.getParent()));
+            Files.writeString(config, "[plugins\n");
+            Path project = Files.createDirectories(dir.resolve("project"));
+            Path toml = Files.writeString(project.resolve("jk.toml"), """
+                    group = "com.example"
+                    name = "widget"
+                    version = "1.0.0"
+                    """);
+            GlobalConfig.clearCache();
+            JkBuildParser.dropMemos();
+
+            assertThatThrownBy(() -> JkBuildParser.parse(toml))
+                    .isInstanceOfSatisfying(UserConfigParseException.class, e -> assertThat(e.file())
+                            .isEqualTo(config));
+        } finally {
+            System.clearProperty("jk.env.JK_HOME");
+            GlobalConfig.clearCache();
+        }
     }
 
     @Test

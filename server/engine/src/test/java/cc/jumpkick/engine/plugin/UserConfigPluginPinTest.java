@@ -74,6 +74,23 @@ class UserConfigPluginPinTest {
     }
 
     @Test
+    void a_config_that_does_not_parse_registers_nothing_and_lets_the_engine_start(@TempDir Path tmp) throws Exception {
+        Path jar = writePluginJar(tmp.resolve("acme.jar"), MANIFEST.replace("zz-userpin", "zz-userpin-broken"));
+        Path config = tmp.resolve("config.toml");
+        Files.writeString(config, """
+                [plugins]
+                acme = { path = %s, sha256 = "%s" }
+
+                [network
+                """.formatted(MinimalToml.quote(jar.toString()), Hashing.sha256Hex(jar)));
+        System.setProperty("jk.env.JK_HOME", requireNonNull(config.getParent()).toString());
+
+        BuiltInPluginJars.installUserConfig();
+
+        assertThat(PluginTableRegistry.byTable("zz-userpin-broken")).isEmpty();
+    }
+
+    @Test
     void matching_pin_installs_the_manifest(@TempDir Path tmp) throws Exception {
         Path jar = writePluginJar(tmp.resolve("acme.jar"));
         Path config = tmp.resolve("config.toml");
@@ -89,10 +106,14 @@ class UserConfigPluginPinTest {
     }
 
     private static Path writePluginJar(Path target) throws Exception {
+        return writePluginJar(target, MANIFEST);
+    }
+
+    private static Path writePluginJar(Path target, String manifest) throws Exception {
         try (OutputStream out = Files.newOutputStream(target);
                 ZipOutputStream zip = new ZipOutputStream(out)) {
             zip.putNextEntry(new ZipEntry("jk-plugin.toml"));
-            zip.write(MANIFEST.getBytes(StandardCharsets.UTF_8));
+            zip.write(manifest.getBytes(StandardCharsets.UTF_8));
             zip.closeEntry();
         }
         return target;

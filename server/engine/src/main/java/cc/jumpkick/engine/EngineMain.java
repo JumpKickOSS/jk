@@ -96,8 +96,9 @@ public final class EngineMain {
             try {
                 BuiltInPluginJars.installUserConfig();
             } catch (RuntimeException badConfig) {
-                // A user-config plugin pin (or config parse) error is explicit user intent we
-                // cannot honor — refuse to start with the message, never a raw stack.
+                // A user-config plugin pin that cannot be honored is explicit user intent — refuse
+                // to start with the message, never a raw stack. A config.toml that does not parse
+                // starts the engine; each request that reads it fails with the position.
                 Log.error("jk engine: " + badConfig.getMessage());
                 return 1;
             }
