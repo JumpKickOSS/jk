@@ -10,6 +10,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
@@ -37,7 +38,20 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 public final class RecordingProxy implements BeforeEachCallback, AfterEachCallback {
 
     private final List<String> hosts = new CopyOnWriteArrayList<>();
+    private final List<String> authorized = new CopyOnWriteArrayList<>();
+    private volatile @Nullable String requiredAuthorization;
     private volatile @Nullable ServerSocket socket;
+
+    /**
+     * Challenge every request that does not carry {@code user:password} as Basic with a 407, the
+     * way an authenticating corporate proxy does; one that does is written down in {@link
+     * #authorized()} before it is refused like the rest.
+     */
+    public RecordingProxy requiringBasic(String user, String password) {
+        requiredAuthorization =
+                "Basic " + Base64.getEncoder().encodeToString((user + ":" + password).getBytes(StandardCharsets.UTF_8));
+        return this;
+    }
 
     @Override
     public void beforeEach(ExtensionContext context) throws IOException {
@@ -68,16 +82,31 @@ public final class RecordingProxy implements BeforeEachCallback, AfterEachCallba
         return Collections.unmodifiableList(hosts);
     }
 
+    /** The hosts of the requests that carried the credential {@link #requiringBasic} names. */
+    public List<String> authorized() {
+        return Collections.unmodifiableList(authorized);
+    }
+
     private void serve(ServerSocket bound) {
         while (!bound.isClosed()) {
             try (Socket client = bound.accept()) {
                 client.setSoTimeout(5_000);
-                String host = target(new BufferedReader(
+                Request request = read(new BufferedReader(
                         new InputStreamReader(client.getInputStream(), StandardCharsets.ISO_8859_1)));
-                if (host != null) hosts.add(host);
+                String required = requiredAuthorization;
+                String answer = "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                if (request != null) {
+                    hosts.add(request.host());
+                    if (required != null && !required.equals(request.authorization())) {
+                        answer = "HTTP/1.1 407 Proxy Authentication Required\r\n"
+                                + "Proxy-Authenticate: Basic realm=\"recording-proxy\"\r\n"
+                                + "Content-Length: 0\r\nConnection: close\r\n\r\n";
+                    } else if (required != null) {
+                        authorized.add(request.host());
+                    }
+                }
                 OutputStream out = client.getOutputStream();
-                out.write("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-                        .getBytes(StandardCharsets.ISO_8859_1));
+                out.write(answer.getBytes(StandardCharsets.ISO_8859_1));
                 out.flush();
             } catch (IOException closedOrDropped) {
                 // closed by afterEach, or a client that hung up: the next accept decides which
@@ -85,15 +114,25 @@ public final class RecordingProxy implements BeforeEachCallback, AfterEachCallba
         }
     }
 
-    /** The host the request line names: {@code CONNECT host:port} or an absolute URI. */
-    static @Nullable String target(BufferedReader in) throws IOException {
+    /** One request's head: the host its request line names and its {@code Proxy-Authorization}. */
+    record Request(String host, @Nullable String authorization) {}
+
+    /**
+     * The request's head: the host its request line names ({@code CONNECT host:port} or an absolute
+     * URI) and its {@code Proxy-Authorization}.
+     */
+    private static @Nullable Request read(BufferedReader in) throws IOException {
         String line = in.readLine();
         if (line == null) return null;
         String[] parts = line.split(" ");
         if (parts.length < 2) return null;
         // The rest of the head is read so the client sees the answer, not a reset.
+        String authorization = null;
         for (String header = in.readLine(); header != null && !header.isEmpty(); header = in.readLine()) {
-            // skipped
+            int colon = header.indexOf(':');
+            if (colon > 0 && header.substring(0, colon).strip().equalsIgnoreCase("Proxy-Authorization")) {
+                authorization = header.substring(colon + 1).strip();
+            }
         }
         String target = parts[1];
         String host;
@@ -103,6 +142,6 @@ public final class RecordingProxy implements BeforeEachCallback, AfterEachCallba
         } else {
             host = URI.create(target).getHost();
         }
-        return host == null ? null : host.toLowerCase(Locale.ROOT);
+        return host == null ? null : new Request(host.toLowerCase(Locale.ROOT), authorization);
     }
 }
