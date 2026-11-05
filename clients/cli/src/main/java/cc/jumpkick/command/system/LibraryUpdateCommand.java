@@ -12,7 +12,6 @@ import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.repo.LibraryRegistryClient;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
@@ -35,8 +34,6 @@ import org.jspecify.annotations.Nullable;
 /** {@code jk library update} — pull the latest library catalog. */
 public final class LibraryUpdateCommand implements CliCommand {
 
-    static final URI DEFAULT_SOURCE = LibraryRegistryClient.DEFAULT_SOURCE;
-
     @Override
     public String name() {
         return "update";
@@ -56,12 +53,14 @@ public final class LibraryUpdateCommand implements CliCommand {
                         .hide());
     }
 
-    private URI source = DEFAULT_SOURCE;
+    /** {@code --source}; null asks the engine for the registry the user's configuration names. */
+    private @Nullable URI source;
+
     private @Nullable Path cacheFileOverride;
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
-        this.source = in.value("source").map(URI::create).orElse(DEFAULT_SOURCE);
+        this.source = in.value("source").map(URI::create).orElse(null);
         this.cacheFileOverride = in.value("cache-file").map(CliPaths::abs).orElse(null);
 
         long startNanos = System.nanoTime();
@@ -75,7 +74,7 @@ public final class LibraryUpdateCommand implements CliCommand {
         }
         try {
             String error = EngineCatalogFreshen.freshenCatalogNow(
-                    EnginePaths.current(), "libraries", source.toString(), cacheFile);
+                    EnginePaths.current(), "libraries", source == null ? null : source.toString(), cacheFile);
             if (error != null) {
                 restoreBackup(cacheFile, previousBackup);
                 CommandWedge.printFail("Library", error);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.compat.LibraryRegistryMirror;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
@@ -8,7 +9,6 @@ import cc.jumpkick.giter8.Giter8TemplateIndex;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JdkCatalogClient;
-import cc.jumpkick.repo.LibraryRegistryClient;
 import cc.jumpkick.repo.LibraryRegistrySync;
 import cc.jumpkick.templates.OfficialTemplatesFreshen;
 import cc.jumpkick.util.JkDirs;
@@ -67,12 +67,14 @@ public final class FreshenCatalogVerb implements HostedVerb {
                         }
                     }
                     case "libraries" -> {
-                        URI src = url != null ? URI.create(url) : LibraryRegistryClient.DEFAULT_SOURCE;
+                        LibraryRegistryMirror registry = LibraryRegistryMirror.current();
+                        URI src = url != null ? URI.create(url) : registry.source();
+                        Http http = registry.authorized(new Http());
                         Path dest = cacheFile != null ? Path.of(cacheFile) : JkDirs.libraryRegistry();
                         if (req.force()) {
-                            LibraryRegistrySync.refreshNow(src, dest);
+                            LibraryRegistrySync.refreshNow(src, http, dest);
                         } else {
-                            LibraryRegistrySync.ensurePresent(offline, src, dest);
+                            LibraryRegistrySync.ensurePresent(offline, src, http, dest);
                         }
                     }
                     case "jdks" -> {

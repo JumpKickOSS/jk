@@ -3,6 +3,7 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.util.AtomicWrites;
@@ -44,23 +45,20 @@ public final class LibraryRegistrySync {
 
     private LibraryRegistrySync() {}
 
-    /** Default source + default on-disk path. */
-    public static void ensurePresent(boolean offline) {
-        ensurePresent(offline, LibraryRegistryClient.DEFAULT_SOURCE, JkDirs.libraryRegistry());
-    }
-
     /**
      * @param offline when true, no network
      * @param source registry URL
+     * @param http the client the registry is fetched with, carrying any mirror credential
      * @param cacheFile local mirror path (and sibling {@code .*.etag})
      */
-    public static void ensurePresent(boolean offline, URI source, Path cacheFile) {
+    public static void ensurePresent(boolean offline, URI source, Http http, Path cacheFile) {
         if (offline) return;
         Objects.requireNonNull(source, "source");
+        Objects.requireNonNull(http, "http");
         Objects.requireNonNull(cacheFile, "cacheFile");
         if (isFresh(cacheFile)) return;
         try {
-            fetchAndStore(source, cacheFile);
+            fetchAndStore(source, http, cacheFile);
         } catch (Exception e) {
             // Fail soft: missing → bundled floor; present → keep stale. Lock must not fail solely
             // because the registry is unreachable (except operators may still lack short names only
@@ -70,11 +68,12 @@ public final class LibraryRegistrySync {
     }
 
     /** {@code jk library update}: always hit the network and surface fetch/parse failures. */
-    public static void refreshNow(URI source, Path cacheFile) throws IOException {
+    public static void refreshNow(URI source, Http http, Path cacheFile) throws IOException {
         Objects.requireNonNull(source, "source");
+        Objects.requireNonNull(http, "http");
         Objects.requireNonNull(cacheFile, "cacheFile");
         try {
-            fetchAndStore(source, cacheFile);
+            fetchAndStore(source, http, cacheFile);
         } catch (IOException e) {
             throw e;
         } catch (InterruptedException e) {
@@ -85,14 +84,14 @@ public final class LibraryRegistrySync {
         }
     }
 
-    private static void fetchAndStore(URI source, Path cacheFile) throws IOException, InterruptedException {
+    private static void fetchAndStore(URI source, Http http, Path cacheFile) throws IOException, InterruptedException {
         Path etagFile = LibraryCatalog.etagFileFor(cacheFile);
         // The client skips If-None-Match when cacheFile is missing/empty, so an orphan etag
         // sidecar can never 304 us into returning without materializing the file.
-        LibraryRegistryClient.Result result = new LibraryRegistryClient(new Http()).fetch(source, etagFile, cacheFile);
+        LibraryRegistryClient.Result result = new LibraryRegistryClient(http).fetch(source, etagFile, cacheFile);
         if (result instanceof LibraryRegistryClient.Result.Unchanged) {
             // Re-arm the freshness window so the next FRESH_FOR of commands skip the network.
-            Files.setLastModifiedTime(cacheFile, FileTime.from(Instant.now()));
+            Files.setLastModifiedTime(cacheFile, FileTime.from(Clock.SYSTEM.instant()));
             return;
         }
         if (!(result instanceof LibraryRegistryClient.Result.Updated updated)) {

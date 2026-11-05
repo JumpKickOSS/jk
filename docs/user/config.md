@@ -214,11 +214,12 @@ kotlin = "https://nexus.corp/repository/kotlin-releases/"    # as https://github
 gradle = "${NEXUS}/repository/gradle-distributions/"         # as https://services.gradle.org/distributions/; ${VAR} reads your shell
 maven  = "https://nexus.corp/repository/maven-central/"      # a Maven repository root holding org/apache/maven/apache-maven/
 jdk    = "https://nexus.corp/repository/jdk/"                # every JDK host under its own prefix, below
+libraries = "https://nexus.corp/repository/jk-libraries/"    # holds libraries.toml, the library registry
 ```
 
 Each is, first to answer: `JK_<TOOL>_DIST_MIRROR` (`JK_NODE_DIST_MIRROR`, `JK_KOTLIN_DIST_MIRROR`,
 …), this table, a Maven `settings.xml` `<mirror>` whose `mirrorOf` names the tool (`nodejs`,
-`kotlin`, `gradle`; for the Maven distribution `central` or `*`, as Maven itself reads them), then
+`kotlin`, `gradle`, `jk-libraries`; for the Maven distribution `central` or `*`, as Maven itself reads them), then
 the public origin. A Gradle wrapper's own `distributionUrl` is used as written. Credentials come
 from the chain below, under the mirror's `host[:port]` (or a `settings.xml` mirror's `id`).
 
@@ -241,6 +242,35 @@ serves each host under a path prefix: `https://host/path` is fetched from `<mirr
 the feed is `<mirror>/download.jetbrains.com/jdk/feed/v1/jdks.json`. In Nexus or Artifactory that is
 one raw/generic proxy per host, grouped under one URL. The feed and its checksums are used as
 published, so every archive is verified against the catalog's sha256 whichever host served it.
+
+The library registry is the file behind `jk.toml`'s short library names (`jk library update`
+reads it, and `jk lock` and the engine refresh it every 12 hours). Its public copy is
+`https://raw.githubusercontent.com/JumpKickOSS/jk-libraries/refs/heads/main/libraries.toml`;
+a `libraries` mirror (`JK_LIBRARIES_DIST_MIRROR`) is the directory that holds a copy, so jk
+reads `<mirror>libraries.toml`.
+
+## Hosts jk contacts
+
+Every host jk dials on its own, and how to point it somewhere else. A host marked optional is
+asked quietly: when it does not answer, jk carries on with what it has and says nothing, so a
+firewall that allows only your mirrors costs you that feature's freshness, not a failure.
+
+| Host | What for | Where else it can come from | When it does not answer |
+|---|---|---|---|
+| `repo.maven.apache.org`, `maven-central.storage-download.googleapis.com` | Maven Central (the second host when Central rate-limits) | a [`mirror-of`](repositories.md#a-corporate-repository-mirror-or-source) table, or a `settings.xml` `<mirror>` | the resolve fails, naming the repository or its mirror |
+| `dl.google.com` | Google's Maven repository | the same | the same |
+| `jumpkick.build` (`/repo/…`) | jk's own repository: plugins, and the engine's worker jars when the store lacks them | the same (it is the `jumpkick` repository) | the same |
+| `jumpkick.build` (`/releases/…`) | `jk self update` and the engine jar of an install that has none | `JK_RELEASES_URL`; `self-update = "never"` stops the checks | the update or install fails |
+| `raw.githubusercontent.com` | the library registry | `[mirrors] libraries` | optional: the copy on disk, else the one built into jk |
+| `download.jetbrains.com` | the JDK catalog | `[mirrors] jdk` | optional: the catalog on disk; `jk new` lists the JDKs you have installed, and provisioning a JDK needs a catalog |
+| the JDK vendors' hosts (`github.com`, `cdn.azul.com`, …) | JDK archives the catalog names | `[mirrors] jdk` | provisioning that JDK fails |
+| `github.com` (git) | the official template catalog | `[templates] official` | optional: the catalog on disk |
+| `nodejs.org`, `registry.npmjs.org` | Node and its packages, for a project that uses them | `[mirrors] node`, [`[node]`](#node-network) | the build that needs them fails |
+| `github.com/JetBrains/kotlin`, `services.gradle.org` | the Kotlin compiler and Gradle distributions, when a project uses them | `[mirrors] kotlin`, `[mirrors] gradle` | the build that needs them fails |
+
+A repository a project or a POM declares is asked at its own URL unless a `mirror-of` table
+matches it. A `[network] proxy` carries all of the above except git, which reads its own
+configuration.
 
 ## Node network
 

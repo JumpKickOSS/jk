@@ -45,7 +45,8 @@ public final class EngineCatalogFreshen {
      * {@code null} on success). Used by {@code jk library update}.
      */
     public static @Nullable String freshenCatalogNow(
-            EnginePaths.Paths paths, String catalog, String url, @Nullable Path cacheFile) throws IOException {
+            EnginePaths.Paths paths, String catalog, @Nullable String url, @Nullable Path cacheFile)
+            throws IOException {
         EngineSpawn.ensure(paths, JkVersion.VERSION);
         return EngineReads.freshenCatalogNow(paths, catalog, url, cacheFile == null ? null : cacheFile.toString());
     }
