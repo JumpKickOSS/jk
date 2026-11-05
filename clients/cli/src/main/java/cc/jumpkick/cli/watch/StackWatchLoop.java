@@ -123,6 +123,11 @@ final class StackWatchLoop {
             supervisor.stopAlongside(running(apps));
             loop.interrupted();
         })) {
+            Optional<String> notBefore = supervisor.awaitRunBefore();
+            if (notBefore.isPresent()) {
+                CliOutput.err(loop.logPrefix() + ": " + notBefore.get());
+                return Exit.SOFTWARE;
+            }
             for (Member m : apps) {
                 start(m, appArgs, exports);
                 m.watch = SourceWatch.open(m.dir, roots(m.plan));

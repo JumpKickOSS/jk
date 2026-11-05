@@ -115,11 +115,19 @@ docs = { command = ["mkdocs", "serve"], env = { PORT = "8001" }, ready-pattern =
 | `ready-pattern` | A regex matched against the sidecar's stdout and stderr lines — the other probe; a sidecar has one or the other. With neither, one second alive is ready | none |
 | `ready-timeout` | `"60s"`, `"2m"`, `"500ms"`, or a bare number of seconds. A probe that times out **fails the session** — a broken dev server is not a warning | `"60s"` |
 | `front-door` | Print this sidecar's `ready` URL once everything is up: `jk watch run: ready · http://localhost:5173 (java -cp … com.example.App)`. With no front-door sidecar the app is the front door, and the `ready ·` line returns after every process restart of the app | `false` |
+| `run-before` | Start the app only once this sidecar's probe has passed: a database or broker the app connects to at startup. A probe that fails stops the session before the app starts. Sidecars without it start alongside the app | `false` |
 | `restart` | `never` (the exit is reported once, the session continues) or `on-exit` (restart with backoff, up to five failures in a row; a run that passed its probe or stayed up 30 s starts the count over) | `"never"` |
 
 The table is also in [`jk.toml.schema.json`](jk.toml.schema.json), and
 [jk-examples `03-fullstack/vite-sidecar`](https://github.com/JumpKickOSS/jk-examples/tree/main/03-fullstack/vite-sidecar) shows the inferred form running: a JVM API on 8080,
 Vite on 5173 proxying `/api` as the dev server jk infers from `[node] dir`, one `jk dev`.
+
+Every sidecar starts before the app, but the app waits only for the `run-before` ones:
+
+```toml
+[dev.sidecars]
+db = { command = "docker compose up --force-recreate db", ready-pattern = "listening on IPv4 address", run-before = true }
+```
 
 Sidecars start once per session and survive the app's restarts — Vite watches its own tree. Ctrl-C
 stops the app and every sidecar together, along with everything they spawned. Editing

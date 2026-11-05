@@ -436,8 +436,8 @@ public final class ManifestBuild {
     }
 
     /** The keys one {@code [dev.sidecars.<name>]} table may carry; the schema names exactly these. */
-    public static final List<String> SIDECAR_KEYS =
-            List.of("command", "cwd", "env", "ready", "ready-pattern", "ready-timeout", "front-door", "restart");
+    public static final List<String> SIDECAR_KEYS = List.of(
+            "command", "cwd", "env", "ready", "ready-pattern", "ready-timeout", "front-door", "run-before", "restart");
 
     /**
      * The keys {@code [dev]} itself may carry: the sidecars, and the application's own probe —
@@ -589,13 +589,8 @@ public final class ManifestBuild {
             }
         }
         Probe probe = probe(table, where, DevReady.DEFAULT_TIMEOUT_MILLIS);
-        boolean frontDoor = false;
-        if (table.contains("front-door")) {
-            if (!(table.get(List.of("front-door")) instanceof Boolean b)) {
-                throw new JkBuildParseException(where + ".front-door must be true or false");
-            }
-            frontDoor = b;
-        }
+        boolean frontDoor = flag(table, "front-door", where);
+        boolean runBefore = flag(table, "run-before", where);
         Sidecar.Restart restart = Sidecar.Restart.NEVER;
         if (table.contains("restart")) {
             try {
@@ -606,7 +601,16 @@ public final class ManifestBuild {
         }
         boolean probed = probe.url() != null || probe.pattern() != null || table.contains("ready-timeout");
         DevReady ready = probed ? new DevReady(probe.url(), probe.pattern(), probe.timeoutMillis()) : null;
-        return new Sidecar(name, command, cwd, env, ready, frontDoor, restart, table.keySet());
+        return new Sidecar(name, command, cwd, env, ready, frontDoor, runBefore, restart, table.keySet());
+    }
+
+    /** A sidecar's boolean key: {@code false} when unwritten, and only {@code true} or {@code false} when written. */
+    private static boolean flag(TomlTable table, String key, String where) {
+        if (!table.contains(key)) return false;
+        if (!(table.get(List.of(key)) instanceof Boolean b)) {
+            throw new JkBuildParseException(where + "." + key + " must be true or false");
+        }
+        return b;
     }
 
     private static final Pattern DURATION = Pattern.compile("(\\d+)\\s*(ms|s|m)?");

@@ -89,7 +89,15 @@ final class DevSidecars {
                 ? ExecPlan.Probe.NONE
                 : new ExecPlan.Probe(dev.url(), "", DevReady.DEFAULT_TIMEOUT_MILLIS);
         return new ExecPlan.Sidecar(
-                name, dev.argv(), dev.dir().toString(), dev.env(), dev.dotEnv(), probe, false, Sidecar.Restart.NEVER);
+                name,
+                dev.argv(),
+                dev.dir().toString(),
+                dev.env(),
+                dev.dotEnv(),
+                probe,
+                false,
+                false,
+                Sidecar.Restart.NEVER);
     }
 
     private static void put(Map<String, ExecPlan.Sidecar> inferred, String name, NodeRun.@Nullable Dev dev) {
@@ -144,7 +152,15 @@ final class DevSidecars {
                     out.put(
                             name,
                             new ExecPlan.Sidecar(
-                                    s.name(), s.command(), s.cwd(), s.env(), s.dotEnv(), s.probe(), true, s.restart()));
+                                    s.name(),
+                                    s.command(),
+                                    s.cwd(),
+                                    s.env(),
+                                    s.dotEnv(),
+                                    s.probe(),
+                                    true,
+                                    s.runBefore(),
+                                    s.restart()));
                 }
             }
         }
@@ -172,6 +188,7 @@ final class DevSidecars {
                 dotEnv,
                 p,
                 keys.contains("front-door") ? written.frontDoor() : base.frontDoor(),
+                keys.contains("run-before") ? written.runBefore() : base.runBefore(),
                 keys.contains("restart") ? written.restart() : base.restart());
     }
 
@@ -184,6 +201,7 @@ final class DevSidecars {
                 EnvLookup.dotEnv(declaredIn),
                 ExecPlan.Probe.of(s.ready()),
                 s.frontDoor(),
+                s.runBefore(),
                 s.restart());
     }
 }

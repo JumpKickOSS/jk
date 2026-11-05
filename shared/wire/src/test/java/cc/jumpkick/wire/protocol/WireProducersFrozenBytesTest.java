@@ -84,6 +84,7 @@ class WireProducersFrozenBytesTest {
                         Map.of("DB_URL", "jdbc:h2:mem:web"),
                         new ExecPlan.Probe("http://localhost:5173", "", 60000L),
                         true,
+                        false,
                         Sidecar.Restart.NEVER)),
                 new ExecPlan.Probe("http://localhost:8080/health", "", 90000L),
                 Map.of("PORT", "3000"),
@@ -98,7 +99,7 @@ class WireProducersFrozenBytesTest {
                         + "\"libPaths\":[\"/a.jar\"],\"deployCommand\":\"deploy\","
                         + "\"sidecars\":[{\"name\":\"web\",\"command\":[\"npm\",\"run\",\"dev\"],\"cwd\":\"/w/web\","
                         + "\"env\":{\"PORT\":\"5173\"},\"dotEnv\":{\"DB_URL\":\"jdbc:h2:mem:web\"},\"ready\":\"http://localhost:5173\",\"readyPattern\":\"\","
-                        + "\"readyTimeoutMillis\":60000,\"frontDoor\":true,\"restart\":\"never\"}],"
+                        + "\"readyTimeoutMillis\":60000,\"frontDoor\":true,\"runBefore\":false,\"restart\":\"never\"}],"
                         + "\"appReady\":\"http://localhost:8080/health\",\"appReadyPattern\":\"\","
                         + "\"appReadyTimeoutMillis\":90000,\"appEnv\":{\"PORT\":\"3000\"},"
                         + "\"appDotEnv\":{\"DB_URL\":\"jdbc:h2:mem:app\"},\"members\":{\"api\":\"/w/api\"}}");

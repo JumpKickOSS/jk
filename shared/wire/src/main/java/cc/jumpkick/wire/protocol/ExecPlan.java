@@ -140,7 +140,8 @@ public record ExecPlan(
      * One sidecar the client is to run beside the app: {@code cwd} absolute, {@code env} the
      * values to lay over the inherited environment, {@code dotEnv} the {@code .env} values set only
      * where the inherited environment lacks them, {@code probe} as the manifest states it
-     * ({@link Probe#NONE} when unset), written flat. Every field is written and every field is
+     * ({@link Probe#NONE} when unset), written flat; {@code runBefore} holds the app back until the
+     * probe passes. Every field is written and every field is
      * required on decode.
      */
     public record Sidecar(
@@ -151,6 +152,7 @@ public record ExecPlan(
             Map<String, String> dotEnv,
             Probe probe,
             boolean frontDoor,
+            boolean runBefore,
             Restart restart) {
 
         public Sidecar {
@@ -170,12 +172,13 @@ public record ExecPlan(
                     .string("readyPattern", probe.readyPattern())
                     .number("readyTimeoutMillis", probe.readyTimeoutMillis())
                     .bool("frontDoor", frontDoor)
+                    .bool("runBefore", runBefore)
                     .string("restart", restart.manifestValue())
                     .finish();
         }
 
         static Sidecar decode(String object) {
-            for (String key : List.of("command", "env", "dotEnv", "frontDoor")) {
+            for (String key : List.of("command", "env", "dotEnv", "frontDoor", "runBefore")) {
                 if (!Jsonl.has(object, key)) throw malformed(key);
             }
             long timeout = Jsonl.longValue(object, "readyTimeoutMillis", Long.MIN_VALUE);
@@ -188,6 +191,7 @@ public record ExecPlan(
                     Jsonl.strMap(object, "dotEnv"),
                     new Probe(required(object, "ready"), required(object, "readyPattern"), timeout),
                     Jsonl.bool(object, "frontDoor", false),
+                    Jsonl.bool(object, "runBefore", false),
                     Restart.parse(required(object, "restart")));
         }
 

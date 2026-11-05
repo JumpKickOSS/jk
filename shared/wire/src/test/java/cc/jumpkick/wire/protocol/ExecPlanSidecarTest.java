@@ -23,6 +23,7 @@ class ExecPlanSidecarTest {
             Map.of("DB_URL", "jdbc:h2:mem:web"),
             new ExecPlan.Probe("http://localhost:5173", "", 60_000L),
             true,
+            true,
             Sidecar.Restart.ON_EXIT);
 
     @Test
@@ -45,6 +46,7 @@ class ExecPlanSidecarTest {
                 "readyPattern",
                 "readyTimeoutMillis",
                 "frontDoor",
+                "runBefore",
                 "restart")) {
             String without = Pattern.compile("\"" + key + "\":(\"[^\"]*\"|\\[[^]]*]|\\{[^}]*}|-?\\d+|true|false),?")
                     .matcher(encoded)
@@ -62,7 +64,7 @@ class ExecPlanSidecarTest {
         var command = new ArrayList<>(List.of("npm"));
         var env = new LinkedHashMap<>(Map.of("A", "1"));
         ExecPlan.Sidecar s = new ExecPlan.Sidecar(
-                "web", command, "/w", env, env, new ExecPlan.Probe("", "", 1L), false, Sidecar.Restart.NEVER);
+                "web", command, "/w", env, env, new ExecPlan.Probe("", "", 1L), false, false, Sidecar.Restart.NEVER);
         command.add("run");
         env.put("B", "2");
         assertThat(s.command()).containsExactly("npm");
