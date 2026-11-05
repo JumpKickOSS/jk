@@ -40,7 +40,7 @@ class SessionLogTest {
     }
 
     private SessionLog newLog() {
-        SessionLog l = new SessionLog(journal, now::get, EpisodeInference.DEFAULT_IDLE_GAP_MILLIS, () -> "devbox");
+        SessionLog l = new SessionLog(journal, now::get, EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
         l.events((type, payload) -> events.add(type + ":" + change(payload)));
         return l;
     }
@@ -60,10 +60,10 @@ class SessionLogTest {
                 .containsEntry("origin", "mcp")
                 .containsEntry("client", "claude-code")
                 .containsEntry("label", LABEL)
-                .containsEntry("host", "devbox")
                 .containsEntry("project", "/ws/app")
                 .containsEntry("state", "live")
-                .containsEntry("episode", episode);
+                .containsEntry("episode", episode)
+                .doesNotContainKey("host");
         assertThat(MiniJson.list(doc, "episodes")).singleElement().satisfies(e -> assertThat(e)
                 .asInstanceOf(InstanceOfAssertFactories.MAP)
                 .containsEntry("title", "Fixing QuoteTest#threeNightWeekendStay")
@@ -166,7 +166,7 @@ class SessionLogTest {
 
     @Test
     void without_a_journal_a_live_session_is_kept_in_memory() {
-        SessionLog memory = new SessionLog(null, now::get, EpisodeInference.DEFAULT_IDLE_GAP_MILLIS, () -> "devbox");
+        SessionLog memory = new SessionLog(null, now::get, EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
         String id = memory.open("mcp", "claude-code", LABEL, "/ws/app");
         memory.action(
                 "mcp",
@@ -180,6 +180,32 @@ class SessionLogTest {
         memory.end("mcp", LABEL);
         assertThat(memory.session(id, 0, 10)).isEmpty();
         assertThat(Files.exists(root.resolve("sessions"))).isFalse();
+    }
+
+    @Test
+    void the_action_event_carries_the_masked_summary_and_a_secret_the_clip_cut_short_is_masked_too(
+            @TempDir Path project) throws Exception {
+        Files.writeString(project.resolve(".env"), "TOKEN=s3cret-token-value\n");
+        String dir = project.toString();
+        List<Map<String, Object>> actions = new ArrayList<>();
+        log.events((type, payload) -> {
+            if (type.equals("action")) actions.add(payload);
+        });
+        log.open("mcp", "claude-code", LABEL, dir);
+        log.action(
+                "mcp",
+                LABEL,
+                "claude-code",
+                Fact.action(T, 4, dir, Fact.Kind.GRAPH, true, "", 0),
+                "query",
+                "query \"where is s3cret-token-value read\"",
+                "uses s3cret-tok" + ActionRecord.CLIP);
+
+        assertThat(actions).hasSize(1);
+        assertThat(actions.getFirst().get("action"))
+                .asInstanceOf(InstanceOfAssertFactories.MAP)
+                .containsEntry("summary", "query \"where is *** read\"")
+                .containsEntry("headline", "uses ***" + ActionRecord.CLIP);
     }
 
     private void callers(long at) {

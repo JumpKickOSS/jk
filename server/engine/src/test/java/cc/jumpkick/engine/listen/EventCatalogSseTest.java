@@ -97,7 +97,7 @@ class EventCatalogSseTest {
 
         long[] now = {1_700_000_000_000L};
         Set<String> published = new LinkedHashSet<>();
-        SessionLog log = new SessionLog(null, () -> now[0], EpisodeInference.DEFAULT_IDLE_GAP_MILLIS, () -> "devbox");
+        SessionLog log = new SessionLog(null, () -> now[0], EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
         log.events((type, payload) -> {
             assertThat(payload.get("type")).as("the payload of `%s`", type).isEqualTo(type);
             published.add(type);

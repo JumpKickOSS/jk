@@ -296,9 +296,10 @@ merge that file back, so every row carries its whole `diagnostics` and no `diagn
 ### `GET /api/sessions`
 
 `GET /api/sessions[?limit=N]` (default 50, at most 200): `{ sessions: [...] }`, live and recent
-sessions, most recently active first. A session row is `{ id, origin, client?, label?, host,
-project?, projectId?, startedAt, lastActiveAt, endedAt?, state, episode?, current? }`: `origin` is
-the trigger (`mcp`, `bsp`, `web`, `cli`), `label` the run records' `session` (`claude-code 3f9a`;
+sessions, most recently active first. A session row is `{ id, origin, client?, label?, project?,
+projectId?, startedAt, lastActiveAt, endedAt?, state, episode?, current? }`: `origin` is the
+trigger (`mcp`, `bsp`, `web`, `cli`), `client` the name the client gave itself (the host the
+dashboard shows), `label` the run records' `session` (`claude-code 3f9a`;
 absent for the shell and the dashboard), `state` `live`, `idle` (quiet for the idle gap, ten
 minutes) or `ended`, `episode` the current episode's id and `current` that episode. An episode is
 `{ id, session, number, project, projectId?, title, titleSource, outcome, startedAt, lastAt, runs,
@@ -313,7 +314,10 @@ one, `null` on the first page. An action is `{ seq, at, kind, summary, headline?
 episode, project?, buildNumber? }`: `kind` is `run` or the MCP tool (`query`, `callers`, `read`,
 `find`, `rename`, `deps`, `update`, `workspace`), `summary` one line of what it asked (`callers
 PricingRules.weekendUplift`), `headline` the first line of its answer (`3 callers`), `outcome`
-`ok`/`error` for an action and `green`/`red`/`cancelled` for a run. An id that is not one path
+`ok`/`error` for an action and `green`/`red`/`cancelled` for a run. `summary` and `headline` are
+masked like a run record's free text (the `.env` secrets of the action's project and the
+repository credentials its build resolved) before they are written, so `actions.jsonl`, this
+route and the SSE `action` event all carry the masked form. An id that is not one path
 segment of letters, digits, `.`, `-` and `_` is a **400**; an unknown one a **404**.
 
 Both are bearer-gated like every `/api/*`. The records live under the journal root,

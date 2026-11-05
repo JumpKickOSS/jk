@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.engine.api.BuildJobFingerprint;
+import cc.jumpkick.engine.sessions.ActionRecord;
 import cc.jumpkick.engine.sessions.Fact;
 import cc.jumpkick.engine.sessions.SessionLog;
 import java.util.List;
@@ -125,7 +126,7 @@ final class McpActions {
     }
 
     private static String clip(String s) {
-        return s.length() > TEXT_CHARS ? s.substring(0, TEXT_CHARS - 1) + "…" : s;
+        return s.length() > TEXT_CHARS ? s.substring(0, TEXT_CHARS - 1) + ActionRecord.CLIP : s;
     }
 
     private static String orEmpty(@Nullable String s) {

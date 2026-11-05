@@ -78,7 +78,7 @@ final class RunFacts {
         String line = text.strip();
         int nl = line.indexOf('\n');
         if (nl >= 0) line = line.substring(0, nl).strip();
-        return line.length() > HEADLINE_CHARS ? line.substring(0, HEADLINE_CHARS - 1) + "…" : line;
+        return line.length() > HEADLINE_CHARS ? line.substring(0, HEADLINE_CHARS - 1) + ActionRecord.CLIP : line;
     }
 
     private static String testId(BuildRecord.Diag d) {

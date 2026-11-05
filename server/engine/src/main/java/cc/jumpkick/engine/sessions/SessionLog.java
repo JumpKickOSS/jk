@@ -17,7 +17,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.LongSupplier;
-import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -49,7 +48,6 @@ public final class SessionLog {
     private final @Nullable SessionJournal journal;
     private final LongSupplier clock;
     private final long idleGapMillis;
-    private final Supplier<String> host;
     private volatile Events events = (type, payload) -> {};
 
     private final Map<String, Live> byKey = new LinkedHashMap<>();
@@ -74,13 +72,11 @@ public final class SessionLog {
      *     whose {@code [history]} is off
      * @param idleGapMillis how long a quiet session takes to go idle and its next fact to start a new
      *     episode ({@link EpisodeInference#DEFAULT_IDLE_GAP_MILLIS})
-     * @param host the machine name sessions are recorded against
      */
-    public SessionLog(@Nullable SessionJournal journal, LongSupplier clock, long idleGapMillis, Supplier<String> host) {
+    public SessionLog(@Nullable SessionJournal journal, LongSupplier clock, long idleGapMillis) {
         this.journal = journal;
         this.clock = clock;
         this.idleGapMillis = idleGapMillis;
-        this.host = host;
     }
 
     /** Publish every change to {@code events}. */
@@ -117,7 +113,6 @@ public final class SessionLog {
                     r.origin(),
                     r.client(),
                     r.label(),
-                    r.host(),
                     r.project(),
                     r.projectId(),
                     r.startedAt(),
@@ -380,8 +375,8 @@ public final class SessionLog {
             return live;
         }
         String id = mintId(origin, label, at);
-        SessionRecord record = new SessionRecord(
-                id, origin, client, label, host.get(), null, null, at, at, 0, SessionRecord.LIVE, null);
+        SessionRecord record =
+                new SessionRecord(id, origin, client, label, null, null, at, at, 0, SessionRecord.LIVE, null);
         live = new Live(record, new EpisodeInference(id, idleGapMillis));
         byKey.put(key, live);
         byId.put(id, live);
@@ -398,7 +393,6 @@ public final class SessionLog {
                 r.origin(),
                 r.client(),
                 r.label(),
-                r.host(),
                 r.project(),
                 r.projectId(),
                 r.startedAt(),
@@ -422,7 +416,6 @@ public final class SessionLog {
                 r.origin(),
                 r.client(),
                 r.label(),
-                r.host(),
                 project,
                 project == null ? null : projectId(project),
                 r.startedAt(),
@@ -438,7 +431,6 @@ public final class SessionLog {
                 r.origin(),
                 r.client(),
                 r.label(),
-                r.host(),
                 project,
                 projectId(project),
                 r.startedAt(),
@@ -456,7 +448,7 @@ public final class SessionLog {
     }
 
     private ActionRecord append(Live live, ActionRecord action) {
-        ActionRecord logged = action.withSeq(++live.seq);
+        ActionRecord logged = action.redacted().withSeq(++live.seq);
         if (journal == null) {
             live.memory.add(logged);
             if (live.memory.size() > MEMORY_ACTIONS) live.memory.removeFirst();

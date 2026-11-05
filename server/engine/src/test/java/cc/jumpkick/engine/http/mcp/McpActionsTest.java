@@ -27,7 +27,7 @@ class McpActionsTest {
     Path project;
 
     private final SessionLog log =
-            new SessionLog(null, System::currentTimeMillis, EpisodeInference.DEFAULT_IDLE_GAP_MILLIS, () -> "devbox");
+            new SessionLog(null, System::currentTimeMillis, EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
 
     @Test
     void a_graph_question_and_a_dependency_change_are_logged_in_display_form() {

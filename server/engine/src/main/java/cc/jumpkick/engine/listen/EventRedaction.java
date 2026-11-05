@@ -48,6 +48,22 @@ public final class EventRedaction {
     }
 
     /**
+     * As {@link #redactText} for a line clipped with {@code marker}: a secret the clip cut short is
+     * masked too.
+     */
+    public static String redactClipped(@Nullable String dir, String text, String marker) {
+        if (text.isEmpty()) return text;
+        SecretRedactor redactor;
+        try {
+            redactor = redactorFor(dir);
+        } catch (RuntimeException e) {
+            if (dir != null && !dir.isBlank()) warnFailOpen(e);
+            return text;
+        }
+        return redactTruncationSeam(redactor, redactSafe(redactor, text), marker);
+    }
+
+    /**
      * {@link #redactEnv} over a whole error list, with the redactor hoisted — building one walks
      * for a workspace root and parses {@code .env}, so a per-row call would repeat that work.
      *
