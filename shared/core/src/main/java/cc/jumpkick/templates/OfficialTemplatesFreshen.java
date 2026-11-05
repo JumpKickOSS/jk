@@ -4,6 +4,7 @@ package cc.jumpkick.templates;
 import cc.jumpkick.config.JkTemplatesConfig;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
@@ -49,12 +50,12 @@ public final class OfficialTemplatesFreshen {
      * on-demand counterpart for a real user action ({@code jk new}/{@code init}): every call
      * attempts a real fetch, no TTL.
      */
-    public static void refreshQuiet(Consumer<String> log) {
+    public static void refreshQuiet(Consumer<String> log, GitProxy proxy) {
         if (log == null) log = s -> {};
         try {
             JkTemplatesConfig cfg = JkTemplatesConfig.resolve();
-            if (!markAttempt(parse(officialRef(cfg)).cacheKey(), System.nanoTime())) return;
-            refresh(cfg, log, true);
+            if (!markAttempt(parse(officialRef(cfg)).cacheKey(), Clock.SYSTEM.nanos())) return;
+            refresh(cfg, log, true, proxy);
         } catch (Throwable t) {
             log.accept(skipped(t));
         }
@@ -66,10 +67,10 @@ public final class OfficialTemplatesFreshen {
      * the engine (already the single long-lived process; a CLI-process-local TTL here would reset
      * on every invocation and never actually gate anything). Best-effort; never throws.
      */
-    public static void refreshNow(Consumer<String> log) {
+    public static void refreshNow(Consumer<String> log, GitProxy proxy) {
         if (log == null) log = s -> {};
         try {
-            refresh(JkTemplatesConfig.resolve(), log, false);
+            refresh(JkTemplatesConfig.resolve(), log, false, proxy);
         } catch (Throwable t) {
             log.accept(skipped(t));
         }
@@ -120,8 +121,10 @@ public final class OfficialTemplatesFreshen {
      *     the store the nuke reported gone. Judged under the gate, so a wipe that took the gate
      *     while this call was on its way is seen and not cloned over. A user action ({@code jk
      *     new}) passes {@code false} and repopulates on demand.
+     * @param proxy the {@code http.proxy} each source's git runs with
      */
-    static void refresh(JkTemplatesConfig config, Consumer<String> log, boolean hygiene) throws IOException {
+    static void refresh(JkTemplatesConfig config, Consumer<String> log, boolean hygiene, GitProxy proxy)
+            throws IOException {
         // Clones land inside the store — a wipe must not overlap the git subprocess.
         try (var held = StoreWriteGate.write()) {
             if (hygiene && StoreWriteGate.wipedSinceStart()) return;
@@ -136,7 +139,7 @@ public final class OfficialTemplatesFreshen {
             IOException first = null;
             for (String ref : refs) {
                 try {
-                    refreshRef(ref, cacheRoot, log);
+                    refreshRef(ref, cacheRoot, log, proxy);
                 } catch (IOException e) {
                     if (first == null) first = e;
                 } catch (IllegalArgumentException unusable) {
@@ -149,9 +152,10 @@ public final class OfficialTemplatesFreshen {
         }
     }
 
-    static void refreshRef(String ref, Path cacheRoot, Consumer<String> log) throws IOException {
+    static void refreshRef(String ref, Path cacheRoot, Consumer<String> log, GitProxy proxy) throws IOException {
         Parsed p = parse(ref);
         Path dest = destination(cacheRoot, p.cacheKey());
+        @Nullable String httpProxy = proxy.httpProxy(p.url()).orElse(null);
         // Incomplete clones (e.g. only a .git dir left from a failed private-repo attempt) must be
         // wiped and re-cloned — fetch/reset cannot recover them. So must a catalog-shaped directory
         // that is not a repository of its own: a fetch and reset there would act on whatever
@@ -163,18 +167,18 @@ public final class OfficialTemplatesFreshen {
                 || !looksLikeTemplateMonorepo(dest)) {
             PathUtil.deleteRecursivelyOrThrow(dest);
             Files.createDirectories(dest.getParent());
-            runGit(p.cloneArgs(dest), 120);
+            runGit(p.cloneArgs(dest), httpProxy, Duration.ofSeconds(120));
             log.accept("jk engine: cloned templates source (" + dest.getFileName() + ")");
             return;
         }
         // Existing shallow clone: cheap fetch + hard reset (no merge noise).
         try {
-            fetchAndReset(dest, p.rev());
+            fetchAndReset(dest, p.rev(), httpProxy);
         } catch (IOException fetchFailed) {
             // Corrupt / auth-skewed cache: delete and clone clean.
             PathUtil.deleteRecursivelyOrThrow(dest);
             Files.createDirectories(dest.getParent());
-            runGit(p.cloneArgs(dest), 120);
+            runGit(p.cloneArgs(dest), httpProxy, Duration.ofSeconds(120));
             log.accept("jk engine: re-cloned templates source (" + dest.getFileName() + ")");
         }
     }
@@ -240,13 +244,13 @@ public final class OfficialTemplatesFreshen {
      * a sandbox teardown or a sibling test JVM does. A test calls this directly to pin that the
      * invocations refuse rather than retarget.
      */
-    static void fetchAndReset(Path dest, @Nullable String rev) throws IOException {
+    static void fetchAndReset(Path dest, @Nullable String rev, @Nullable String httpProxy) throws IOException {
         List<String> fetch = new ArrayList<>(pinnedGit(dest, "fetch", "--depth", "1", "origin"));
         if (rev != null && !rev.isBlank()) {
             fetch.add(rev);
         }
-        runGit(fetch, 60);
-        runGit(pinnedGit(dest, "reset", "--hard", "FETCH_HEAD"), 30);
+        runGit(fetch, httpProxy, Duration.ofSeconds(60));
+        runGit(pinnedGit(dest, "reset", "--hard", "FETCH_HEAD"), null, Duration.ofSeconds(30));
     }
 
     /**
@@ -291,6 +295,15 @@ public final class OfficialTemplatesFreshen {
 
     /** As {@link #runGit(List, int)} with a finer timeout; tests prove the kill in milliseconds. */
     static void runGit(List<String> args, Duration timeout) throws IOException {
+        runGit(args, null, timeout);
+    }
+
+    /**
+     * Run {@code args}, with {@code httpProxy} as git's {@code http.proxy} when it is not null (an
+     * empty value turns git's proxy off). The value goes through git's environment ({@link
+     * GitProxy#configure}), not the argv, because it can carry the proxy's credential.
+     */
+    static void runGit(List<String> args, @Nullable String httpProxy, Duration timeout) throws IOException {
         // Both streams are handled at the OS level — stdout discarded, stderr into a file — because
         // reading a pipe inline would block past the timeout on a stalled fetch, and the single
         // maintenance thread must never hang. The file is what lets a failure say why.
@@ -299,6 +312,7 @@ public final class OfficialTemplatesFreshen {
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .redirectError(stderr.toFile());
         pb.environment().put("GIT_TERMINAL_PROMPT", "0");
+        if (httpProxy != null) GitProxy.configure(pb.environment(), httpProxy);
         try {
             Process proc;
             try {

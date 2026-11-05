@@ -36,6 +36,27 @@ class OfficialTemplatesFreshenTest {
     @TempDir
     Path tmp;
 
+    /**
+     * The proxy rides git's environment, where {@code git config} reads it, and never its argv,
+     * which every user of the host can list: the value can carry the proxy's credential.
+     */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void the_proxy_reaches_git_through_its_environment_and_not_its_argv() throws Exception {
+        Path seen = tmp.resolve("seen.txt");
+        Path script = script(
+                "#!/bin/sh\ngit config --get http.proxy > '" + seen + "'\necho \"argv: $*\" >> '" + seen + "'\n");
+
+        OfficialTemplatesFreshen.runGit(
+                List.of(script.toString(), "clone", "https://github.com/a/b.git"),
+                "http://u:s3cr3t@proxy.corp:3128",
+                Duration.ofSeconds(30));
+
+        assertEquals(
+                List.of("http://u:s3cr3t@proxy.corp:3128", "argv: clone https://github.com/a/b.git"),
+                Files.readAllLines(seen));
+    }
+
     /** A subprocess that never exits must be killed within the timeout, not awaited to EOF. */
     @Test
     @DisabledOnOs(OS.WINDOWS)
@@ -266,7 +287,7 @@ class OfficialTemplatesFreshenTest {
         assertTrue(OfficialTemplatesFreshen.looksLikeTemplateMonorepo(dest), "the fixture is catalog-shaped");
         assertTrue(!OfficialTemplatesFreshen.isRepositoryRoot(dest), "but not a repository of its own");
 
-        OfficialTemplatesFreshen.refreshRef(ref, cacheRoot, s -> {});
+        OfficialTemplatesFreshen.refreshRef(ref, cacheRoot, s -> {}, GitProxy.NONE);
 
         assertEquals(headBefore, gitOut(enclosing, "rev-parse", "HEAD"), "the enclosing checkout is untouched");
         assertTrue(Files.isRegularFile(enclosing.resolve("work.txt")), "the working copy is untouched");
@@ -318,7 +339,7 @@ class OfficialTemplatesFreshenTest {
 
         assertThrows(
                 IOException.class,
-                () -> OfficialTemplatesFreshen.fetchAndReset(dest, null),
+                () -> OfficialTemplatesFreshen.fetchAndReset(dest, null, null),
                 "a refresh of something that is not a repository must fail, not pick another one");
 
         assertEquals(headBefore, gitOut(enclosing, "rev-parse", "HEAD"), "the enclosing branch did not move");
@@ -357,7 +378,7 @@ class OfficialTemplatesFreshenTest {
             StoreWriteGate.Held wipe = StoreWriteGate.wipe();
             try {
                 hygiene = pool.submit(() -> {
-                    OfficialTemplatesFreshen.refresh(cfg, s -> {}, true);
+                    OfficialTemplatesFreshen.refresh(cfg, s -> {}, true, GitProxy.NONE);
                     return null;
                 });
                 assertThrows(
@@ -370,7 +391,7 @@ class OfficialTemplatesFreshenTest {
             hygiene.get(30, TimeUnit.SECONDS);
             assertTrue(!Files.exists(clone), "the hygiene refresh stood down after the wipe");
 
-            OfficialTemplatesFreshen.refresh(cfg, s -> {}, false);
+            OfficialTemplatesFreshen.refresh(cfg, s -> {}, false, GitProxy.NONE);
             assertTrue(Files.isDirectory(clone.resolve("java/spring/hello.g8")), "a user action repopulates");
         } finally {
             pool.shutdownNow();
@@ -425,7 +446,7 @@ class OfficialTemplatesFreshenTest {
         Files.writeString(sentinel, "{}");
         assertThrows(
                 IllegalArgumentException.class,
-                () -> OfficialTemplatesFreshen.refreshRef("https://..", store, line -> {}));
+                () -> OfficialTemplatesFreshen.refreshRef("https://..", store, line -> {}, GitProxy.NONE));
         assertTrue(Files.exists(sentinel), "nothing under the store was deleted");
     }
 

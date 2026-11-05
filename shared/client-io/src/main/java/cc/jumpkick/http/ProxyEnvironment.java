@@ -346,6 +346,22 @@ public final class ProxyEnvironment extends ProxySelector {
     }
 
     /**
+     * The {@code http.proxy} a {@code git} child gets so it reaches {@code remote} the way jk would:
+     * the proxy URL when jk routes the remote through one, an empty value (git's "no proxy") when jk
+     * has a proxy for the remote's scheme but sends this host direct, and empty when jk has no proxy
+     * for the scheme or the remote is not http(s), so git's own configuration decides. The value can
+     * carry the proxy's credential: hand it to git through its environment, never its argv.
+     */
+    public Optional<String> gitHttpProxy(URI remote) {
+        String scheme = remote.getScheme();
+        if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) return Optional.empty();
+        Settings settings = settings();
+        Source source = "https".equalsIgnoreCase(scheme) ? settings.https() : settings.http();
+        if (source == null) return Optional.empty();
+        return Optional.of(proxyUrl(remote).orElse(""));
+    }
+
+    /**
      * The hosts that go direct, as a {@code no_proxy} list: the {@code no-proxy} entries of the
      * file and the shell, and the {@code nonProxyHosts} of a settings.xml proxy in use.
      */

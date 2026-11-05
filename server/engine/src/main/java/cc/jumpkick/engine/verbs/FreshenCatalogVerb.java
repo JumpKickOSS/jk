@@ -8,6 +8,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.http.ProxyEnvironment;
 import cc.jumpkick.jdk.JdkCatalogClient;
 import cc.jumpkick.repo.LibraryRegistrySync;
 import cc.jumpkick.templates.OfficialTemplatesFreshen;
@@ -62,7 +63,7 @@ public final class FreshenCatalogVerb implements HostedVerb {
                 switch (String.valueOf(catalog)) {
                     case "templates" -> {
                         if (!offline) {
-                            OfficialTemplatesFreshen.refreshNow(msg -> {});
+                            OfficialTemplatesFreshen.refreshNow(msg -> {}, ProxyEnvironment.ambient()::gitHttpProxy);
                             Giter8TemplateIndex.invalidate();
                         }
                     }

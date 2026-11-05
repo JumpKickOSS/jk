@@ -2,6 +2,7 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.host.Log;
+import cc.jumpkick.http.ProxyEnvironment;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.templates.OfficialTemplatesFreshen;
 import cc.jumpkick.util.JkDirs;
@@ -153,7 +154,7 @@ public final class EngineMaintenance implements AutoCloseable {
     void runMaintenanceCycle() {
         if (closed.get()) return;
         feeds.refreshFeedsQuietly();
-        OfficialTemplatesFreshen.refreshQuiet(log);
+        OfficialTemplatesFreshen.refreshQuiet(log, ProxyEnvironment.ambient()::gitHttpProxy);
         try {
             onMaintenanceDue.run();
         } catch (Throwable e) {
