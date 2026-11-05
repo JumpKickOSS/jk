@@ -3,7 +3,9 @@ package cc.jumpkick.engine.sessions;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.jsonl.MiniJson;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
@@ -85,5 +87,46 @@ class EpisodeInferenceTest {
             assertThat(c.outcomeChanged()).isTrue();
             assertThat(c.episode().outcome()).isEqualTo(Episode.GREEN);
         });
+    }
+
+    @Test
+    void a_resumed_inference_carries_on_as_the_one_it_was_stored_from() {
+        EpisodeInference before = new EpisodeInference("s", GAP);
+        before.place(T, "/ws/app");
+        before.fold("s.1", Fact.run(T, 100, "/ws/app", "app", true, List.of()));
+        String red = before.place(T + 1_000, "/ws/app").episode();
+        before.fold(
+                red,
+                Fact.run(T + 1_000, 100, "/ws/app", "app", false, List.of("QuoteTest#weekend", "QuoteTest#night")));
+
+        Map<String, Object> state =
+                MiniJson.parse(MiniJson.write(before.state())) instanceof Map<?, ?> m ? cast(m) : Map.of();
+        EpisodeInference after = EpisodeInference.resume("s", GAP, before.episodes(), state);
+
+        assertThat(after.episodes()).isEqualTo(before.episodes());
+        assertThat(after.lastAt()).isEqualTo(before.lastAt());
+        assertThat(after.place(T + 2_000, "/ws/app").episode()).isEqualTo(red);
+        assertThat(after.fold(red, Fact.run(T + 2_000, 100, "/ws/app", "app", true, List.of())))
+                .singleElement()
+                .satisfies(c -> assertThat(c.episode())
+                        .as("the red streak stored before the hand-off is the one this green run ends")
+                        .extracting(Episode::outcome, Episode::title)
+                        .containsExactly(Episode.GREEN, "Fixing QuoteTest#weekend (+1 more)"));
+    }
+
+    @Test
+    void an_episode_stored_with_no_state_keeps_its_outcome() {
+        Episode closed = new Episode(
+                "s.1", "s", 1, "/ws/app", null, "Working in app", Episode.INFERRED, Episode.RED, T, T, 1, 0);
+
+        EpisodeInference after = EpisodeInference.resume("s", GAP, List.of(closed), null);
+
+        assertThat(after.episodes()).containsExactly(closed);
+        assertThat(after.lastAt()).isEqualTo(T);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> cast(Map<?, ?> m) {
+        return (Map<String, Object>) m;
     }
 }

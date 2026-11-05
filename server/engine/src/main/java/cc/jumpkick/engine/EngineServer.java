@@ -26,6 +26,7 @@ import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.ShelfPins;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.sessions.EpisodeInference;
+import cc.jumpkick.engine.sessions.FinishedRun;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
@@ -49,6 +50,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -361,6 +363,7 @@ public final class EngineServer implements AutoCloseable {
                 sessions, journal, historyConfig, () -> metricsFile, clockMillis, this.version, this.log);
         this.sessionLog = newSessionLog();
         journalWriter.onFinished(sessionLog::runFinished);
+        drain.predecessorRuns(this::foldPredecessorRun);
         this.sse = new SsePublisher(
                 sessions,
                 inFlightBuilds,
@@ -390,6 +393,8 @@ public final class EngineServer implements AutoCloseable {
                 EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
         HttpEvents hub = httpEvents;
         if (hub != null) log.events((type, payload) -> hub.publishDashboard(type, JsonOut.rawObject(payload)));
+        // One writer: once a successor holds the endpoint, the runs this engine finishes go to it.
+        log.writeWhile(this::primary, run -> drain.finished(run.toMap()));
         return log;
     }
 
@@ -407,9 +412,21 @@ public final class EngineServer implements AutoCloseable {
                     }
                 },
                 activeBuildPlans::get,
+                () -> journalWriter.settled(),
                 DrainReporter.sockets(),
                 this.log,
                 DrainReporter.TICK_MS);
+    }
+
+    /** Whether this engine still writes the session records: it has not started, or the endpoint names it. */
+    private boolean primary() {
+        return serverChannel == null || election.endpointNamesThisEngine();
+    }
+
+    /** A run a displaced predecessor finished: fold it here, as if it had finished on this engine. */
+    private void foldPredecessorRun(Map<String, Object> reported) {
+        FinishedRun run = FinishedRun.of(reported);
+        if (run != null) sessionLog.runFinished(run);
     }
 
     private DisplacementWatchdog newDisplacementWatchdog() {
@@ -588,10 +605,10 @@ public final class EngineServer implements AutoCloseable {
         storeFeedRefresh = started.feeds();
         engineMaintenance = started.maintenance();
         engineMaintenance.onTick(sessionLog::sweep);
-        // Sessions a previous engine left open died with it; off the startup path.
-        Thread.ofVirtual().name("jk-engine-sessions-stale").start(() -> {
-            int ended = sessionLog.endStale();
-            if (ended > 0) log.accept("jk engine: ended " + ended + " session(s) a previous engine left open");
+        // Sessions a previous engine left open carry on here; off the startup path.
+        Thread.ofVirtual().name("jk-engine-sessions-adopt").start(() -> {
+            int adopted = sessionLog.adopt();
+            if (adopted > 0) log.accept("jk engine: adopted " + adopted + " open session(s)");
         });
         if (selfUpdate != null) selfUpdate.start();
         watchdog.start();
@@ -800,6 +817,11 @@ public final class EngineServer implements AutoCloseable {
         return drain.started();
     }
 
+    /** Test seam: this engine's session log. */
+    SessionLog sessionsForTests() {
+        return sessionLog;
+    }
+
     /** Test seam: the epoch millis a draining engine exits by; {@code -1} when not draining or unbounded. */
     long drainDeadlineForTests() {
         return drainDeadlineMillis;
@@ -933,6 +955,8 @@ public final class EngineServer implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        // A drained engine's last runs reach its successor before it goes.
+        drain.awaitReported(DrainReporter.SETTLE_MS + 4 * DrainReporter.TICK_MS);
         // A tool install cut short by the shutdown leaves its archive and staging tree; reap them.
         ToolInstaller.reapInFlight();
         // A trainer is this engine's child and must not outlive it or keep store jars open.

@@ -3,8 +3,10 @@ package cc.jumpkick.engine.sessions;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
@@ -133,6 +135,45 @@ public final class EpisodeInference {
         return List.of(cur.close(Closed.ENDED));
     }
 
+    /**
+     * What {@link #episodes()} does not carry and the next fact needs: when the last fact finished,
+     * and each episode's running tallies, oldest first. Stored beside the episodes, and read back by
+     * {@link #resume}.
+     */
+    public Map<String, Object> state() {
+        List<Object> drafts = new ArrayList<>(episodes.size());
+        for (Draft d : episodes) drafts.add(d.state());
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("lastAt", lastAt);
+        m.put("episodes", drafts);
+        return m;
+    }
+
+    /**
+     * The inference a previous engine left: {@code stored} as {@link #episodes()} answered it, and
+     * {@code state} as {@link #state()} did. An episode with no state keeps its outcome and starts
+     * its tallies over.
+     */
+    public static EpisodeInference resume(
+            String session, long idleGapMillis, List<Episode> stored, @Nullable Map<?, ?> state) {
+        EpisodeInference inference = new EpisodeInference(session, idleGapMillis);
+        List<?> drafts = state != null && state.get("episodes") instanceof List<?> l ? l : List.of();
+        long last = 0;
+        for (int i = 0; i < stored.size(); i++) {
+            Episode e = stored.get(i);
+            String goal = Episode.GOAL.equals(e.titleSource()) ? e.title() : null;
+            Draft d = inference.new Draft(e.id(), e.number(), e.project(), e.startedAt(), goal);
+            d.lastAt = e.lastAt();
+            d.runs = e.runs();
+            d.actions = e.actions();
+            d.restore(i < drafts.size() && drafts.get(i) instanceof Map<?, ?> m ? m : null, e.outcome());
+            inference.episodes.add(d);
+            last = Math.max(last, e.lastAt());
+        }
+        inference.lastAt = state != null && state.get("lastAt") instanceof Number n ? n.longValue() : last;
+        return inference;
+    }
+
     /** Place and fold each fact in order, as a session that did exactly these would: the fixture seam. */
     public static List<Episode> replay(String session, long idleGapMillis, List<Fact> facts) {
         EpisodeInference inference = new EpisodeInference(session, idleGapMillis);
@@ -249,6 +290,52 @@ public final class EpisodeInference {
             }
         }
 
+        Map<String, Object> state() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            if (closed != null) m.put("closed", closed.name());
+            m.put("redStreak", redStreak);
+            if (lastRunOk != null) m.put("lastRunOk", lastRunOk);
+            if (lastActionOk != null) m.put("lastActionOk", lastActionOk);
+            m.put("onlyGraph", onlyGraph);
+            if (failing != null) m.put("failing", failing);
+            if (depsVerb != null) m.put("depsVerb", depsVerb.name());
+            m.put("depsTarget", depsTarget);
+            m.put("depsCount", depsCount);
+            m.put("updatePins", updatePins);
+            m.put("renameTarget", renameTarget);
+            m.put("module", module);
+            return m;
+        }
+
+        void restore(@Nullable Map<?, ?> m, String outcome) {
+            if (m == null) {
+                if (!Episode.WORKING.equals(outcome)) {
+                    closed = Closed.SUPERSEDED;
+                    if (Episode.GREEN.equals(outcome)) lastRunOk = true;
+                    if (Episode.RED.equals(outcome)) lastRunOk = false;
+                }
+                onlyGraph = runs == 0;
+                return;
+            }
+            closed = m.get("closed") instanceof String c ? enumOf(Closed.class, c) : null;
+            redStreak = (int) Episode.num(m, "redStreak");
+            lastRunOk = m.get("lastRunOk") instanceof Boolean b ? b : null;
+            lastActionOk = m.get("lastActionOk") instanceof Boolean b ? b : null;
+            onlyGraph = !Boolean.FALSE.equals(m.get("onlyGraph"));
+            if (m.get("failing") instanceof List<?> l) {
+                List<String> tests = new ArrayList<>();
+                for (Object o : l) if (o != null) tests.add(o.toString());
+                failing = List.copyOf(tests);
+            }
+            depsVerb = m.get("depsVerb") instanceof String v ? enumOf(Fact.Kind.class, v) : null;
+            depsTarget = Episode.text(m, "depsTarget");
+            depsCount = (int) Episode.num(m, "depsCount");
+            updatePins = m.get("updatePins") instanceof Number n ? n.intValue() : -1;
+            renameTarget = Episode.text(m, "renameTarget");
+            String stored = Episode.text(m, "module");
+            if (!stored.isEmpty()) module = stored;
+        }
+
         Change close(Closed why) {
             String outcome = outcome();
             closed = why;
@@ -287,6 +374,14 @@ public final class EpisodeInference {
                     lastAt,
                     runs,
                     actions);
+        }
+    }
+
+    private static <E extends Enum<E>> @Nullable E enumOf(Class<E> type, String name) {
+        try {
+            return Enum.valueOf(type, name);
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 

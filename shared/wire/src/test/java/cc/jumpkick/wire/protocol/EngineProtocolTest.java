@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.audit.AuditReport;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.plugin.build.InvocationPhase;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.runtime.TailArgs;
@@ -144,7 +145,7 @@ class EngineProtocolTest {
 
     @Test
     void drain_status_and_done_round_trip() {
-        String status = ProtoLifecycle.drainStatus(99, 3, "1.2.3");
+        String status = ProtoLifecycle.drainStatus(99, 3, "1.2.3", List.of());
         assertThat(EngineProtocol.typeOf(status)).isEqualTo(EngineProtocol.DRAIN_STATUS);
         assertThat(Jsonl.longValue(status, "pid", -1)).isEqualTo(99);
         assertThat(Jsonl.intValue(status, "plans", -1)).isEqualTo(3);
@@ -152,6 +153,16 @@ class EngineProtocolTest {
         String done = ProtoLifecycle.drainDone(99);
         assertThat(EngineProtocol.typeOf(done)).isEqualTo(EngineProtocol.DRAIN_DONE);
         assertThat(Jsonl.longValue(done, "pid", -1)).isEqualTo(99);
+    }
+
+    @Test
+    void drain_status_carries_each_run_it_finished_as_the_text_of_one_json_object() {
+        List<String> runs = List.of("{\"episode\":\"s.1\",\"failingTests\":[\"A#b]\"]}", "{\"episode\":\"s.2\"}");
+        String status = ProtoLifecycle.drainStatus(99, 0, "1.2.3", runs);
+
+        assertThat(DrainStatusFrame.decode(status).runs()).isEqualTo(runs);
+        assertThat(MiniJson.parse(runs.getFirst())).isInstanceOf(Map.class);
+        assertThat(ProtoLifecycle.drainStatus(99, 0, "1.2.3", List.of())).doesNotContain("runs");
     }
 
     @Test

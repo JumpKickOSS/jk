@@ -168,11 +168,12 @@ public final class ProtoLifecycle {
     }
 
     /**
-     * Predecessor → successor: in-flight job count while this engine drains.
-     * The successor is already bound; this is status, not a request for work.
+     * Predecessor → successor: in-flight job count while this engine drains, and the runs it
+     * finished since its last report, each the text of one JSON object. The successor is already bound; this is
+     * status, not a request for work.
      */
-    public static String drainStatus(long pid, int plans, String version) {
-        return new DrainStatusFrame(pid, plans, version).encode();
+    public static String drainStatus(long pid, int plans, String version, List<String> runs) {
+        return new DrainStatusFrame(pid, plans, version, runs).encode();
     }
 
     /** Predecessor → successor: no in-flight jobs remain; this process is exiting. */

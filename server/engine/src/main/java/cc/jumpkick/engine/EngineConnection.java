@@ -234,8 +234,7 @@ final class EngineConnection {
                 ctx.shutdown().handle(line, writer);
                 return true;
             }
-            case EngineProtocol.DRAIN_STATUS ->
-                ctx.drain().predecessorDraining(Jsonl.longValue(line, "pid", -1), Jsonl.intValue(line, "plans", 0));
+            case EngineProtocol.DRAIN_STATUS -> ctx.drain().predecessorReported(line);
             case EngineProtocol.DRAIN_DONE -> ctx.drain().predecessorFinished(Jsonl.longValue(line, "pid", -1));
             case EngineProtocol.CANCEL_REQUEST -> handleCancelRequest(line, writer);
             case EngineProtocol.JOB_CONTROL_REQUEST -> handleJobControlRequest(line, writer);

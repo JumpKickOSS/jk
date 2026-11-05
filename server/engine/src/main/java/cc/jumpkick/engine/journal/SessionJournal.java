@@ -22,7 +22,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * The session records beside the run records: {@code <builds>/sessions/<id>/session.json} holds one
  * session and its episodes, rewritten whole on every change, and {@code actions.jsonl} beside it
- * appends one line per action the session took. The shapes are the session log's; this class only
+ * appends one line per action the session took. An MCP session's {@code connection.json} holds the
+ * connection behind it, so a successor engine answers the same {@code Mcp-Session-Id}. The shapes are the session log's; this class only
  * stores and reads them as {@link MiniJson} objects. Pruned with the runs, under the same {@code
  * [history]} budgets ({@link BuildJournal#prune}).
  */
@@ -34,6 +35,8 @@ public final class SessionJournal {
     static final String SESSION_JSON = "session.json";
 
     static final String ACTIONS_JSONL = "actions.jsonl";
+
+    static final String CONNECTION_JSON = "connection.json";
 
     /** A session id is one path segment of letters, digits, dot, dash and underscore. */
     private static final Pattern ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,127}");
@@ -51,8 +54,9 @@ public final class SessionJournal {
 
     /**
      * Every ended session under {@code buildsRoot} as a prune entry, made by {@code entry} from its
-     * directory and when it last changed. A session still live or idle is never prunable; the engine
-     * ends every session a dead engine left open when it starts.
+     * directory and when it last changed, its connection with it. A session still live or idle is
+     * never prunable: the engine adopts every session a previous engine left open, and its idle
+     * sweep ends the ones nobody returns to.
      */
     static <T> List<T> prunable(Path buildsRoot, long nowMillis, BiFunction<Path, Long, T> entry) {
         List<T> out = new ArrayList<>();
@@ -76,6 +80,19 @@ public final class SessionJournal {
         Path dir = dirOf(id);
         OwnerOnlyFiles.createDirectories(dir);
         AtomicWrites.replace(dir.resolve(SESSION_JSON), MiniJson.write(doc) + "\n");
+    }
+
+    /** Replace session {@code id}'s {@code connection.json} with {@code doc}. */
+    public void writeConnection(String id, Map<String, Object> doc) throws IOException {
+        Path dir = dirOf(id);
+        OwnerOnlyFiles.createDirectories(dir);
+        AtomicWrites.replace(dir.resolve(CONNECTION_JSON), MiniJson.write(doc) + "\n");
+    }
+
+    /** Session {@code id}'s connection, or empty when it has none or it does not parse. */
+    public Optional<Map<String, Object>> connection(String id) {
+        if (!validId(id)) return Optional.empty();
+        return readJson(root.resolve(id).resolve(CONNECTION_JSON));
     }
 
     /** Append one action line to session {@code id}. */
@@ -158,7 +175,10 @@ public final class SessionJournal {
     }
 
     private static Optional<Map<String, Object>> readDoc(Path dir) {
-        Path file = dir.resolve(SESSION_JSON);
+        return readJson(dir.resolve(SESSION_JSON));
+    }
+
+    private static Optional<Map<String, Object>> readJson(Path file) {
         if (!Files.isRegularFile(file)) return Optional.empty();
         try {
             return parse(Files.readString(file, StandardCharsets.UTF_8)) instanceof Map<?, ?> m

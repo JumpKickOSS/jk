@@ -50,8 +50,9 @@ import org.jspecify.annotations.Nullable;
  * notification on it is written to stdout as it arrives, and the call's own response is the
  * stream's last event. The client's answer is a response line on stdin, POSTed back on the same
  * session. The bridge sends {@code MCP-Protocol-Version} with the revision {@code initialize}
- * negotiated; when the engine hands back a new session (it restarted), the bridge repeats the
- * client's {@code initialize} on it, so the new session knows what the client declared.
+ * negotiated. An engine that replaced the one the session opened on answers the same session; when
+ * the engine hands back a new one (it found the session nowhere), the bridge repeats the client's
+ * {@code initialize} on it, so the new session knows what the client declared.
  */
 public final class McpBridge {
 
