@@ -152,8 +152,8 @@ One machine can run several engines: one per state directory and store pair unde
 (`JK_STORE_DIR` gives a second one), a draining predecessor, and engines of **other homes** — a
 scratch `JK_HOME`, a test suite's home, a build run from another checkout. When there is more
 than one, `jk engine status` lists them all, `*` marking the one this directory's commands reach,
-and marks each engine of another home with that home (`home unknown` when its command line names
-none):
+and marks each engine of another home with that home (`state <dir>` when its command line names
+only its state directory, a custom `JK_STATE_DIR`; `home unknown` when it names neither):
 
 ```
  Engines (3):
@@ -162,8 +162,8 @@ none):
    untracked-52390  pid 52390  unresponsive (alive, not answering)   (other home: home unknown)
 ```
 
-`-O jsonl` carries the same marks on each `engines` entry: `otherHome`, and `home` for an engine
-of another home (`null` when unknown).
+`-O jsonl` carries the same marks on each `engines` entry: `otherHome`, and `home` and `stateDir`
+for an engine of another home (`null` when unknown).
 
 | Command | Stops |
 |---------|-------|

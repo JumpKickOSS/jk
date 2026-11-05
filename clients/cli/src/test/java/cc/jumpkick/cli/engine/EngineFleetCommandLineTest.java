@@ -52,6 +52,33 @@ class EngineFleetCommandLineTest {
         assertThat(EngineFleet.belongsToThisHome(production, home, state)).isFalse();
     }
 
+    @Test
+    void a_home_does_not_claim_an_engine_of_a_home_whose_name_it_prefixes(@TempDir Path tmp) {
+        Path home = tmp.resolve(".jk").toAbsolutePath().normalize();
+        Path state = home.resolve("state");
+        Path sibling = tmp.resolve(".jk-other").toAbsolutePath().normalize();
+        String main = " cc.jumpkick.engine.EngineMain";
+
+        assertThat(EngineFleet.belongsToThisHome(
+                        "java -cp " + sibling.resolve("lib/jk-engine/e.jar") + main, home, state))
+                .as("a sibling home's jar")
+                .isFalse();
+        assertThat(EngineFleet.belongsToThisHome(
+                        "java -XX:HeapDumpPath=" + sibling.resolve("state/engine") + " -cp classes" + main,
+                        home,
+                        state))
+                .as("a sibling home's state dir")
+                .isFalse();
+        assertThat(EngineFleet.belongsToThisHome(
+                        "java -XX:HeapDumpPath=" + state.resolve("engine") + " -cp classes" + main, home, state))
+                .as("this home's state dir")
+                .isTrue();
+        assertThat(EngineFleet.belongsToThisHome(
+                        "java -cp classes:" + home.resolve("lib/extra.jar") + main, home, state))
+                .as("a classpath entry under this home")
+                .isTrue();
+    }
+
     /** An engine under any JK_STATE_DIR is found by its heap-dump path, which is its own directory. */
     @Test
     void state_dir_is_parsed_from_the_heap_dump_path_on_the_command_line(@TempDir Path tmp) {
