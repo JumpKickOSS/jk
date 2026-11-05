@@ -596,6 +596,7 @@ public final class EngineServer implements AutoCloseable {
                         () -> draining,
                         () -> drainDeadlineMillis,
                         drain,
+                        this::primary,
                         sessionLog::stopWriting,
                         this::handleShutdown,
                         this::noteIdleDropped),

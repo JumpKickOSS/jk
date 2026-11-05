@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.journal.SessionJournal;
+import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.BuildRequest;
@@ -15,13 +18,15 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
- * The four refusal rules of one accepted connection, over a real socket: a newer protocol is refused
- * and closed; garbage and an unknown type are refused and the loop continues; a guarded verb meets
- * the lock's floor before it meets the registry. Every refusal is typed — never silence.
+ * The refusal rules of one accepted connection, over a real socket: a newer protocol is refused and
+ * closed; garbage and an unknown type are refused and the loop continues; a guarded verb meets the
+ * lock's floor before it meets the registry; the primary refuses {@code stop-sessions}. Every
+ * refusal is typed — never silence.
  */
 @Tag("integration")
 class EngineConnectionTest extends EngineServerHarness {
@@ -135,6 +140,62 @@ class EngineConnectionTest extends EngineServerHarness {
             assertThat(EngineProtocol.typeOf(reply)).isEqualTo(EngineProtocol.ERROR);
             assertThat(Jsonl.str(reply, "code")).isEqualTo(EngineProtocol.ERR_PROTOCOL);
             assertThat(EngineProtocol.typeOf(c.send(ProtoLifecycle.ping()))).isEqualTo(EngineProtocol.PONG);
+        }
+    }
+
+    /** A stray {@code stop-sessions} to the engine the endpoint names is refused, and its sessions keep being written. */
+    @Test
+    void the_primary_refuses_stop_sessions_and_keeps_writing_sessions() throws Exception {
+        EnginePaths.Paths p = paths(shortTempDir());
+        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
+        runInBackground(server);
+        try {
+            waitUntil(Duration.ofSeconds(10), () -> Files.exists(EnginePaths.endpoint(p)));
+            SessionLog log = server.sessionsForTests();
+            String label = "client " + Long.toHexString(System.nanoTime());
+            String dir = p.dir().toString();
+            String id = log.open("mcp", "client", label, dir);
+            try (Client c = new Client(EnginePaths.activeSocket(p))) {
+                String reply = c.send(ProtoLifecycle.stopSessions());
+                assertThat(EngineProtocol.typeOf(reply)).isEqualTo(EngineProtocol.ERROR);
+                assertThat(Jsonl.str(reply, "code")).isEqualTo(EngineProtocol.ERR_REQUEST_FAILED);
+                assertThat(Jsonl.str(reply, "message"))
+                        .contains("the endpoint still names this engine")
+                        .contains("primary");
+                assertThat(EngineProtocol.typeOf(c.send(ProtoLifecycle.ping()))).isEqualTo(EngineProtocol.PONG);
+            }
+            log.goal("mcp", label, dir, "Fix the weekend uplift");
+            Map<String, Object> stored = Objects.requireNonNull(
+                    SessionJournal.under(BuildJournal.current().buildsRoot())
+                            .read(id)
+                            .orElse(null));
+            assertThat((List<?>) stored.get("episodes"))
+                    .as("the goal after the refusal was written")
+                    .singleElement()
+                    .satisfies(e -> assertThat(((Map<?, ?>) e).get("title")).isEqualTo("Fix the weekend uplift"));
+        } finally {
+            server.close();
+        }
+    }
+
+    /** An engine the endpoint no longer names stops writing sessions and says so. */
+    @Test
+    void a_displaced_engine_stops_writing_sessions_and_acknowledges() throws Exception {
+        EnginePaths.Paths p = paths(shortTempDir());
+        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
+        runInBackground(server);
+        try {
+            waitUntil(Duration.ofSeconds(10), () -> Files.exists(EnginePaths.endpoint(p)));
+            Path own = EnginePaths.activeSocket(p);
+            Files.writeString(EnginePaths.endpoint(p), "successor.gen9.sock");
+            try (Client c = new Client(own)) {
+                String reply = c.send(ProtoLifecycle.stopSessions());
+                assertThat(EngineProtocol.typeOf(reply)).isEqualTo(EngineProtocol.SESSIONS_STOPPED);
+                assertThat(Jsonl.longValue(reply, "pid", -1))
+                        .isEqualTo(ProcessHandle.current().pid());
+            }
+        } finally {
+            server.close();
         }
     }
 

@@ -287,6 +287,9 @@ final class EngineElection {
                         + " stopped writing sessions; adopting them");
                 return true;
             }
+            if (ack != null && EngineProtocol.ERROR.equals(EngineProtocol.typeOf(ack))) {
+                log.accept("jk engine: engine at " + previousActive.getFileName() + " " + Jsonl.str(ack, "message"));
+            }
         } catch (IOException e) {
             // Nothing answered in time: the endpoint check stops a predecessor that comes back.
         }

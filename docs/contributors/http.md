@@ -85,7 +85,9 @@ Only the primary engine writes session records, and the hand-off between two eng
 handshake. Once the successor has taken the endpoint and asked its predecessor to yield, it sends
 `stop-sessions` on the predecessor's generation socket, the one the drain uses. The predecessor closes
 its write gate (`SessionLog.stopWriting`), which returns once any session write it had in flight has
-landed, and answers `sessions-stopped`. Only then does the successor read the stored sessions and
+landed, and answers `sessions-stopped`. Only a displaced engine honours `stop-sessions`: one the
+endpoint still names is the primary, and refuses it with an `error` that says so and keeps writing,
+so a stray request cannot silence the engine that owns the sessions. Only then does the successor read the stored sessions and
 adopt them (`SessionLog.adopt`, which every session entry point runs first), so it sees the
 predecessor's last write and never writes over it. A predecessor that does not answer within two
 seconds (dead, wedged, or an engine that predates the message) is treated as stopped, and the
