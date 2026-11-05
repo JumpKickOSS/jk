@@ -11,7 +11,7 @@ import java.util.function.Predicate;
  * Minimal viewport that applies the CSI the live plan region emits: cursor-up, erase, wrap, and
  * scroll. Byte-stream assertions cannot see a header that scrolled into scrollback; this can.
  */
-final class LiveRegionScreen {
+public final class LiveRegionScreen {
 
     private final int rows;
     private final int cols;
@@ -21,7 +21,7 @@ final class LiveRegionScreen {
     private int col;
     private boolean pendingWrap;
 
-    LiveRegionScreen(int rows, int cols) {
+    public LiveRegionScreen(int rows, int cols) {
         if (rows < 1 || cols < 1) throw new IllegalArgumentException("rows and cols must be >= 1");
         this.rows = rows;
         this.cols = cols;
@@ -35,7 +35,7 @@ final class LiveRegionScreen {
         return s;
     }
 
-    void write(String s) {
+    public void write(String s) {
         if (s == null || s.isEmpty()) return;
         for (int i = 0; i < s.length(); ) {
             char ch = s.charAt(i);
@@ -66,7 +66,7 @@ final class LiveRegionScreen {
         }
     }
 
-    String row(int r) {
+    public String row(int r) {
         if (r < 0 || r >= rows) return "";
         StringBuilder sb = new StringBuilder(cols);
         for (int c = 0; c < cols; c++) {
@@ -77,7 +77,7 @@ final class LiveRegionScreen {
         return sb.toString().stripTrailing();
     }
 
-    List<String> viewport() {
+    public List<String> viewport() {
         List<String> out = new ArrayList<>(rows);
         for (int r = 0; r < rows; r++) out.add(row(r));
         return out;
