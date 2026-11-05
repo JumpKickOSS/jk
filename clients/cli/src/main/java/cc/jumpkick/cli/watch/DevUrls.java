@@ -52,7 +52,15 @@ final class DevUrls {
             Map<String, String> env = new LinkedHashMap<>(forApp(s.name(), exports));
             env.putAll(s.env());
             out.add(new ExecPlan.Sidecar(
-                    s.name(), s.command(), s.cwd(), env, s.dotEnv(), s.probe(), s.frontDoor(), s.restart()));
+                    s.name(),
+                    s.command(),
+                    s.cwd(),
+                    env,
+                    s.dotEnv(),
+                    s.probe(),
+                    s.frontDoor(),
+                    s.runBefore(),
+                    s.restart()));
         }
         return out;
     }

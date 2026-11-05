@@ -16,7 +16,8 @@ import org.jspecify.annotations.Nullable;
  * environment. {@code ready} is the sidecar's readiness probe — {@code ready} /
  * {@code ready-pattern} / {@code ready-timeout}, the same {@link DevReady} the application's own
  * {@code [dev]} probe is — and {@code null} means "ready once it has stayed alive for a second".
- * {@code frontDoor} names the URL {@code jk dev} prints once everything is ready. {@code declared}
+ * {@code frontDoor} names the URL {@code jk dev} prints once everything is ready; {@code runBefore}
+ * holds the app back until this sidecar's probe passes. {@code declared}
  * holds the keys the manifest wrote, so an entry can be laid over the sidecar {@code jk dev} infers
  * for a node module of the same name key by key; only such an entry may leave out {@code command}.
  */
@@ -27,6 +28,7 @@ public record Sidecar(
         Map<String, String> env,
         @Nullable DevReady ready,
         boolean frontDoor,
+        boolean runBefore,
         Restart restart,
         Set<String> declared) {
 

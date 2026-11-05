@@ -21,7 +21,7 @@ class JkBuildParserDevTest {
 
                 [dev.sidecars]
                 web = { command = "npm run dev", cwd = "../web", ready = "http://localhost:5173", front-door = true }
-                docs = { command = ["mkdocs", "serve", "-a", "127.0.0.1:8001"], env = { PORT = "8001" }, restart = "on-exit", ready-pattern = "Serving on", ready-timeout = "2m" }
+                docs = { command = ["mkdocs", "serve", "-a", "127.0.0.1:8001"], env = { PORT = "8001" }, restart = "on-exit", ready-pattern = "Serving on", ready-timeout = "2m", run-before = true }
                 worker = { command = "npm run worker" }
                 """);
         List<Sidecar> sidecars = b.build().devSidecars();
@@ -36,6 +36,7 @@ class JkBuildParserDevTest {
         assertThat(webProbe.pattern()).isNull();
         assertThat(webProbe.timeoutMillis()).isEqualTo(DevReady.DEFAULT_TIMEOUT_MILLIS);
         assertThat(web.frontDoor()).isTrue();
+        assertThat(web.runBefore()).as("run-before defaults to false").isFalse();
         assertThat(web.restart()).isEqualTo(Sidecar.Restart.NEVER);
 
         Sidecar docs = sidecars.get(1);
@@ -46,6 +47,7 @@ class JkBuildParserDevTest {
         assertThat(docsProbe.pattern()).isEqualTo("Serving on");
         assertThat(docsProbe.timeoutMillis()).isEqualTo(120_000);
         assertThat(docs.restart()).isEqualTo(Sidecar.Restart.ON_EXIT);
+        assertThat(docs.runBefore()).isTrue();
 
         assertThat(sidecars.get(2).ready())
                 .as("a sidecar with neither ready nor ready-pattern has no probe")
@@ -209,6 +211,12 @@ class JkBuildParserDevTest {
                         web = { command = "npm run dev", restart = "always" }
                         """))
                 .hasMessageContaining("never or on-exit");
+        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+
+                        [dev.sidecars]
+                        db = { command = "docker compose up db", run-before = "yes" }
+                        """))
+                .hasMessageContaining("[dev.sidecars.db].run-before must be true or false");
     }
 
     @Test

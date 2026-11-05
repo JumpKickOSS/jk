@@ -27,7 +27,7 @@ class ExecPlansSidecarsTest {
                 modules = ["app"]
 
                 [dev.sidecars]
-                docs = { command = "mkdocs serve", cwd = "docs" }
+                docs = { command = "mkdocs serve", cwd = "docs", run-before = true }
                 web = { command = "echo root-wins-not" }
                 """);
         Files.writeString(root.resolve(".env"), "FROM_DOTENV=file\nSHADOWED=file\n");
@@ -60,6 +60,7 @@ class ExecPlansSidecarsTest {
         assertThat(docs.cwd())
                 .isEqualTo(root.resolve("docs").toAbsolutePath().normalize().toString());
         assertThat(docs.command()).containsExactly("mkdocs", "serve");
+        assertThat(docs.runBefore()).isTrue();
         // A root entry gets the root's .env; the client sets it beneath the real environment
         assertThat(docs.dotEnv()).containsEntry("FROM_DOTENV", "file").doesNotContainKey("MODULE_ONLY");
         ExecPlan.Sidecar web = dev.sidecars().get(1);
@@ -78,6 +79,7 @@ class ExecPlansSidecarsTest {
                 .containsEntry("SHADOWED", "file");
         assertThat(web.probe().ready()).isEqualTo("http://localhost:5173");
         assertThat(web.frontDoor()).isTrue();
+        assertThat(web.runBefore()).isFalse();
         assertThat(web.restart()).isEqualTo(Sidecar.Restart.NEVER);
 
         ExecPlan run =

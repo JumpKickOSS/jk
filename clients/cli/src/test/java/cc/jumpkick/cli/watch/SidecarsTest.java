@@ -37,6 +37,11 @@ class SidecarsTest {
 
     private static ExecPlan.Sidecar sh(
             String name, String script, String readyPattern, Sidecar.Restart restart, Path cwd) {
+        return sh(name, script, readyPattern, restart, cwd, false);
+    }
+
+    private static ExecPlan.Sidecar sh(
+            String name, String script, String readyPattern, Sidecar.Restart restart, Path cwd, boolean runBefore) {
         return new ExecPlan.Sidecar(
                 name,
                 List.of("sh", "-c", script),
@@ -45,6 +50,7 @@ class SidecarsTest {
                 Map.of("GREETING", "file", "FROM_DOTENV", "file", "HOME", "file"),
                 new ExecPlan.Probe("", readyPattern, 5_000L),
                 false,
+                runBefore,
                 restart);
     }
 
@@ -91,6 +97,25 @@ class SidecarsTest {
         long deadline = System.nanoTime() + 10_000_000_000L;
         while (lines.stream().noneMatch(match) && System.nanoTime() < deadline) Thread.sleep(20);
         assertThat(lines).anyMatch(match);
+    }
+
+    @Test
+    void run_before_waits_for_those_sidecars_alone_and_each_is_ready_once(@TempDir Path dir) throws Exception {
+        List<String> calls = new CopyOnWriteArrayList<>();
+        ExecPlan.Sidecar db = sh("db", "echo db up; sleep 30", "db up", Sidecar.Restart.NEVER, dir, true);
+        ExecPlan.Sidecar web = sh(
+                "web",
+                "while [ ! -f go ]; do sleep 0.05; done; echo web up; sleep 30",
+                "web up",
+                Sidecar.Restart.NEVER,
+                dir);
+        try (Sidecars sidecars = Sidecars.start(List.of(web, db), recording(calls), Clock.SYSTEM, NO_WAIT)) {
+            assertThat(sidecars.awaitRunBefore()).isEmpty();
+            assertThat(calls).contains("ready db").doesNotContain("ready web");
+            Files.createFile(dir.resolve("go"));
+            assertThat(sidecars.awaitReady()).isEmpty();
+            assertThat(calls.stream().filter(c -> c.startsWith("ready "))).containsExactly("ready db", "ready web");
+        }
     }
 
     @Test
@@ -165,6 +190,7 @@ class SidecarsTest {
                     Map.of(),
                     new ExecPlan.Probe(url, "", 5_000L),
                     true,
+                    false,
                     Sidecar.Restart.NEVER);
             try (Sidecars sidecars = start(List.of(spec), line -> {})) {
                 assertThat(sidecars.awaitReady()).isEmpty();
@@ -208,6 +234,7 @@ class SidecarsTest {
                     Map.of(),
                     new ExecPlan.Probe("http://web.example.test:8080/health", "", 5_000L),
                     true,
+                    false,
                     Sidecar.Restart.NEVER);
             try (Sidecars sidecars = start(List.of(spec), line -> {})) {
                 assertThat(SessionContext.where(request, sidecars::awaitReady)).isEmpty();
@@ -228,6 +255,7 @@ class SidecarsTest {
                 Map.of(),
                 Map.of(),
                 new ExecPlan.Probe("", "never printed", 300L),
+                false,
                 false,
                 Sidecar.Restart.NEVER);
         try (Sidecars sidecars = start(List.of(spec), line -> {})) {

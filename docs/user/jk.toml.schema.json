@@ -405,6 +405,7 @@
               "ready-pattern": { "type": "string", "description": "Regex matched against the sidecar's stdout and stderr lines; the alternative to `ready`. Default: none." },
               "ready-timeout": { "description": "How long a probe may take: \"60s\", \"2m\", \"500ms\", or a bare number of seconds. A probe that times out fails the `jk dev` session. Default \"60s\".", "oneOf": [{ "type": "string" }, { "type": "integer" }] },
               "front-door": { "type": "boolean", "description": "Print this sidecar's `ready` URL in the one `ready ·` line once the whole session is ready. Default false." },
+              "run-before": { "type": "boolean", "description": "Start the app only once this sidecar's probe has passed, for a database or broker the app needs at startup. Sidecars without it start alongside the app. Default false." },
               "restart": { "type": "string", "enum": ["never", "on-exit"], "description": "What to do when the sidecar exits on its own: `never` reports the exit once and the session continues; `on-exit` restarts with backoff, up to five failures in a row. Default \"never\"." }
             },
             "required": ["command"],

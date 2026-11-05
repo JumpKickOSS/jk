@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -27,7 +28,7 @@ import org.jspecify.annotations.Nullable;
  * torn down with the session — together with the app and with everything it spawned, in one pass. A sidecar that exits on its own is reported once, or
  * restarted with backoff when its manifest says {@code restart = "on-exit"}; five failures in a
  * row is the limit, and a run that passed its probe or stayed up {@link #STABLE_RUN_MILLIS} starts
- * the count over. {@link #awaitReady} runs the probes ({@link ReadyProbe}: an HTTP URL polled for
+ * the count over. {@link #awaitRunBefore} and {@link #awaitReady} run the probes ({@link ReadyProbe}: an HTTP URL polled for
  * 2xx/3xx, a regex over the output, or a second of staying alive); a probe that times out is a
  * failure of the session, not a warning.
  */
@@ -103,11 +104,24 @@ public final class Sidecars implements AutoCloseable {
     }
 
     /**
-     * Wait for every sidecar's probe. Returns the first failure — a timeout or an exit before
-     * readiness — as a printable sentence, or empty when all are ready.
+     * Wait for the probes of the {@code run-before} sidecars, the ones the app may not start
+     * without. Returns the first failure as {@link #awaitReady} does.
+     */
+    public Optional<String> awaitRunBefore() throws InterruptedException {
+        return await(ExecPlan.Sidecar::runBefore);
+    }
+
+    /**
+     * Wait for every sidecar's probe not yet passed. Returns the first failure — a timeout or an
+     * exit before readiness — as a printable sentence, or empty when all are ready.
      */
     public Optional<String> awaitReady() throws InterruptedException {
+        return await(spec -> true);
+    }
+
+    private Optional<String> await(Predicate<ExecPlan.Sidecar> which) throws InterruptedException {
         for (Running r : snapshot()) {
+            if (r.ready || !which.test(r.spec)) continue;
             String failure = r.awaitReady();
             if (failure != null) return Optional.of(failure);
             listener.ready(r.spec.name(), r.spec.probe().ready(), r.spec.frontDoor());

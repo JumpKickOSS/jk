@@ -179,9 +179,19 @@ public final class AppWatchLoop {
                 Clock.SYSTEM,
                 Sidecars.Sleeper.REAL);
         App app;
-        try {
+        // The run-before sidecars hold the app back; Ctrl-C while they come up stops them alone.
+        try (GlobalCancel.Registration beforeApp = GlobalCancel.onInterrupt(() -> {
+            sidecars.close();
+            finish(session, Exit.INTERRUPTED, false);
+        })) {
+            Optional<String> notBefore = sidecars.awaitRunBefore();
+            if (notBefore.isPresent()) {
+                sidecars.close();
+                CliOutput.err(logPrefix + ": " + notBefore.get());
+                return Exit.SOFTWARE;
+            }
             app = startApp(plan, appArgs);
-        } catch (IOException | RuntimeException e) {
+        } catch (IOException | RuntimeException | InterruptedException e) {
             sidecars.close();
             throw e;
         }

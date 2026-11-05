@@ -40,7 +40,7 @@ class DevSidecarsInferenceTest {
                 web = { workspace = true }
 
                 [dev.sidecars]
-                web = { ready-timeout = "2m", env = { MODE = "dev" } }
+                web = { ready-timeout = "2m", env = { MODE = "dev" }, run-before = true }
                 """);
         web(ws.resolve("web"), node);
         write(ws.resolve("web/.env"), "API_URL=http://localhost:8080\n");
@@ -66,6 +66,7 @@ class DevSidecarsInferenceTest {
         assertThat(web.frontDoor())
                 .as("the one inferred server, with no other front door")
                 .isTrue();
+        assertThat(web.runBefore()).as("written").isTrue();
     }
 
     @Test
