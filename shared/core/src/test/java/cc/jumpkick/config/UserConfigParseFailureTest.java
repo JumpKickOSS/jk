@@ -116,4 +116,23 @@ class UserConfigParseFailureTest {
                 .containsExactly("corp");
         assertThat(GlobalConfig.userConfigProblem(file)).isEmpty();
     }
+
+    @Test
+    void a_broken_file_does_not_read_as_an_unset_credentials_store(@TempDir Path dir) throws IOException {
+        Path file = Files.writeString(dir.resolve("config.toml"), """
+                [credentials]
+                store = "keychain"
+
+                [mirrors
+                """);
+
+        assertThatThrownBy(() -> GlobalConfig.credentialsStore(file)).isInstanceOf(UserConfigParseException.class);
+
+        GlobalConfig.clearCache();
+        Files.writeString(file, """
+                [credentials]
+                store = "keychain"
+                """);
+        assertThat(GlobalConfig.credentialsStore(file)).contains("keychain");
+    }
 }

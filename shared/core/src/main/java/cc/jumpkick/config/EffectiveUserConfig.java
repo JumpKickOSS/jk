@@ -70,7 +70,7 @@ public final class EffectiveUserConfig {
         addHistory(out, userConfig, env);
         addM2(out, userConfig, env);
         addInstall(out, userConfig, env);
-        addCredentials(out, userConfig, env);
+        addCredentials(out, problem.isPresent() ? null : userConfig, env);
         addTemplates(out, problem.isPresent() ? null : userConfig);
         return List.copyOf(out);
     }
@@ -185,12 +185,15 @@ public final class EffectiveUserConfig {
                 e.destination().spelling());
     }
 
-    /** {@code [credentials] store}, under {@code JK_CREDENTIALS_STORE}, as spelled; validated where a login reads it. */
-    private static void addCredentials(List<Row> out, Path file, Function<String, @Nullable String> env) {
+    /**
+     * {@code [credentials] store}, under {@code JK_CREDENTIALS_STORE}, as spelled; validated where a
+     * login reads it. {@code file} is null when it does not parse, and the row shows the default.
+     */
+    private static void addCredentials(List<Row> out, @Nullable Path file, Function<String, @Nullable String> env) {
         String fromEnv = env.apply("JK_CREDENTIALS_STORE");
         String store = fromEnv != null && !fromEnv.isBlank()
                 ? fromEnv.strip()
-                : GlobalConfig.credentialsStore(file).orElse("auto");
+                : (file == null ? Optional.<String>empty() : GlobalConfig.credentialsStore(file)).orElse("auto");
         add(out, "credentials.store", "auto", store);
     }
 
