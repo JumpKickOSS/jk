@@ -264,7 +264,9 @@ The output lane does the same while a module has packaged nothing (a build scope
 module not built yet), and checks a POM's dependencies against the packaged set only once every
 module has packaged. Such a run still passes, and its report says so in one line —
 `W guard baseline not tightened: 51 modules unseen by this run (not built yet); …` — so a green
-scoped `jk test` is not read as a full guard pass. A freeze writes the named rule's new entries and nothing else: stale entries, other
+scoped `jk test` is not read as a full guard pass. The number has one meaning whichever lane held
+back: a module counts as unseen while a main source file of it has no class, or while it has
+packaged nothing (no jar, POM or native binary). A freeze writes the named rule's new entries and nothing else: stale entries, other
 rules and other modules' slices wait for the engine's own tightening, so the diff is the sites you
 accepted. A
 `--retire` freeze drops the entries of a rule that no longer exists. A rule that examines under

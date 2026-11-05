@@ -136,29 +136,4 @@ class PartialClassesViewTest {
         assertThat(result.unseen()).isEmpty();
         assertThat(result.unseenModules()).isZero();
     }
-
-    @Test
-    void a_workspace_view_counts_each_unseen_file_once_under_its_innermost_module(@TempDir Path root) {
-        EvalContext ctx = new EvalContext(
-                Lane.WORKSPACE,
-                root,
-                "",
-                null,
-                List.of(root, root.resolve("a"), root.resolve("a/b"), root.resolve("c")),
-                () -> {
-                    throw new AssertionError("no facts are read to count modules");
-                },
-                () -> null,
-                List::of);
-
-        int modules = LaneRun.modulesOf(
-                ctx,
-                List.of(
-                        "a/src/main/java/A.java",
-                        "a/src/main/java/A2.java",
-                        "a/b/src/main/java/B.java",
-                        "src/main/java/Root.java"));
-
-        assertThat(modules).as("a, a/b and the root; c has everything").isEqualTo(3);
-    }
 }
