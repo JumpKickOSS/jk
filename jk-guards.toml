@@ -766,6 +766,10 @@ why    = "a CLI edge to an engine-side module puts engine code in the native ima
 in     = "clients/cli -> plugins/*"
 reason = "the CLI embeds the bundled worker plugins' jar digests: build-order inputs, never classes on its classpath"
 
+[[guards.cli-runtime-modules.allow]]
+in     = "clients/cli -> server/guard/packs/*"
+reason = "the rule packs the template catalog declares are test-plugin-jars staged into the test sandbox store for the scaffolds' locks: build-order inputs, never classes on its classpath"
+
 # G75. The ship layout is one directory name, spelled by the installer and by the dist script; a
 # rename in one is silent in the other and pairs a fresh client with the released engine.
 [guards.ship-layout-installer-jk]

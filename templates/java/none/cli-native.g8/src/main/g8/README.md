@@ -1,6 +1,6 @@
 # $name$
 
-Interactive Java CLI built on [JLine]. Scaffolded from the jk `java-cli-native` template.
+Interactive Java CLI built on [JLine]. Scaffolded from the jk `java/none/cli-native` template.
 
 ```bash
 jk build          # JVM build — no GraalVM required
