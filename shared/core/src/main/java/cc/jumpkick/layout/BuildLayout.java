@@ -282,7 +282,12 @@ public final class BuildLayout {
      * guard tests are run by the guard lanes and reach no publication.
      */
     public Path guardClassesDir() {
-        return moduleTargetDir().resolve("guard").resolve("classes");
+        return guardClassesDir(moduleRoot);
+    }
+
+    /** {@link #guardClassesDir()} for a module known by its root alone; the directory needs no manifest. */
+    public static Path guardClassesDir(Path moduleRoot) {
+        return moduleTargetDir(moduleRoot).resolve("guard").resolve("classes");
     }
 
     /**

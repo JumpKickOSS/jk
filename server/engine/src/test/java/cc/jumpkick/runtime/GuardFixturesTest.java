@@ -7,12 +7,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.guard.eval.FixtureCheck;
+import cc.jumpkick.guard.eval.GuardSuites;
+import cc.jumpkick.guard.extract.FactsIndexing;
+import cc.jumpkick.layout.BuildLayout;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
+import javax.tools.ToolProvider;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -272,5 +276,52 @@ class GuardFixturesTest {
         assertThat(GuardFixtures.digest(root))
                 .as("no target dir anywhere: the suite's fixture is read from its source")
                 .isNotEqualTo(before);
+    }
+
+    /** A rule edited and its suite recompiled: the guards read are the ones the classes declare now. */
+    @Test
+    void an_index_older_than_the_compiled_suite_is_rebuilt_before_its_guards_are_read(
+            @TempDir Path root, @TempDir Path src) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njava = 25\n");
+        Path classes = BuildLayout.guardClassesDir(root);
+        compileSuite(src, classes, "first");
+        FactsIndexing.ensure(classes, FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root), "guard"));
+        assertThat(GuardSuites.declaredAcrossWorkspace(root)).containsOnlyKeys("first");
+
+        compileSuite(src, classes, "second");
+        GuardFixtures.indexSuites(root);
+
+        assertThat(GuardSuites.declaredAcrossWorkspace(root)).containsOnlyKeys("second");
+    }
+
+    private static void compileSuite(Path src, Path out, String id) throws IOException {
+        Path file = Files.createDirectories(src.resolve("fx")).resolve("Rules.java");
+        Files.writeString(file, """
+                package fx;
+
+                import cc.jumpkick.guard.api.Guard;
+                import cc.jumpkick.guard.api.GuardSuite;
+                import cc.jumpkick.guard.api.Violations;
+
+                @GuardSuite
+                final class Rules {
+                    @Guard(id = "%s", why = "a rule the suite declares")
+                    void rule(Violations v) {
+                        v.population(1);
+                    }
+                }
+                """.formatted(id));
+        Files.createDirectories(out);
+        int rc = ToolProvider.getSystemJavaCompiler()
+                .run(
+                        null,
+                        null,
+                        null,
+                        "-d",
+                        out.toString(),
+                        "-cp",
+                        System.getProperty("java.class.path"),
+                        file.toString());
+        assertThat(rc).as("javac").isZero();
     }
 }

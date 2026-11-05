@@ -14,7 +14,7 @@ jk guard explain --schema forbid  # a kind's keys and one example
 jk guard freeze <id> -W "…" # accept a rule's current sites into the baseline
 jk guard freeze <id> -U -W "…" # accept a rule's smaller population as its floor
 jk guard hooks install            # commit-msg and pre-commit hooks
-jk guard test                     # every fixture bites; judged from the compiled guard suite
+jk guard test                     # every fixture bites; the guard suites compile first
 jk guard -O sarif           # print target/jk-guards.sarif
 ```
 
@@ -313,10 +313,11 @@ engine under `server/guard/fixtures/` — holding `Bad*.java`, which must produc
 `Ok*.java`, which must not; the engine compiles them once per owning module and judges them as that
 module's lane would. Stub types a fixture needs (a framework class by its real name) sit
 beside them and are visible to the rule. A fixture that does not bite is red. `jk guard test` runs
-the proofs on their own, discovering guard tests from the compiled suite
-(`target/incremental/guard-guard.idx`, written when `jk guard` or a `--guard` build compiles
-`src/guard`); on a checkout that has compiled none it names the module and that command instead
-of reporting no fixtures.
+the proofs without the lanes: it first runs `jk guard`'s build with the lanes off, so every
+`src/guard` suite is compiled from its current source, then discovers guard tests from the
+compiled suite (`target/incremental/guard-guard.idx`, brought up to date with the classes) and
+judges each fixture against it. An edited rule is proven as it is now, never as it was last
+compiled.
 
 A guard test that reads several files at once — a workflow, a manifest, a pin — holds `Bad*` and
 `Ok*` *directories* instead: each is a tree the guard runs over as if it were the checkout root,
