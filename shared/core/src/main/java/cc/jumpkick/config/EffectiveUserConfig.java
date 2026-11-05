@@ -114,6 +114,11 @@ public final class EffectiveUserConfig {
         add(out, "mcp.enabled", d.mcp().enabled(), e.mcp().enabled());
         add(out, "mcp.max-event-streams", d.mcp().maxEventStreams(), e.mcp().maxEventStreams());
         add(out, "mcp.max-sessions", d.mcp().maxSessions(), e.mcp().maxSessions());
+        add(
+                out,
+                "mcp.session-expiry",
+                JkHttpConfig.spell(d.mcp().sessionExpiry()),
+                JkHttpConfig.spell(e.mcp().sessionExpiry()));
         add(out, "mcp.tools", d.mcp().tools(), e.mcp().tools());
     }
 

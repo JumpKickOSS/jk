@@ -4,6 +4,7 @@ package cc.jumpkick.engine.http;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.http.mcp.McpConnection;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.SessionJournal;
@@ -24,7 +25,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
+import org.assertj.core.groups.Tuple;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -177,6 +180,41 @@ class McpConnectionReplacementTest {
     }
 
     @Test
+    void a_client_back_after_its_session_expired_is_a_404_then_a_new_session() {
+        long expiry = JkHttpConfig.Mcp.DEFAULT_SESSION_EXPIRY.toMillis();
+        AtomicLong now = new AtomicLong(System.currentTimeMillis());
+        SessionLog log = new SessionLog(
+                new SessionJournal(state.resolve("sessions")),
+                now::get,
+                EpisodeInference.DEFAULT_IDLE_GAP_MILLIS,
+                expiry);
+        McpHandler handler = handler(log);
+        String id = requireNonNull(
+                handler.handle(HELLO, null, project.toString(), null, null).openedSessionId());
+        run(handler, id);
+        String expired = (String) log.sessions(10).getFirst().get("id");
+
+        now.addAndGet(expiry + 60_000);
+        log.sweep();
+        assertThat(handler.connection(id))
+                .as("forgotten by the connection table")
+                .isNull();
+        McpHandler.Reply back = handler.handle(CALL, id, project.toString(), "2025-06-18", null);
+        assertThat(back.status()).isEqualTo(404);
+        assertThat(back.body()).contains("-32001").contains("send initialize");
+
+        String fresh = requireNonNull(
+                handler.handle(HELLO, null, project.toString(), null, null).openedSessionId());
+        assertThat(fresh).isNotEqualTo(id);
+        run(handler, fresh);
+        assertThat(log.sessions(10))
+                .extracting(s -> s.get("id"), s -> s.get("state"))
+                .as("the expired session stays ended; the new one is live")
+                .contains(Tuple.tuple(expired, "ended"))
+                .anySatisfy(t -> assertThat(t.toList()).doesNotContain(expired).contains("live"));
+    }
+
+    @Test
     void initialize_at_a_full_table_of_active_connections_is_a_503_and_the_existing_one_still_works() throws Exception {
         McpHandler handler = handler(log());
         handler.maxSessions(1);
@@ -250,7 +288,8 @@ class McpConnectionReplacementTest {
         return new SessionLog(
                 new SessionJournal(state.resolve("sessions")),
                 System::currentTimeMillis,
-                EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
+                EpisodeInference.DEFAULT_IDLE_GAP_MILLIS,
+                JkHttpConfig.Mcp.DEFAULT_SESSION_EXPIRY.toMillis());
     }
 
     private McpHandler handler(SessionLog log) {

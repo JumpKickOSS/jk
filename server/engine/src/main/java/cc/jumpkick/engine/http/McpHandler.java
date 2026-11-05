@@ -149,10 +149,13 @@ public final class McpHandler {
 
     /**
      * Log connections' sessions and their non-run actions in {@code sessions}, and keep each
-     * connection with its session, so an engine that adopts the session answers its id. Optional.
+     * connection with its session, so an engine that adopts the session answers its id and a
+     * session that ends takes its connection with it. Optional.
      */
     public void sessions(SessionLog sessions) {
         ctx.sessions(sessions);
+        McpConnections connections = ctx.connections();
+        sessions.whenConnectionEnds(connections::close);
         ctx.connections().store(new McpConnections.Store() {
             @Override
             public void save(McpConnection connection) {

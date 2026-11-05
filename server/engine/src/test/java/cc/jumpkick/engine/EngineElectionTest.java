@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.sessions.EpisodeInference;
 import cc.jumpkick.engine.sessions.SessionLog;
@@ -550,9 +551,17 @@ class EngineElectionTest {
         closeLater(requireNonNull(e.win()).listener());
         Path predecessor = fakePredecessor(dir, line -> null);
         SessionJournal journal = new SessionJournal(dir.resolve("sessions"));
-        new SessionLog(journal, () -> 1_000L, EpisodeInference.DEFAULT_IDLE_GAP_MILLIS)
+        new SessionLog(
+                        journal,
+                        () -> 1_000L,
+                        EpisodeInference.DEFAULT_IDLE_GAP_MILLIS,
+                        JkHttpConfig.Mcp.DEFAULT_SESSION_EXPIRY.toMillis())
                 .open("mcp", "client", "client 3f9a", "/ws/app");
-        SessionLog successor = new SessionLog(journal, () -> 2_000L, EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
+        SessionLog successor = new SessionLog(
+                journal,
+                () -> 2_000L,
+                EpisodeInference.DEFAULT_IDLE_GAP_MILLIS,
+                JkHttpConfig.Mcp.DEFAULT_SESSION_EXPIRY.toMillis());
         successor.adoptAfter(() -> e.stopPredecessorSessions(predecessor));
         long stoppedMs = EngineElection.sessionsStoppedMs;
         EngineElection.sessionsStoppedMs = 200;

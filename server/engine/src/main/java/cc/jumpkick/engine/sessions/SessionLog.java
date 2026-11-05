@@ -28,18 +28,18 @@ import org.jspecify.annotations.Nullable;
  * SessionJournal} and published as an SSE {@code session}, {@code episode} or {@code action} event.
  *
  * <p>A session is keyed by its origin and its label: an MCP connection ({@code mcp}, {@code
- * claude-code 3f9a}) is opened at {@code initialize} and ended at {@code DELETE /mcp}; a BSP client,
- * the dashboard or the shell is opened by its first run. A session with no label of its own (the
- * shell, the dashboard) has no connection to close, so it ends once it has been idle for the idle
- * gap; the next run opens another. The code graph's own compiles and fixture runs belong to no
- * session.
+ * claude-code 3f9a}) is opened at {@code initialize}; a BSP client, the dashboard or the shell is
+ * opened by its first run. Every session ends the same way: at {@code DELETE /mcp}, or once it has
+ * had no activity for the session expiry ({@link #sweep}). Its MCP connection is forgotten with it,
+ * so a client that comes back after that is a stranger. The idle gap only marks a session idle and
+ * splits its episodes. The code graph's own compiles and fixture runs belong to no session.
  *
  * <p>Sessions outlive the engine. A new engine {@link #adopt adopts} every session a previous one
  * left open, with its episodes as they stood and the MCP connection behind it ({@link
- * #saveConnection}), so an agent that returns keeps its session; one nobody returns to is ended by
- * the {@link #sweep idle sweep}. Only the primary engine writes the records: a successor adopts
- * only once the engine it displaced has {@link #stopWriting stopped writing} ({@link #adoptAfter}),
- * and a displaced engine hands the runs it finishes to its successor instead ({@link #writeWhile}).
+ * #saveConnection}), so an agent that returns keeps its session. Only the primary engine writes the
+ * records: a successor adopts only once the engine it displaced has {@link #stopWriting stopped
+ * writing} ({@link #adoptAfter}), and a displaced engine hands the runs it finishes to its successor
+ * instead ({@link #writeWhile}).
  */
 public final class SessionLog {
 
@@ -58,10 +58,12 @@ public final class SessionLog {
     private final @Nullable SessionJournal journal;
     private final LongSupplier clock;
     private final long idleGapMillis;
+    private final long expiryMillis;
     private volatile Events events = (type, payload) -> {};
     private volatile BooleanSupplier primary = () -> true;
     private volatile Consumer<FinishedRun> successor = run -> {};
     private volatile Runnable predecessorStopped = () -> {};
+    private volatile Consumer<String> connectionEnded = id -> {};
 
     private final Map<String, Live> byKey = new LinkedHashMap<>();
     private final Map<String, Live> byId = new LinkedHashMap<>();
@@ -74,17 +76,12 @@ public final class SessionLog {
     /** Set once {@link #primary} fails or {@link #stopWriting} runs: the log writes nothing from then on. */
     private boolean retired;
 
-    /**
-     * One open session: its record, its episodes, the sequence its next action takes, and the MCP
-     * connection behind it. {@code attached} is false for a session adopted from a previous engine
-     * until it acts or its connection returns.
-     */
+    /** One open session: its record, its episodes, the sequence its next action takes, its MCP connection. */
     private static final class Live {
         SessionRecord record;
         final EpisodeInference episodes;
         long seq;
         final List<ActionRecord> memory = new ArrayList<>();
-        boolean attached = true;
 
         @Nullable
         Map<String, Object> connection;
@@ -100,11 +97,15 @@ public final class SessionLog {
      *     whose {@code [history]} is off
      * @param idleGapMillis how long a quiet session takes to go idle and its next fact to start a new
      *     episode ({@link EpisodeInference#DEFAULT_IDLE_GAP_MILLIS})
+     * @param expiryMillis how long a session with no activity lasts before it ends ({@code [mcp]
+     *     session-expiry})
      */
-    public SessionLog(@Nullable SessionJournal journal, LongSupplier clock, long idleGapMillis) {
+    public SessionLog(@Nullable SessionJournal journal, LongSupplier clock, long idleGapMillis, long expiryMillis) {
+        if (expiryMillis <= 0) throw new IllegalArgumentException("session expiry must be positive: " + expiryMillis);
         this.journal = journal;
         this.clock = clock;
         this.idleGapMillis = idleGapMillis;
+        this.expiryMillis = expiryMillis;
     }
 
     /** Publish every change to {@code events}. */
@@ -119,6 +120,14 @@ public final class SessionLog {
     public void writeWhile(BooleanSupplier primary, Consumer<FinishedRun> successor) {
         this.primary = primary;
         this.successor = successor;
+    }
+
+    /**
+     * Tell {@code ended} the id of each MCP connection whose session ended, so the connection table
+     * forgets it too. Called outside this log's lock.
+     */
+    public void whenConnectionEnds(Consumer<String> ended) {
+        this.connectionEnded = ended != null ? ended : id -> {};
     }
 
     /**
@@ -152,10 +161,10 @@ public final class SessionLog {
 
     /**
      * Take over every stored session a previous engine left open, as it stood: its episodes, its
-     * timeline's sequence and its MCP connection. An adopted session stays open; the {@link #sweep}
-     * ends it once it has been idle for the idle gap with nobody back. Runs once, and every other
-     * entry point runs it first, after the engine this one displaced has stopped writing ({@link
-     * #adoptAfter}). Answers how many it adopted.
+     * timeline's sequence and its MCP connection. An adopted session stays open under the same
+     * expiry as any other ({@link #sweep}). Runs once, and every other entry point runs it first,
+     * after the engine this one displaced has stopped writing ({@link #adoptAfter}). Answers how
+     * many it adopted.
      */
     public synchronized int adopt() {
         if (adopted) return 0;
@@ -169,7 +178,6 @@ public final class SessionLog {
             if (r.id().isBlank() || SessionRecord.ENDED.equals(r.state()) || byId.containsKey(r.id())) continue;
             Map<?, ?> state = doc.get("inference") instanceof Map<?, ?> m ? m : null;
             Live live = new Live(r, EpisodeInference.resume(r.id(), idleGapMillis, episodesOf(doc), state));
-            live.attached = false;
             List<Map<String, Object>> actions = journal.actions(r.id());
             live.seq = actions.isEmpty() ? 0 : Episode.num(actions.getLast(), "seq");
             byId.put(r.id(), live);
@@ -203,10 +211,14 @@ public final class SessionLog {
     }
 
     /** The connection behind {@code origin} and {@code label} closed: end its session. */
-    public synchronized void end(String origin, @Nullable String label) {
-        adopt();
-        Live live = byKey.get(key(origin, label));
-        if (live != null) end(live, clock.getAsLong());
+    public void end(String origin, @Nullable String label) {
+        List<String> ended = new ArrayList<>();
+        synchronized (this) {
+            adopt();
+            Live live = byKey.get(key(origin, label));
+            if (live != null) end(live, clock.getAsLong(), ended);
+        }
+        ended.forEach(connectionEnded);
     }
 
     /**
@@ -232,17 +244,12 @@ public final class SessionLog {
         }
     }
 
-    /**
-     * The stored MCP connection {@code id} of a session still open, which counts as its client
-     * back; empty when no open session has it.
-     */
+    /** The stored MCP connection {@code id} of a session still open; empty when no open session has it. */
     public synchronized Optional<Map<String, Object>> connection(String id) {
         adopt();
         Live live = byConnection.get(id);
         Map<String, Object> connection = live == null ? null : live.connection;
-        if (live == null || connection == null) return Optional.empty();
-        live.attached = true;
-        return Optional.of(connection);
+        return Optional.ofNullable(connection);
     }
 
     /** True when an open session holds MCP connection {@code id}, so a new connection must not take it. */
@@ -252,23 +259,38 @@ public final class SessionLog {
     }
 
     /**
-     * Announce sessions that went quiet: one with a connection goes idle; one with none, or adopted
-     * and not yet back, ends. Called on the engine's maintenance tick and before every read.
+     * End every session with no activity for the session expiry, and announce the ones that went
+     * idle. Activity is the session's last fact or the last request on its MCP connection, whichever
+     * is later. Called on the engine's maintenance tick and before every read.
      */
-    public synchronized void sweep() {
-        adopt();
-        long now = clock.getAsLong();
-        for (Live live : List.copyOf(byId.values())) {
-            String state = live.record.stateAt(now, idleGapMillis);
-            if (SessionRecord.IDLE.equals(state) && (live.record.label() == null || !live.attached)) {
-                end(live, now);
-                continue;
+    public void sweep() {
+        List<String> ended = new ArrayList<>();
+        synchronized (this) {
+            adopt();
+            long now = clock.getAsLong();
+            for (Live live : List.copyOf(byId.values())) {
+                if (now - lastActivity(live) >= expiryMillis) {
+                    end(live, now, ended);
+                    continue;
+                }
+                String state = live.record.stateAt(now, idleGapMillis);
+                if (state.equals(live.record.state())) continue;
+                live.record = live.record.withState(state);
+                persist(live);
+                publishSession(live, state);
             }
-            if (state.equals(live.record.state())) continue;
-            live.record = live.record.withState(state);
-            persist(live);
-            publishSession(live, state);
         }
+        ended.forEach(connectionEnded);
+    }
+
+    /** When {@code live} last acted, or its connection last served a request. */
+    private static long lastActivity(Live live) {
+        long last = live.record.lastActiveAt();
+        Map<String, Object> connection = live.connection;
+        if (connection != null && connection.get("lastSeenAt") instanceof Number seen) {
+            last = Math.max(last, seen.longValue());
+        }
+        return last;
     }
 
     // ---- facts ---------------------------------------------------------------------------------
@@ -470,7 +492,6 @@ public final class SessionLog {
         String key = key(origin, label);
         Live live = byKey.get(key);
         if (live != null) {
-            live.attached = true;
             if (!SessionRecord.LIVE.equals(live.record.state())) {
                 live.record = live.record.withState(SessionRecord.LIVE);
                 publishSession(live, SessionRecord.LIVE);
@@ -488,7 +509,8 @@ public final class SessionLog {
         return live;
     }
 
-    private void end(Live live, long now) {
+    /** End {@code live}, forget its connection here and on disk, and add the connection's id to {@code ended}. */
+    private void end(Live live, long now, List<String> ended) {
         List<EpisodeInference.Change> changes = live.episodes.end();
         SessionRecord r = live.record;
         live.record = new SessionRecord(
@@ -509,7 +531,16 @@ public final class SessionLog {
         byKey.remove(key(r.origin(), r.label()), live);
         byId.remove(r.id());
         String connection = live.connection == null ? null : MiniJson.str(live.connection, "id");
-        if (connection != null) byConnection.remove(connection, live);
+        if (connection == null) return;
+        byConnection.remove(connection, live);
+        live.connection = null;
+        ended.add(connection);
+        if (journal == null || !writing()) return;
+        try {
+            journal.deleteConnection(r.id());
+        } catch (IOException | RuntimeException e) {
+            Log.debug("session connection not removed: " + r.id(), e);
+        }
     }
 
     private void touch(Live live, @Nullable String dir, long at, @Nullable String episode) {
